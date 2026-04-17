@@ -1,0 +1,178 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wedge.example.com/contracts/websocket/events.schema.json",
+  "title": "Wedge WebSocket Events",
+  "oneOf": [
+    { "$ref": "#/$defs/RunStatusChangedEvent" },
+    { "$ref": "#/$defs/StepStartedEvent" },
+    { "$ref": "#/$defs/StepFinishedEvent" },
+    { "$ref": "#/$defs/LatestFrameAvailableEvent" },
+    { "$ref": "#/$defs/IssueSignalDetectedEvent" },
+    { "$ref": "#/$defs/AnalysisStartedEvent" },
+    { "$ref": "#/$defs/AnalysisFinishedEvent" }
+  ],
+  "$defs": {
+    "Envelope": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "type": { "type": "string" },
+        "runId": { "type": "string", "format": "uuid" },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "payload": { "type": "object" }
+      },
+      "required": ["type", "runId", "timestamp", "payload"]
+    },
+    "RunStatusChangedEvent": {
+      "allOf": [
+        { "$ref": "#/$defs/Envelope" },
+        {
+          "properties": {
+            "type": { "const": "run_status_changed" },
+            "payload": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "status": {
+                  "type": "string",
+                  "enum": ["CREATED", "QUEUED", "STARTING", "RUNNING", "STOP_REQUESTED", "STOPPED", "ANALYZING", "COMPLETED", "FAILED"]
+                },
+                "resultCompleteness": {
+                  "type": "string",
+                  "enum": ["NONE", "PARTIAL", "FINAL"]
+                },
+                "analysisStatus": {
+                  "type": "string",
+                  "enum": ["NOT_STARTED", "QUEUED", "RUNNING", "COMPLETED", "FAILED"]
+                }
+              },
+              "required": ["status", "resultCompleteness", "analysisStatus"]
+            }
+          }
+        }
+      ]
+    },
+    "StepStartedEvent": {
+      "allOf": [
+        { "$ref": "#/$defs/Envelope" },
+        {
+          "properties": {
+            "type": { "const": "step_started" },
+            "payload": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "stepId": { "type": "string", "format": "uuid" },
+                "stepOrder": { "type": "integer", "minimum": 1 },
+                "stepName": { "type": "string", "minLength": 1 }
+              },
+              "required": ["stepId", "stepOrder", "stepName"]
+            }
+          }
+        }
+      ]
+    },
+    "StepFinishedEvent": {
+      "allOf": [
+        { "$ref": "#/$defs/Envelope" },
+        {
+          "properties": {
+            "type": { "const": "step_finished" },
+            "payload": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "stepId": { "type": "string", "format": "uuid" },
+                "stepOrder": { "type": "integer", "minimum": 1 },
+                "status": {
+                  "type": "string",
+                  "enum": ["PENDING", "RUNNING", "PASSED", "FAILED", "SKIPPED", "BLOCKED", "STOPPED"]
+                }
+              },
+              "required": ["stepId", "stepOrder", "status"]
+            }
+          }
+        }
+      ]
+    },
+    "LatestFrameAvailableEvent": {
+      "allOf": [
+        { "$ref": "#/$defs/Envelope" },
+        {
+          "properties": {
+            "type": { "const": "latest_frame_available" },
+            "payload": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "artifactId": { "type": "string", "format": "uuid" },
+                "url": { "type": "string", "format": "uri" },
+                "width": { "type": "integer", "minimum": 1 },
+                "height": { "type": "integer", "minimum": 1 }
+              },
+              "required": ["artifactId", "url", "width", "height"]
+            }
+          }
+        }
+      ]
+    },
+    "IssueSignalDetectedEvent": {
+      "allOf": [
+        { "$ref": "#/$defs/Envelope" },
+        {
+          "properties": {
+            "type": { "const": "issue_signal_detected" },
+            "payload": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "category": { "type": "string", "minLength": 1 },
+                "source": { "type": "string", "enum": ["RULE_ENGINE", "RUNNER", "ANALYZER"] },
+                "confidence": { "type": "number", "minimum": 0, "maximum": 1 }
+              },
+              "required": ["category", "source", "confidence"]
+            }
+          }
+        }
+      ]
+    },
+    "AnalysisStartedEvent": {
+      "allOf": [
+        { "$ref": "#/$defs/Envelope" },
+        {
+          "properties": {
+            "type": { "const": "analysis_started" },
+            "payload": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "analysisJobId": { "type": "string", "format": "uuid" },
+                "analysisType": { "type": "string" }
+              },
+              "required": ["analysisJobId"]
+            }
+          }
+        }
+      ]
+    },
+    "AnalysisFinishedEvent": {
+      "allOf": [
+        { "$ref": "#/$defs/Envelope" },
+        {
+          "properties": {
+            "type": { "const": "analysis_finished" },
+            "payload": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "analysisJobId": { "type": "string", "format": "uuid" },
+                "status": { "type": "string", "enum": ["COMPLETED", "FAILED"] }
+              },
+              "required": ["analysisJobId", "status"]
+            }
+          }
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,2328 @@
+openapi: 3.0.3
+info:
+  title: Wedge API
+  version: 1.0.0-draft
+  description: Wedge public REST API (/api), internal callback API (/internal), and core resource
+    schemas.
+servers:
+- url: https://api.wedge.example.com
+  description: production placeholder
+- url: https://staging-api.wedge.example.com
+  description: staging placeholder
+security:
+- oauth2: []
+tags:
+- name: Projects
+- name: ScenarioTemplates
+- name: Runs
+- name: Steps
+- name: Events
+- name: Artifacts
+- name: Signals
+- name: Analysis
+- name: Reports
+- name: InternalRunner
+- name: InternalAnalyzer
+paths:
+  /api/projects:
+    get:
+      tags:
+      - Projects
+      operationId: listProjects
+      summary: List projects
+      security:
+      - oauth2:
+        - wedge.read
+      parameters:
+      - $ref: '#/components/parameters/Cursor'
+      - $ref: '#/components/parameters/Limit'
+      - name: workspaceId
+        in: query
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: Project list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListProjectResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+    post:
+      tags:
+      - Projects
+      operationId: createProject
+      summary: Create project
+      security:
+      - oauth2:
+        - wedge.execute
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProjectCreateRequest'
+      responses:
+        '201':
+          description: Project created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SingleProjectResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /api/projects/{projectId}:
+    get:
+      tags:
+      - Projects
+      operationId: getProject
+      summary: Get project
+      security:
+      - oauth2:
+        - wedge.read
+      parameters:
+      - $ref: '#/components/parameters/ProjectId'
+      responses:
+        '200':
+          description: Project detail
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SingleProjectResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+    patch:
+      tags:
+      - Projects
+      operationId: patchProject
+      summary: Patch project
+      security:
+      - oauth2:
+        - wedge.execute
+      parameters:
+      - $ref: '#/components/parameters/ProjectId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProjectPatchRequest'
+      responses:
+        '200':
+          description: Project detail
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SingleProjectResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /api/scenario-templates:
+    get:
+      tags:
+      - ScenarioTemplates
+      operationId: listScenarioTemplates
+      summary: List scenario templates
+      security:
+      - oauth2:
+        - wedge.read
+      parameters:
+      - $ref: '#/components/parameters/Cursor'
+      - $ref: '#/components/parameters/Limit'
+      - name: status
+        in: query
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Scenario template list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListScenarioTemplateResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /api/scenario-templates/{templateId}:
+    get:
+      tags:
+      - ScenarioTemplates
+      operationId: getScenarioTemplate
+      summary: Get scenario template
+      security:
+      - oauth2:
+        - wedge.read
+      parameters:
+      - $ref: '#/components/parameters/TemplateId'
+      responses:
+        '200':
+          description: Scenario template
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/ScenarioTemplate'
+                  meta:
+                    $ref: '#/components/schemas/Meta'
+                required:
+                - data
+                - meta
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /api/scenario-templates/{templateId}/versions/{versionId}:
+    get:
+      tags:
+      - ScenarioTemplates
+      operationId: getScenarioTemplateVersion
+      summary: Get scenario template version
+      security:
+      - oauth2:
+        - wedge.read
+      parameters:
+      - $ref: '#/components/parameters/TemplateId'
+      - $ref: '#/components/parameters/VersionId'
+      responses:
+        '200':
+          description: Scenario template version
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/ScenarioTemplateVersion'
+                  meta:
+                    $ref: '#/components/schemas/Meta'
+                required:
+                - data
+                - meta
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /api/runs:
+    get:
+      tags:
+      - Runs
+      operationId: listRuns
+      summary: List runs
+      security:
+      - oauth2:
+        - wedge.read
+      parameters:
+      - $ref: '#/components/parameters/Cursor'
+      - $ref: '#/components/parameters/Limit'
+      - name: projectId
+        in: query
+        schema:
+          type: string
+          format: uuid
+      - name: status
+        in: query
+        schema:
+          type: string
+      - name: analysisStatus
+        in: query
+        schema:
+          type: string
+      - name: createdFrom
+        in: query
+        schema:
+          type: string
+          format: date-time
+      - name: createdTo
+        in: query
+        schema:
+          type: string
+          format: date-time
+      responses:
+        '200':
+          description: Run list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListRunResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+    post:
+      tags:
+      - Runs
+      operationId: createRun
+      summary: Create run
+      security:
+      - oauth2:
+        - wedge.execute
+      parameters:
+      - name: Idempotency-Key
+        in: header
+        required: false
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RunCreateRequest'
+      responses:
+        '201':
+          description: Run created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SingleRunResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /api/runs/{runId}:
+    get:
+      tags:
+      - Runs
+      operationId: getRun
+      summary: Get run
+      security:
+      - oauth2:
+        - wedge.read
+      parameters:
+      - $ref: '#/components/parameters/RunId'
+      responses:
+        '200':
+          description: Run detail
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SingleRunResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+    delete:
+      tags:
+      - Runs
+      operationId: deleteRun
+      summary: Delete run
+      security:
+      - oauth2:
+        - wedge.admin
+      parameters:
+      - $ref: '#/components/parameters/RunId'
+      responses:
+        '204':
+          description: Run deleted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /api/runs/{runId}/start:
+    post:
+      tags:
+      - Runs
+      operationId: startRun
+      summary: Start run
+      security:
+      - oauth2:
+        - wedge.execute
+      parameters:
+      - $ref: '#/components/parameters/RunId'
+      - name: Idempotency-Key
+        in: header
+        required: false
+        schema:
+          type: string
+      responses:
+        '202':
+          description: Run start accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AckResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /api/runs/{runId}/stop:
+    post:
+      tags:
+      - Runs
+      operationId: stopRun
+      summary: Stop run
+      security:
+      - oauth2:
+        - wedge.execute
+      parameters:
+      - $ref: '#/components/parameters/RunId'
+      - name: Idempotency-Key
+        in: header
+        required: false
+        schema:
+          type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RunActionRequest'
+      responses:
+        '202':
+          description: Run stop accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AckResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /api/runs/{runId}/live:
+    get:
+      tags:
+      - Runs
+      operationId: getRunLive
+      summary: Get live run state
+      security:
+      - oauth2:
+        - wedge.read
+      parameters:
+      - $ref: '#/components/parameters/RunId'
+      responses:
+        '200':
+          description: Live run state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SingleLiveRunResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /api/runs/{runId}/steps:
+    get:
+      tags:
+      - Steps
+      operationId: listRunSteps
+      summary: List run steps
+      security:
+      - oauth2:
+        - wedge.read
+      parameters:
+      - $ref: '#/components/parameters/RunId'
+      - $ref: '#/components/parameters/Cursor'
+      - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Run steps
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListStepResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /api/runs/{runId}/steps/{stepId}:
+    get:
+      tags:
+      - Steps
+      operationId: getRunStep
+      summary: Get run step
+      security:
+      - oauth2:
+        - wedge.read
+      parameters:
+      - $ref: '#/components/parameters/RunId'
+      - $ref: '#/components/parameters/StepId'
+      responses:
+        '200':
+          description: Run step detail
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SingleStepResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /api/runs/{runId}/events:
+    get:
+      tags:
+      - Events
+      operationId: listRunEvents
+      summary: List run events
+      security:
+      - oauth2:
+        - wedge.read
+      parameters:
+      - $ref: '#/components/parameters/RunId'
+      - $ref: '#/components/parameters/Cursor'
+      - $ref: '#/components/parameters/Limit'
+      - name: stepId
+        in: query
+        schema:
+          type: string
+          format: uuid
+      - name: eventType
+        in: query
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Run events
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListRunEventResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /api/runs/{runId}/artifacts:
+    get:
+      tags:
+      - Artifacts
+      operationId: listRunArtifacts
+      summary: List run artifacts
+      security:
+      - oauth2:
+        - wedge.read
+      parameters:
+      - $ref: '#/components/parameters/RunId'
+      - $ref: '#/components/parameters/Cursor'
+      - $ref: '#/components/parameters/Limit'
+      - name: type
+        in: query
+        schema:
+          type: string
+      - name: stepId
+        in: query
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: Run artifacts
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListArtifactResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /api/runs/{runId}/signals:
+    get:
+      tags:
+      - Signals
+      operationId: listRunSignals
+      summary: List run issue signals
+      security:
+      - oauth2:
+        - wedge.read
+      parameters:
+      - $ref: '#/components/parameters/RunId'
+      - $ref: '#/components/parameters/Cursor'
+      - $ref: '#/components/parameters/Limit'
+      - name: stepId
+        in: query
+        schema:
+          type: string
+          format: uuid
+      - name: category
+        in: query
+        schema:
+          type: string
+      - name: source
+        in: query
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Run issue signals
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListSignalResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /api/runs/{runId}/analysis-jobs:
+    get:
+      tags:
+      - Analysis
+      operationId: listRunAnalysisJobs
+      summary: List analysis jobs for run
+      security:
+      - oauth2:
+        - wedge.read
+      parameters:
+      - $ref: '#/components/parameters/RunId'
+      - $ref: '#/components/parameters/Cursor'
+      - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Analysis jobs
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListAnalysisJobResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+    post:
+      tags:
+      - Analysis
+      operationId: createAnalysisJob
+      summary: Create analysis job
+      security:
+      - oauth2:
+        - wedge.execute
+      parameters:
+      - $ref: '#/components/parameters/RunId'
+      - name: Idempotency-Key
+        in: header
+        required: false
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AnalysisJobCreateRequest'
+      responses:
+        '202':
+          description: Analysis job accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AckResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /api/analysis-jobs/{analysisJobId}:
+    get:
+      tags:
+      - Analysis
+      operationId: getAnalysisJob
+      summary: Get analysis job
+      security:
+      - oauth2:
+        - wedge.read
+      parameters:
+      - $ref: '#/components/parameters/AnalysisJobId'
+      responses:
+        '200':
+          description: Analysis job detail
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SingleAnalysisJobResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /api/runs/{runId}/reports:
+    get:
+      tags:
+      - Reports
+      operationId: listRunReports
+      summary: List reports for run
+      security:
+      - oauth2:
+        - wedge.read
+      parameters:
+      - $ref: '#/components/parameters/RunId'
+      - $ref: '#/components/parameters/Cursor'
+      - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Reports
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListReportResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+    post:
+      tags:
+      - Reports
+      operationId: createReport
+      summary: Create report export job
+      security:
+      - oauth2:
+        - wedge.export
+      parameters:
+      - $ref: '#/components/parameters/RunId'
+      - name: Idempotency-Key
+        in: header
+        required: false
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReportCreateRequest'
+      responses:
+        '202':
+          description: Report export accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AckResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /api/reports/{reportId}:
+    get:
+      tags:
+      - Reports
+      operationId: getReport
+      summary: Get report
+      security:
+      - oauth2:
+        - wedge.read
+      parameters:
+      - $ref: '#/components/parameters/ReportId'
+      responses:
+        '200':
+          description: Report detail
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SingleReportResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /internal/runner/runs/{runId}/accepted:
+    post:
+      tags:
+      - InternalRunner
+      operationId: runnerAccepted
+      summary: Runner accepted run
+      security:
+      - InternalBearer: []
+      parameters:
+      - $ref: '#/components/parameters/RunId'
+      - name: X-Worker-Id
+        in: header
+        required: false
+        schema:
+          type: string
+      - name: X-Event-Id
+        in: header
+        required: true
+        schema:
+          type: string
+      - name: X-Signature
+        in: header
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RunnerAcceptedRequest'
+      responses:
+        '200':
+          description: Accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AckResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /internal/runner/runs/{runId}/step-events:
+    post:
+      tags:
+      - InternalRunner
+      operationId: runnerStepEvents
+      summary: Runner pushed step events
+      security:
+      - InternalBearer: []
+      parameters:
+      - $ref: '#/components/parameters/RunId'
+      - name: X-Worker-Id
+        in: header
+        required: false
+        schema:
+          type: string
+      - name: X-Event-Id
+        in: header
+        required: true
+        schema:
+          type: string
+      - name: X-Signature
+        in: header
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RunnerStepEventsRequest'
+      responses:
+        '200':
+          description: Accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AckResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /internal/runner/runs/{runId}/artifacts:
+    post:
+      tags:
+      - InternalRunner
+      operationId: runnerArtifacts
+      summary: Runner pushed artifacts
+      security:
+      - InternalBearer: []
+      parameters:
+      - $ref: '#/components/parameters/RunId'
+      - name: X-Worker-Id
+        in: header
+        required: false
+        schema:
+          type: string
+      - name: X-Event-Id
+        in: header
+        required: true
+        schema:
+          type: string
+      - name: X-Signature
+        in: header
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RunnerArtifactsRequest'
+      responses:
+        '200':
+          description: Accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AckResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /internal/runner/runs/{runId}/finished:
+    post:
+      tags:
+      - InternalRunner
+      operationId: runnerFinished
+      summary: Runner finished run
+      security:
+      - InternalBearer: []
+      parameters:
+      - $ref: '#/components/parameters/RunId'
+      - name: X-Worker-Id
+        in: header
+        required: false
+        schema:
+          type: string
+      - name: X-Event-Id
+        in: header
+        required: true
+        schema:
+          type: string
+      - name: X-Signature
+        in: header
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RunnerFinishedRequest'
+      responses:
+        '200':
+          description: Accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AckResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /internal/runner/runs/{runId}/failed:
+    post:
+      tags:
+      - InternalRunner
+      operationId: runnerFailed
+      summary: Runner failed run
+      security:
+      - InternalBearer: []
+      parameters:
+      - $ref: '#/components/parameters/RunId'
+      - name: X-Worker-Id
+        in: header
+        required: false
+        schema:
+          type: string
+      - name: X-Event-Id
+        in: header
+        required: true
+        schema:
+          type: string
+      - name: X-Signature
+        in: header
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RunnerFailedRequest'
+      responses:
+        '200':
+          description: Accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AckResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /internal/analysis/jobs/{analysisJobId}/completed:
+    post:
+      tags:
+      - InternalAnalyzer
+      operationId: analysisCompleted
+      summary: Analyzer completed analysis job
+      security:
+      - InternalBearer: []
+      parameters:
+      - $ref: '#/components/parameters/AnalysisJobId'
+      - name: X-Analyzer-Id
+        in: header
+        required: false
+        schema:
+          type: string
+      - name: X-Event-Id
+        in: header
+        required: true
+        schema:
+          type: string
+      - name: X-Signature
+        in: header
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AnalyzerCompletedRequest'
+      responses:
+        '200':
+          description: Accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AckResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /internal/analysis/jobs/{analysisJobId}/failed:
+    post:
+      tags:
+      - InternalAnalyzer
+      operationId: analysisFailed
+      summary: Analyzer failed analysis job
+      security:
+      - InternalBearer: []
+      parameters:
+      - $ref: '#/components/parameters/AnalysisJobId'
+      - name: X-Analyzer-Id
+        in: header
+        required: false
+        schema:
+          type: string
+      - name: X-Event-Id
+        in: header
+        required: true
+        schema:
+          type: string
+      - name: X-Signature
+        in: header
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AnalyzerFailedRequest'
+      responses:
+        '200':
+          description: Accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AckResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+components:
+  securitySchemes:
+    oauth2:
+      type: oauth2
+      flows:
+        authorizationCode:
+          authorizationUrl: https://auth.wedge.example.com/oauth2/authorize
+          tokenUrl: https://auth.wedge.example.com/oauth2/token
+          scopes:
+            wedge.read: Read Wedge resources
+            wedge.execute: Create and execute runs
+            wedge.export: Export reports
+            wedge.admin: Administrative actions
+        clientCredentials:
+          tokenUrl: https://auth.wedge.example.com/oauth2/token
+          scopes:
+            wedge.read: Read Wedge resources
+            wedge.execute: Create and execute runs
+            wedge.export: Export reports
+            wedge.admin: Administrative actions
+    InternalBearer:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    RunId:
+      name: runId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    ProjectId:
+      name: projectId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    TemplateId:
+      name: templateId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    VersionId:
+      name: versionId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    StepId:
+      name: stepId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    AnalysisJobId:
+      name: analysisJobId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    ReportId:
+      name: reportId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    Cursor:
+      name: cursor
+      in: query
+      required: false
+      schema:
+        type: string
+    Limit:
+      name: limit
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+  headers:
+    XCorrelationId:
+      schema:
+        type: string
+    IdempotencyKey:
+      schema:
+        type: string
+    XWorkerId:
+      schema:
+        type: string
+    XEventId:
+      schema:
+        type: string
+    XSignature:
+      schema:
+        type: string
+  responses:
+    Unauthorized:
+      description: Unauthorized
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Forbidden:
+      description: Forbidden
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    NotFound:
+      description: Not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    ValidationError:
+      description: Validation error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Conflict:
+      description: State conflict
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    AcceptedAck:
+      description: Accepted for asynchronous processing
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/AckResponse'
+  schemas:
+    Meta:
+      type: object
+      properties:
+        requestId:
+          type: string
+        nextCursor:
+          type: string
+          nullable: true
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            details:
+              type: object
+              additionalProperties: true
+          required:
+          - code
+          - message
+        meta:
+          $ref: '#/components/schemas/Meta'
+      required:
+      - error
+      - meta
+    Project:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        type:
+          type: string
+          example: project
+        workspaceId:
+          type: string
+          format: uuid
+        name:
+          type: string
+        baseUrl:
+          type: string
+          format: uri
+        status:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+      - id
+      - type
+      - workspaceId
+      - name
+      - baseUrl
+      - status
+      - createdAt
+    ProjectCreateRequest:
+      type: object
+      properties:
+        workspaceId:
+          type: string
+          format: uuid
+        name:
+          type: string
+        baseUrl:
+          type: string
+          format: uri
+      required:
+      - workspaceId
+      - name
+      - baseUrl
+    ProjectPatchRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        baseUrl:
+          type: string
+          format: uri
+        status:
+          type: string
+    ScenarioTemplate:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        templateKey:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        status:
+          type: string
+      required:
+      - id
+      - templateKey
+      - name
+      - status
+    ScenarioTemplateVersion:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        templateId:
+          type: string
+          format: uuid
+        versionNo:
+          type: integer
+        definition:
+          type: object
+          additionalProperties: true
+      required:
+      - id
+      - templateId
+      - versionNo
+      - definition
+    Run:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        type:
+          type: string
+          example: run
+        projectId:
+          type: string
+          format: uuid
+        name:
+          type: string
+        triggerSource:
+          type: string
+        startUrl:
+          type: string
+          format: uri
+        goal:
+          type: string
+          nullable: true
+        devicePreset:
+          type: string
+        status:
+          type: string
+          enum:
+          - CREATED
+          - QUEUED
+          - STARTING
+          - RUNNING
+          - STOP_REQUESTED
+          - STOPPED
+          - ANALYZING
+          - COMPLETED
+          - FAILED
+        resultCompleteness:
+          type: string
+          enum:
+          - NONE
+          - PARTIAL
+          - FINAL
+        analysisStatus:
+          type: string
+          enum:
+          - NOT_STARTED
+          - QUEUED
+          - RUNNING
+          - COMPLETED
+          - FAILED
+        currentStepOrder:
+          type: integer
+          nullable: true
+        startedAt:
+          type: string
+          format: date-time
+          nullable: true
+        finishedAt:
+          type: string
+          format: date-time
+          nullable: true
+        failureCode:
+          type: string
+          nullable: true
+        failureMessage:
+          type: string
+          nullable: true
+        latestSnapshot:
+          $ref: '#/components/schemas/LatestSnapshot'
+      required:
+      - id
+      - type
+      - projectId
+      - name
+      - startUrl
+      - devicePreset
+      - status
+      - resultCompleteness
+      - analysisStatus
+    LatestSnapshot:
+      type: object
+      properties:
+        artifactId:
+          type: string
+          format: uuid
+        url:
+          type: string
+          format: uri
+        capturedAt:
+          type: string
+          format: date-time
+    RunCreateRequest:
+      type: object
+      properties:
+        projectId:
+          type: string
+          format: uuid
+        name:
+          type: string
+        startUrl:
+          type: string
+          format: uri
+        goal:
+          type: string
+          nullable: true
+        devicePreset:
+          type: string
+        scenarioTemplateVersionId:
+          type: string
+          format: uuid
+          nullable: true
+        scenarioOverrides:
+          type: object
+          additionalProperties: true
+      required:
+      - projectId
+      - name
+      - startUrl
+      - devicePreset
+    RunActionRequest:
+      type: object
+      properties:
+        reason:
+          type: string
+          nullable: true
+    AckResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          additionalProperties: true
+        meta:
+          $ref: '#/components/schemas/Meta'
+      required:
+      - data
+      - meta
+    Step:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        runId:
+          type: string
+          format: uuid
+        stepOrder:
+          type: integer
+        stepKey:
+          type: string
+        stepName:
+          type: string
+        stepType:
+          type: string
+        status:
+          type: string
+          enum:
+          - PENDING
+          - RUNNING
+          - PASSED
+          - FAILED
+          - SKIPPED
+          - BLOCKED
+          - STOPPED
+        target:
+          type: object
+          additionalProperties: true
+        input:
+          type: object
+          additionalProperties: true
+          nullable: true
+        output:
+          type: object
+          additionalProperties: true
+          nullable: true
+        startedAt:
+          type: string
+          format: date-time
+          nullable: true
+        finishedAt:
+          type: string
+          format: date-time
+          nullable: true
+        errorCode:
+          type: string
+          nullable: true
+        errorMessage:
+          type: string
+          nullable: true
+      required:
+      - id
+      - runId
+      - stepOrder
+      - stepKey
+      - stepName
+      - stepType
+      - status
+    RunEvent:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        runId:
+          type: string
+          format: uuid
+        stepId:
+          type: string
+          format: uuid
+          nullable: true
+        eventType:
+          type: string
+        eventSource:
+          type: string
+        payload:
+          type: object
+          additionalProperties: true
+        occurredAt:
+          type: string
+          format: date-time
+      required:
+      - id
+      - runId
+      - eventType
+      - eventSource
+      - payload
+      - occurredAt
+    Artifact:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        runId:
+          type: string
+          format: uuid
+        stepId:
+          type: string
+          format: uuid
+          nullable: true
+        artifactType:
+          type: string
+        bucket:
+          type: string
+        key:
+          type: string
+        mimeType:
+          type: string
+        width:
+          type: integer
+          nullable: true
+        height:
+          type: integer
+          nullable: true
+        sizeBytes:
+          type: integer
+        sha256:
+          type: string
+          nullable: true
+        url:
+          type: string
+          format: uri
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+      required:
+      - id
+      - runId
+      - artifactType
+      - bucket
+      - key
+      - mimeType
+      - sizeBytes
+      - createdAt
+    IssueSignal:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        runId:
+          type: string
+          format: uuid
+        stepId:
+          type: string
+          format: uuid
+          nullable: true
+        category:
+          type: string
+        source:
+          type: string
+        score:
+          type: number
+          nullable: true
+        confidence:
+          type: number
+          nullable: true
+        reason:
+          type: string
+          nullable: true
+        evidenceRefs:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+      required:
+      - id
+      - runId
+      - category
+      - source
+    AnalysisFinding:
+      type: object
+      properties:
+        rank:
+          type: integer
+        category:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        confidence:
+          type: number
+          nullable: true
+        impact:
+          type: string
+          nullable: true
+        evidenceRefs:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+      required:
+      - rank
+      - category
+      - title
+      - description
+    Nudge:
+      type: object
+      properties:
+        title:
+          type: string
+        rationale:
+          type: string
+        difficulty:
+          type: string
+          nullable: true
+        expectedEffect:
+          type: string
+          nullable: true
+        priority:
+          type: string
+          nullable: true
+        followUpQuestion:
+          type: string
+          nullable: true
+      required:
+      - title
+      - rationale
+    AnalysisJob:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        runId:
+          type: string
+          format: uuid
+        analysisType:
+          type: string
+        status:
+          type: string
+        analyzerVersion:
+          type: string
+          nullable: true
+        promptVersion:
+          type: string
+          nullable: true
+        modelInfo:
+          type: object
+          additionalProperties: true
+        topFindings:
+          type: array
+          items:
+            $ref: '#/components/schemas/AnalysisFinding'
+        nudges:
+          type: array
+          items:
+            $ref: '#/components/schemas/Nudge'
+        createdAt:
+          type: string
+          format: date-time
+        finishedAt:
+          type: string
+          format: date-time
+          nullable: true
+      required:
+      - id
+      - runId
+      - analysisType
+      - status
+      - createdAt
+    AnalysisJobCreateRequest:
+      type: object
+      properties:
+        analysisType:
+          type: string
+        forceRebuildEvidenceBundle:
+          type: boolean
+          default: false
+        reason:
+          type: string
+          nullable: true
+      required:
+      - analysisType
+    Report:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        runId:
+          type: string
+          format: uuid
+        analysisJobId:
+          type: string
+          format: uuid
+          nullable: true
+        format:
+          type: string
+          enum:
+          - PDF
+          - MARKDOWN
+          - LINK
+        status:
+          type: string
+        downloadUrl:
+          type: string
+          format: uri
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+      required:
+      - id
+      - runId
+      - format
+      - status
+      - createdAt
+    ReportCreateRequest:
+      type: object
+      properties:
+        format:
+          type: string
+          enum:
+          - PDF
+          - MARKDOWN
+          - LINK
+        analysisJobId:
+          type: string
+          format: uuid
+          nullable: true
+      required:
+      - format
+    LiveRun:
+      type: object
+      properties:
+        runId:
+          type: string
+          format: uuid
+        status:
+          type: string
+        currentStepOrder:
+          type: integer
+          nullable: true
+        currentAction:
+          type: string
+          nullable: true
+        latestFrame:
+          $ref: '#/components/schemas/LatestSnapshot'
+      required:
+      - runId
+      - status
+    RunnerAcceptedRequest:
+      type: object
+      properties:
+        workerId:
+          type: string
+        acceptedAt:
+          type: string
+          format: date-time
+        browserSessionId:
+          type: string
+          nullable: true
+      required:
+      - workerId
+      - acceptedAt
+    RunnerStepEvent:
+      type: object
+      properties:
+        eventId:
+          type: string
+        stepOrder:
+          type: integer
+        stepId:
+          type: string
+          format: uuid
+          nullable: true
+        eventType:
+          type: string
+        occurredAt:
+          type: string
+          format: date-time
+        payload:
+          type: object
+          additionalProperties: true
+      required:
+      - eventId
+      - stepOrder
+      - eventType
+      - occurredAt
+      - payload
+    RunnerStepEventsRequest:
+      type: object
+      properties:
+        events:
+          type: array
+          items:
+            $ref: '#/components/schemas/RunnerStepEvent'
+      required:
+      - events
+    RunnerArtifactsRequest:
+      type: object
+      properties:
+        artifacts:
+          type: array
+          items:
+            type: object
+            properties:
+              artifactId:
+                type: string
+                format: uuid
+              stepId:
+                type: string
+                format: uuid
+                nullable: true
+              artifactType:
+                type: string
+              bucket:
+                type: string
+              key:
+                type: string
+              mimeType:
+                type: string
+              width:
+                type: integer
+                nullable: true
+              height:
+                type: integer
+                nullable: true
+              sizeBytes:
+                type: integer
+              sha256:
+                type: string
+                nullable: true
+              createdAt:
+                type: string
+                format: date-time
+            required:
+            - artifactId
+            - artifactType
+            - bucket
+            - key
+            - mimeType
+            - sizeBytes
+            - createdAt
+      required:
+      - artifacts
+    RunnerFinishedRequest:
+      type: object
+      properties:
+        workerId:
+          type: string
+        executionFinishedAt:
+          type: string
+          format: date-time
+        summary:
+          type: object
+          properties:
+            completedStepCount:
+              type: integer
+            failedStepCount:
+              type: integer
+            stopped:
+              type: boolean
+          required:
+          - completedStepCount
+          - failedStepCount
+          - stopped
+      required:
+      - workerId
+      - executionFinishedAt
+      - summary
+    RunnerFailedRequest:
+      type: object
+      properties:
+        workerId:
+          type: string
+        failedAt:
+          type: string
+          format: date-time
+        failureCode:
+          type: string
+        failureMessage:
+          type: string
+        resultCompleteness:
+          type: string
+          enum:
+          - NONE
+          - PARTIAL
+          - FINAL
+      required:
+      - workerId
+      - failedAt
+      - failureCode
+      - failureMessage
+      - resultCompleteness
+    AnalyzerCompletedRequest:
+      type: object
+      properties:
+        analysisJobId:
+          type: string
+          format: uuid
+        runId:
+          type: string
+          format: uuid
+        analyzerVersion:
+          type: string
+        promptVersion:
+          type: string
+          nullable: true
+        modelInfo:
+          type: object
+          additionalProperties: true
+        topFindings:
+          type: array
+          items:
+            $ref: '#/components/schemas/AnalysisFinding'
+        nudges:
+          type: array
+          items:
+            $ref: '#/components/schemas/Nudge'
+        completedAt:
+          type: string
+          format: date-time
+      required:
+      - analysisJobId
+      - runId
+      - analyzerVersion
+      - modelInfo
+      - topFindings
+      - nudges
+      - completedAt
+    AnalyzerFailedRequest:
+      type: object
+      properties:
+        analysisJobId:
+          type: string
+          format: uuid
+        runId:
+          type: string
+          format: uuid
+        failedAt:
+          type: string
+          format: date-time
+        errorCode:
+          type: string
+        errorMessage:
+          type: string
+      required:
+      - analysisJobId
+      - runId
+      - failedAt
+      - errorCode
+      - errorMessage
+    ListProjectResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Project'
+        meta:
+          $ref: '#/components/schemas/Meta'
+      required:
+      - data
+      - meta
+    ListScenarioTemplateResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/ScenarioTemplate'
+        meta:
+          $ref: '#/components/schemas/Meta'
+      required:
+      - data
+      - meta
+    SingleProjectResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/Project'
+        meta:
+          $ref: '#/components/schemas/Meta'
+      required:
+      - data
+      - meta
+    SingleRunResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/Run'
+        meta:
+          $ref: '#/components/schemas/Meta'
+      required:
+      - data
+      - meta
+    ListRunResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Run'
+        meta:
+          $ref: '#/components/schemas/Meta'
+      required:
+      - data
+      - meta
+    ListStepResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Step'
+        meta:
+          $ref: '#/components/schemas/Meta'
+      required:
+      - data
+      - meta
+    SingleStepResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/Step'
+        meta:
+          $ref: '#/components/schemas/Meta'
+      required:
+      - data
+      - meta
+    ListRunEventResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/RunEvent'
+        meta:
+          $ref: '#/components/schemas/Meta'
+      required:
+      - data
+      - meta
+    ListArtifactResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Artifact'
+        meta:
+          $ref: '#/components/schemas/Meta'
+      required:
+      - data
+      - meta
+    ListSignalResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/IssueSignal'
+        meta:
+          $ref: '#/components/schemas/Meta'
+      required:
+      - data
+      - meta
+    SingleAnalysisJobResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/AnalysisJob'
+        meta:
+          $ref: '#/components/schemas/Meta'
+      required:
+      - data
+      - meta
+    ListAnalysisJobResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/AnalysisJob'
+        meta:
+          $ref: '#/components/schemas/Meta'
+      required:
+      - data
+      - meta
+    SingleReportResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/Report'
+        meta:
+          $ref: '#/components/schemas/Meta'
+      required:
+      - data
+      - meta
+    ListReportResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Report'
+        meta:
+          $ref: '#/components/schemas/Meta'
+      required:
+      - data
+      - meta
+    SingleLiveRunResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/LiveRun'
+        meta:
+          $ref: '#/components/schemas/Meta'
+      required:
+      - data
+      - meta

@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wedge.example.com/contracts/mcp/tools.schema.json",
+  "title": "Wedge MCP Tool Contracts",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "tools": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/Tool" }
+    }
+  },
+  "required": ["tools"],
+  "$defs": {
+    "Tool": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "enum": [
+            "get_run_status",
+            "get_run_summary",
+            "list_run_events",
+            "get_latest_snapshot",
+            "get_step_evidence",
+            "get_report",
+            "create_run",
+            "start_run",
+            "stop_run",
+            "analyze_run",
+            "generate_nudges",
+            "export_report",
+            "delete_run",
+            "force_stop_run",
+            "replay_analysis",
+            "get_sensitive_logs"
+          ]
+        },
+        "category": { "type": "string", "enum": ["read", "execute", "export", "admin"] },
+        "requiredScope": { "type": "string", "enum": ["wedge.read", "wedge.execute", "wedge.export", "wedge.admin"] },
+        "approvalPolicy": { "type": "string", "enum": ["never", "on_failure", "always"] },
+        "inputSchema": { "type": "object" },
+        "outputSchema": { "type": "object" }
+      },
+      "required": ["name", "category", "requiredScope", "approvalPolicy", "inputSchema", "outputSchema"]
+    }
+  }
+}

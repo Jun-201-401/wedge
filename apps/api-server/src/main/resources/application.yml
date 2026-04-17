@@ -1,0 +1,9 @@
+spring:
+  application:
+    name: wedge-api-server
+
+mybatis:
+  mapper-locations: classpath*:mapper/**/*.xml
+
+server:
+  port: 8080

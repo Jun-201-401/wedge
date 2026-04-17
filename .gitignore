@@ -1,0 +1,50 @@
+.omx/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Env / local overrides
+.env
+.env.*
+!.env.example
+!.env.*.example
+
+# Logs
+*.log
+logs/
+
+# Node / frontend / runner
+node_modules/
+dist/
+coverage/
+.next/
+.turbo/
+.cache/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Java / Spring
+.gradle/
+build/
+out/
+*.class
+
+# Python / FastAPI
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+
+# Test / tooling artifacts
+playwright-report/
+test-results/
+tmp/
+temp/

@@ -1,0 +1,7 @@
+{
+  "name": "@wedge/web",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Minimal frontend scaffold for run monitoring, reporting, and project/scenario workflows.",
+  "type": "module"
+}

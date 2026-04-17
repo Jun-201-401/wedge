@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wedge.example.com/contracts/mq/report.export.request.schema.json",
+  "title": "Report Export Request",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "messageId": { "type": "string", "format": "uuid" },
+    "requestedAt": { "type": "string", "format": "date-time" },
+    "correlationId": { "type": "string", "format": "uuid" },
+    "idempotencyKey": { "type": "string", "minLength": 1 },
+    "reportId": { "type": "string", "format": "uuid" },
+    "runId": { "type": "string", "format": "uuid" },
+    "analysisJobId": { "type": "string", "format": "uuid" },
+    "format": { "type": "string", "enum": ["PDF", "HTML", "JSON"] }
+  },
+  "required": [
+    "messageId",
+    "requestedAt",
+    "reportId",
+    "runId",
+    "analysisJobId",
+    "format"
+  ]
+}

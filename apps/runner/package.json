@@ -1,0 +1,11 @@
+{
+  "name": "@wedge/runner",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Minimal scaffold for the Wedge runner service.",
+  "scripts": {
+    "lint": "echo \"runner scaffold: no lint config yet\"",
+    "test": "echo \"runner scaffold: no tests yet\""
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wedge.example.com/contracts/mq/analysis.request.schema.json",
+  "title": "Analysis Request",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "messageId": { "type": "string", "format": "uuid" },
+    "requestedAt": { "type": "string", "format": "date-time" },
+    "correlationId": { "type": "string", "format": "uuid" },
+    "idempotencyKey": { "type": "string", "minLength": 1 },
+    "analysisJobId": { "type": "string", "format": "uuid" },
+    "runId": { "type": "string", "format": "uuid" },
+    "analysisType": { "type": "string", "enum": ["PRIMARY", "REPLAY", "MANUAL"] },
+    "forceRebuildEvidenceBundle": { "type": "boolean" },
+    "reason": { "type": "string" }
+  },
+  "required": [
+    "messageId",
+    "requestedAt",
+    "analysisJobId",
+    "runId",
+    "analysisType",
+    "forceRebuildEvidenceBundle"
+  ]
+}

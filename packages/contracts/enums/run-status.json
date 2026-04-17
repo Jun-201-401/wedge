@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wedge.example.com/contracts/enums/run-status.json",
+  "title": "Wedge Shared Lifecycle Enums",
+  "$defs": {
+    "RunStatus": {
+      "type": "string",
+      "enum": [
+        "CREATED",
+        "QUEUED",
+        "STARTING",
+        "RUNNING",
+        "STOP_REQUESTED",
+        "STOPPED",
+        "ANALYZING",
+        "COMPLETED",
+        "FAILED"
+      ]
+    },
+    "ResultCompleteness": {
+      "type": "string",
+      "enum": ["NONE", "PARTIAL", "FINAL"]
+    },
+    "AnalysisStatus": {
+      "type": "string",
+      "enum": ["NOT_STARTED", "QUEUED", "RUNNING", "COMPLETED", "FAILED"]
+    },
+    "StepStatus": {
+      "type": "string",
+      "enum": ["PENDING", "RUNNING", "PASSED", "FAILED", "SKIPPED", "BLOCKED", "STOPPED"]
+    }
+  }
+}
