@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.wedge.auth.infrastructure.UserAccountMapper">
+    <resultMap id="UserAccountResultMap" type="com.wedge.auth.domain.UserAccount">
+        <id property="id" column="id"/>
+        <result property="authSubject" column="auth_subject"/>
+        <result property="email" column="email"/>
+        <result property="displayName" column="display_name"/>
+        <result property="status" column="status"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+        <result property="version" column="version"/>
+    </resultMap>
+
+    <select id="findById" resultMap="UserAccountResultMap">
+        SELECT id, auth_subject, email, display_name, status, created_at, updated_at, version
+        FROM user_account
+        WHERE id = #{id}
+    </select>
+
+    <select id="findByAuthSubject" resultMap="UserAccountResultMap">
+        SELECT id, auth_subject, email, display_name, status, created_at, updated_at, version
+        FROM user_account
+        WHERE auth_subject = #{authSubject}
+    </select>
+
+    <insert id="insert" parameterType="com.wedge.auth.domain.UserAccount">
+        INSERT INTO user_account (id, auth_subject, email, display_name, status)
+        VALUES (#{id}, #{authSubject}, #{email}, #{displayName}, #{status})
+    </insert>
+</mapper>
