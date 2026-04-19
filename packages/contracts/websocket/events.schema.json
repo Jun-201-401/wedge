@@ -3,175 +3,606 @@
   "$id": "https://wedge.example.com/contracts/websocket/events.schema.json",
   "title": "Wedge WebSocket Events",
   "oneOf": [
-    { "$ref": "#/$defs/RunStatusChangedEvent" },
-    { "$ref": "#/$defs/StepStartedEvent" },
-    { "$ref": "#/$defs/StepFinishedEvent" },
-    { "$ref": "#/$defs/LatestFrameAvailableEvent" },
-    { "$ref": "#/$defs/IssueSignalDetectedEvent" },
-    { "$ref": "#/$defs/AnalysisStartedEvent" },
-    { "$ref": "#/$defs/AnalysisFinishedEvent" }
+    {
+      "$ref": "#/$defs/RunStatusChangedEvent"
+    },
+    {
+      "$ref": "#/$defs/StepStartedEvent"
+    },
+    {
+      "$ref": "#/$defs/StepFinishedEvent"
+    },
+    {
+      "$ref": "#/$defs/CheckpointCreatedEvent"
+    },
+    {
+      "$ref": "#/$defs/LatestFrameAvailableEvent"
+    },
+    {
+      "$ref": "#/$defs/IssueSignalDetectedEvent"
+    },
+    {
+      "$ref": "#/$defs/AnalysisStartedEvent"
+    },
+    {
+      "$ref": "#/$defs/AnalysisFinishedEvent"
+    },
+    {
+      "$ref": "#/$defs/RunFailedEvent"
+    }
   ],
   "$defs": {
-    "Envelope": {
+    "RunStatusChangedEvent": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "type": { "type": "string" },
-        "runId": { "type": "string", "format": "uuid" },
-        "timestamp": { "type": "string", "format": "date-time" },
-        "payload": { "type": "object" }
-      },
-      "required": ["type", "runId", "timestamp", "payload"]
-    },
-    "RunStatusChangedEvent": {
-      "allOf": [
-        { "$ref": "#/$defs/Envelope" },
-        {
+        "eventId": {
+          "type": "string"
+        },
+        "eventType": {
+          "const": "run_status_changed"
+        },
+        "runId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "occurredAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
           "properties": {
-            "type": { "const": "run_status_changed" },
-            "payload": {
-              "type": "object",
-              "additionalProperties": false,
-              "properties": {
-                "status": {
-                  "type": "string",
-                  "enum": ["CREATED", "QUEUED", "STARTING", "RUNNING", "STOP_REQUESTED", "STOPPED", "ANALYZING", "COMPLETED", "FAILED"]
-                },
-                "resultCompleteness": {
-                  "type": "string",
-                  "enum": ["NONE", "PARTIAL", "FINAL"]
-                },
-                "analysisStatus": {
-                  "type": "string",
-                  "enum": ["NOT_STARTED", "QUEUED", "RUNNING", "COMPLETED", "FAILED"]
-                }
-              },
-              "required": ["status", "resultCompleteness", "analysisStatus"]
+            "status": {
+              "type": "string",
+              "enum": [
+                "CREATED",
+                "QUEUED",
+                "STARTING",
+                "RUNNING",
+                "STOP_REQUESTED",
+                "STOPPED",
+                "COMPLETED",
+                "FAILED"
+              ]
+            },
+            "resultCompleteness": {
+              "type": "string",
+              "enum": [
+                "NONE",
+                "PARTIAL",
+                "FINAL"
+              ]
+            },
+            "analysisStatus": {
+              "type": "string",
+              "enum": [
+                "NOT_STARTED",
+                "QUEUED",
+                "RUNNING",
+                "COMPLETED",
+                "FAILED"
+              ]
+            },
+            "currentStepOrder": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 1
             }
-          }
+          },
+          "required": [
+            "status",
+            "resultCompleteness",
+            "analysisStatus"
+          ]
         }
+      },
+      "required": [
+        "eventId",
+        "eventType",
+        "runId",
+        "occurredAt",
+        "payload"
       ]
     },
     "StepStartedEvent": {
-      "allOf": [
-        { "$ref": "#/$defs/Envelope" },
-        {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "eventId": {
+          "type": "string"
+        },
+        "eventType": {
+          "const": "step_started"
+        },
+        "runId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "occurredAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
           "properties": {
-            "type": { "const": "step_started" },
-            "payload": {
-              "type": "object",
-              "additionalProperties": false,
-              "properties": {
-                "stepId": { "type": "string", "format": "uuid" },
-                "stepOrder": { "type": "integer", "minimum": 1 },
-                "stepName": { "type": "string", "minLength": 1 }
-              },
-              "required": ["stepId", "stepOrder", "stepName"]
+            "stepId": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "stepKey": {
+              "type": "string"
+            },
+            "stepOrder": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "stepName": {
+              "type": "string",
+              "minLength": 1
+            },
+            "stage": {
+              "enum": [
+                "FIRST_VIEW",
+                "VALUE",
+                "CTA",
+                "INPUT",
+                "COMMIT"
+              ]
+            },
+            "description": {
+              "type": "string"
             }
-          }
+          },
+          "required": [
+            "stepId",
+            "stepOrder"
+          ]
         }
+      },
+      "required": [
+        "eventId",
+        "eventType",
+        "runId",
+        "occurredAt",
+        "payload"
       ]
     },
     "StepFinishedEvent": {
-      "allOf": [
-        { "$ref": "#/$defs/Envelope" },
-        {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "eventId": {
+          "type": "string"
+        },
+        "eventType": {
+          "const": "step_finished"
+        },
+        "runId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "occurredAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
           "properties": {
-            "type": { "const": "step_finished" },
-            "payload": {
-              "type": "object",
-              "additionalProperties": false,
-              "properties": {
-                "stepId": { "type": "string", "format": "uuid" },
-                "stepOrder": { "type": "integer", "minimum": 1 },
-                "status": {
-                  "type": "string",
-                  "enum": ["PENDING", "RUNNING", "PASSED", "FAILED", "SKIPPED", "BLOCKED", "STOPPED"]
-                }
-              },
-              "required": ["stepId", "stepOrder", "status"]
+            "stepId": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "stepOrder": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "PENDING",
+                "RUNNING",
+                "PASSED",
+                "FAILED",
+                "SKIPPED",
+                "BLOCKED",
+                "STOPPED"
+              ]
+            },
+            "durationMs": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0
             }
-          }
+          },
+          "required": [
+            "stepId",
+            "stepOrder",
+            "status"
+          ]
         }
+      },
+      "required": [
+        "eventId",
+        "eventType",
+        "runId",
+        "occurredAt",
+        "payload"
+      ]
+    },
+    "CheckpointCreatedEvent": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "eventId": {
+          "type": "string"
+        },
+        "eventType": {
+          "const": "checkpoint_created"
+        },
+        "runId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "occurredAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "checkpointId": {
+              "type": "string"
+            },
+            "checkpointKey": {
+              "type": "string"
+            },
+            "stepId": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "stage": {
+              "enum": [
+                "FIRST_VIEW",
+                "VALUE",
+                "CTA",
+                "INPUT",
+                "COMMIT"
+              ]
+            },
+            "observationCount": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "artifactRefs": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "checkpointId",
+            "stepId",
+            "stage",
+            "observationCount"
+          ]
+        }
+      },
+      "required": [
+        "eventId",
+        "eventType",
+        "runId",
+        "occurredAt",
+        "payload"
       ]
     },
     "LatestFrameAvailableEvent": {
-      "allOf": [
-        { "$ref": "#/$defs/Envelope" },
-        {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "eventId": {
+          "type": "string"
+        },
+        "eventType": {
+          "const": "latest_frame_available"
+        },
+        "runId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "occurredAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
           "properties": {
-            "type": { "const": "latest_frame_available" },
-            "payload": {
-              "type": "object",
-              "additionalProperties": false,
-              "properties": {
-                "artifactId": { "type": "string", "format": "uuid" },
-                "url": { "type": "string", "format": "uri" },
-                "width": { "type": "integer", "minimum": 1 },
-                "height": { "type": "integer", "minimum": 1 }
-              },
-              "required": ["artifactId", "url", "width", "height"]
+            "artifactId": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "artifactType": {
+              "type": "string"
+            },
+            "url": {
+              "type": "string",
+              "format": "uri"
+            },
+            "width": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "height": {
+              "type": "integer",
+              "minimum": 1
             }
-          }
+          },
+          "required": [
+            "artifactId",
+            "url",
+            "width",
+            "height"
+          ]
         }
+      },
+      "required": [
+        "eventId",
+        "eventType",
+        "runId",
+        "occurredAt",
+        "payload"
       ]
     },
     "IssueSignalDetectedEvent": {
-      "allOf": [
-        { "$ref": "#/$defs/Envelope" },
-        {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "eventId": {
+          "type": "string"
+        },
+        "eventType": {
+          "const": "issue_signal_detected"
+        },
+        "runId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "occurredAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
           "properties": {
-            "type": { "const": "issue_signal_detected" },
-            "payload": {
-              "type": "object",
-              "additionalProperties": false,
-              "properties": {
-                "category": { "type": "string", "minLength": 1 },
-                "source": { "type": "string", "enum": ["RULE_ENGINE", "RUNNER", "ANALYZER"] },
-                "confidence": { "type": "number", "minimum": 0, "maximum": 1 }
-              },
-              "required": ["category", "source", "confidence"]
+            "criterionId": {
+              "type": "string"
+            },
+            "stage": {
+              "enum": [
+                "FIRST_VIEW",
+                "VALUE",
+                "CTA",
+                "INPUT",
+                "COMMIT"
+              ]
+            },
+            "axis": {
+              "type": "string"
+            },
+            "severity": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 3
+            },
+            "confidence": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "evidenceRefs": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "category": {
+              "type": "string"
+            },
+            "source": {
+              "type": "string",
+              "enum": [
+                "RULE_ENGINE",
+                "RUNNER",
+                "ANALYZER"
+              ]
             }
-          }
+          },
+          "required": [
+            "confidence"
+          ]
         }
+      },
+      "required": [
+        "eventId",
+        "eventType",
+        "runId",
+        "occurredAt",
+        "payload"
       ]
     },
     "AnalysisStartedEvent": {
-      "allOf": [
-        { "$ref": "#/$defs/Envelope" },
-        {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "eventId": {
+          "type": "string"
+        },
+        "eventType": {
+          "const": "analysis_started"
+        },
+        "runId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "occurredAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
           "properties": {
-            "type": { "const": "analysis_started" },
-            "payload": {
-              "type": "object",
-              "additionalProperties": false,
-              "properties": {
-                "analysisJobId": { "type": "string", "format": "uuid" },
-                "analysisType": { "type": "string" }
-              },
-              "required": ["analysisJobId"]
+            "analysisJobId": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "analysisType": {
+              "type": "string"
             }
-          }
+          },
+          "required": [
+            "analysisJobId"
+          ]
         }
+      },
+      "required": [
+        "eventId",
+        "eventType",
+        "runId",
+        "occurredAt",
+        "payload"
       ]
     },
     "AnalysisFinishedEvent": {
-      "allOf": [
-        { "$ref": "#/$defs/Envelope" },
-        {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "eventId": {
+          "type": "string"
+        },
+        "eventType": {
+          "const": "analysis_finished"
+        },
+        "runId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "occurredAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
           "properties": {
-            "type": { "const": "analysis_finished" },
-            "payload": {
-              "type": "object",
-              "additionalProperties": false,
-              "properties": {
-                "analysisJobId": { "type": "string", "format": "uuid" },
-                "status": { "type": "string", "enum": ["COMPLETED", "FAILED"] }
-              },
-              "required": ["analysisJobId", "status"]
+            "analysisJobId": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "COMPLETED",
+                "FAILED"
+              ]
+            },
+            "frictionScore": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100
+            },
+            "overallRisk": {
+              "type": "string",
+              "enum": [
+                "low",
+                "medium",
+                "high",
+                "critical"
+              ]
+            },
+            "topIssuesCount": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "reportId": {
+              "type": "string",
+              "format": "uuid"
             }
-          }
+          },
+          "required": [
+            "analysisJobId",
+            "status"
+          ]
         }
+      },
+      "required": [
+        "eventId",
+        "eventType",
+        "runId",
+        "occurredAt",
+        "payload"
+      ]
+    },
+    "RunFailedEvent": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "eventId": {
+          "type": "string"
+        },
+        "eventType": {
+          "const": "run_failed"
+        },
+        "runId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "occurredAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "failureCode": {
+              "type": "string"
+            },
+            "failureMessage": {
+              "type": "string"
+            },
+            "resultCompleteness": {
+              "type": "string",
+              "enum": [
+                "NONE",
+                "PARTIAL",
+                "FINAL"
+              ]
+            }
+          },
+          "required": [
+            "failureCode",
+            "failureMessage"
+          ]
+        }
+      },
+      "required": [
+        "eventId",
+        "eventType",
+        "runId",
+        "occurredAt",
+        "payload"
       ]
     }
   }

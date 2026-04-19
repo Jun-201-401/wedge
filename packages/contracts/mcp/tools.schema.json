@@ -7,10 +7,14 @@
   "properties": {
     "tools": {
       "type": "array",
-      "items": { "$ref": "#/$defs/Tool" }
+      "items": {
+        "$ref": "#/$defs/Tool"
+      }
     }
   },
-  "required": ["tools"],
+  "required": [
+    "tools"
+  ],
   "$defs": {
     "Tool": {
       "type": "object",
@@ -19,31 +23,164 @@
         "name": {
           "type": "string",
           "enum": [
+            "create_run",
+            "start_run",
+            "stop_run",
             "get_run_status",
             "get_run_summary",
             "list_run_events",
             "get_latest_snapshot",
             "get_step_evidence",
-            "get_report",
-            "create_run",
-            "start_run",
-            "stop_run",
+            "get_evidence_packet",
             "analyze_run",
             "generate_nudges",
             "export_report",
-            "delete_run",
-            "force_stop_run",
-            "replay_analysis",
-            "get_sensitive_logs"
+            "get_report",
+            "list_reports"
           ]
         },
-        "category": { "type": "string", "enum": ["read", "execute", "export", "admin"] },
-        "requiredScope": { "type": "string", "enum": ["wedge.read", "wedge.execute", "wedge.export", "wedge.admin"] },
-        "approvalPolicy": { "type": "string", "enum": ["never", "on_failure", "always"] },
-        "inputSchema": { "type": "object" },
-        "outputSchema": { "type": "object" }
+        "category": {
+          "type": "string",
+          "enum": [
+            "read",
+            "execute",
+            "export"
+          ]
+        },
+        "requiredScope": {
+          "type": "string",
+          "enum": [
+            "wedge.read",
+            "wedge.execute",
+            "wedge.export"
+          ]
+        },
+        "approvalPolicy": {
+          "type": "string",
+          "enum": [
+            "never",
+            "on_failure",
+            "always"
+          ]
+        },
+        "inputSchema": {
+          "type": "object"
+        },
+        "outputSchema": {
+          "type": "object"
+        }
       },
-      "required": ["name", "category", "requiredScope", "approvalPolicy", "inputSchema", "outputSchema"]
+      "required": [
+        "name",
+        "category",
+        "requiredScope",
+        "approvalPolicy",
+        "inputSchema",
+        "outputSchema"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "name": {
+                "enum": [
+                  "get_run_status",
+                  "get_run_summary",
+                  "list_run_events",
+                  "get_latest_snapshot",
+                  "get_step_evidence",
+                  "get_evidence_packet",
+                  "get_report",
+                  "list_reports"
+                ]
+              }
+            },
+            "required": [
+              "name"
+            ]
+          },
+          "then": {
+            "properties": {
+              "category": {
+                "const": "read"
+              },
+              "requiredScope": {
+                "const": "wedge.read"
+              },
+              "approvalPolicy": {
+                "enum": [
+                  "never",
+                  "on_failure"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "name": {
+                "enum": [
+                  "create_run",
+                  "start_run",
+                  "stop_run",
+                  "analyze_run",
+                  "generate_nudges"
+                ]
+              }
+            },
+            "required": [
+              "name"
+            ]
+          },
+          "then": {
+            "properties": {
+              "category": {
+                "const": "execute"
+              },
+              "requiredScope": {
+                "const": "wedge.execute"
+              },
+              "approvalPolicy": {
+                "enum": [
+                  "on_failure",
+                  "always"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "name": {
+                "enum": [
+                  "export_report"
+                ]
+              }
+            },
+            "required": [
+              "name"
+            ]
+          },
+          "then": {
+            "properties": {
+              "category": {
+                "const": "export"
+              },
+              "requiredScope": {
+                "const": "wedge.export"
+              },
+              "approvalPolicy": {
+                "enum": [
+                  "on_failure",
+                  "always"
+                ]
+              }
+            }
+          }
+        }
+      ]
     }
   }
 }

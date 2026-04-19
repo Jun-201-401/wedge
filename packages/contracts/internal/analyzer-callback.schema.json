@@ -7,28 +7,56 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "analysisJobId": { "type": "string", "format": "uuid" },
-        "runId": { "type": "string", "format": "uuid" },
-        "analyzerVersion": { "type": "string", "minLength": 1 },
-        "promptVersion": { "type": "string", "minLength": 1 },
+        "analysisJobId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "runId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "analyzerVersion": {
+          "type": "string",
+          "minLength": 1
+        },
+        "promptVersion": {
+          "type": "string",
+          "minLength": 1
+        },
         "modelInfo": {
           "type": "object",
           "additionalProperties": true,
           "properties": {
-            "llm": { "type": "string" },
-            "attentionModel": { "type": "string" },
-            "ctrModel": { "type": "string" }
+            "llm": {
+              "type": "string"
+            },
+            "attentionModel": {
+              "type": "string"
+            },
+            "ctrModel": {
+              "type": "string"
+            }
           }
         },
         "topFindings": {
           "type": "array",
-          "items": { "$ref": "#/$defs/Finding" }
+          "items": {
+            "$ref": "#/$defs/Finding"
+          }
         },
         "nudges": {
           "type": "array",
-          "items": { "$ref": "#/$defs/Nudge" }
+          "items": {
+            "$ref": "#/$defs/Nudge"
+          }
         },
-        "completedAt": { "type": "string", "format": "date-time" }
+        "completedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "judgeResult": {
+          "$ref": "../schemas/judge-result.schema.json"
+        }
       },
       "required": [
         "analysisJobId",
@@ -38,6 +66,7 @@
         "modelInfo",
         "topFindings",
         "nudges",
+        "judgeResult",
         "completedAt"
       ]
     },
@@ -45,51 +74,147 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "rank": { "type": "integer", "minimum": 1 },
-        "category": { "type": "string", "minLength": 1 },
-        "title": { "type": "string", "minLength": 1 },
-        "description": { "type": "string", "minLength": 1 },
-        "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
-        "impact": { "type": "string", "enum": ["LOW", "MEDIUM", "HIGH"] },
+        "rank": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "category": {
+          "type": "string",
+          "minLength": 1
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "impact": {
+          "type": "string",
+          "enum": [
+            "LOW",
+            "MEDIUM",
+            "HIGH"
+          ]
+        },
         "evidenceRefs": {
           "type": "array",
           "items": {
             "type": "object",
             "additionalProperties": false,
             "properties": {
-              "type": { "type": "string", "enum": ["artifact", "event", "step"] },
-              "id": { "type": "string", "minLength": 1 }
+              "type": {
+                "type": "string",
+                "enum": [
+                  "artifact",
+                  "event",
+                  "step"
+                ]
+              },
+              "id": {
+                "type": "string",
+                "minLength": 1
+              }
             },
-            "required": ["type", "id"]
+            "required": [
+              "type",
+              "id"
+            ]
           }
         }
       },
-      "required": ["rank", "category", "title", "description", "confidence", "impact", "evidenceRefs"]
+      "required": [
+        "rank",
+        "category",
+        "title",
+        "description",
+        "confidence",
+        "impact",
+        "evidenceRefs"
+      ]
     },
     "Nudge": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "title": { "type": "string", "minLength": 1 },
-        "rationale": { "type": "string", "minLength": 1 },
-        "difficulty": { "type": "string", "enum": ["LOW", "MEDIUM", "HIGH"] },
-        "expectedEffect": { "type": "string", "minLength": 1 },
-        "priority": { "type": "string", "enum": ["P1", "P2", "P3"] },
-        "followUpQuestion": { "type": "string" }
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "rationale": {
+          "type": "string",
+          "minLength": 1
+        },
+        "difficulty": {
+          "type": "string",
+          "enum": [
+            "LOW",
+            "MEDIUM",
+            "HIGH"
+          ]
+        },
+        "expectedEffect": {
+          "type": "string",
+          "minLength": 1
+        },
+        "priority": {
+          "type": "string",
+          "enum": [
+            "P1",
+            "P2",
+            "P3"
+          ]
+        },
+        "followUpQuestion": {
+          "type": "string"
+        }
       },
-      "required": ["title", "rationale", "difficulty", "expectedEffect", "priority"]
+      "required": [
+        "title",
+        "rationale",
+        "difficulty",
+        "expectedEffect",
+        "priority"
+      ]
     },
     "Failed": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "analysisJobId": { "type": "string", "format": "uuid" },
-        "runId": { "type": "string", "format": "uuid" },
-        "failedAt": { "type": "string", "format": "date-time" },
-        "errorCode": { "type": "string", "minLength": 1 },
-        "errorMessage": { "type": "string", "minLength": 1 }
+        "analysisJobId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "runId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "failedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "errorCode": {
+          "type": "string",
+          "minLength": 1
+        },
+        "errorMessage": {
+          "type": "string",
+          "minLength": 1
+        }
       },
-      "required": ["analysisJobId", "runId", "failedAt", "errorCode", "errorMessage"]
+      "required": [
+        "analysisJobId",
+        "runId",
+        "failedAt",
+        "errorCode",
+        "errorMessage"
+      ]
     }
   }
 }

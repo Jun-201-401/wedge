@@ -7,11 +7,24 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "workerId": { "type": "string", "minLength": 1 },
-        "acceptedAt": { "type": "string", "format": "date-time" },
-        "browserSessionId": { "type": "string", "minLength": 1 }
+        "workerId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "acceptedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "browserSessionId": {
+          "type": "string",
+          "minLength": 1
+        }
       },
-      "required": ["workerId", "acceptedAt", "browserSessionId"]
+      "required": [
+        "workerId",
+        "acceptedAt",
+        "browserSessionId"
+      ]
     },
     "StepEventBatch": {
       "type": "object",
@@ -20,18 +33,27 @@
         "events": {
           "type": "array",
           "minItems": 1,
-          "items": { "$ref": "#/$defs/StepEvent" }
+          "items": {
+            "$ref": "#/$defs/StepEvent"
+          }
         }
       },
-      "required": ["events"]
+      "required": [
+        "events"
+      ]
     },
     "StepEvent": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "eventId": { "type": "string", "format": "uuid" },
-        "stepOrder": { "type": "integer", "minimum": 1 },
-        "stepId": { "type": "string", "format": "uuid" },
+        "eventId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "stepOrder": {
+          "type": "integer",
+          "minimum": 1
+        },
         "eventType": {
           "type": "string",
           "enum": [
@@ -43,10 +65,27 @@
             "ISSUE_SIGNAL_DETECTED"
           ]
         },
-        "occurredAt": { "type": "string", "format": "date-time" },
-        "payload": { "type": "object", "additionalProperties": true }
+        "occurredAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "payload": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "stepKey": {
+          "type": "string",
+          "minLength": 1
+        }
       },
-      "required": ["eventId", "stepOrder", "stepId", "eventType", "occurredAt", "payload"]
+      "required": [
+        "eventId",
+        "stepOrder",
+        "stepKey",
+        "eventType",
+        "occurredAt",
+        "payload"
+      ]
     },
     "ArtifactBatch": {
       "type": "object",
@@ -55,30 +94,80 @@
         "artifacts": {
           "type": "array",
           "minItems": 1,
-          "items": { "$ref": "#/$defs/Artifact" }
+          "items": {
+            "$ref": "#/$defs/Artifact"
+          }
         }
       },
-      "required": ["artifacts"]
+      "required": [
+        "artifacts"
+      ]
     },
     "Artifact": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "artifactId": { "type": "string", "format": "uuid" },
-        "stepId": { "type": "string", "format": "uuid" },
-        "artifactType": { "type": "string", "enum": ["FRAME", "SCREENSHOT", "TRACE", "SNAPSHOT", "LOG"] },
-        "bucket": { "type": "string", "minLength": 1 },
-        "key": { "type": "string", "minLength": 1 },
-        "mimeType": { "type": "string", "minLength": 1 },
-        "width": { "type": "integer", "minimum": 1 },
-        "height": { "type": "integer", "minimum": 1 },
-        "sizeBytes": { "type": "integer", "minimum": 0 },
-        "sha256": { "type": "string", "minLength": 1 },
-        "createdAt": { "type": "string", "format": "date-time" }
+        "artifactId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "artifactType": {
+          "type": "string",
+          "enum": [
+            "FRAME",
+            "SCREENSHOT",
+            "DOM_SNAPSHOT",
+            "AX_TREE",
+            "TRACE",
+            "HAR",
+            "CONSOLE_LOG",
+            "REPORT_PDF",
+            "REPORT_MARKDOWN",
+            "REPORT_HTML",
+            "REPORT_JSON",
+            "OTHER"
+          ]
+        },
+        "bucket": {
+          "type": "string",
+          "minLength": 1
+        },
+        "key": {
+          "type": "string",
+          "minLength": 1
+        },
+        "mimeType": {
+          "type": "string",
+          "minLength": 1
+        },
+        "width": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "height": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "sizeBytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "sha256": {
+          "type": "string",
+          "minLength": 1
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "stepKey": {
+          "type": "string",
+          "minLength": 1
+        }
       },
       "required": [
         "artifactId",
-        "stepId",
+        "stepKey",
         "artifactType",
         "bucket",
         "key",
@@ -92,32 +181,181 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "workerId": { "type": "string", "minLength": 1 },
-        "executionFinishedAt": { "type": "string", "format": "date-time" },
+        "workerId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "executionFinishedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
         "summary": {
           "type": "object",
           "additionalProperties": false,
           "properties": {
-            "completedStepCount": { "type": "integer", "minimum": 0 },
-            "failedStepCount": { "type": "integer", "minimum": 0 },
-            "stopped": { "type": "boolean" }
+            "completedStepCount": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "failedStepCount": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "stopped": {
+              "type": "boolean"
+            }
           },
-          "required": ["completedStepCount", "failedStepCount", "stopped"]
+          "required": [
+            "completedStepCount",
+            "failedStepCount",
+            "stopped"
+          ]
         }
       },
-      "required": ["workerId", "executionFinishedAt", "summary"]
+      "required": [
+        "workerId",
+        "executionFinishedAt",
+        "summary"
+      ]
     },
     "Failed": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "workerId": { "type": "string", "minLength": 1 },
-        "failedAt": { "type": "string", "format": "date-time" },
-        "failureCode": { "type": "string", "minLength": 1 },
-        "failureMessage": { "type": "string", "minLength": 1 },
-        "resultCompleteness": { "type": "string", "enum": ["NONE", "PARTIAL", "FINAL"] }
+        "workerId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "failedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "failureCode": {
+          "type": "string",
+          "minLength": 1
+        },
+        "failureMessage": {
+          "type": "string",
+          "minLength": 1
+        },
+        "resultCompleteness": {
+          "type": "string",
+          "enum": [
+            "NONE",
+            "PARTIAL",
+            "FINAL"
+          ]
+        }
       },
-      "required": ["workerId", "failedAt", "failureCode", "failureMessage", "resultCompleteness"]
+      "required": [
+        "workerId",
+        "failedAt",
+        "failureCode",
+        "failureMessage",
+        "resultCompleteness"
+      ]
+    },
+    "Checkpoint": {
+      "type": "object",
+      "required": [
+        "checkpointId",
+        "stepKey",
+        "stage",
+        "trigger",
+        "settle",
+        "state",
+        "observations",
+        "deltas",
+        "artifactRefs"
+      ],
+      "properties": {
+        "checkpointId": {
+          "type": "string"
+        },
+        "stage": {
+          "enum": [
+            "FIRST_VIEW",
+            "VALUE",
+            "CTA",
+            "INPUT",
+            "COMMIT"
+          ]
+        },
+        "trigger": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "settle": {
+          "type": "object",
+          "required": [
+            "strategy",
+            "durationMs",
+            "status"
+          ],
+          "properties": {
+            "strategy": {
+              "type": "string"
+            },
+            "durationMs": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "status": {
+              "enum": [
+                "settled",
+                "timeout",
+                "failed"
+              ]
+            }
+          },
+          "additionalProperties": true
+        },
+        "state": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "observations": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
+        "deltas": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
+        "artifactRefs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "stepKey": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "title": "Checkpoint"
+    },
+    "RunnerCheckpointsRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "checkpoints": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/Checkpoint"
+          }
+        }
+      },
+      "required": [
+        "checkpoints"
+      ]
     }
   }
 }

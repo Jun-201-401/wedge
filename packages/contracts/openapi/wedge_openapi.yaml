@@ -2,8 +2,8 @@ openapi: 3.0.3
 info:
   title: Wedge API
   version: 1.0.0-draft
-  description: Wedge public REST API (/api), internal callback API (/internal), and core resource
-    schemas.
+  description: Wedge public REST API (/api), internal callback API (/internal), and canonical transport schemas. This draft includes
+    report shares, checkpoint callback, and evidence packet retrieval.
 servers:
 - url: https://api.wedge.example.com
   description: production placeholder
@@ -880,7 +880,7 @@ paths:
       - $ref: '#/components/parameters/RunId'
       - name: X-Worker-Id
         in: header
-        required: false
+        required: true
         schema:
           type: string
       - name: X-Event-Id
@@ -928,7 +928,7 @@ paths:
       - $ref: '#/components/parameters/RunId'
       - name: X-Worker-Id
         in: header
-        required: false
+        required: true
         schema:
           type: string
       - name: X-Event-Id
@@ -976,7 +976,7 @@ paths:
       - $ref: '#/components/parameters/RunId'
       - name: X-Worker-Id
         in: header
-        required: false
+        required: true
         schema:
           type: string
       - name: X-Event-Id
@@ -1024,7 +1024,7 @@ paths:
       - $ref: '#/components/parameters/RunId'
       - name: X-Worker-Id
         in: header
-        required: false
+        required: true
         schema:
           type: string
       - name: X-Event-Id
@@ -1072,7 +1072,7 @@ paths:
       - $ref: '#/components/parameters/RunId'
       - name: X-Worker-Id
         in: header
-        required: false
+        required: true
         schema:
           type: string
       - name: X-Event-Id
@@ -1118,9 +1118,9 @@ paths:
       - InternalBearer: []
       parameters:
       - $ref: '#/components/parameters/AnalysisJobId'
-      - name: X-Analyzer-Id
+      - name: X-Worker-Id
         in: header
-        required: false
+        required: true
         schema:
           type: string
       - name: X-Event-Id
@@ -1166,9 +1166,9 @@ paths:
       - InternalBearer: []
       parameters:
       - $ref: '#/components/parameters/AnalysisJobId'
-      - name: X-Analyzer-Id
+      - name: X-Worker-Id
         in: header
-        required: false
+        required: true
         schema:
           type: string
       - name: X-Event-Id
@@ -1190,6 +1190,133 @@ paths:
       responses:
         '200':
           description: Accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AckResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /api/runs/{runId}/evidence-packet:
+    get:
+      tags:
+      - Runs
+      operationId: getRunEvidencePacket
+      summary: Get EvidencePacket for run
+      security:
+      - oauth2:
+        - wedge.read
+      parameters:
+      - $ref: '#/components/parameters/RunId'
+      responses:
+        '200':
+          description: EvidencePacket
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SingleEvidencePacketResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/reports/{reportId}/shares:
+    get:
+      tags:
+      - Reports
+      operationId: listReportShares
+      summary: List report shares
+      security:
+      - oauth2:
+        - wedge.read
+      parameters:
+      - $ref: '#/components/parameters/ReportId'
+      responses:
+        '200':
+          description: Report shares
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListReportShareResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    post:
+      tags:
+      - Reports
+      operationId: createReportShare
+      summary: Create report share link
+      security:
+      - oauth2:
+        - wedge.export
+      parameters:
+      - $ref: '#/components/parameters/ReportId'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReportShareCreateRequest'
+      responses:
+        '201':
+          description: Report share created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SingleReportShareResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /internal/runner/runs/{runId}/checkpoints:
+    post:
+      tags:
+      - InternalRunner
+      operationId: runnerCheckpoints
+      summary: Runner checkpoint batch callback
+      security:
+      - InternalBearer: []
+      parameters:
+      - $ref: '#/components/parameters/RunId'
+      - name: X-Worker-Id
+        in: header
+        required: true
+        schema:
+          type: string
+      - name: X-Event-Id
+        in: header
+        required: true
+        schema:
+          type: string
+      - name: X-Signature
+        in: header
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RunnerCheckpointsRequest'
+      responses:
+        '202':
+          description: Checkpoint batch accepted
           content:
             application/json:
               schema:
@@ -1355,6 +1482,8 @@ components:
         nextCursor:
           type: string
           nullable: true
+      required:
+      - requestId
     ErrorResponse:
       type: object
       properties:
@@ -1489,6 +1618,11 @@ components:
           type: string
         triggerSource:
           type: string
+          enum:
+          - WEB
+          - MCP
+          - INTERNAL_AGENT
+          - API
         startUrl:
           type: string
           format: uri
@@ -1497,6 +1631,13 @@ components:
           nullable: true
         devicePreset:
           type: string
+          enum:
+          - desktop
+          - tablet
+          - mobile
+        scenarioTemplateVersionId:
+          type: string
+          format: uuid
         status:
           type: string
           enum:
@@ -1506,7 +1647,6 @@ components:
           - RUNNING
           - STOP_REQUESTED
           - STOPPED
-          - ANALYZING
           - COMPLETED
           - FAILED
         resultCompleteness:
@@ -1549,6 +1689,7 @@ components:
       - name
       - startUrl
       - devicePreset
+      - scenarioTemplateVersionId
       - status
       - resultCompleteness
       - analysisStatus
@@ -1580,10 +1721,13 @@ components:
           nullable: true
         devicePreset:
           type: string
+          enum:
+          - desktop
+          - tablet
+          - mobile
         scenarioTemplateVersionId:
           type: string
           format: uuid
-          nullable: true
         scenarioOverrides:
           type: object
           additionalProperties: true
@@ -1592,6 +1736,7 @@ components:
       - name
       - startUrl
       - devicePreset
+      - scenarioTemplateVersionId
     RunActionRequest:
       type: object
       properties:
@@ -1682,6 +1827,9 @@ components:
           type: string
           format: uuid
           nullable: true
+        stepKey:
+          type: string
+          nullable: true
         eventType:
           type: string
         eventSource:
@@ -1714,6 +1862,19 @@ components:
           nullable: true
         artifactType:
           type: string
+          enum:
+          - FRAME
+          - SCREENSHOT
+          - DOM_SNAPSHOT
+          - AX_TREE
+          - TRACE
+          - HAR
+          - CONSOLE_LOG
+          - REPORT_PDF
+          - REPORT_MARKDOWN
+          - REPORT_HTML
+          - REPORT_JSON
+          - OTHER
         bucket:
           type: string
         key:
@@ -1843,14 +2004,22 @@ components:
           format: uuid
         analysisType:
           type: string
+          enum:
+          - PRIMARY
+          - REPROCESS
+          - COMPARE
         status:
           type: string
+          enum:
+          - QUEUED
+          - RUNNING
+          - COMPLETED
+          - FAILED
         analyzerVersion:
           type: string
           nullable: true
         promptVersion:
           type: string
-          nullable: true
         modelInfo:
           type: object
           additionalProperties: true
@@ -1880,6 +2049,10 @@ components:
       properties:
         analysisType:
           type: string
+          enum:
+          - PRIMARY
+          - REPROCESS
+          - COMPARE
         forceRebuildEvidenceBundle:
           type: boolean
           default: false
@@ -1906,9 +2079,15 @@ components:
           enum:
           - PDF
           - MARKDOWN
-          - LINK
+          - HTML
+          - JSON
         status:
           type: string
+          enum:
+          - GENERATING
+          - READY
+          - FAILED
+          - ARCHIVED
         downloadUrl:
           type: string
           format: uri
@@ -1930,7 +2109,8 @@ components:
           enum:
           - PDF
           - MARKDOWN
-          - LINK
+          - HTML
+          - JSON
         analysisJobId:
           type: string
           format: uuid
@@ -1966,10 +2146,10 @@ components:
           format: date-time
         browserSessionId:
           type: string
-          nullable: true
       required:
       - workerId
       - acceptedAt
+      - browserSessionId
     RunnerStepEvent:
       type: object
       properties:
@@ -1977,10 +2157,8 @@ components:
           type: string
         stepOrder:
           type: integer
-        stepId:
+        stepKey:
           type: string
-          format: uuid
-          nullable: true
         eventType:
           type: string
         occurredAt:
@@ -1992,6 +2170,7 @@ components:
       required:
       - eventId
       - stepOrder
+      - stepKey
       - eventType
       - occurredAt
       - payload
@@ -2015,12 +2194,23 @@ components:
               artifactId:
                 type: string
                 format: uuid
-              stepId:
+              stepKey:
                 type: string
-                format: uuid
-                nullable: true
               artifactType:
                 type: string
+                enum:
+                - FRAME
+                - SCREENSHOT
+                - DOM_SNAPSHOT
+                - AX_TREE
+                - TRACE
+                - HAR
+                - CONSOLE_LOG
+                - REPORT_PDF
+                - REPORT_MARKDOWN
+                - REPORT_HTML
+                - REPORT_JSON
+                - OTHER
               bucket:
                 type: string
               key:
@@ -2037,17 +2227,18 @@ components:
                 type: integer
               sha256:
                 type: string
-                nullable: true
               createdAt:
                 type: string
                 format: date-time
             required:
             - artifactId
+            - stepKey
             - artifactType
             - bucket
             - key
             - mimeType
             - sizeBytes
+            - sha256
             - createdAt
       required:
       - artifacts
@@ -2100,6 +2291,8 @@ components:
       - failureCode
       - failureMessage
       - resultCompleteness
+    JudgeResult:
+      $ref: ../schemas/judge-result.schema.json
     AnalyzerCompletedRequest:
       type: object
       properties:
@@ -2113,7 +2306,6 @@ components:
           type: string
         promptVersion:
           type: string
-          nullable: true
         modelInfo:
           type: object
           additionalProperties: true
@@ -2125,6 +2317,8 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Nudge'
+        judgeResult:
+          $ref: '#/components/schemas/JudgeResult'
         completedAt:
           type: string
           format: date-time
@@ -2132,9 +2326,11 @@ components:
       - analysisJobId
       - runId
       - analyzerVersion
+      - promptVersion
       - modelInfo
       - topFindings
       - nudges
+      - judgeResult
       - completedAt
     AnalyzerFailedRequest:
       type: object
@@ -2326,3 +2522,176 @@ components:
       required:
       - data
       - meta
+    ReportShare:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        reportId:
+          type: string
+          format: uuid
+        shareUrl:
+          type: string
+          format: uri
+        accessLevel:
+          type: string
+          enum:
+          - VIEW
+        expiresAt:
+          type: string
+          format: date-time
+          nullable: true
+        revokedAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+      required:
+      - id
+      - reportId
+      - shareUrl
+      - accessLevel
+      - createdAt
+    ReportShareCreateRequest:
+      type: object
+      properties:
+        expiresAt:
+          type: string
+          format: date-time
+          nullable: true
+    SingleReportShareResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/ReportShare'
+        meta:
+          $ref: '#/components/schemas/Meta'
+      required:
+      - data
+      - meta
+    ListReportShareResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/ReportShare'
+        meta:
+          $ref: '#/components/schemas/Meta'
+      required:
+      - data
+      - meta
+    EvidencePacket:
+      type: object
+      description: Domain EvidencePacket. Full validation uses packages/contracts/schemas/evidence-packet.schema.json.
+      additionalProperties: true
+      properties:
+        schema_version:
+          type: string
+        run_id:
+          type: string
+        url:
+          type: string
+          format: uri
+        final_url:
+          type: string
+          nullable: true
+        scenario:
+          type: object
+        environment:
+          type: object
+        checkpoints:
+          type: array
+          items:
+            type: object
+        aggregate_signals:
+          type: object
+        artifacts:
+          type: array
+          items:
+            type: object
+    SingleEvidencePacketResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/EvidencePacket'
+        meta:
+          $ref: '#/components/schemas/Meta'
+      required:
+      - data
+      - meta
+    RunnerCheckpoint:
+      type: object
+      required:
+      - checkpointId
+      - stepKey
+      - stage
+      - trigger
+      - settle
+      - state
+      - observations
+      - deltas
+      - artifactRefs
+      properties:
+        checkpointId:
+          type: string
+        stepKey:
+          type: string
+        stage:
+          type: string
+          enum:
+          - FIRST_VIEW
+          - VALUE
+          - CTA
+          - INPUT
+          - COMMIT
+        trigger:
+          type: object
+          additionalProperties: true
+        settle:
+          type: object
+          properties:
+            strategy:
+              type: string
+            durationMs:
+              type: integer
+            status:
+              type: string
+              enum:
+              - settled
+              - timeout
+              - failed
+          required:
+          - strategy
+          - durationMs
+          - status
+          additionalProperties: true
+        state:
+          type: object
+          additionalProperties: true
+        observations:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        deltas:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        artifactRefs:
+          type: array
+          items:
+            type: string
+    RunnerCheckpointsRequest:
+      type: object
+      required:
+      - checkpoints
+      properties:
+        checkpoints:
+          type: array
+          items:
+            $ref: '#/components/schemas/RunnerCheckpoint'

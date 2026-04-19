@@ -12,22 +12,57 @@
         "RUNNING",
         "STOP_REQUESTED",
         "STOPPED",
-        "ANALYZING",
         "COMPLETED",
         "FAILED"
       ]
     },
     "ResultCompleteness": {
       "type": "string",
-      "enum": ["NONE", "PARTIAL", "FINAL"]
+      "enum": [
+        "NONE",
+        "PARTIAL",
+        "FINAL"
+      ]
     },
     "AnalysisStatus": {
       "type": "string",
-      "enum": ["NOT_STARTED", "QUEUED", "RUNNING", "COMPLETED", "FAILED"]
+      "enum": [
+        "NOT_STARTED",
+        "QUEUED",
+        "RUNNING",
+        "COMPLETED",
+        "FAILED"
+      ]
     },
     "StepStatus": {
       "type": "string",
-      "enum": ["PENDING", "RUNNING", "PASSED", "FAILED", "SKIPPED", "BLOCKED", "STOPPED"]
+      "enum": [
+        "PENDING",
+        "RUNNING",
+        "PASSED",
+        "FAILED",
+        "SKIPPED",
+        "BLOCKED",
+        "STOPPED"
+      ]
+    },
+    "AnalysisJobStatus": {
+      "type": "string",
+      "enum": [
+        "QUEUED",
+        "RUNNING",
+        "COMPLETED",
+        "FAILED"
+      ]
+    },
+    "ReportStatus": {
+      "type": "string",
+      "enum": [
+        "GENERATING",
+        "READY",
+        "FAILED",
+        "ARCHIVED"
+      ]
     }
   }
 }
