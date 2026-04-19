@@ -1,16 +1,16 @@
 ---
 title: Wedge Frontend Architecture & Stack Decisions
 document_type: frontend-architecture
-status: draft-v1
-version: 1.0
+status: current-draft
 last_updated: 2026-04-19
 intended_use:
   - implementation_reference
   - ai_tasking
   - team_share
 related_documents:
-  - wedge_technical_architecture.md
-  - wedge_api_spec.md
+  - 00_master_decisions.md
+  - 01_architecture_and_project_structure.md
+  - 03_api_reference.md
   - ../apps/web/README.md
 ---
 

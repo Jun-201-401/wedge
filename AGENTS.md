@@ -5,13 +5,13 @@ Wedge is a monorepo.
 
 - `apps/`: service code (`api-server`, `web`, `runner`, `analyzer`)
 - `packages/contracts`: machine-readable shared contracts
-- `docs`: human-readable architecture, frontend architecture, API spec, and DDL
+- `docs`: human-readable architecture, delivery, frontend architecture, API spec, and DDL
 - `infra`: deployment and environment helpers
 
 Put OpenAPI, MQ, WebSocket, internal callback, MCP, and shared enum definitions in `packages/contracts`, not `docs`.
 
 ## Working Rules
-Treat this repository as contract-first. Update shared payloads and enums in `packages/contracts` before wiring app-specific code.
+Treat this repository as contract-first. Update shared payloads, schemas, examples, and enums in `packages/contracts` before wiring app-specific code.
 
 Keep service boundaries clear:
 - Spring API server uses package-by-domain under `com.wedge`
@@ -21,6 +21,9 @@ Keep service boundaries clear:
 - Analyzer code stays under `apps/analyzer/app`
 
 Prefer small, reviewable diffs. Reuse existing names from the contracts and docs instead of inventing parallel shapes.
+
+For Codex/AI implementation tasks, use `docs/AI_CONTEXT_GUIDE.md` to choose the smallest relevant context set.
+Treat `docs/00_master_decisions.md` through `docs/07_research_basis.md` as the current design baseline unless a newer task-specific document overrides them; use `docs/07_research_basis.md` primarily for Judge/scoring changes and calibration.
 
 ## Commands
 - `cd apps/api-server && gradle test`: compile and run Spring tests
