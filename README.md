@@ -1,18 +1,68 @@
 # Wedge
 
-Wedge is organized as a monorepo around four service applications and a shared contracts package.
+**Wedge**는 웹사이트의 사용 흐름을 직접 실행해보고, 사용자가 어디서 망설이거나 이탈할 수 있는지 evidence 기반으로 찾아주는 UX 진단 서비스입니다.
 
-## Structure
+사용자는 분석하고 싶은 URL과 시나리오를 선택합니다. Wedge는 실제 브라우저에서 그 흐름을 따라가며 화면, 행동, 오류, 전환 지점을 기록하고, 이를 바탕으로 개선이 필요한 순간을 리포트로 정리합니다.
 
-- `apps/api-server`: Spring Boot API server, orchestration, auth, WebSocket, MCP
-- `apps/runner`: Node.js + Playwright browser runner
-- `apps/analyzer`: FastAPI analysis service
-- `apps/web`: React frontend
-- `packages/contracts`: machine-readable shared API, MQ, WebSocket, internal callback, and MCP contracts
-- `docs`: human-readable architecture, delivery, frontend, and DDL/reference documents
-- `infra`: docker, terraform, and helper scripts
+```text
+URL + 사용자 시나리오
+  → 실제 브라우저 실행
+  → 단계별 근거 수집
+  → 전환/UX 리스크 판단
+  → 개선 제안 리포트
+```
 
-## Current Status
+## 왜 필요한가요?
 
-This repository currently contains the product architecture baseline, shared contracts, and monorepo scaffold.
-Implementation should start from `docs/README.md`, then use `docs/AI_CONTEXT_GUIDE.md` to choose task-specific references.
+웹사이트의 문제는 단순히 “페이지가 예쁜가”로 결정되지 않습니다.
+
+사용자는 첫 화면에서 계속 볼지 판단하고, CTA를 눌러도 될지 고민하고, 입력 폼에서 피로를 느끼고, 제출 직전에 신뢰할 수 있는지 다시 확인합니다. 이런 순간들은 정적 분석이나 단순 스크린샷만으로는 놓치기 쉽습니다.
+
+Wedge는 실제 사용 흐름 속에서 다음 질문에 답하려고 합니다.
+
+- 사용자가 첫 화면에서 가치를 바로 이해할 수 있는가?
+- 다음 행동이 명확하게 보이는가?
+- 입력 과정에서 불필요한 부담이나 오류가 있는가?
+- 제출/가입/문의 직전에 충분한 신뢰를 주는가?
+- 기술적 오류가 전환 흐름을 방해하지 않는가?
+
+## Wedge가 하는 일
+
+### 1. 실제 사용자 흐름 실행
+
+단순히 HTML을 읽는 것이 아니라, 브라우저에서 사용자의 행동을 재현합니다. 랜딩 페이지 확인, CTA 클릭, 회원가입 폼 입력, 가격 페이지 탐색처럼 실제 전환 흐름에 가까운 시나리오를 실행합니다.
+
+### 2. 단계별 evidence 수집
+
+각 행동 이후의 화면과 상태를 checkpoint로 남깁니다. 문제가 발생한 순간을 근거와 함께 연결하기 때문에, “왜 문제인지”를 설명할 수 있습니다.
+
+### 3. UX/전환 리스크 판단
+
+Wedge는 수집한 evidence를 바탕으로 명확성, 행동 경로, 마찰, 신뢰, 안정성, 시각적 위계 같은 관점에서 리스크를 판단합니다.
+
+### 4. 개선 제안 리포트 제공
+
+사용자가 바로 이해할 수 있도록 핵심 문제, 근거, 영향, 개선 방향을 리포트로 정리합니다. 단순 점수보다 “어느 순간에 왜 막히는지”를 보여주는 것이 목표입니다.
+
+## 주요 사용 사례
+
+- 랜딩 페이지의 첫인상과 CTA 흐름 점검
+- 회원가입/문의/리드 폼의 이탈 요인 확인
+- 가격 페이지나 결제 직전 화면의 신뢰 요소 점검
+- 모바일 화면에서 버튼 크기, 가독성, 전환 흐름 확인
+- 배포 전 핵심 전환 시나리오 QA
+- 개선 전/후 리포트를 비교하며 UX 변경 효과 확인
+
+## 우리가 중요하게 보는 것
+
+- **실제 흐름**: 페이지 하나가 아니라 사용자의 행동 흐름을 봅니다.
+- **근거 기반 판단**: 모든 지적은 수집된 evidence와 연결되어야 합니다.
+- **재현 가능성**: 같은 시나리오를 다시 실행해 비교할 수 있어야 합니다.
+- **설명 가능한 리포트**: 막연한 평가가 아니라 행동 리스크와 개선 방향을 제시합니다.
+- **작은 팀도 쓸 수 있는 UX 진단**: 전문 리서치 리소스가 부족해도 핵심 전환 문제를 빠르게 확인할 수 있게 합니다.
+
+## 현재 프로젝트 상태
+
+Wedge는 현재 제품 설계, 핵심 계약, 서비스 기반 구조, 그리고 웹 사용자 인증과 공통 API 응답 기반을 갖춰가고 있습니다.
+
+앞으로는 브라우저 실행, evidence 수집, Judge/Analyzer, 리포트 화면을 단계적으로 연결해 실제 URL 진단이 가능한 형태로 발전시킬 예정입니다.
