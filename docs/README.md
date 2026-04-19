@@ -1,8 +1,8 @@
 # Wedge Documentation
 
-이 폴더의 기준 문서는 버전 번호를 파일명에 넣지 않고, 현재 구현 기준을 나타내는 canonical 이름으로 관리한다.
+이 폴더의 기준 문서는 파일명에 버전 번호를 넣지 않고, 현재 구현 기준을 나타내는 canonical 이름으로 관리한다.
 
-## Current baseline
+## 현재 기준 문서
 
 읽는 순서:
 
@@ -16,9 +16,8 @@
 8. `07_research_basis.md` — Judge/scoring 근거와 calibration 기준
 9. `AI_CONTEXT_GUIDE.md` — Codex/AI 작업별 참조 파일 선택 가이드
 
-## Specialized references
+## 추가 참조 문서
 
-- `wedge_frontend_architecture.md` — `apps/web` frontend stack and boundaries
-- `wedge_schema.sql` — current PostgreSQL DDL reference
-- `git_conventions.md` — commit and PR conventions
-
+- `wedge_frontend_architecture.md` — `apps/web` 프론트엔드 스택과 경계
+- `wedge_schema.sql` — 현재 PostgreSQL DDL 기준
+- `git_conventions.md` — commit/PR 규칙

@@ -1,6 +1,6 @@
-# 01. System Architecture and Project Structure
+# 01. 시스템 아키텍처와 프로젝트 구조
 
-## 1. Architecture Goal
+## 1. 아키텍처 목표
 
 Wedge의 핵심은 실제 브라우저 실행과 evidence 기반 판단이다.  
 따라서 아키텍처는 다음 책임을 분리한다.
@@ -18,13 +18,13 @@ React Client
           → report export worker (optional)
 ```
 
-React는 Runner/Analyzer와 직접 통신하지 않는다. 모든 상태 변경과 live event 발행은 Spring API Server를 통한다.
+React는 Runner/Analyzer와 직접 통신하지 않는다. 모든 상태 변경과 live event 발행은 Spring API Server를 통해 처리한다.
 
-## 2. Component Responsibilities
+## 2. 컴포넌트 책임
 
 ### 2.1 React Client
 
-Responsibilities:
+주요 책임:
 
 - URL 입력
 - 시나리오 템플릿 선택
@@ -39,7 +39,7 @@ Responsibilities:
 
 Spring은 Wedge의 기준 서버다.
 
-Responsibilities:
+주요 책임:
 
 - 사용자/워크스페이스/프로젝트 관리
 - run lifecycle 관리
@@ -57,7 +57,7 @@ Runner와 Analyzer는 Spring에 callback을 보내고, Spring이 DB에 반영한
 
 ### 2.3 Node Playwright Runner
 
-Responsibilities:
+주요 책임:
 
 - ScenarioPlan 수신
 - Playwright browser/context/page 생성
@@ -72,7 +72,7 @@ Runner는 DB에 직접 쓰지 않는다.
 
 ### 2.4 FastAPI Analyzer
 
-Responsibilities:
+주요 책임:
 
 - EvidencePacket 입력
 - RuleRegistry 로드
@@ -96,7 +96,7 @@ RabbitMQ는 최종 상태 저장소가 아니다.
 
 ### 2.6 S3 Artifact Store
 
-Stores:
+저장 대상:
 
 - checkpoint screenshot
 - Playwright trace
@@ -107,7 +107,7 @@ Stores:
 
 DB에는 artifact metadata와 signed URL 발급용 key만 저장한다.
 
-## 3. Core Execution Flow
+## 3. 핵심 실행 흐름
 
 ```text
 1. User creates run via /api/runs with scenarioTemplateVersionId
@@ -131,9 +131,9 @@ DB에는 artifact metadata와 signed URL 발급용 key만 저장한다.
 19. React receives WebSocket events and renders report
 ```
 
-## 4. Spring Package Structure
+## 4. Spring 패키지 구조
 
-Recommended package structure:
+권장 패키지 구조:
 
 ```text
 apps/api-server/
@@ -188,7 +188,7 @@ apps/api-server/
       validation/
 ```
 
-Rules:
+규칙:
 
 - REST/MCP/Internal callback은 `application` service를 호출한다.
 - domain package는 framework 의존성을 최소화한다.
@@ -196,7 +196,7 @@ Rules:
 - 상태 전이 검증은 `application.run`에 둔다.
 - DB write는 Spring service transaction 안에서 처리한다.
 
-## 5. Node Runner Structure
+## 5. Node Runner 구조
 
 ```text
 apps/runner/
@@ -231,7 +231,7 @@ apps/runner/
       errors.ts
 ```
 
-## 6. FastAPI Analyzer Structure
+## 6. FastAPI Analyzer 구조
 
 ```text
 apps/analyzer/
@@ -258,7 +258,7 @@ apps/analyzer/
     tests/
 ```
 
-## 7. React Structure
+## 7. React 구조
 
 ```text
 apps/web/
@@ -281,7 +281,7 @@ apps/web/
     types/
 ```
 
-## 8. Team Ownership
+## 8. 팀 담당 영역
 
 | Area | Owner | Support |
 |---|---|---|

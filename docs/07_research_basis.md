@@ -13,7 +13,7 @@
 - benchmark 기준 정의
 - 제품 가치/PRD 재검토
 
-## 2. Evidence Levels
+## 2. Evidence level
 
 | Level | Meaning | Usage |
 |---|---|---|
@@ -23,13 +23,13 @@
 | Operational | Wedge 초기값 | benchmark로 calibration 필요 |
 | Technical | Playwright/CDP/Web Vitals 등 수집/성능 기준 | reliability/collection rule |
 
-Principles:
+원칙:
 
 - 표준이 있는 것은 표준으로 판정한다.
 - 표준이 없는 것은 Research/Expert Guide/Operational로 낮은 확신도와 예외 조건을 둔다.
 - Operational threshold는 정답이 아니라 초기값이며 benchmark로 보정한다.
 
-## 3. Source Map
+## 3. Source map
 
 | Source | Use in Wedge | Level |
 |---|---|---|
@@ -53,7 +53,7 @@ Principles:
 | Playwright docs | browser automation | Technical |
 | Chrome DevTools Protocol | DOMSnapshot/Network/Performance collection | Technical |
 
-## 4. Wedge Axes
+## 4. Wedge 평가 축
 
 | Axis | Judgment Question | Main Evidence |
 |---|---|---|
@@ -64,7 +64,7 @@ Principles:
 | Reliability | 기술적으로 안정적인가 | Web Vitals, failed requests, console errors |
 | Visual Integrity | 시각 위계가 목적에 맞는가 | contrast, hierarchy, hero dominance, affordance |
 
-## 5. Stage Model
+## 5. Stage model
 
 | Stage | Description | Key Axis |
 |---|---|---|
@@ -74,7 +74,7 @@ Principles:
 | INPUT | 입력 지속 여부 결정 | Friction, Reliability |
 | COMMIT | 제출/결제/문의 직전 확정 | Trust, Friction, Reliability |
 
-## 6. P0 Criterion Basis
+## 6. P0 criterion 근거
 
 ### PATH-CTA-001 Primary CTA Presence
 
@@ -128,7 +128,7 @@ Principles:
 - 근거: visual hierarchy guides attention.
 - core message/CTA보다 decorative element가 과도하게 강하면 warning.
 
-## 7. Avoided Judgments
+## 7. 사용하지 않는 판단 표현
 
 Wedge는 아래 표현을 사용하지 않는다.
 
@@ -139,7 +139,7 @@ Wedge는 아래 표현을 사용하지 않는다.
 | 감이 없다 | 컴포넌트 표현과 의미 구조가 어긋남 |
 | 아이콘이 별로다 | icon-only action의 accessible name이 불명확함 |
 
-## 8. Calibration Process
+## 8. Calibration 절차
 
 1. Benchmark set 20–30개 구성
 2. 2명 이상이 manual label
@@ -148,7 +148,7 @@ Wedge는 아래 표현을 사용하지 않는다.
 5. threshold와 exception 업데이트
 6. RuleRegistry version 기록
 
-## 9. Open Research Gaps
+## 9. 남은 research gap
 
 | Gap | Handling |
 |---|---|

@@ -1,8 +1,8 @@
-# 05. Judge, Scoring, and Validation
+# 05. Judge, Scoring, Validation 기준
 
-## 1. Judge Principle
+## 1. Judge 원칙
 
-Wedge does not let the LLM directly judge UX quality.
+Wedge는 LLM이 UX quality를 직접 판단하게 하지 않는다.
 
 Canonical pipeline:
 
@@ -15,11 +15,11 @@ Raw Data
   → LLM Explanation
 ```
 
-The LLM only explains and translates Rule Engine output into user-facing language.
+LLM은 Rule Engine output을 사용자-facing 언어로 설명하고 번역하는 역할만 맡는다.
 
-## 2. Evaluation Unit
+## 2. 평가 단위
 
-Wedge evaluates stages, not entire pages.
+Wedge는 전체 page가 아니라 stage 단위로 평가한다.
 
 | Stage | Description |
 |---|---|
@@ -29,7 +29,7 @@ Wedge evaluates stages, not entire pages.
 | `INPUT` | 입력을 계속할지 포기할지 결정하는 순간 |
 | `COMMIT` | 제출/결제/문의 직전 확정하는 순간 |
 
-## 3. Axis
+## 3. 평가 축
 
 | Axis | Question |
 |---|---|
@@ -64,7 +64,7 @@ Wedge evaluates stages, not entire pages.
 priority_score = severity × stage_weight × confidence × fix_leverage
 ```
 
-Recommended stage weights:
+권장 stage weight:
 
 | Stage | Weight |
 |---|---:|
@@ -74,11 +74,11 @@ Recommended stage weights:
 | INPUT | 1.2 |
 | COMMIT | 1.4 |
 
-`fix_leverage` starts in the 0.8–1.2 range.
+`fix_leverage`는 0.8–1.2 범위에서 시작한다.
 
 ## 7. Run Friction Score
 
-The run-level score is a weighted aggregation of issue risk.
+Run-level score는 issue risk의 가중 집계값이다.
 
 ```text
 issue_risk = (severity / 3) × confidence × 100
@@ -88,7 +88,7 @@ stage_score = weighted average(issue_risk in stage)
 run_friction_score = weighted average(stage_score × stage_weight)
 ```
 
-Interpretation:
+해석:
 
 | Score | Label |
 |---:|---|
@@ -97,11 +97,11 @@ Interpretation:
 | 50–74 | high |
 | 75–100 | critical |
 
-Score is a comparison aid, not an absolute truth.
+Score는 비교를 돕는 값이며, 절대적 정답이 아니다.
 
 ## 8. P0 Criteria
 
-V1 should implement 7–10 rules from this set.
+V1에서는 아래 후보 중 7–10개 rule을 구현한다.
 
 | Criterion | Priority |
 |---|---|
@@ -116,25 +116,25 @@ V1 should implement 7–10 rules from this set.
 | TRUST-RISK-001 Risk-reduction Signal | P1/P0 if time |
 | VISUAL-HIER-001 Semantic–Visual Alignment | P1/P0 if time |
 
-Experimental:
+실험 항목:
 
 - VISUAL-HERO-001 Hero Dominance
 - advanced trust taxonomy
 - full visual saliency
 
-## 9. LLM Output Constraints
+## 9. LLM output 제약
 
-The LLM must:
+LLM은 다음 규칙을 지킨다.
 
-- not invent criteria
-- not make claims without evidence_refs
-- use possibility language for Research/Operational rules
-- avoid taste language such as “ugly” or “not stylish”
-- always translate findings into behavior risk and fix direction
+- criteria를 새로 만들어내지 않는다.
+- `evidence_refs` 없는 claim을 만들지 않는다.
+- Research/Operational rule에는 가능성 표현을 사용한다.
+- "ugly", "not stylish" 같은 취향 표현을 피한다.
+- finding을 항상 behavior risk와 fix direction으로 번역한다.
 
-## 10. Benchmark Calibration
+## 10. Benchmark calibration
 
-Minimum benchmark set:
+최소 benchmark set:
 
 | Group | Count |
 |---|---:|
@@ -145,13 +145,13 @@ Minimum benchmark set:
 | Mobile-sensitive pages | 3–5 |
 | Weak-trust pages | 3–5 |
 
-Process:
+절차:
 
-1. Human baseline labeling by at least 2 people
-2. Automatic run
-3. Compare true positive / false positive / false negative / ambiguous
-4. Adjust thresholds and exceptions
-5. Record version in RuleRegistry
+1. 2명 이상이 human baseline labeling을 수행한다.
+2. 자동 실행을 수행한다.
+3. true positive / false positive / false negative / ambiguous를 비교한다.
+4. threshold와 exception을 조정한다.
+5. RuleRegistry에 version을 기록한다.
 
 ## 11. Judge Quality Metrics
 

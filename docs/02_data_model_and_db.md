@@ -1,4 +1,4 @@
-# 02. Data Model and DB
+# 02. 데이터 모델과 DB
 
 ## 1. DB 설계 원칙
 
@@ -75,7 +75,7 @@ status=COMPLETED, result_completeness=FINAL, analysis_status=COMPLETED
 
 ## 4. Evidence 저장 구조
 
-기존 `page_snapshot` 중심 모델은에서 폐기한다.  
+기존 `page_snapshot` 중심 모델은 폐기한다.
 Wedge의 evidence는 page가 아니라 action 이후 checkpoint가 핵심이다.
 
 ```text
@@ -88,9 +88,9 @@ test_run
 
 ### checkpoint
 
-A checkpoint is created after each meaningful state transition.
+Checkpoint는 의미 있는 상태 전이 이후 생성한다.
 
-Examples:
+예시:
 
 - initial page load settled
 - CTA clicked and form appeared
@@ -123,7 +123,7 @@ DB normalized tables가 운영 조회에 유리하고, packet snapshot은 Analyz
 
 둘 다 유지한다.
 
-## 5. Soft Delete
+## 5. Soft delete
 
 V1에서 soft delete를 적용하는 핵심 테이블:
 
@@ -135,7 +135,7 @@ V1에서 soft delete를 적용하는 핵심 테이블:
 모든 테이블에 무조건 적용하지 않는다.  
 Artifact와 observation은 run/report retention 정책으로 관리한다.
 
-## 6. Concurrency
+## 6. 동시성
 
 핵심 entity에는 `version` 컬럼을 둔다.
 
@@ -148,7 +148,7 @@ Artifact와 observation은 run/report retention 정책으로 관리한다.
 
 상태 전이는 compare-and-set 방식으로 처리한다.
 
-Example:
+예시:
 
 ```sql
 UPDATE test_run

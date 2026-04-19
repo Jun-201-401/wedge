@@ -1,10 +1,10 @@
-# 04. Domain Payload Contracts
+# 04. Domain Payload 계약
 
 ## 1. 목적
 
 이 문서는 Runner와 Analyzer가 주고받는 domain payload 계약을 정의한다.
 
-Operational transport 계약과 domain payload 계약을 구분한다.
+Operational transport 계약과 domain payload 계약은 구분한다.
 
 ```text
 Operational transport:
@@ -16,7 +16,7 @@ Domain payload:
   → schema_version 포함, snake_case 허용
 ```
 
-## 2. Canonical Schemas
+## 2. Canonical schema
 
 | Contract | File |
 |---|---|
@@ -29,10 +29,10 @@ Domain payload:
 
 ScenarioPlan은 사용자의 시나리오 선택 또는 자연어 요청을 실행 가능한 step plan으로 변환한 결과다.
 
-V1에서는 full natural-language planner를 구현하지 않는다.  
+V1에서는 완전한 natural-language planner를 구현하지 않는다.
 템플릿 기반 ScenarioPlan을 우선 사용한다.
 
-Supported actions:
+지원 action:
 
 ```text
 goto
@@ -46,7 +46,7 @@ checkpoint
 stop_when
 ```
 
-Each step should define:
+각 step은 다음 값을 정의한다.
 
 - `step_id`
 - `stage`
@@ -55,10 +55,7 @@ Each step should define:
 - `settle_strategy`
 - `checkpoint`
 - optional `stop_condition`
-
-
-
-### Step identifier boundary
+### Step 식별자 경계
 
 Domain payloads use `step_id` as a stable scenario key. Operational transport uses camelCase `stepKey` for the same value when Runner sends callbacks. Spring resolves `stepKey` to the DB UUID `test_run_step.id`; public REST paths such as `/api/runs/{runId}/steps/{stepId}` use the DB UUID.
 
@@ -95,9 +92,9 @@ Top-level fields:
 
 ## 5. Checkpoint
 
-Checkpoint는 meaningful state transition 이후 생성된다.
+Checkpoint는 의미 있는 상태 전이 이후 생성된다.
 
-Each checkpoint includes:
+각 checkpoint는 다음 값을 포함한다.
 
 - `checkpoint_id`
 - `step_id`
@@ -113,7 +110,7 @@ Each checkpoint includes:
 
 Observation은 raw data에서 추출한 구조화된 fact다.
 
-Common observation types:
+주요 observation type:
 
 | Type | Description |
 |---|---|
@@ -136,7 +133,7 @@ Common observation types:
 
 RuleRegistry는 Judge criterion을 code-executable rule metadata로 표현한다.
 
-Each rule contains:
+각 rule은 다음 값을 포함한다.
 
 - criterion id
 - axis
@@ -155,7 +152,7 @@ Each rule contains:
 
 JudgeResult is the canonical analyzer output. Analyzer completed callback must include this payload, and Spring stores it on `analysis_job.output_jsonb` plus user-facing projections (`analysis_finding`, `nudge`, `report`).
 
-It includes:
+포함 항목:
 
 - summary
 - stage scores
@@ -164,7 +161,7 @@ It includes:
 - nudges
 - LLM notes
 
-Every issue must include:
+모든 issue는 다음 값을 포함해야 한다.
 
 - `criterion_id`
 - `stage`
@@ -178,7 +175,7 @@ Every issue must include:
 
 ## 9. Evidence Reference Format
 
-Recommended format:
+권장 형식:
 
 ```text
 cp_001.obs_002
@@ -186,7 +183,7 @@ cp_003.artifact.screenshot_001
 aggregate.primary_cta_count_by_stage.CTA
 ```
 
-Rules:
+규칙:
 
 - Any user-facing issue must include at least one evidence reference.
 - LLM output must not introduce unsupported claims.
@@ -196,7 +193,7 @@ Rules:
 
 Domain contracts use explicit schema versions.
 
-Rules:
+규칙:
 
 - additive optional fields: no major break
 - required field changes: schema version bump

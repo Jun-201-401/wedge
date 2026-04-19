@@ -5,9 +5,9 @@
 - 전체 기간: 2026-04-13 ~ 2026-06-02
 - 기획 기간: 2026-04-13 ~ 2026-04-17
 - 구현 시작: 2026-04-20
-- 운영 방식: 월~금 기준, 1주 Sprint
+- 운영 방식: 월~금 기준, 1주 단위 Sprint
 
-## 2. Team Roles
+## 2. 팀 역할
 
 | Member | Role |
 |---|---|
@@ -18,7 +18,7 @@
 | 박성환 | PM/Delivery Manager, Backend Support |
 | 유지호 | AI/Judge/Rule Lead |
 
-## 3. Jira Issue Type Policy
+## 3. Jira 이슈 타입 기준
 
 | Type | Use |
 |---|---|
@@ -31,7 +31,7 @@
 
 기본은 Epic + Story + Task 중심으로 등록한다.
 
-## 4. Epics
+## 4. Epic 구성
 
 | Epic | Owner |
 |---|---|
@@ -43,7 +43,7 @@
 | MCP / OAuth / Agent Interface | 차지훈 / 정관우 |
 | Validation, Calibration & QA | 박성환 / 유지호 |
 
-## 5. Sprint Goals
+## 5. Sprint 목표
 
 | Sprint | Dates | Goal |
 |---|---|---|
@@ -56,7 +56,7 @@
 | Sprint 6 | 5/25–5/29 | RC 안정화 |
 | Final | 6/1–6/2 | 최종 릴리즈/시연 |
 
-## 6. Sprint 1 Backlog
+## 6. Sprint 1 백로그
 
 | Key | Type | Summary | Owner |
 |---|---|---|---|
@@ -72,7 +72,7 @@
 | WEDGE-110 | Task | P0 Rule 목록 최종 리뷰 | 유지호 / 강보승 |
 | WEDGE-111 | Task | Jira workflow, issue template, 회의록 양식 정리 | 박성환 |
 
-## 7. Sprint 2 Backlog
+## 7. Sprint 2 백로그
 
 | Key | Type | Summary | Owner |
 |---|---|---|---|
@@ -88,7 +88,7 @@
 | WEDGE-210 | Story | Run detail UI 1차 | 강보승 |
 | WEDGE-211 | Task | Step timeline UI/API 연동 | 차지훈 |
 
-## 8. Sprint 3 Backlog
+## 8. Sprint 3 백로그
 
 | Key | Type | Summary | Owner |
 |---|---|---|---|
@@ -103,7 +103,7 @@
 | WEDGE-309 | Story | Evidence Card UI 1차 | 차지훈 |
 | WEDGE-310 | Task | WebSocket progress event 1차 | 차지훈 |
 
-## 9. Sprint 4 Backlog
+## 9. Sprint 4 백로그
 
 | Key | Type | Summary | Owner |
 |---|---|---|---|
@@ -117,7 +117,7 @@
 | WEDGE-408 | Story | Report Detail / Share API | 박성환 |
 | WEDGE-409 | Task | Report permission check | 정관우 |
 
-## 10. Sprint 5 Backlog
+## 10. Sprint 5 백로그
 
 | Key | Type | Summary | Owner |
 |---|---|---|---|
@@ -137,18 +137,18 @@
 
 Sprint 6는 신규 기능보다 RC 안정화에 집중한다.
 
-Priority:
+우선순위:
 
-1. P0 bug 0
+1. P0 bug 0건
 2. 데모 시나리오 2개 안정 실행
 3. sample report 2개 확보
 4. API/DB 문서 최신화
 5. Known issue 문서화
 
-## 12. Daily Operating Rules
+## 12. 일일 운영 규칙
 
 - 매일 10분 stand-up
-- 박성환이 blocker, Jira 상태, 오늘 목표를 기록
+- 박성환이 blocker, Jira 상태, 당일 목표를 기록
 - 매주 금요일 Sprint demo
 - Rule/Judge 변경은 유지호 + 강보승 리뷰
 - Spring architecture 변경은 강보승 리뷰

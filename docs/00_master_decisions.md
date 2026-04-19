@@ -3,7 +3,7 @@
 ## 1. 목적
 
 이 문서는 Wedge의 canonical 설계 결정을 한 곳에 정리한다.  
-current의 목적은 기존 문서를 단순 병합하는 것이 아니라, 구현 기준을 다음 두 계층으로 분리하는 것이다.
+현재 기준 문서의 목적은 기존 문서를 단순 병합하는 데 있지 않다. 구현 기준을 다음 두 계층으로 분리해 명확히 하는 데 있다.
 
 ```text
 Domain payload contract
@@ -15,7 +15,7 @@ Operational transport contract
 
 ## 2. 제품 정의
 
-Wedge는 특정 URL과 사용자 시나리오를 입력받아 실제 브라우저에서 과업을 실행하고, 각 단계의 evidence를 수집한 뒤, 기준화된 Judge Engine과 LLM Analyzer를 통해 UX/전환 리스크를 리포트하는 시스템이다.
+Wedge는 특정 URL과 사용자 시나리오를 입력받아 실제 브라우저에서 과업을 실행하고, 각 단계의 evidence를 수집한 뒤, 기준화된 Judge Engine과 LLM Analyzer로 UX/전환 리스크를 리포트하는 시스템이다.
 
 Wedge는 단순 URL 정적 분석기가 아니다.
 
@@ -32,7 +32,7 @@ URL + Scenario
 
 | 영역 | 결정 | 이유 |
 |---|---|---|
-| 실행 방식 | 시나리오 기반 Playwright 실행 | SPA, modal, form, CTA click 이후 상태를 보기 위해 필요 |
+| 실행 방식 | 시나리오 기반 Playwright 실행 | SPA, modal, form, CTA click 이후 상태 확인에 필요 |
 | Evidence 구조 | action 이후 checkpoint 생성 | 문제 발생 순간과 근거를 연결하기 위해 필요 |
 | 판단 방식 | Rule Engine 우선, LLM 후해석 | 재현성, explainability, false positive 관리 |
 | API base path | `/api` | `/api/v1`은 개발용 느낌이 강해 제외 |
@@ -44,7 +44,7 @@ URL + Scenario
 | Artifact | S3-compatible object storage | screenshot/trace/raw snapshot은 DB에 저장하지 않음 |
 | DB | PostgreSQL + MyBatis | 구조화된 상태/근거 저장 |
 | Auth | Spring Authorization Server | OAuth/OIDC, scope 기반 agent/client 권한 |
-| 문서 구조 | 적은 canonical 문서 + machine-readable contract | 팀 공유와 AI 작업 지시를 동시에 지원 |
+| 문서 구조 | 소수의 canonical 문서 + machine-readable contract | 팀 공유와 AI 작업 지시를 동시에 지원 |
 
 ## 4. V1 범위
 
@@ -53,7 +53,7 @@ URL + Scenario
 - URL + template scenario
 - desktop/mobile 실행
 - landing / signup form / pricing 시나리오
-- 최종 시연 안정화 단계에서는 landing/signup 2개 시나리오를 우선 고정하고, pricing은 V1 기능 범위 안에서 후순위로 둔다.
+- 최종 시연 안정화 단계에서는 landing/signup 2개 시나리오를 우선 고정하고, pricing은 V1 범위 안에서 후순위로 둔다.
 - Playwright Runner
 - checkpoint evidence 수집
 - screenshot, DOM, layout, AX, network, console 기본 수집

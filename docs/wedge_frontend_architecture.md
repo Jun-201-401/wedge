@@ -14,15 +14,15 @@ related_documents:
   - ../apps/web/README.md
 ---
 
-# 1. Purpose
+# 1. 목적
 
-This document records the frontend technology and architecture decisions for `apps/web`.
+이 문서는 `apps/web`의 frontend 기술 선택과 아키텍처 결정을 기록한다.
 
-The goal is to keep the web app maintainable as Wedge grows from the landing page into product surfaces such as run monitoring, evidence viewing, reports, project management, and scenario building.
+목표는 Wedge가 landing page에서 run monitoring, evidence viewing, report, project management, scenario building 같은 제품 화면으로 확장되어도 web app을 유지보수하기 쉽게 만드는 것이다.
 
-# 2. Current frontend stack
+# 2. 현재 frontend stack
 
-`apps/web` currently uses:
+`apps/web`은 현재 다음 stack을 사용한다.
 
 - React 18
 - React DOM 18
@@ -30,10 +30,10 @@ The goal is to keep the web app maintainable as Wedge grows from the landing pag
 - TSX
 - Vite
 - `@vitejs/plugin-react`
-- `node:test` executed through `tsx`
-- plain CSS with explicit app/page/feature boundaries
+- `tsx`로 실행하는 `node:test`
+- app/page/feature 경계가 명확한 plain CSS
 
-The current package scripts are:
+현재 package script:
 
 ```bash
 npm run dev
@@ -42,25 +42,25 @@ npm test
 npm run typecheck
 ```
 
-# 3. Current decision summary
+# 3. 현재 결정 요약
 
-## 3.1 Keep the app Vite-based for now
+## 3.1 당분간 Vite 기반 유지
 
-Decision: use Vite + React + TypeScript for `apps/web`.
+결정: `apps/web`은 Vite + React + TypeScript를 사용한다.
 
-Rationale:
-- The current app is client-heavy and does not yet require server-side rendering.
-- The existing landing sample was already Vite-based.
-- Vite keeps the scaffold simple while product boundaries are still forming.
+근거:
+- 현재 app은 client-heavy 구조이며 아직 server-side rendering이 필요하지 않다.
+- 기존 landing sample도 Vite 기반이었다.
+- product boundary가 형성되는 동안 Vite가 scaffold를 단순하게 유지한다.
 
-Deferred:
-- Next.js, Remix-style full-stack routing, or server-side rendering decisions are intentionally deferred until product requirements require them.
+보류:
+- Next.js, Remix-style full-stack routing, server-side rendering 결정은 제품 요구사항이 필요해질 때까지 보류한다.
 
-## 3.2 Use page + feature boundaries
+## 3.2 Page와 feature 경계 분리
 
-Decision: page orchestration and feature internals are separated.
+결정: page orchestration과 feature 내부 구현을 분리한다.
 
-Current pattern:
+현재 패턴:
 
 ```text
 src/
@@ -75,19 +75,19 @@ src/
 └─ websocket/
 ```
 
-Rules:
-- `pages/*` composes user-facing screens and route-level orchestration.
-- `features/*` owns feature-specific components, hooks, logic, and styles.
-- `shared/*` is for reusable primitives only after repeated use exists.
-- `api/*` owns HTTP client and endpoint wrappers.
-- `websocket/*` owns realtime transport adapters.
-- Avoid placing feature logic directly in `app/`.
+규칙:
+- `pages/*`는 user-facing screen과 route-level orchestration을 조합한다.
+- `features/*`는 feature-specific component, hook, logic, style을 소유한다.
+- `shared/*`는 반복 사용이 확인된 reusable primitive만 둔다.
+- `api/*`는 HTTP client와 endpoint wrapper를 소유한다.
+- `websocket/*`는 realtime transport adapter를 소유한다.
+- feature logic을 `app/`에 직접 두지 않는다.
 
-## 3.3 Keep landing code isolated
+## 3.3 Landing code 격리
 
-Decision: the imported design sample from `ref/landingPage` lives as a landing page plus a `landing-vision` feature, not as a monolithic root app.
+결정: `ref/landingPage`에서 가져온 design sample은 monolithic root app이 아니라 landing page와 `landing-vision` feature로 유지한다.
 
-Current locations:
+현재 위치:
 
 ```text
 src/pages/landing/LandingPage.tsx
@@ -98,37 +98,37 @@ src/features/landing-vision/lib/
 src/features/landing-vision/styles/
 ```
 
-Rules:
-- `LandingPage.tsx` may coordinate page-level state and layout.
-- Vision demo state machines, timings, and components stay under `features/landing-vision`.
-- Do not import files directly from `ref/landingPage` at runtime.
-- Do not copy `ref/landingPage/node_modules`, `dist`, `.omx`, or generated artifacts.
+규칙:
+- `LandingPage.tsx`는 page-level state와 layout 조정만 맡을 수 있다.
+- Vision demo state machine, timing, component는 `features/landing-vision` 아래에 둔다.
+- runtime에서 `ref/landingPage` 파일을 직접 import하지 않는다.
+- `ref/landingPage/node_modules`, `dist`, `.omx`, generated artifact는 복사하지 않는다.
 
-## 3.4 Use plain CSS with strict boundaries
+## 3.4 Plain CSS와 엄격한 경계 사용
 
-Decision: use plain CSS for now; do not introduce Tailwind, CSS Modules, or a UI library yet.
+결정: 당분간 plain CSS를 사용하고 Tailwind, CSS Modules, UI library는 도입하지 않는다.
 
-Rationale:
-- The current landing page is highly custom and animation-heavy.
-- Introducing a styling framework now would add migration cost without a clear product need.
+근거:
+- 현재 landing page는 custom animation 비중이 높다.
+- 지금 styling framework를 도입하면 명확한 제품 필요 없이 migration cost만 늘어난다.
 
-Rules:
-- App-wide tokens belong in `src/app/styles/tokens.css`.
-- Minimal global reset/base rules belong in `src/app/styles/globals.css`.
-- Page-specific styles belong under `src/pages/<page>/`.
-- Feature-specific styles belong under `src/features/<feature>/styles/`.
-- Class names should remain namespace-like, for example `landing-*`, `vision-*`, `run-*`, or `report-*`.
-- Avoid broad element selectors outside `globals.css`.
+규칙:
+- app-wide token은 `src/app/styles/tokens.css`에 둔다.
+- 최소한의 global reset/base rule은 `src/app/styles/globals.css`에 둔다.
+- page-specific style은 `src/pages/<page>/` 아래에 둔다.
+- feature-specific style은 `src/features/<feature>/styles/` 아래에 둔다.
+- class name은 `landing-*`, `vision-*`, `run-*`, `report-*`처럼 namespace 형태를 유지한다.
+- `globals.css` 밖에서는 넓은 element selector를 피한다.
 
-Deferred:
-- CSS Modules may be introduced later if class collision or ownership becomes hard to manage.
-- Tailwind may be reconsidered only if the product UI moves toward utility-first composition.
+보류:
+- class collision이나 ownership 관리가 어려워지면 CSS Modules를 나중에 도입할 수 있다.
+- 제품 UI가 utility-first composition으로 이동할 때만 Tailwind를 재검토한다.
 
-## 3.5 Preserve tested pure logic
+## 3.5 테스트 가능한 pure logic 유지
 
-Decision: animation timing and state-machine logic should remain testable without a browser.
+결정: animation timing과 state-machine logic은 browser 없이 테스트 가능해야 한다.
 
-Current examples:
+현재 예시:
 
 ```text
 src/features/landing-vision/lib/heroVision.ts
@@ -137,20 +137,20 @@ test/landing-vision/hero-vision.test.ts
 test/landing-vision/vision-sequence.test.ts
 ```
 
-Rules:
-- Keep timing constants and phase/state logic in `lib/`.
-- Keep React lifecycle and DOM event wiring in `hooks/` or components.
-- Add focused tests for pure logic before changing animation cadence or state transitions.
+규칙:
+- timing constant와 phase/state logic은 `lib/`에 둔다.
+- React lifecycle과 DOM event wiring은 `hooks/` 또는 component에 둔다.
+- animation cadence나 state transition을 바꾸기 전에는 pure logic에 focused test를 추가한다.
 
-# 4. Deferred technology choices
+# 4. 보류한 기술 선택
 
-The following are not installed yet by design.
+다음 항목은 의도적으로 아직 설치하지 않았다.
 
 ## 4.1 Routing
 
-Default future choice: React Router.
+향후 기본 선택: React Router.
 
-Install when there is more than one meaningful route, for example:
+의미 있는 route가 둘 이상 생기면 설치한다. 예:
 
 ```text
 /
@@ -160,61 +160,61 @@ Install when there is more than one meaningful route, for example:
 /projects/:projectId
 ```
 
-Until then, `App` can render `LandingPage` directly.
+그 전까지는 `App`이 `LandingPage`를 직접 render해도 된다.
 
 ## 4.2 Server state
 
-Default future choice: TanStack Query.
+향후 기본 선택: TanStack Query.
 
-Install when API-driven product screens need caching, refetching, mutation states, retries, or cache invalidation.
+API 기반 제품 화면에서 caching, refetching, mutation state, retry, cache invalidation이 필요해지면 설치한다.
 
-Do not use a general client-state store for server state by default.
+server state에는 일반 client-state store를 기본으로 사용하지 않는다.
 
 ## 4.3 Client state
 
-No global client-state library is selected yet.
+아직 global client-state library는 선택하지 않았다.
 
-Use React local state first. Consider a small client-state store only if cross-page client-only state becomes difficult to manage without prop drilling or context overuse.
+먼저 React local state를 사용한다. cross-page client-only state가 prop drilling이나 context 과사용 없이 관리하기 어려워질 때만 작은 client-state store를 검토한다.
 
 ## 4.4 Forms
 
-No form library is selected yet.
+아직 form library는 선택하지 않았다.
 
-Choose one when scenario builder, project settings, or report configuration forms become complex enough to need validation, touched state, field arrays, or schema integration.
+scenario builder, project settings, report configuration form이 validation, touched state, field array, schema integration을 필요로 할 만큼 복잡해질 때 선택한다.
 
 ## 4.5 Component testing
 
-Current tests use `node:test` + `tsx` for logic and source-shape regression tests.
+현재 테스트는 logic과 source-shape regression test에 `node:test` + `tsx`를 사용한다.
 
-Consider Vitest + Testing Library when DOM/component behavior becomes important enough to test outside manual/browser QA.
+DOM/component behavior를 manual/browser QA 밖에서 검증할 필요가 커지면 Vitest + Testing Library를 검토한다.
 
 ## 4.6 UI component library
 
-No UI component library is selected yet.
+아직 UI component library는 선택하지 않았다.
 
-Reconsider when product dashboard surfaces stabilize. The landing page should remain custom and should not force a component library decision.
+제품 dashboard surface가 안정화되면 재검토한다. landing page는 custom 상태를 유지하며 component library 결정을 강제하지 않는다.
 
 ## 4.7 React major upgrade policy
 
-React 18 is the current runtime baseline.
+React 18이 현재 runtime baseline이다.
 
-React major upgrades should happen in a dedicated change with:
+React major upgrade는 별도 change로 진행하고 다음을 포함한다.
 - dependency update
 - build verification
 - typecheck verification
-- relevant runtime smoke test
-- notes for any changed React behavior
+- 관련 runtime smoke test
+- 변경된 React behavior에 대한 note
 
-# 5. Implementation rules for agents
+# 5. Agent 구현 규칙
 
-When changing `apps/web`:
+`apps/web`을 변경할 때:
 
-1. Check this document first.
-2. Keep new code inside the smallest page/feature/shared boundary that owns it.
-3. Do not add dependencies unless a specific requirement justifies them.
-4. Prefer TypeScript/TSX for new source files.
-5. Keep pure logic in `lib/` and test it.
-6. Run:
+1. 먼저 이 문서를 확인한다.
+2. 새 코드는 소유권이 있는 가장 작은 page/feature/shared 경계 안에 둔다.
+3. 구체적 요구사항이 없으면 dependency를 추가하지 않는다.
+4. 새 source file은 TypeScript/TSX를 우선한다.
+5. pure logic은 `lib/`에 두고 테스트한다.
+6. 다음 명령을 실행한다.
 
 ```bash
 cd apps/web
@@ -223,16 +223,16 @@ npm run build
 npm run typecheck
 ```
 
-7. If dependencies changed, also run:
+7. dependency가 바뀌었다면 다음 명령도 실행한다.
 
 ```bash
 npm audit --omit=dev
 npm audit
 ```
 
-# 6. Current known follow-ups
+# 6. 현재 follow-up
 
-- Add routing when a second route is implemented.
-- Add API client modules when Spring API endpoints are wired.
-- Consider generated types or client code from `packages/contracts/openapi/wedge_openapi.yaml` once the API contract stabilizes.
-- Consider component/browser-level tests when landing interactions become business-critical.
+- 두 번째 route가 구현되면 routing을 추가한다.
+- Spring API endpoint가 연결되면 API client module을 추가한다.
+- API contract가 안정화되면 `packages/contracts/openapi/wedge_openapi.yaml` 기반 generated type 또는 client code를 검토한다.
+- landing interaction이 business-critical해지면 component/browser-level test를 검토한다.
