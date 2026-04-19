@@ -20,6 +20,13 @@ CREATE TABLE user_account (
     version             BIGINT NOT NULL DEFAULT 0
 );
 
+CREATE TABLE user_credential (
+    user_id             UUID PRIMARY KEY REFERENCES user_account(id) ON DELETE CASCADE,
+    password_hash       TEXT NOT NULL,
+    password_updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 CREATE TABLE workspace (
     id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name                VARCHAR(200) NOT NULL,

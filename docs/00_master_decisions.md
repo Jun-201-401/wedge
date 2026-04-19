@@ -43,7 +43,7 @@ URL + Scenario
 | 비동기 작업 | RabbitMQ | 장시간 브라우저 실행과 분석 작업 분배 |
 | Artifact | S3-compatible object storage | screenshot/trace/raw snapshot은 DB에 저장하지 않음 |
 | DB | PostgreSQL + MyBatis | 구조화된 상태/근거 저장 |
-| Auth | Spring Authorization Server | OAuth/OIDC, scope 기반 agent/client 권한 |
+| Auth | Human auth와 agent/client auth 분리 | V1 human web login은 first-party email/password + JWT로 빠르게 제공하고, MCP/agent client는 OAuth-style client identity, scope, agent_client_policy 기반으로 분리한다 |
 | 문서 구조 | 소수의 canonical 문서 + machine-readable contract | 팀 공유와 AI 작업 지시를 동시에 지원 |
 
 ## 4. V1 범위
@@ -109,7 +109,16 @@ URL + Scenario
 | `mcp_invocation_log` | agent 호출 감사 로그 |
 | `agent_client_policy` | MCP client별 tool/scope 제어 |
 
-## 6. Canonical source 정책
+## 6. API 응답과 Auth 정책
+
+- Public REST success response는 `data` + `meta` envelope를 사용한다.
+- Public REST error response는 `error` + `meta` envelope를 사용한다.
+- 성공 응답에는 서버 주도 `code/message`를 기본 포함하지 않는다. 성공 UX copy는 frontend가 관리한다.
+- Error code는 client/agent 분기를 위해 stable `snake_case` 값을 사용한다.
+- Human web auth와 MCP/agent auth는 분리한다. V1 human auth는 email/password credential을 `user_account`와 분리 저장하고 JWT access/refresh token을 발급한다.
+- MCP/agent auth는 OAuth-style client identity, `wedge.read`/`wedge.execute`/`wedge.export`/`wedge.admin` scope, `agent_client_policy`, `mcp_invocation_log` 방향을 유지한다.
+
+## 7. Canonical source 정책
 
 - 사람이 읽는 기준: `docs/`
 - DB 기준: `docs/wedge_schema.sql`

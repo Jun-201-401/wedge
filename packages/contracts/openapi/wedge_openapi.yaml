@@ -12,6 +12,7 @@ servers:
 security:
 - oauth2: []
 tags:
+- name: Auth
 - name: Projects
 - name: ScenarioTemplates
 - name: Runs
@@ -24,6 +25,112 @@ tags:
 - name: InternalRunner
 - name: InternalAnalyzer
 paths:
+  /api/auth/signup:
+    post:
+      tags:
+      - Auth
+      operationId: signup
+      summary: Sign up a human web user
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SignupRequest'
+      responses:
+        '201':
+          description: Signed up
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SingleAuthTokenResponse'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /api/auth/login:
+    post:
+      tags:
+      - Auth
+      operationId: login
+      summary: Log in a human web user
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Logged in
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SingleAuthTokenResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /api/auth/refresh:
+    post:
+      tags:
+      - Auth
+      operationId: refreshHumanToken
+      summary: Rotate refresh token and issue new tokens
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshRequest'
+      responses:
+        '200':
+          description: Token refreshed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SingleAuthTokenResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /api/auth/logout:
+    post:
+      tags:
+      - Auth
+      operationId: logout
+      summary: Log out current human web user
+      security:
+      - HumanBearer: []
+      responses:
+        '200':
+          description: Logged out
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AckResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /api/auth/me:
+    get:
+      tags:
+      - Auth
+      operationId: getCurrentUser
+      summary: Get current human web user
+      security:
+      - HumanBearer: []
+      responses:
+        '200':
+          description: Current user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SingleUserResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
   /api/projects:
     get:
       tags:
@@ -1355,6 +1462,10 @@ components:
       type: http
       scheme: bearer
       bearerFormat: JWT
+    HumanBearer:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
   parameters:
     RunId:
       name: runId
@@ -1474,13 +1585,117 @@ components:
           schema:
             $ref: '#/components/schemas/AckResponse'
   schemas:
+    SignupRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 8
+          maxLength: 100
+        displayName:
+          type: string
+          minLength: 2
+          maxLength: 120
+      required:
+      - email
+      - password
+      - displayName
+    LoginRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+      required:
+      - email
+      - password
+    RefreshRequest:
+      type: object
+      properties:
+        refreshToken:
+          type: string
+      required:
+      - refreshToken
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        displayName:
+          type: string
+        status:
+          type: string
+          enum:
+          - ACTIVE
+          - INACTIVE
+      required:
+      - id
+      - email
+      - displayName
+      - status
+    AuthToken:
+      type: object
+      properties:
+        accessToken:
+          type: string
+        refreshToken:
+          type: string
+        tokenType:
+          type: string
+          example: Bearer
+        expiresIn:
+          type: integer
+          format: int64
+        user:
+          $ref: '#/components/schemas/User'
+      required:
+      - accessToken
+      - refreshToken
+      - tokenType
+      - expiresIn
+      - user
+    SingleAuthTokenResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/AuthToken'
+        meta:
+          $ref: '#/components/schemas/Meta'
+      required:
+      - data
+      - meta
+    SingleUserResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/User'
+        meta:
+          $ref: '#/components/schemas/Meta'
+      required:
+      - data
+      - meta
     Meta:
       type: object
       properties:
         requestId:
           type: string
+        correlationId:
+          type: string
+          nullable: true
         nextCursor:
           type: string
+          nullable: true
+        hasMore:
+          type: boolean
           nullable: true
       required:
       - requestId
@@ -1748,6 +1963,7 @@ components:
       properties:
         data:
           type: object
+          nullable: true
           additionalProperties: true
         meta:
           $ref: '#/components/schemas/Meta'

@@ -7,6 +7,7 @@ Codex, Claude Code, 내부 LLM Agent에게 작업을 지시할 때 참조할 파
 
 - 먼저 `docs/README.md`로 현재 기준 문서와 legacy 경계를 확인한다.
 - 계약을 바꾸는 작업은 `packages/contracts`를 먼저 수정하고, 그 다음 앱 코드를 맞춘다.
+- API 작업은 `docs/03_api_reference.md`의 `data/meta` 및 `error/meta` response envelope, validation error shape, Auth/Scope 분리 정책을 먼저 확인한다.
 - `docs/07_research_basis.md`는 Judge/scoring 기준 변경이나 calibration 때만 추가한다.
 - 오래된 문서는 별도 legacy 폴더로 복사하지 않는다. 필요하면 Git history에서 확인한다.
 

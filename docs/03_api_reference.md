@@ -41,6 +41,17 @@ X-Signature: hmac-sha256=...
 
 ## 4. 공통 response 형식
 
+Public REST success responses use `data` + `meta`. Public REST error responses use `error` + `meta`.
+
+Rules:
+
+- `meta.requestId` is included in every JSON response.
+- `meta.correlationId` is included when present or derived from the request id.
+- Success responses do not include top-level `code` or `message` by default. Frontend UX copy owns success messages.
+- Error responses use stable `snake_case` `error.code` values for frontend, SDK, and agent branching.
+- Validation errors use `error.details.fields[]`.
+- Async commands should return HTTP `202` when accepted and include the resulting resource status in `data`.
+
 ### 단일 resource
 
 ```json
@@ -49,7 +60,8 @@ X-Signature: hmac-sha256=...
     "id": "uuid"
   },
   "meta": {
-    "requestId": "req_..."
+    "requestId": "req_...",
+    "correlationId": "corr_..."
   }
 }
 ```
@@ -61,7 +73,9 @@ X-Signature: hmac-sha256=...
   "data": [],
   "meta": {
     "requestId": "req_...",
-    "nextCursor": null
+    "correlationId": "corr_...",
+    "nextCursor": null,
+    "hasMore": false
   }
 }
 ```
@@ -79,6 +93,26 @@ X-Signature: hmac-sha256=...
     }
   },
   "meta": {
+    "requestId": "req_...",
+    "correlationId": "corr_..."
+  }
+}
+```
+
+### Validation error response
+
+```json
+{
+  "error": {
+    "code": "validation_failed",
+    "message": "Request validation failed.",
+    "details": {
+      "fields": [
+        {"field": "email", "code": "invalid", "message": "must be a well-formed email address"}
+      ]
+    }
+  },
+  "meta": {
     "requestId": "req_..."
   }
 }
@@ -88,18 +122,30 @@ X-Signature: hmac-sha256=...
 
 | HTTP | code | Meaning |
 |---|---|---|
-| 400 | `validation_error` | invalid request shape |
+| 400 | `invalid_request` | invalid request shape |
 | 401 | `unauthorized` | missing/invalid auth |
 | 403 | `forbidden` | permission denied |
 | 404 | `not_found` | resource not found |
 | 409 | `state_conflict` | invalid state transition |
-| 422 | `unprocessable_request` | semantically invalid |
+| 422 | `validation_failed` | validation or semantically invalid input |
 | 429 | `rate_limited` | too many requests |
 | 500 | `internal_error` | server error |
 
 ## 6. Public REST endpoint matrix
 
 OpenAPI와 동일한 public `/api` endpoint만 여기에 둔다. 삭제/복구 정책이 확정되지 않은 project delete는 V1 public API에서 제외한다.
+
+### Auth
+
+Human web auth endpoints are first-party V1 endpoints. MCP/agent client auth remains a separate OAuth-style client identity and scope model.
+
+```text
+POST /api/auth/signup
+POST /api/auth/login
+POST /api/auth/refresh
+POST /api/auth/logout
+GET  /api/auth/me
+```
 
 ### Projects
 
@@ -385,6 +431,10 @@ packages/contracts/mcp/tools.schema.json
 ```
 
 ## 12. Auth / Scope
+
+Human web users use V1 first-party email/password auth with JWT access/refresh tokens. Password hashes are stored outside `user_account` in `user_credential`.
+
+MCP/agent clients use OAuth-style client identity and scope policy.
 
 Scopes:
 
