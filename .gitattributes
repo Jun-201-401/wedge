@@ -1,0 +1,23 @@
+# Keep text files stable across WSL/Linux/macOS/Windows checkouts.
+# Repository-normalized text uses LF so commits do not churn on line endings.
+* text=auto eol=lf
+
+# Windows command scripts are the exception: keep CRLF in the worktree.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Binary assets must never be line-ending normalized.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.pdf binary
+*.zip binary
+*.gz binary
+*.jar binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.eot binary
