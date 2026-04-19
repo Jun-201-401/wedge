@@ -1,0 +1,221 @@
+.vision-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: min(20rem, calc(100vw - 3rem));
+  height: 3.25rem;
+  padding: 0.375rem;
+  border: 1px solid rgba(219, 234, 254, 0.9);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+  opacity: 0;
+  transform: translateY(2rem) scale(0.92);
+  transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.45s ease,
+    transform 0.55s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.35s ease,
+    border-color 0.35s ease;
+  pointer-events: none;
+  cursor: text;
+}
+
+.vision-search--mounted {
+  visibility: visible;
+}
+
+.vision-panel--visible .vision-search {
+  pointer-events: auto;
+}
+
+.vision-search--visible {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+.vision-search--expanded {
+  width: min(30rem, calc(100vw - 3rem));
+  border-color: rgba(125, 211, 252, 0.75);
+  box-shadow: 0 0 15px rgba(56, 189, 248, 0.14), inset 0 0 10px rgba(125, 211, 252, 0.06);
+  animation: visionSearchAmbientGlow 4s infinite ease-in-out;
+}
+
+.vision-search--running {
+  border-color: rgba(56, 189, 248, 0.42);
+}
+
+.vision-search--condensing {
+  opacity: 0.9;
+  transform: translateY(0) scale(0.965);
+  box-shadow:
+    0 0 22px rgba(56, 189, 248, 0.16),
+    inset 0 0 14px rgba(125, 211, 252, 0.08);
+}
+
+.vision-search--soft-exiting {
+  border-color: rgba(125, 211, 252, 0.4);
+  box-shadow:
+    0 0 10px rgba(56, 189, 248, 0.08),
+    inset 0 0 8px rgba(125, 211, 252, 0.04);
+  animation: none;
+}
+
+.vision-search--soft-exiting .vision-search__top-line,
+.vision-search--soft-exiting .vision-search__status-dot,
+.vision-search--soft-exiting .vision-search__send {
+  opacity: 0.35;
+}
+
+.vision-search--exiting {
+  opacity: 0;
+  transform: translateY(-0.25rem) scale(0.93);
+  filter: blur(5px);
+  pointer-events: none;
+}
+
+.vision-search__top-line {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: 60%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--sky-accent-line), transparent);
+  opacity: 0;
+  transform: translateX(-50%);
+  transition: opacity 0.4s ease;
+}
+
+.vision-search--expanded .vision-search__top-line {
+  opacity: 1;
+}
+
+.vision-search__plus,
+.vision-search__send {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  background: transparent;
+  color: #9ca3af;
+}
+
+.vision-search__plus {
+  width: 2.5rem;
+  min-width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 999px;
+  transition: background 0.2s ease;
+}
+
+.vision-search__plus:hover {
+  background: #f9fafb;
+}
+
+.vision-search__plus svg,
+.vision-search__status-dot svg,
+.vision-search__send svg {
+  width: 1.125rem;
+  height: 1.125rem;
+}
+
+.vision-search__input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  padding: 0 0.75rem;
+  background: transparent;
+  color: #374151;
+  font-size: 1.125rem;
+  opacity: 1;
+  pointer-events: none;
+}
+
+.vision-search__input::placeholder {
+  color: #9ca3af;
+}
+
+.vision-search__action {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  min-width: 2.5rem;
+  height: 2.5rem;
+}
+
+.vision-search__status-dot,
+.vision-search__send {
+  position: absolute;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 999px;
+  transition: opacity 0.3s cubic-bezier(0.34, 1.56, 0.64, 1),
+    transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.vision-search__status-dot {
+  background: #e5e7eb;
+  color: #9ca3af;
+}
+
+.vision-search__send {
+  background: #111827;
+  color: #fff;
+  opacity: 0;
+  transform: scale(0.5) rotate(-45deg);
+  pointer-events: none;
+}
+
+.vision-search--has-value .vision-search__status-dot {
+  opacity: 0;
+  transform: scale(0);
+}
+
+.vision-search--has-value .vision-search__send {
+  opacity: 1;
+  transform: scale(1) rotate(0deg);
+  pointer-events: auto;
+}
+
+.vision-search__particle {
+  position: fixed;
+  width: 3.75rem;
+  height: 3.75rem;
+  border-radius: 999px;
+  background: radial-gradient(
+    circle,
+    rgba(186, 230, 253, 0.72) 0%,
+    rgba(56, 189, 248, 0.32) 42%,
+    transparent 72%
+  );
+  pointer-events: none;
+  transform: translate(-50%, -50%) scale(0.2);
+  z-index: 1200;
+  animation: visionSearchParticlePop 0.5s cubic-bezier(0.1, 0.8, 0.3, 1) forwards;
+}
+
+@keyframes visionSearchAmbientGlow {
+  0% {
+    box-shadow: 0 0 15px rgba(56, 189, 248, 0.14), inset 0 0 10px rgba(125, 211, 252, 0.06);
+  }
+  50% {
+    box-shadow: 0 0 30px rgba(56, 189, 248, 0.28), inset 0 0 20px rgba(125, 211, 252, 0.12);
+  }
+  100% {
+    box-shadow: 0 0 15px rgba(56, 189, 248, 0.14), inset 0 0 10px rgba(125, 211, 252, 0.06);
+  }
+}
+
+@keyframes visionSearchParticlePop {
+  0% {
+    transform: translate(-50%, -50%) scale(0.2);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(1.5);
+    opacity: 0;
+  }
+}

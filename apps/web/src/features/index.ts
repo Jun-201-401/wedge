@@ -1,11 +1,13 @@
-export { runMonitorFeature } from "./run-monitor/index.js";
-export { reportViewerFeature } from "./report-viewer/index.js";
-export { projectManagementFeature } from "./project-management/index.js";
-export { scenarioBuilderFeature } from "./scenario-builder/index.js";
+export * from './landing-vision';
+export { projectManagementFeature } from './project-management';
+export { reportViewerFeature } from './report-viewer';
+export { runMonitorFeature } from './run-monitor';
+export { scenarioBuilderFeature } from './scenario-builder';
 
 export const features = {
-  runMonitor: "run-monitor",
-  reportViewer: "report-viewer",
-  projectManagement: "project-management",
-  scenarioBuilder: "scenario-builder"
-};
+  landingVision: 'landing-vision',
+  runMonitor: 'run-monitor',
+  reportViewer: 'report-viewer',
+  projectManagement: 'project-management',
+  scenarioBuilder: 'scenario-builder',
+} as const;

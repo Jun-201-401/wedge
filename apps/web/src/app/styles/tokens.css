@@ -1,0 +1,30 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;700;900&display=swap');
+
+:root {
+  --bg-color: #bae6fd;
+  --bg-grad-start: #7dd3fc;
+  --bg-grad-mid: #bae6fd;
+  --bg-grad-end: #e0f2fe;
+  --text-color: #173246;
+  --muted: #547085;
+  --line: rgba(23, 50, 70, 0.15);
+  --ink: #1f4c63;
+  --ink-soft: #2a5f79;
+  --sky: #7dd3fc;
+  --sky-soft: #e0f2fe;
+  --sky-glow: #93c5fd;
+  --white-soft: #f8fcff;
+  --sky-text: #69b8e1;
+  --sky-text-strong: #4ea7d4;
+  --sky-accent-line: rgba(224, 242, 254, 0.88);
+  --sky-accent-soft: rgba(125, 211, 252, 0.45);
+  --sky-accent-strong: rgba(56, 189, 248, 0.35);
+  --orb-sky-100: #bae6fd;
+  --orb-sky-300: #7dd3fc;
+  --orb-sky-500: #0ea5e9;
+  --orb-sky-600: #0284c7;
+  --orb-sky-700: #0f4c81;
+  --orb-sky-900: #082f49;
+  --orb-text-shadow-soft: rgba(255, 255, 255, 0.12);
+  --orb-text-shadow-sky: rgba(56, 189, 248, 0.12);
+}

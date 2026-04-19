@@ -1,3 +1,5 @@
+export { LandingPage } from './landing';
+
 export const pages = {
-  home: "Placeholder pages entry point"
-};
+  home: 'landing',
+} as const;

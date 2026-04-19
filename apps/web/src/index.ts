@@ -1,7 +1,7 @@
-export { appShell } from "./app/index.js";
-export { pages } from "./pages/index.js";
-export { features } from "./features/index.js";
-export { entities } from "./entities/index.js";
-export { shared } from "./shared/index.js";
-export { api } from "./api/index.js";
-export { websocket } from "./websocket/index.js";
+export { App, appShell } from './app';
+export { LandingPage, pages } from './pages';
+export { features } from './features';
+export { entities } from './entities';
+export { shared } from './shared';
+export { api } from './api';
+export { websocket } from './websocket';
