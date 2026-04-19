@@ -1,0 +1,169 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wedge.example.com/contracts/schemas/rule-registry.schema.json",
+  "title": "Wedge RuleRegistry",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "registry_id",
+    "rules"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "0.5"
+    },
+    "registry_id": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
+    "rules": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/rule"
+      }
+    }
+  },
+  "$defs": {
+    "stage": {
+      "enum": [
+        "FIRST_VIEW",
+        "VALUE",
+        "CTA",
+        "INPUT",
+        "COMMIT"
+      ]
+    },
+    "axis": {
+      "enum": [
+        "Clarity",
+        "Path",
+        "Friction",
+        "Trust",
+        "Reliability",
+        "Visual Integrity"
+      ]
+    },
+    "evidence_level": {
+      "enum": [
+        "Standard",
+        "Research-backed",
+        "Expert Guide",
+        "Operational",
+        "Technical"
+      ]
+    },
+    "source": {
+      "enum": [
+        "dom",
+        "layout",
+        "screenshot",
+        "ax",
+        "network",
+        "console",
+        "performance",
+        "scenario_log"
+      ]
+    },
+    "rule": {
+      "type": "object",
+      "required": [
+        "criterion_id",
+        "axis",
+        "stages",
+        "evidence_level",
+        "definition",
+        "required_observations",
+        "measurement_sources",
+        "signal_rule",
+        "severity_rules",
+        "confidence_rule",
+        "output_template"
+      ],
+      "properties": {
+        "criterion_id": {
+          "type": "string"
+        },
+        "axis": {
+          "$ref": "#/$defs/axis"
+        },
+        "stages": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/stage"
+          }
+        },
+        "evidence_level": {
+          "$ref": "#/$defs/evidence_level"
+        },
+        "definition": {
+          "type": "string"
+        },
+        "required_observations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "measurement_sources": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/source"
+          }
+        },
+        "signal_rule": {
+          "type": "string"
+        },
+        "severity_rules": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/severity_rule"
+          }
+        },
+        "exceptions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "confidence_rule": {
+          "type": "string"
+        },
+        "fix_leverage_default": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 2
+        },
+        "output_template": {
+          "type": "string"
+        },
+        "source_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "severity_rule": {
+      "type": "object",
+      "required": [
+        "severity",
+        "condition"
+      ],
+      "properties": {
+        "severity": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 3
+        },
+        "condition": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

@@ -1,0 +1,133 @@
+{
+  "schema_version": "0.5",
+  "run_id": "run_001",
+  "url": "https://example.com",
+  "final_url": "https://example.com/signup",
+  "scenario": {
+    "scenario_id": "signup_basic",
+    "scenario_type": "template",
+    "goal": "회원가입 시작 흐름 점검",
+    "plan_id": "plan_signup_basic_001"
+  },
+  "environment": {
+    "device": "desktop",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "locale": "ko-KR",
+    "timezone": "Asia/Seoul",
+    "auth_state": "anonymous"
+  },
+  "checkpoints": [
+    {
+      "checkpoint_id": "cp_001",
+      "step_id": "step_001_goto",
+      "stage": "FIRST_VIEW",
+      "trigger": {
+        "type": "goto",
+        "target": "https://example.com"
+      },
+      "settle": {
+        "strategy": "network_idle",
+        "duration_ms": 1800,
+        "status": "settled"
+      },
+      "state": {
+        "page": {
+          "title": "Example",
+          "url": "https://example.com",
+          "ready_state": "complete"
+        },
+        "dom_summary": {
+          "headings": [
+            {
+              "rank": 1,
+              "text": "Build better onboarding"
+            }
+          ]
+        },
+        "layout_summary": {
+          "first_view": {
+            "width": 1440,
+            "height": 900
+          }
+        },
+        "network_summary": {
+          "failed_request_count": 0
+        },
+        "console_summary": {
+          "error_count": 0
+        }
+      },
+      "observations": [
+        {
+          "observation_id": "obs_001",
+          "type": "heading_structure",
+          "stage": "FIRST_VIEW",
+          "source": [
+            "dom",
+            "ax"
+          ],
+          "data": {
+            "headings": [
+              {
+                "rank": 1,
+                "text": "Build better onboarding"
+              }
+            ]
+          },
+          "confidence": 0.92
+        },
+        {
+          "observation_id": "obs_002",
+          "type": "cta_cluster",
+          "stage": "CTA",
+          "source": [
+            "dom",
+            "layout",
+            "screenshot"
+          ],
+          "data": {
+            "primary_like_cta_count": 3,
+            "texts": [
+              "Start free",
+              "Book demo",
+              "Contact sales"
+            ]
+          },
+          "confidence": 0.78
+        }
+      ],
+      "deltas": [],
+      "artifact_refs": [
+        "artifact:screenshot_cp_001"
+      ]
+    }
+  ],
+  "aggregate_signals": {
+    "task_success": "partial",
+    "time_on_task_ms": 4200,
+    "click_count": 1,
+    "input_count": 0,
+    "failed_request_count": 0,
+    "console_error_count": 0,
+    "primary_cta_count_by_stage": {
+      "CTA": 3
+    }
+  },
+  "artifacts": [
+    {
+      "artifact_id": "screenshot_cp_001",
+      "type": "screenshot",
+      "uri": "s3://wedge-artifacts/runs/run_001/cp_001.png",
+      "mime_type": "image/png",
+      "size_bytes": 12345,
+      "metadata": {
+        "width": 1440,
+        "height": 900
+      }
+    }
+  ],
+  "collection_notes": []
+}

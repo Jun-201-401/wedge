@@ -1,0 +1,290 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wedge.example.com/contracts/schemas/scenario-plan.schema.json",
+  "title": "Wedge ScenarioPlan",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "plan_id",
+    "scenario_type",
+    "goal",
+    "start_url",
+    "environment",
+    "safety",
+    "steps"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "0.5"
+    },
+    "plan_id": {
+      "type": "string"
+    },
+    "scenario_type": {
+      "enum": [
+        "template",
+        "custom_compiled"
+      ]
+    },
+    "template_key": {
+      "type": "string"
+    },
+    "goal": {
+      "type": "string",
+      "minLength": 1
+    },
+    "start_url": {
+      "type": "string",
+      "format": "uri"
+    },
+    "environment": {
+      "type": "object",
+      "required": [
+        "device",
+        "viewport",
+        "locale",
+        "timezone",
+        "auth_state"
+      ],
+      "properties": {
+        "device": {
+          "enum": [
+            "desktop",
+            "mobile",
+            "tablet"
+          ]
+        },
+        "viewport": {
+          "type": "object",
+          "required": [
+            "width",
+            "height"
+          ],
+          "properties": {
+            "width": {
+              "type": "integer",
+              "minimum": 320
+            },
+            "height": {
+              "type": "integer",
+              "minimum": 480
+            }
+          }
+        },
+        "locale": {
+          "type": "string"
+        },
+        "timezone": {
+          "type": "string"
+        },
+        "geolocation": {
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "permissions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "auth_state": {
+          "enum": [
+            "anonymous",
+            "test_account",
+            "stored_state"
+          ]
+        }
+      },
+      "additionalProperties": true
+    },
+    "safety": {
+      "type": "object",
+      "required": [
+        "allow_external_navigation",
+        "allow_payment_commit",
+        "allow_destructive_action",
+        "use_synthetic_inputs"
+      ],
+      "properties": {
+        "allow_external_navigation": {
+          "type": "boolean",
+          "default": false
+        },
+        "allow_payment_commit": {
+          "type": "boolean",
+          "default": false
+        },
+        "allow_destructive_action": {
+          "type": "boolean",
+          "default": false
+        },
+        "use_synthetic_inputs": {
+          "type": "boolean",
+          "default": true
+        },
+        "stop_before_real_payment": {
+          "type": "boolean",
+          "default": true
+        }
+      },
+      "additionalProperties": false
+    },
+    "steps": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/step"
+      }
+    }
+  },
+  "$defs": {
+    "stage": {
+      "enum": [
+        "FIRST_VIEW",
+        "VALUE",
+        "CTA",
+        "INPUT",
+        "COMMIT"
+      ]
+    },
+    "target": {
+      "type": [
+        "object",
+        "string",
+        "null"
+      ],
+      "properties": {
+        "role": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        },
+        "text_any": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "label": {
+          "type": "string"
+        },
+        "label_any": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "selector": {
+          "type": "string"
+        },
+        "selector_any": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "url": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": true
+    },
+    "action": {
+      "type": "object",
+      "required": [
+        "type"
+      ],
+      "properties": {
+        "type": {
+          "enum": [
+            "goto",
+            "click",
+            "fill",
+            "select",
+            "scroll",
+            "hover",
+            "wait_for",
+            "checkpoint",
+            "stop_when"
+          ]
+        },
+        "target": {
+          "$ref": "#/$defs/target"
+        },
+        "value": {},
+        "options": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": false
+    },
+    "settle_strategy": {
+      "type": "object",
+      "required": [
+        "type",
+        "timeout_ms"
+      ],
+      "properties": {
+        "type": {
+          "enum": [
+            "network_idle",
+            "locator_visible",
+            "response",
+            "url_change",
+            "spinner_hidden",
+            "item_count_change",
+            "fixed_short",
+            "none"
+          ]
+        },
+        "timeout_ms": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "target": {
+          "$ref": "#/$defs/target"
+        }
+      },
+      "additionalProperties": true
+    },
+    "step": {
+      "type": "object",
+      "required": [
+        "step_id",
+        "stage",
+        "description",
+        "action",
+        "settle_strategy",
+        "checkpoint"
+      ],
+      "properties": {
+        "step_id": {
+          "type": "string"
+        },
+        "stage": {
+          "$ref": "#/$defs/stage"
+        },
+        "description": {
+          "type": "string"
+        },
+        "action": {
+          "$ref": "#/$defs/action"
+        },
+        "settle_strategy": {
+          "$ref": "#/$defs/settle_strategy"
+        },
+        "checkpoint": {
+          "type": "boolean",
+          "default": true
+        },
+        "stop_condition": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

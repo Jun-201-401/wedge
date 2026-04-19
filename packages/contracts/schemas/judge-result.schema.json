@@ -1,0 +1,255 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wedge.example.com/contracts/schemas/judge-result.schema.json",
+  "title": "Wedge JudgeResult",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "run_id",
+    "evidence_schema_version",
+    "rule_registry_id",
+    "summary",
+    "issues",
+    "decision_map"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "0.5"
+    },
+    "run_id": {
+      "type": "string"
+    },
+    "evidence_schema_version": {
+      "type": "string"
+    },
+    "rule_registry_id": {
+      "type": "string"
+    },
+    "summary": {
+      "type": "object",
+      "required": [
+        "overall_risk",
+        "friction_score",
+        "top_issues_count",
+        "task_success"
+      ],
+      "properties": {
+        "overall_risk": {
+          "enum": [
+            "low",
+            "medium",
+            "high",
+            "critical"
+          ]
+        },
+        "friction_score": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "top_issues_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "task_success": {
+          "enum": [
+            "success",
+            "partial",
+            "failed",
+            "blocked"
+          ]
+        }
+      }
+    },
+    "stage_scores": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/stage_score"
+      }
+    },
+    "issues": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/issue"
+      }
+    },
+    "decision_map": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "nudges": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/nudge"
+      }
+    },
+    "llm_notes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "$defs": {
+    "stage": {
+      "enum": [
+        "FIRST_VIEW",
+        "VALUE",
+        "CTA",
+        "INPUT",
+        "COMMIT"
+      ]
+    },
+    "stage_score": {
+      "type": "object",
+      "required": [
+        "stage",
+        "score",
+        "issue_count"
+      ],
+      "properties": {
+        "stage": {
+          "$ref": "#/$defs/stage"
+        },
+        "score": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "issue_count": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "issue": {
+      "type": "object",
+      "required": [
+        "issue_id",
+        "criterion_id",
+        "stage",
+        "axis",
+        "severity",
+        "confidence",
+        "priority_score",
+        "evidence_refs",
+        "summary",
+        "recommendations"
+      ],
+      "properties": {
+        "issue_id": {
+          "type": "string"
+        },
+        "criterion_id": {
+          "type": "string"
+        },
+        "stage": {
+          "$ref": "#/$defs/stage"
+        },
+        "axis": {
+          "type": "string"
+        },
+        "severity": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 3
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "priority_score": {
+          "type": "number"
+        },
+        "evidence_level": {
+          "type": "string"
+        },
+        "evidence_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "observations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "signals": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "summary": {
+          "type": "string"
+        },
+        "impact_hypothesis": {
+          "type": "string"
+        },
+        "recommendations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "validation_questions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "exceptions_applied": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "nudge": {
+      "type": "object",
+      "required": [
+        "nudge_id",
+        "issue_id",
+        "title",
+        "recommendation",
+        "difficulty"
+      ],
+      "properties": {
+        "nudge_id": {
+          "type": "string"
+        },
+        "issue_id": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "rationale": {
+          "type": "string"
+        },
+        "recommendation": {
+          "type": "string"
+        },
+        "difficulty": {
+          "enum": [
+            "LOW",
+            "MEDIUM",
+            "HIGH"
+          ]
+        },
+        "expected_effect": {
+          "type": "string"
+        },
+        "validation_question": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

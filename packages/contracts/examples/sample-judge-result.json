@@ -1,0 +1,75 @@
+{
+  "schema_version": "0.5",
+  "run_id": "run_001",
+  "evidence_schema_version": "0.5",
+  "rule_registry_id": "registry_p0_001",
+  "summary": {
+    "overall_risk": "medium",
+    "friction_score": 52.0,
+    "top_issues_count": 1,
+    "task_success": "partial"
+  },
+  "stage_scores": [
+    {
+      "stage": "CTA",
+      "score": 52.0,
+      "issue_count": 1
+    }
+  ],
+  "issues": [
+    {
+      "issue_id": "issue_001",
+      "criterion_id": "PATH-CTA-002",
+      "stage": "CTA",
+      "axis": "Path",
+      "severity": 2,
+      "confidence": 0.78,
+      "priority_score": 2.03,
+      "evidence_level": "Expert Guide + Operational",
+      "evidence_refs": [
+        "cp_001.obs_002"
+      ],
+      "observations": [
+        "같은 first-view decision stage에서 primary급 CTA 3개가 동시에 노출됨"
+      ],
+      "signals": [
+        "행동 경로 분산",
+        "첫 클릭 결정 부담"
+      ],
+      "summary": "같은 결정 순간에서 여러 primary급 CTA가 경쟁해 사용자가 첫 행동을 고르기 어려울 수 있습니다.",
+      "impact_hypothesis": "무료 시작 또는 문의 같은 핵심 전환 행동의 시작률이 낮아질 수 있습니다.",
+      "recommendations": [
+        "핵심 CTA를 1개로 정하고 보조 CTA는 secondary 스타일로 낮추기",
+        "CTA 주변 카피에서 각 행동의 차이를 명확히 설명하기"
+      ],
+      "validation_questions": [
+        "사용자는 첫 화면에서 어떤 버튼을 눌러야 하는지 바로 이해했는가?"
+      ],
+      "exceptions_applied": []
+    }
+  ],
+  "decision_map": [
+    {
+      "stage": "CTA",
+      "status": "warning",
+      "issue_ids": [
+        "issue_001"
+      ]
+    }
+  ],
+  "nudges": [
+    {
+      "nudge_id": "nudge_001",
+      "issue_id": "issue_001",
+      "title": "Primary CTA를 1개로 정리",
+      "rationale": "동일한 강조 수준의 CTA가 여러 개라 첫 행동 결정이 분산될 수 있습니다.",
+      "recommendation": "첫 화면에서는 무료 시작을 primary로 두고, 데모 예약과 문의는 secondary 스타일로 낮춥니다.",
+      "difficulty": "LOW",
+      "expected_effect": "첫 클릭 경로를 단순화해 CTA decision friction을 낮출 수 있습니다.",
+      "validation_question": "수정 후 첫 화면에서 사용자가 3초 안에 primary CTA를 식별하는가?"
+    }
+  ],
+  "llm_notes": [
+    "LLM output constrained to Rule Engine results."
+  ]
+}

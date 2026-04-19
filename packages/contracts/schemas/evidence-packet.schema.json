@@ -1,0 +1,255 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wedge.example.com/contracts/schemas/evidence-packet.schema.json",
+  "title": "Wedge EvidencePacket",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "run_id",
+    "url",
+    "scenario",
+    "environment",
+    "checkpoints",
+    "aggregate_signals",
+    "artifacts"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "0.5"
+    },
+    "run_id": {
+      "type": "string"
+    },
+    "url": {
+      "type": "string",
+      "format": "uri"
+    },
+    "final_url": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "scenario": {
+      "type": "object"
+    },
+    "environment": {
+      "type": "object"
+    },
+    "checkpoints": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/checkpoint"
+      }
+    },
+    "aggregate_signals": {
+      "type": "object"
+    },
+    "artifacts": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/artifact"
+      }
+    },
+    "collection_notes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "$defs": {
+    "stage": {
+      "enum": [
+        "FIRST_VIEW",
+        "VALUE",
+        "CTA",
+        "INPUT",
+        "COMMIT"
+      ]
+    },
+    "checkpoint": {
+      "type": "object",
+      "required": [
+        "checkpoint_id",
+        "step_id",
+        "stage",
+        "trigger",
+        "settle",
+        "state",
+        "observations",
+        "deltas",
+        "artifact_refs"
+      ],
+      "properties": {
+        "checkpoint_id": {
+          "type": "string"
+        },
+        "step_id": {
+          "type": "string"
+        },
+        "stage": {
+          "$ref": "#/$defs/stage"
+        },
+        "trigger": {
+          "type": "object"
+        },
+        "settle": {
+          "type": "object"
+        },
+        "state": {
+          "$ref": "#/$defs/state"
+        },
+        "observations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/observation"
+          }
+        },
+        "deltas": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "artifact_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "state": {
+      "type": "object",
+      "properties": {
+        "page": {
+          "type": "object"
+        },
+        "dom_summary": {
+          "type": "object"
+        },
+        "layout_summary": {
+          "type": "object"
+        },
+        "visual_summary": {
+          "type": "object"
+        },
+        "ax_summary": {
+          "type": "object"
+        },
+        "network_summary": {
+          "type": "object"
+        },
+        "console_summary": {
+          "type": "object"
+        },
+        "performance_summary": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": true
+    },
+    "observation": {
+      "type": "object",
+      "required": [
+        "observation_id",
+        "type",
+        "stage",
+        "source",
+        "data"
+      ],
+      "properties": {
+        "observation_id": {
+          "type": "string"
+        },
+        "type": {
+          "enum": [
+            "heading_structure",
+            "first_view_message",
+            "cta_candidate",
+            "cta_cluster",
+            "form_field",
+            "form_error",
+            "trust_signal",
+            "visual_emphasis",
+            "contrast_issue",
+            "target_size_issue",
+            "network_failure",
+            "console_error",
+            "performance_metric",
+            "scroll_delta",
+            "other"
+          ]
+        },
+        "stage": {
+          "$ref": "#/$defs/stage"
+        },
+        "source": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "dom",
+              "layout",
+              "screenshot",
+              "ax",
+              "network",
+              "console",
+              "performance",
+              "scenario_log",
+              "rule"
+            ]
+          }
+        },
+        "data": {
+          "type": "object"
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "artifact": {
+      "type": "object",
+      "required": [
+        "artifact_id",
+        "type",
+        "uri"
+      ],
+      "properties": {
+        "artifact_id": {
+          "type": "string"
+        },
+        "type": {
+          "enum": [
+            "frame",
+            "screenshot",
+            "dom_snapshot",
+            "ax_tree",
+            "trace",
+            "har",
+            "console_log",
+            "report",
+            "other"
+          ]
+        },
+        "uri": {
+          "type": "string"
+        },
+        "mime_type": {
+          "type": "string"
+        },
+        "size_bytes": {
+          "type": "integer"
+        },
+        "metadata": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}
