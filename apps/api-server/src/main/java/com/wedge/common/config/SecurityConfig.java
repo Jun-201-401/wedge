@@ -2,6 +2,7 @@ package com.wedge.common.config;
 
 import com.wedge.common.security.JsonAccessDeniedHandler;
 import com.wedge.common.security.JsonAuthenticationEntryPoint;
+import com.wedge.common.security.InternalServiceTokenFilter;
 import com.wedge.common.security.JwtAuthenticationFilter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -19,15 +20,18 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 @EnableWebSecurity
 public class SecurityConfig {
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
+    private final InternalServiceTokenFilter internalServiceTokenFilter;
     private final JsonAuthenticationEntryPoint authenticationEntryPoint;
     private final JsonAccessDeniedHandler accessDeniedHandler;
 
     public SecurityConfig(
             JwtAuthenticationFilter jwtAuthenticationFilter,
+            InternalServiceTokenFilter internalServiceTokenFilter,
             JsonAuthenticationEntryPoint authenticationEntryPoint,
             JsonAccessDeniedHandler accessDeniedHandler
     ) {
         this.jwtAuthenticationFilter = jwtAuthenticationFilter;
+        this.internalServiceTokenFilter = internalServiceTokenFilter;
         this.authenticationEntryPoint = authenticationEntryPoint;
         this.accessDeniedHandler = accessDeniedHandler;
     }
@@ -55,10 +59,12 @@ public class SecurityConfig {
                                 "/swagger-ui.html",
                                 "/v3/api-docs/**"
                         ).permitAll()
-                        .requestMatchers("/api/auth/logout", "/api/auth/me").authenticated()
+                        .requestMatchers("/api/auth/logout", "/api/auth/me", "/api/runs", "/api/runs/**").authenticated()
+                        .requestMatchers("/internal/runner/**").hasRole("INTERNAL_RUNNER")
                         .requestMatchers("/api/**", "/internal/**", "/mcp/**").denyAll()
                         .anyRequest().permitAll()
                 )
+                .addFilterBefore(internalServiceTokenFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
         return http.build();
     }

@@ -22,7 +22,9 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private static final String ACTIVE_STATUS = "ACTIVE";
     private static final List<String> HUMAN_JWT_PATHS = List.of(
             "/api/auth/logout",
-            "/api/auth/me"
+            "/api/auth/me",
+            "/api/runs",
+            "/api/runs/**"
     );
 
     private final JwtTokenProvider jwtTokenProvider;
