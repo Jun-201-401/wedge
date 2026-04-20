@@ -1,6 +1,11 @@
 spring:
   application:
     name: wedge-api-server
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/wedge}
+    username: ${SPRING_DATASOURCE_USERNAME:wedge}
+    password: ${SPRING_DATASOURCE_PASSWORD:wedge}
+    driver-class-name: org.postgresql.Driver
   data:
     redis:
       host: ${REDIS_HOST:localhost}
@@ -8,6 +13,7 @@ spring:
 
 mybatis:
   mapper-locations: classpath*:mapper/**/*.xml
+  type-handlers-package: com.wedge.common.mybatis
   configuration:
     map-underscore-to-camel-case: true
 

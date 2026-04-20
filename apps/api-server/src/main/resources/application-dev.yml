@@ -1,0 +1,11 @@
+spring:
+  config:
+    activate:
+      on-profile: dev
+
+jwt:
+  secret: ${JWT_SECRET:wedge-local-dev-jwt-secret-change-me-32-characters-minimum}
+
+wedge:
+  internal:
+    service-token: ${INTERNAL_SERVICE_TOKEN:wedge-local-dev-internal-service-token}
