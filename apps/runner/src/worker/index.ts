@@ -5,7 +5,7 @@ import type { CapturePipeline } from "../capture/index.ts";
 import { executeScenario, type ScenarioExecutionSummary } from "../scenario/executor/index.ts";
 import type { ArtifactStore } from "../storage/index.ts";
 import type { RunExecuteMessage } from "../shared/contracts.ts";
-import { errorMessage, toIsoTimestamp } from "../shared/utils.ts";
+import { emitAcceptedCallback, emitFailedCallback, emitFinishedCallback } from "./callback-policy.ts";
 
 export interface RunnerExecutionResult {
   runId: string;
@@ -46,9 +46,10 @@ export function registerWorker({
           plan: message.payload.scenarioPlan
         });
 
-        await callbackClient.sendAccepted(message.payload.runId, {
+        await emitAcceptedCallback({
+          callbackClient,
+          runId: message.payload.runId,
           workerId: config.workerId,
-          acceptedAt: toIsoTimestamp(),
           browserSessionId: session.id
         });
 
@@ -63,9 +64,10 @@ export function registerWorker({
           artifactStore
         });
 
-        await callbackClient.sendFinished(message.payload.runId, {
+        await emitFinishedCallback({
+          callbackClient,
+          runId: message.payload.runId,
           workerId: config.workerId,
-          executionFinishedAt: toIsoTimestamp(),
           summary
         });
 
@@ -76,21 +78,14 @@ export function registerWorker({
           summary
         };
       } catch (error) {
-        if (session) {
-          try {
-            await callbackClient.sendFailed(message.payload.runId, {
-              workerId: config.workerId,
-              failedAt: toIsoTimestamp(),
-              failureCode: "RUNNER_EXECUTION_FAILED",
-              failureMessage: errorMessage(error),
-              resultCompleteness: accepted ? "PARTIAL" : "NONE"
-            });
-          } catch (sendFailedError) {
-            throw new Error(
-              `runner execution failed: ${errorMessage(error)}; failed callback emission failed: ${errorMessage(sendFailedError)}`
-            );
-          }
-        }
+        await emitFailedCallback({
+          callbackClient,
+          runId: message.payload.runId,
+          workerId: config.workerId,
+          error,
+          accepted,
+          hasSession: session !== undefined
+        });
 
         throw error;
       } finally {

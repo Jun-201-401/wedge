@@ -22,6 +22,11 @@ function assertRunExecuteMessage(value: unknown): asserts value is RunExecuteMes
     throw new Error("runner messageType must be run.execute.request");
   }
 
+  assertNonEmptyString(value.messageId, "runner messageId");
+  assertNonEmptyString(value.schemaVersion, "runner schemaVersion");
+  assertNonEmptyString(value.createdAt, "runner createdAt");
+  assertNonEmptyString(value.producer, "runner producer");
+
   if (!isRecord(value.payload)) {
     throw new Error("runner payload must be an object");
   }
@@ -42,7 +47,24 @@ function assertRunExecuteMessage(value: unknown): asserts value is RunExecuteMes
     throw new Error("runner payload.goal is required");
   }
 
+  if (
+    value.payload.devicePreset !== "desktop" &&
+    value.payload.devicePreset !== "tablet" &&
+    value.payload.devicePreset !== "mobile"
+  ) {
+    throw new Error("runner payload.devicePreset is invalid");
+  }
+
+  assertNonEmptyString(value.payload.scenarioTemplateVersionId, "runner payload.scenarioTemplateVersionId");
   assertScenarioPlan(value.payload.scenarioPlan);
+  assertScenarioPlanConsistency(
+    {
+      startUrl: value.payload.startUrl,
+      goal: value.payload.goal,
+      devicePreset: value.payload.devicePreset
+    },
+    value.payload.scenarioPlan
+  );
 }
 
 function assertScenarioPlan(value: unknown): asserts value is ScenarioPlan {
@@ -151,6 +173,23 @@ function assertScenarioSafety(value: unknown): void {
   assertBoolean(value.allow_payment_commit, "scenarioPlan.safety.allow_payment_commit");
   assertBoolean(value.allow_destructive_action, "scenarioPlan.safety.allow_destructive_action");
   assertBoolean(value.use_synthetic_inputs, "scenarioPlan.safety.use_synthetic_inputs");
+}
+
+function assertScenarioPlanConsistency(
+  payload: Pick<RunExecuteMessage["payload"], "startUrl" | "goal" | "devicePreset">,
+  scenarioPlan: ScenarioPlan
+): void {
+  if (payload.startUrl !== scenarioPlan.start_url) {
+    throw new Error("runner payload.startUrl must match scenarioPlan.start_url");
+  }
+
+  if (payload.goal !== scenarioPlan.goal) {
+    throw new Error("runner payload.goal must match scenarioPlan.goal");
+  }
+
+  if (payload.devicePreset !== scenarioPlan.environment.device) {
+    throw new Error("runner payload.devicePreset must match scenarioPlan.environment.device");
+  }
 }
 
 function assertNonEmptyString(value: unknown, fieldName: string): void {

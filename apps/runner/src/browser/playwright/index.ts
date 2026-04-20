@@ -110,7 +110,7 @@ class SimulatedPlaywrightSession implements BrowserSession {
 
     switch (action.type) {
       case "goto": {
-        const nextUrl = typeof action.target === "string" ? action.target : this.plan.start_url;
+        const nextUrl = inferGotoUrl(action.target, this.plan.start_url);
         this.navigate(nextUrl);
         break;
       }
@@ -229,7 +229,7 @@ function createTitleFromUrl(urlString: string): string {
   }
 }
 
-function inferFieldKey(target: TargetDescriptor, fallback: string): string {
+function inferFieldKey(target: TargetDescriptor | undefined, fallback: string): string {
   if (target && typeof target === "object") {
     if (typeof target.label === "string" && target.label.length > 0) {
       return target.label;
@@ -247,7 +247,19 @@ function inferFieldKey(target: TargetDescriptor, fallback: string): string {
   return fallback;
 }
 
-function inferNavigationUrl(currentUrl: string, target: TargetDescriptor): string | null {
+function inferGotoUrl(target: TargetDescriptor | undefined, fallbackUrl: string): string {
+  if (typeof target === "string") {
+    return target;
+  }
+
+  if (target && typeof target === "object" && typeof target.url === "string" && target.url.length > 0) {
+    return target.url;
+  }
+
+  return fallbackUrl;
+}
+
+function inferNavigationUrl(currentUrl: string, target: TargetDescriptor | undefined): string | null {
   if (target && typeof target === "object" && typeof target.url === "string") {
     return target.url;
   }
@@ -262,7 +274,7 @@ function inferNavigationUrl(currentUrl: string, target: TargetDescriptor): strin
 
 function shouldStop(stopCondition: Record<string, unknown> | undefined, finalUrl: string): boolean {
   if (!stopCondition) {
-    return true;
+    return false;
   }
 
   const urlIncludes = stopCondition.url_includes;
@@ -270,7 +282,7 @@ function shouldStop(stopCondition: Record<string, unknown> | undefined, finalUrl
     return finalUrl.includes(urlIncludes);
   }
 
-  return true;
+  return false;
 }
 
 function stringifyValue(value: unknown): string {
