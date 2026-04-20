@@ -18,6 +18,7 @@
 
 ## 추가 참조 문서
 
+- `ddd_architecture_guide.md` — DDD를 처음 보는 팀원을 위한 Wedge 구조 해설
 - `wedge_frontend_architecture.md` — `apps/web` 프론트엔드 스택과 경계
 - `wedge_schema.sql` — 현재 PostgreSQL DDL 기준
 - `git_conventions.md` — commit/PR 규칙
