@@ -1,1 +1,2 @@
-export const scaffoldTag = "runner-shared-scaffold";
+export * from "./contracts.ts";
+export * from "./utils.ts";
