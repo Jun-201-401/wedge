@@ -105,17 +105,178 @@
       "artifact_refs": [
         "artifact:screenshot_cp_001"
       ]
+    },
+    {
+      "checkpoint_id": "cp_002",
+      "step_id": "step_003_fill_email",
+      "stage": "INPUT",
+      "trigger": {
+        "type": "fill",
+        "target": {
+          "label_any": [
+            "이메일",
+            "Email"
+          ]
+        }
+      },
+      "settle": {
+        "strategy": "response",
+        "duration_ms": 216,
+        "status": "settled"
+      },
+      "state": {
+        "page": {
+          "title": "Sign up",
+          "url": "https://example.com/signup",
+          "ready_state": "interactive"
+        },
+        "dom_summary": {
+          "form_fields": [
+            {
+              "key": "Email",
+              "filled": true
+            }
+          ]
+        },
+        "network_summary": {
+          "failed_request_count": 0,
+          "matched_response_count": 1
+        }
+      },
+      "observations": [
+        {
+          "observation_id": "obs_003",
+          "type": "form_field",
+          "stage": "INPUT",
+          "source": [
+            "dom",
+            "scenario_log"
+          ],
+          "data": {
+            "field_key": "Email",
+            "value_length": 22
+          },
+          "confidence": 0.99
+        },
+        {
+          "observation_id": "obs_004",
+          "type": "settle_response",
+          "stage": "INPUT",
+          "source": [
+            "network",
+            "scenario_log"
+          ],
+          "data": {
+            "settle_status": "settled",
+            "target": "url=/api/signup/validate-email",
+            "matched_url": "https://example.com/api/signup/validate-email",
+            "method": "POST",
+            "status_code": 200,
+            "url_includes": "/api/signup/validate-email"
+          },
+          "confidence": 0.96
+        }
+      ],
+      "deltas": [
+        {
+          "type": "last_action",
+          "action": "fill",
+          "target": "label_any=이메일|Email"
+        }
+      ],
+      "artifact_refs": [
+        "artifact:screenshot_cp_002"
+      ]
+    },
+    {
+      "checkpoint_id": "cp_003",
+      "step_id": "step_004_expand_benefits",
+      "stage": "VALUE",
+      "trigger": {
+        "type": "click",
+        "target": {
+          "role": "button",
+          "text_any": [
+            "혜택 보기",
+            "See benefits"
+          ]
+        }
+      },
+      "settle": {
+        "strategy": "item_count_change",
+        "duration_ms": 184,
+        "status": "settled"
+      },
+      "state": {
+        "page": {
+          "title": "Sign up",
+          "url": "https://example.com/signup",
+          "ready_state": "complete"
+        },
+        "dom_summary": {
+          "benefit_items": [
+            "무료 체험",
+            "팀 협업",
+            "분석 리포트"
+          ]
+        }
+      },
+      "observations": [
+        {
+          "observation_id": "obs_005",
+          "type": "cta_candidate",
+          "stage": "VALUE",
+          "source": [
+            "dom",
+            "layout",
+            "scenario_log"
+          ],
+          "data": {
+            "target": "role=button, text_any=혜택 보기|See benefits"
+          },
+          "confidence": 0.84
+        },
+        {
+          "observation_id": "obs_006",
+          "type": "settle_item_count_change",
+          "stage": "VALUE",
+          "source": [
+            "dom",
+            "scenario_log"
+          ],
+          "data": {
+            "settle_status": "settled",
+            "target": "selector=#signup-benefits li",
+            "baseline_count": 1,
+            "current_count": 3,
+            "expected_count": 3,
+            "count_delta": 2
+          },
+          "confidence": 0.93
+        }
+      ],
+      "deltas": [
+        {
+          "type": "last_action",
+          "action": "click",
+          "target": "role=button, text_any=혜택 보기|See benefits"
+        }
+      ],
+      "artifact_refs": [
+        "artifact:screenshot_cp_003"
+      ]
     }
   ],
   "aggregate_signals": {
     "task_success": "partial",
-    "time_on_task_ms": 4200,
-    "click_count": 1,
-    "input_count": 0,
+    "time_on_task_ms": 5600,
+    "click_count": 2,
+    "input_count": 1,
     "failed_request_count": 0,
     "console_error_count": 0,
     "primary_cta_count_by_stage": {
-      "CTA": 3
+      "CTA": 3,
+      "VALUE": 1
     }
   },
   "scenario_fit": {
@@ -134,6 +295,28 @@
       "uri": "s3://wedge-artifacts/runs/run_001/cp_001.png",
       "mime_type": "image/png",
       "size_bytes": 12345,
+      "metadata": {
+        "width": 1440,
+        "height": 900
+      }
+    },
+    {
+      "artifact_id": "screenshot_cp_002",
+      "type": "screenshot",
+      "uri": "s3://wedge-artifacts/runs/run_001/cp_002.png",
+      "mime_type": "image/png",
+      "size_bytes": 13210,
+      "metadata": {
+        "width": 1440,
+        "height": 900
+      }
+    },
+    {
+      "artifact_id": "screenshot_cp_003",
+      "type": "screenshot",
+      "uri": "s3://wedge-artifacts/runs/run_001/cp_003.png",
+      "mime_type": "image/png",
+      "size_bytes": 13844,
       "metadata": {
         "width": 1440,
         "height": 900

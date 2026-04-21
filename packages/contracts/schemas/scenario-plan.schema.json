@@ -308,6 +308,32 @@
         },
         "target": {
           "$ref": "#/$defs/target"
+        },
+        "url_includes": {
+          "type": "string"
+        },
+        "method": {
+          "type": "string"
+        },
+        "status": {
+          "type": "integer",
+          "minimum": 100,
+          "maximum": 599
+        },
+        "expected_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "min_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "max_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "count_delta": {
+          "type": "integer"
         }
       },
       "additionalProperties": true

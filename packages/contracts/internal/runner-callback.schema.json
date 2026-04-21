@@ -318,8 +318,52 @@
           "type": "array",
           "items": {
             "type": "object",
-            "additionalProperties": true
-          }
+            "additionalProperties": true,
+            "examples": [
+              {
+                "type": "settle_response",
+                "settle_status": "settled",
+                "target": "url=/api/signup/validate-email",
+                "matched_url": "https://example.com/api/signup/validate-email",
+                "method": "POST",
+                "status_code": 200,
+                "url_includes": "/api/signup/validate-email"
+              },
+              {
+                "type": "settle_item_count_change",
+                "settle_status": "settled",
+                "target": "selector=#signup-benefits li",
+                "baseline_count": 1,
+                "current_count": 3,
+                "expected_count": 3,
+                "count_delta": 2
+              }
+            ]
+          },
+          "examples": [
+            [
+              {
+                "type": "settle_response",
+                "settle_status": "settled",
+                "target": "url=/api/signup/validate-email",
+                "matched_url": "https://example.com/api/signup/validate-email",
+                "method": "POST",
+                "status_code": 200,
+                "url_includes": "/api/signup/validate-email"
+              }
+            ],
+            [
+              {
+                "type": "settle_item_count_change",
+                "settle_status": "settled",
+                "target": "selector=#signup-benefits li",
+                "baseline_count": 1,
+                "current_count": 3,
+                "expected_count": 3,
+                "count_delta": 2
+              }
+            ]
+          ]
         },
         "deltas": {
           "type": "array",
@@ -339,7 +383,58 @@
           "minLength": 1
         }
       },
-      "title": "Checkpoint"
+      "title": "Checkpoint",
+      "examples": [
+        {
+          "checkpointId": "checkpoint-response-1",
+          "stepKey": "step_003_fill_email",
+          "stage": "INPUT",
+          "trigger": {
+            "stepOrder": 3,
+            "actionType": "fill",
+            "description": "테스트 이메일 입력"
+          },
+          "settle": {
+            "strategy": "response",
+            "durationMs": 216,
+            "status": "settled"
+          },
+          "state": {
+            "url": "https://example.com/signup",
+            "title": "Sign up",
+            "fields": {
+              "Email": "test+wedge@example.com"
+            }
+          },
+          "observations": [
+            {
+              "type": "form_field",
+              "field_key": "Email",
+              "value_length": 22
+            },
+            {
+              "type": "settle_response",
+              "settle_status": "settled",
+              "target": "url=/api/signup/validate-email",
+              "matched_url": "https://example.com/api/signup/validate-email",
+              "method": "POST",
+              "status_code": 200,
+              "url_includes": "/api/signup/validate-email"
+            }
+          ],
+          "deltas": [
+            {
+              "type": "last_action",
+              "action": "fill",
+              "target": "label_any=이메일|Email"
+            }
+          ],
+          "artifactRefs": [
+            "artifact-1",
+            "artifact-2"
+          ]
+        }
+      ]
     },
     "RunnerCheckpointsRequest": {
       "type": "object",
