@@ -26,6 +26,7 @@ Canonical machine-readable contracts belong here. Human-readable design rational
 - `examples/sample-site-discovery-result.json`: SiteDiscoveryResult fixture
 - `examples/sample-evidence-packet.json`: EvidencePacket fixture
 - `examples/sample-judge-result.json`: JudgeResult fixture
+- `examples/sample-analyzer-completed.json`: analyzer completed callback example consuming settle observations
 - `examples/sample-runner-checkpoints.json`: runner callback checkpoint example including settle observation subtypes
 - `mq/messages.schema.json`: RabbitMQ common envelope and message type contract; this is the canonical MQ source
 - `mq/run.execute.request.schema.json`: thin `$ref` entrypoint to `messages.schema.json#/$defs/RunExecutePayload`

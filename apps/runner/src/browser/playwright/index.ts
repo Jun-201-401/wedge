@@ -86,6 +86,16 @@ export interface BrowserSessionFactory {
   createSession: (input: { runId: string; plan: ScenarioPlan }) => Promise<BrowserSession>;
 }
 
+class SettleTimeoutError extends Error {
+  readonly details: Record<string, unknown>;
+
+  constructor(message: string, details: Record<string, unknown>) {
+    super(message);
+    this.name = "SettleTimeoutError";
+    this.details = details;
+  }
+}
+
 interface MutableBrowserState {
   currentUrl: string;
   finalUrl: string;
@@ -425,7 +435,7 @@ class RealPlaywrightSession implements BrowserSession {
             loadState: "networkidle"
           }
         };
-      } catch {
+      } catch (error) {
         await this.refreshPageState();
 
         return {
@@ -458,7 +468,7 @@ class RealPlaywrightSession implements BrowserSession {
             locatorState
           }
         };
-      } catch {
+      } catch (error) {
         await this.refreshPageState();
 
         return {
@@ -525,7 +535,8 @@ class RealPlaywrightSession implements BrowserSession {
             mode: "response_wait",
             urlIncludes: resolveSettleResponseUrlIncludes(strategy),
             method: resolveSettleResponseMethod(strategy),
-            status: resolveSettleResponseStatus(strategy)
+            status: resolveSettleResponseStatus(strategy),
+            timeoutMs: strategy.timeout_ms
           }
         };
       }
@@ -543,7 +554,7 @@ class RealPlaywrightSession implements BrowserSession {
           targetSummary,
           details
         };
-      } catch {
+      } catch (error) {
         await this.refreshPageState();
 
         return {
@@ -551,13 +562,16 @@ class RealPlaywrightSession implements BrowserSession {
           durationMs: Date.now() - startedAt,
           status: "timeout",
           targetSummary,
-          details: {
-            mode: "item_count_poll",
-            expectedCount: resolveSettleExpectedCount(strategy),
-            minCount: resolveSettleMinCount(strategy),
-            maxCount: resolveSettleMaxCount(strategy),
-            countDelta: resolveSettleCountDelta(strategy)
-          }
+          details: error instanceof SettleTimeoutError
+            ? error.details
+            : {
+                mode: "item_count_poll",
+                expectedCount: resolveSettleExpectedCount(strategy),
+                minCount: resolveSettleMinCount(strategy),
+                maxCount: resolveSettleMaxCount(strategy),
+                countDelta: resolveSettleCountDelta(strategy),
+                timeoutMs: strategy.timeout_ms
+              }
         };
       }
     }
@@ -862,7 +876,8 @@ class RealPlaywrightSession implements BrowserSession {
       matchedUrl: response.url(),
       method: response.request().method().toUpperCase(),
       status: response.status(),
-      urlIncludes
+      urlIncludes,
+      timeoutMs: timeoutMs
     };
   }
 
@@ -875,9 +890,11 @@ class RealPlaywrightSession implements BrowserSession {
     const minCount = resolveSettleMinCount(strategy);
     const maxCount = resolveSettleMaxCount(strategy);
     const countDelta = resolveSettleCountDelta(strategy);
+    let lastObservedCount = baselineCount;
 
     while (Date.now() - startedAt <= timeoutMs) {
       const currentCount = await locator.count();
+      lastObservedCount = currentCount;
 
       if (isExpectedItemCountReached(currentCount, baselineCount, { expectedCount, minCount, maxCount, countDelta })) {
         return {
@@ -887,14 +904,24 @@ class RealPlaywrightSession implements BrowserSession {
           expectedCount,
           minCount,
           maxCount,
-          countDelta
+          countDelta,
+          timeoutMs
         };
       }
 
       await sleep(50);
     }
 
-    throw new Error("Timed out waiting for item count change");
+    throw new SettleTimeoutError("Timed out waiting for item count change", {
+      mode: "item_count_poll",
+      baselineCount,
+      currentCount: lastObservedCount,
+      expectedCount,
+      minCount,
+      maxCount,
+      countDelta,
+      timeoutMs
+    });
   }
 
   private async refreshPageState(nextUrl?: string): Promise<void> {

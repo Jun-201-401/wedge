@@ -691,6 +691,157 @@ test("real playwright item_count_change waits for delayed list growth before ret
   }
 });
 
+test("real playwright response and item_count_change report timeout when settle conditions are not met", async () => {
+  const fixtureServer = await createResponseFixtureServer();
+  const fixtureRoot = await mkdtemp(join(tmpdir(), "wedge-runner-playwright-site-"));
+  const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-playwright-artifacts-"));
+  let responseSession: Awaited<ReturnType<ReturnType<typeof createPlaywrightSessionFactory>["createSession"]>> | undefined;
+  let itemCountSession: Awaited<ReturnType<ReturnType<typeof createPlaywrightSessionFactory>["createSession"]>> | undefined;
+
+  try {
+    const browserFactory = createPlaywrightSessionFactory(
+      createRunnerTestConfig({
+        browserMode: "playwright",
+        artifactsRoot,
+        callbackLogFile: join(artifactsRoot, "callbacks.jsonl"),
+        browserLaunchTimeoutMs: 45_000,
+        browserNavigationTimeoutMs: 10_000
+      })
+    );
+
+    responseSession = await browserFactory.createSession({
+      runId: "run-playwright-response-timeout",
+      plan: createPlaywrightPlan(fixtureServer.formUrl)
+    });
+
+    await responseSession.execute(
+      {
+        type: "goto",
+        target: {
+          url: fixtureServer.formUrl
+        }
+      },
+      createStep({
+        step_id: "step_open_response_form",
+        stage: "FIRST_VIEW",
+        description: "open response timeout fixture",
+        action: {
+          type: "goto",
+          target: {
+            url: fixtureServer.formUrl
+          }
+        }
+      })
+    );
+
+    await responseSession.execute(
+      {
+        type: "click",
+        target: {
+          selector: "#response-trigger"
+        }
+      },
+      createStep({
+        step_id: "step_trigger_response",
+        stage: "INPUT",
+        description: "trigger delayed response",
+        action: {
+          type: "click",
+          target: {
+            selector: "#response-trigger"
+          }
+        }
+      })
+    );
+
+    const responseTimeoutResult = await responseSession.settle({
+      type: "response",
+      timeout_ms: 120,
+      target: {
+        url: "/api/mock-response"
+      },
+      method: "GET",
+      status: 204
+    });
+
+    assert.equal(responseTimeoutResult.status, "timeout");
+    assert.equal(responseTimeoutResult.strategy, "response");
+    assert.equal(responseTimeoutResult.details?.status, 204);
+    assert.equal(responseTimeoutResult.details?.method, "GET");
+    assert.equal(responseTimeoutResult.details?.timeoutMs, 120);
+
+    const { formUrl } = await createFixtureSite(fixtureRoot);
+    itemCountSession = await browserFactory.createSession({
+      runId: "run-playwright-item-count-timeout",
+      plan: createPlaywrightPlan(formUrl)
+    });
+
+    await itemCountSession.execute(
+      {
+        type: "goto",
+        target: {
+          url: formUrl
+        }
+      },
+      createStep({
+        step_id: "step_open_item_count_form",
+        stage: "FIRST_VIEW",
+        description: "open item-count timeout fixture",
+        action: {
+          type: "goto",
+          target: {
+            url: formUrl
+          }
+        }
+      })
+    );
+
+    await itemCountSession.execute(
+      {
+        type: "click",
+        target: {
+          selector: "#item-count-trigger"
+        }
+      },
+      createStep({
+        step_id: "step_trigger_item_count_timeout",
+        stage: "VALUE",
+        description: "trigger delayed list growth",
+        action: {
+          type: "click",
+          target: {
+            selector: "#item-count-trigger"
+          }
+        }
+      })
+    );
+
+    const itemCountTimeoutResult = await itemCountSession.settle({
+      type: "item_count_change",
+      timeout_ms: 120,
+      target: {
+        selector: "#item-count-list li"
+      },
+      expected_count: 4,
+      count_delta: 3
+    });
+
+    assert.equal(itemCountTimeoutResult.status, "timeout");
+    assert.equal(itemCountTimeoutResult.strategy, "item_count_change");
+    assert.equal(itemCountTimeoutResult.details?.baselineCount, 1);
+    assert.equal(itemCountTimeoutResult.details?.currentCount, 1);
+    assert.equal(itemCountTimeoutResult.details?.expectedCount, 4);
+    assert.equal(itemCountTimeoutResult.details?.countDelta, 3);
+    assert.equal(itemCountTimeoutResult.details?.timeoutMs, 120);
+  } finally {
+    await responseSession?.close();
+    await itemCountSession?.close();
+    await fixtureServer.close();
+    await rm(fixtureRoot, { recursive: true, force: true });
+    await rm(artifactsRoot, { recursive: true, force: true });
+  }
+});
+
 test("real playwright artifacts persist with png/html metadata and filesystem content", async () => {
   const fixtureRoot = await mkdtemp(join(tmpdir(), "wedge-runner-playwright-site-"));
   const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-playwright-artifacts-"));

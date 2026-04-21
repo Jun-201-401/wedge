@@ -265,6 +265,81 @@ test("capture pipeline records structured response and item-count settle observa
     })
   });
 
+  const responseTimeoutCollection = await capturePipeline.collectCheckpoint({
+    step: {
+      step_id: "step_response_timeout",
+      stage: "INPUT",
+      description: "wait for email validation response but time out",
+      action: {
+        type: "fill",
+        target: {
+          label: "Email"
+        },
+        value: "slow@example.com"
+      },
+      settle_strategy: {
+        type: "response",
+        timeout_ms: 120,
+        url_includes: "/api/signup/validate-email"
+      },
+      checkpoint: true
+    },
+    stepOrder: 3,
+    plan,
+    pageSnapshot,
+    settleResult: createSettledResult({
+      strategy: "response",
+      durationMs: 120,
+      status: "timeout",
+      targetSummary: "url=/api/signup/validate-email",
+      details: {
+        method: "POST",
+        status: 200,
+        urlIncludes: "/api/signup/validate-email",
+        timeoutMs: 120
+      }
+    })
+  });
+
+  const itemCountTimeoutCollection = await capturePipeline.collectCheckpoint({
+    step: {
+      step_id: "step_item_count_timeout",
+      stage: "VALUE",
+      description: "wait for benefit items to grow but time out",
+      action: {
+        type: "click",
+        target: {
+          selector: "#signup-benefits-toggle"
+        }
+      },
+      settle_strategy: {
+        type: "item_count_change",
+        timeout_ms: 120,
+        target: {
+          selector: "#signup-benefits li"
+        },
+        expected_count: 4
+      },
+      checkpoint: true
+    },
+    stepOrder: 4,
+    plan,
+    pageSnapshot,
+    settleResult: createSettledResult({
+      strategy: "item_count_change",
+      durationMs: 120,
+      status: "timeout",
+      targetSummary: "selector=#signup-benefits li",
+      details: {
+        baselineCount: 1,
+        currentCount: 1,
+        expectedCount: 4,
+        countDelta: 3,
+        timeoutMs: 120
+      }
+    })
+  });
+
   assert.ok(
     responseCollection.checkpoint.observations.some(
       (observation) =>
@@ -283,6 +358,28 @@ test("capture pipeline records structured response and item-count settle observa
         observation.current_count === 3 &&
         observation.expected_count === 3 &&
         observation.count_delta === 2
+    )
+  );
+
+  assert.ok(
+    responseTimeoutCollection.checkpoint.observations.some(
+      (observation) =>
+        observation.type === "settle_response" &&
+        observation.settle_status === "timeout" &&
+        observation.status_code === 200 &&
+        observation.url_includes === "/api/signup/validate-email"
+    )
+  );
+
+  assert.ok(
+    itemCountTimeoutCollection.checkpoint.observations.some(
+      (observation) =>
+        observation.type === "settle_item_count_change" &&
+        observation.settle_status === "timeout" &&
+        observation.baseline_count === 1 &&
+        observation.current_count === 1 &&
+        observation.expected_count === 4 &&
+        observation.count_delta === 3
     )
   );
 });

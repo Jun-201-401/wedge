@@ -5,8 +5,8 @@
   "rule_registry_id": "registry_p0_001",
   "summary": {
     "overall_risk": "medium",
-    "friction_score": 58.0,
-    "top_issues_count": 3,
+    "friction_score": 61.0,
+    "top_issues_count": 4,
     "task_success": "partial"
   },
   "stage_scores": [
@@ -17,8 +17,8 @@
     },
     {
       "stage": "INPUT",
-      "score": 61.0,
-      "issue_count": 1
+      "score": 66.0,
+      "issue_count": 2
     },
     {
       "stage": "VALUE",
@@ -116,6 +116,36 @@
         "사용자는 확장 후 3초 안에 가장 중요한 혜택을 식별할 수 있는가?"
       ],
       "exceptions_applied": []
+    },
+    {
+      "issue_id": "issue_004",
+      "criterion_id": "INPUT-ASYNC-002",
+      "stage": "INPUT",
+      "axis": "Trust",
+      "severity": 2,
+      "confidence": 0.76,
+      "priority_score": 1.88,
+      "evidence_level": "Operational",
+      "evidence_refs": [
+        "cp_004.obs_008"
+      ],
+      "observations": [
+        "이메일 validation response가 timeout으로 끝나 검증 완료 신호가 오지 않음"
+      ],
+      "signals": [
+        "비동기 검증 timeout",
+        "사용자 입력 완료 피드백 부재"
+      ],
+      "summary": "입력 검증 response가 timeout되면 사용자가 다음 진행 가능 여부를 신뢰하기 어려울 수 있습니다.",
+      "impact_hypothesis": "사용자는 입력이 유효한지 확신하지 못해 재시도하거나 흐름을 중단할 수 있습니다.",
+      "recommendations": [
+        "validation timeout 시 재시도 버튼과 fallback 안내 메시지를 노출하기",
+        "timeout 이후에도 안전하게 다음 입력으로 진행할 수 있는 정책을 명시하기"
+      ],
+      "validation_questions": [
+        "validation timeout이 발생해도 사용자는 다음 행동을 이해할 수 있는가?"
+      ],
+      "exceptions_applied": []
     }
   ],
   "decision_map": [
@@ -130,7 +160,8 @@
       "stage": "INPUT",
       "status": "warning",
       "issue_ids": [
-        "issue_002"
+        "issue_002",
+        "issue_004"
       ]
     },
     {
@@ -171,10 +202,21 @@
       "difficulty": "MEDIUM",
       "expected_effect": "가치 이해 시간을 줄여 CTA 복귀까지의 경로를 단순화할 수 있습니다.",
       "validation_question": "확장 후 사용자는 가장 중요한 혜택을 빠르게 식별하는가?"
+    },
+    {
+      "nudge_id": "nudge_004",
+      "issue_id": "issue_004",
+      "title": "validation timeout fallback을 명확히 제공",
+      "rationale": "settle_response timeout evidence가 존재하면 사용자는 검증 완료 여부를 신뢰하기 어렵습니다.",
+      "recommendation": "timeout 발생 시 재시도 CTA와 다음 진행 가능 여부를 명시적으로 안내합니다.",
+      "difficulty": "MEDIUM",
+      "expected_effect": "timeout 상황에서도 사용자가 멈추지 않고 다음 행동을 선택할 수 있습니다.",
+      "validation_question": "timeout fallback이 있으면 사용자는 재시도와 계속 진행 중 하나를 이해하고 선택하는가?"
     }
   ],
   "llm_notes": [
     "LLM output constrained to Rule Engine results.",
-    "Operational settle observations from response/item_count_change were used as supporting evidence for INPUT and VALUE stage issues."
+    "Operational settle observations from response/item_count_change were used as supporting evidence for INPUT and VALUE stage issues.",
+    "Response timeout observation was treated as a trust-risk signal for async validation UX."
   ]
 }
