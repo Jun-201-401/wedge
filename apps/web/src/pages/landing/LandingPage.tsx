@@ -177,6 +177,7 @@ export function LandingPage() {
 
         <div className="site-nav__links" aria-label="Section shortcuts">
           <a href="#vision">Vision</a>
+          <a href="/create-analysis">Start</a>
         </div>
       </nav>
 
