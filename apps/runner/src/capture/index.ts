@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { BrowserPageSnapshot, BrowserSettleResult } from "../browser/playwright/index.ts";
+import type { BrowserCapturedArtifacts, BrowserPageSnapshot, BrowserSettleResult } from "../browser/playwright/index.ts";
 import type {
   ArtifactDraft,
   Checkpoint,
@@ -19,16 +19,30 @@ export interface CapturePipeline {
     plan: ScenarioPlan;
     pageSnapshot: BrowserPageSnapshot;
     settleResult: BrowserSettleResult;
+    capturedArtifacts?: BrowserCapturedArtifacts;
   }) => Promise<CheckpointCollection>;
 }
 
 export function createCapturePipeline(): CapturePipeline {
   return {
-    async collectCheckpoint({ step, stepOrder, plan, pageSnapshot, settleResult }) {
+    async collectCheckpoint({ step, stepOrder, plan, pageSnapshot, settleResult, capturedArtifacts }) {
       const screenshotArtifactId = randomUUID();
       const domArtifactId = randomUUID();
-      const screenshotSvg = createScreenshotSvg(pageSnapshot, stepOrder, plan.goal);
-      const htmlSnapshot = createHtmlSnapshot(pageSnapshot, plan.goal);
+      const screenshotArtifact = createScreenshotArtifact({
+        artifactId: screenshotArtifactId,
+        pageSnapshot,
+        stepOrder,
+        goal: plan.goal,
+        stepKey: step.step_id,
+        capturedArtifacts
+      });
+      const domArtifact = createDomSnapshotArtifact({
+        artifactId: domArtifactId,
+        pageSnapshot,
+        goal: plan.goal,
+        stepKey: step.step_id,
+        capturedArtifacts
+      });
       const consoleLogArtifact =
         pageSnapshot.consoleErrors.length > 0
           ? {
@@ -68,7 +82,8 @@ export function createCapturePipeline(): CapturePipeline {
         ...pageSnapshot.networkErrors.map((message) => ({
           type: "network_failure",
           message
-        }))
+        })),
+        ...createSettleObservations(settleResult)
       ];
 
       const deltas = pageSnapshot.lastAction
@@ -82,24 +97,8 @@ export function createCapturePipeline(): CapturePipeline {
         : [];
 
       const artifacts: ArtifactDraft[] = [
-        {
-          artifactId: screenshotArtifactId,
-          artifactType: "SCREENSHOT",
-          stepKey: step.step_id,
-          mimeType: "image/svg+xml",
-          fileExtension: "svg",
-          content: screenshotSvg,
-          width: pageSnapshot.viewport.width,
-          height: pageSnapshot.viewport.height
-        },
-        {
-          artifactId: domArtifactId,
-          artifactType: "DOM_SNAPSHOT",
-          stepKey: step.step_id,
-          mimeType: "text/html",
-          fileExtension: "html",
-          content: htmlSnapshot
-        }
+        screenshotArtifact,
+        domArtifact
       ];
 
       if (consoleLogArtifact) {
@@ -139,6 +138,129 @@ export function createCapturePipeline(): CapturePipeline {
         artifacts
       };
     }
+  };
+}
+
+function createSettleObservations(settleResult: BrowserSettleResult): Record<string, unknown>[] {
+  if (!settleResult.details || typeof settleResult.details !== "object") {
+    return [];
+  }
+
+  if (settleResult.strategy === "response") {
+    return [
+      {
+        type: "settle_response",
+        settle_status: settleResult.status,
+        target: settleResult.targetSummary ?? null,
+        matched_url: readStringDetail(settleResult.details, "matchedUrl"),
+        method: readStringDetail(settleResult.details, "method"),
+        status_code: readNumberDetail(settleResult.details, "status"),
+        url_includes: readStringDetail(settleResult.details, "urlIncludes")
+      }
+    ];
+  }
+
+  if (settleResult.strategy === "item_count_change") {
+    return [
+      {
+        type: "settle_item_count_change",
+        settle_status: settleResult.status,
+        target: settleResult.targetSummary ?? null,
+        baseline_count: readNumberDetail(settleResult.details, "baselineCount"),
+        current_count: readNumberDetail(settleResult.details, "currentCount"),
+        expected_count: readNumberDetail(settleResult.details, "expectedCount"),
+        min_count: readNumberDetail(settleResult.details, "minCount"),
+        max_count: readNumberDetail(settleResult.details, "maxCount"),
+        count_delta: readNumberDetail(settleResult.details, "countDelta")
+      }
+    ];
+  }
+
+  return [];
+}
+
+function readStringDetail(details: Record<string, unknown>, key: string): string | null {
+  const value = details[key];
+  return typeof value === "string" ? value : null;
+}
+
+function readNumberDetail(details: Record<string, unknown>, key: string): number | null {
+  const value = details[key];
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function createScreenshotArtifact({
+  artifactId,
+  pageSnapshot,
+  stepOrder,
+  goal,
+  stepKey,
+  capturedArtifacts
+}: {
+  artifactId: string;
+  pageSnapshot: BrowserPageSnapshot;
+  stepOrder: number;
+  goal: string;
+  stepKey: string;
+  capturedArtifacts?: BrowserCapturedArtifacts;
+}): ArtifactDraft {
+  if (capturedArtifacts?.screenshot) {
+    return {
+      artifactId,
+      artifactType: "SCREENSHOT",
+      stepKey,
+      mimeType: capturedArtifacts.screenshot.mimeType,
+      fileExtension: capturedArtifacts.screenshot.fileExtension,
+      content: capturedArtifacts.screenshot.contentBase64,
+      contentEncoding: "base64",
+      width: capturedArtifacts.screenshot.width,
+      height: capturedArtifacts.screenshot.height
+    };
+  }
+
+  return {
+    artifactId,
+    artifactType: "SCREENSHOT",
+    stepKey,
+    mimeType: "image/svg+xml",
+    fileExtension: "svg",
+    content: createScreenshotSvg(pageSnapshot, stepOrder, goal),
+    width: pageSnapshot.viewport.width,
+    height: pageSnapshot.viewport.height
+  };
+}
+
+function createDomSnapshotArtifact({
+  artifactId,
+  pageSnapshot,
+  goal,
+  stepKey,
+  capturedArtifacts
+}: {
+  artifactId: string;
+  pageSnapshot: BrowserPageSnapshot;
+  goal: string;
+  stepKey: string;
+  capturedArtifacts?: BrowserCapturedArtifacts;
+}): ArtifactDraft {
+  if (capturedArtifacts?.domSnapshot) {
+    return {
+      artifactId,
+      artifactType: "DOM_SNAPSHOT",
+      stepKey,
+      mimeType: capturedArtifacts.domSnapshot.mimeType,
+      fileExtension: capturedArtifacts.domSnapshot.fileExtension,
+      content: capturedArtifacts.domSnapshot.content
+    };
+  }
+
+  return {
+    artifactId,
+    artifactType: "DOM_SNAPSHOT",
+    stepKey,
+    mimeType: "text/html",
+    fileExtension: "html",
+    content: createHtmlSnapshot(pageSnapshot, goal)
   };
 }
 

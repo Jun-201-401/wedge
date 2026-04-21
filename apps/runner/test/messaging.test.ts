@@ -9,7 +9,7 @@ test("parseRunExecuteMessage validates run.execute.request envelope", async () =
   const message = parseRunExecuteMessage(rawMessage);
 
   assert.equal(message.messageType, "run.execute.request");
-  assert.equal(message.payload.scenarioPlan.steps.length, 3);
+  assert.equal(message.payload.scenarioPlan.steps.length, 4);
 });
 
 test("parseRunExecuteMessage rejects ScenarioPlan missing required fields", async () => {

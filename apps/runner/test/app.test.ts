@@ -19,7 +19,7 @@ test("createRunnerApp executes example scenario and writes callback log", async 
   const result = await app.processMessageFile(join("examples", "run-execute.request.json"));
   const callbackLog = await readFile(callbackLogFile, "utf8");
 
-  assert.equal(result.summary.completedStepCount, 3);
+  assert.equal(result.summary.completedStepCount, 4);
   assert.equal(result.summary.failedStepCount, 0);
   assert.match(callbackLog, /"callbackType":"accepted"/);
   assert.match(callbackLog, /"callbackType":"finished"/);

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { BrowserPageSnapshot, BrowserSettleResult } from "../src/browser/playwright/index.ts";
+import { createCapturePipeline } from "../src/capture/index.ts";
 import { createArtifactBatch, createCheckpointRequest } from "../src/scenario/executor/checkpoint-payloads.ts";
 import { executeScenarioStep } from "../src/scenario/executor/step-executor.ts";
 import {
@@ -181,4 +182,107 @@ test("checkpoint payload helpers preserve artifact payloads and artifactRefs", (
       }
     ]
   });
+});
+
+test("capture pipeline records structured response and item-count settle observations", async () => {
+  const capturePipeline = createCapturePipeline();
+  const plan = createMinimalPlan();
+  const pageSnapshot: BrowserPageSnapshot = createSimulatedPageSnapshot(plan, {
+    finalUrl: "https://example.com/signup"
+  });
+
+  const responseCollection = await capturePipeline.collectCheckpoint({
+    step: {
+      step_id: "step_response",
+      stage: "INPUT",
+      description: "wait for email validation response",
+      action: {
+        type: "fill",
+        target: {
+          label: "Email"
+        },
+        value: "test@example.com"
+      },
+      settle_strategy: {
+        type: "response",
+        timeout_ms: 2_000,
+        url_includes: "/api/signup/validate-email"
+      },
+      checkpoint: true
+    },
+    stepOrder: 1,
+    plan,
+    pageSnapshot,
+    settleResult: createSettledResult({
+      strategy: "response",
+      durationMs: 220,
+      status: "settled",
+      targetSummary: "url=/api/signup/validate-email",
+      details: {
+        matchedUrl: "https://example.com/api/signup/validate-email",
+        method: "POST",
+        status: 200,
+        urlIncludes: "/api/signup/validate-email"
+      }
+    })
+  });
+
+  const itemCountCollection = await capturePipeline.collectCheckpoint({
+    step: {
+      step_id: "step_item_count",
+      stage: "VALUE",
+      description: "wait for benefit items to expand",
+      action: {
+        type: "click",
+        target: {
+          selector: "#signup-benefits-toggle"
+        }
+      },
+      settle_strategy: {
+        type: "item_count_change",
+        timeout_ms: 2_000,
+        target: {
+          selector: "#signup-benefits li"
+        },
+        expected_count: 3
+      },
+      checkpoint: true
+    },
+    stepOrder: 2,
+    plan,
+    pageSnapshot,
+    settleResult: createSettledResult({
+      strategy: "item_count_change",
+      durationMs: 180,
+      status: "settled",
+      targetSummary: "selector=#signup-benefits li",
+      details: {
+        baselineCount: 1,
+        currentCount: 3,
+        expectedCount: 3,
+        countDelta: 2
+      }
+    })
+  });
+
+  assert.ok(
+    responseCollection.checkpoint.observations.some(
+      (observation) =>
+        observation.type === "settle_response" &&
+        observation.method === "POST" &&
+        observation.status_code === 200 &&
+        observation.matched_url === "https://example.com/api/signup/validate-email"
+    )
+  );
+
+  assert.ok(
+    itemCountCollection.checkpoint.observations.some(
+      (observation) =>
+        observation.type === "settle_item_count_change" &&
+        observation.baseline_count === 1 &&
+        observation.current_count === 3 &&
+        observation.expected_count === 3 &&
+        observation.count_delta === 2
+    )
+  );
 });

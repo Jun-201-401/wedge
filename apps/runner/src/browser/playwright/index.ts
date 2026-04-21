@@ -1,6 +1,16 @@
 import { randomUUID } from "node:crypto";
+import {
+  chromium,
+  firefox,
+  webkit,
+  type Browser,
+  type BrowserContext,
+  type Locator,
+  type BrowserType,
+  type Page
+} from "playwright";
 import { createCdpSession, type CdpSessionMetadata } from "../cdp/index.ts";
-import type { RunnerConfig } from "../../config/index.ts";
+import type { RunnerBrowserName, RunnerConfig } from "../../config/index.ts";
 import type {
   ScenarioAction,
   ScenarioPlan,
@@ -22,6 +32,7 @@ export interface BrowserSettleResult {
   durationMs: number;
   status: "settled" | "timeout" | "failed";
   targetSummary?: string | null;
+  details?: Record<string, unknown>;
 }
 
 export interface BrowserPageSnapshot {
@@ -45,17 +56,33 @@ export interface BrowserPageSnapshot {
   cdpSession: CdpSessionMetadata;
 }
 
+export interface BrowserCapturedArtifacts {
+  screenshot?: {
+    contentBase64: string;
+    mimeType: "image/png";
+    fileExtension: "png";
+    width: number;
+    height: number;
+  };
+  domSnapshot?: {
+    content: string;
+    mimeType: "text/html";
+    fileExtension: "html";
+  };
+}
+
 export interface BrowserSession {
   id: string;
   plan: ScenarioPlan;
   execute: (action: ScenarioAction, step: ScenarioStep) => Promise<BrowserActionResult>;
   settle: (strategy: SettleStrategy) => Promise<BrowserSettleResult>;
   snapshot: () => BrowserPageSnapshot;
+  captureArtifacts: () => Promise<BrowserCapturedArtifacts>;
   close: () => Promise<void>;
 }
 
 export interface BrowserSessionFactory {
-  kind: "simulated-playwright";
+  kind: "simulated-playwright" | "playwright";
   createSession: (input: { runId: string; plan: ScenarioPlan }) => Promise<BrowserSession>;
 }
 
@@ -198,6 +225,10 @@ class SimulatedPlaywrightSession implements BrowserSession {
     };
   }
 
+  async captureArtifacts(): Promise<BrowserCapturedArtifacts> {
+    return {};
+  }
+
   async close(): Promise<void> {
     await sleep(1);
   }
@@ -214,9 +245,710 @@ class SimulatedPlaywrightSession implements BrowserSession {
 }
 
 export function createPlaywrightSessionFactory(config: RunnerConfig): BrowserSessionFactory {
+  if (config.browserMode === "playwright") {
+    return createRealPlaywrightSessionFactory(config);
+  }
+
   return {
     kind: "simulated-playwright",
     createSession: async ({ plan }) => new SimulatedPlaywrightSession(plan, config.simulatedDelayCapMs)
+  };
+}
+
+class RealPlaywrightSession implements BrowserSession {
+  readonly id: string;
+  readonly plan: ScenarioPlan;
+  readonly browser: Browser;
+  readonly context: BrowserContext;
+  readonly page: Page;
+  readonly cdpSession: CdpSessionMetadata;
+  readonly state: MutableBrowserState;
+
+  private constructor(plan: ScenarioPlan, browser: Browser, context: BrowserContext, page: Page) {
+    this.id = randomUUID();
+    this.plan = plan;
+    this.browser = browser;
+    this.context = context;
+    this.page = page;
+    this.cdpSession = createCdpSession();
+    this.state = {
+      currentUrl: plan.start_url,
+      finalUrl: plan.start_url,
+      title: createTitleFromUrl(plan.start_url),
+      visitedUrls: [plan.start_url],
+      fields: {},
+      selectedOptions: {},
+      scrollY: 0,
+      lastAction: null,
+      consoleErrors: [],
+      networkErrors: []
+    };
+  }
+
+  static async create(plan: ScenarioPlan, config: RunnerConfig): Promise<RealPlaywrightSession> {
+    const browserType = resolveBrowserType(config.browserName);
+    const browser = await browserType.launch({
+      headless: config.browserHeadless,
+      timeout: config.browserLaunchTimeoutMs
+    });
+    const context = await browser.newContext({
+      viewport: plan.environment.viewport,
+      locale: plan.environment.locale,
+      timezoneId: plan.environment.timezone,
+      geolocation: parseGeolocation(plan.environment.geolocation)
+    });
+    const page = await context.newPage();
+    page.setDefaultNavigationTimeout(config.browserNavigationTimeoutMs);
+
+    const session = new RealPlaywrightSession(plan, browser, context, page);
+    await session.initializeContext(plan);
+    session.attachPageObservers();
+
+    return session;
+  }
+
+  async execute(action: ScenarioAction, step: ScenarioStep): Promise<BrowserActionResult> {
+    const targetSummary = describeTarget(action.target);
+    const actionTimestamp = toIsoTimestamp();
+
+    this.state.lastAction = {
+      type: action.type,
+      target: targetSummary,
+      at: actionTimestamp
+    };
+
+    switch (action.type) {
+      case "goto": {
+        const nextUrl = inferGotoUrl(action.target, this.plan.start_url);
+        await this.page.goto(nextUrl, {
+          waitUntil: "domcontentloaded"
+        });
+        await this.refreshPageState(nextUrl);
+        break;
+      }
+      case "click": {
+        const clicked = await this.tryClickTarget(action.target);
+        if (!clicked) {
+          const nextUrl = inferNavigationUrl(this.state.currentUrl, action.target);
+          if (nextUrl) {
+            await this.page.goto(nextUrl, {
+              waitUntil: "domcontentloaded"
+            });
+            await this.refreshPageState(nextUrl);
+          }
+        }
+        break;
+      }
+      case "fill": {
+        await this.tryFillTarget(action.target, action.value, step.step_id);
+        break;
+      }
+      case "select": {
+        await this.trySelectTarget(action.target, action.value, step.step_id);
+        break;
+      }
+      case "scroll":
+      case "checkpoint": {
+        break;
+      }
+      case "hover": {
+        await this.tryHoverTarget(action.target);
+        break;
+      }
+      case "wait_for": {
+        await this.waitForAction(action);
+        break;
+      }
+      case "stop_when": {
+        await this.refreshPageState();
+
+        return {
+          actionType: action.type,
+          targetSummary,
+          stopRequested: shouldStop(step.stop_condition, this.state.finalUrl),
+          details: {
+            description: step.description
+          }
+        };
+      }
+    }
+
+    await this.refreshPageState();
+
+    return {
+      actionType: action.type,
+      targetSummary,
+      stopRequested: false,
+      details: {
+        currentUrl: this.state.currentUrl,
+        finalUrl: this.state.finalUrl,
+        title: this.state.title,
+        executionMode: "playwright"
+      }
+    };
+  }
+
+  async settle(strategy: SettleStrategy): Promise<BrowserSettleResult> {
+    const startedAt = Date.now();
+    const targetSummary = describeTarget(strategy.target);
+
+    await this.refreshPageState();
+
+    if (strategy.type === "none") {
+      await this.refreshPageState();
+
+      return {
+        strategy: strategy.type,
+        durationMs: 0,
+        status: "settled",
+        targetSummary,
+        details: {
+          mode: "no_wait"
+        }
+      };
+    }
+
+    if (strategy.type === "network_idle") {
+      try {
+        await this.page.waitForLoadState("networkidle", {
+          timeout: strategy.timeout_ms
+        });
+        await this.refreshPageState();
+
+        return {
+          strategy: strategy.type,
+          durationMs: Date.now() - startedAt,
+          status: "settled",
+          targetSummary,
+          details: {
+            mode: "load_state",
+            loadState: "networkidle"
+          }
+        };
+      } catch {
+        await this.refreshPageState();
+
+        return {
+          strategy: strategy.type,
+          durationMs: Date.now() - startedAt,
+          status: "timeout",
+          targetSummary,
+          details: {
+            mode: "load_state",
+            loadState: "networkidle"
+          }
+        };
+      }
+    }
+
+    if (strategy.type === "locator_visible" || strategy.type === "spinner_hidden") {
+      const locatorState = strategy.type === "locator_visible" ? "visible" : "hidden";
+
+      try {
+        await this.waitForTargetLocatorState(strategy.target, locatorState, strategy.timeout_ms);
+        await this.refreshPageState();
+
+        return {
+          strategy: strategy.type,
+          durationMs: Date.now() - startedAt,
+          status: "settled",
+          targetSummary,
+          details: {
+            mode: "locator_state",
+            locatorState
+          }
+        };
+      } catch {
+        await this.refreshPageState();
+
+        return {
+          strategy: strategy.type,
+          durationMs: Date.now() - startedAt,
+          status: "timeout",
+          targetSummary,
+          details: {
+            mode: "locator_state",
+            locatorState
+          }
+        };
+      }
+    }
+
+    if (strategy.type === "url_change") {
+      try {
+        const details = await this.waitForUrlChange(strategy);
+        await this.refreshPageState();
+
+        return {
+          strategy: strategy.type,
+          durationMs: Date.now() - startedAt,
+          status: "settled",
+          targetSummary,
+          details
+        };
+      } catch {
+        await this.refreshPageState();
+
+        return {
+          strategy: strategy.type,
+          durationMs: Date.now() - startedAt,
+          status: "timeout",
+          targetSummary,
+          details: {
+            mode: "url_change"
+          }
+        };
+      }
+    }
+
+    if (strategy.type === "response") {
+      try {
+        const details = await this.waitForResponse(strategy);
+        await this.refreshPageState();
+
+        return {
+          strategy: strategy.type,
+          durationMs: Date.now() - startedAt,
+          status: "settled",
+          targetSummary,
+          details
+        };
+      } catch {
+        await this.refreshPageState();
+
+        return {
+          strategy: strategy.type,
+          durationMs: Date.now() - startedAt,
+          status: "timeout",
+          targetSummary,
+          details: {
+            mode: "response_wait",
+            urlIncludes: resolveSettleResponseUrlIncludes(strategy),
+            method: resolveSettleResponseMethod(strategy),
+            status: resolveSettleResponseStatus(strategy)
+          }
+        };
+      }
+    }
+
+    if (strategy.type === "item_count_change") {
+      try {
+        const details = await this.waitForItemCountChange(strategy);
+        await this.refreshPageState();
+
+        return {
+          strategy: strategy.type,
+          durationMs: Date.now() - startedAt,
+          status: "settled",
+          targetSummary,
+          details
+        };
+      } catch {
+        await this.refreshPageState();
+
+        return {
+          strategy: strategy.type,
+          durationMs: Date.now() - startedAt,
+          status: "timeout",
+          targetSummary,
+          details: {
+            mode: "item_count_poll",
+            expectedCount: resolveSettleExpectedCount(strategy),
+            minCount: resolveSettleMinCount(strategy),
+            maxCount: resolveSettleMaxCount(strategy),
+            countDelta: resolveSettleCountDelta(strategy)
+          }
+        };
+      }
+    }
+
+    const durationMs = resolveFallbackSettleDuration(strategy.timeout_ms);
+    await sleep(durationMs);
+    await this.refreshPageState();
+
+    return {
+      strategy: strategy.type,
+      durationMs,
+      status: "settled",
+      targetSummary,
+      details: {
+        mode: "fallback_short_wait"
+      }
+    };
+  }
+
+  snapshot(): BrowserPageSnapshot {
+    return {
+      currentUrl: this.state.currentUrl,
+      finalUrl: this.state.finalUrl,
+      title: this.state.title,
+      viewport: this.plan.environment.viewport,
+      locale: this.plan.environment.locale,
+      timezone: this.plan.environment.timezone,
+      visitedUrls: [...this.state.visitedUrls],
+      fields: { ...this.state.fields },
+      selectedOptions: { ...this.state.selectedOptions },
+      scrollY: this.state.scrollY,
+      lastAction: this.state.lastAction ? { ...this.state.lastAction } : null,
+      consoleErrors: [...this.state.consoleErrors],
+      networkErrors: [...this.state.networkErrors],
+      cdpSession: this.cdpSession
+    };
+  }
+
+  async captureArtifacts(): Promise<BrowserCapturedArtifacts> {
+    const screenshotBuffer = await this.page.screenshot({
+      type: "png"
+    });
+    const domSnapshot = await this.page.content();
+
+    return {
+      screenshot: {
+        contentBase64: screenshotBuffer.toString("base64"),
+        mimeType: "image/png",
+        fileExtension: "png",
+        width: this.plan.environment.viewport.width,
+        height: this.plan.environment.viewport.height
+      },
+      domSnapshot: {
+        content: domSnapshot,
+        mimeType: "text/html",
+        fileExtension: "html"
+      }
+    };
+  }
+
+  async close(): Promise<void> {
+    await this.context.close();
+    await this.browser.close();
+  }
+
+  private async initializeContext(plan: ScenarioPlan): Promise<void> {
+    if (Array.isArray(plan.environment.permissions) && plan.environment.permissions.length > 0) {
+      await this.context.grantPermissions(plan.environment.permissions);
+    }
+  }
+
+  private attachPageObservers(): void {
+    this.page.on("console", (message) => {
+      if (message.type() === "error") {
+        this.state.consoleErrors.push(message.text());
+      }
+    });
+
+    this.page.on("pageerror", (error) => {
+      this.state.consoleErrors.push(error.message);
+    });
+
+    this.page.on("requestfailed", (request) => {
+      const failureText = request.failure()?.errorText ?? "request failed";
+      this.state.networkErrors.push(`${request.method()} ${request.url()} ${failureText}`);
+    });
+
+    this.page.on("framenavigated", (frame) => {
+      if (frame === this.page.mainFrame()) {
+        void this.refreshPageState(frame.url());
+      }
+    });
+  }
+
+  private async tryClickTarget(target: TargetDescriptor | undefined): Promise<boolean> {
+    const candidateLocators = buildCandidateLocators(this.page, target);
+
+    for (const locator of candidateLocators) {
+      try {
+        await locator.first().click({
+          timeout: 1_500
+        });
+        await this.refreshPageState();
+        return true;
+      } catch {
+        continue;
+      }
+    }
+
+    return false;
+  }
+
+  private async tryFillTarget(target: TargetDescriptor | undefined, value: unknown, fallbackKey: string): Promise<boolean> {
+    const candidateLocators = buildCandidateLocators(this.page, target);
+    const nextValue = stringifyValue(value);
+
+    for (const locator of candidateLocators) {
+      try {
+        await locator.first().fill(nextValue, {
+          timeout: 1_500
+        });
+        this.state.fields[inferFieldKey(target, fallbackKey)] = nextValue;
+        await this.refreshPageState();
+        return true;
+      } catch {
+        continue;
+      }
+    }
+
+    return false;
+  }
+
+  private async trySelectTarget(target: TargetDescriptor | undefined, value: unknown, fallbackKey: string): Promise<boolean> {
+    const candidateLocators = buildCandidateLocators(this.page, target);
+    const nextValue = stringifyValue(value);
+
+    for (const locator of candidateLocators) {
+      try {
+        await locator.first().selectOption(nextValue, {
+          timeout: 1_500
+        });
+        this.state.selectedOptions[inferFieldKey(target, fallbackKey)] = nextValue;
+        await this.refreshPageState();
+        return true;
+      } catch {
+        try {
+          await locator.first().selectOption(
+            {
+              label: nextValue
+            },
+            {
+              timeout: 1_500
+            }
+          );
+          this.state.selectedOptions[inferFieldKey(target, fallbackKey)] = nextValue;
+          await this.refreshPageState();
+          return true;
+        } catch {
+          continue;
+        }
+      }
+    }
+
+    return false;
+  }
+
+  private async tryHoverTarget(target: TargetDescriptor | undefined): Promise<boolean> {
+    const candidateLocators = buildCandidateLocators(this.page, target);
+
+    for (const locator of candidateLocators) {
+      try {
+        await locator.first().hover({
+          timeout: 1_500
+        });
+        await this.refreshPageState();
+        return true;
+      } catch {
+        continue;
+      }
+    }
+
+    return false;
+  }
+
+  private async waitForAction(action: ScenarioAction): Promise<void> {
+    const timeoutMs = resolveWaitForTimeoutMs(action, this.plan);
+    const locatorState = resolveWaitForLocatorState(action);
+    const candidateLocators = buildCandidateLocators(this.page, action.target);
+
+    for (const locator of candidateLocators) {
+      try {
+        await locator.first().waitFor({
+          state: locatorState,
+          timeout: timeoutMs
+        });
+        await this.refreshPageState();
+        return;
+      } catch {
+        continue;
+      }
+    }
+
+    const urlIncludes = resolveWaitForUrlIncludes(action);
+    if (typeof urlIncludes === "string" && urlIncludes.length > 0) {
+      try {
+        await this.page.waitForURL((url) => url.toString().includes(urlIncludes), {
+          timeout: timeoutMs
+        });
+        await this.refreshPageState();
+        return;
+      } catch {
+        // fall through to bounded sleep fallback for scaffold compatibility
+      }
+    }
+
+    const boundedDelayMs = Math.min(timeoutMs, 1_000);
+    if (boundedDelayMs > 0) {
+      await sleep(boundedDelayMs);
+    }
+    await this.refreshPageState();
+  }
+
+  private async waitForTargetLocatorState(
+    target: TargetDescriptor | undefined,
+    state: "visible" | "hidden",
+    timeoutMs: number
+  ): Promise<void> {
+    const candidateLocators = buildCandidateLocators(this.page, target);
+
+    for (const locator of candidateLocators) {
+      try {
+        await locator.first().waitFor({
+          state,
+          timeout: timeoutMs
+        });
+        return;
+      } catch {
+        continue;
+      }
+    }
+
+    throw new Error(`Unable to settle target locator in state ${state}`);
+  }
+
+  private async waitForUrlChange(strategy: SettleStrategy): Promise<Record<string, unknown>> {
+    const timeoutMs = strategy.timeout_ms;
+    const urlIncludes = resolveSettleUrlIncludes(strategy);
+    const baselineUrl = this.page.url();
+
+    if (typeof urlIncludes === "string" && urlIncludes.length > 0) {
+      await this.page.waitForURL((url) => url.toString().includes(urlIncludes), {
+        timeout: timeoutMs
+      });
+      return {
+        mode: "url_change",
+        baselineUrl,
+        matchedUrl: this.page.url(),
+        urlIncludes
+      };
+    }
+
+    await this.page.waitForURL((url) => url.toString() !== baselineUrl, {
+      timeout: timeoutMs
+    });
+
+    return {
+      mode: "url_change",
+      baselineUrl,
+      matchedUrl: this.page.url()
+    };
+  }
+
+  private async waitForResponse(strategy: SettleStrategy): Promise<Record<string, unknown>> {
+    const timeoutMs = strategy.timeout_ms;
+    const expectedStatus = resolveSettleResponseStatus(strategy);
+    const expectedMethod = resolveSettleResponseMethod(strategy);
+    const urlIncludes = resolveSettleResponseUrlIncludes(strategy);
+
+    const response = await this.page.waitForResponse(
+      (response) => {
+        if (typeof urlIncludes === "string" && urlIncludes.length > 0 && !response.url().includes(urlIncludes)) {
+          return false;
+        }
+
+        if (typeof expectedMethod === "string" && response.request().method().toUpperCase() !== expectedMethod) {
+          return false;
+        }
+
+        if (typeof expectedStatus === "number" && response.status() !== expectedStatus) {
+          return false;
+        }
+
+        return true;
+      },
+      {
+        timeout: timeoutMs
+      }
+    );
+
+    return {
+      mode: "response_wait",
+      matchedUrl: response.url(),
+      method: response.request().method().toUpperCase(),
+      status: response.status(),
+      urlIncludes
+    };
+  }
+
+  private async waitForItemCountChange(strategy: SettleStrategy): Promise<Record<string, unknown>> {
+    const locator = resolveTargetLocator(this.page, strategy.target);
+    const timeoutMs = strategy.timeout_ms;
+    const startedAt = Date.now();
+    const baselineCount = await locator.count();
+    const expectedCount = resolveSettleExpectedCount(strategy);
+    const minCount = resolveSettleMinCount(strategy);
+    const maxCount = resolveSettleMaxCount(strategy);
+    const countDelta = resolveSettleCountDelta(strategy);
+
+    while (Date.now() - startedAt <= timeoutMs) {
+      const currentCount = await locator.count();
+
+      if (isExpectedItemCountReached(currentCount, baselineCount, { expectedCount, minCount, maxCount, countDelta })) {
+        return {
+          mode: "item_count_poll",
+          baselineCount,
+          currentCount,
+          expectedCount,
+          minCount,
+          maxCount,
+          countDelta
+        };
+      }
+
+      await sleep(50);
+    }
+
+    throw new Error("Timed out waiting for item count change");
+  }
+
+  private async refreshPageState(nextUrl?: string): Promise<void> {
+    const currentUrl = nextUrl ?? this.page.url() ?? this.state.currentUrl;
+    this.state.currentUrl = currentUrl;
+    this.state.finalUrl = currentUrl;
+
+    if (this.page.isClosed()) {
+      return;
+    }
+
+    this.state.title = await safePageTitle(this.page, currentUrl);
+    this.state.scrollY = await safeScrollY(this.page, this.state.scrollY);
+
+    if (this.state.visitedUrls[this.state.visitedUrls.length - 1] !== currentUrl) {
+      this.state.visitedUrls.push(currentUrl);
+    }
+  }
+}
+
+function createRealPlaywrightSessionFactory(config: RunnerConfig): BrowserSessionFactory {
+  return {
+    kind: "playwright",
+    createSession: async ({ plan }) => RealPlaywrightSession.create(plan, config)
+  };
+}
+
+function resolveBrowserType(browserName: RunnerBrowserName): BrowserType {
+  switch (browserName) {
+    case "firefox":
+      return firefox;
+    case "webkit":
+      return webkit;
+    case "chromium":
+    default:
+      return chromium;
+  }
+}
+
+function parseGeolocation(value: ScenarioPlan["environment"]["geolocation"]): { latitude: number; longitude: number } | undefined {
+  if (!value || typeof value !== "object") {
+    return undefined;
+  }
+
+  const latitude = value.latitude;
+  const longitude = value.longitude;
+
+  if (typeof latitude !== "number" || typeof longitude !== "number") {
+    return undefined;
+  }
+
+  return {
+    latitude,
+    longitude
   };
 }
 
@@ -272,6 +1004,70 @@ function inferNavigationUrl(currentUrl: string, target: TargetDescriptor | undef
   return null;
 }
 
+function buildCandidateLocators(page: Page, target: TargetDescriptor | undefined): Locator[] {
+  if (!target) {
+    return [];
+  }
+
+  if (typeof target === "string") {
+    return [page.getByText(target)];
+  }
+
+  const candidates: Locator[] = [];
+
+  if (typeof target.selector === "string" && target.selector.length > 0) {
+    candidates.push(page.locator(target.selector));
+  }
+
+  if (Array.isArray(target.selector_any)) {
+    for (const selector of target.selector_any) {
+      if (typeof selector === "string" && selector.length > 0) {
+        candidates.push(page.locator(selector));
+      }
+    }
+  }
+
+  if (typeof target.role === "string") {
+    if (typeof target.text === "string" && target.text.length > 0) {
+      candidates.push(page.getByRole(target.role as Parameters<Page["getByRole"]>[0], { name: target.text }));
+    }
+
+    if (Array.isArray(target.text_any)) {
+      for (const text of target.text_any) {
+        if (typeof text === "string" && text.length > 0) {
+          candidates.push(page.getByRole(target.role as Parameters<Page["getByRole"]>[0], { name: text }));
+        }
+      }
+    }
+  }
+
+  if (typeof target.label === "string" && target.label.length > 0) {
+    candidates.push(page.getByLabel(target.label));
+  }
+
+  if (Array.isArray(target.label_any)) {
+    for (const label of target.label_any) {
+      if (typeof label === "string" && label.length > 0) {
+        candidates.push(page.getByLabel(label));
+      }
+    }
+  }
+
+  if (typeof target.text === "string" && target.text.length > 0) {
+    candidates.push(page.getByText(target.text));
+  }
+
+  if (Array.isArray(target.text_any)) {
+    for (const text of target.text_any) {
+      if (typeof text === "string" && text.length > 0) {
+        candidates.push(page.getByText(text));
+      }
+    }
+  }
+
+  return candidates;
+}
+
 function shouldStop(stopCondition: Record<string, unknown> | undefined, finalUrl: string): boolean {
   if (!stopCondition) {
     return false;
@@ -295,4 +1091,215 @@ function stringifyValue(value: unknown): string {
   }
 
   return JSON.stringify(value ?? "");
+}
+
+function resolveWaitForTimeoutMs(action: ScenarioAction, plan: ScenarioPlan): number {
+  const optionTimeout =
+    readNumber(action.options, "timeout_ms") ??
+    readNumber(action.options, "timeoutMs") ??
+    readNumberRecord(action.value, "timeout_ms") ??
+    readNumberRecord(action.value, "timeoutMs");
+
+  if (typeof optionTimeout === "number" && Number.isFinite(optionTimeout) && optionTimeout >= 0) {
+    return optionTimeout;
+  }
+
+  if (typeof action.value === "number" && Number.isFinite(action.value) && action.value >= 0) {
+    return action.value;
+  }
+
+  return Math.max(plan.environment.viewport.width > 0 ? 1_500 : 1_500, 0);
+}
+
+function resolveWaitForLocatorState(action: ScenarioAction): "attached" | "detached" | "visible" | "hidden" {
+  const candidateState =
+    readString(action.options, "state") ??
+    readStringRecord(action.value, "state") ??
+    (typeof action.value === "string" ? action.value : undefined);
+
+  if (candidateState === "attached" || candidateState === "detached" || candidateState === "visible" || candidateState === "hidden") {
+    return candidateState;
+  }
+
+  return "visible";
+}
+
+function resolveWaitForUrlIncludes(action: ScenarioAction): string | undefined {
+  const optionUrl = readString(action.options, "url_includes") ?? readString(action.options, "urlIncludes");
+  if (typeof optionUrl === "string" && optionUrl.length > 0) {
+    return optionUrl;
+  }
+
+  const valueUrl = readStringRecord(action.value, "url_includes") ?? readStringRecord(action.value, "urlIncludes");
+  if (typeof valueUrl === "string" && valueUrl.length > 0) {
+    return valueUrl;
+  }
+
+  if (action.target && typeof action.target === "object" && typeof action.target.url === "string" && action.target.url.length > 0) {
+    return action.target.url;
+  }
+
+  return undefined;
+}
+
+function resolveSettleUrlIncludes(strategy: SettleStrategy): string | undefined {
+  const directUrl = readStringRecord(strategy, "url_includes") ?? readStringRecord(strategy, "urlIncludes");
+  if (typeof directUrl === "string" && directUrl.length > 0) {
+    return directUrl;
+  }
+
+  if (strategy.target && typeof strategy.target === "object" && typeof strategy.target.url === "string" && strategy.target.url.length > 0) {
+    return strategy.target.url;
+  }
+
+  return undefined;
+}
+
+function resolveSettleResponseUrlIncludes(strategy: SettleStrategy): string | undefined {
+  const directUrl =
+    readStringRecord(strategy, "url_includes") ??
+    readStringRecord(strategy, "urlIncludes") ??
+    readStringRecord(strategy, "response_url_includes") ??
+    readStringRecord(strategy, "responseUrlIncludes");
+  if (typeof directUrl === "string" && directUrl.length > 0) {
+    return directUrl;
+  }
+
+  if (strategy.target && typeof strategy.target === "object" && typeof strategy.target.url === "string" && strategy.target.url.length > 0) {
+    return strategy.target.url;
+  }
+
+  return undefined;
+}
+
+function resolveSettleResponseMethod(strategy: SettleStrategy): string | undefined {
+  const method =
+    readStringRecord(strategy, "method") ??
+    readStringRecord(strategy, "http_method") ??
+    readStringRecord(strategy, "httpMethod");
+
+  return typeof method === "string" && method.length > 0 ? method.toUpperCase() : undefined;
+}
+
+function resolveSettleResponseStatus(strategy: SettleStrategy): number | undefined {
+  return (
+    readNumberRecord(strategy, "status") ??
+    readNumberRecord(strategy, "status_code") ??
+    readNumberRecord(strategy, "statusCode")
+  );
+}
+
+function resolveSettleExpectedCount(strategy: SettleStrategy): number | undefined {
+  return (
+    readNumberRecord(strategy, "expected_count") ??
+    readNumberRecord(strategy, "expectedCount") ??
+    readNumberRecord(strategy, "count")
+  );
+}
+
+function resolveSettleMinCount(strategy: SettleStrategy): number | undefined {
+  return readNumberRecord(strategy, "min_count") ?? readNumberRecord(strategy, "minCount");
+}
+
+function resolveSettleMaxCount(strategy: SettleStrategy): number | undefined {
+  return readNumberRecord(strategy, "max_count") ?? readNumberRecord(strategy, "maxCount");
+}
+
+function resolveSettleCountDelta(strategy: SettleStrategy): number | undefined {
+  return readNumberRecord(strategy, "count_delta") ?? readNumberRecord(strategy, "countDelta");
+}
+
+function isExpectedItemCountReached(
+  currentCount: number,
+  baselineCount: number,
+  conditions: {
+    expectedCount?: number;
+    minCount?: number;
+    maxCount?: number;
+    countDelta?: number;
+  }
+): boolean {
+  if (typeof conditions.expectedCount === "number") {
+    return currentCount === conditions.expectedCount;
+  }
+
+  if (typeof conditions.minCount === "number" && currentCount < conditions.minCount) {
+    return false;
+  }
+
+  if (typeof conditions.maxCount === "number" && currentCount > conditions.maxCount) {
+    return false;
+  }
+
+  if (typeof conditions.minCount === "number" || typeof conditions.maxCount === "number") {
+    return true;
+  }
+
+  if (typeof conditions.countDelta === "number") {
+    return currentCount === baselineCount + conditions.countDelta;
+  }
+
+  return currentCount !== baselineCount;
+}
+
+function resolveTargetLocator(page: Page, target: TargetDescriptor | undefined): Locator {
+  const candidateLocators = buildCandidateLocators(page, target);
+  if (candidateLocators.length === 0) {
+    throw new Error("Unable to resolve target locator");
+  }
+
+  return candidateLocators[0];
+}
+
+function resolveFallbackSettleDuration(timeoutMs: number): number {
+  return Math.min(timeoutMs, 25);
+}
+
+function readNumber(source: Record<string, unknown> | undefined, key: string): number | undefined {
+  const value = source?.[key];
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function readString(source: Record<string, unknown> | undefined, key: string): string | undefined {
+  const value = source?.[key];
+  return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+function readNumberRecord(source: unknown, key: string): number | undefined {
+  if (!source || typeof source !== "object" || Array.isArray(source)) {
+    return undefined;
+  }
+
+  const value = (source as Record<string, unknown>)[key];
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function readStringRecord(source: unknown, key: string): string | undefined {
+  if (!source || typeof source !== "object" || Array.isArray(source)) {
+    return undefined;
+  }
+
+  const value = (source as Record<string, unknown>)[key];
+  return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+async function safePageTitle(page: Page, fallbackUrl: string): Promise<string> {
+  try {
+    const title = await page.title();
+    return title.length > 0 ? title : createTitleFromUrl(fallbackUrl);
+  } catch {
+    return createTitleFromUrl(fallbackUrl);
+  }
+}
+
+async function safeScrollY(page: Page, fallbackValue: number): Promise<number> {
+  try {
+    const scrollY = await page.evaluate(() => {
+      const scope = globalThis as typeof globalThis & { scrollY?: number };
+      return scope.scrollY ?? 0;
+    });
+    return typeof scrollY === "number" && Number.isFinite(scrollY) ? scrollY : fallbackValue;
+  } catch {
+    return fallbackValue;
+  }
 }

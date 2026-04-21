@@ -47,6 +47,7 @@ export async function executeScenarioStep({
 
   const settleResult = await session.settle(step.settle_strategy);
   const pageSnapshot = session.snapshot();
+  const capturedArtifacts = step.checkpoint ? await session.captureArtifacts() : undefined;
 
   if (step.checkpoint) {
     await emitCheckpointArtifactsAndCallbacks({
@@ -56,6 +57,7 @@ export async function executeScenarioStep({
       plan,
       pageSnapshot,
       settleResult,
+      capturedArtifacts,
       callbackClient,
       capturePipeline,
       artifactStore
