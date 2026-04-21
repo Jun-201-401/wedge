@@ -14,9 +14,11 @@
     "playwright:install": "playwright install chromium"
   },
   "dependencies": {
+    "amqplib": "^0.10.9",
     "playwright": "^1.59.1"
   },
   "devDependencies": {
+    "@types/amqplib": "^0.10.7",
     "@types/node": "^25.6.0",
     "typescript": "^6.0.3"
   }

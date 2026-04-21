@@ -3,6 +3,7 @@ import { createCallbackClient } from "./callback/index.ts";
 import { loadRunnerConfig, type RunnerConfig } from "./config/index.ts";
 import { createCapturePipeline } from "./capture/index.ts";
 import { parseRunExecuteMessage, readRunExecuteMessage } from "./messaging/index.ts";
+import { startRunExecuteQueueConsumer, type RunExecuteQueueConsumer } from "./messaging/rabbitmq/index.ts";
 import { createArtifactStore } from "./storage/index.ts";
 import { registerWorker, type RunnerExecutionResult } from "./worker/index.ts";
 import type { RunExecuteMessage } from "./shared/contracts.ts";
@@ -13,6 +14,7 @@ export interface RunnerApp {
   processMessage: (message: RunExecuteMessage) => Promise<RunnerExecutionResult>;
   processRawMessage: (rawMessage: string) => Promise<RunnerExecutionResult>;
   processMessageFile: (messageFile: string) => Promise<RunnerExecutionResult>;
+  startMqConsumer: () => Promise<RunExecuteQueueConsumer>;
 }
 
 export function createRunnerApp(overrides: Partial<RunnerConfig> = {}): RunnerApp {
@@ -34,6 +36,13 @@ export function createRunnerApp(overrides: Partial<RunnerConfig> = {}): RunnerAp
     config,
     processMessage: (message) => worker.handleMessage(message),
     processRawMessage: (rawMessage) => worker.handleMessage(parseRunExecuteMessage(rawMessage)),
-    processMessageFile: async (messageFile) => worker.handleMessage(await readRunExecuteMessage(messageFile))
+    processMessageFile: async (messageFile) => worker.handleMessage(await readRunExecuteMessage(messageFile)),
+    startMqConsumer: async () =>
+      startRunExecuteQueueConsumer({
+        config,
+        processRawMessage: async (rawMessage) => {
+          await worker.handleMessage(parseRunExecuteMessage(rawMessage));
+        }
+      })
   };
 }

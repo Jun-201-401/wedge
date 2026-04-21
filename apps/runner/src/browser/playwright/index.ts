@@ -406,16 +406,9 @@ class RealPlaywrightSession implements BrowserSession {
 
     if (strategy.type === "none") {
       await this.refreshPageState();
-
-      return {
-        strategy: strategy.type,
-        durationMs: 0,
-        status: "settled",
-        targetSummary,
-        details: {
-          mode: "no_wait"
-        }
-      };
+      return this.createSettleResult(strategy.type, startedAt, targetSummary, "settled", {
+        mode: "no_wait"
+      });
     }
 
     if (strategy.type === "network_idle") {
@@ -424,30 +417,16 @@ class RealPlaywrightSession implements BrowserSession {
           timeout: strategy.timeout_ms
         });
         await this.refreshPageState();
-
-        return {
-          strategy: strategy.type,
-          durationMs: Date.now() - startedAt,
-          status: "settled",
-          targetSummary,
-          details: {
-            mode: "load_state",
-            loadState: "networkidle"
-          }
-        };
-      } catch (error) {
+        return this.createSettleResult(strategy.type, startedAt, targetSummary, "settled", {
+          mode: "load_state",
+          loadState: "networkidle"
+        });
+      } catch {
         await this.refreshPageState();
-
-        return {
-          strategy: strategy.type,
-          durationMs: Date.now() - startedAt,
-          status: "timeout",
-          targetSummary,
-          details: {
-            mode: "load_state",
-            loadState: "networkidle"
-          }
-        };
+        return this.createSettleResult(strategy.type, startedAt, targetSummary, "timeout", {
+          mode: "load_state",
+          loadState: "networkidle"
+        });
       }
     }
 
@@ -457,30 +436,16 @@ class RealPlaywrightSession implements BrowserSession {
       try {
         await this.waitForTargetLocatorState(strategy.target, locatorState, strategy.timeout_ms);
         await this.refreshPageState();
-
-        return {
-          strategy: strategy.type,
-          durationMs: Date.now() - startedAt,
-          status: "settled",
-          targetSummary,
-          details: {
-            mode: "locator_state",
-            locatorState
-          }
-        };
-      } catch (error) {
+        return this.createSettleResult(strategy.type, startedAt, targetSummary, "settled", {
+          mode: "locator_state",
+          locatorState
+        });
+      } catch {
         await this.refreshPageState();
-
-        return {
-          strategy: strategy.type,
-          durationMs: Date.now() - startedAt,
-          status: "timeout",
-          targetSummary,
-          details: {
-            mode: "locator_state",
-            locatorState
-          }
-        };
+        return this.createSettleResult(strategy.type, startedAt, targetSummary, "timeout", {
+          mode: "locator_state",
+          locatorState
+        });
       }
     }
 
@@ -488,26 +453,12 @@ class RealPlaywrightSession implements BrowserSession {
       try {
         const details = await this.waitForUrlChange(strategy);
         await this.refreshPageState();
-
-        return {
-          strategy: strategy.type,
-          durationMs: Date.now() - startedAt,
-          status: "settled",
-          targetSummary,
-          details
-        };
+        return this.createSettleResult(strategy.type, startedAt, targetSummary, "settled", details);
       } catch {
         await this.refreshPageState();
-
-        return {
-          strategy: strategy.type,
-          durationMs: Date.now() - startedAt,
-          status: "timeout",
-          targetSummary,
-          details: {
-            mode: "url_change"
-          }
-        };
+        return this.createSettleResult(strategy.type, startedAt, targetSummary, "timeout", {
+          mode: "url_change"
+        });
       }
     }
 
@@ -515,30 +466,16 @@ class RealPlaywrightSession implements BrowserSession {
       try {
         const details = await this.waitForResponse(strategy);
         await this.refreshPageState();
-
-        return {
-          strategy: strategy.type,
-          durationMs: Date.now() - startedAt,
-          status: "settled",
-          targetSummary,
-          details
-        };
+        return this.createSettleResult(strategy.type, startedAt, targetSummary, "settled", details);
       } catch {
         await this.refreshPageState();
-
-        return {
-          strategy: strategy.type,
-          durationMs: Date.now() - startedAt,
-          status: "timeout",
-          targetSummary,
-          details: {
-            mode: "response_wait",
-            urlIncludes: resolveSettleResponseUrlIncludes(strategy),
-            method: resolveSettleResponseMethod(strategy),
-            status: resolveSettleResponseStatus(strategy),
-            timeoutMs: strategy.timeout_ms
-          }
-        };
+        return this.createSettleResult(strategy.type, startedAt, targetSummary, "timeout", {
+          mode: "response_wait",
+          urlIncludes: resolveSettleResponseUrlIncludes(strategy),
+          method: resolveSettleResponseMethod(strategy),
+          status: resolveSettleResponseStatus(strategy),
+          timeoutMs: strategy.timeout_ms
+        });
       }
     }
 
@@ -546,23 +483,15 @@ class RealPlaywrightSession implements BrowserSession {
       try {
         const details = await this.waitForItemCountChange(strategy);
         await this.refreshPageState();
-
-        return {
-          strategy: strategy.type,
-          durationMs: Date.now() - startedAt,
-          status: "settled",
-          targetSummary,
-          details
-        };
+        return this.createSettleResult(strategy.type, startedAt, targetSummary, "settled", details);
       } catch (error) {
         await this.refreshPageState();
-
-        return {
-          strategy: strategy.type,
-          durationMs: Date.now() - startedAt,
-          status: "timeout",
+        return this.createSettleResult(
+          strategy.type,
+          startedAt,
           targetSummary,
-          details: error instanceof SettleTimeoutError
+          "timeout",
+          error instanceof SettleTimeoutError
             ? error.details
             : {
                 mode: "item_count_poll",
@@ -572,7 +501,7 @@ class RealPlaywrightSession implements BrowserSession {
                 countDelta: resolveSettleCountDelta(strategy),
                 timeoutMs: strategy.timeout_ms
               }
-        };
+        );
       }
     }
 
@@ -580,15 +509,9 @@ class RealPlaywrightSession implements BrowserSession {
     await sleep(durationMs);
     await this.refreshPageState();
 
-    return {
-      strategy: strategy.type,
-      durationMs,
-      status: "settled",
-      targetSummary,
-      details: {
-        mode: "fallback_short_wait"
-      }
-    };
+    return this.createSettleResult(strategy.type, startedAt, targetSummary, "settled", {
+      mode: "fallback_short_wait"
+    }, durationMs);
   }
 
   snapshot(): BrowserPageSnapshot {
@@ -939,6 +862,23 @@ class RealPlaywrightSession implements BrowserSession {
     if (this.state.visitedUrls[this.state.visitedUrls.length - 1] !== currentUrl) {
       this.state.visitedUrls.push(currentUrl);
     }
+  }
+
+  private createSettleResult(
+    strategy: string,
+    startedAt: number,
+    targetSummary: string | null | undefined,
+    status: BrowserSettleResult["status"],
+    details: Record<string, unknown>,
+    durationMs: number = Date.now() - startedAt
+  ): BrowserSettleResult {
+    return {
+      strategy,
+      durationMs,
+      status,
+      targetSummary,
+      details
+    };
   }
 }
 

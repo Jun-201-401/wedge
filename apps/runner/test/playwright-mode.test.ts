@@ -19,40 +19,14 @@ test("real playwright mode executes goto/fill/select and captures real screensho
   try {
     const { formUrl } = await createFixtureSite(fixtureRoot);
     const plan = createPlaywrightPlan(formUrl);
-    const browserFactory = createPlaywrightSessionFactory(
-      createRunnerTestConfig({
-        browserMode: "playwright",
-        artifactsRoot,
-        callbackLogFile: join(artifactsRoot, "callbacks.jsonl"),
-        browserLaunchTimeoutMs: 45_000,
-        browserNavigationTimeoutMs: 10_000
-      })
-    );
+    const browserFactory = createPlaywrightBrowserFactory(artifactsRoot);
 
     session = await browserFactory.createSession({
       runId: "run-playwright-form",
       plan
     });
 
-    await session.execute(
-      {
-        type: "goto",
-        target: {
-          url: formUrl
-        }
-      },
-      createStep({
-        step_id: "step_goto_form",
-        stage: "FIRST_VIEW",
-        description: "open local fixture page",
-        action: {
-          type: "goto",
-          target: {
-            url: formUrl
-          }
-        }
-      })
-    );
+    await executeGotoStep(session, formUrl, "step_goto_form");
 
     await session.execute(
       {
@@ -130,40 +104,14 @@ test("real playwright mode click target navigates to the linked page", async () 
 
   try {
     const { formUrl, doneUrl } = await createFixtureSite(fixtureRoot);
-    const browserFactory = createPlaywrightSessionFactory(
-      createRunnerTestConfig({
-        browserMode: "playwright",
-        artifactsRoot,
-        callbackLogFile: join(artifactsRoot, "callbacks.jsonl"),
-        browserLaunchTimeoutMs: 45_000,
-        browserNavigationTimeoutMs: 10_000
-      })
-    );
+    const browserFactory = createPlaywrightBrowserFactory(artifactsRoot);
 
     session = await browserFactory.createSession({
       runId: "run-playwright-click",
       plan: createPlaywrightPlan(formUrl)
     });
 
-    await session.execute(
-      {
-        type: "goto",
-        target: {
-          url: formUrl
-        }
-      },
-      createStep({
-        step_id: "step_open_form",
-        stage: "FIRST_VIEW",
-        description: "open local fixture page",
-        action: {
-          type: "goto",
-          target: {
-            url: formUrl
-          }
-        }
-      })
-    );
+    await executeGotoStep(session, formUrl);
 
     await session.execute(
       {
@@ -211,40 +159,14 @@ test("real playwright mode hover triggers DOM changes and wait_for observes dela
 
   try {
     const { formUrl } = await createFixtureSite(fixtureRoot);
-    const browserFactory = createPlaywrightSessionFactory(
-      createRunnerTestConfig({
-        browserMode: "playwright",
-        artifactsRoot,
-        callbackLogFile: join(artifactsRoot, "callbacks.jsonl"),
-        browserLaunchTimeoutMs: 45_000,
-        browserNavigationTimeoutMs: 10_000
-      })
-    );
+    const browserFactory = createPlaywrightBrowserFactory(artifactsRoot);
 
     session = await browserFactory.createSession({
       runId: "run-playwright-hover-wait",
       plan: createPlaywrightPlan(formUrl)
     });
 
-    await session.execute(
-      {
-        type: "goto",
-        target: {
-          url: formUrl
-        }
-      },
-      createStep({
-        step_id: "step_open_form",
-        stage: "FIRST_VIEW",
-        description: "open local fixture page",
-        action: {
-          type: "goto",
-          target: {
-            url: formUrl
-          }
-        }
-      })
-    );
+    await executeGotoStep(session, formUrl);
 
     await session.execute(
       {
@@ -316,40 +238,14 @@ test("real playwright settle supports locator_visible and spinner_hidden for del
 
   try {
     const { formUrl } = await createFixtureSite(fixtureRoot);
-    const browserFactory = createPlaywrightSessionFactory(
-      createRunnerTestConfig({
-        browserMode: "playwright",
-        artifactsRoot,
-        callbackLogFile: join(artifactsRoot, "callbacks.jsonl"),
-        browserLaunchTimeoutMs: 45_000,
-        browserNavigationTimeoutMs: 10_000
-      })
-    );
+    const browserFactory = createPlaywrightBrowserFactory(artifactsRoot);
 
     session = await browserFactory.createSession({
       runId: "run-playwright-settle-locator",
       plan: createPlaywrightPlan(formUrl)
     });
 
-    await session.execute(
-      {
-        type: "goto",
-        target: {
-          url: formUrl
-        }
-      },
-      createStep({
-        step_id: "step_open_form",
-        stage: "FIRST_VIEW",
-        description: "open local fixture page",
-        action: {
-          type: "goto",
-          target: {
-            url: formUrl
-          }
-        }
-      })
-    );
+    await executeGotoStep(session, formUrl);
 
     await session.execute(
       {
@@ -429,40 +325,14 @@ test("real playwright settle supports url_change and reports timeout when locato
 
   try {
     const { formUrl } = await createFixtureSite(fixtureRoot);
-    const browserFactory = createPlaywrightSessionFactory(
-      createRunnerTestConfig({
-        browserMode: "playwright",
-        artifactsRoot,
-        callbackLogFile: join(artifactsRoot, "callbacks.jsonl"),
-        browserLaunchTimeoutMs: 45_000,
-        browserNavigationTimeoutMs: 10_000
-      })
-    );
+    const browserFactory = createPlaywrightBrowserFactory(artifactsRoot);
 
     session = await browserFactory.createSession({
       runId: "run-playwright-settle-url",
       plan: createPlaywrightPlan(formUrl)
     });
 
-    await session.execute(
-      {
-        type: "goto",
-        target: {
-          url: formUrl
-        }
-      },
-      createStep({
-        step_id: "step_open_form",
-        stage: "FIRST_VIEW",
-        description: "open local fixture page",
-        action: {
-          type: "goto",
-          target: {
-            url: formUrl
-          }
-        }
-      })
-    );
+    await executeGotoStep(session, formUrl);
 
     await session.execute(
       {
@@ -522,40 +392,14 @@ test("real playwright response settle waits for matching HTTP response before re
 
   try {
     const { formUrl } = fixtureServer;
-    const browserFactory = createPlaywrightSessionFactory(
-      createRunnerTestConfig({
-        browserMode: "playwright",
-        artifactsRoot,
-        callbackLogFile: join(artifactsRoot, "callbacks.jsonl"),
-        browserLaunchTimeoutMs: 45_000,
-        browserNavigationTimeoutMs: 10_000
-      })
-    );
+    const browserFactory = createPlaywrightBrowserFactory(artifactsRoot);
 
     session = await browserFactory.createSession({
       runId: "run-playwright-fallback-settle",
       plan: createPlaywrightPlan(formUrl)
     });
 
-    await session.execute(
-      {
-        type: "goto",
-        target: {
-          url: formUrl
-        }
-      },
-      createStep({
-        step_id: "step_open_form",
-        stage: "FIRST_VIEW",
-        description: "open local fixture page",
-        action: {
-          type: "goto",
-          target: {
-            url: formUrl
-          }
-        }
-      })
-    );
+    await executeGotoStep(session, formUrl);
 
     await session.execute(
       {
@@ -611,40 +455,14 @@ test("real playwright item_count_change waits for delayed list growth before ret
 
   try {
     const { formUrl } = await createFixtureSite(fixtureRoot);
-    const browserFactory = createPlaywrightSessionFactory(
-      createRunnerTestConfig({
-        browserMode: "playwright",
-        artifactsRoot,
-        callbackLogFile: join(artifactsRoot, "callbacks.jsonl"),
-        browserLaunchTimeoutMs: 45_000,
-        browserNavigationTimeoutMs: 10_000
-      })
-    );
+    const browserFactory = createPlaywrightBrowserFactory(artifactsRoot);
 
     session = await browserFactory.createSession({
       runId: "run-playwright-item-count-fallback",
       plan: createPlaywrightPlan(formUrl)
     });
 
-    await session.execute(
-      {
-        type: "goto",
-        target: {
-          url: formUrl
-        }
-      },
-      createStep({
-        step_id: "step_open_form",
-        stage: "FIRST_VIEW",
-        description: "open local fixture page",
-        action: {
-          type: "goto",
-          target: {
-            url: formUrl
-          }
-        }
-      })
-    );
+    await executeGotoStep(session, formUrl);
 
     await session.execute(
       {
@@ -699,40 +517,14 @@ test("real playwright response and item_count_change report timeout when settle 
   let itemCountSession: Awaited<ReturnType<ReturnType<typeof createPlaywrightSessionFactory>["createSession"]>> | undefined;
 
   try {
-    const browserFactory = createPlaywrightSessionFactory(
-      createRunnerTestConfig({
-        browserMode: "playwright",
-        artifactsRoot,
-        callbackLogFile: join(artifactsRoot, "callbacks.jsonl"),
-        browserLaunchTimeoutMs: 45_000,
-        browserNavigationTimeoutMs: 10_000
-      })
-    );
+    const browserFactory = createPlaywrightBrowserFactory(artifactsRoot);
 
     responseSession = await browserFactory.createSession({
       runId: "run-playwright-response-timeout",
       plan: createPlaywrightPlan(fixtureServer.formUrl)
     });
 
-    await responseSession.execute(
-      {
-        type: "goto",
-        target: {
-          url: fixtureServer.formUrl
-        }
-      },
-      createStep({
-        step_id: "step_open_response_form",
-        stage: "FIRST_VIEW",
-        description: "open response timeout fixture",
-        action: {
-          type: "goto",
-          target: {
-            url: fixtureServer.formUrl
-          }
-        }
-      })
-    );
+    await executeGotoStep(responseSession, fixtureServer.formUrl, "step_open_response_form", "open response timeout fixture");
 
     await responseSession.execute(
       {
@@ -776,25 +568,7 @@ test("real playwright response and item_count_change report timeout when settle 
       plan: createPlaywrightPlan(formUrl)
     });
 
-    await itemCountSession.execute(
-      {
-        type: "goto",
-        target: {
-          url: formUrl
-        }
-      },
-      createStep({
-        step_id: "step_open_item_count_form",
-        stage: "FIRST_VIEW",
-        description: "open item-count timeout fixture",
-        action: {
-          type: "goto",
-          target: {
-            url: formUrl
-          }
-        }
-      })
-    );
+    await executeGotoStep(itemCountSession, formUrl, "step_open_item_count_form", "open item-count timeout fixture");
 
     await itemCountSession.execute(
       {
@@ -850,13 +624,7 @@ test("real playwright artifacts persist with png/html metadata and filesystem co
   try {
     const { formUrl } = await createFixtureSite(fixtureRoot);
     const plan = createPlaywrightPlan(formUrl);
-    const config = createRunnerTestConfig({
-      browserMode: "playwright",
-      artifactsRoot,
-      callbackLogFile: join(artifactsRoot, "callbacks.jsonl"),
-      browserLaunchTimeoutMs: 45_000,
-      browserNavigationTimeoutMs: 10_000
-    });
+    const config = createPlaywrightConfig(artifactsRoot);
     const browserFactory = createPlaywrightSessionFactory(config);
     const capturePipeline = createCapturePipeline();
     const artifactStore = createArtifactStore(config);
@@ -866,25 +634,7 @@ test("real playwright artifacts persist with png/html metadata and filesystem co
       plan
     });
 
-    await session.execute(
-      {
-        type: "goto",
-        target: {
-          url: formUrl
-        }
-      },
-      createStep({
-        step_id: "step_open_fixture",
-        stage: "FIRST_VIEW",
-        description: "open local fixture page",
-        action: {
-          type: "goto",
-          target: {
-            url: formUrl
-          }
-        }
-      })
-    );
+    await executeGotoStep(session, formUrl, "step_open_fixture");
 
     const step = createStep({
       step_id: "step_checkpoint_fixture",
@@ -972,6 +722,20 @@ async function createResponseFixtureServer(): Promise<{ formUrl: string; close: 
       });
     }
   };
+}
+
+function createPlaywrightConfig(artifactsRoot: string) {
+  return createRunnerTestConfig({
+    browserMode: "playwright",
+    artifactsRoot,
+    callbackLogFile: join(artifactsRoot, "callbacks.jsonl"),
+    browserLaunchTimeoutMs: 45_000,
+    browserNavigationTimeoutMs: 10_000
+  });
+}
+
+function createPlaywrightBrowserFactory(artifactsRoot: string) {
+  return createPlaywrightSessionFactory(createPlaywrightConfig(artifactsRoot));
 }
 
 async function createFixtureSite(root: string): Promise<{ formUrl: string; doneUrl: string }> {
@@ -1148,6 +912,33 @@ function createStep(overrides: Partial<ScenarioStep> & Pick<ScenarioStep, "step_
     checkpoint: overrides.checkpoint ?? false,
     stop_condition: overrides.stop_condition
   };
+}
+
+async function executeGotoStep(
+  session: Awaited<ReturnType<ReturnType<typeof createPlaywrightSessionFactory>["createSession"]>>,
+  url: string,
+  stepId: string = "step_open_form",
+  description: string = "open local fixture page"
+): Promise<void> {
+  await session.execute(
+    {
+      type: "goto",
+      target: {
+        url
+      }
+    },
+    createStep({
+      step_id: stepId,
+      stage: "FIRST_VIEW",
+      description,
+      action: {
+        type: "goto",
+        target: {
+          url
+        }
+      }
+    })
+  );
 }
 
 async function handleResponseFixtureRequest(request: IncomingMessage, response: ServerResponse): Promise<void> {

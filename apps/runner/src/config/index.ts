@@ -10,6 +10,11 @@ export interface RunnerConfig {
   artifactsRoot: string;
   callbackLogFile: string;
   artifactBucket: string;
+  mqConsumerEnabled: boolean;
+  mqUrl: string;
+  mqQueueRunExecute: string;
+  mqPrefetch: number;
+  mqRequeueOnFailure: boolean;
   browserMode: RunnerBrowserMode;
   browserName: RunnerBrowserName;
   browserHeadless: boolean;
@@ -24,6 +29,20 @@ export function loadRunnerConfig(overrides: Partial<RunnerConfig> = {}): RunnerC
   const artifactsRoot =
     overrides.artifactsRoot ??
     resolve(process.cwd(), process.env.RUNNER_ARTIFACTS_ROOT ?? ".runner-artifacts");
+  const mqConsumerEnabled = parseBoolean(
+    overrides.mqConsumerEnabled,
+    process.env.RUNNER_MQ_CONSUMER_ENABLED,
+    false
+  );
+  const mqUrl = overrides.mqUrl ?? process.env.RUNNER_MQ_URL ?? "amqp://localhost";
+  const mqQueueRunExecute =
+    overrides.mqQueueRunExecute ?? process.env.RUNNER_MQ_QUEUE_RUN_EXECUTE ?? "run.execute.request";
+  const mqPrefetch = parseNumber(overrides.mqPrefetch, process.env.RUNNER_MQ_PREFETCH, 1);
+  const mqRequeueOnFailure = parseBoolean(
+    overrides.mqRequeueOnFailure,
+    process.env.RUNNER_MQ_REQUEUE_ON_FAILURE,
+    false
+  );
   const browserMode = parseBrowserMode(overrides.browserMode ?? process.env.RUNNER_BROWSER_MODE);
   const browserName = parseBrowserName(overrides.browserName ?? process.env.RUNNER_BROWSER_NAME);
   const browserHeadless = parseBoolean(overrides.browserHeadless, process.env.RUNNER_BROWSER_HEADLESS, true);
@@ -46,6 +65,11 @@ export function loadRunnerConfig(overrides: Partial<RunnerConfig> = {}): RunnerC
       overrides.callbackLogFile ??
       resolve(artifactsRoot, process.env.RUNNER_CALLBACK_LOG_FILE ?? "callbacks.jsonl"),
     artifactBucket: overrides.artifactBucket ?? process.env.RUNNER_ARTIFACT_BUCKET ?? "local-runner",
+    mqConsumerEnabled,
+    mqUrl,
+    mqQueueRunExecute,
+    mqPrefetch,
+    mqRequeueOnFailure,
     browserMode,
     browserName,
     browserHeadless,

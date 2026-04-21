@@ -148,31 +148,13 @@ function createSettleObservations(settleResult: BrowserSettleResult): Record<str
 
   if (settleResult.strategy === "response") {
     return [
-      {
-        type: "settle_response",
-        settle_status: settleResult.status,
-        target: settleResult.targetSummary ?? null,
-        matched_url: readStringDetail(settleResult.details, "matchedUrl"),
-        method: readStringDetail(settleResult.details, "method"),
-        status_code: readNumberDetail(settleResult.details, "status"),
-        url_includes: readStringDetail(settleResult.details, "urlIncludes")
-      }
+      createResponseSettleObservation(settleResult)
     ];
   }
 
   if (settleResult.strategy === "item_count_change") {
     return [
-      {
-        type: "settle_item_count_change",
-        settle_status: settleResult.status,
-        target: settleResult.targetSummary ?? null,
-        baseline_count: readNumberDetail(settleResult.details, "baselineCount"),
-        current_count: readNumberDetail(settleResult.details, "currentCount"),
-        expected_count: readNumberDetail(settleResult.details, "expectedCount"),
-        min_count: readNumberDetail(settleResult.details, "minCount"),
-        max_count: readNumberDetail(settleResult.details, "maxCount"),
-        count_delta: readNumberDetail(settleResult.details, "countDelta")
-      }
+      createItemCountSettleObservation(settleResult)
     ];
   }
 
@@ -187,6 +169,36 @@ function readStringDetail(details: Record<string, unknown>, key: string): string
 function readNumberDetail(details: Record<string, unknown>, key: string): number | null {
   const value = details[key];
   return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function createResponseSettleObservation(settleResult: BrowserSettleResult): Record<string, unknown> {
+  const details = settleResult.details ?? {};
+
+  return {
+    type: "settle_response",
+    settle_status: settleResult.status,
+    target: settleResult.targetSummary ?? null,
+    matched_url: readStringDetail(details, "matchedUrl"),
+    method: readStringDetail(details, "method"),
+    status_code: readNumberDetail(details, "status"),
+    url_includes: readStringDetail(details, "urlIncludes")
+  };
+}
+
+function createItemCountSettleObservation(settleResult: BrowserSettleResult): Record<string, unknown> {
+  const details = settleResult.details ?? {};
+
+  return {
+    type: "settle_item_count_change",
+    settle_status: settleResult.status,
+    target: settleResult.targetSummary ?? null,
+    baseline_count: readNumberDetail(details, "baselineCount"),
+    current_count: readNumberDetail(details, "currentCount"),
+    expected_count: readNumberDetail(details, "expectedCount"),
+    min_count: readNumberDetail(details, "minCount"),
+    max_count: readNumberDetail(details, "maxCount"),
+    count_delta: readNumberDetail(details, "countDelta")
+  };
 }
 
 function createScreenshotArtifact({
