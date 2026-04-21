@@ -2,7 +2,12 @@ import { readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { BrowserPageSnapshot, BrowserSession, BrowserSettleResult } from "../src/browser/playwright/index.ts";
+import type {
+  BrowserCapturedArtifacts,
+  BrowserPageSnapshot,
+  BrowserSession,
+  BrowserSettleResult
+} from "../src/browser/playwright/index.ts";
 import type { RunnerConfig } from "../src/config/index.ts";
 import { parseRunExecuteMessage } from "../src/messaging/index.ts";
 import type {
@@ -65,6 +70,12 @@ export function createRunnerTestConfig(overrides: Partial<RunnerConfig> = {}): R
     artifactsRoot,
     callbackLogFile: overrides.callbackLogFile ?? join(artifactsRoot, "callbacks.jsonl"),
     artifactBucket: "local-runner",
+    browserMode: "simulated",
+    browserName: "chromium",
+    browserHeadless: true,
+    browserLaunchTimeoutMs: 30_000,
+    browserNavigationTimeoutMs: 30_000,
+    playwrightBrowsersPath: undefined,
     simulatedDelayCapMs: 1,
     ...overrides
   };
@@ -125,6 +136,7 @@ export function createSimulatedSession(
     }),
     settle: async () => createSettledResult(),
     snapshot: () => pageSnapshot,
+    captureArtifacts: async (): Promise<BrowserCapturedArtifacts> => ({}),
     close: async () => {},
     ...overrides
   };

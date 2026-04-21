@@ -17,7 +17,7 @@ export function createArtifactStore(config: RunnerConfig): ArtifactStore {
       for (const artifact of artifacts) {
         const artifactKey = createArtifactKey(runId, artifact);
         const absolutePath = createFilesystemPath(config.artifactsRoot, artifactKey);
-        const contentBuffer = Buffer.from(artifact.content, "utf8");
+        const contentBuffer = decodeArtifactContent(artifact);
         const sha256 = createHash("sha256").update(contentBuffer).digest("hex");
 
         await mkdir(dirname(absolutePath), { recursive: true });
@@ -50,4 +50,12 @@ function createArtifactKey(runId: string, artifact: ArtifactDraft): string {
 
 function createFilesystemPath(artifactsRoot: string, artifactKey: string): string {
   return join(artifactsRoot, ...artifactKey.split("/"));
+}
+
+function decodeArtifactContent(artifact: ArtifactDraft): Buffer {
+  if (artifact.contentEncoding === "base64") {
+    return Buffer.from(artifact.content, "base64");
+  }
+
+  return Buffer.from(artifact.content, "utf8");
 }
