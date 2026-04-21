@@ -53,9 +53,9 @@ services:
       timeout: 5s
       retries: 5
 
-  mc:
+  minio-init:
     image: minio/mc:latest
-    container_name: wedge-mc-dev
+    container_name: wedge-minio-init-dev
     depends_on:
       minio:
         condition: service_healthy
