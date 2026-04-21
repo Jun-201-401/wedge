@@ -1,5 +1,3 @@
-import { appendFile, mkdir } from "node:fs/promises";
-import { dirname } from "node:path";
 import type { RunnerConfig } from "../config/index.ts";
 import type {
   ArtifactBatch,
@@ -9,7 +7,8 @@ import type {
   RunnerFinishedPayload,
   StepEventBatch
 } from "../shared/contracts.ts";
-import { toIsoTimestamp } from "../shared/utils.ts";
+import { createFileCallbackClient } from "./file.ts";
+import { createHttpCallbackClient } from "./http.ts";
 
 export interface CallbackClient {
   sendAccepted: (runId: string, payload: RunnerAcceptedPayload) => Promise<void>;
@@ -20,32 +19,10 @@ export interface CallbackClient {
   sendFailed: (runId: string, payload: RunnerFailedPayload) => Promise<void>;
 }
 
-interface CallbackRecord {
-  callbackType: string;
-  runId: string;
-  emittedAt: string;
-  payload: unknown;
-}
-
 export function createCallbackClient(config: RunnerConfig): CallbackClient {
-  async function emit(callbackType: string, runId: string, payload: unknown): Promise<void> {
-    const record: CallbackRecord = {
-      callbackType,
-      runId,
-      emittedAt: toIsoTimestamp(),
-      payload
-    };
-
-    await mkdir(dirname(config.callbackLogFile), { recursive: true });
-    await appendFile(config.callbackLogFile, `${JSON.stringify(record)}\n`, "utf8");
+  if (config.callbackMode === "http") {
+    return createHttpCallbackClient(config);
   }
 
-  return {
-    sendAccepted: (runId, payload) => emit("accepted", runId, payload),
-    sendStepEvents: (runId, payload) => emit("step-events", runId, payload),
-    sendArtifacts: (runId, payload) => emit("artifacts", runId, payload),
-    sendCheckpoints: (runId, payload) => emit("checkpoints", runId, payload),
-    sendFinished: (runId, payload) => emit("finished", runId, payload),
-    sendFailed: (runId, payload) => emit("failed", runId, payload)
-  };
+  return createFileCallbackClient(config);
 }

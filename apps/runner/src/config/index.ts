@@ -3,12 +3,18 @@ import { resolve } from "node:path";
 
 export type RunnerBrowserMode = "simulated" | "playwright";
 export type RunnerBrowserName = "chromium" | "firefox" | "webkit";
+export type RunnerCallbackMode = "file" | "http";
 
 export interface RunnerConfig {
   serviceName: string;
   workerId: string;
   artifactsRoot: string;
   callbackLogFile: string;
+  callbackMode: RunnerCallbackMode;
+  callbackBaseUrl?: string;
+  callbackTimeoutMs: number;
+  callbackAuthToken?: string;
+  callbackSignatureSecret?: string;
   artifactBucket: string;
   mqConsumerEnabled: boolean;
   mqUrl: string;
@@ -29,6 +35,16 @@ export function loadRunnerConfig(overrides: Partial<RunnerConfig> = {}): RunnerC
   const artifactsRoot =
     overrides.artifactsRoot ??
     resolve(process.cwd(), process.env.RUNNER_ARTIFACTS_ROOT ?? ".runner-artifacts");
+  const callbackMode = parseCallbackMode(overrides.callbackMode ?? process.env.RUNNER_CALLBACK_MODE);
+  const callbackBaseUrl = overrides.callbackBaseUrl ?? process.env.RUNNER_CALLBACK_BASE_URL ?? undefined;
+  const callbackTimeoutMs = parseNumber(
+    overrides.callbackTimeoutMs,
+    process.env.RUNNER_CALLBACK_TIMEOUT_MS,
+    5_000
+  );
+  const callbackAuthToken = overrides.callbackAuthToken ?? process.env.RUNNER_CALLBACK_AUTH_TOKEN ?? undefined;
+  const callbackSignatureSecret =
+    overrides.callbackSignatureSecret ?? process.env.RUNNER_CALLBACK_SIGNATURE_SECRET ?? undefined;
   const mqConsumerEnabled = parseBoolean(
     overrides.mqConsumerEnabled,
     process.env.RUNNER_MQ_CONSUMER_ENABLED,
@@ -64,6 +80,11 @@ export function loadRunnerConfig(overrides: Partial<RunnerConfig> = {}): RunnerC
     callbackLogFile:
       overrides.callbackLogFile ??
       resolve(artifactsRoot, process.env.RUNNER_CALLBACK_LOG_FILE ?? "callbacks.jsonl"),
+    callbackMode,
+    callbackBaseUrl,
+    callbackTimeoutMs,
+    callbackAuthToken,
+    callbackSignatureSecret,
     artifactBucket: overrides.artifactBucket ?? process.env.RUNNER_ARTIFACT_BUCKET ?? "local-runner",
     mqConsumerEnabled,
     mqUrl,
@@ -78,6 +99,14 @@ export function loadRunnerConfig(overrides: Partial<RunnerConfig> = {}): RunnerC
     playwrightBrowsersPath: overrides.playwrightBrowsersPath ?? process.env.PLAYWRIGHT_BROWSERS_PATH ?? undefined,
     simulatedDelayCapMs: parseNumber(overrides.simulatedDelayCapMs, process.env.RUNNER_SIMULATED_DELAY_CAP_MS, 25)
   };
+}
+
+function parseCallbackMode(value: RunnerConfig["callbackMode"] | string | undefined): RunnerCallbackMode {
+  if (value === "file" || value === "http") {
+    return value;
+  }
+
+  return "file";
 }
 
 function parseBrowserMode(value: RunnerConfig["browserMode"] | string | undefined): RunnerBrowserMode {
