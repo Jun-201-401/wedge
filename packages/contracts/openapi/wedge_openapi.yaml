@@ -15,6 +15,7 @@ tags:
 - name: Auth
 - name: Projects
 - name: ScenarioTemplates
+- name: Discoveries
 - name: Runs
 - name: Steps
 - name: Events
@@ -353,6 +354,115 @@ paths:
                 required:
                 - data
                 - meta
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /api/discoveries:
+    post:
+      tags:
+      - Discoveries
+      operationId: createDiscovery
+      summary: Start lightweight Site Discovery / Preflight
+      description: Performs a short URL-first discovery pass to recommend applicable scenarios before creating a full run.
+      security:
+      - oauth2:
+        - wedge.execute
+      parameters:
+      - name: Idempotency-Key
+        in: header
+        required: false
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateDiscoveryRequest'
+            example:
+              url: https://example.com
+              devicePreset: desktop
+              viewport:
+                width: 1440
+                height: 900
+      responses:
+        '202':
+          description: Discovery queued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SingleDiscoveryResponse'
+              example:
+                data:
+                  discoveryId: disc_123
+                  status: QUEUED
+                meta:
+                  requestId: req_123
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /api/discoveries/{discoveryId}:
+    get:
+      tags:
+      - Discoveries
+      operationId: getDiscovery
+      summary: Get Site Discovery / Preflight result
+      security:
+      - oauth2:
+        - wedge.read
+      parameters:
+      - $ref: '#/components/parameters/DiscoveryId'
+      responses:
+        '200':
+          description: Discovery result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SingleDiscoveryResponse'
+              example:
+                data:
+                  discoveryId: disc_123
+                  status: COMPLETED
+                  inputUrl: https://example.com
+                  finalUrl: https://example.com
+                  summary:
+                    detectedFlowTypes:
+                    - LANDING_CTA
+                    - SIGNUP_LEAD_FORM
+                    missingFlowTypes:
+                    - PURCHASE_CHECKOUT
+                    primaryCtaCount: 2
+                    formCandidateCount: 1
+                    pricingEntrypointCount: 0
+                    checkoutEntrypointCount: 0
+                  scenarioRecommendations:
+                  - scenarioType: LANDING_CTA
+                    recommendationLevel: HIGH
+                    confidence: 0.86
+                    reason: First-view primary CTA supports a landing CTA scenario.
+                    evidenceRefs:
+                    - cp_001.obs_002
+                    suggestedStartUrl: https://example.com
+                  - scenarioType: PURCHASE_CHECKOUT
+                    recommendationLevel: LOW
+                    confidence: 0.22
+                    reason: No pricing, cart, or checkout entrypoint was detected.
+                    evidenceRefs:
+                    - cp_001.obs_008
+                meta:
+                  requestId: req_124
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -1474,6 +1584,12 @@ components:
       schema:
         type: string
         format: uuid
+    DiscoveryId:
+      name: discoveryId
+      in: path
+      required: true
+      schema:
+        type: string
     ProjectId:
       name: projectId
       in: path
@@ -1699,6 +1815,21 @@ components:
           nullable: true
       required:
       - requestId
+    ErrorCode:
+      type: string
+      enum:
+      - UNAUTHORIZED
+      - FORBIDDEN
+      - NOT_FOUND
+      - CONFLICT
+      - VALIDATION_ERROR
+      - DISCOVERY_NOT_FOUND
+      - DISCOVERY_EXPIRED
+      - DISCOVERY_FAILED
+      - SCENARIO_NOT_APPLICABLE
+      - SCENARIO_FIT_LOW_CONFIDENCE
+      - NO_ENTRYPOINT_FOUND
+      - UNSAFE_SCENARIO_ACTION
     ErrorResponse:
       type: object
       properties:
@@ -1706,7 +1837,7 @@ components:
           type: object
           properties:
             code:
-              type: string
+              $ref: '#/components/schemas/ErrorCode'
             message:
               type: string
             details:
@@ -1817,6 +1948,176 @@ components:
       - templateId
       - versionNo
       - definition
+    ScenarioType:
+      type: string
+      enum:
+      - LANDING_CTA
+      - SIGNUP_LEAD_FORM
+      - PRICING
+      - PURCHASE_CHECKOUT
+      - CONTACT
+      - CONTENT_ONLY
+    ScenarioRecommendationLevel:
+      type: string
+      enum:
+      - HIGH
+      - MEDIUM
+      - LOW
+      - NOT_AVAILABLE
+    DiscoveryStatus:
+      type: string
+      enum:
+      - QUEUED
+      - RUNNING
+      - COMPLETED
+      - FAILED
+      - EXPIRED
+    ScenarioFitStatus:
+      type: string
+      enum:
+      - UNKNOWN
+      - APPLICABLE
+      - LOW_CONFIDENCE
+      - NOT_APPLICABLE
+      - BLOCKED_BY_SITE
+      - UNSAFE_OR_RESTRICTED
+    DiscoveryViewport:
+      type: object
+      properties:
+        width:
+          type: integer
+          minimum: 320
+        height:
+          type: integer
+          minimum: 480
+      required:
+      - width
+      - height
+    CreateDiscoveryRequest:
+      type: object
+      properties:
+        projectId:
+          type: string
+          format: uuid
+        url:
+          type: string
+          format: uri
+        devicePreset:
+          type: string
+          enum:
+          - desktop
+          - tablet
+          - mobile
+          default: desktop
+        viewport:
+          $ref: '#/components/schemas/DiscoveryViewport'
+      required:
+      - projectId
+      - url
+      - devicePreset
+    DiscoverySummary:
+      type: object
+      properties:
+        detectedFlowTypes:
+          type: array
+          items:
+            $ref: '#/components/schemas/ScenarioType'
+        missingFlowTypes:
+          type: array
+          items:
+            $ref: '#/components/schemas/ScenarioType'
+        primaryCtaCount:
+          type: integer
+          minimum: 0
+        formCandidateCount:
+          type: integer
+          minimum: 0
+        pricingEntrypointCount:
+          type: integer
+          minimum: 0
+        checkoutEntrypointCount:
+          type: integer
+          minimum: 0
+      required:
+      - detectedFlowTypes
+      - missingFlowTypes
+      - primaryCtaCount
+      - formCandidateCount
+      - pricingEntrypointCount
+      - checkoutEntrypointCount
+    ScenarioRecommendation:
+      type: object
+      properties:
+        scenarioType:
+          $ref: '#/components/schemas/ScenarioType'
+        recommendationLevel:
+          $ref: '#/components/schemas/ScenarioRecommendationLevel'
+        confidence:
+          type: number
+          minimum: 0
+          maximum: 1
+        reason:
+          type: string
+        evidenceRefs:
+          type: array
+          items:
+            type: string
+        suggestedStartUrl:
+          type: string
+          format: uri
+          nullable: true
+        suggestedTarget:
+          type: object
+          nullable: true
+          additionalProperties: true
+      required:
+      - scenarioType
+      - recommendationLevel
+      - confidence
+      - reason
+      - evidenceRefs
+    DiscoveryResponse:
+      type: object
+      properties:
+        discoveryId:
+          type: string
+        status:
+          $ref: '#/components/schemas/DiscoveryStatus'
+        inputUrl:
+          type: string
+          format: uri
+          nullable: true
+        finalUrl:
+          type: string
+          format: uri
+          nullable: true
+        summary:
+          $ref: '#/components/schemas/DiscoverySummary'
+        scenarioRecommendations:
+          type: array
+          items:
+            $ref: '#/components/schemas/ScenarioRecommendation'
+        createdAt:
+          type: string
+          format: date-time
+          nullable: true
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+      required:
+      - discoveryId
+      - status
+    SingleDiscoveryResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/DiscoveryResponse'
+        meta:
+          $ref: '#/components/schemas/Meta'
+      required:
+      - data
+      - meta
     Run:
       type: object
       properties:
@@ -1841,6 +2142,9 @@ components:
         startUrl:
           type: string
           format: uri
+        sourceDiscoveryId:
+          type: string
+          nullable: true
         goal:
           type: string
           nullable: true
@@ -1895,6 +2199,15 @@ components:
         failureMessage:
           type: string
           nullable: true
+        scenarioFitStatus:
+          $ref: '#/components/schemas/ScenarioFitStatus'
+        scenarioFitReason:
+          type: string
+          nullable: true
+        scenarioFitSummary:
+          type: object
+          nullable: true
+          additionalProperties: true
         latestSnapshot:
           $ref: '#/components/schemas/LatestSnapshot'
       required:
@@ -1931,6 +2244,9 @@ components:
         startUrl:
           type: string
           format: uri
+        sourceDiscoveryId:
+          type: string
+          nullable: true
         goal:
           type: string
           nullable: true
@@ -2816,8 +3132,17 @@ components:
       properties:
         schema_version:
           type: string
+        execution_type:
+          type: string
+          enum:
+          - DISCOVERY
+          - RUN
         run_id:
           type: string
+          nullable: true
+        discovery_id:
+          type: string
+          nullable: true
         url:
           type: string
           format: uri
@@ -2834,6 +3159,9 @@ components:
             type: object
         aggregate_signals:
           type: object
+        scenario_fit:
+          type: object
+          nullable: true
         artifacts:
           type: array
           minItems: 1

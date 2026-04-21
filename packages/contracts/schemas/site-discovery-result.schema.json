@@ -1,0 +1,265 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wedge.example.com/contracts/schemas/site-discovery-result.schema.json",
+  "title": "Wedge SiteDiscoveryResult",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "discovery_id",
+    "input_url",
+    "final_url",
+    "environment",
+    "checkpoints",
+    "detected_flow_types",
+    "scenario_recommendations"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "0.5"
+    },
+    "discovery_id": {
+      "type": "string"
+    },
+    "input_url": {
+      "type": "string",
+      "format": "uri"
+    },
+    "final_url": {
+      "type": "string",
+      "format": "uri"
+    },
+    "environment": {
+      "type": "object",
+      "required": [
+        "device",
+        "viewport",
+        "locale",
+        "timezone"
+      ],
+      "properties": {
+        "device": {
+          "enum": [
+            "desktop",
+            "mobile",
+            "tablet"
+          ]
+        },
+        "viewport": {
+          "type": "object",
+          "required": [
+            "width",
+            "height"
+          ],
+          "properties": {
+            "width": {
+              "type": "integer",
+              "minimum": 320
+            },
+            "height": {
+              "type": "integer",
+              "minimum": 480
+            }
+          },
+          "additionalProperties": false
+        },
+        "locale": {
+          "type": "string"
+        },
+        "timezone": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": true
+    },
+    "checkpoints": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "detected_flow_types": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/flow_type"
+      }
+    },
+    "missing_flow_types": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/flow_type"
+      }
+    },
+    "flow_candidates": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/flow_candidate"
+      }
+    },
+    "scenario_recommendations": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/scenario_recommendation"
+      }
+    },
+    "collection_notes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "$defs": {
+    "flow_type": {
+      "enum": [
+        "LANDING_CTA",
+        "SIGNUP_LEAD_FORM",
+        "PRICING",
+        "PURCHASE_CHECKOUT",
+        "CONTACT",
+        "CONTENT_ONLY"
+      ]
+    },
+    "recommendation_level": {
+      "enum": [
+        "HIGH",
+        "MEDIUM",
+        "LOW",
+        "NOT_AVAILABLE"
+      ]
+    },
+    "entrypoint_candidate": {
+      "type": "object",
+      "required": [
+        "entrypoint_type",
+        "label",
+        "confidence",
+        "evidence_refs"
+      ],
+      "properties": {
+        "entrypoint_type": {
+          "enum": [
+            "cta",
+            "form",
+            "pricing",
+            "checkout",
+            "cart",
+            "signup",
+            "contact",
+            "content"
+          ]
+        },
+        "label": {
+          "type": "string"
+        },
+        "url": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "uri"
+        },
+        "selector": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "evidence_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "flow_candidate": {
+      "type": "object",
+      "required": [
+        "flow_type",
+        "confidence",
+        "evidence_refs",
+        "entrypoint_candidates",
+        "reason"
+      ],
+      "properties": {
+        "flow_type": {
+          "$ref": "#/$defs/flow_type"
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "evidence_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "entrypoint_candidates": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/entrypoint_candidate"
+          }
+        },
+        "reason": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "scenario_recommendation": {
+      "type": "object",
+      "required": [
+        "scenario_type",
+        "recommendation_level",
+        "confidence",
+        "reason",
+        "evidence_refs"
+      ],
+      "properties": {
+        "scenario_type": {
+          "$ref": "#/$defs/flow_type"
+        },
+        "recommendation_level": {
+          "$ref": "#/$defs/recommendation_level"
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "reason": {
+          "type": "string"
+        },
+        "evidence_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "suggested_start_url": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "uri"
+        },
+        "suggested_target": {
+          "type": [
+            "object",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

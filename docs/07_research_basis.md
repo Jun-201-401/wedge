@@ -157,3 +157,15 @@ Wedge는 아래 표현을 사용하지 않는다.
 | CTA threshold calibration | benchmark로 검증 |
 | Visual hierarchy scoring | screenshot/layout proxy부터 시작 |
 | 실제 conversion data 연동 | P2 이후 |
+
+## 10. Scenario Fit and Preflight Rationale
+
+Wedge는 사용자가 선택한 시나리오가 입력 URL에서 실행 가능하다는 가정을 두지 않는다. 일반 사용자나 1인 제작자는 자신의 URL에 어떤 분석 시나리오가 적합한지 모를 수 있다. 따라서 Wedge는 정식 Run 전에 lightweight Site Discovery를 수행해 CTA, form, pricing, checkout, contact 후보를 찾고, 그 근거를 바탕으로 시나리오를 추천한다.
+
+이 섹션은 새로운 외부 research source를 추가하기보다, 기존 Stage-based evaluation과 Evidence-based judgment 원칙의 제품 UX 적용으로 설명한다.
+
+원칙:
+
+- Scenario mismatch는 UX defect가 아니다.
+- Scenario mismatch는 URL과 시나리오의 fit 문제다.
+- 사용자가 특정 flow 존재 여부를 평가 목표로 명시한 경우에만 Path issue로 해석할 수 있다.

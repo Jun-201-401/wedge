@@ -99,6 +99,35 @@ run_friction_score = weighted average(stage_score × stage_weight)
 
 Score는 비교를 돕는 값이며, 절대적 정답이 아니다.
 
+## 7.5 Scenario Fit Evaluation
+
+Scenario Fit Evaluation은 선택한 시나리오가 입력 URL에서 실행 가능한지 판단하는 단계다. 이는 UX 점수나 전환 마찰 점수와 다르다. 예를 들어 구매 시나리오를 선택했지만 해당 URL에 구매/결제 진입점이 없다면, 이는 “사이트가 나쁘다”가 아니라 “선택한 시나리오가 이 URL에 맞지 않다”로 처리한다.
+
+### FIT-SCENARIO-001: Scenario Entrypoint Availability
+
+| Field | Value |
+|---|---|
+| Stage | Preflight, First View, CTA Decision |
+| Axis | Fit / Diagnostic |
+| Evidence Level | Operational |
+| Required Data | CTA candidates, nav links, form candidates, pricing links, checkout/cart links, URL text, link href, button text |
+
+Signal Rule:
+
+선택한 시나리오에 필요한 entrypoint가 first-view, nav, limited scroll 내에서 발견되지 않으면 scenario mismatch signal을 생성한다.
+
+Severity:
+
+일반 severity에 포함하지 않는다. 대신 `scenario_fit_status`로 표현한다.
+
+Output Template:
+
+```text
+이 URL에서는 선택한 {scenario_type} 시나리오를 시작할 진입점을 찾지 못했습니다. 대신 {alternative_scenarios} 흐름이 더 적합해 보입니다.
+```
+
+Scenario mismatch는 Run Friction Score에 포함하지 않는다. 단, 사용자가 명시적으로 “랜딩 페이지에서 구매 진입점이 있는지 점검”을 목표로 설정했다면 Path issue로도 해석할 수 있다.
+
 ## 8. P0 Criteria
 
 V1에서는 아래 후보 중 7–10개 rule을 구현한다.
@@ -162,3 +191,18 @@ LLM은 다음 규칙을 지킨다.
 | False positive rate on good benchmarks | initial <= 30%, target <= 15% |
 | Human agreement | medium+ agreement on P0 criteria |
 | Unsupported LLM claim rate | <= 5% |
+
+### Scenario mismatch validation cases
+
+Benchmark에는 scenario mismatch case를 포함한다.
+
+- 구매 시나리오를 SaaS 랜딩 URL에 적용
+- signup 시나리오를 블로그 글 URL에 적용
+- pricing 시나리오를 제품 상세 URL에 적용
+- contact form 시나리오를 form 없는 페이지에 적용
+
+검증 목표:
+
+- 시스템 오류로 보이지 않는지
+- 대체 시나리오 추천이 적절한지
+- LOW/NOT_AVAILABLE 추천이 과도하게 나오지 않는지

@@ -5,7 +5,7 @@ Canonical machine-readable contracts belong here. Human-readable design rational
 ## Directory roles
 
 - `openapi/`: REST API contract for public `/api` endpoints and internal callback surfaces.
-- `schemas/`: JSON Schema contracts for domain payloads such as ScenarioPlan, EvidencePacket, RuleRegistry, and JudgeResult.
+- `schemas/`: JSON Schema contracts for domain payloads such as ScenarioPlan, SiteDiscoveryResult, EvidencePacket, RuleRegistry, and JudgeResult.
 - `examples/`: sample payloads that should conform to schemas and can be reused as fixtures/mock data.
 - `mq/`: RabbitMQ canonical message envelope plus thin task-specific payload entrypoints.
 - `websocket/`: live event envelope and event variant schemas.
@@ -17,10 +17,12 @@ Canonical machine-readable contracts belong here. Human-readable design rational
 
 - `openapi/wedge_openapi.yaml`: public REST and internal callback OpenAPI draft
 - `schemas/scenario-plan.schema.json`: executable browser scenario plan contract
+- `schemas/site-discovery-result.schema.json`: Site Discovery / Preflight result and recommendation contract
 - `schemas/evidence-packet.schema.json`: checkpoint-centered evidence packet contract
 - `schemas/rule-registry.schema.json`: rule registry contract for analyzer criteria
 - `schemas/judge-result.schema.json`: analyzer/judge output contract
 - `examples/sample-scenario-plan-signup.json`: ScenarioPlan fixture
+- `examples/sample-site-discovery-result.json`: SiteDiscoveryResult fixture
 - `examples/sample-evidence-packet.json`: EvidencePacket fixture
 - `examples/sample-judge-result.json`: JudgeResult fixture
 - `mq/messages.schema.json`: RabbitMQ common envelope and message type contract; this is the canonical MQ source

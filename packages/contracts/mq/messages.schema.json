@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://wedge.example.com/contracts/mq/messages.schema.json",
-  "title": "Wedge RabbitMQ Message Envelope",
+  "title": "Wedge MQ Message Envelope",
   "oneOf": [
     {
       "$ref": "#/$defs/RunExecuteMessage"
@@ -11,6 +11,12 @@
     },
     {
       "$ref": "#/$defs/ReportExportRequestMessage"
+    },
+    {
+      "$ref": "#/$defs/DiscoveryExecuteMessage"
+    },
+    {
+      "$ref": "#/$defs/DiscoveryEvaluateMessage"
     }
   ],
   "$defs": {
@@ -82,6 +88,46 @@
         "artifactPolicy": {
           "type": "object",
           "additionalProperties": true
+        },
+        "sourceDiscoveryId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "scenarioFitRequirements": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "requiredFlowType": {
+              "type": "string",
+              "enum": [
+                "LANDING_CTA",
+                "SIGNUP_LEAD_FORM",
+                "PRICING",
+                "PURCHASE_CHECKOUT",
+                "CONTACT",
+                "CONTENT_ONLY"
+              ]
+            },
+            "requiredEntrypointTypes": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "cta",
+                  "form",
+                  "pricing",
+                  "checkout",
+                  "cart",
+                  "signup",
+                  "contact",
+                  "content"
+                ]
+              }
+            },
+            "fallbackAllowed": {
+              "type": "boolean"
+            }
+          }
         }
       },
       "required": [
@@ -290,6 +336,182 @@
         },
         "payload": {
           "$ref": "#/$defs/ReportExportRequestPayload"
+        }
+      },
+      "required": [
+        "messageId",
+        "messageType",
+        "schemaVersion",
+        "createdAt",
+        "producer",
+        "payload"
+      ]
+    },
+    "DiscoveryExecutePayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "discoveryId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "projectId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "triggerSource": {
+          "type": "string",
+          "enum": [
+            "WEB",
+            "MCP",
+            "INTERNAL_AGENT",
+            "API"
+          ]
+        },
+        "url": {
+          "type": "string",
+          "format": "uri"
+        },
+        "devicePreset": {
+          "type": "string",
+          "enum": [
+            "desktop",
+            "tablet",
+            "mobile"
+          ]
+        },
+        "viewport": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "width": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "height": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          "required": [
+            "width",
+            "height"
+          ]
+        },
+        "maxDurationMs": {
+          "type": "integer",
+          "minimum": 1000
+        },
+        "maxScrollCount": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "discoveryId",
+        "projectId",
+        "url",
+        "devicePreset",
+        "viewport",
+        "maxDurationMs",
+        "maxScrollCount"
+      ]
+    },
+    "DiscoveryEvaluatePayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "discoveryId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "evidencePacketRef": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "discoveryId",
+        "evidencePacketRef"
+      ]
+    },
+    "DiscoveryExecuteMessage": {
+      "title": "DiscoveryExecuteMessage",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "messageId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "messageType": {
+          "const": "discovery.execute.request"
+        },
+        "schemaVersion": {
+          "type": "string"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "producer": {
+          "type": "string",
+          "minLength": 1
+        },
+        "correlationId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "idempotencyKey": {
+          "type": "string",
+          "minLength": 1
+        },
+        "payload": {
+          "$ref": "#/$defs/DiscoveryExecutePayload"
+        }
+      },
+      "required": [
+        "messageId",
+        "messageType",
+        "schemaVersion",
+        "createdAt",
+        "producer",
+        "payload"
+      ]
+    },
+    "DiscoveryEvaluateMessage": {
+      "title": "DiscoveryEvaluateMessage",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "messageId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "messageType": {
+          "const": "discovery.evaluate.request"
+        },
+        "schemaVersion": {
+          "type": "string"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "producer": {
+          "type": "string",
+          "minLength": 1
+        },
+        "correlationId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "idempotencyKey": {
+          "type": "string",
+          "minLength": 1
+        },
+        "payload": {
+          "$ref": "#/$defs/DiscoveryEvaluatePayload"
         }
       },
       "required": [

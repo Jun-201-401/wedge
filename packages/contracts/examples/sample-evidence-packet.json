@@ -1,6 +1,8 @@
 {
   "schema_version": "0.5",
+  "execution_type": "RUN",
   "run_id": "run_001",
+  "discovery_id": null,
   "url": "https://example.com",
   "final_url": "https://example.com/signup",
   "scenario": {
@@ -115,6 +117,15 @@
     "primary_cta_count_by_stage": {
       "CTA": 3
     }
+  },
+  "scenario_fit": {
+    "scenario_type": "SIGNUP_LEAD_FORM",
+    "scenario_fit_status": "APPLICABLE",
+    "reason": "Signup CTA and form entrypoint were available for the selected run scenario.",
+    "evidence_refs": [
+      "cp_001.obs_002"
+    ],
+    "recommended_alternatives": []
   },
   "artifacts": [
     {

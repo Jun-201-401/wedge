@@ -79,6 +79,16 @@
         "type": "object"
       }
     },
+    "scenario_mismatch_report": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/scenario_mismatch_report"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
     "nudges": {
       "type": "array",
       "items": {
@@ -93,6 +103,64 @@
     }
   },
   "$defs": {
+    "flow_type": {
+      "enum": [
+        "LANDING_CTA",
+        "SIGNUP_LEAD_FORM",
+        "PRICING",
+        "PURCHASE_CHECKOUT",
+        "CONTACT",
+        "CONTENT_ONLY"
+      ]
+    },
+    "scenario_fit_status": {
+      "enum": [
+        "UNKNOWN",
+        "APPLICABLE",
+        "LOW_CONFIDENCE",
+        "NOT_APPLICABLE",
+        "BLOCKED_BY_SITE",
+        "UNSAFE_OR_RESTRICTED"
+      ]
+    },
+    "scenario_mismatch_report": {
+      "type": "object",
+      "required": [
+        "scenario_type",
+        "scenario_fit_status",
+        "block_reason",
+        "evidence_refs",
+        "recommended_alternatives",
+        "user_message"
+      ],
+      "properties": {
+        "scenario_type": {
+          "$ref": "#/$defs/flow_type"
+        },
+        "scenario_fit_status": {
+          "$ref": "#/$defs/scenario_fit_status"
+        },
+        "block_reason": {
+          "type": "string"
+        },
+        "evidence_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "recommended_alternatives": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/flow_type"
+          }
+        },
+        "user_message": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
     "stage": {
       "enum": [
         "FIRST_VIEW",

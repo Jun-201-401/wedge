@@ -89,6 +89,27 @@
 
 ## 6. Sprint Backlog 요약
 
+### Site Discovery / Preflight 일정 오버레이
+
+`rewritedocs.txt` 기준 변경으로 Sprint 1~5에는 URL-first Discovery와 Scenario Recommendation 작업이 포함된다. 기존 Run/Evidence/Judge 흐름을 폐기하지 않고, 정식 Run 앞에 lightweight Preflight를 추가한다.
+
+| Sprint | 추가/조정 범위 |
+|---|---|
+| Sprint 1 | URL-first create flow UI skeleton, Discovery result mock UI, Discovery API skeleton, `site_discovery` / `scenario_recommendation` DB 초안, `discovery.execute.request` MQ contract 초안 |
+| Sprint 2 | Runner discovery executor, first-view checkpoint collection, CTA/form/pricing/contact candidate extractor 1차, `POST /api/discoveries`, `GET /api/discoveries/{discoveryId}`, scenario recommendation mock 또는 rule-based 1차 |
+| Sprint 3 | 실제 recommendation 생성, ScenarioRecommendation UI, Run 생성 시 `sourceDiscoveryId` 연결, `scenarioFitStatus` field 표시 |
+| Sprint 4 | full run 안의 scenario fit check, scenario mismatch report, low-fit warning UI, guided custom scenario skeleton |
+| Sprint 5 | mismatch benchmark case 검증, recommendation false positive/false negative 검토, recommendation threshold 조정 |
+
+담당 배치:
+
+- 강보승: Discovery UX flow, scenario recommendation 제품 기준
+- 차지훈: Runner discovery executor, discovery UI/API integration
+- 장현준: discovery MQ/runner infra, timeout/retry
+- 정관우: discovery API, DB, status model
+- 박성환: Jira/QA, discovery docs, recommendation table/API 보조
+- 유지호: flow candidate extraction, recommendation logic, mismatch criteria
+
 ### Sprint 1 Backlog — 프로젝트 기반 구축
 
 | Key | Type | Summary | Owner | Epic |

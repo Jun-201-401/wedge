@@ -356,6 +356,250 @@
       "required": [
         "checkpoints"
       ]
+    },
+    "DiscoveryAccepted": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "eventId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "workerId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "acceptedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "browserSessionId": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "eventId",
+        "workerId",
+        "acceptedAt",
+        "browserSessionId"
+      ]
+    },
+    "DiscoveryCheckpointRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "eventId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "workerId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "checkpoint": {
+          "$ref": "#/$defs/Checkpoint"
+        },
+        "artifacts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Artifact"
+          }
+        },
+        "observations": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        }
+      },
+      "required": [
+        "eventId",
+        "workerId",
+        "checkpoint",
+        "artifacts",
+        "observations"
+      ]
+    },
+    "DiscoverySummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "detectedFlowTypes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "LANDING_CTA",
+              "SIGNUP_LEAD_FORM",
+              "PRICING",
+              "PURCHASE_CHECKOUT",
+              "CONTACT",
+              "CONTENT_ONLY"
+            ]
+          }
+        },
+        "missingFlowTypes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "LANDING_CTA",
+              "SIGNUP_LEAD_FORM",
+              "PRICING",
+              "PURCHASE_CHECKOUT",
+              "CONTACT",
+              "CONTENT_ONLY"
+            ]
+          }
+        },
+        "primaryCtaCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "formCandidateCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "pricingEntrypointCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "checkoutEntrypointCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "scenarioRecommendations": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "scenarioType": {
+                "type": "string",
+                "enum": [
+                  "LANDING_CTA",
+                  "SIGNUP_LEAD_FORM",
+                  "PRICING",
+                  "PURCHASE_CHECKOUT",
+                  "CONTACT",
+                  "CONTENT_ONLY",
+                  "CUSTOM_GUIDED"
+                ]
+              },
+              "recommendationLevel": {
+                "type": "string",
+                "enum": [
+                  "HIGH",
+                  "MEDIUM",
+                  "LOW",
+                  "NOT_AVAILABLE"
+                ]
+              },
+              "confidence": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "reason": {
+                "type": "string"
+              },
+              "evidenceRefs": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "suggestedStartUrl": {
+                "type": "string",
+                "format": "uri"
+              },
+              "suggestedTarget": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            },
+            "required": [
+              "scenarioType",
+              "recommendationLevel",
+              "confidence",
+              "reason",
+              "evidenceRefs"
+            ]
+          }
+        }
+      },
+      "required": [
+        "detectedFlowTypes",
+        "missingFlowTypes",
+        "scenarioRecommendations"
+      ]
+    },
+    "DiscoveryFinished": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "eventId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "workerId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "finishedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "finalUrl": {
+          "type": "string",
+          "format": "uri"
+        },
+        "summary": {
+          "$ref": "#/$defs/DiscoverySummary"
+        }
+      },
+      "required": [
+        "eventId",
+        "workerId",
+        "finishedAt",
+        "finalUrl",
+        "summary"
+      ]
+    },
+    "DiscoveryFailed": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "eventId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "workerId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "failedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "failureCode": {
+          "type": "string",
+          "minLength": 1
+        },
+        "failureMessage": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "eventId",
+        "workerId",
+        "failedAt",
+        "failureCode",
+        "failureMessage"
+      ]
     }
   }
 }

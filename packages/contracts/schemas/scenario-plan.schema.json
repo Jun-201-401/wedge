@@ -37,6 +37,12 @@
       "type": "string",
       "format": "uri"
     },
+    "source_discovery_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
     "environment": {
       "type": "object",
       "required": [
@@ -131,6 +137,52 @@
       },
       "additionalProperties": false
     },
+    "fit_requirements": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "required": [
+        "required_flow_type",
+        "required_entrypoint_types",
+        "fallback_allowed"
+      ],
+      "properties": {
+        "required_flow_type": {
+          "$ref": "#/$defs/flow_type"
+        },
+        "required_entrypoint_types": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "cta",
+              "form",
+              "pricing",
+              "checkout",
+              "cart",
+              "signup",
+              "contact",
+              "content"
+            ]
+          }
+        },
+        "fallback_allowed": {
+          "type": "boolean"
+        },
+        "minimum_confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "required_evidence_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
     "steps": {
       "type": "array",
       "minItems": 1,
@@ -140,6 +192,16 @@
     }
   },
   "$defs": {
+    "flow_type": {
+      "enum": [
+        "LANDING_CTA",
+        "SIGNUP_LEAD_FORM",
+        "PRICING",
+        "PURCHASE_CHECKOUT",
+        "CONTACT",
+        "CONTENT_ONLY"
+      ]
+    },
     "stage": {
       "enum": [
         "FIRST_VIEW",

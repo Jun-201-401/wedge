@@ -15,12 +15,15 @@ Operational transport contract
 
 ## 2. 제품 정의
 
-Wedge는 특정 URL과 사용자 시나리오를 입력받아 실제 브라우저에서 과업을 실행하고, 각 단계의 evidence를 수집한 뒤, 기준화된 Judge Engine과 LLM Analyzer로 UX/전환 리스크를 리포트하는 시스템이다.
+Wedge는 특정 URL을 입력받아 먼저 lightweight Site Discovery / Preflight를 수행하고, 가능한 사용자 시나리오를 추천한 뒤, 사용자가 선택/수정한 시나리오를 실제 브라우저에서 실행해 UX/전환 리스크를 리포트하는 시스템이다.
 
 Wedge는 단순 URL 정적 분석기가 아니다.
 
 ```text
-URL + Scenario
+URL
+  → Site Discovery / Preflight
+  → Scenario Recommendation
+  → User confirmation or guided scenario edit
   → Browser execution
   → Checkpoint evidence
   → Rule-based judgment
@@ -32,6 +35,7 @@ URL + Scenario
 
 | 영역 | 결정 | 이유 |
 |---|---|---|
+| 기본 UX | URL-first Site Discovery before Full Run | 일반 사용자가 자기 URL에 맞는 시나리오를 먼저 알기 어렵기 때문 |
 | 실행 방식 | 시나리오 기반 Playwright 실행 | SPA, modal, form, CTA click 이후 상태 확인에 필요 |
 | Evidence 구조 | action 이후 checkpoint 생성 | 문제 발생 순간과 근거를 연결하기 위해 필요 |
 | 판단 방식 | Rule Engine 우선, LLM 후해석 | 재현성, explainability, false positive 관리 |
@@ -46,10 +50,62 @@ URL + Scenario
 | Auth | Human auth와 agent/client auth 분리 | V1 human web login은 first-party email/password + JWT로 빠르게 제공하고, MCP/agent client는 OAuth-style client identity, scope, agent_client_policy 기반으로 분리한다 |
 | 문서 구조 | 소수의 canonical 문서 + machine-readable contract | 팀 공유와 AI 작업 지시를 동시에 지원 |
 
+### Decision: URL-first Site Discovery before Full Run
+
+Wedge V1의 기본 UX는 사용자가 시나리오를 먼저 고르고 곧바로 실행하는 방식이 아니다. 기본 흐름은 URL 입력 후 lightweight Site Discovery를 수행하고, 발견된 CTA/form/pricing/checkout/contact 후보를 바탕으로 추천 시나리오를 제안한 뒤, 사용자가 선택하거나 guided custom scenario로 수정해 정식 Run을 실행하는 방식이다.
+
+결정 이유:
+
+- 일반 사용자와 1인 제작자는 자기 URL에 어떤 시나리오가 적합한지 모를 수 있다.
+- 구매 시나리오를 선택했지만 제출 URL에 구매/결제 흐름이 없을 수 있다.
+- 이런 경우 단순 `FAILED`로 처리하면 제품이나 Runner가 실패한 것처럼 보인다.
+- Discovery를 먼저 수행하면 “이 URL에서는 랜딩 CTA / 문의 / 회원가입 흐름이 적합합니다”처럼 안내할 수 있다.
+- Wedge가 단순 실행기가 아니라 사이트를 이해하고 적절한 분석을 제안하는 도구처럼 보인다.
+
+결정:
+
+- Site Discovery를 V1 기본 UX에 포함한다.
+- Discovery는 full analysis가 아니라 10~30초 내 lightweight 탐색으로 제한한다.
+- Discovery는 checkpoint, observation, artifact 구조를 재사용하지만 JudgeResult를 반드시 만들지는 않는다.
+- 정식 Run에서도 scenario fit check를 수행한다.
+- Scenario mismatch는 system failure가 아니라 product outcome으로 처리한다.
+- mismatch가 발생하면 `FAILED`가 아니라 `result_completeness=PARTIAL`, `scenario_fit_status=NOT_APPLICABLE` 같은 fit 결과로 표현한다. V1 기본 정책은 사용자가 실행을 요청했으나 시나리오 적용이 불가능한 경우 `status=COMPLETED`, `result_completeness=PARTIAL`, `analysis_status=COMPLETED`로 종료하고 mismatch report를 제공하는 것이다. 사이트 차단/안전 제한은 `scenario_fit_status=BLOCKED_BY_SITE` 또는 `UNSAFE_OR_RESTRICTED`로 구분한다.
+
+추가 상태:
+
+```text
+scenarioFitStatus:
+- UNKNOWN
+- APPLICABLE
+- LOW_CONFIDENCE
+- NOT_APPLICABLE
+- BLOCKED_BY_SITE
+- UNSAFE_OR_RESTRICTED
+```
+
+사용자-facing 원칙:
+
+- “분석 실패”라고 하지 않는다.
+- “선택한 시나리오를 이 URL에서 진행할 수 없습니다”라고 표현한다.
+- 대체 추천 시나리오를 제공한다.
+
+예시:
+
+```text
+URL = example.com
+사용자 선택 = 구매/결제 흐름
+Discovery/Run 결과 = 가격, 장바구니, 결제 CTA 없음
+
+출력 = 이 URL에서는 구매/결제 흐름을 시작할 진입점을 찾지 못했습니다. 대신 랜딩 CTA 또는 문의/회원가입 흐름이 더 적합해 보입니다.
+```
+
 ## 4. V1 범위
 
 ### 반드시 포함
 
+- URL-first Site Discovery / Preflight
+- Scenario Recommendation
+- Scenario Fit Status / Scenario Mismatch Report
 - URL + template scenario
 - desktop/mobile 실행
 - landing / signup form / pricing 시나리오
