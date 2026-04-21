@@ -2,12 +2,12 @@ name: wedge-dev
 
 services:
   postgres:
-    image: postgres:16
+    image: postgres:17
     container_name: wedge-postgres-dev
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-wedge}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-wedge}
-      POSTGRES_DB: ${POSTGRES_DB:-wedge}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
     ports:
       - "127.0.0.1:5432:5432"
     volumes:
@@ -18,5 +18,23 @@ services:
       timeout: 5s
       retries: 5
 
+  rabbitmq:
+    image: rabbitmq:4.2-management
+    container_name: wedge-rabbitmq-dev
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
+    ports:
+      - "127.0.0.1:5672:5672"
+      - "127.0.0.1:15672:15672"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
 volumes:
   postgres_data:
+  rabbitmq_data:
