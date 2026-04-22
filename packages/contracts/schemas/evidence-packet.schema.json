@@ -257,6 +257,8 @@
             "target_size_issue",
             "network_failure",
             "console_error",
+            "settle_response",
+            "settle_item_count_change",
             "performance_metric",
             "scroll_delta",
             "flow_candidate",
