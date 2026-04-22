@@ -110,8 +110,8 @@ test("startRunExecuteQueueConsumer configures queue consumption and closes resou
             prefetch: async (count) => {
               events.push(`prefetch:${count}`);
             },
-            assertQueue: async (queue, options) => {
-              events.push(`assertQueue:${queue}:${options.durable}`);
+            checkQueue: async (queue) => {
+              events.push(`checkQueue:${queue}`);
             },
             consume: async (queue, onMessage) => {
               events.push(`consume:${queue}`);
@@ -141,7 +141,7 @@ test("startRunExecuteQueueConsumer configures queue consumption and closes resou
   assert.deepEqual(events.slice(0, 4), [
     "connect:amqp://localhost",
     "prefetch:2",
-    "assertQueue:run.execute.request:true",
+    "checkQueue:run.execute.request",
     "consume:run.execute.request"
   ]);
 
@@ -173,7 +173,7 @@ test("startRunExecuteQueueConsumer ignores null deliveries", async () => {
       connect: async () => ({
         createChannel: async () => ({
           prefetch: async () => {},
-          assertQueue: async () => {},
+          checkQueue: async () => {},
           consume: async (_queue, onMessage) => {
             consumeHandler = onMessage;
             return { consumerTag: "consumer-tag" };

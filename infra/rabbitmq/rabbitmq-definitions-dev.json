@@ -1,0 +1,209 @@
+{
+  "vhosts": [
+    { "name": "/" }
+  ],
+  "users": [
+    {
+      "name": "ssafy",
+      "password_hash": "HVgw3OvH6d0STOulNfoVgAK6r5yOfqhpqC/yr8hyrWHMW9gi",
+      "hashing_algorithm": "rabbit_password_hashing_sha256",
+      "tags": ["administrator"]
+    }
+  ],
+  "permissions": [
+    {
+      "user": "ssafy",
+      "vhost": "/",
+      "configure": ".*",
+      "write": ".*",
+      "read": ".*"
+    }
+  ],
+  "exchanges": [
+    {
+      "name": "wedge.direct",
+      "vhost": "/",
+      "type": "direct",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {}
+    },
+    {
+      "name": "wedge.dlq",
+      "vhost": "/",
+      "type": "direct",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {}
+    }
+  ],
+  "queues": [
+    {
+      "name": "run.execute.request",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-dead-letter-exchange": "wedge.dlq",
+        "x-dead-letter-routing-key": "run.execute.dlq"
+      }
+    },
+    {
+      "name": "discovery.execute.request",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-dead-letter-exchange": "wedge.dlq",
+        "x-dead-letter-routing-key": "discovery.execute.dlq"
+      }
+    },
+    {
+      "name": "discovery.evaluate.request",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-dead-letter-exchange": "wedge.dlq",
+        "x-dead-letter-routing-key": "discovery.evaluate.dlq"
+      }
+    },
+    {
+      "name": "analysis.request",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-dead-letter-exchange": "wedge.dlq",
+        "x-dead-letter-routing-key": "analysis.dlq"
+      }
+    },
+    {
+      "name": "report.export.request",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-dead-letter-exchange": "wedge.dlq",
+        "x-dead-letter-routing-key": "report.export.dlq"
+      }
+    },
+    {
+      "name": "discovery.execute.dlq",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {}
+    },
+    {
+      "name": "discovery.evaluate.dlq",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {}
+    },
+    {
+      "name": "run.execute.dlq",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {}
+    },
+    {
+      "name": "analysis.dlq",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {}
+    },
+    {
+      "name": "report.export.dlq",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {}
+    }
+  ],
+  "bindings": [
+    {
+      "source": "wedge.direct",
+      "vhost": "/",
+      "destination": "run.execute.request",
+      "destination_type": "queue",
+      "routing_key": "run.execute.request",
+      "arguments": {}
+    },
+    {
+      "source": "wedge.direct",
+      "vhost": "/",
+      "destination": "discovery.execute.request",
+      "destination_type": "queue",
+      "routing_key": "discovery.execute.request",
+      "arguments": {}
+    },
+    {
+      "source": "wedge.direct",
+      "vhost": "/",
+      "destination": "discovery.evaluate.request",
+      "destination_type": "queue",
+      "routing_key": "discovery.evaluate.request",
+      "arguments": {}
+    },
+    {
+      "source": "wedge.direct",
+      "vhost": "/",
+      "destination": "analysis.request",
+      "destination_type": "queue",
+      "routing_key": "analysis.request",
+      "arguments": {}
+    },
+    {
+      "source": "wedge.direct",
+      "vhost": "/",
+      "destination": "report.export.request",
+      "destination_type": "queue",
+      "routing_key": "report.export.request",
+      "arguments": {}
+    },
+    {
+      "source": "wedge.dlq",
+      "vhost": "/",
+      "destination": "discovery.execute.dlq",
+      "destination_type": "queue",
+      "routing_key": "discovery.execute.dlq",
+      "arguments": {}
+    },
+    {
+      "source": "wedge.dlq",
+      "vhost": "/",
+      "destination": "discovery.evaluate.dlq",
+      "destination_type": "queue",
+      "routing_key": "discovery.evaluate.dlq",
+      "arguments": {}
+    },
+    {
+      "source": "wedge.dlq",
+      "vhost": "/",
+      "destination": "run.execute.dlq",
+      "destination_type": "queue",
+      "routing_key": "run.execute.dlq",
+      "arguments": {}
+    },
+    {
+      "source": "wedge.dlq",
+      "vhost": "/",
+      "destination": "analysis.dlq",
+      "destination_type": "queue",
+      "routing_key": "analysis.dlq",
+      "arguments": {}
+    },
+    {
+      "source": "wedge.dlq",
+      "vhost": "/",
+      "destination": "report.export.dlq",
+      "destination_type": "queue",
+      "routing_key": "report.export.dlq",
+      "arguments": {}
+    }
+  ]
+}
