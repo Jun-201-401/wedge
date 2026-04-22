@@ -1,11 +1,18 @@
 # Wedge RabbitMQ Topology
 
-로컬/개발용 RabbitMQ 토폴로지 초안. `definitions.json`을 `management.load_definitions`로 부팅 시 일괄 선언한다.
+로컬/개발용 RabbitMQ 토폴로지 초안. `rabbitmq-definitions-dev.json`을 부팅 시 일괄 import한다.
 
 - 큐 소유권: [queue-ownership.md](./queue-ownership.md)
-- 토폴로지 정의: [definitions.json](./definitions.json)
+- 토폴로지 정의: [rabbitmq-definitions-dev.json](./rabbitmq-definitions-dev.json)
 - 브로커 설정: [rabbitmq.conf](./rabbitmq.conf)
 - Management UI: http://localhost:15672 (compose 기동 후)
+
+기본 dev 로그인 계정:
+
+```text
+username: ssafy
+password: ssafy
+```
 
 ## 네이밍 규칙
 
@@ -43,7 +50,7 @@ WDAY-025(dummy publish/consume) 검증 후 실증 데이터로 값 결정 권장
 
 ## 변경 절차
 
-`definitions.json` 수정 시:
+`rabbitmq-definitions-dev.json` 수정 시:
 
 1. 관련 문서/계약 동기화 (publisher/consumer 코드가 생기면 routing_key 상수도 포함)
 2. RabbitMQ 컨테이너 재생성 — `management.load_definitions`는 부팅 시에만 로드되므로 `up -d`만으로는 반영 안 됨:
