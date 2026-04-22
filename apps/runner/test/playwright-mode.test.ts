@@ -231,6 +231,60 @@ test("real playwright mode hover triggers DOM changes and wait_for observes dela
   }
 });
 
+test("real playwright mode wait_for rejects when no locator or url condition is satisfied", async () => {
+  const fixtureRoot = await mkdtemp(join(tmpdir(), "wedge-runner-playwright-site-"));
+  const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-playwright-artifacts-"));
+  let session: Awaited<ReturnType<ReturnType<typeof createPlaywrightSessionFactory>["createSession"]>> | undefined;
+
+  try {
+    const { formUrl } = await createFixtureSite(fixtureRoot);
+    const browserFactory = createPlaywrightBrowserFactory(artifactsRoot);
+
+    session = await browserFactory.createSession({
+      runId: "run-playwright-wait-for-failure",
+      plan: createPlaywrightPlan(formUrl)
+    });
+
+    await executeGotoStep(session, formUrl);
+
+    await assert.rejects(
+      () =>
+        session!.execute(
+          {
+            type: "wait_for",
+            target: {
+              selector: "#missing-target"
+            },
+            options: {
+              state: "visible",
+              timeout_ms: 100
+            }
+          },
+          createStep({
+            step_id: "step_wait_for_missing_target",
+            stage: "VALUE",
+            description: "wait for a missing target",
+            action: {
+              type: "wait_for",
+              target: {
+                selector: "#missing-target"
+              },
+              options: {
+                state: "visible",
+                timeout_ms: 100
+              }
+            }
+          })
+        ),
+      /Unable to satisfy wait_for action/
+    );
+  } finally {
+    await session?.close();
+    await rm(fixtureRoot, { recursive: true, force: true });
+    await rm(artifactsRoot, { recursive: true, force: true });
+  }
+});
+
 test("real playwright settle supports locator_visible and spinner_hidden for delayed DOM transitions", async () => {
   const fixtureRoot = await mkdtemp(join(tmpdir(), "wedge-runner-playwright-site-"));
   const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-playwright-artifacts-"));

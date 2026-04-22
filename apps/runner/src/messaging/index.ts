@@ -1,5 +1,11 @@
 import { readFile } from "node:fs/promises";
-import type { RunExecuteMessage, ScenarioPlan, ScenarioStep } from "../shared/contracts.ts";
+import {
+  settleStrategyTypes,
+  scenarioActionTypes,
+  type RunExecuteMessage,
+  type ScenarioPlan,
+  type ScenarioStep
+} from "../shared/contracts.ts";
 import { isRecord } from "../shared/utils.ts";
 
 export class RunnerMessageValidationError extends Error {
@@ -132,8 +138,16 @@ function assertScenarioStep(value: unknown): asserts value is ScenarioStep {
     throw new RunnerMessageValidationError(`scenario step ${value.step_id} action.type is required`);
   }
 
+  if (!isScenarioActionType(value.action.type)) {
+    throw new RunnerMessageValidationError(`scenario step ${value.step_id} action.type is unsupported`);
+  }
+
   if (!isRecord(value.settle_strategy) || typeof value.settle_strategy.type !== "string") {
     throw new RunnerMessageValidationError(`scenario step ${value.step_id} settle_strategy.type is required`);
+  }
+
+  if (!isSettleStrategyType(value.settle_strategy.type)) {
+    throw new RunnerMessageValidationError(`scenario step ${value.step_id} settle_strategy.type is unsupported`);
   }
 
   if (typeof value.settle_strategy.timeout_ms !== "number" || value.settle_strategy.timeout_ms < 0) {
@@ -216,4 +230,12 @@ function assertBoolean(value: unknown, fieldName: string): void {
   if (typeof value !== "boolean") {
     throw new RunnerMessageValidationError(`${fieldName} must be boolean`);
   }
+}
+
+function isScenarioActionType(value: string): boolean {
+  return (scenarioActionTypes as readonly string[]).includes(value);
+}
+
+function isSettleStrategyType(value: string): boolean {
+  return (settleStrategyTypes as readonly string[]).includes(value);
 }

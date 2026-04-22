@@ -68,3 +68,23 @@ test("parseRunExecuteMessage requires scenarioTemplateVersionId", async () => {
     /runner payload\.scenarioTemplateVersionId is required/
   );
 });
+
+test("parseRunExecuteMessage rejects unsupported action types", async () => {
+  const invalidMessage = cloneMessage(await loadExampleMessage());
+  invalidMessage.payload.scenarioPlan.steps[0]!.action.type = "drag" as never;
+
+  assert.throws(
+    () => parseRunExecuteMessage(JSON.stringify(invalidMessage)),
+    /scenario step step_001_goto action\.type is unsupported/
+  );
+});
+
+test("parseRunExecuteMessage rejects unsupported settle strategy types", async () => {
+  const invalidMessage = cloneMessage(await loadExampleMessage());
+  invalidMessage.payload.scenarioPlan.steps[0]!.settle_strategy.type = "long_poll" as never;
+
+  assert.throws(
+    () => parseRunExecuteMessage(JSON.stringify(invalidMessage)),
+    /scenario step step_001_goto settle_strategy\.type is unsupported/
+  );
+});

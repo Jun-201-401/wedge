@@ -80,3 +80,46 @@ test("createRunnerApp stops after stop_when step requests stop", async () => {
   assert.equal(result.summary.stopped, true);
   assert.doesNotMatch(callbackLog, /step_002_fill_email/);
 });
+
+test("createRunnerApp rejects fill actions when synthetic inputs are disabled", async () => {
+  const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-safety-artifacts-"));
+  const callbackLogFile = join(artifactsRoot, "callbacks.jsonl");
+  const app = createRunnerApp({
+    workerId: "runner-test-worker",
+    artifactsRoot,
+    callbackLogFile,
+    simulatedDelayCapMs: 1
+  });
+  const message = await loadExampleMessage();
+
+  message.payload.scenarioPlan.steps = [
+    {
+      step_id: "step_001_fill_email",
+      stage: "INPUT",
+      description: "fill email once",
+      action: {
+        type: "fill",
+        target: {
+          label: "Email"
+        },
+        value: "blocked@example.com"
+      },
+      settle_strategy: {
+        type: "fixed_short",
+        timeout_ms: 1
+      },
+      checkpoint: false
+    }
+  ];
+  message.payload.scenarioPlan.safety.use_synthetic_inputs = false;
+
+  await assert.rejects(
+    () => app.processMessage(message),
+    /Scenario safety forbids synthetic fill actions/
+  );
+
+  const callbackLog = await readFile(callbackLogFile, "utf8");
+  assert.match(callbackLog, /"callbackType":"accepted"/);
+  assert.match(callbackLog, /"callbackType":"failed"/);
+  assert.doesNotMatch(callbackLog, /"callbackType":"finished"/);
+});

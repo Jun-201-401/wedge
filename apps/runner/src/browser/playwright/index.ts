@@ -18,6 +18,10 @@ import type {
   SettleStrategy,
   TargetDescriptor
 } from "../../shared/contracts.ts";
+import {
+  assertScenarioActionAllowed,
+  assertVisitedUrlAllowed
+} from "../../scenario/policy.ts";
 import { describeTarget, sleep, toIsoTimestamp } from "../../shared/utils.ts";
 
 export interface BrowserActionResult {
@@ -148,22 +152,26 @@ class SimulatedPlaywrightSession implements BrowserSession {
     switch (action.type) {
       case "goto": {
         const nextUrl = inferGotoUrl(action.target, this.plan.start_url);
+        assertScenarioActionAllowed(this.plan, this.state.currentUrl, action, nextUrl);
         this.navigate(nextUrl);
         break;
       }
       case "click": {
         const nextUrl = inferNavigationUrl(this.state.currentUrl, action.target);
+        assertScenarioActionAllowed(this.plan, this.state.currentUrl, action, nextUrl);
         if (nextUrl) {
           this.navigate(nextUrl);
         }
         break;
       }
       case "fill": {
+        assertScenarioActionAllowed(this.plan, this.state.currentUrl, action);
         const fieldKey = inferFieldKey(action.target, step.step_id);
         this.state.fields[fieldKey] = stringifyValue(action.value);
         break;
       }
       case "select": {
+        assertScenarioActionAllowed(this.plan, this.state.currentUrl, action);
         const fieldKey = inferFieldKey(action.target, step.step_id);
         this.state.selectedOptions[fieldKey] = stringifyValue(action.value);
         break;
@@ -176,6 +184,7 @@ class SimulatedPlaywrightSession implements BrowserSession {
       case "hover":
       case "wait_for":
       case "checkpoint": {
+        assertScenarioActionAllowed(this.plan, this.state.currentUrl, action);
         break;
       }
       case "stop_when": {
@@ -191,6 +200,7 @@ class SimulatedPlaywrightSession implements BrowserSession {
     }
 
     await sleep(5);
+    assertVisitedUrlAllowed(this.plan, this.state.finalUrl);
 
     return {
       actionType: action.type,
@@ -330,6 +340,7 @@ class RealPlaywrightSession implements BrowserSession {
     switch (action.type) {
       case "goto": {
         const nextUrl = inferGotoUrl(action.target, this.plan.start_url);
+        assertScenarioActionAllowed(this.plan, this.state.currentUrl, action, nextUrl);
         await this.page.goto(nextUrl, {
           waitUntil: "domcontentloaded"
         });
@@ -340,32 +351,49 @@ class RealPlaywrightSession implements BrowserSession {
         const clicked = await this.tryClickTarget(action.target);
         if (!clicked) {
           const nextUrl = inferNavigationUrl(this.state.currentUrl, action.target);
-          if (nextUrl) {
-            await this.page.goto(nextUrl, {
-              waitUntil: "domcontentloaded"
-            });
-            await this.refreshPageState(nextUrl);
+          assertScenarioActionAllowed(this.plan, this.state.currentUrl, action, nextUrl);
+          if (!nextUrl) {
+            throw new Error(`Unable to resolve click target: ${targetSummary ?? "unknown target"}`);
           }
+
+          await this.page.goto(nextUrl, {
+            waitUntil: "domcontentloaded"
+          });
+          await this.refreshPageState(nextUrl);
         }
         break;
       }
       case "fill": {
-        await this.tryFillTarget(action.target, action.value, step.step_id);
+        assertScenarioActionAllowed(this.plan, this.state.currentUrl, action);
+        const filled = await this.tryFillTarget(action.target, action.value, step.step_id);
+        if (!filled) {
+          throw new Error(`Unable to resolve fill target: ${targetSummary ?? "unknown target"}`);
+        }
         break;
       }
       case "select": {
-        await this.trySelectTarget(action.target, action.value, step.step_id);
+        assertScenarioActionAllowed(this.plan, this.state.currentUrl, action);
+        const selected = await this.trySelectTarget(action.target, action.value, step.step_id);
+        if (!selected) {
+          throw new Error(`Unable to resolve select target: ${targetSummary ?? "unknown target"}`);
+        }
         break;
       }
       case "scroll":
       case "checkpoint": {
+        assertScenarioActionAllowed(this.plan, this.state.currentUrl, action);
         break;
       }
       case "hover": {
-        await this.tryHoverTarget(action.target);
+        assertScenarioActionAllowed(this.plan, this.state.currentUrl, action);
+        const hovered = await this.tryHoverTarget(action.target);
+        if (!hovered) {
+          throw new Error(`Unable to resolve hover target: ${targetSummary ?? "unknown target"}`);
+        }
         break;
       }
       case "wait_for": {
+        assertScenarioActionAllowed(this.plan, this.state.currentUrl, action);
         await this.waitForAction(action);
         break;
       }
@@ -384,6 +412,7 @@ class RealPlaywrightSession implements BrowserSession {
     }
 
     await this.refreshPageState();
+    assertVisitedUrlAllowed(this.plan, this.state.finalUrl);
 
     return {
       actionType: action.type,
@@ -710,11 +739,8 @@ class RealPlaywrightSession implements BrowserSession {
       }
     }
 
-    const boundedDelayMs = Math.min(timeoutMs, 1_000);
-    if (boundedDelayMs > 0) {
-      await sleep(boundedDelayMs);
-    }
     await this.refreshPageState();
+    throw new Error(`Unable to satisfy wait_for action: ${describeTarget(action.target) ?? "unknown target"}`);
   }
 
   private async waitForTargetLocatorState(

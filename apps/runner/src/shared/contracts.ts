@@ -1,4 +1,8 @@
-import type { Artifact } from "../../../../packages/contracts/types/runner.ts";
+import type {
+  Artifact,
+  ScenarioActionType,
+  SettleStrategyType
+} from "../../../../packages/contracts/types/runner.ts";
 
 export type {
   Artifact,
@@ -33,3 +37,26 @@ export interface ArtifactDraft {
   width?: number;
   height?: number;
 }
+
+export const scenarioActionTypes = [
+  "goto",
+  "click",
+  "fill",
+  "select",
+  "scroll",
+  "hover",
+  "wait_for",
+  "checkpoint",
+  "stop_when"
+] as const satisfies readonly ScenarioActionType[];
+
+export const settleStrategyTypes = [
+  "network_idle",
+  "locator_visible",
+  "response",
+  "url_change",
+  "spinner_hidden",
+  "item_count_change",
+  "fixed_short",
+  "none"
+] as const satisfies readonly SettleStrategyType[];
