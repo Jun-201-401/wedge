@@ -23,7 +23,7 @@ export interface RabbitMqConnection {
 
 export interface RabbitMqChannel {
   prefetch: (count: number) => Promise<unknown> | unknown;
-  assertQueue: (queue: string, options: { durable: boolean }) => Promise<unknown>;
+  checkQueue: (queue: string) => Promise<unknown>;
   consume: (
     queue: string,
     onMessage: (message: ConsumeMessage | null) => void | Promise<void>,
@@ -43,9 +43,7 @@ export async function startRunExecuteQueueConsumer({
   const channel = await connection.createChannel();
 
   await channel.prefetch(config.mqPrefetch);
-  await channel.assertQueue(config.mqQueueRunExecute, {
-    durable: true
-  });
+  await channel.checkQueue(config.mqQueueRunExecute);
   await channel.consume(config.mqQueueRunExecute, createRunExecuteConsumerHandler(channel, processRawMessage, config.mqRequeueOnFailure), {
     noAck: false
   });
