@@ -5,14 +5,24 @@
   "rule_registry_id": "registry_p0_001",
   "summary": {
     "overall_risk": "medium",
-    "friction_score": 52.0,
-    "top_issues_count": 1,
+    "friction_score": 61.0,
+    "top_issues_count": 4,
     "task_success": "partial"
   },
   "stage_scores": [
     {
       "stage": "CTA",
       "score": 52.0,
+      "issue_count": 1
+    },
+    {
+      "stage": "INPUT",
+      "score": 66.0,
+      "issue_count": 2
+    },
+    {
+      "stage": "VALUE",
+      "score": 60.0,
       "issue_count": 1
     }
   ],
@@ -46,6 +56,96 @@
         "사용자는 첫 화면에서 어떤 버튼을 눌러야 하는지 바로 이해했는가?"
       ],
       "exceptions_applied": []
+    },
+    {
+      "issue_id": "issue_002",
+      "criterion_id": "INPUT-ASYNC-001",
+      "stage": "INPUT",
+      "axis": "Clarity",
+      "severity": 1,
+      "confidence": 0.72,
+      "priority_score": 1.44,
+      "evidence_level": "Operational",
+      "evidence_refs": [
+        "cp_002.obs_004"
+      ],
+      "observations": [
+        "이메일 입력 직후 validation response가 발생해 비동기 검증 의존성이 확인됨"
+      ],
+      "signals": [
+        "입력 직후 서버 round-trip 발생",
+        "validation latency가 폼 진행 속도에 영향을 줄 수 있음"
+      ],
+      "summary": "이메일 입력 단계가 서버 validation response에 의존해 입력 완료감이 지연될 수 있습니다.",
+      "impact_hypothesis": "사용자는 입력이 반영되었는지 확신하지 못해 재입력 또는 중단 가능성이 커질 수 있습니다.",
+      "recommendations": [
+        "validation 진행 중 로딩/성공 상태를 입력 필드 근처에 즉시 노출하기",
+        "response 완료 전에도 다음 필드로 진행 가능한지 UX 정책을 점검하기"
+      ],
+      "validation_questions": [
+        "사용자는 검증 요청이 진행 중임을 1초 안에 인지할 수 있는가?"
+      ],
+      "exceptions_applied": []
+    },
+    {
+      "issue_id": "issue_003",
+      "criterion_id": "VALUE-LIST-001",
+      "stage": "VALUE",
+      "axis": "Path",
+      "severity": 1,
+      "confidence": 0.74,
+      "priority_score": 1.51,
+      "evidence_level": "Operational",
+      "evidence_refs": [
+        "cp_003.obs_006"
+      ],
+      "observations": [
+        "혜택 목록이 interaction 이후 1개에서 3개로 증가해 추가 탐색 비용이 생김"
+      ],
+      "signals": [
+        "interaction 이후 정보량 증가",
+        "benefit scan time 증가 가능성"
+      ],
+      "summary": "혜택 목록 확장 후 항목 수가 급격히 늘어나 사용자의 읽기 부담이 커질 수 있습니다.",
+      "impact_hypothesis": "확장 직후 핵심 가치 인지가 늦어져 다음 CTA 이동이 지연될 수 있습니다.",
+      "recommendations": [
+        "새로 추가되는 혜택 중 핵심 1~2개를 상단에 고정해 우선순위를 보여주기",
+        "확장 전후 목록 길이 차이를 완화하거나 progressive disclosure를 더 세분화하기"
+      ],
+      "validation_questions": [
+        "사용자는 확장 후 3초 안에 가장 중요한 혜택을 식별할 수 있는가?"
+      ],
+      "exceptions_applied": []
+    },
+    {
+      "issue_id": "issue_004",
+      "criterion_id": "INPUT-ASYNC-002",
+      "stage": "INPUT",
+      "axis": "Trust",
+      "severity": 2,
+      "confidence": 0.76,
+      "priority_score": 1.88,
+      "evidence_level": "Operational",
+      "evidence_refs": [
+        "cp_004.obs_008"
+      ],
+      "observations": [
+        "이메일 validation response가 timeout으로 끝나 검증 완료 신호가 오지 않음"
+      ],
+      "signals": [
+        "비동기 검증 timeout",
+        "사용자 입력 완료 피드백 부재"
+      ],
+      "summary": "입력 검증 response가 timeout되면 사용자가 다음 진행 가능 여부를 신뢰하기 어려울 수 있습니다.",
+      "impact_hypothesis": "사용자는 입력이 유효한지 확신하지 못해 재시도하거나 흐름을 중단할 수 있습니다.",
+      "recommendations": [
+        "validation timeout 시 재시도 버튼과 fallback 안내 메시지를 노출하기",
+        "timeout 이후에도 안전하게 다음 입력으로 진행할 수 있는 정책을 명시하기"
+      ],
+      "validation_questions": [
+        "validation timeout이 발생해도 사용자는 다음 행동을 이해할 수 있는가?"
+      ],
+      "exceptions_applied": []
     }
   ],
   "decision_map": [
@@ -54,6 +154,21 @@
       "status": "warning",
       "issue_ids": [
         "issue_001"
+      ]
+    },
+    {
+      "stage": "INPUT",
+      "status": "warning",
+      "issue_ids": [
+        "issue_002",
+        "issue_004"
+      ]
+    },
+    {
+      "stage": "VALUE",
+      "status": "warning",
+      "issue_ids": [
+        "issue_003"
       ]
     }
   ],
@@ -67,9 +182,41 @@
       "difficulty": "LOW",
       "expected_effect": "첫 클릭 경로를 단순화해 CTA decision friction을 낮출 수 있습니다.",
       "validation_question": "수정 후 첫 화면에서 사용자가 3초 안에 primary CTA를 식별하는가?"
+    },
+    {
+      "nudge_id": "nudge_002",
+      "issue_id": "issue_002",
+      "title": "이메일 검증 진행 상태를 즉시 노출",
+      "rationale": "settle_response evidence 상 입력 직후 서버 validation 응답을 기다리는 흐름이 존재합니다.",
+      "recommendation": "입력 필드 옆에 검증 진행/완료 상태를 보여주고, 성공 시 다음 단계 안내를 함께 제공합니다.",
+      "difficulty": "LOW",
+      "expected_effect": "사용자가 입력 반영 여부를 빠르게 이해해 재입력과 대기 불안을 줄일 수 있습니다.",
+      "validation_question": "사용자는 이메일 입력 후 검증 진행 상태를 즉시 인지하는가?"
+    },
+    {
+      "nudge_id": "nudge_003",
+      "issue_id": "issue_003",
+      "title": "확장된 혜택 목록의 우선순위 강조",
+      "rationale": "settle_item_count_change evidence 상 interaction 뒤 혜택 목록 길이가 증가합니다.",
+      "recommendation": "확장 후 노출되는 혜택 중 핵심 가치 1개를 시각적으로 먼저 강조합니다.",
+      "difficulty": "MEDIUM",
+      "expected_effect": "가치 이해 시간을 줄여 CTA 복귀까지의 경로를 단순화할 수 있습니다.",
+      "validation_question": "확장 후 사용자는 가장 중요한 혜택을 빠르게 식별하는가?"
+    },
+    {
+      "nudge_id": "nudge_004",
+      "issue_id": "issue_004",
+      "title": "validation timeout fallback을 명확히 제공",
+      "rationale": "settle_response timeout evidence가 존재하면 사용자는 검증 완료 여부를 신뢰하기 어렵습니다.",
+      "recommendation": "timeout 발생 시 재시도 CTA와 다음 진행 가능 여부를 명시적으로 안내합니다.",
+      "difficulty": "MEDIUM",
+      "expected_effect": "timeout 상황에서도 사용자가 멈추지 않고 다음 행동을 선택할 수 있습니다.",
+      "validation_question": "timeout fallback이 있으면 사용자는 재시도와 계속 진행 중 하나를 이해하고 선택하는가?"
     }
   ],
   "llm_notes": [
-    "LLM output constrained to Rule Engine results."
+    "LLM output constrained to Rule Engine results.",
+    "Operational settle observations from response/item_count_change were used as supporting evidence for INPUT and VALUE stage issues.",
+    "Response timeout observation was treated as a trust-risk signal for async validation UX."
   ]
 }

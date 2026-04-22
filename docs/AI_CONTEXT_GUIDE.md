@@ -39,6 +39,7 @@ packages/contracts/mq/messages.schema.json
 ```text
 docs/01_architecture_and_project_structure.md
 docs/04_domain_payload_contracts.md
+docs/wedge_runner_architecture.md
 packages/contracts/schemas/scenario-plan.schema.json
 packages/contracts/internal/runner-callback.schema.json
 packages/contracts/mq/messages.schema.json

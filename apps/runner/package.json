@@ -3,9 +3,23 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Minimal scaffold for the Wedge runner service.",
+  "description": "Node runner scaffold for Wedge browser execution and callback delivery.",
+  "engines": {
+    "node": ">=24.0.0"
+  },
   "scripts": {
-    "lint": "echo \"runner scaffold: no lint config yet\"",
-    "test": "echo \"runner scaffold: no tests yet\""
+    "start": "node --experimental-strip-types src/index.ts",
+    "dev": "node --experimental-strip-types src/index.ts",
+    "test": "node --experimental-strip-types --test test/**/*.test.ts",
+    "playwright:install": "playwright install chromium"
+  },
+  "dependencies": {
+    "amqplib": "^0.10.9",
+    "playwright": "^1.59.1"
+  },
+  "devDependencies": {
+    "@types/amqplib": "^0.10.7",
+    "@types/node": "^25.6.0",
+    "typescript": "^6.0.3"
   }
 }
