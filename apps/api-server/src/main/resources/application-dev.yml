@@ -2,6 +2,15 @@ spring:
   config:
     activate:
       on-profile: dev
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/wedge_dev}
+    username: ${SPRING_DATASOURCE_USERNAME:ssafy}
+    password: ${SPRING_DATASOURCE_PASSWORD:ssafy}
+    driver-class-name: org.postgresql.Driver
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
 
 jwt:
   secret: ${JWT_SECRET:wedge-local-dev-jwt-secret-change-me-32-characters-minimum}
