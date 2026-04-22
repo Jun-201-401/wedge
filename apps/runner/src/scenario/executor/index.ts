@@ -1,6 +1,7 @@
 import type { BrowserSession } from "../../browser/playwright/index.ts";
 import type { CallbackClient } from "../../callback/index.ts";
 import type { CapturePipeline } from "../../capture/index.ts";
+import { createDeliverySummary, mergeDeliveryIssues, type DeliveryIssue, type DeliverySummary } from "../../delivery/index.ts";
 import type { ArtifactStore } from "../../storage/index.ts";
 import type { ScenarioPlan } from "../../shared/contracts.ts";
 import { executeScenarioStep } from "./step-executor.ts";
@@ -9,6 +10,11 @@ export interface ScenarioExecutionSummary {
   completedStepCount: number;
   failedStepCount: number;
   stopped: boolean;
+}
+
+export interface ScenarioExecutionResult {
+  summary: ScenarioExecutionSummary;
+  delivery: DeliverySummary;
 }
 
 export interface ScenarioExecutorInput {
@@ -27,9 +33,10 @@ export async function executeScenario({
   callbackClient,
   capturePipeline,
   artifactStore
-}: ScenarioExecutorInput): Promise<ScenarioExecutionSummary> {
+}: ScenarioExecutorInput): Promise<ScenarioExecutionResult> {
   let completedStepCount = 0;
   let stopped = false;
+  const deliveryIssues: DeliveryIssue[] = [];
 
   for (const [index, step] of plan.steps.entries()) {
     const stepOrder = index + 1;
@@ -45,6 +52,7 @@ export async function executeScenario({
     });
 
     completedStepCount += 1;
+    deliveryIssues.push(...stepResult.deliveryIssues);
 
     if (stepResult.stopRequested) {
       stopped = true;
@@ -53,8 +61,11 @@ export async function executeScenario({
   }
 
   return {
-    completedStepCount,
-    failedStepCount: 0,
-    stopped
+    summary: {
+      completedStepCount,
+      failedStepCount: 0,
+      stopped
+    },
+    delivery: createDeliverySummary(mergeDeliveryIssues(deliveryIssues))
   };
 }

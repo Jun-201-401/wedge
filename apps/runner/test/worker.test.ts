@@ -65,7 +65,7 @@ test("registerWorker closes session and emits failed callback when accepted call
   assert.equal(capturedFailedPayload.resultCompleteness, "NONE");
 });
 
-test("registerWorker emits PARTIAL failed callback when finished callback fails", async () => {
+test("registerWorker keeps execution success when finished callback fails", async () => {
   const message = await loadExampleMessage();
   message.payload.scenarioPlan.steps = [
     {
@@ -86,8 +86,6 @@ test("registerWorker emits PARTIAL failed callback when finished callback fails"
       checkpoint: false
     }
   ];
-
-  let failedPayload: RunnerFailedPayload | null = null;
 
   const worker = registerWorker({
     config: createRunnerTestConfig({
@@ -116,9 +114,6 @@ test("registerWorker emits PARTIAL failed callback when finished callback fails"
     callbackClient: createStubCallbackClient({
       sendFinished: async () => {
         throw new Error("finished callback failed");
-      },
-      sendFailed: async (_runId, payload) => {
-        failedPayload = payload;
       }
     }),
     capturePipeline: {
@@ -131,11 +126,8 @@ test("registerWorker emits PARTIAL failed callback when finished callback fails"
     }
   });
 
-  await assert.rejects(() => worker.handleMessage(message), /finished callback failed/);
-  if (failedPayload === null) {
-    throw new Error("failed payload was not captured");
-  }
-
-  const capturedFailedPayload = failedPayload as RunnerFailedPayload;
-  assert.equal(capturedFailedPayload.resultCompleteness, "PARTIAL");
+  const result = await worker.handleMessage(message);
+  assert.equal(result.summary.completedStepCount, 1);
+  assert.equal(result.delivery.status, "DELIVERY_FAILED");
+  assert.deepEqual(result.delivery.issues.map((issue) => issue.scope), ["finished-callback"]);
 });

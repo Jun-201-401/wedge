@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { access, mkdtemp, readFile, rm } from "node:fs/promises";
 import test from "node:test";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -124,11 +124,15 @@ test("HTTP callback mode throws on non-2xx responses", async () => {
   try {
     const address = server.address();
     assert.ok(address && typeof address !== "string");
+    const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-callback-http-fail-"));
+    const callbackOutboxFile = join(artifactsRoot, "callback-outbox.jsonl");
 
     const callbackClient = createCallbackClient(
       createRunnerTestConfig({
         callbackMode: "http",
-        callbackBaseUrl: `http://127.0.0.1:${address.port}`
+        callbackBaseUrl: `http://127.0.0.1:${address.port}`,
+        callbackOutboxFile,
+        callbackRetryDelaysMs: [1, 1]
       })
     );
 
@@ -143,8 +147,12 @@ test("HTTP callback mode throws on non-2xx responses", async () => {
             stopped: false
           }
         }),
-      /runner callback finished failed with status 409/
+      /runner callback finished failed after 3 attempts: runner callback finished failed with status 409/
     );
+
+    const outboxLog = await readFile(callbackOutboxFile, "utf8");
+    assert.match(outboxLog, /"callbackType":"finished"/);
+    assert.match(outboxLog, /"attempts":3/);
   } finally {
     await new Promise<void>((resolve, reject) => {
       server.close((error) => {
@@ -156,5 +164,154 @@ test("HTTP callback mode throws on non-2xx responses", async () => {
         resolve();
       });
     });
+  }
+});
+
+test("HTTP callback mode retries before succeeding and does not write outbox", async () => {
+  let requestCount = 0;
+  const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-callback-http-retry-"));
+  const callbackOutboxFile = join(artifactsRoot, "callback-outbox.jsonl");
+  const server = createServer((_request, response) => {
+    requestCount += 1;
+
+    if (requestCount < 3) {
+      response.writeHead(503, {
+        "content-type": "application/json"
+      });
+      response.end(JSON.stringify({ error: "try again" }));
+      return;
+    }
+
+    response.writeHead(200, {
+      "content-type": "application/json"
+    });
+    response.end(JSON.stringify({ accepted: true }));
+  });
+
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      server.off("error", reject);
+      resolve();
+    });
+  });
+
+  try {
+    const address = server.address();
+    assert.ok(address && typeof address !== "string");
+
+    const callbackClient = createCallbackClient(
+      createRunnerTestConfig({
+        callbackMode: "http",
+        callbackBaseUrl: `http://127.0.0.1:${address.port}`,
+        callbackOutboxFile,
+        callbackRetryDelaysMs: [1, 1]
+      })
+    );
+
+    await callbackClient.sendAccepted("run-1", {
+      workerId: "worker-1",
+      acceptedAt: "2026-04-21T00:00:00.000Z",
+      browserSessionId: "session-1"
+    });
+
+    assert.equal(requestCount, 3);
+    await assert.rejects(async () => access(callbackOutboxFile), /ENOENT/);
+  } finally {
+    await new Promise<void>((resolve, reject) => {
+      server.close((error) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+
+        resolve();
+      });
+    });
+
+    await rm(artifactsRoot, { recursive: true, force: true });
+  }
+});
+
+test("HTTP callback mode emits aggregated retry logs instead of per-attempt logs", async () => {
+  let requestCount = 0;
+  const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-callback-http-logs-"));
+  const callbackOutboxFile = join(artifactsRoot, "callback-outbox.jsonl");
+  const captured: string[] = [];
+  const originalLog = console.log;
+  const originalError = console.error;
+  console.log = (message?: unknown, ...optional: unknown[]) => {
+    captured.push(String(message));
+    if (optional.length > 0) {
+      captured.push(optional.map(String).join(" "));
+    }
+  };
+  console.error = (message?: unknown, ...optional: unknown[]) => {
+    captured.push(String(message));
+    if (optional.length > 0) {
+      captured.push(optional.map(String).join(" "));
+    }
+  };
+
+  const server = createServer((_request, response) => {
+    requestCount += 1;
+
+    if (requestCount < 3) {
+      response.writeHead(503, {
+        "content-type": "application/json"
+      });
+      response.end(JSON.stringify({ error: "retry" }));
+      return;
+    }
+
+    response.writeHead(200, {
+      "content-type": "application/json"
+    });
+    response.end(JSON.stringify({ accepted: true }));
+  });
+
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      server.off("error", reject);
+      resolve();
+    });
+  });
+
+  try {
+    const address = server.address();
+    assert.ok(address && typeof address !== "string");
+
+    const callbackClient = createCallbackClient(
+      createRunnerTestConfig({
+        callbackMode: "http",
+        callbackBaseUrl: `http://127.0.0.1:${address.port}`,
+        callbackOutboxFile,
+        callbackRetryDelaysMs: [1, 1]
+      })
+    );
+
+    await callbackClient.sendAccepted("run-1", {
+      workerId: "worker-1",
+      acceptedAt: "2026-04-21T00:00:00.000Z",
+      browserSessionId: "session-1"
+    });
+
+    assert.ok(captured.some((line) => line.includes("\"event\":\"retry_sequence_recovered\"")));
+    assert.ok(!captured.some((line) => line.includes("\"event\":\"retry_attempt_failed\"")));
+  } finally {
+    console.log = originalLog;
+    console.error = originalError;
+    await new Promise<void>((resolve, reject) => {
+      server.close((error) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+
+        resolve();
+      });
+    });
+    await rm(artifactsRoot, { recursive: true, force: true });
   }
 });

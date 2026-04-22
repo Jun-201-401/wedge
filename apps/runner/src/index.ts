@@ -5,6 +5,10 @@ import { createRunnerApp } from "./app.ts";
 interface CliOptions {
   messageFile?: string;
   consumeMq: boolean;
+  replayOutbox: boolean;
+  watchOutbox: boolean;
+  replayArtifactOutbox: boolean;
+  watchArtifactOutbox: boolean;
   help: boolean;
 }
 
@@ -17,7 +21,77 @@ try {
   } else {
     const app = createRunnerApp();
 
-    if (cliOptions.consumeMq || app.config.mqConsumerEnabled) {
+    if (cliOptions.watchArtifactOutbox) {
+      const worker = await app.startArtifactOutboxReplayWorker();
+      registerShutdownHooks(worker.close);
+
+      console.log(
+        JSON.stringify(
+          {
+            service: app.service,
+            workerId: app.config.workerId,
+            mode: "artifact-outbox-worker",
+            outboxFile: app.config.artifactOutboxFile,
+            lockFile: app.config.artifactOutboxLockFile,
+            replayIntervalMs: app.config.artifactOutboxReplayIntervalMs
+          },
+          null,
+          2
+        )
+      );
+    } else if (cliOptions.replayArtifactOutbox) {
+      const result = await app.replayArtifactOutbox();
+
+      console.log(
+        JSON.stringify(
+          {
+            service: app.service,
+            workerId: app.config.workerId,
+            mode: "artifact-outbox-replay",
+            outboxFile: app.config.artifactOutboxFile,
+            lockFile: app.config.artifactOutboxLockFile,
+            summary: result
+          },
+          null,
+          2
+        )
+      );
+    } else if (cliOptions.watchOutbox) {
+      const worker = await app.startCallbackOutboxReplayWorker();
+      registerShutdownHooks(worker.close);
+
+      console.log(
+        JSON.stringify(
+          {
+            service: app.service,
+            workerId: app.config.workerId,
+            mode: "callback-outbox-worker",
+            outboxFile: app.config.callbackOutboxFile,
+            lockFile: app.config.callbackOutboxLockFile,
+            replayIntervalMs: app.config.callbackOutboxReplayIntervalMs
+          },
+          null,
+          2
+        )
+      );
+    } else if (cliOptions.replayOutbox) {
+      const result = await app.replayCallbackOutbox();
+
+      console.log(
+        JSON.stringify(
+          {
+            service: app.service,
+            workerId: app.config.workerId,
+            mode: "callback-outbox-replay",
+            outboxFile: app.config.callbackOutboxFile,
+            lockFile: app.config.callbackOutboxLockFile,
+            summary: result
+          },
+          null,
+          2
+        )
+      );
+    } else if (cliOptions.consumeMq || app.config.mqConsumerEnabled) {
       const consumer = await app.startMqConsumer();
       registerShutdownHooks(consumer.close);
 
@@ -49,6 +123,7 @@ try {
             workerId: result.workerId,
             browserSessionId: result.browserSessionId,
             summary: result.summary,
+            delivery: result.delivery,
             artifactsRoot: app.config.artifactsRoot,
             callbackLogFile: app.config.callbackLogFile
           },
@@ -67,6 +142,10 @@ try {
 function parseCliOptions(argv: string[]): CliOptions {
   const cliOptions: CliOptions = {
     consumeMq: false,
+    replayOutbox: false,
+    watchOutbox: false,
+    replayArtifactOutbox: false,
+    watchArtifactOutbox: false,
     help: false
   };
 
@@ -86,6 +165,26 @@ function parseCliOptions(argv: string[]): CliOptions {
 
     if (current === "--consume-mq") {
       cliOptions.consumeMq = true;
+      continue;
+    }
+
+    if (current === "--replay-outbox") {
+      cliOptions.replayOutbox = true;
+      continue;
+    }
+
+    if (current === "--watch-outbox") {
+      cliOptions.watchOutbox = true;
+      continue;
+    }
+
+    if (current === "--replay-artifact-outbox") {
+      cliOptions.replayArtifactOutbox = true;
+      continue;
+    }
+
+    if (current === "--watch-artifact-outbox") {
+      cliOptions.watchArtifactOutbox = true;
     }
   }
 
@@ -93,7 +192,7 @@ function parseCliOptions(argv: string[]): CliOptions {
 }
 
 function printHelp(): void {
-  console.log(`Usage: npm run start -- [--message-file <path-to-run-execute-request.json>] [--consume-mq]
+  console.log(`Usage: npm run start -- [--message-file <path-to-run-execute-request.json>] [--consume-mq] [--replay-outbox] [--watch-outbox] [--replay-artifact-outbox] [--watch-artifact-outbox]
 
 If --message-file is omitted, the runner uses:
   examples/run-execute.request.json

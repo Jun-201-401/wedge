@@ -1,8 +1,10 @@
 import type { BrowserCapturedArtifacts, BrowserSession } from "../../browser/playwright/index.ts";
 import type { CallbackClient } from "../../callback/index.ts";
 import type { CapturePipeline } from "../../capture/index.ts";
+import type { DeliveryIssue } from "../../delivery/index.ts";
 import type { ArtifactStore } from "../../storage/index.ts";
 import type { ScenarioPlan, ScenarioStep } from "../../shared/contracts.ts";
+import { errorMessage } from "../../shared/utils.ts";
 import { createArtifactBatch, createCheckpointRequest } from "./checkpoint-payloads.ts";
 
 export interface CheckpointEmissionInput {
@@ -29,7 +31,8 @@ export async function emitCheckpointArtifactsAndCallbacks({
   callbackClient,
   capturePipeline,
   artifactStore
-}: CheckpointEmissionInput): Promise<void> {
+}: CheckpointEmissionInput): Promise<DeliveryIssue[]> {
+  const deliveryIssues: DeliveryIssue[] = [];
   const checkpointCollection = await capturePipeline.collectCheckpoint({
     step,
     stepOrder,
@@ -39,14 +42,42 @@ export async function emitCheckpointArtifactsAndCallbacks({
     capturedArtifacts
   });
 
-  const storedArtifacts = await artifactStore.persistArtifacts({
-    runId,
-    artifacts: checkpointCollection.artifacts
-  });
+  let storedArtifacts = [] as Awaited<ReturnType<ArtifactStore["persistArtifacts"]>>;
 
-  if (storedArtifacts.length > 0) {
-    await callbackClient.sendArtifacts(runId, createArtifactBatch(storedArtifacts));
+  try {
+    storedArtifacts = await artifactStore.persistArtifacts({
+      runId,
+      artifacts: checkpointCollection.artifacts
+    });
+  } catch (error) {
+    deliveryIssues.push({
+      scope: "artifact-storage",
+      stepKey: step.step_id,
+      message: `artifact storage failed: ${errorMessage(error)}`
+    });
   }
 
-  await callbackClient.sendCheckpoints(runId, createCheckpointRequest(checkpointCollection.checkpoint, storedArtifacts));
+  if (storedArtifacts.length > 0) {
+    try {
+      await callbackClient.sendArtifacts(runId, createArtifactBatch(storedArtifacts));
+    } catch (error) {
+      deliveryIssues.push({
+        scope: "artifacts-callback",
+        stepKey: step.step_id,
+        message: `artifact callback failed: ${errorMessage(error)}`
+      });
+    }
+  }
+
+  try {
+    await callbackClient.sendCheckpoints(runId, createCheckpointRequest(checkpointCollection.checkpoint, storedArtifacts));
+  } catch (error) {
+    deliveryIssues.push({
+      scope: "checkpoints-callback",
+      stepKey: step.step_id,
+      message: `checkpoint callback failed: ${errorMessage(error)}`
+    });
+  }
+
+  return deliveryIssues;
 }

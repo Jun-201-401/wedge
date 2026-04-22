@@ -1,4 +1,5 @@
 import type { CallbackClient } from "../callback/index.ts";
+import type { DeliveryIssue } from "../delivery/index.ts";
 import type { ScenarioExecutionSummary } from "../scenario/executor/index.ts";
 import { errorMessage, toIsoTimestamp } from "../shared/utils.ts";
 
@@ -43,12 +44,22 @@ export async function emitFinishedCallback({
   runId,
   workerId,
   summary
-}: FinishedCallbackInput): Promise<void> {
-  await callbackClient.sendFinished(runId, {
-    workerId,
-    executionFinishedAt: toIsoTimestamp(),
-    summary
-  });
+}: FinishedCallbackInput): Promise<DeliveryIssue[]> {
+  try {
+    await callbackClient.sendFinished(runId, {
+      workerId,
+      executionFinishedAt: toIsoTimestamp(),
+      summary
+    });
+    return [];
+  } catch (error) {
+    return [
+      {
+        scope: "finished-callback",
+        message: `finished callback failed: ${errorMessage(error)}`
+      }
+    ];
+  }
 }
 
 export async function emitFailedCallback({

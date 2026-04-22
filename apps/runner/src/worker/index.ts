@@ -2,6 +2,7 @@ import type { BrowserSessionFactory } from "../browser/playwright/index.ts";
 import type { CallbackClient } from "../callback/index.ts";
 import type { RunnerConfig } from "../config/index.ts";
 import type { CapturePipeline } from "../capture/index.ts";
+import { createDeliverySummary, mergeDeliveryIssues, type DeliverySummary } from "../delivery/index.ts";
 import { executeScenario, type ScenarioExecutionSummary } from "../scenario/executor/index.ts";
 import type { ArtifactStore } from "../storage/index.ts";
 import type { RunExecuteMessage } from "../shared/contracts.ts";
@@ -12,6 +13,7 @@ export interface RunnerExecutionResult {
   workerId: string;
   browserSessionId: string;
   summary: ScenarioExecutionSummary;
+  delivery: DeliverySummary;
 }
 
 export interface RegisterWorkerInput {
@@ -55,7 +57,7 @@ export function registerWorker({
 
         accepted = true;
 
-        const summary = await executeScenario({
+        const executionResult = await executeScenario({
           runId: message.payload.runId,
           plan: message.payload.scenarioPlan,
           session,
@@ -64,18 +66,21 @@ export function registerWorker({
           artifactStore
         });
 
-        await emitFinishedCallback({
+        const finishedDeliveryIssues = await emitFinishedCallback({
           callbackClient,
           runId: message.payload.runId,
           workerId: config.workerId,
-          summary
+          summary: executionResult.summary
         });
 
         return {
           runId: message.payload.runId,
           workerId: config.workerId,
           browserSessionId: session.id,
-          summary
+          summary: executionResult.summary,
+          delivery: createDeliverySummary(
+            mergeDeliveryIssues(executionResult.delivery.issues, finishedDeliveryIssues)
+          )
         };
       } catch (error) {
         await emitFailedCallback({

@@ -10,12 +10,28 @@ export interface RunnerConfig {
   workerId: string;
   artifactsRoot: string;
   callbackLogFile: string;
+  callbackOutboxFile: string;
+  callbackOutboxLockFile: string;
+  callbackOutboxLockStaleMs: number;
+  callbackOutboxReplayIntervalMs: number;
+  callbackOutboxHeartbeatIntervalMs: number;
+  callbackOutboxRetentionMs: number;
+  callbackOutboxMaxRecords: number;
   callbackMode: RunnerCallbackMode;
+  callbackRetryDelaysMs: number[];
   callbackBaseUrl?: string;
   callbackTimeoutMs: number;
   callbackAuthToken?: string;
   callbackSignatureSecret?: string;
   artifactBucket: string;
+  artifactOutboxFile: string;
+  artifactOutboxLockFile: string;
+  artifactOutboxLockStaleMs: number;
+  artifactOutboxReplayIntervalMs: number;
+  artifactOutboxHeartbeatIntervalMs: number;
+  artifactOutboxRetentionMs: number;
+  artifactOutboxMaxRecords: number;
+  artifactRetryDelaysMs: number[];
   mqConsumerEnabled: boolean;
   mqUrl: string;
   mqQueueRunExecute: string;
@@ -36,6 +52,33 @@ export function loadRunnerConfig(overrides: Partial<RunnerConfig> = {}): RunnerC
     overrides.artifactsRoot ??
     resolve(process.cwd(), process.env.RUNNER_ARTIFACTS_ROOT ?? ".runner-artifacts");
   const callbackMode = parseCallbackMode(overrides.callbackMode ?? process.env.RUNNER_CALLBACK_MODE);
+  const callbackRetryDelaysMs =
+    overrides.callbackRetryDelaysMs ?? parseNumberList(process.env.RUNNER_CALLBACK_RETRY_DELAYS_MS, [200, 1000, 3000]);
+  const callbackOutboxLockStaleMs = parseNumber(
+    overrides.callbackOutboxLockStaleMs,
+    process.env.RUNNER_CALLBACK_OUTBOX_LOCK_STALE_MS,
+    30_000
+  );
+  const callbackOutboxReplayIntervalMs = parseNumber(
+    overrides.callbackOutboxReplayIntervalMs,
+    process.env.RUNNER_CALLBACK_OUTBOX_REPLAY_INTERVAL_MS,
+    5_000
+  );
+  const callbackOutboxHeartbeatIntervalMs = parseNumber(
+    overrides.callbackOutboxHeartbeatIntervalMs,
+    process.env.RUNNER_CALLBACK_OUTBOX_HEARTBEAT_INTERVAL_MS,
+    60_000
+  );
+  const callbackOutboxRetentionMs = parseNumber(
+    overrides.callbackOutboxRetentionMs,
+    process.env.RUNNER_CALLBACK_OUTBOX_RETENTION_MS,
+    7 * 24 * 60 * 60 * 1000
+  );
+  const callbackOutboxMaxRecords = parseNumber(
+    overrides.callbackOutboxMaxRecords,
+    process.env.RUNNER_CALLBACK_OUTBOX_MAX_RECORDS,
+    1_000
+  );
   const callbackBaseUrl = overrides.callbackBaseUrl ?? process.env.RUNNER_CALLBACK_BASE_URL ?? undefined;
   const callbackTimeoutMs = parseNumber(
     overrides.callbackTimeoutMs,
@@ -45,6 +88,33 @@ export function loadRunnerConfig(overrides: Partial<RunnerConfig> = {}): RunnerC
   const callbackAuthToken = overrides.callbackAuthToken ?? process.env.RUNNER_CALLBACK_AUTH_TOKEN ?? undefined;
   const callbackSignatureSecret =
     overrides.callbackSignatureSecret ?? process.env.RUNNER_CALLBACK_SIGNATURE_SECRET ?? undefined;
+  const artifactRetryDelaysMs =
+    overrides.artifactRetryDelaysMs ?? parseNumberList(process.env.RUNNER_ARTIFACT_RETRY_DELAYS_MS, [200, 1000, 3000]);
+  const artifactOutboxLockStaleMs = parseNumber(
+    overrides.artifactOutboxLockStaleMs,
+    process.env.RUNNER_ARTIFACT_OUTBOX_LOCK_STALE_MS,
+    30_000
+  );
+  const artifactOutboxReplayIntervalMs = parseNumber(
+    overrides.artifactOutboxReplayIntervalMs,
+    process.env.RUNNER_ARTIFACT_OUTBOX_REPLAY_INTERVAL_MS,
+    5_000
+  );
+  const artifactOutboxHeartbeatIntervalMs = parseNumber(
+    overrides.artifactOutboxHeartbeatIntervalMs,
+    process.env.RUNNER_ARTIFACT_OUTBOX_HEARTBEAT_INTERVAL_MS,
+    60_000
+  );
+  const artifactOutboxRetentionMs = parseNumber(
+    overrides.artifactOutboxRetentionMs,
+    process.env.RUNNER_ARTIFACT_OUTBOX_RETENTION_MS,
+    7 * 24 * 60 * 60 * 1000
+  );
+  const artifactOutboxMaxRecords = parseNumber(
+    overrides.artifactOutboxMaxRecords,
+    process.env.RUNNER_ARTIFACT_OUTBOX_MAX_RECORDS,
+    1_000
+  );
   const mqConsumerEnabled = parseBoolean(
     overrides.mqConsumerEnabled,
     process.env.RUNNER_MQ_CONSUMER_ENABLED,
@@ -80,12 +150,36 @@ export function loadRunnerConfig(overrides: Partial<RunnerConfig> = {}): RunnerC
     callbackLogFile:
       overrides.callbackLogFile ??
       resolve(artifactsRoot, process.env.RUNNER_CALLBACK_LOG_FILE ?? "callbacks.jsonl"),
+    callbackOutboxFile:
+      overrides.callbackOutboxFile ??
+      resolve(artifactsRoot, process.env.RUNNER_CALLBACK_OUTBOX_FILE ?? "callback-outbox.jsonl"),
+    callbackOutboxLockFile:
+      overrides.callbackOutboxLockFile ??
+      resolve(artifactsRoot, process.env.RUNNER_CALLBACK_OUTBOX_LOCK_FILE ?? "callback-outbox.lock"),
+    callbackOutboxLockStaleMs,
+    callbackOutboxReplayIntervalMs,
+    callbackOutboxHeartbeatIntervalMs,
+    callbackOutboxRetentionMs,
+    callbackOutboxMaxRecords,
     callbackMode,
+    callbackRetryDelaysMs,
     callbackBaseUrl,
     callbackTimeoutMs,
     callbackAuthToken,
     callbackSignatureSecret,
     artifactBucket: overrides.artifactBucket ?? process.env.RUNNER_ARTIFACT_BUCKET ?? "local-runner",
+    artifactOutboxFile:
+      overrides.artifactOutboxFile ??
+      resolve(artifactsRoot, process.env.RUNNER_ARTIFACT_OUTBOX_FILE ?? "artifact-outbox.jsonl"),
+    artifactOutboxLockFile:
+      overrides.artifactOutboxLockFile ??
+      resolve(artifactsRoot, process.env.RUNNER_ARTIFACT_OUTBOX_LOCK_FILE ?? "artifact-outbox.lock"),
+    artifactOutboxLockStaleMs,
+    artifactOutboxReplayIntervalMs,
+    artifactOutboxHeartbeatIntervalMs,
+    artifactOutboxRetentionMs,
+    artifactOutboxMaxRecords,
+    artifactRetryDelaysMs,
     mqConsumerEnabled,
     mqUrl,
     mqQueueRunExecute,
@@ -164,4 +258,17 @@ function parseNumber(
 
   const parsed = Number(envValue);
   return Number.isFinite(parsed) ? parsed : defaultValue;
+}
+
+function parseNumberList(envValue: string | undefined, defaultValue: number[]): number[] {
+  if (!envValue) {
+    return [...defaultValue];
+  }
+
+  const parsed = envValue
+    .split(",")
+    .map((item) => Number(item.trim()))
+    .filter((value) => Number.isFinite(value) && value >= 0);
+
+  return parsed.length > 0 ? parsed : [...defaultValue];
 }

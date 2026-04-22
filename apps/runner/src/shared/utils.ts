@@ -48,3 +48,35 @@ export function sanitizePathFragment(value: string): string {
 export function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
+
+export type OperationalLogLevel = "info" | "warn" | "error";
+
+export function logOperationalEvent(
+  component: string,
+  event: string,
+  details: Record<string, unknown> = {},
+  level: OperationalLogLevel = "info"
+): void {
+  const value = process.env.RUNNER_OPERATIONAL_LOGS;
+  if (value) {
+    const normalized = value.toLowerCase();
+    if (normalized === "0" || normalized === "false" || normalized === "off" || normalized === "no") {
+      return;
+    }
+  }
+
+  const line = JSON.stringify({
+    timestamp: toIsoTimestamp(),
+    level,
+    component,
+    event,
+    ...details
+  });
+
+  if (level === "error") {
+    console.error(line);
+    return;
+  }
+
+  console.log(line);
+}

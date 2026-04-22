@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { BrowserPageSnapshot, BrowserSettleResult } from "../src/browser/playwright/index.ts";
 import { createCapturePipeline } from "../src/capture/index.ts";
+import { executeScenario } from "../src/scenario/executor/index.ts";
 import { createArtifactBatch, createCheckpointRequest } from "../src/scenario/executor/checkpoint-payloads.ts";
 import { executeScenarioStep } from "../src/scenario/executor/step-executor.ts";
 import {
@@ -135,6 +136,142 @@ test("executeScenarioStep emits artifacts before checkpoints for checkpoint step
     "artifacts",
     "checkpoints",
     "step-events"
+  ]);
+});
+
+test("executeScenarioStep treats step-event delivery failures as best-effort", async () => {
+  const plan = createMinimalPlan();
+  const step: ScenarioStep = {
+    step_id: "step_001_fill_email",
+    stage: "INPUT",
+    description: "best effort step event",
+    action: {
+      type: "fill",
+      target: {
+        label: "Email"
+      },
+      value: "test@example.com"
+    },
+    settle_strategy: {
+      type: "fixed_short",
+      timeout_ms: 1
+    },
+    checkpoint: false
+  };
+
+  const result = await executeScenarioStep({
+    runId: "run-1",
+    stepOrder: 1,
+    step,
+    plan,
+    session: createSimulatedSession(plan, {
+      execute: async () => ({
+        actionType: step.action.type,
+        targetSummary: "label=Email",
+        stopRequested: false,
+        details: {}
+      }),
+      settle: async () => createSettledResult({ strategy: "fixed_short", durationMs: 1 })
+    }),
+    callbackClient: createStubCallbackClient({
+      sendStepEvents: async () => {
+        throw new Error("step event unavailable");
+      }
+    }),
+    capturePipeline: {
+      collectCheckpoint: async () => {
+        throw new Error("checkpoint collection should not be called");
+      }
+    },
+    artifactStore: {
+      persistArtifacts: async () => []
+    }
+  });
+
+  assert.equal(result.stopRequested, false);
+  assert.equal(result.deliveryIssues.length, 3);
+  assert.ok(result.deliveryIssues.every((issue) => issue.scope === "step-events"));
+});
+
+test("executeScenario degrades delivery when artifact storage and checkpoint callbacks fail", async () => {
+  const plan = createMinimalPlan();
+  plan.steps = [
+    {
+      step_id: "step_001_checkpoint",
+      stage: "INPUT",
+      description: "checkpoint with degraded delivery",
+      action: {
+        type: "fill",
+        target: {
+          label: "Email"
+        },
+        value: "test@example.com"
+      },
+      settle_strategy: {
+        type: "fixed_short",
+        timeout_ms: 1
+      },
+      checkpoint: true
+    }
+  ];
+
+  const result = await executeScenario({
+    runId: "run-1",
+    plan,
+    session: createSimulatedSession(plan, {
+      execute: async () => ({
+        actionType: "fill",
+        targetSummary: "label=Email",
+        stopRequested: false,
+        details: {}
+      }),
+      settle: async () => createSettledResult({ strategy: "fixed_short", durationMs: 1 })
+    }),
+    callbackClient: createStubCallbackClient({
+      sendCheckpoints: async () => {
+        throw new Error("checkpoint callback unavailable");
+      }
+    }),
+    capturePipeline: {
+      collectCheckpoint: async () => ({
+        checkpoint: {
+          checkpointId: "checkpoint-1",
+          stepKey: "step_001_checkpoint",
+          stage: "INPUT",
+          trigger: {},
+          settle: {
+            strategy: "fixed_short",
+            durationMs: 1,
+            status: "settled"
+          },
+          state: {},
+          observations: [],
+          deltas: []
+        },
+        artifacts: [
+          {
+            artifactId: "artifact-1",
+            artifactType: "SCREENSHOT",
+            stepKey: "step_001_checkpoint",
+            mimeType: "text/plain",
+            fileExtension: "txt",
+            content: "hello"
+          }
+        ]
+      })
+    },
+    artifactStore: {
+      persistArtifacts: async () => {
+        throw new Error("artifact storage unavailable");
+      }
+    }
+  });
+
+  assert.equal(result.summary.completedStepCount, 1);
+  assert.equal(result.delivery.status, "DELIVERY_PARTIAL");
+  assert.deepEqual(result.delivery.issues.map((issue) => issue.scope), [
+    "artifact-storage",
+    "checkpoints-callback"
   ]);
 });
 
