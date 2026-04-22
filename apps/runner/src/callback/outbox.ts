@@ -2,7 +2,7 @@ import { appendFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import type { RunnerConfig } from "../config/index.ts";
 import { errorMessage, logOperationalEvent, toIsoTimestamp } from "../shared/utils.ts";
-import type { CallbackType } from "./index.ts";
+import type { CallbackType } from "./client.ts";
 
 export interface CallbackOutboxRecord {
   callbackType: CallbackType;

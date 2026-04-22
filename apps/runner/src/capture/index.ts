@@ -26,10 +26,8 @@ export interface CapturePipeline {
 export function createCapturePipeline(): CapturePipeline {
   return {
     async collectCheckpoint({ step, stepOrder, plan, pageSnapshot, settleResult, capturedArtifacts }) {
-      const screenshotArtifactId = randomUUID();
-      const domArtifactId = randomUUID();
       const screenshotArtifact = createScreenshotArtifact({
-        artifactId: screenshotArtifactId,
+        artifactId: randomUUID(),
         pageSnapshot,
         stepOrder,
         goal: plan.goal,
@@ -37,73 +35,13 @@ export function createCapturePipeline(): CapturePipeline {
         capturedArtifacts
       });
       const domArtifact = createDomSnapshotArtifact({
-        artifactId: domArtifactId,
+        artifactId: randomUUID(),
         pageSnapshot,
         goal: plan.goal,
         stepKey: step.step_id,
         capturedArtifacts
       });
-      const consoleLogArtifact =
-        pageSnapshot.consoleErrors.length > 0
-          ? {
-              artifactId: randomUUID(),
-              artifactType: "CONSOLE_LOG" as const,
-              stepKey: step.step_id,
-              mimeType: "application/json",
-              fileExtension: "json",
-              content: JSON.stringify(
-                {
-                  consoleErrors: pageSnapshot.consoleErrors
-                },
-                null,
-                2
-              )
-            }
-          : null;
-
-      const observations = [
-        ...Object.entries(pageSnapshot.fields).map(([fieldKey, value]) => ({
-          type: "form_field",
-          field_key: fieldKey,
-          value_length: value.length
-        })),
-        ...(step.stage === "CTA" && step.action.type === "click"
-          ? [
-              {
-                type: "cta_candidate",
-                target: pageSnapshot.lastAction?.target
-              }
-            ]
-          : []),
-        ...pageSnapshot.consoleErrors.map((message) => ({
-          type: "console_error",
-          message
-        })),
-        ...pageSnapshot.networkErrors.map((message) => ({
-          type: "network_failure",
-          message
-        })),
-        ...createSettleObservations(settleResult)
-      ];
-
-      const deltas = pageSnapshot.lastAction
-        ? [
-            {
-              type: "last_action",
-              action: pageSnapshot.lastAction.type,
-              target: pageSnapshot.lastAction.target
-            }
-          ]
-        : [];
-
-      const artifacts: ArtifactDraft[] = [
-        screenshotArtifact,
-        domArtifact
-      ];
-
-      if (consoleLogArtifact) {
-        artifacts.push(consoleLogArtifact);
-      }
+      const consoleLogArtifact = createConsoleLogArtifact(step.step_id, pageSnapshot.consoleErrors);
 
       return {
         checkpoint: {
@@ -120,25 +58,114 @@ export function createCapturePipeline(): CapturePipeline {
             durationMs: settleResult.durationMs,
             status: settleResult.status
           },
-          state: {
-            url: pageSnapshot.finalUrl,
-            title: pageSnapshot.title,
-            viewport: pageSnapshot.viewport,
-            locale: pageSnapshot.locale,
-            timezone: pageSnapshot.timezone,
-            scrollY: pageSnapshot.scrollY,
-            visitedUrls: pageSnapshot.visitedUrls,
-            fields: pageSnapshot.fields,
-            selectedOptions: pageSnapshot.selectedOptions,
-            cdpSession: pageSnapshot.cdpSession
-          },
-          observations,
-          deltas
+          state: createCheckpointState(pageSnapshot),
+          observations: createCheckpointObservations(step, pageSnapshot, settleResult),
+          deltas: createCheckpointDeltas(pageSnapshot)
         },
-        artifacts
+        artifacts: buildCheckpointArtifacts(screenshotArtifact, domArtifact, consoleLogArtifact)
       };
     }
   };
+}
+
+function buildCheckpointArtifacts(
+  screenshotArtifact: ArtifactDraft,
+  domArtifact: ArtifactDraft,
+  consoleLogArtifact: ArtifactDraft | null
+): ArtifactDraft[] {
+  return consoleLogArtifact
+    ? [screenshotArtifact, domArtifact, consoleLogArtifact]
+    : [screenshotArtifact, domArtifact];
+}
+
+function createConsoleLogArtifact(stepKey: string, consoleErrors: string[]): ArtifactDraft | null {
+  if (consoleErrors.length === 0) {
+    return null;
+  }
+
+  return {
+    artifactId: randomUUID(),
+    artifactType: "CONSOLE_LOG",
+    stepKey,
+    mimeType: "application/json",
+    fileExtension: "json",
+    content: JSON.stringify(
+      {
+        consoleErrors
+      },
+      null,
+      2
+    )
+  };
+}
+
+function createCheckpointState(pageSnapshot: BrowserPageSnapshot): Checkpoint["state"] {
+  return {
+    url: pageSnapshot.finalUrl,
+    title: pageSnapshot.title,
+    viewport: pageSnapshot.viewport,
+    locale: pageSnapshot.locale,
+    timezone: pageSnapshot.timezone,
+    scrollY: pageSnapshot.scrollY,
+    visitedUrls: pageSnapshot.visitedUrls,
+    fields: pageSnapshot.fields,
+    selectedOptions: pageSnapshot.selectedOptions,
+    cdpSession: pageSnapshot.cdpSession
+  };
+}
+
+function createCheckpointObservations(
+  step: ScenarioStep,
+  pageSnapshot: BrowserPageSnapshot,
+  settleResult: BrowserSettleResult
+): Record<string, unknown>[] {
+  return [
+    ...createFormFieldObservations(pageSnapshot.fields),
+    ...createCtaCandidateObservations(step, pageSnapshot),
+    ...pageSnapshot.consoleErrors.map((message) => ({
+      type: "console_error",
+      message
+    })),
+    ...pageSnapshot.networkErrors.map((message) => ({
+      type: "network_failure",
+      message
+    })),
+    ...createSettleObservations(settleResult)
+  ];
+}
+
+function createFormFieldObservations(fields: BrowserPageSnapshot["fields"]): Record<string, unknown>[] {
+  return Object.entries(fields).map(([fieldKey, value]) => ({
+    type: "form_field",
+    field_key: fieldKey,
+    value_length: value.length
+  }));
+}
+
+function createCtaCandidateObservations(
+  step: ScenarioStep,
+  pageSnapshot: BrowserPageSnapshot
+): Record<string, unknown>[] {
+  return step.stage === "CTA" && step.action.type === "click"
+    ? [
+        {
+          type: "cta_candidate",
+          target: pageSnapshot.lastAction?.target
+        }
+      ]
+    : [];
+}
+
+function createCheckpointDeltas(pageSnapshot: BrowserPageSnapshot): Record<string, unknown>[] {
+  return pageSnapshot.lastAction
+    ? [
+        {
+          type: "last_action",
+          action: pageSnapshot.lastAction.type,
+          target: pageSnapshot.lastAction.target
+        }
+      ]
+    : [];
 }
 
 function createSettleObservations(settleResult: BrowserSettleResult): Record<string, unknown>[] {

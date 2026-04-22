@@ -33,6 +33,34 @@ test("createCallbackClient keeps file callback mode behavior", async () => {
   }
 });
 
+test("createCallbackClient routes failed callbacks in file mode", async () => {
+  const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-callback-file-failed-"));
+  const callbackLogFile = join(artifactsRoot, "callbacks.jsonl");
+
+  try {
+    const callbackClient = createCallbackClient(
+      createRunnerTestConfig({
+        callbackLogFile,
+        callbackMode: "file"
+      })
+    );
+
+    await callbackClient.sendFailed("run-2", {
+      workerId: "worker-2",
+      failedAt: "2026-04-21T00:00:00.000Z",
+      failureCode: "RUNNER_FAILED",
+      failureMessage: "callback failed",
+      resultCompleteness: "FINAL"
+    });
+
+    const callbackLog = await readFile(callbackLogFile, "utf8");
+    assert.match(callbackLog, /"callbackType":"failed"/);
+    assert.match(callbackLog, /"failureCode":"RUNNER_FAILED"/);
+  } finally {
+    await rm(artifactsRoot, { recursive: true, force: true });
+  }
+});
+
 test("createCallbackClient sends runner callbacks over HTTP with expected headers", async () => {
   const received: Array<{ method: string; url: string; headers: Record<string, string | string[] | undefined>; body: string }> = [];
   const server = createServer((request, response) => {

@@ -90,6 +90,12 @@ export interface BrowserSessionFactory {
   createSession: (input: { runId: string; plan: ScenarioPlan }) => Promise<BrowserSession>;
 }
 
+const DEFAULT_LOCATOR_TIMEOUT_MS = 1_500;
+const DEFAULT_WAIT_FOR_TIMEOUT_MS = 1_500;
+const ITEM_COUNT_POLL_INTERVAL_MS = 50;
+
+type SettleTimeoutDetails = Record<string, unknown> | ((error: unknown) => Record<string, unknown>);
+
 class SettleTimeoutError extends Error {
   readonly details: Record<string, unknown>;
 
@@ -125,29 +131,12 @@ class SimulatedPlaywrightSession implements BrowserSession {
     this.plan = plan;
     this.cdpSession = createCdpSession();
     this.delayCapMs = delayCapMs;
-    this.state = {
-      currentUrl: plan.start_url,
-      finalUrl: plan.start_url,
-      title: createTitleFromUrl(plan.start_url),
-      visitedUrls: [plan.start_url],
-      fields: {},
-      selectedOptions: {},
-      scrollY: 0,
-      lastAction: null,
-      consoleErrors: [],
-      networkErrors: []
-    };
+    this.state = createInitialBrowserState(plan);
   }
 
   async execute(action: ScenarioAction, step: ScenarioStep): Promise<BrowserActionResult> {
     const targetSummary = describeTarget(action.target);
-    const actionTimestamp = toIsoTimestamp();
-
-    this.state.lastAction = {
-      type: action.type,
-      target: targetSummary,
-      at: actionTimestamp
-    };
+    recordLastAction(this.state, action, targetSummary);
 
     switch (action.type) {
       case "goto": {
@@ -227,22 +216,7 @@ class SimulatedPlaywrightSession implements BrowserSession {
   }
 
   snapshot(): BrowserPageSnapshot {
-    return {
-      currentUrl: this.state.currentUrl,
-      finalUrl: this.state.finalUrl,
-      title: this.state.title,
-      viewport: this.plan.environment.viewport,
-      locale: this.plan.environment.locale,
-      timezone: this.plan.environment.timezone,
-      visitedUrls: [...this.state.visitedUrls],
-      fields: { ...this.state.fields },
-      selectedOptions: { ...this.state.selectedOptions },
-      scrollY: this.state.scrollY,
-      lastAction: this.state.lastAction ? { ...this.state.lastAction } : null,
-      consoleErrors: [...this.state.consoleErrors],
-      networkErrors: [...this.state.networkErrors],
-      cdpSession: this.cdpSession
-    };
+    return createBrowserPageSnapshot(this.plan, this.state, this.cdpSession);
   }
 
   async captureArtifacts(): Promise<BrowserCapturedArtifacts> {
@@ -257,10 +231,7 @@ class SimulatedPlaywrightSession implements BrowserSession {
     this.state.currentUrl = url;
     this.state.finalUrl = url;
     this.state.title = createTitleFromUrl(url);
-
-    if (this.state.visitedUrls[this.state.visitedUrls.length - 1] !== url) {
-      this.state.visitedUrls.push(url);
-    }
+    appendVisitedUrl(this.state.visitedUrls, url);
   }
 }
 
@@ -291,18 +262,7 @@ class RealPlaywrightSession implements BrowserSession {
     this.context = context;
     this.page = page;
     this.cdpSession = createCdpSession();
-    this.state = {
-      currentUrl: plan.start_url,
-      finalUrl: plan.start_url,
-      title: createTitleFromUrl(plan.start_url),
-      visitedUrls: [plan.start_url],
-      fields: {},
-      selectedOptions: {},
-      scrollY: 0,
-      lastAction: null,
-      consoleErrors: [],
-      networkErrors: []
-    };
+    this.state = createInitialBrowserState(plan);
   }
 
   static async create(plan: ScenarioPlan, config: RunnerConfig): Promise<RealPlaywrightSession> {
@@ -329,13 +289,7 @@ class RealPlaywrightSession implements BrowserSession {
 
   async execute(action: ScenarioAction, step: ScenarioStep): Promise<BrowserActionResult> {
     const targetSummary = describeTarget(action.target);
-    const actionTimestamp = toIsoTimestamp();
-
-    this.state.lastAction = {
-      type: action.type,
-      target: targetSummary,
-      at: actionTimestamp
-    };
+    recordLastAction(this.state, action, targetSummary);
 
     switch (action.type) {
       case "goto": {
@@ -353,7 +307,7 @@ class RealPlaywrightSession implements BrowserSession {
           const nextUrl = inferNavigationUrl(this.state.currentUrl, action.target);
           assertScenarioActionAllowed(this.plan, this.state.currentUrl, action, nextUrl);
           if (!nextUrl) {
-            throw new Error(`Unable to resolve click target: ${targetSummary ?? "unknown target"}`);
+            throwUnresolvedTarget("click", targetSummary);
           }
 
           await this.page.goto(nextUrl, {
@@ -367,7 +321,7 @@ class RealPlaywrightSession implements BrowserSession {
         assertScenarioActionAllowed(this.plan, this.state.currentUrl, action);
         const filled = await this.tryFillTarget(action.target, action.value, step.step_id);
         if (!filled) {
-          throw new Error(`Unable to resolve fill target: ${targetSummary ?? "unknown target"}`);
+          throwUnresolvedTarget("fill", targetSummary);
         }
         break;
       }
@@ -375,7 +329,7 @@ class RealPlaywrightSession implements BrowserSession {
         assertScenarioActionAllowed(this.plan, this.state.currentUrl, action);
         const selected = await this.trySelectTarget(action.target, action.value, step.step_id);
         if (!selected) {
-          throw new Error(`Unable to resolve select target: ${targetSummary ?? "unknown target"}`);
+          throwUnresolvedTarget("select", targetSummary);
         }
         break;
       }
@@ -388,7 +342,7 @@ class RealPlaywrightSession implements BrowserSession {
         assertScenarioActionAllowed(this.plan, this.state.currentUrl, action);
         const hovered = await this.tryHoverTarget(action.target);
         if (!hovered) {
-          throw new Error(`Unable to resolve hover target: ${targetSummary ?? "unknown target"}`);
+          throwUnresolvedTarget("hover", targetSummary);
         }
         break;
       }
@@ -441,85 +395,82 @@ class RealPlaywrightSession implements BrowserSession {
     }
 
     if (strategy.type === "network_idle") {
-      try {
-        await this.page.waitForLoadState("networkidle", {
-          timeout: strategy.timeout_ms
-        });
-        await this.refreshPageState();
-        return this.createSettleResult(strategy.type, startedAt, targetSummary, "settled", {
+      return this.settleWithAttempt(
+        strategy.type,
+        startedAt,
+        targetSummary,
+        async () => {
+          await this.page.waitForLoadState("networkidle", {
+            timeout: strategy.timeout_ms
+          });
+          return {
+            mode: "load_state",
+            loadState: "networkidle"
+          };
+        },
+        {
           mode: "load_state",
           loadState: "networkidle"
-        });
-      } catch {
-        await this.refreshPageState();
-        return this.createSettleResult(strategy.type, startedAt, targetSummary, "timeout", {
-          mode: "load_state",
-          loadState: "networkidle"
-        });
-      }
+        }
+      );
     }
 
     if (strategy.type === "locator_visible" || strategy.type === "spinner_hidden") {
       const locatorState = strategy.type === "locator_visible" ? "visible" : "hidden";
 
-      try {
-        await this.waitForTargetLocatorState(strategy.target, locatorState, strategy.timeout_ms);
-        await this.refreshPageState();
-        return this.createSettleResult(strategy.type, startedAt, targetSummary, "settled", {
+      return this.settleWithAttempt(
+        strategy.type,
+        startedAt,
+        targetSummary,
+        async () => {
+          await this.waitForTargetLocatorState(strategy.target, locatorState, strategy.timeout_ms);
+          return {
+            mode: "locator_state",
+            locatorState
+          };
+        },
+        {
           mode: "locator_state",
           locatorState
-        });
-      } catch {
-        await this.refreshPageState();
-        return this.createSettleResult(strategy.type, startedAt, targetSummary, "timeout", {
-          mode: "locator_state",
-          locatorState
-        });
-      }
+        }
+      );
     }
 
     if (strategy.type === "url_change") {
-      try {
-        const details = await this.waitForUrlChange(strategy);
-        await this.refreshPageState();
-        return this.createSettleResult(strategy.type, startedAt, targetSummary, "settled", details);
-      } catch {
-        await this.refreshPageState();
-        return this.createSettleResult(strategy.type, startedAt, targetSummary, "timeout", {
+      return this.settleWithAttempt(
+        strategy.type,
+        startedAt,
+        targetSummary,
+        () => this.waitForUrlChange(strategy),
+        {
           mode: "url_change"
-        });
-      }
+        }
+      );
     }
 
     if (strategy.type === "response") {
-      try {
-        const details = await this.waitForResponse(strategy);
-        await this.refreshPageState();
-        return this.createSettleResult(strategy.type, startedAt, targetSummary, "settled", details);
-      } catch {
-        await this.refreshPageState();
-        return this.createSettleResult(strategy.type, startedAt, targetSummary, "timeout", {
+      return this.settleWithAttempt(
+        strategy.type,
+        startedAt,
+        targetSummary,
+        () => this.waitForResponse(strategy),
+        {
           mode: "response_wait",
           urlIncludes: resolveSettleResponseUrlIncludes(strategy),
           method: resolveSettleResponseMethod(strategy),
           status: resolveSettleResponseStatus(strategy),
           timeoutMs: strategy.timeout_ms
-        });
-      }
+        }
+      );
     }
 
     if (strategy.type === "item_count_change") {
-      try {
-        const details = await this.waitForItemCountChange(strategy);
-        await this.refreshPageState();
-        return this.createSettleResult(strategy.type, startedAt, targetSummary, "settled", details);
-      } catch (error) {
-        await this.refreshPageState();
-        return this.createSettleResult(
-          strategy.type,
-          startedAt,
-          targetSummary,
-          "timeout",
+      return this.settleWithAttempt(
+        strategy.type,
+        startedAt,
+        targetSummary,
+        () => this.waitForItemCountChange(strategy),
+        (error) =>
           error instanceof SettleTimeoutError
             ? error.details
             : {
@@ -530,8 +481,7 @@ class RealPlaywrightSession implements BrowserSession {
                 countDelta: resolveSettleCountDelta(strategy),
                 timeoutMs: strategy.timeout_ms
               }
-        );
-      }
+      );
     }
 
     const durationMs = resolveFallbackSettleDuration(strategy.timeout_ms);
@@ -544,22 +494,7 @@ class RealPlaywrightSession implements BrowserSession {
   }
 
   snapshot(): BrowserPageSnapshot {
-    return {
-      currentUrl: this.state.currentUrl,
-      finalUrl: this.state.finalUrl,
-      title: this.state.title,
-      viewport: this.plan.environment.viewport,
-      locale: this.plan.environment.locale,
-      timezone: this.plan.environment.timezone,
-      visitedUrls: [...this.state.visitedUrls],
-      fields: { ...this.state.fields },
-      selectedOptions: { ...this.state.selectedOptions },
-      scrollY: this.state.scrollY,
-      lastAction: this.state.lastAction ? { ...this.state.lastAction } : null,
-      consoleErrors: [...this.state.consoleErrors],
-      networkErrors: [...this.state.networkErrors],
-      cdpSession: this.cdpSession
-    };
+    return createBrowserPageSnapshot(this.plan, this.state, this.cdpSession);
   }
 
   async captureArtifacts(): Promise<BrowserCapturedArtifacts> {
@@ -619,111 +554,89 @@ class RealPlaywrightSession implements BrowserSession {
   }
 
   private async tryClickTarget(target: TargetDescriptor | undefined): Promise<boolean> {
-    const candidateLocators = buildCandidateLocators(this.page, target);
+    const clicked = await tryCandidateLocators(this.page, target, async (locator) => {
+      await locator.click({
+        timeout: DEFAULT_LOCATOR_TIMEOUT_MS
+      });
+    });
 
-    for (const locator of candidateLocators) {
-      try {
-        await locator.first().click({
-          timeout: 1_500
-        });
-        await this.refreshPageState();
-        return true;
-      } catch {
-        continue;
-      }
+    if (clicked) {
+      await this.refreshPageState();
     }
 
-    return false;
+    return clicked;
   }
 
   private async tryFillTarget(target: TargetDescriptor | undefined, value: unknown, fallbackKey: string): Promise<boolean> {
-    const candidateLocators = buildCandidateLocators(this.page, target);
     const nextValue = stringifyValue(value);
+    const filled = await tryCandidateLocators(this.page, target, async (locator) => {
+      await locator.fill(nextValue, {
+        timeout: DEFAULT_LOCATOR_TIMEOUT_MS
+      });
+    });
 
-    for (const locator of candidateLocators) {
-      try {
-        await locator.first().fill(nextValue, {
-          timeout: 1_500
-        });
-        this.state.fields[inferFieldKey(target, fallbackKey)] = nextValue;
-        await this.refreshPageState();
-        return true;
-      } catch {
-        continue;
-      }
+    if (filled) {
+      this.state.fields[inferFieldKey(target, fallbackKey)] = nextValue;
+      await this.refreshPageState();
     }
 
-    return false;
+    return filled;
   }
 
   private async trySelectTarget(target: TargetDescriptor | undefined, value: unknown, fallbackKey: string): Promise<boolean> {
-    const candidateLocators = buildCandidateLocators(this.page, target);
     const nextValue = stringifyValue(value);
-
-    for (const locator of candidateLocators) {
+    const selected = await tryCandidateLocators(this.page, target, async (locator) => {
       try {
-        await locator.first().selectOption(nextValue, {
-          timeout: 1_500
+        await locator.selectOption(nextValue, {
+          timeout: DEFAULT_LOCATOR_TIMEOUT_MS
         });
-        this.state.selectedOptions[inferFieldKey(target, fallbackKey)] = nextValue;
-        await this.refreshPageState();
-        return true;
       } catch {
-        try {
-          await locator.first().selectOption(
-            {
-              label: nextValue
-            },
-            {
-              timeout: 1_500
-            }
-          );
-          this.state.selectedOptions[inferFieldKey(target, fallbackKey)] = nextValue;
-          await this.refreshPageState();
-          return true;
-        } catch {
-          continue;
-        }
+        await locator.selectOption(
+          {
+            label: nextValue
+          },
+          {
+            timeout: DEFAULT_LOCATOR_TIMEOUT_MS
+          }
+        );
       }
+    });
+
+    if (selected) {
+      this.state.selectedOptions[inferFieldKey(target, fallbackKey)] = nextValue;
+      await this.refreshPageState();
     }
 
-    return false;
+    return selected;
   }
 
   private async tryHoverTarget(target: TargetDescriptor | undefined): Promise<boolean> {
-    const candidateLocators = buildCandidateLocators(this.page, target);
+    const hovered = await tryCandidateLocators(this.page, target, async (locator) => {
+      await locator.hover({
+        timeout: DEFAULT_LOCATOR_TIMEOUT_MS
+      });
+    });
 
-    for (const locator of candidateLocators) {
-      try {
-        await locator.first().hover({
-          timeout: 1_500
-        });
-        await this.refreshPageState();
-        return true;
-      } catch {
-        continue;
-      }
+    if (hovered) {
+      await this.refreshPageState();
     }
 
-    return false;
+    return hovered;
   }
 
   private async waitForAction(action: ScenarioAction): Promise<void> {
-    const timeoutMs = resolveWaitForTimeoutMs(action, this.plan);
+    const timeoutMs = resolveWaitForTimeoutMs(action);
     const locatorState = resolveWaitForLocatorState(action);
-    const candidateLocators = buildCandidateLocators(this.page, action.target);
+    const matched = await tryCandidateLocators(this.page, action.target, async (locator) => {
+      await locator.waitFor({
+        state: locatorState,
+        timeout: timeoutMs
+      });
+    });
 
-    for (const locator of candidateLocators) {
-      try {
-        await locator.first().waitFor({
-          state: locatorState,
-          timeout: timeoutMs
-        });
-        await this.refreshPageState();
-        return;
-      } catch {
-        continue;
-      }
+    if (matched) {
+      await this.refreshPageState();
+      return;
     }
 
     const urlIncludes = resolveWaitForUrlIncludes(action);
@@ -748,18 +661,15 @@ class RealPlaywrightSession implements BrowserSession {
     state: "visible" | "hidden",
     timeoutMs: number
   ): Promise<void> {
-    const candidateLocators = buildCandidateLocators(this.page, target);
+    const settled = await tryCandidateLocators(this.page, target, async (locator) => {
+      await locator.waitFor({
+        state,
+        timeout: timeoutMs
+      });
+    });
 
-    for (const locator of candidateLocators) {
-      try {
-        await locator.first().waitFor({
-          state,
-          timeout: timeoutMs
-        });
-        return;
-      } catch {
-        continue;
-      }
+    if (settled) {
+      return;
     }
 
     throw new Error(`Unable to settle target locator in state ${state}`);
@@ -858,7 +768,7 @@ class RealPlaywrightSession implements BrowserSession {
         };
       }
 
-      await sleep(50);
+      await sleep(ITEM_COUNT_POLL_INTERVAL_MS);
     }
 
     throw new SettleTimeoutError("Timed out waiting for item count change", {
@@ -884,10 +794,7 @@ class RealPlaywrightSession implements BrowserSession {
 
     this.state.title = await safePageTitle(this.page, currentUrl);
     this.state.scrollY = await safeScrollY(this.page, this.state.scrollY);
-
-    if (this.state.visitedUrls[this.state.visitedUrls.length - 1] !== currentUrl) {
-      this.state.visitedUrls.push(currentUrl);
-    }
+    appendVisitedUrl(this.state.visitedUrls, currentUrl);
   }
 
   private createSettleResult(
@@ -906,6 +813,29 @@ class RealPlaywrightSession implements BrowserSession {
       details
     };
   }
+
+  private async settleWithAttempt(
+    strategy: string,
+    startedAt: number,
+    targetSummary: string | null | undefined,
+    attempt: () => Promise<Record<string, unknown>>,
+    timeoutDetails: SettleTimeoutDetails
+  ): Promise<BrowserSettleResult> {
+    try {
+      const details = await attempt();
+      await this.refreshPageState();
+      return this.createSettleResult(strategy, startedAt, targetSummary, "settled", details);
+    } catch (error) {
+      await this.refreshPageState();
+      return this.createSettleResult(
+        strategy,
+        startedAt,
+        targetSummary,
+        "timeout",
+        typeof timeoutDetails === "function" ? timeoutDetails(error) : timeoutDetails
+      );
+    }
+  }
 }
 
 function createRealPlaywrightSessionFactory(config: RunnerConfig): BrowserSessionFactory {
@@ -913,6 +843,62 @@ function createRealPlaywrightSessionFactory(config: RunnerConfig): BrowserSessio
     kind: "playwright",
     createSession: async ({ plan }) => RealPlaywrightSession.create(plan, config)
   };
+}
+
+function createInitialBrowserState(plan: ScenarioPlan): MutableBrowserState {
+  return {
+    currentUrl: plan.start_url,
+    finalUrl: plan.start_url,
+    title: createTitleFromUrl(plan.start_url),
+    visitedUrls: [plan.start_url],
+    fields: {},
+    selectedOptions: {},
+    scrollY: 0,
+    lastAction: null,
+    consoleErrors: [],
+    networkErrors: []
+  };
+}
+
+function createBrowserPageSnapshot(
+  plan: ScenarioPlan,
+  state: MutableBrowserState,
+  cdpSession: CdpSessionMetadata
+): BrowserPageSnapshot {
+  return {
+    currentUrl: state.currentUrl,
+    finalUrl: state.finalUrl,
+    title: state.title,
+    viewport: plan.environment.viewport,
+    locale: plan.environment.locale,
+    timezone: plan.environment.timezone,
+    visitedUrls: [...state.visitedUrls],
+    fields: { ...state.fields },
+    selectedOptions: { ...state.selectedOptions },
+    scrollY: state.scrollY,
+    lastAction: state.lastAction ? { ...state.lastAction } : null,
+    consoleErrors: [...state.consoleErrors],
+    networkErrors: [...state.networkErrors],
+    cdpSession
+  };
+}
+
+function recordLastAction(state: MutableBrowserState, action: ScenarioAction, targetSummary: string | null): void {
+  state.lastAction = {
+    type: action.type,
+    target: targetSummary,
+    at: toIsoTimestamp()
+  };
+}
+
+function appendVisitedUrl(visitedUrls: string[], url: string): void {
+  if (visitedUrls[visitedUrls.length - 1] !== url) {
+    visitedUrls.push(url);
+  }
+}
+
+function throwUnresolvedTarget(actionType: ScenarioAction["type"], targetSummary: string | null): never {
+  throw new Error(`Unable to resolve ${actionType} target: ${targetSummary ?? "unknown target"}`);
 }
 
 function resolveBrowserType(browserName: RunnerBrowserName): BrowserType {
@@ -1061,6 +1047,23 @@ function buildCandidateLocators(page: Page, target: TargetDescriptor | undefined
   return candidates;
 }
 
+async function tryCandidateLocators(
+  page: Page,
+  target: TargetDescriptor | undefined,
+  run: (locator: Locator) => Promise<void>
+): Promise<boolean> {
+  for (const locator of buildCandidateLocators(page, target)) {
+    try {
+      await run(locator.first());
+      return true;
+    } catch {
+      continue;
+    }
+  }
+
+  return false;
+}
+
 function shouldStop(stopCondition: Record<string, unknown> | undefined, finalUrl: string): boolean {
   if (!stopCondition) {
     return false;
@@ -1086,7 +1089,7 @@ function stringifyValue(value: unknown): string {
   return JSON.stringify(value ?? "");
 }
 
-function resolveWaitForTimeoutMs(action: ScenarioAction, plan: ScenarioPlan): number {
+function resolveWaitForTimeoutMs(action: ScenarioAction): number {
   const optionTimeout =
     readNumber(action.options, "timeout_ms") ??
     readNumber(action.options, "timeoutMs") ??
@@ -1101,7 +1104,7 @@ function resolveWaitForTimeoutMs(action: ScenarioAction, plan: ScenarioPlan): nu
     return action.value;
   }
 
-  return Math.max(plan.environment.viewport.width > 0 ? 1_500 : 1_500, 0);
+  return DEFAULT_WAIT_FOR_TIMEOUT_MS;
 }
 
 function resolveWaitForLocatorState(action: ScenarioAction): "attached" | "detached" | "visible" | "hidden" {

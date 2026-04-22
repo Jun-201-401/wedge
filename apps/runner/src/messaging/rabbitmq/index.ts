@@ -46,30 +46,34 @@ export async function startRunExecuteQueueConsumer({
   await channel.assertQueue(config.mqQueueRunExecute, {
     durable: true
   });
-  await channel.consume(
-    config.mqQueueRunExecute,
-    async (message) => {
-      if (!message) {
-        return;
-      }
-
-      await handleRunExecuteMessage({
-        channel,
-        message,
-        processRawMessage,
-        requeueOnFailure: config.mqRequeueOnFailure
-      });
-    },
-    {
-      noAck: false
-    }
-  );
+  await channel.consume(config.mqQueueRunExecute, createRunExecuteConsumerHandler(channel, processRawMessage, config.mqRequeueOnFailure), {
+    noAck: false
+  });
 
   return {
     close: async () => {
       await channel.close();
       await connection.close();
     }
+  };
+}
+
+function createRunExecuteConsumerHandler(
+  channel: Pick<RabbitMqChannel, "ack" | "nack">,
+  processRawMessage: (rawMessage: string) => Promise<void>,
+  requeueOnFailure: boolean
+): (message: ConsumeMessage | null) => Promise<void> {
+  return async (message) => {
+    if (!message) {
+      return;
+    }
+
+    await handleRunExecuteMessage({
+      channel,
+      message,
+      processRawMessage,
+      requeueOnFailure
+    });
   };
 }
 

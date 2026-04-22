@@ -1,6 +1,10 @@
 import { createHmac, randomUUID } from "node:crypto";
 import type { RunnerConfig } from "../config/index.ts";
-import type { CallbackClient } from "./index.ts";
+import {
+  createCallbackClientFromHandler,
+  type CallbackClient,
+  type CallbackType
+} from "./client.ts";
 
 export function createHttpCallbackClient(
   config: Pick<
@@ -12,14 +16,9 @@ export function createHttpCallbackClient(
     throw new Error("RUNNER_CALLBACK_BASE_URL is required when callbackMode=http");
   }
 
-  return {
-    sendAccepted: (runId, payload) => postRunnerCallback(config, runId, "accepted", payload),
-    sendStepEvents: (runId, payload) => postRunnerCallback(config, runId, "step-events", payload),
-    sendArtifacts: (runId, payload) => postRunnerCallback(config, runId, "artifacts", payload),
-    sendCheckpoints: (runId, payload) => postRunnerCallback(config, runId, "checkpoints", payload),
-    sendFinished: (runId, payload) => postRunnerCallback(config, runId, "finished", payload),
-    sendFailed: (runId, payload) => postRunnerCallback(config, runId, "failed", payload)
-  };
+  return createCallbackClientFromHandler((callbackType, runId, payload) =>
+    postRunnerCallback(config, runId, callbackType, payload)
+  );
 }
 
 async function postRunnerCallback(
@@ -28,7 +27,7 @@ async function postRunnerCallback(
     "workerId" | "callbackBaseUrl" | "callbackTimeoutMs" | "callbackAuthToken" | "callbackSignatureSecret"
   >,
   runId: string,
-  callbackType: RunnerCallbackType,
+  callbackType: CallbackType,
   payload: unknown
 ): Promise<void> {
   const body = JSON.stringify(payload);
@@ -86,9 +85,7 @@ function createRunnerCallbackSignature(body: string, secret: string | undefined)
   return createHmac("sha256", secret).update(body).digest("hex");
 }
 
-function buildRunnerCallbackUrl(baseUrl: string, runId: string, callbackType: RunnerCallbackType): string {
+function buildRunnerCallbackUrl(baseUrl: string, runId: string, callbackType: CallbackType): string {
   const normalizedBaseUrl = baseUrl.endsWith("/") ? baseUrl.slice(0, -1) : baseUrl;
   return `${normalizedBaseUrl}/internal/runner/runs/${runId}/${callbackType}`;
 }
-
-type RunnerCallbackType = "accepted" | "step-events" | "artifacts" | "checkpoints" | "finished" | "failed";

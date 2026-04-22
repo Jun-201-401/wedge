@@ -155,6 +155,47 @@ test("startRunExecuteQueueConsumer configures queue consumption and closes resou
   assert.ok(events.includes("connection:close"));
 });
 
+test("startRunExecuteQueueConsumer ignores null deliveries", async () => {
+  const events: string[] = [];
+  let consumeHandler: ((message: ConsumeMessage | null) => void | Promise<void>) | undefined;
+
+  await startRunExecuteQueueConsumer({
+    config: {
+      mqUrl: "amqp://localhost",
+      mqQueueRunExecute: "run.execute.request",
+      mqPrefetch: 1,
+      mqRequeueOnFailure: false
+    },
+    processRawMessage: async (rawMessage) => {
+      events.push(`process:${rawMessage}`);
+    },
+    client: {
+      connect: async () => ({
+        createChannel: async () => ({
+          prefetch: async () => {},
+          assertQueue: async () => {},
+          consume: async (_queue, onMessage) => {
+            consumeHandler = onMessage;
+            return { consumerTag: "consumer-tag" };
+          },
+          ack: () => {
+            events.push("ack");
+          },
+          nack: () => {
+            events.push("nack");
+          },
+          close: async () => {}
+        }),
+        close: async () => {}
+      })
+    }
+  });
+
+  assert.ok(consumeHandler);
+  await consumeHandler?.(null);
+  assert.deepEqual(events, []);
+});
+
 function createMessage(content: string): ConsumeMessage {
   return {
     content: Buffer.from(content, "utf8"),

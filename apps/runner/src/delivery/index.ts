@@ -16,6 +16,8 @@ export interface DeliverySummary {
   issues: DeliveryIssue[];
 }
 
+const FATAL_DELIVERY_SCOPES = new Set<DeliveryIssue["scope"]>(["finished-callback"]);
+
 export function createDeliverySummary(issues: DeliveryIssue[] = []): DeliverySummary {
   return {
     status: resolveDeliveryStatus(issues),
@@ -28,13 +30,21 @@ export function mergeDeliveryIssues(...groups: Array<DeliveryIssue[] | undefined
 }
 
 export function resolveDeliveryStatus(issues: DeliveryIssue[]): DeliveryStatus {
-  if (issues.length === 0) {
+  if (!hasDeliveryIssues(issues)) {
     return "DELIVERY_COMPLETE";
   }
 
-  if (issues.some((issue) => issue.scope === "finished-callback")) {
+  if (hasFatalDeliveryIssue(issues)) {
     return "DELIVERY_FAILED";
   }
 
   return "DELIVERY_PARTIAL";
+}
+
+function hasDeliveryIssues(issues: DeliveryIssue[]): boolean {
+  return issues.length > 0;
+}
+
+function hasFatalDeliveryIssue(issues: DeliveryIssue[]): boolean {
+  return issues.some((issue) => FATAL_DELIVERY_SCOPES.has(issue.scope));
 }

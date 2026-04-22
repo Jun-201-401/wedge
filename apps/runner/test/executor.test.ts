@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { BrowserPageSnapshot, BrowserSettleResult } from "../src/browser/playwright/index.ts";
 import { createCapturePipeline } from "../src/capture/index.ts";
+import { createDeliverySummary, mergeDeliveryIssues, resolveDeliveryStatus } from "../src/delivery/index.ts";
 import { executeScenario } from "../src/scenario/executor/index.ts";
 import { createArtifactBatch, createCheckpointRequest } from "../src/scenario/executor/checkpoint-payloads.ts";
 import { executeScenarioStep } from "../src/scenario/executor/step-executor.ts";
@@ -519,4 +520,102 @@ test("capture pipeline records structured response and item-count settle observa
         observation.count_delta === 3
     )
   );
+});
+
+test("capture pipeline creates fallback artifacts and console log artifact from page snapshot", async () => {
+  const capturePipeline = createCapturePipeline();
+  const plan = createMinimalPlan();
+  const pageSnapshot: BrowserPageSnapshot = createSimulatedPageSnapshot(plan, {
+    title: "Signup",
+    finalUrl: "https://example.com/signup",
+    fields: {
+      Email: "test@example.com"
+    },
+    consoleErrors: ["ReferenceError: missingVar"],
+    lastAction: {
+      type: "click",
+      target: "role=button[name=Continue]",
+      at: "2026-04-21T00:00:00.000Z"
+    }
+  });
+
+  const collection = await capturePipeline.collectCheckpoint({
+    step: {
+      step_id: "step_capture_fallback",
+      stage: "CTA",
+      description: "capture fallback artifacts",
+      action: {
+        type: "click",
+        target: {
+          text: "Continue"
+        }
+      },
+      settle_strategy: {
+        type: "none",
+        timeout_ms: 0
+      },
+      checkpoint: true
+    },
+    stepOrder: 3,
+    plan,
+    pageSnapshot,
+    settleResult: createSettledResult()
+  });
+
+  const screenshotArtifact = collection.artifacts.find((artifact) => artifact.artifactType === "SCREENSHOT");
+  const domArtifact = collection.artifacts.find((artifact) => artifact.artifactType === "DOM_SNAPSHOT");
+  const consoleArtifact = collection.artifacts.find((artifact) => artifact.artifactType === "CONSOLE_LOG");
+
+  assert.equal(screenshotArtifact?.mimeType, "image/svg+xml");
+  assert.equal(screenshotArtifact?.fileExtension, "svg");
+  assert.match(screenshotArtifact?.content ?? "", /Step 3/);
+  assert.match(screenshotArtifact?.content ?? "", /Signup/);
+
+  assert.equal(domArtifact?.mimeType, "text/html");
+  assert.equal(domArtifact?.fileExtension, "html");
+  assert.match(domArtifact?.content ?? "", /test@example\.com/);
+
+  assert.equal(consoleArtifact?.mimeType, "application/json");
+  assert.match(consoleArtifact?.content ?? "", /ReferenceError: missingVar/);
+  assert.ok(
+    collection.checkpoint.observations.some(
+      (observation) =>
+        observation.type === "console_error" &&
+        observation.message === "ReferenceError: missingVar"
+    )
+  );
+  assert.ok(
+    collection.checkpoint.observations.some(
+      (observation) =>
+        observation.type === "cta_candidate" &&
+        observation.target === "role=button[name=Continue]"
+    )
+  );
+});
+
+test("delivery helpers merge optional groups and mark finished callback failures as fatal", () => {
+  const merged = mergeDeliveryIssues(
+    [
+      {
+        scope: "step-events",
+        stepKey: "step_1",
+        message: "step event failed"
+      }
+    ],
+    undefined,
+    [
+      {
+        scope: "finished-callback",
+        message: "finished callback failed"
+      }
+    ]
+  );
+
+  assert.deepEqual(merged.map((issue) => issue.scope), ["step-events", "finished-callback"]);
+  assert.equal(resolveDeliveryStatus([]), "DELIVERY_COMPLETE");
+  assert.equal(resolveDeliveryStatus(merged), "DELIVERY_FAILED");
+  assert.deepEqual(createDeliverySummary(merged), {
+    status: "DELIVERY_FAILED",
+    issues: merged
+  });
 });

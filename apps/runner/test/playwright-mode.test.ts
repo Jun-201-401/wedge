@@ -97,6 +97,53 @@ test("real playwright mode executes goto/fill/select and captures real screensho
   }
 });
 
+test("real playwright mode select falls back to matching an option label", async () => {
+  const fixtureRoot = await mkdtemp(join(tmpdir(), "wedge-runner-playwright-site-"));
+  const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-playwright-artifacts-"));
+  let session: Awaited<ReturnType<ReturnType<typeof createPlaywrightSessionFactory>["createSession"]>> | undefined;
+
+  try {
+    const { formUrl } = await createFixtureSite(fixtureRoot);
+    const browserFactory = createPlaywrightBrowserFactory(artifactsRoot);
+
+    session = await browserFactory.createSession({
+      runId: "run-playwright-select-label",
+      plan: createPlaywrightPlan(formUrl)
+    });
+
+    await executeGotoStep(session, formUrl, "step_goto_select_label");
+
+    await session.execute(
+      {
+        type: "select",
+        target: {
+          label: "Plan"
+        },
+        value: "Starter"
+      },
+      createStep({
+        step_id: "step_select_plan_by_label",
+        stage: "INPUT",
+        description: "select plan option by visible label",
+        action: {
+          type: "select",
+          target: {
+            label: "Plan"
+          },
+          value: "Starter"
+        }
+      })
+    );
+
+    const snapshot = session.snapshot();
+    assert.equal(snapshot.selectedOptions.Plan, "Starter");
+  } finally {
+    await session?.close();
+    await rm(fixtureRoot, { recursive: true, force: true });
+    await rm(artifactsRoot, { recursive: true, force: true });
+  }
+});
+
 test("real playwright mode click target navigates to the linked page", async () => {
   const fixtureRoot = await mkdtemp(join(tmpdir(), "wedge-runner-playwright-site-"));
   const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-playwright-artifacts-"));
@@ -278,6 +325,40 @@ test("real playwright mode wait_for rejects when no locator or url condition is 
         ),
       /Unable to satisfy wait_for action/
     );
+  } finally {
+    await session?.close();
+    await rm(fixtureRoot, { recursive: true, force: true });
+    await rm(artifactsRoot, { recursive: true, force: true });
+  }
+});
+
+test("real playwright settle none returns no_wait details without mutating page state", async () => {
+  const fixtureRoot = await mkdtemp(join(tmpdir(), "wedge-runner-playwright-site-"));
+  const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-playwright-artifacts-"));
+  let session: Awaited<ReturnType<ReturnType<typeof createPlaywrightSessionFactory>["createSession"]>> | undefined;
+
+  try {
+    const { formUrl } = await createFixtureSite(fixtureRoot);
+    const browserFactory = createPlaywrightBrowserFactory(artifactsRoot);
+
+    session = await browserFactory.createSession({
+      runId: "run-playwright-settle-none",
+      plan: createPlaywrightPlan(formUrl)
+    });
+
+    await executeGotoStep(session, formUrl, "step_open_for_settle_none");
+
+    const settleResult = await session.settle({
+      type: "none",
+      timeout_ms: 500
+    });
+
+    const snapshot = session.snapshot();
+
+    assert.equal(settleResult.strategy, "none");
+    assert.equal(settleResult.status, "settled");
+    assert.equal(settleResult.details?.mode, "no_wait");
+    assert.equal(snapshot.finalUrl, formUrl);
   } finally {
     await session?.close();
     await rm(fixtureRoot, { recursive: true, force: true });

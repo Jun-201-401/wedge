@@ -8,6 +8,13 @@ import {
 } from "../shared/contracts.ts";
 import { isRecord } from "../shared/utils.ts";
 
+const RUNNER_MESSAGE_TYPE = "run.execute.request";
+const PAYLOAD_DEVICE_PRESETS = ["desktop", "tablet", "mobile"] as const;
+const SCENARIO_TYPES = ["template", "custom_compiled"] as const;
+const SCENARIO_STEP_STAGES = ["FIRST_VIEW", "VALUE", "CTA", "INPUT", "COMMIT"] as const;
+const ENVIRONMENT_DEVICES = ["desktop", "mobile", "tablet"] as const;
+const AUTH_STATES = ["anonymous", "test_account", "stored_state"] as const;
+
 export class RunnerMessageValidationError extends Error {
   constructor(message: string) {
     super(message);
@@ -38,52 +45,34 @@ function assertRunExecuteMessage(value: unknown): asserts value is RunExecuteMes
     throw new RunnerMessageValidationError("runner message must be a JSON object");
   }
 
-  if (value.messageType !== "run.execute.request") {
-    throw new RunnerMessageValidationError("runner messageType must be run.execute.request");
-  }
+  assertLiteralString(value.messageType, RUNNER_MESSAGE_TYPE, "runner messageType");
 
   assertNonEmptyString(value.messageId, "runner messageId");
   assertNonEmptyString(value.schemaVersion, "runner schemaVersion");
   assertNonEmptyString(value.createdAt, "runner createdAt");
   assertNonEmptyString(value.producer, "runner producer");
+  assertRunExecutePayload(value.payload);
+}
 
-  if (!isRecord(value.payload)) {
+function assertRunExecutePayload(value: unknown): asserts value is RunExecuteMessage["payload"] {
+  if (!isRecord(value)) {
     throw new RunnerMessageValidationError("runner payload must be an object");
   }
 
-  if (typeof value.payload.runId !== "string" || value.payload.runId.length === 0) {
-    throw new RunnerMessageValidationError("runner payload.runId is required");
-  }
-
-  if (typeof value.payload.projectId !== "string" || value.payload.projectId.length === 0) {
-    throw new RunnerMessageValidationError("runner payload.projectId is required");
-  }
-
-  if (typeof value.payload.startUrl !== "string" || value.payload.startUrl.length === 0) {
-    throw new RunnerMessageValidationError("runner payload.startUrl is required");
-  }
-
-  if (typeof value.payload.goal !== "string" || value.payload.goal.length === 0) {
-    throw new RunnerMessageValidationError("runner payload.goal is required");
-  }
-
-  if (
-    value.payload.devicePreset !== "desktop" &&
-    value.payload.devicePreset !== "tablet" &&
-    value.payload.devicePreset !== "mobile"
-  ) {
-    throw new RunnerMessageValidationError("runner payload.devicePreset is invalid");
-  }
-
-  assertNonEmptyString(value.payload.scenarioTemplateVersionId, "runner payload.scenarioTemplateVersionId");
-  assertScenarioPlan(value.payload.scenarioPlan);
+  assertNonEmptyString(value.runId, "runner payload.runId");
+  assertNonEmptyString(value.projectId, "runner payload.projectId");
+  assertNonEmptyString(value.startUrl, "runner payload.startUrl");
+  assertNonEmptyString(value.goal, "runner payload.goal");
+  assertOneOf(value.devicePreset, PAYLOAD_DEVICE_PRESETS, "runner payload.devicePreset");
+  assertNonEmptyString(value.scenarioTemplateVersionId, "runner payload.scenarioTemplateVersionId");
+  assertScenarioPlan(value.scenarioPlan);
   assertScenarioPlanConsistency(
     {
-      startUrl: value.payload.startUrl,
-      goal: value.payload.goal,
-      devicePreset: value.payload.devicePreset
+      startUrl: value.startUrl,
+      goal: value.goal,
+      devicePreset: value.devicePreset
     },
-    value.payload.scenarioPlan
+    value.scenarioPlan
   );
 }
 
@@ -94,11 +83,7 @@ function assertScenarioPlan(value: unknown): asserts value is ScenarioPlan {
 
   assertNonEmptyString(value.schema_version, "scenarioPlan.schema_version");
   assertNonEmptyString(value.plan_id, "scenarioPlan.plan_id");
-
-  if (value.scenario_type !== "template" && value.scenario_type !== "custom_compiled") {
-    throw new RunnerMessageValidationError("scenarioPlan.scenario_type must be template or custom_compiled");
-  }
-
+  assertOneOf(value.scenario_type, SCENARIO_TYPES, "scenarioPlan.scenario_type", "must be template or custom_compiled");
   assertNonEmptyString(value.goal, "scenarioPlan.goal");
   assertNonEmptyString(value.start_url, "scenarioPlan.start_url");
   assertScenarioEnvironment(value.environment);
@@ -122,16 +107,7 @@ function assertScenarioStep(value: unknown): asserts value is ScenarioStep {
     throw new RunnerMessageValidationError("scenario step.step_id is required");
   }
 
-  if (
-    value.stage !== "FIRST_VIEW" &&
-    value.stage !== "VALUE" &&
-    value.stage !== "CTA" &&
-    value.stage !== "INPUT" &&
-    value.stage !== "COMMIT"
-  ) {
-    throw new RunnerMessageValidationError(`scenario step ${value.step_id} stage is invalid`);
-  }
-
+  assertOneOf(value.stage, SCENARIO_STEP_STAGES, `scenario step ${value.step_id} stage`);
   assertNonEmptyString(value.description, `scenario step ${value.step_id} description`);
 
   if (!isRecord(value.action) || typeof value.action.type !== "string") {
@@ -164,10 +140,7 @@ function assertScenarioEnvironment(value: unknown): void {
     throw new RunnerMessageValidationError("scenarioPlan.environment must be an object");
   }
 
-  if (value.device !== "desktop" && value.device !== "mobile" && value.device !== "tablet") {
-    throw new RunnerMessageValidationError("scenarioPlan.environment.device is invalid");
-  }
-
+  assertOneOf(value.device, ENVIRONMENT_DEVICES, "scenarioPlan.environment.device");
   if (!isRecord(value.viewport)) {
     throw new RunnerMessageValidationError("scenarioPlan.environment.viewport must be an object");
   }
@@ -182,14 +155,7 @@ function assertScenarioEnvironment(value: unknown): void {
 
   assertNonEmptyString(value.locale, "scenarioPlan.environment.locale");
   assertNonEmptyString(value.timezone, "scenarioPlan.environment.timezone");
-
-  if (
-    value.auth_state !== "anonymous" &&
-    value.auth_state !== "test_account" &&
-    value.auth_state !== "stored_state"
-  ) {
-    throw new RunnerMessageValidationError("scenarioPlan.environment.auth_state is invalid");
-  }
+  assertOneOf(value.auth_state, AUTH_STATES, "scenarioPlan.environment.auth_state");
 }
 
 function assertScenarioSafety(value: unknown): void {
@@ -226,9 +192,26 @@ function assertNonEmptyString(value: unknown, fieldName: string): void {
   }
 }
 
+function assertLiteralString(value: unknown, expected: string, fieldName: string): void {
+  if (value !== expected) {
+    throw new RunnerMessageValidationError(`${fieldName} must be ${expected}`);
+  }
+}
+
 function assertBoolean(value: unknown, fieldName: string): void {
   if (typeof value !== "boolean") {
     throw new RunnerMessageValidationError(`${fieldName} must be boolean`);
+  }
+}
+
+function assertOneOf(
+  value: unknown,
+  allowedValues: readonly string[],
+  fieldName: string,
+  customMessage?: string
+): void {
+  if (typeof value !== "string" || !allowedValues.includes(value)) {
+    throw new RunnerMessageValidationError(customMessage ? `${fieldName} ${customMessage}` : `${fieldName} is invalid`);
   }
 }
 
