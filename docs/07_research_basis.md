@@ -74,6 +74,23 @@
 | INPUT | 입력 지속 여부 결정 | Friction, Reliability |
 | COMMIT | 제출/결제/문의 직전 확정 | Trust, Friction, Reliability |
 
+### Stage as Decision Moment, not Page Section
+
+Stage는 사용자의 실제 심리 상태를 완벽히 예측하는 모델이 아니다. Stage는 Wedge가 수집한 evidence와 issue를 사용자 여정의 결정 순간으로 정리하기 위한 운영 프레임이다.
+
+Stage 기반 구조의 가치:
+
+- issue를 사용자가 이해 가능한 순서로 정리한다.
+- priority calculation에 stage weight를 적용할 수 있다.
+- 같은 issue라도 발생 위치에 따라 중요도를 다르게 볼 수 있다.
+- flat checklist식 UX 리뷰를 피하고 Why/Nudge 리포트 구조를 만든다.
+
+주의:
+
+- 모든 page에 모든 stage를 강제하지 않는다.
+- stage별 점수만으로 제품 품질을 단정하지 않는다.
+- Stage는 Decision Map과 Top Issues를 보조하는 구조다.
+
 ## 6. P0 criterion 근거
 
 ### PATH-CTA-001 Primary CTA Presence

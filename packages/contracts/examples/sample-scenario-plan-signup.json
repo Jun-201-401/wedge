@@ -112,6 +112,22 @@
         "count_delta": 2
       },
       "checkpoint": true
+    },
+    {
+      "step_id": "step_004_review_submit",
+      "stage": "COMMIT",
+      "description": "회원가입 최종 제출 직전 조건과 신뢰 정보를 점검",
+      "action": {
+        "type": "checkpoint"
+      },
+      "settle_strategy": {
+        "type": "fixed_short",
+        "timeout_ms": 500
+      },
+      "checkpoint": true,
+      "stop_condition": {
+        "before_real_submit": true
+      }
     }
   ]
 }

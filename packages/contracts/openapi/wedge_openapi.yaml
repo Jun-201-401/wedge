@@ -1815,6 +1815,122 @@ components:
           schema:
             $ref: '#/components/schemas/AckResponse'
   schemas:
+    DecisionStage:
+      type: string
+      description: Operational decision moment label assigned by ScenarioPlan, Checkpoint, Observation, and Rule Engine. LLM does not infer or mutate it in V1.
+      enum:
+      - FIRST_VIEW
+      - VALUE
+      - CTA
+      - INPUT
+      - COMMIT
+    StageStatus:
+      type: string
+      description: Decision Map status for a stage. This is distinct from run lifecycle and scenarioFitStatus.
+      enum:
+      - OBSERVED
+      - PASS
+      - WARNING
+      - BLOCKED
+      - NOT_OBSERVED
+      - NOT_APPLICABLE
+    DecisionMapItem:
+      type: object
+      properties:
+        stage:
+          $ref: '#/components/schemas/DecisionStage'
+        displayName:
+          type: string
+          example: 행동 선택
+        status:
+          $ref: '#/components/schemas/StageStatus'
+        issueIds:
+          type: array
+          items:
+            type: string
+        summary:
+          type: string
+          nullable: true
+        evidenceRefs:
+          type: array
+          items:
+            type: string
+      required:
+      - stage
+      - displayName
+      - status
+      - issueIds
+      - evidenceRefs
+    JudgeIssue:
+      type: object
+      description: User-facing Judge issue produced by Rule Engine. Stage is assigned from StageContext; LLM cannot create or move it.
+      properties:
+        issueId:
+          type: string
+        criterionId:
+          type: string
+        stage:
+          $ref: '#/components/schemas/DecisionStage'
+        axis:
+          type: string
+        severity:
+          type: integer
+          minimum: 0
+          maximum: 3
+        confidence:
+          type: number
+          minimum: 0
+          maximum: 1
+        priorityScore:
+          type: number
+        evidenceRefs:
+          type: array
+          items:
+            type: string
+        summary:
+          type: string
+        recommendations:
+          type: array
+          items:
+            type: string
+      required:
+      - issueId
+      - criterionId
+      - stage
+      - axis
+      - severity
+      - confidence
+      - priorityScore
+      - evidenceRefs
+      - summary
+      - recommendations
+    ScenarioMismatchReport:
+      type: object
+      description: Scenario applicability outcome, separate from JudgeIssue and DecisionMap stage issues.
+      properties:
+        scenarioType:
+          type: string
+        scenarioFitStatus:
+          type: string
+        blockReason:
+          type: string
+        evidenceRefs:
+          type: array
+          items:
+            type: string
+        recommendedAlternatives:
+          type: array
+          items:
+            type: string
+        userMessage:
+          type: string
+      required:
+      - scenarioType
+      - scenarioFitStatus
+      - blockReason
+      - evidenceRefs
+      - recommendedAlternatives
+      - userMessage
     SignupRequest:
       type: object
       properties:
@@ -2598,6 +2714,8 @@ components:
           type: integer
         category:
           type: string
+        stage:
+          $ref: '#/components/schemas/DecisionStage'
         title:
           type: string
         description:
@@ -2616,6 +2734,7 @@ components:
       required:
       - rank
       - category
+      - stage
       - title
       - description
     Nudge:
@@ -2678,6 +2797,10 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Nudge'
+        decisionMap:
+          type: array
+          items:
+            $ref: '#/components/schemas/DecisionMapItem'
         createdAt:
           type: string
           format: date-time
@@ -2742,6 +2865,30 @@ components:
         createdAt:
           type: string
           format: date-time
+        decisionMap:
+          type: array
+          description: Decision Map grouped by operational stage. UI renders displayName, not raw enum labels.
+          items:
+            $ref: '#/components/schemas/DecisionMapItem'
+          example:
+          - stage: CTA
+            displayName: 행동 선택
+            status: WARNING
+            issueIds:
+            - issue_001
+            summary: 같은 결정 순간에서 primary급 CTA가 3개 경쟁합니다.
+            evidenceRefs:
+            - cp_001.obs_002
+          - stage: INPUT
+            displayName: 입력 진행
+            status: NOT_APPLICABLE
+            issueIds: []
+            summary: 이 시나리오에는 입력 단계가 필요하지 않습니다.
+            evidenceRefs: []
+        scenarioMismatchReport:
+          allOf:
+          - $ref: '#/components/schemas/ScenarioMismatchReport'
+          nullable: true
       required:
       - id
       - runId
@@ -3296,7 +3443,7 @@ components:
       required:
       - checkpointId
       - stepKey
-      - stage
+      - primaryStage
       - trigger
       - settle
       - state
@@ -3308,14 +3455,13 @@ components:
           type: string
         stepKey:
           type: string
+        primaryStage:
+          $ref: '#/components/schemas/DecisionStage'
         stage:
-          type: string
-          enum:
-          - FIRST_VIEW
-          - VALUE
-          - CTA
-          - INPUT
-          - COMMIT
+          allOf:
+          - $ref: '#/components/schemas/DecisionStage'
+          deprecated: true
+          description: Deprecated alias for primaryStage during migration.
         trigger:
           type: object
           additionalProperties: true

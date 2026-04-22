@@ -69,7 +69,8 @@
         {
           "type": "null"
         }
-      ]
+      ],
+      "description": "Scenario applicability diagnostic. This is distinct from stage issues and does not by itself create a JudgeIssue."
     },
     "artifacts": {
       "type": "array",
@@ -82,6 +83,28 @@
       "items": {
         "type": "string"
       }
+    },
+    "decisionStageSummary": {
+      "type": "object",
+      "description": "Optional pre-Judge coverage summary by DecisionStage. It separates observation coverage from scenarioFitStatus and from JudgeResult DecisionMap status; it must not include issue-derived PASS/WARNING values.",
+      "properties": {
+        "FIRST_VIEW": {
+          "$ref": "#/$defs/decision_stage_summary_item"
+        },
+        "VALUE": {
+          "$ref": "#/$defs/decision_stage_summary_item"
+        },
+        "CTA": {
+          "$ref": "#/$defs/decision_stage_summary_item"
+        },
+        "INPUT": {
+          "$ref": "#/$defs/decision_stage_summary_item"
+        },
+        "COMMIT": {
+          "$ref": "#/$defs/decision_stage_summary_item"
+        }
+      },
+      "additionalProperties": false
     }
   },
   "$defs": {
@@ -139,21 +162,12 @@
       },
       "additionalProperties": false
     },
-    "stage": {
-      "enum": [
-        "FIRST_VIEW",
-        "VALUE",
-        "CTA",
-        "INPUT",
-        "COMMIT"
-      ]
-    },
     "checkpoint": {
       "type": "object",
       "required": [
         "checkpoint_id",
         "step_id",
-        "stage",
+        "primaryStage",
         "trigger",
         "settle",
         "state",
@@ -169,7 +183,9 @@
           "type": "string"
         },
         "stage": {
-          "$ref": "#/$defs/stage"
+          "$ref": "#/$defs/DecisionStage",
+          "deprecated": true,
+          "description": "Deprecated alias for primaryStage retained during migration. New producers should emit primaryStage."
         },
         "trigger": {
           "type": "object"
@@ -197,6 +213,10 @@
           "items": {
             "type": "string"
           }
+        },
+        "primaryStage": {
+          "$ref": "#/$defs/DecisionStage",
+          "description": "Primary stage of checkpoint based on scenario step/action context. A checkpoint can still contain observations assigned to other stages."
         }
       }
     },
@@ -270,11 +290,25 @@
             "scenario_mismatch",
             "missing_entrypoint",
             "guided_scenario_hint",
-            "other"
+            "other",
+            "value_proposition",
+            "feature_summary",
+            "audience_signal",
+            "cta_text_specificity",
+            "required_field",
+            "missing_label",
+            "error_recovery",
+            "submit_disabled",
+            "final_submit_candidate",
+            "pricing_condition",
+            "risk_reduction_signal",
+            "terms_privacy_signal",
+            "payment_or_sensitive_action"
           ]
         },
         "stage": {
-          "$ref": "#/$defs/stage"
+          "$ref": "#/$defs/DecisionStage",
+          "description": "Decision moment related to this observation. It may differ from checkpoint.primaryStage, for example a CTA observation inside a FIRST_VIEW checkpoint."
         },
         "source": {
           "type": "array",
@@ -342,6 +376,52 @@
         }
       },
       "additionalProperties": false
+    },
+    "DecisionStage": {
+      "type": "string",
+      "description": "Operational decision moment label. It is assigned from ScenarioPlan, checkpoint/action context, observation type, or StageResolver; not by LLM free-form judgment.",
+      "enum": [
+        "FIRST_VIEW",
+        "VALUE",
+        "CTA",
+        "INPUT",
+        "COMMIT"
+      ]
+    },
+    "decision_stage_summary_item": {
+      "type": "object",
+      "required": [
+        "status",
+        "checkpointIds",
+        "observationCount"
+      ],
+      "properties": {
+        "status": {
+          "$ref": "#/$defs/EvidenceStageObservationStatus"
+        },
+        "checkpointIds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "observationCount": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false,
+      "description": "Pre-Judge coverage summary for a DecisionStage. This is not DecisionMap StageStatus and cannot include PASS or WARNING."
+    },
+    "EvidenceStageObservationStatus": {
+      "type": "string",
+      "description": "Pre-Judge observation coverage status for EvidencePacket decisionStageSummary. It cannot express issue-derived PASS/WARNING because RuleEngine has not run yet.",
+      "enum": [
+        "OBSERVED",
+        "BLOCKED",
+        "NOT_OBSERVED",
+        "NOT_APPLICABLE"
+      ]
     }
   }
 }

@@ -25,7 +25,7 @@
     {
       "checkpoint_id": "cp_001",
       "step_id": "step_001_goto",
-      "stage": "FIRST_VIEW",
+      "primaryStage": "FIRST_VIEW",
       "trigger": {
         "type": "goto",
         "target": "https://example.com"
@@ -82,6 +82,19 @@
           "confidence": 0.92
         },
         {
+          "observation_id": "obs_011",
+          "type": "first_view_message",
+          "stage": "VALUE",
+          "source": [
+            "dom",
+            "screenshot"
+          ],
+          "data": {
+            "message": "Build better onboarding for product teams"
+          },
+          "confidence": 0.84
+        },
+        {
           "observation_id": "obs_002",
           "type": "cta_cluster",
           "stage": "CTA",
@@ -109,7 +122,7 @@
     {
       "checkpoint_id": "cp_002",
       "step_id": "step_003_fill_email",
-      "stage": "INPUT",
+      "primaryStage": "INPUT",
       "trigger": {
         "type": "fill",
         "target": {
@@ -191,7 +204,7 @@
     {
       "checkpoint_id": "cp_003",
       "step_id": "step_004_expand_benefits",
-      "stage": "VALUE",
+      "primaryStage": "VALUE",
       "trigger": {
         "type": "click",
         "target": {
@@ -269,7 +282,7 @@
     {
       "checkpoint_id": "cp_004",
       "step_id": "step_005_fill_email_retry",
-      "stage": "INPUT",
+      "primaryStage": "INPUT",
       "trigger": {
         "type": "fill",
         "target": {
@@ -348,7 +361,7 @@
     {
       "checkpoint_id": "cp_005",
       "step_id": "step_006_expand_more_benefits",
-      "stage": "VALUE",
+      "primaryStage": "VALUE",
       "trigger": {
         "type": "click",
         "target": {
@@ -501,5 +514,43 @@
   ],
   "collection_notes": [
     "cp_004, cp_005는 timeout settle observation 예시를 보여주기 위한 샘플이다."
-  ]
+  ],
+  "decisionStageSummary": {
+    "FIRST_VIEW": {
+      "status": "OBSERVED",
+      "checkpointIds": [
+        "cp_001"
+      ],
+      "observationCount": 1
+    },
+    "VALUE": {
+      "status": "OBSERVED",
+      "checkpointIds": [
+        "cp_001",
+        "cp_003",
+        "cp_005"
+      ],
+      "observationCount": 5
+    },
+    "CTA": {
+      "status": "OBSERVED",
+      "checkpointIds": [
+        "cp_001"
+      ],
+      "observationCount": 1
+    },
+    "INPUT": {
+      "status": "OBSERVED",
+      "checkpointIds": [
+        "cp_002",
+        "cp_004"
+      ],
+      "observationCount": 4
+    },
+    "COMMIT": {
+      "status": "NOT_APPLICABLE",
+      "checkpointIds": [],
+      "observationCount": 0
+    }
+  }
 }
