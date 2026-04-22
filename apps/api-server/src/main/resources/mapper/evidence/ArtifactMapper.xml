@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.wedge.evidence.infrastructure.ArtifactMapper">
+    <resultMap id="ArtifactResultMap" type="com.wedge.evidence.domain.Artifact">
+        <id property="id" column="id"/>
+        <result property="runId" column="run_id"/>
+        <result property="stepId" column="step_id"/>
+        <result property="artifactType" column="artifact_type"/>
+        <result property="s3Bucket" column="s3_bucket"/>
+        <result property="s3Key" column="s3_key"/>
+        <result property="publicUrl" column="public_url"/>
+        <result property="mimeType" column="mime_type"/>
+        <result property="width" column="width"/>
+        <result property="height" column="height"/>
+        <result property="sizeBytes" column="size_bytes"/>
+        <result property="sha256" column="sha256"/>
+        <result property="capturedAt" column="captured_at"/>
+        <result property="createdAt" column="created_at"/>
+    </resultMap>
+
+    <select id="findById" resultMap="ArtifactResultMap">
+        SELECT id, run_id, step_id, artifact_type, s3_bucket, s3_key, public_url, mime_type,
+               width, height, size_bytes, sha256, captured_at, created_at
+        FROM artifact
+        WHERE id = #{id}
+    </select>
+
+    <select id="findByRunId" resultMap="ArtifactResultMap">
+        SELECT id, run_id, step_id, artifact_type, s3_bucket, s3_key, public_url, mime_type,
+               width, height, size_bytes, sha256, captured_at, created_at
+        FROM artifact
+        WHERE run_id = #{runId}
+        ORDER BY created_at DESC
+    </select>
+
+    <insert id="insert" parameterType="com.wedge.evidence.domain.Artifact">
+        INSERT INTO artifact (
+            id, run_id, step_id, artifact_type, s3_bucket, s3_key, public_url, mime_type,
+            width, height, size_bytes, sha256, captured_at
+        )
+        VALUES (
+            #{id}, #{runId}, #{stepId}, #{artifactType}, #{s3Bucket}, #{s3Key}, #{publicUrl}, #{mimeType},
+            #{width}, #{height}, #{sizeBytes}, #{sha256}, #{capturedAt}
+        )
+    </insert>
+</mapper>
