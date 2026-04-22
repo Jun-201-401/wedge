@@ -16,9 +16,11 @@ export interface ArtifactOutboxRecord {
 export interface ArtifactOutboxLockRecord {
   workerId: string;
   acquiredAt: string;
+  heartbeatAt: string;
 }
 
 export interface ArtifactOutboxLockHandle {
+  heartbeat: () => Promise<boolean>;
   release: () => Promise<void>;
 }
 
@@ -109,10 +111,12 @@ export async function acquireArtifactOutboxLock(
   config: Pick<RunnerConfig, "artifactOutboxLockFile" | "artifactOutboxLockStaleMs" | "workerId">
 ): Promise<ArtifactOutboxLockHandle | null> {
   await mkdir(dirname(config.artifactOutboxLockFile), { recursive: true });
+  const acquiredAt = toIsoTimestamp();
 
   const lockRecord: ArtifactOutboxLockRecord = {
     workerId: config.workerId,
-    acquiredAt: toIsoTimestamp()
+    acquiredAt,
+    heartbeatAt: acquiredAt
   };
 
   if (await tryWriteArtifactLockFile(config.artifactOutboxLockFile, lockRecord)) {
@@ -165,16 +169,42 @@ async function readArtifactOutboxLockRecord(
 }
 
 function isStaleArtifactLock(record: ArtifactOutboxLockRecord, staleMs: number): boolean {
-  const acquiredAt = Date.parse(record.acquiredAt);
-  if (!Number.isFinite(acquiredAt)) {
+  const heartbeatAt = Date.parse(record.heartbeatAt ?? record.acquiredAt);
+  if (!Number.isFinite(heartbeatAt)) {
     return true;
   }
 
-  return Date.now() - acquiredAt > staleMs;
+  return Date.now() - heartbeatAt > staleMs;
 }
 
 function createArtifactLockHandle(path: string, lockRecord: ArtifactOutboxLockRecord): ArtifactOutboxLockHandle {
   return {
+    heartbeat: async () => {
+      const nextHeartbeatAt = toIsoTimestamp();
+
+      try {
+        const raw = await readFile(path, "utf8");
+        const currentLock = JSON.parse(raw.trim()) as ArtifactOutboxLockRecord;
+
+        if (currentLock.workerId !== lockRecord.workerId || currentLock.acquiredAt !== lockRecord.acquiredAt) {
+          return false;
+        }
+
+        const nextLock = {
+          ...currentLock,
+          heartbeatAt: nextHeartbeatAt
+        };
+        await writeFile(path, `${JSON.stringify(nextLock)}\n`, "utf8");
+        lockRecord.heartbeatAt = nextHeartbeatAt;
+        return true;
+      } catch (error) {
+        if (errorMessage(error).includes("ENOENT")) {
+          return false;
+        }
+
+        throw error;
+      }
+    },
     release: async () => {
       try {
         const raw = await readFile(path, "utf8");

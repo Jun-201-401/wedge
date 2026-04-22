@@ -28,6 +28,7 @@ export async function replayArtifactOutbox(
     | "artifactOutboxFile"
     | "artifactOutboxLockFile"
     | "artifactOutboxLockStaleMs"
+    | "artifactOutboxHeartbeatIntervalMs"
     | "artifactOutboxRetentionMs"
     | "artifactOutboxMaxRecords"
     | "artifactRetryDelaysMs"
@@ -55,6 +56,11 @@ export async function replayArtifactOutbox(
       skipped: true
     };
   }
+
+  const stopHeartbeat = startOutboxLockHeartbeat(
+    lockHandle,
+    resolveLockHeartbeatInterval(config.artifactOutboxLockStaleMs, config.artifactOutboxHeartbeatIntervalMs)
+  );
 
   try {
     const records = await readArtifactOutboxRecords(config);
@@ -94,6 +100,7 @@ export async function replayArtifactOutbox(
     }
     return summary;
   } finally {
+    await stopHeartbeat();
     await lockHandle.release();
   }
 }
@@ -169,4 +176,23 @@ export function startArtifactOutboxReplayWorker(
       });
     }
   };
+}
+
+function startOutboxLockHeartbeat(
+  lockHandle: { heartbeat: () => Promise<boolean> },
+  intervalMs: number
+): () => Promise<void> {
+  let inFlightHeartbeat: Promise<unknown> | null = null;
+  const timer = setInterval(() => {
+    inFlightHeartbeat = lockHandle.heartbeat().catch(() => {});
+  }, intervalMs);
+
+  return async () => {
+    clearInterval(timer);
+    await inFlightHeartbeat;
+  };
+}
+
+function resolveLockHeartbeatInterval(staleMs: number, heartbeatMs: number): number {
+  return Math.max(10, Math.min(heartbeatMs, Math.max(10, Math.floor(staleMs / 2))));
 }

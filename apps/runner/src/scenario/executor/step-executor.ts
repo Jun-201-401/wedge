@@ -35,6 +35,7 @@ export async function executeScenarioStep({
   artifactStore
 }: ScenarioStepExecutorInput): Promise<ScenarioStepExecutionResult> {
   const deliveryIssues: DeliveryIssue[] = [];
+  const preparedSettle = await session.prepareSettle?.(step.settle_strategy);
 
   deliveryIssues.push(
     ...(
@@ -45,7 +46,13 @@ export async function executeScenarioStep({
     )
   );
 
-  const actionResult = await executeScenarioAction(session, step);
+  let actionResult;
+  try {
+    actionResult = await executeScenarioAction(session, step);
+  } catch (error) {
+    await preparedSettle?.cancel();
+    throw error;
+  }
 
   deliveryIssues.push(
     ...(
@@ -57,7 +64,7 @@ export async function executeScenarioStep({
     )
   );
 
-  const settleResult = await session.settle(step.settle_strategy);
+  const settleResult = preparedSettle ? await preparedSettle.settle() : await session.settle(step.settle_strategy);
   const pageSnapshot = session.snapshot();
   const capturedArtifacts = step.checkpoint ? await session.captureArtifacts() : undefined;
 

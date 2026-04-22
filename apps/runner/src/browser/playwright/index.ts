@@ -75,10 +75,16 @@ export interface BrowserCapturedArtifacts {
   };
 }
 
+export interface PreparedBrowserSettle {
+  settle: () => Promise<BrowserSettleResult>;
+  cancel: () => Promise<void>;
+}
+
 export interface BrowserSession {
   id: string;
   plan: ScenarioPlan;
   execute: (action: ScenarioAction, step: ScenarioStep) => Promise<BrowserActionResult>;
+  prepareSettle?: (strategy: SettleStrategy) => Promise<PreparedBrowserSettle | null>;
   settle: (strategy: SettleStrategy) => Promise<BrowserSettleResult>;
   snapshot: () => BrowserPageSnapshot;
   captureArtifacts: () => Promise<BrowserCapturedArtifacts>;
@@ -302,6 +308,7 @@ class RealPlaywrightSession implements BrowserSession {
         break;
       }
       case "click": {
+        assertScenarioActionAllowed(this.plan, this.state.currentUrl, action);
         const clicked = await this.tryClickTarget(action.target);
         if (!clicked) {
           const nextUrl = inferNavigationUrl(this.state.currentUrl, action.target);
@@ -379,6 +386,54 @@ class RealPlaywrightSession implements BrowserSession {
         executionMode: "playwright"
       }
     };
+  }
+
+  async prepareSettle(strategy: SettleStrategy): Promise<PreparedBrowserSettle | null> {
+    if (strategy.type === "response") {
+      return this.createPreparedSettle(
+        strategy,
+        () => this.waitForResponse(strategy),
+        {
+          mode: "response_wait",
+          urlIncludes: resolveSettleResponseUrlIncludes(strategy),
+          method: resolveSettleResponseMethod(strategy),
+          status: resolveSettleResponseStatus(strategy),
+          timeoutMs: strategy.timeout_ms
+        }
+      );
+    }
+
+    if (strategy.type === "url_change") {
+      const baselineUrl = this.page.url();
+      return this.createPreparedSettle(
+        strategy,
+        () => this.waitForUrlChange(strategy, baselineUrl),
+        {
+          mode: "url_change"
+        }
+      );
+    }
+
+    if (strategy.type === "item_count_change") {
+      const preparedItemCount = await this.prepareItemCountChange(strategy);
+      return this.createPreparedSettle(
+        strategy,
+        () => this.waitForItemCountChange(strategy, preparedItemCount),
+        (error) =>
+          error instanceof SettleTimeoutError
+            ? error.details
+            : {
+                mode: "item_count_poll",
+                expectedCount: resolveSettleExpectedCount(strategy),
+                minCount: resolveSettleMinCount(strategy),
+                maxCount: resolveSettleMaxCount(strategy),
+                countDelta: resolveSettleCountDelta(strategy),
+                timeoutMs: strategy.timeout_ms
+              }
+      );
+    }
+
+    return null;
   }
 
   async settle(strategy: SettleStrategy): Promise<BrowserSettleResult> {
@@ -675,10 +730,12 @@ class RealPlaywrightSession implements BrowserSession {
     throw new Error(`Unable to settle target locator in state ${state}`);
   }
 
-  private async waitForUrlChange(strategy: SettleStrategy): Promise<Record<string, unknown>> {
+  private async waitForUrlChange(
+    strategy: SettleStrategy,
+    baselineUrl: string = this.page.url()
+  ): Promise<Record<string, unknown>> {
     const timeoutMs = strategy.timeout_ms;
     const urlIncludes = resolveSettleUrlIncludes(strategy);
-    const baselineUrl = this.page.url();
 
     if (typeof urlIncludes === "string" && urlIncludes.length > 0) {
       await this.page.waitForURL((url) => url.toString().includes(urlIncludes), {
@@ -740,11 +797,13 @@ class RealPlaywrightSession implements BrowserSession {
     };
   }
 
-  private async waitForItemCountChange(strategy: SettleStrategy): Promise<Record<string, unknown>> {
-    const locator = resolveTargetLocator(this.page, strategy.target);
+  private async waitForItemCountChange(
+    strategy: SettleStrategy,
+    prepared?: PreparedItemCountWait
+  ): Promise<Record<string, unknown>> {
+    const nextPrepared = prepared ?? (await this.prepareItemCountChange(strategy));
+    const { locator, baselineCount, startedAt } = nextPrepared;
     const timeoutMs = strategy.timeout_ms;
-    const startedAt = Date.now();
-    const baselineCount = await locator.count();
     const expectedCount = resolveSettleExpectedCount(strategy);
     const minCount = resolveSettleMinCount(strategy);
     const maxCount = resolveSettleMaxCount(strategy);
@@ -781,6 +840,15 @@ class RealPlaywrightSession implements BrowserSession {
       countDelta,
       timeoutMs
     });
+  }
+
+  private async prepareItemCountChange(strategy: SettleStrategy): Promise<PreparedItemCountWait> {
+    const locator = resolveTargetLocator(this.page, strategy.target);
+    return {
+      locator,
+      baselineCount: await locator.count(),
+      startedAt: Date.now()
+    };
   }
 
   private async refreshPageState(nextUrl?: string): Promise<void> {
@@ -836,6 +904,29 @@ class RealPlaywrightSession implements BrowserSession {
       );
     }
   }
+
+  private createPreparedSettle(
+    strategy: SettleStrategy,
+    attempt: () => Promise<Record<string, unknown>>,
+    timeoutDetails: SettleTimeoutDetails
+  ): PreparedBrowserSettle {
+    const startedAt = Date.now();
+    const targetSummary = describeTarget(strategy.target);
+    const pendingResult = attempt();
+
+    return {
+      settle: async () => this.settleWithAttempt(strategy.type, startedAt, targetSummary, () => pendingResult, timeoutDetails),
+      cancel: async () => {
+        void pendingResult.catch(() => {});
+      }
+    };
+  }
+}
+
+interface PreparedItemCountWait {
+  locator: Locator;
+  baselineCount: number;
+  startedAt: number;
 }
 
 function createRealPlaywrightSessionFactory(config: RunnerConfig): BrowserSessionFactory {

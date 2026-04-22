@@ -328,6 +328,79 @@ test("replayArtifactOutbox recovers stale lock and proceeds", async () => {
   }
 });
 
+test("replayArtifactOutbox refreshes lock heartbeat during long replay", async () => {
+  const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-artifact-replay-heartbeat-"));
+  const artifactOutboxFile = join(artifactsRoot, "artifact-outbox.jsonl");
+  const artifactOutboxLockFile = join(artifactsRoot, "artifact-outbox.lock");
+  const stored: string[] = [];
+
+  try {
+    const artifactStore = createArtifactStore(
+      createRunnerTestConfig({
+        artifactsRoot,
+        artifactOutboxFile,
+        artifactOutboxLockFile,
+        artifactRetryDelaysMs: [1],
+        artifactOutboxLockStaleMs: 30,
+        artifactOutboxHeartbeatIntervalMs: 10
+      }),
+      {
+        persistArtifacts: async () => {
+          throw new Error("storage unavailable");
+        }
+      }
+    );
+
+    await assert.rejects(
+      () =>
+        artifactStore.persistArtifacts({
+          runId: "run-1",
+          artifacts: [
+            {
+              artifactId: "artifact-1",
+              artifactType: "SCREENSHOT",
+              stepKey: "step_001",
+              mimeType: "text/plain",
+              fileExtension: "txt",
+              content: "hello"
+            }
+          ]
+        }),
+      /artifact storage failed/
+    );
+
+    const config = createRunnerTestConfig({
+      artifactsRoot,
+      artifactOutboxFile,
+      artifactOutboxLockFile,
+      artifactRetryDelaysMs: [1],
+      artifactOutboxLockStaleMs: 30,
+      artifactOutboxHeartbeatIntervalMs: 10
+    });
+
+    const firstReplay = replayArtifactOutbox(config, {
+      persistArtifacts: async ({ runId, artifacts }) => {
+        await sleep(80);
+        stored.push(`${runId}:${artifacts.length}`);
+        return [];
+      }
+    });
+    await sleep(45);
+    const competingReplay = await replayArtifactOutbox(config, {
+      persistArtifacts: async () => {
+        throw new Error("should not run");
+      }
+    });
+    const firstSummary = await firstReplay;
+
+    assert.equal(competingReplay.skipped, true);
+    assert.equal(firstSummary.storedCount, 1);
+    assert.deepEqual(stored, ["run-1:1"]);
+  } finally {
+    await rm(artifactsRoot, { recursive: true, force: true });
+  }
+});
+
 test("artifact outbox prunes expired and excess records", async () => {
   const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-artifact-prune-"));
   const artifactOutboxFile = join(artifactsRoot, "artifact-outbox.jsonl");

@@ -290,6 +290,76 @@ test("replayCallbackOutbox recovers stale lock and proceeds", async () => {
   }
 });
 
+test("replayCallbackOutbox refreshes lock heartbeat during long replay", async () => {
+  const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-replay-heartbeat-"));
+  const callbackOutboxFile = join(artifactsRoot, "callback-outbox.jsonl");
+  const callbackOutboxLockFile = join(artifactsRoot, "callback-outbox.lock");
+  let requestCount = 0;
+
+  const server = createServer((_request, response) => {
+    requestCount += 1;
+    setTimeout(() => {
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(JSON.stringify({ accepted: true }));
+    }, 80);
+  });
+
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      server.off("error", reject);
+      resolve();
+    });
+  });
+
+  try {
+    const address = server.address();
+    assert.ok(address && typeof address !== "string");
+    const config = createRunnerTestConfig({
+      callbackMode: "http",
+      callbackBaseUrl: `http://127.0.0.1:${address.port}`,
+      callbackOutboxFile,
+      callbackOutboxLockFile,
+      callbackRetryDelaysMs: [1],
+      callbackOutboxLockStaleMs: 30,
+      callbackOutboxHeartbeatIntervalMs: 10
+    });
+
+    await appendCallbackOutboxRecord(config, {
+      callbackType: "accepted",
+      runId: "run-1",
+      payload: {
+        workerId: "worker-1",
+        acceptedAt: "2026-04-21T00:00:00.000Z",
+        browserSessionId: "session-1"
+      },
+      attempts: 2,
+      errorMessage: "failed before"
+    });
+
+    const firstReplay = replayCallbackOutbox(config);
+    await sleep(45);
+    const competingReplay = await replayCallbackOutbox(config);
+    const firstSummary = await firstReplay;
+
+    assert.equal(competingReplay.skipped, true);
+    assert.equal(firstSummary.deliveredCount, 1);
+    assert.equal(requestCount, 1);
+  } finally {
+    await new Promise<void>((resolve, reject) => {
+      server.close((error) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+
+        resolve();
+      });
+    });
+    await rm(artifactsRoot, { recursive: true, force: true });
+  }
+});
+
 test("callback outbox prunes expired and excess records", async () => {
   const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-callback-prune-"));
   const callbackOutboxFile = join(artifactsRoot, "callback-outbox.jsonl");

@@ -7,9 +7,10 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { createPlaywrightSessionFactory } from "../src/browser/playwright/index.ts";
 import { createCapturePipeline } from "../src/capture/index.ts";
+import { executeScenarioStep } from "../src/scenario/executor/step-executor.ts";
 import { createArtifactStore } from "../src/storage/index.ts";
 import type { ScenarioPlan, ScenarioStep } from "../src/shared/contracts.ts";
-import { createMinimalPlan, createRunnerTestConfig } from "./support.ts";
+import { createMinimalPlan, createRunnerTestConfig, createStubCallbackClient } from "./support.ts";
 
 test("real playwright mode executes goto/fill/select and captures real screenshot and DOM snapshot", async () => {
   const fixtureRoot = await mkdtemp(join(tmpdir(), "wedge-runner-playwright-site-"));
@@ -192,6 +193,59 @@ test("real playwright mode click target navigates to the linked page", async () 
     assert.equal(snapshot.finalUrl, doneUrl);
     assert.equal(snapshot.title, "Runner Done");
     assert.deepEqual(snapshot.visitedUrls, [formUrl, doneUrl]);
+  } finally {
+    await session?.close();
+    await rm(fixtureRoot, { recursive: true, force: true });
+    await rm(artifactsRoot, { recursive: true, force: true });
+  }
+});
+
+test("real playwright mode blocks destructive click targets before locator click executes", async () => {
+  const fixtureRoot = await mkdtemp(join(tmpdir(), "wedge-runner-playwright-site-"));
+  const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-playwright-artifacts-"));
+  let session: Awaited<ReturnType<ReturnType<typeof createPlaywrightSessionFactory>["createSession"]>> | undefined;
+
+  try {
+    const { formUrl } = await createFixtureSite(fixtureRoot);
+    const browserFactory = createPlaywrightBrowserFactory(artifactsRoot);
+
+    session = await browserFactory.createSession({
+      runId: "run-playwright-block-destructive-click",
+      plan: createPlaywrightPlan(formUrl)
+    });
+
+    await executeGotoStep(session, formUrl, "step_open_destructive_fixture");
+
+    await assert.rejects(
+      () =>
+        session!.execute(
+          {
+            type: "click",
+            target: {
+              role: "button",
+              text: "Delete account"
+            }
+          },
+          createStep({
+            step_id: "step_click_delete_account",
+            stage: "CTA",
+            description: "attempt destructive action",
+            action: {
+              type: "click",
+              target: {
+                role: "button",
+                text: "Delete account"
+              }
+            }
+          })
+        ),
+      /Scenario safety forbids destructive click targets/
+    );
+
+    const snapshot = session.snapshot();
+    const capturedArtifacts = await session.captureArtifacts();
+    assert.equal(snapshot.finalUrl, formUrl);
+    assert.ok(!capturedArtifacts.domSnapshot?.content.includes('data-destructive-clicked="true"'));
   } finally {
     await session?.close();
     await rm(fixtureRoot, { recursive: true, force: true });
@@ -519,6 +573,101 @@ test("real playwright settle supports url_change and reports timeout when locato
   }
 });
 
+test("executeScenarioStep pre-arms fast url_change and item_count_change settle watchers", async () => {
+  const fixtureRoot = await mkdtemp(join(tmpdir(), "wedge-runner-playwright-site-"));
+  const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-playwright-artifacts-"));
+  let session: Awaited<ReturnType<ReturnType<typeof createPlaywrightSessionFactory>["createSession"]>> | undefined;
+
+  try {
+    const { formUrl } = await createFixtureSite(fixtureRoot);
+    const plan = createPlaywrightPlan(formUrl);
+    const browserFactory = createPlaywrightBrowserFactory(artifactsRoot);
+
+    session = await browserFactory.createSession({
+      runId: "run-playwright-fast-settle",
+      plan
+    });
+
+    await executeGotoStep(session, formUrl, "step_open_fast_settle_fixture");
+
+    const urlChangeResult = await executeScenarioStep({
+      runId: "run-playwright-fast-settle",
+      stepOrder: 1,
+      step: createStep({
+        step_id: "step_fast_url_change",
+        stage: "CTA",
+        description: "click immediate url change trigger",
+        action: {
+          type: "click",
+          target: {
+            selector: "#settle-hash-fast-trigger"
+          }
+        },
+        settle_strategy: {
+          type: "url_change",
+          timeout_ms: 500
+        }
+      }),
+      plan,
+      session,
+      callbackClient: createStubCallbackClient(),
+      capturePipeline: {
+        collectCheckpoint: async () => {
+          throw new Error("checkpoint collection should not be called");
+        }
+      },
+      artifactStore: {
+        persistArtifacts: async () => []
+      }
+    });
+
+    const itemCountResult = await executeScenarioStep({
+      runId: "run-playwright-fast-settle",
+      stepOrder: 2,
+      step: createStep({
+        step_id: "step_fast_item_count_change",
+        stage: "VALUE",
+        description: "click immediate item count trigger",
+        action: {
+          type: "click",
+          target: {
+            selector: "#item-count-fast-trigger"
+          }
+        },
+        settle_strategy: {
+          type: "item_count_change",
+          timeout_ms: 500,
+          target: {
+            selector: "#item-count-list li"
+          },
+          expected_count: 2
+        }
+      }),
+      plan,
+      session,
+      callbackClient: createStubCallbackClient(),
+      capturePipeline: {
+        collectCheckpoint: async () => {
+          throw new Error("checkpoint collection should not be called");
+        }
+      },
+      artifactStore: {
+        persistArtifacts: async () => []
+      }
+    });
+
+    const snapshot = session.snapshot();
+    assert.equal(urlChangeResult.stopRequested, false);
+    assert.equal(itemCountResult.stopRequested, false);
+    assert.ok(snapshot.finalUrl.endsWith("#settled-fast"));
+    assert.deepEqual(snapshot.visitedUrls, [formUrl, `${formUrl}#settled-fast`]);
+  } finally {
+    await session?.close();
+    await rm(fixtureRoot, { recursive: true, force: true });
+    await rm(artifactsRoot, { recursive: true, force: true });
+  }
+});
+
 test("real playwright response settle waits for matching HTTP response before returning", async () => {
   const fixtureServer = await createResponseFixtureServer();
   const fixtureRoot = await mkdtemp(join(tmpdir(), "wedge-runner-playwright-site-"));
@@ -579,6 +728,67 @@ test("real playwright response settle waits for matching HTTP response before re
     await session?.close();
     await fixtureServer.close();
     await rm(fixtureRoot, { recursive: true, force: true });
+    await rm(artifactsRoot, { recursive: true, force: true });
+  }
+});
+
+test("executeScenarioStep pre-arms fast response settle watchers", async () => {
+  const fixtureServer = await createImmediateResponseFixtureServer();
+  const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-playwright-artifacts-"));
+  let session: Awaited<ReturnType<ReturnType<typeof createPlaywrightSessionFactory>["createSession"]>> | undefined;
+
+  try {
+    const plan = createPlaywrightPlan(fixtureServer.formUrl);
+    const browserFactory = createPlaywrightBrowserFactory(artifactsRoot);
+
+    session = await browserFactory.createSession({
+      runId: "run-playwright-fast-response-settle",
+      plan
+    });
+
+    await executeGotoStep(session, fixtureServer.formUrl, "step_open_immediate_response_form", "open immediate response fixture");
+
+    const result = await executeScenarioStep({
+      runId: "run-playwright-fast-response-settle",
+      stepOrder: 1,
+      step: createStep({
+        step_id: "step_trigger_fast_response",
+        stage: "CTA",
+        description: "trigger immediate response",
+        action: {
+          type: "click",
+          target: {
+            selector: "#response-trigger"
+          }
+        },
+        settle_strategy: {
+          type: "response",
+          timeout_ms: 500,
+          target: {
+            url: "/api/immediate-response"
+          }
+        }
+      }),
+      plan,
+      session,
+      callbackClient: createStubCallbackClient(),
+      capturePipeline: {
+        collectCheckpoint: async () => {
+          throw new Error("checkpoint collection should not be called");
+        }
+      },
+      artifactStore: {
+        persistArtifacts: async () => []
+      }
+    });
+
+    const capturedArtifacts = await session.captureArtifacts();
+    assert.equal(result.stopRequested, false);
+    assert.ok(capturedArtifacts.domSnapshot?.content.includes('data-response-state="done"'));
+    assert.ok(capturedArtifacts.domSnapshot?.content.includes("Immediate response ready"));
+  } finally {
+    await session?.close();
+    await fixtureServer.close();
     await rm(artifactsRoot, { recursive: true, force: true });
   }
 });
@@ -859,6 +1069,91 @@ async function createResponseFixtureServer(): Promise<{ formUrl: string; close: 
   };
 }
 
+async function createImmediateResponseFixtureServer(): Promise<{ formUrl: string; close: () => Promise<void> }> {
+  const server = createServer((request, response) => {
+    const requestUrl = new URL(request.url ?? "/", "http://127.0.0.1");
+
+    if (requestUrl.pathname === "/immediate-response-form.html") {
+      response.writeHead(200, {
+        "content-type": "text/html; charset=utf-8"
+      });
+      response.end(`<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Runner Immediate Response</title>
+  </head>
+  <body>
+    <main>
+      <h1>Runner Immediate Response</h1>
+      <button id="response-trigger" type="button">Load immediate response</button>
+      <div id="response-status">Waiting response</div>
+    </main>
+    <script>
+      const responseTrigger = document.getElementById("response-trigger");
+      const responseStatus = document.getElementById("response-status");
+
+      responseTrigger?.addEventListener("click", async () => {
+        const response = await fetch("/api/immediate-response");
+        const payload = await response.json();
+
+        if (responseStatus) {
+          responseStatus.textContent = payload.message;
+        }
+
+        document.body.dataset.responseState = "done";
+      });
+    </script>
+  </body>
+</html>`);
+      return;
+    }
+
+    if (requestUrl.pathname === "/api/immediate-response") {
+      response.writeHead(200, {
+        "content-type": "application/json; charset=utf-8",
+        "cache-control": "no-store"
+      });
+      response.end(JSON.stringify({ ok: true, message: "Immediate response ready" }));
+      return;
+    }
+
+    response.writeHead(404, {
+      "content-type": "text/plain; charset=utf-8"
+    });
+    response.end("Not found");
+  });
+
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      server.off("error", reject);
+      resolve();
+    });
+  });
+
+  const address = server.address();
+  if (!address || typeof address === "string") {
+    throw new Error("Unable to resolve immediate response fixture server address");
+  }
+
+  return {
+    formUrl: `http://127.0.0.1:${address.port}/immediate-response-form.html`,
+    close: async () => {
+      await new Promise<void>((resolve, reject) => {
+        server.close((error) => {
+          if (error) {
+            reject(error);
+            return;
+          }
+
+          resolve();
+        });
+      });
+    }
+  };
+}
+
 function createPlaywrightConfig(artifactsRoot: string) {
   return createRunnerTestConfig({
     browserMode: "playwright",
@@ -915,15 +1210,19 @@ async function createFixtureSite(root: string): Promise<{ formUrl: string; doneU
         <div id="settle-spinner" hidden>Loading delayed state</div>
 
         <button id="settle-hash-trigger" type="button">Change hash later</button>
+        <button id="settle-hash-fast-trigger" type="button">Change hash now</button>
         <div id="never-visible" hidden>Never shown</div>
 
         <button id="response-trigger" type="button">Simulate delayed response</button>
         <div id="response-status">Waiting response</div>
 
         <button id="item-count-trigger" type="button">Add delayed list item</button>
+        <button id="item-count-fast-trigger" type="button">Add immediate list item</button>
         <ul id="item-count-list">
           <li>Initial item</li>
         </ul>
+
+        <button id="danger-delete-trigger" type="button">Delete account</button>
       </section>
     </main>
     <script>
@@ -934,10 +1233,13 @@ async function createFixtureSite(root: string): Promise<{ formUrl: string; doneU
       const settleSpinnerTrigger = document.getElementById("settle-spinner-trigger");
       const settleSpinner = document.getElementById("settle-spinner");
       const settleHashTrigger = document.getElementById("settle-hash-trigger");
+      const settleHashFastTrigger = document.getElementById("settle-hash-fast-trigger");
       const responseTrigger = document.getElementById("response-trigger");
       const responseStatus = document.getElementById("response-status");
       const itemCountTrigger = document.getElementById("item-count-trigger");
+      const itemCountFastTrigger = document.getElementById("item-count-fast-trigger");
       const itemCountList = document.getElementById("item-count-list");
+      const dangerDeleteTrigger = document.getElementById("danger-delete-trigger");
 
       hoverTarget?.addEventListener("mouseenter", () => {
         document.body.dataset.hoverState = "hovered";
@@ -978,6 +1280,11 @@ async function createFixtureSite(root: string): Promise<{ formUrl: string; doneU
         }, 120);
       });
 
+      settleHashFastTrigger?.addEventListener("click", () => {
+        document.body.dataset.urlChange = "done-fast";
+        window.location.hash = "settled-fast";
+      });
+
       responseTrigger?.addEventListener("click", () => {
         window.setTimeout(() => {
           if (responseStatus) {
@@ -996,6 +1303,19 @@ async function createFixtureSite(root: string): Promise<{ formUrl: string; doneU
             document.body.dataset.itemCountState = "done";
           }
         }, 220);
+      });
+
+      itemCountFastTrigger?.addEventListener("click", () => {
+        if (itemCountList) {
+          const nextItem = document.createElement("li");
+          nextItem.textContent = "Immediate item";
+          itemCountList.appendChild(nextItem);
+          document.body.dataset.itemCountState = "done-fast";
+        }
+      });
+
+      dangerDeleteTrigger?.addEventListener("click", () => {
+        document.body.dataset.destructiveClicked = "true";
       });
     </script>
   </body>
