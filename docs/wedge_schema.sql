@@ -112,8 +112,42 @@ CREATE TABLE rule_registry (
 );
 
 -- ---------------------------------------------------------------------------
--- 3. Run / Step
+-- 3. Site Discovery / Run / Step
 -- ---------------------------------------------------------------------------
+
+CREATE TABLE site_discovery (
+    id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_id          UUID NOT NULL REFERENCES project(id) ON DELETE CASCADE,
+    input_url           TEXT NOT NULL,
+    final_url           TEXT,
+    device_preset       VARCHAR(32) NOT NULL CHECK (device_preset IN ('desktop', 'mobile', 'tablet')),
+    viewport_jsonb      JSONB NOT NULL DEFAULT '{}'::jsonb,
+    status              VARCHAR(32) NOT NULL DEFAULT 'CREATED'
+                            CHECK (status IN ('CREATED','QUEUED','RUNNING','COMPLETED','FAILED','CANCELED')),
+    summary_jsonb       JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_by          UUID REFERENCES user_account(id),
+    started_at          TIMESTAMPTZ,
+    finished_at         TIMESTAMPTZ,
+    failure_code        VARCHAR(80),
+    failure_message     TEXT,
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    deleted_at          TIMESTAMPTZ,
+    version             BIGINT NOT NULL DEFAULT 0
+);
+
+CREATE TABLE scenario_recommendation (
+    id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    discovery_id        UUID NOT NULL REFERENCES site_discovery(id) ON DELETE CASCADE,
+    scenario_type       VARCHAR(64) NOT NULL CHECK (scenario_type IN ('LANDING_CTA','SIGNUP_LEAD_FORM','PRICING','PURCHASE_CHECKOUT','CONTACT','CONTENT_ONLY','CUSTOM_GUIDED')),
+    recommendation_level VARCHAR(32) NOT NULL CHECK (recommendation_level IN ('HIGH','MEDIUM','LOW','NOT_AVAILABLE')),
+    confidence          NUMERIC(4,3) NOT NULL CHECK (confidence >= 0 AND confidence <= 1),
+    reason              TEXT NOT NULL,
+    evidence_refs_jsonb JSONB NOT NULL DEFAULT '[]'::jsonb,
+    suggested_start_url TEXT,
+    suggested_target_jsonb JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
 
 CREATE TABLE test_run (
     id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -126,8 +160,13 @@ CREATE TABLE test_run (
     device_preset       VARCHAR(32) NOT NULL CHECK (device_preset IN ('desktop', 'mobile', 'tablet')),
     environment_jsonb   JSONB NOT NULL DEFAULT '{}'::jsonb,
     scenario_template_version_id UUID NOT NULL REFERENCES scenario_template_version(id),
+    source_discovery_id UUID REFERENCES site_discovery(id) ON DELETE SET NULL,
     scenario_plan_schema_version VARCHAR(32),
     scenario_plan_jsonb JSONB NOT NULL,
+    scenario_fit_status VARCHAR(32) NOT NULL DEFAULT 'UNKNOWN'
+                            CHECK (scenario_fit_status IN ('UNKNOWN','APPLICABLE','LOW_CONFIDENCE','NOT_APPLICABLE','BLOCKED_BY_SITE','UNSAFE_OR_RESTRICTED')),
+    scenario_fit_reason TEXT,
+    scenario_fit_summary_jsonb JSONB,
 
     status              VARCHAR(32) NOT NULL DEFAULT 'CREATED'
                             CHECK (status IN ('CREATED','QUEUED','STARTING','RUNNING','STOP_REQUESTED','STOPPED','COMPLETED','FAILED')),
@@ -181,7 +220,6 @@ CREATE TABLE test_run_step (
     UNIQUE (run_id, step_key)
 );
 
-
 -- Generic run event log for UI timeline, audit, and WebSocket replay.
 CREATE TABLE test_run_event (
     id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -200,7 +238,9 @@ CREATE TABLE test_run_event (
 
 CREATE TABLE artifact (
     id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    run_id              UUID NOT NULL REFERENCES test_run(id) ON DELETE CASCADE,
+    source_type         VARCHAR(16) NOT NULL DEFAULT 'RUN' CHECK (source_type IN ('RUN','DISCOVERY')),
+    run_id              UUID REFERENCES test_run(id) ON DELETE CASCADE,
+    discovery_id        UUID REFERENCES site_discovery(id) ON DELETE CASCADE,
     step_id             UUID REFERENCES test_run_step(id) ON DELETE SET NULL,
     artifact_type       VARCHAR(32) NOT NULL CHECK (artifact_type IN ('FRAME','SCREENSHOT','DOM_SNAPSHOT','AX_TREE','TRACE','HAR','CONSOLE_LOG','REPORT_PDF','REPORT_MARKDOWN','REPORT_HTML','REPORT_JSON','OTHER')),
     s3_bucket           VARCHAR(160) NOT NULL,
@@ -212,12 +252,18 @@ CREATE TABLE artifact (
     size_bytes          BIGINT NOT NULL DEFAULT 0,
     sha256              VARCHAR(64),
     captured_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CHECK (
+        (source_type = 'RUN' AND run_id IS NOT NULL)
+        OR (source_type = 'DISCOVERY' AND discovery_id IS NOT NULL)
+    )
 );
 
 CREATE TABLE checkpoint (
     id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    run_id              UUID NOT NULL REFERENCES test_run(id) ON DELETE CASCADE,
+    source_type         VARCHAR(16) NOT NULL DEFAULT 'RUN' CHECK (source_type IN ('RUN','DISCOVERY')),
+    run_id              UUID REFERENCES test_run(id) ON DELETE CASCADE,
+    discovery_id        UUID REFERENCES site_discovery(id) ON DELETE CASCADE,
     step_id             UUID REFERENCES test_run_step(id) ON DELETE SET NULL,
     checkpoint_key      VARCHAR(120) NOT NULL,
     stage               VARCHAR(32) CHECK (stage IN ('FIRST_VIEW','VALUE','CTA','INPUT','COMMIT')),
@@ -229,13 +275,19 @@ CREATE TABLE checkpoint (
     captured_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     duration_ms         INTEGER,
     created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    UNIQUE (run_id, checkpoint_key)
+    CHECK (
+        (source_type = 'RUN' AND run_id IS NOT NULL)
+        OR (source_type = 'DISCOVERY' AND discovery_id IS NOT NULL)
+    ),
+    UNIQUE (run_id, checkpoint_key),
+    UNIQUE (discovery_id, checkpoint_key)
 );
 
 CREATE TABLE observation (
     id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     checkpoint_id       UUID NOT NULL REFERENCES checkpoint(id) ON DELETE CASCADE,
-    run_id              UUID NOT NULL REFERENCES test_run(id) ON DELETE CASCADE,
+    run_id              UUID REFERENCES test_run(id) ON DELETE CASCADE,
+    discovery_id        UUID REFERENCES site_discovery(id) ON DELETE CASCADE,
     observation_key     VARCHAR(120) NOT NULL,
     observation_type    VARCHAR(64) NOT NULL,
     stage               VARCHAR(32) CHECK (stage IN ('FIRST_VIEW','VALUE','CTA','INPUT','COMMIT')),
@@ -243,18 +295,26 @@ CREATE TABLE observation (
     data_jsonb          JSONB NOT NULL,
     confidence          NUMERIC(4,3),
     created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    UNIQUE (run_id, observation_key)
+    UNIQUE (run_id, observation_key),
+    UNIQUE (discovery_id, observation_key)
 );
 
 CREATE TABLE evidence_packet (
     id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    run_id              UUID NOT NULL REFERENCES test_run(id) ON DELETE CASCADE,
+    execution_type      VARCHAR(16) NOT NULL DEFAULT 'RUN' CHECK (execution_type IN ('RUN','DISCOVERY')),
+    run_id              UUID REFERENCES test_run(id) ON DELETE CASCADE,
+    discovery_id        UUID REFERENCES site_discovery(id) ON DELETE CASCADE,
     schema_version      VARCHAR(32) NOT NULL,
     packet_jsonb        JSONB NOT NULL,
     checkpoint_count    INTEGER NOT NULL DEFAULT 0,
     observation_count   INTEGER NOT NULL DEFAULT 0,
     created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    UNIQUE (run_id, schema_version)
+    CHECK (
+        (execution_type = 'RUN' AND run_id IS NOT NULL)
+        OR (execution_type = 'DISCOVERY' AND discovery_id IS NOT NULL)
+    ),
+    UNIQUE (run_id, schema_version),
+    UNIQUE (discovery_id, schema_version)
 );
 
 -- ---------------------------------------------------------------------------
@@ -431,14 +491,23 @@ CREATE INDEX idx_workspace_member_user ON workspace_member(user_id);
 CREATE INDEX idx_project_workspace ON project(workspace_id) WHERE deleted_at IS NULL;
 CREATE INDEX idx_project_member_user ON project_member(user_id);
 
+CREATE INDEX idx_site_discovery_project_created ON site_discovery(project_id, created_at DESC) WHERE deleted_at IS NULL;
+CREATE INDEX idx_site_discovery_status ON site_discovery(status, updated_at DESC) WHERE deleted_at IS NULL;
+CREATE INDEX idx_scenario_recommendation_discovery_level ON scenario_recommendation(discovery_id, recommendation_level);
+CREATE INDEX idx_test_run_source_discovery ON test_run(source_discovery_id) WHERE source_discovery_id IS NOT NULL;
+CREATE INDEX idx_test_run_scenario_fit ON test_run(scenario_fit_status, updated_at DESC) WHERE deleted_at IS NULL;
+CREATE INDEX idx_checkpoint_discovery_captured ON checkpoint(source_type, discovery_id, captured_at);
+CREATE INDEX idx_observation_discovery_type ON observation(discovery_id, observation_type);
+CREATE INDEX idx_artifact_discovery_created ON artifact(source_type, discovery_id, created_at);
+
 CREATE INDEX idx_test_run_project_created ON test_run(project_id, created_at DESC) WHERE deleted_at IS NULL;
 CREATE INDEX idx_test_run_status ON test_run(status, updated_at DESC) WHERE deleted_at IS NULL;
 CREATE INDEX idx_test_run_analysis_status ON test_run(analysis_status, updated_at DESC) WHERE deleted_at IS NULL;
 
 CREATE INDEX idx_test_run_step_run_order ON test_run_step(run_id, step_order);
-CREATE INDEX idx_checkpoint_run_captured ON checkpoint(run_id, captured_at);
+CREATE INDEX idx_checkpoint_run_captured ON checkpoint(source_type, run_id, captured_at);
 CREATE INDEX idx_observation_run_type ON observation(run_id, observation_type);
-CREATE INDEX idx_artifact_run_created ON artifact(run_id, created_at);
+CREATE INDEX idx_artifact_run_created ON artifact(source_type, run_id, created_at);
 
 CREATE INDEX idx_analysis_job_run_created ON analysis_job(run_id, created_at DESC);
 CREATE INDEX idx_rule_hit_run_priority ON rule_hit(run_id, priority_score DESC);
@@ -451,4 +520,4 @@ CREATE INDEX idx_worker_heartbeat ON worker_instance(worker_type, last_heartbeat
 
 CREATE INDEX idx_test_run_event_run_time ON test_run_event(run_id, occurred_at DESC);
 CREATE INDEX idx_report_share_report ON report_share(report_id, created_at DESC);
-CREATE INDEX idx_checkpoint_run_step ON checkpoint(run_id, step_id, created_at);
+CREATE INDEX idx_checkpoint_run_step ON checkpoint(source_type, run_id, step_id, created_at);

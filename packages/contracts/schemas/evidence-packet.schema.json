@@ -5,6 +5,7 @@
   "type": "object",
   "required": [
     "schema_version",
+    "execution_type",
     "run_id",
     "url",
     "scenario",
@@ -17,8 +18,23 @@
     "schema_version": {
       "const": "0.5"
     },
+    "execution_type": {
+      "enum": [
+        "DISCOVERY",
+        "RUN"
+      ]
+    },
     "run_id": {
-      "type": "string"
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "discovery_id": {
+      "type": [
+        "string",
+        "null"
+      ]
     },
     "url": {
       "type": "string",
@@ -45,6 +61,16 @@
     "aggregate_signals": {
       "type": "object"
     },
+    "scenario_fit": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/scenario_fit"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
     "artifacts": {
       "type": "array",
       "items": {
@@ -59,6 +85,60 @@
     }
   },
   "$defs": {
+    "flow_type": {
+      "enum": [
+        "LANDING_CTA",
+        "SIGNUP_LEAD_FORM",
+        "PRICING",
+        "PURCHASE_CHECKOUT",
+        "CONTACT",
+        "CONTENT_ONLY"
+      ]
+    },
+    "scenario_fit_status": {
+      "enum": [
+        "UNKNOWN",
+        "APPLICABLE",
+        "LOW_CONFIDENCE",
+        "NOT_APPLICABLE",
+        "BLOCKED_BY_SITE",
+        "UNSAFE_OR_RESTRICTED"
+      ]
+    },
+    "scenario_fit": {
+      "type": "object",
+      "required": [
+        "scenario_type",
+        "scenario_fit_status",
+        "reason",
+        "evidence_refs",
+        "recommended_alternatives"
+      ],
+      "properties": {
+        "scenario_type": {
+          "$ref": "#/$defs/flow_type"
+        },
+        "scenario_fit_status": {
+          "$ref": "#/$defs/scenario_fit_status"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "evidence_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "recommended_alternatives": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/flow_type"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
     "stage": {
       "enum": [
         "FIRST_VIEW",
@@ -177,8 +257,19 @@
             "target_size_issue",
             "network_failure",
             "console_error",
+            "settle_response",
+            "settle_item_count_change",
             "performance_metric",
             "scroll_delta",
+            "flow_candidate",
+            "entrypoint_candidate",
+            "pricing_entrypoint",
+            "checkout_entrypoint",
+            "signup_entrypoint",
+            "contact_entrypoint",
+            "scenario_mismatch",
+            "missing_entrypoint",
+            "guided_scenario_hint",
             "other"
           ]
         },
@@ -196,6 +287,7 @@
               "network",
               "console",
               "performance",
+              "discovery",
               "scenario_log",
               "rule"
             ]

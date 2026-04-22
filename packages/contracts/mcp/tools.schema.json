@@ -23,9 +23,12 @@
         "name": {
           "type": "string",
           "enum": [
+            "discover_site",
             "create_run",
+            "create_run_from_discovery",
             "start_run",
             "stop_run",
+            "get_discovery_result",
             "get_run_status",
             "get_run_summary",
             "list_run_events",
@@ -84,6 +87,7 @@
             "properties": {
               "name": {
                 "enum": [
+                  "get_discovery_result",
                   "get_run_status",
                   "get_run_summary",
                   "list_run_events",
@@ -121,6 +125,8 @@
             "properties": {
               "name": {
                 "enum": [
+                  "discover_site",
+                  "create_run_from_discovery",
                   "create_run",
                   "start_run",
                   "stop_run",

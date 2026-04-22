@@ -39,6 +39,7 @@ packages/contracts/mq/messages.schema.json
 ```text
 docs/01_architecture_and_project_structure.md
 docs/04_domain_payload_contracts.md
+docs/wedge_runner_architecture.md
 packages/contracts/schemas/scenario-plan.schema.json
 packages/contracts/internal/runner-callback.schema.json
 packages/contracts/mq/messages.schema.json
@@ -118,3 +119,38 @@ packages/contracts/schemas/rule-registry.schema.json
 packages/contracts/schemas/judge-result.schema.json
 packages/contracts/examples/sample-judge-result.json
 ```
+
+## 7. Site Discovery / Preflight 구현
+
+Discovery는 full analysis가 아니며, JudgeResult 생성보다 시나리오 추천이 목적이다. 작업 지시 시 아래 파일 세트를 함께 태그한다.
+
+### Spring API / DB 구현 시
+
+- `docs/00_master_decisions.md`
+- `docs/01_architecture_and_project_structure.md`
+- `docs/02_data_model_and_db.md`
+- `docs/03_api_reference.md`
+- `docs/wedge_schema.sql`
+- `packages/contracts/openapi/wedge_openapi.yaml`
+
+### Runner Discovery 구현 시
+
+- `docs/01_architecture_and_project_structure.md`
+- `docs/04_domain_payload_contracts.md`
+- `packages/contracts/schemas/scenario-plan.schema.json`
+- `packages/contracts/schemas/evidence-packet.schema.json`
+- `packages/contracts/internal/runner-callback.schema.json`
+- `packages/contracts/mq/messages.schema.json`
+
+### Discovery Recommendation / Analyzer 구현 시
+
+- `docs/04_domain_payload_contracts.md`
+- `docs/05_judge_scoring_validation.md`
+- `packages/contracts/schemas/evidence-packet.schema.json`
+- `packages/contracts/schemas/site-discovery-result.schema.json`
+
+### React UI 구현 시
+
+- `docs/03_api_reference.md`
+- `packages/contracts/openapi/wedge_openapi.yaml`
+- `packages/contracts/websocket/events.schema.json`

@@ -68,6 +68,169 @@
         "nudges",
         "judgeResult",
         "completedAt"
+      ],
+      "examples": [
+        {
+          "analysisJobId": "6f6bc8c7-ef04-420b-b4e4-8c7d7ec8d1d2",
+          "runId": "run_001",
+          "analyzerVersion": "analyzer-0.5.0",
+          "promptVersion": "judge-prompts-2026-04-21",
+          "modelInfo": {
+            "llm": "gpt-5.4-mini",
+            "attentionModel": "rule-engine-v1",
+            "ctrModel": "ctr-baseline-v1"
+          },
+          "topFindings": [
+            {
+              "rank": 1,
+              "category": "INPUT_FRICTION",
+              "title": "이메일 검증이 서버 응답에 의존함",
+              "description": "입력 직후 validation response를 기다리는 흐름이 확인되어 사용자가 입력 반영 여부를 즉시 확신하지 못할 수 있다.",
+              "confidence": 0.72,
+              "impact": "MEDIUM",
+              "evidenceRefs": [
+                {
+                  "type": "step",
+                  "id": "step_003_fill_email"
+                }
+              ]
+            },
+            {
+              "rank": 2,
+              "category": "VALUE_FRICTION",
+              "title": "혜택 목록 확장 뒤 정보량이 급격히 증가함",
+              "description": "혜택 목록이 1개에서 3개로 늘어나 핵심 가치 탐색 비용이 증가할 수 있다.",
+              "confidence": 0.74,
+              "impact": "MEDIUM",
+              "evidenceRefs": [
+                {
+                  "type": "step",
+                  "id": "step_004_expand_benefits"
+                }
+              ]
+            },
+            {
+              "rank": 3,
+              "category": "INPUT_TIMEOUT",
+              "title": "이메일 validation response timeout 발생",
+              "description": "입력 검증 response가 timeout으로 끝나 사용자가 다음 진행 가능 여부를 신뢰하기 어려울 수 있다.",
+              "confidence": 0.76,
+              "impact": "HIGH",
+              "evidenceRefs": [
+                {
+                  "type": "step",
+                  "id": "step_005_fill_email_retry"
+                }
+              ]
+            }
+          ],
+          "nudges": [
+            {
+              "title": "이메일 검증 진행 상태를 즉시 노출",
+              "rationale": "settle_response evidence 상 입력 직후 validation response를 기다리는 흐름이 존재한다.",
+              "difficulty": "LOW",
+              "expectedEffect": "입력 반영 여부에 대한 불확실성을 줄여 이탈 가능성을 낮춘다.",
+              "priority": "P1",
+              "followUpQuestion": "사용자는 이메일 입력 후 검증 진행 상태를 즉시 인지하는가?"
+            },
+            {
+              "title": "확장된 혜택 목록의 우선순위 강조",
+              "rationale": "settle_item_count_change evidence 상 interaction 뒤 목록 길이가 증가한다.",
+              "difficulty": "MEDIUM",
+              "expectedEffect": "핵심 가치 인지 시간을 줄여 다음 CTA 이동을 더 빠르게 만든다.",
+              "priority": "P2",
+              "followUpQuestion": "확장 후 사용자는 가장 중요한 혜택을 빠르게 식별하는가?"
+            },
+            {
+              "title": "validation timeout fallback을 명확히 제공",
+              "rationale": "settle_response timeout evidence가 존재하면 사용자는 검증 완료 여부를 신뢰하기 어렵다.",
+              "difficulty": "MEDIUM",
+              "expectedEffect": "timeout 상황에서도 사용자가 재시도나 다음 진행을 이해하고 선택할 수 있다.",
+              "priority": "P1",
+              "followUpQuestion": "validation timeout이 발생해도 사용자는 다음 행동을 이해할 수 있는가?"
+            }
+          ],
+          "judgeResult": {
+            "schema_version": "0.5",
+            "run_id": "run_001",
+            "evidence_schema_version": "0.5",
+            "rule_registry_id": "registry_p0_001",
+            "summary": {
+              "overall_risk": "medium",
+              "friction_score": 61.0,
+              "top_issues_count": 3,
+              "task_success": "partial"
+            },
+            "issues": [
+              {
+                "issue_id": "issue_002",
+                "criterion_id": "INPUT-ASYNC-001",
+                "stage": "INPUT",
+                "axis": "Clarity",
+                "severity": 1,
+                "confidence": 0.72,
+                "priority_score": 1.44,
+                "evidence_refs": [
+                  "cp_002.obs_004"
+                ],
+                "summary": "이메일 입력 단계가 서버 validation response에 의존해 입력 완료감이 지연될 수 있습니다.",
+                "recommendations": [
+                  "validation 진행 중 로딩/성공 상태를 입력 필드 근처에 즉시 노출하기"
+                ]
+              },
+              {
+                "issue_id": "issue_003",
+                "criterion_id": "VALUE-LIST-001",
+                "stage": "VALUE",
+                "axis": "Path",
+                "severity": 1,
+                "confidence": 0.74,
+                "priority_score": 1.51,
+                "evidence_refs": [
+                  "cp_003.obs_006"
+                ],
+                "summary": "혜택 목록 확장 후 항목 수가 급격히 늘어나 사용자의 읽기 부담이 커질 수 있습니다.",
+                "recommendations": [
+                  "새로 추가되는 혜택 중 핵심 1~2개를 상단에 고정해 우선순위를 보여주기"
+                ]
+              },
+              {
+                "issue_id": "issue_004",
+                "criterion_id": "INPUT-ASYNC-002",
+                "stage": "INPUT",
+                "axis": "Trust",
+                "severity": 2,
+                "confidence": 0.76,
+                "priority_score": 1.88,
+                "evidence_refs": [
+                  "cp_004.obs_008"
+                ],
+                "summary": "입력 검증 response가 timeout되면 사용자가 다음 진행 가능 여부를 신뢰하기 어려울 수 있습니다.",
+                "recommendations": [
+                  "validation timeout 시 재시도 버튼과 fallback 안내 메시지를 노출하기"
+                ]
+              }
+            ],
+            "decision_map": [
+              {
+                "stage": "INPUT",
+                "status": "warning",
+                "issue_ids": [
+                  "issue_002",
+                  "issue_004"
+                ]
+              },
+              {
+                "stage": "VALUE",
+                "status": "warning",
+                "issue_ids": [
+                  "issue_003"
+                ]
+              }
+            ]
+          },
+          "completedAt": "2026-04-21T08:15:00.000Z"
+        }
       ]
     },
     "Finding": {

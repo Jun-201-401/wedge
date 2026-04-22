@@ -15,6 +15,7 @@ tags:
 - name: Auth
 - name: Projects
 - name: ScenarioTemplates
+- name: Discoveries
 - name: Runs
 - name: Steps
 - name: Events
@@ -353,6 +354,115 @@ paths:
                 required:
                 - data
                 - meta
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /api/discoveries:
+    post:
+      tags:
+      - Discoveries
+      operationId: createDiscovery
+      summary: Start lightweight Site Discovery / Preflight
+      description: Performs a short URL-first discovery pass to recommend applicable scenarios before creating a full run.
+      security:
+      - oauth2:
+        - wedge.execute
+      parameters:
+      - name: Idempotency-Key
+        in: header
+        required: false
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateDiscoveryRequest'
+            example:
+              url: https://example.com
+              devicePreset: desktop
+              viewport:
+                width: 1440
+                height: 900
+      responses:
+        '202':
+          description: Discovery queued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SingleDiscoveryResponse'
+              example:
+                data:
+                  discoveryId: disc_123
+                  status: QUEUED
+                meta:
+                  requestId: req_123
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /api/discoveries/{discoveryId}:
+    get:
+      tags:
+      - Discoveries
+      operationId: getDiscovery
+      summary: Get Site Discovery / Preflight result
+      security:
+      - oauth2:
+        - wedge.read
+      parameters:
+      - $ref: '#/components/parameters/DiscoveryId'
+      responses:
+        '200':
+          description: Discovery result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SingleDiscoveryResponse'
+              example:
+                data:
+                  discoveryId: disc_123
+                  status: COMPLETED
+                  inputUrl: https://example.com
+                  finalUrl: https://example.com
+                  summary:
+                    detectedFlowTypes:
+                    - LANDING_CTA
+                    - SIGNUP_LEAD_FORM
+                    missingFlowTypes:
+                    - PURCHASE_CHECKOUT
+                    primaryCtaCount: 2
+                    formCandidateCount: 1
+                    pricingEntrypointCount: 0
+                    checkoutEntrypointCount: 0
+                  scenarioRecommendations:
+                  - scenarioType: LANDING_CTA
+                    recommendationLevel: HIGH
+                    confidence: 0.86
+                    reason: First-view primary CTA supports a landing CTA scenario.
+                    evidenceRefs:
+                    - cp_001.obs_002
+                    suggestedStartUrl: https://example.com
+                  - scenarioType: PURCHASE_CHECKOUT
+                    recommendationLevel: LOW
+                    confidence: 0.22
+                    reason: No pricing, cart, or checkout entrypoint was detected.
+                    evidenceRefs:
+                    - cp_001.obs_008
+                meta:
+                  requestId: req_124
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -1246,6 +1356,120 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/AnalyzerCompletedRequest'
+            example:
+              analysisJobId: 6f6bc8c7-ef04-420b-b4e4-8c7d7ec8d1d2
+              runId: run_001
+              analyzerVersion: analyzer-0.5.0
+              promptVersion: judge-prompts-2026-04-21
+              modelInfo:
+                llm: gpt-5.4-mini
+                attentionModel: rule-engine-v1
+                ctrModel: ctr-baseline-v1
+              topFindings:
+                - rank: 1
+                  category: INPUT_FRICTION
+                  title: 이메일 검증이 서버 응답에 의존함
+                  description: 입력 직후 validation response를 기다리는 흐름이 확인되어 사용자가 입력 반영 여부를 즉시 확신하지 못할 수 있다.
+                  confidence: 0.72
+                  impact: MEDIUM
+                  evidenceRefs:
+                    - type: step
+                      id: step_003_fill_email
+                - rank: 2
+                  category: VALUE_FRICTION
+                  title: 혜택 목록 확장 뒤 정보량이 급격히 증가함
+                  description: 혜택 목록이 1개에서 3개로 늘어나 핵심 가치 탐색 비용이 증가할 수 있다.
+                  confidence: 0.74
+                  impact: MEDIUM
+                  evidenceRefs:
+                    - type: step
+                      id: step_004_expand_benefits
+                - rank: 3
+                  category: INPUT_TIMEOUT
+                  title: 이메일 validation response timeout 발생
+                  description: 입력 검증 response가 timeout으로 끝나 사용자가 다음 진행 가능 여부를 신뢰하기 어려울 수 있다.
+                  confidence: 0.76
+                  impact: HIGH
+                  evidenceRefs:
+                    - type: step
+                      id: step_005_fill_email_retry
+              nudges:
+                - title: 이메일 검증 진행 상태를 즉시 노출
+                  rationale: settle_response evidence 상 입력 직후 validation response를 기다리는 흐름이 존재한다.
+                  difficulty: LOW
+                  expectedEffect: 입력 반영 여부에 대한 불확실성을 줄여 이탈 가능성을 낮춘다.
+                  priority: P1
+                  followUpQuestion: 사용자는 이메일 입력 후 검증 진행 상태를 즉시 인지하는가?
+                - title: 확장된 혜택 목록의 우선순위 강조
+                  rationale: settle_item_count_change evidence 상 interaction 뒤 목록 길이가 증가한다.
+                  difficulty: MEDIUM
+                  expectedEffect: 핵심 가치 인지 시간을 줄여 다음 CTA 이동을 더 빠르게 만든다.
+                  priority: P2
+                  followUpQuestion: 확장 후 사용자는 가장 중요한 혜택을 빠르게 식별하는가?
+                - title: validation timeout fallback을 명확히 제공
+                  rationale: settle_response timeout evidence가 존재하면 사용자는 검증 완료 여부를 신뢰하기 어렵다.
+                  difficulty: MEDIUM
+                  expectedEffect: timeout 상황에서도 사용자가 재시도나 다음 진행을 이해하고 선택할 수 있다.
+                  priority: P1
+                  followUpQuestion: validation timeout이 발생해도 사용자는 다음 행동을 이해할 수 있는가?
+              judgeResult:
+                schema_version: '0.5'
+                run_id: run_001
+                evidence_schema_version: '0.5'
+                rule_registry_id: registry_p0_001
+                summary:
+                  overall_risk: medium
+                  friction_score: 61
+                  top_issues_count: 3
+                  task_success: partial
+                issues:
+                  - issue_id: issue_002
+                    criterion_id: INPUT-ASYNC-001
+                    stage: INPUT
+                    axis: Clarity
+                    severity: 1
+                    confidence: 0.72
+                    priority_score: 1.44
+                    evidence_refs:
+                      - cp_002.obs_004
+                    summary: 이메일 입력 단계가 서버 validation response에 의존해 입력 완료감이 지연될 수 있습니다.
+                    recommendations:
+                      - validation 진행 중 로딩/성공 상태를 입력 필드 근처에 즉시 노출하기
+                  - issue_id: issue_003
+                    criterion_id: VALUE-LIST-001
+                    stage: VALUE
+                    axis: Path
+                    severity: 1
+                    confidence: 0.74
+                    priority_score: 1.51
+                    evidence_refs:
+                      - cp_003.obs_006
+                    summary: 혜택 목록 확장 후 항목 수가 급격히 늘어나 사용자의 읽기 부담이 커질 수 있습니다.
+                    recommendations:
+                      - 새로 추가되는 혜택 중 핵심 1~2개를 상단에 고정해 우선순위를 보여주기
+                  - issue_id: issue_004
+                    criterion_id: INPUT-ASYNC-002
+                    stage: INPUT
+                    axis: Trust
+                    severity: 2
+                    confidence: 0.76
+                    priority_score: 1.88
+                    evidence_refs:
+                      - cp_004.obs_008
+                    summary: 입력 검증 response가 timeout되면 사용자가 다음 진행 가능 여부를 신뢰하기 어려울 수 있습니다.
+                    recommendations:
+                      - validation timeout 시 재시도 버튼과 fallback 안내 메시지를 노출하기
+                decision_map:
+                  - stage: INPUT
+                    status: warning
+                    issue_ids:
+                      - issue_002
+                      - issue_004
+                  - stage: VALUE
+                    status: warning
+                    issue_ids:
+                      - issue_003
+              completedAt: '2026-04-21T08:15:00.000Z'
       responses:
         '200':
           description: Accepted
@@ -1474,6 +1698,12 @@ components:
       schema:
         type: string
         format: uuid
+    DiscoveryId:
+      name: discoveryId
+      in: path
+      required: true
+      schema:
+        type: string
     ProjectId:
       name: projectId
       in: path
@@ -1699,6 +1929,21 @@ components:
           nullable: true
       required:
       - requestId
+    ErrorCode:
+      type: string
+      enum:
+      - UNAUTHORIZED
+      - FORBIDDEN
+      - NOT_FOUND
+      - CONFLICT
+      - VALIDATION_ERROR
+      - DISCOVERY_NOT_FOUND
+      - DISCOVERY_EXPIRED
+      - DISCOVERY_FAILED
+      - SCENARIO_NOT_APPLICABLE
+      - SCENARIO_FIT_LOW_CONFIDENCE
+      - NO_ENTRYPOINT_FOUND
+      - UNSAFE_SCENARIO_ACTION
     ErrorResponse:
       type: object
       properties:
@@ -1706,7 +1951,7 @@ components:
           type: object
           properties:
             code:
-              type: string
+              $ref: '#/components/schemas/ErrorCode'
             message:
               type: string
             details:
@@ -1817,6 +2062,176 @@ components:
       - templateId
       - versionNo
       - definition
+    ScenarioType:
+      type: string
+      enum:
+      - LANDING_CTA
+      - SIGNUP_LEAD_FORM
+      - PRICING
+      - PURCHASE_CHECKOUT
+      - CONTACT
+      - CONTENT_ONLY
+    ScenarioRecommendationLevel:
+      type: string
+      enum:
+      - HIGH
+      - MEDIUM
+      - LOW
+      - NOT_AVAILABLE
+    DiscoveryStatus:
+      type: string
+      enum:
+      - QUEUED
+      - RUNNING
+      - COMPLETED
+      - FAILED
+      - EXPIRED
+    ScenarioFitStatus:
+      type: string
+      enum:
+      - UNKNOWN
+      - APPLICABLE
+      - LOW_CONFIDENCE
+      - NOT_APPLICABLE
+      - BLOCKED_BY_SITE
+      - UNSAFE_OR_RESTRICTED
+    DiscoveryViewport:
+      type: object
+      properties:
+        width:
+          type: integer
+          minimum: 320
+        height:
+          type: integer
+          minimum: 480
+      required:
+      - width
+      - height
+    CreateDiscoveryRequest:
+      type: object
+      properties:
+        projectId:
+          type: string
+          format: uuid
+        url:
+          type: string
+          format: uri
+        devicePreset:
+          type: string
+          enum:
+          - desktop
+          - tablet
+          - mobile
+          default: desktop
+        viewport:
+          $ref: '#/components/schemas/DiscoveryViewport'
+      required:
+      - projectId
+      - url
+      - devicePreset
+    DiscoverySummary:
+      type: object
+      properties:
+        detectedFlowTypes:
+          type: array
+          items:
+            $ref: '#/components/schemas/ScenarioType'
+        missingFlowTypes:
+          type: array
+          items:
+            $ref: '#/components/schemas/ScenarioType'
+        primaryCtaCount:
+          type: integer
+          minimum: 0
+        formCandidateCount:
+          type: integer
+          minimum: 0
+        pricingEntrypointCount:
+          type: integer
+          minimum: 0
+        checkoutEntrypointCount:
+          type: integer
+          minimum: 0
+      required:
+      - detectedFlowTypes
+      - missingFlowTypes
+      - primaryCtaCount
+      - formCandidateCount
+      - pricingEntrypointCount
+      - checkoutEntrypointCount
+    ScenarioRecommendation:
+      type: object
+      properties:
+        scenarioType:
+          $ref: '#/components/schemas/ScenarioType'
+        recommendationLevel:
+          $ref: '#/components/schemas/ScenarioRecommendationLevel'
+        confidence:
+          type: number
+          minimum: 0
+          maximum: 1
+        reason:
+          type: string
+        evidenceRefs:
+          type: array
+          items:
+            type: string
+        suggestedStartUrl:
+          type: string
+          format: uri
+          nullable: true
+        suggestedTarget:
+          type: object
+          nullable: true
+          additionalProperties: true
+      required:
+      - scenarioType
+      - recommendationLevel
+      - confidence
+      - reason
+      - evidenceRefs
+    DiscoveryResponse:
+      type: object
+      properties:
+        discoveryId:
+          type: string
+        status:
+          $ref: '#/components/schemas/DiscoveryStatus'
+        inputUrl:
+          type: string
+          format: uri
+          nullable: true
+        finalUrl:
+          type: string
+          format: uri
+          nullable: true
+        summary:
+          $ref: '#/components/schemas/DiscoverySummary'
+        scenarioRecommendations:
+          type: array
+          items:
+            $ref: '#/components/schemas/ScenarioRecommendation'
+        createdAt:
+          type: string
+          format: date-time
+          nullable: true
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+      required:
+      - discoveryId
+      - status
+    SingleDiscoveryResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/DiscoveryResponse'
+        meta:
+          $ref: '#/components/schemas/Meta'
+      required:
+      - data
+      - meta
     Run:
       type: object
       properties:
@@ -1841,6 +2256,9 @@ components:
         startUrl:
           type: string
           format: uri
+        sourceDiscoveryId:
+          type: string
+          nullable: true
         goal:
           type: string
           nullable: true
@@ -1895,6 +2313,15 @@ components:
         failureMessage:
           type: string
           nullable: true
+        scenarioFitStatus:
+          $ref: '#/components/schemas/ScenarioFitStatus'
+        scenarioFitReason:
+          type: string
+          nullable: true
+        scenarioFitSummary:
+          type: object
+          nullable: true
+          additionalProperties: true
         latestSnapshot:
           $ref: '#/components/schemas/LatestSnapshot'
       required:
@@ -1931,6 +2358,9 @@ components:
         startUrl:
           type: string
           format: uri
+        sourceDiscoveryId:
+          type: string
+          nullable: true
         goal:
           type: string
           nullable: true
@@ -2816,8 +3246,17 @@ components:
       properties:
         schema_version:
           type: string
+        execution_type:
+          type: string
+          enum:
+          - DISCOVERY
+          - RUN
         run_id:
           type: string
+          nullable: true
+        discovery_id:
+          type: string
+          nullable: true
         url:
           type: string
           format: uri
@@ -2834,6 +3273,9 @@ components:
             type: object
         aggregate_signals:
           type: object
+        scenario_fit:
+          type: object
+          nullable: true
         artifacts:
           type: array
           minItems: 1

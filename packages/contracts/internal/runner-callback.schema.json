@@ -318,8 +318,52 @@
           "type": "array",
           "items": {
             "type": "object",
-            "additionalProperties": true
-          }
+            "additionalProperties": true,
+            "examples": [
+              {
+                "type": "settle_response",
+                "settle_status": "settled",
+                "target": "url=/api/signup/validate-email",
+                "matched_url": "https://example.com/api/signup/validate-email",
+                "method": "POST",
+                "status_code": 200,
+                "url_includes": "/api/signup/validate-email"
+              },
+              {
+                "type": "settle_item_count_change",
+                "settle_status": "settled",
+                "target": "selector=#signup-benefits li",
+                "baseline_count": 1,
+                "current_count": 3,
+                "expected_count": 3,
+                "count_delta": 2
+              }
+            ]
+          },
+          "examples": [
+            [
+              {
+                "type": "settle_response",
+                "settle_status": "settled",
+                "target": "url=/api/signup/validate-email",
+                "matched_url": "https://example.com/api/signup/validate-email",
+                "method": "POST",
+                "status_code": 200,
+                "url_includes": "/api/signup/validate-email"
+              }
+            ],
+            [
+              {
+                "type": "settle_item_count_change",
+                "settle_status": "settled",
+                "target": "selector=#signup-benefits li",
+                "baseline_count": 1,
+                "current_count": 3,
+                "expected_count": 3,
+                "count_delta": 2
+              }
+            ]
+          ]
         },
         "deltas": {
           "type": "array",
@@ -339,7 +383,58 @@
           "minLength": 1
         }
       },
-      "title": "Checkpoint"
+      "title": "Checkpoint",
+      "examples": [
+        {
+          "checkpointId": "checkpoint-response-1",
+          "stepKey": "step_003_fill_email",
+          "stage": "INPUT",
+          "trigger": {
+            "stepOrder": 3,
+            "actionType": "fill",
+            "description": "테스트 이메일 입력"
+          },
+          "settle": {
+            "strategy": "response",
+            "durationMs": 216,
+            "status": "settled"
+          },
+          "state": {
+            "url": "https://example.com/signup",
+            "title": "Sign up",
+            "fields": {
+              "Email": "test+wedge@example.com"
+            }
+          },
+          "observations": [
+            {
+              "type": "form_field",
+              "field_key": "Email",
+              "value_length": 22
+            },
+            {
+              "type": "settle_response",
+              "settle_status": "settled",
+              "target": "url=/api/signup/validate-email",
+              "matched_url": "https://example.com/api/signup/validate-email",
+              "method": "POST",
+              "status_code": 200,
+              "url_includes": "/api/signup/validate-email"
+            }
+          ],
+          "deltas": [
+            {
+              "type": "last_action",
+              "action": "fill",
+              "target": "label_any=이메일|Email"
+            }
+          ],
+          "artifactRefs": [
+            "artifact-1",
+            "artifact-2"
+          ]
+        }
+      ]
     },
     "RunnerCheckpointsRequest": {
       "type": "object",
@@ -355,6 +450,250 @@
       },
       "required": [
         "checkpoints"
+      ]
+    },
+    "DiscoveryAccepted": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "eventId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "workerId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "acceptedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "browserSessionId": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "eventId",
+        "workerId",
+        "acceptedAt",
+        "browserSessionId"
+      ]
+    },
+    "DiscoveryCheckpointRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "eventId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "workerId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "checkpoint": {
+          "$ref": "#/$defs/Checkpoint"
+        },
+        "artifacts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Artifact"
+          }
+        },
+        "observations": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        }
+      },
+      "required": [
+        "eventId",
+        "workerId",
+        "checkpoint",
+        "artifacts",
+        "observations"
+      ]
+    },
+    "DiscoverySummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "detectedFlowTypes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "LANDING_CTA",
+              "SIGNUP_LEAD_FORM",
+              "PRICING",
+              "PURCHASE_CHECKOUT",
+              "CONTACT",
+              "CONTENT_ONLY"
+            ]
+          }
+        },
+        "missingFlowTypes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "LANDING_CTA",
+              "SIGNUP_LEAD_FORM",
+              "PRICING",
+              "PURCHASE_CHECKOUT",
+              "CONTACT",
+              "CONTENT_ONLY"
+            ]
+          }
+        },
+        "primaryCtaCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "formCandidateCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "pricingEntrypointCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "checkoutEntrypointCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "scenarioRecommendations": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "scenarioType": {
+                "type": "string",
+                "enum": [
+                  "LANDING_CTA",
+                  "SIGNUP_LEAD_FORM",
+                  "PRICING",
+                  "PURCHASE_CHECKOUT",
+                  "CONTACT",
+                  "CONTENT_ONLY",
+                  "CUSTOM_GUIDED"
+                ]
+              },
+              "recommendationLevel": {
+                "type": "string",
+                "enum": [
+                  "HIGH",
+                  "MEDIUM",
+                  "LOW",
+                  "NOT_AVAILABLE"
+                ]
+              },
+              "confidence": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "reason": {
+                "type": "string"
+              },
+              "evidenceRefs": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "suggestedStartUrl": {
+                "type": "string",
+                "format": "uri"
+              },
+              "suggestedTarget": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            },
+            "required": [
+              "scenarioType",
+              "recommendationLevel",
+              "confidence",
+              "reason",
+              "evidenceRefs"
+            ]
+          }
+        }
+      },
+      "required": [
+        "detectedFlowTypes",
+        "missingFlowTypes",
+        "scenarioRecommendations"
+      ]
+    },
+    "DiscoveryFinished": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "eventId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "workerId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "finishedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "finalUrl": {
+          "type": "string",
+          "format": "uri"
+        },
+        "summary": {
+          "$ref": "#/$defs/DiscoverySummary"
+        }
+      },
+      "required": [
+        "eventId",
+        "workerId",
+        "finishedAt",
+        "finalUrl",
+        "summary"
+      ]
+    },
+    "DiscoveryFailed": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "eventId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "workerId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "failedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "failureCode": {
+          "type": "string",
+          "minLength": 1
+        },
+        "failureMessage": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "eventId",
+        "workerId",
+        "failedAt",
+        "failureCode",
+        "failureMessage"
       ]
     }
   }

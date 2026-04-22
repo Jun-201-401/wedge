@@ -131,6 +131,8 @@ Rules:
 | 429 | `rate_limited` | too many requests |
 | 500 | `internal_error` | server error |
 
+Discovery/scenario-fit error codes are also stable branch codes: `DISCOVERY_NOT_FOUND`, `DISCOVERY_EXPIRED`, `DISCOVERY_FAILED`, `SCENARIO_NOT_APPLICABLE`, `SCENARIO_FIT_LOW_CONFIDENCE`, `NO_ENTRYPOINT_FOUND`, `UNSAFE_SCENARIO_ACTION`.
+
 ## 6. Public REST endpoint matrix
 
 OpenAPI와 동일한 public `/api` endpoint만 여기에 둔다. 삭제/복구 정책이 확정되지 않은 project delete는 V1 public API에서 제외한다.
@@ -164,6 +166,15 @@ GET /api/scenario-templates/{templateId}
 GET /api/scenario-templates/{templateId}/versions/{versionId}
 ```
 
+### Discoveries
+
+```text
+POST   /api/discoveries
+GET    /api/discoveries/{discoveryId}
+```
+
+Discovery는 URL-first Preflight를 시작하고 추천 시나리오를 조회하는 공개 API다. Discovery 결과의 최종 source of truth는 Spring DB다.
+
 ### Runs
 
 ```text
@@ -181,6 +192,8 @@ GET    /api/runs/{runId}/artifacts
 GET    /api/runs/{runId}/signals
 GET    /api/runs/{runId}/evidence-packet
 ```
+
+`POST /api/runs` request는 `sourceDiscoveryId`를 선택적으로 받을 수 있다. Run response는 `sourceDiscoveryId`, `scenarioFitStatus`, `scenarioFitReason`, `scenarioFitSummary`를 포함한다.
 
 `/api/runs/{runId}/signals`는 `rule_hit` raw table이 아니라 user-facing issue signal projection이다. 저장 기준은 `analysis_finding`/`nudge`와 EvidencePacket references다.
 
@@ -204,6 +217,86 @@ POST /api/reports/{reportId}/shares
 
 ## 7. 주요 request 예시
 
+### Discovery 생성
+
+```http
+POST /api/discoveries
+Idempotency-Key: idem_create_discovery_001
+```
+
+```json
+{
+  "projectId": "uuid",
+  "url": "https://example.com",
+  "devicePreset": "desktop",
+  "viewport": {
+    "width": 1440,
+    "height": 900
+  }
+}
+```
+
+Response:
+
+```json
+{
+  "data": {
+    "discoveryId": "uuid",
+    "status": "QUEUED"
+  },
+  "meta": {
+    "requestId": "req_..."
+  }
+}
+```
+
+### Discovery 결과 조회
+
+```http
+GET /api/discoveries/{discoveryId}
+```
+
+Response:
+
+```json
+{
+  "data": {
+    "discoveryId": "uuid",
+    "status": "COMPLETED",
+    "inputUrl": "https://example.com",
+    "finalUrl": "https://example.com",
+    "summary": {
+      "detectedFlowTypes": ["LANDING_CTA", "SIGNUP_LEAD_FORM"],
+      "missingFlowTypes": ["PURCHASE_CHECKOUT"],
+      "primaryCtaCount": 2,
+      "formCandidateCount": 1,
+      "pricingEntrypointCount": 0,
+      "checkoutEntrypointCount": 0
+    },
+    "scenarioRecommendations": [
+      {
+        "scenarioType": "LANDING_CTA",
+        "recommendationLevel": "HIGH",
+        "confidence": 0.86,
+        "reason": "첫 화면에서 '무료로 시작' CTA가 발견되었습니다.",
+        "evidenceRefs": ["cp_001.obs_002"],
+        "suggestedStartUrl": "https://example.com"
+      },
+      {
+        "scenarioType": "PURCHASE_CHECKOUT",
+        "recommendationLevel": "LOW",
+        "confidence": 0.22,
+        "reason": "가격, 장바구니, 결제 진입점이 발견되지 않았습니다.",
+        "evidenceRefs": ["cp_001.obs_008"]
+      }
+    ]
+  },
+  "meta": {
+    "requestId": "req_..."
+  }
+}
+```
+
 ### Run 생성
 
 ```http
@@ -214,6 +307,7 @@ Idempotency-Key: idem_create_run_001
 ```json
 {
   "projectId": "uuid",
+  "sourceDiscoveryId": "uuid",
   "name": "Landing CTA audit",
   "startUrl": "https://example.com",
   "scenarioTemplateVersionId": "uuid",
@@ -272,11 +366,22 @@ Response:
 }
 ```
 
+### Scenario fit UX policy
+
+- Discovery recommendationLevel이 LOW여도 사용자는 강제로 실행할 수 있다.
+- 단, Run 시작 시 scenario fit check를 다시 수행한다.
+- fit check 실패 시 `FAILED`가 아니라 `scenarioFitStatus=NOT_APPLICABLE`과 mismatch report로 응답한다.
+
 ## 8. Internal callback API
 
 Internal callback은 public API가 아니다.
 
 ```text
+POST /internal/runner/discoveries/{discoveryId}/accepted
+POST /internal/runner/discoveries/{discoveryId}/checkpoints
+POST /internal/runner/discoveries/{discoveryId}/finished
+POST /internal/runner/discoveries/{discoveryId}/failed
+
 POST /internal/runner/runs/{runId}/accepted
 POST /internal/runner/runs/{runId}/step-events
 POST /internal/runner/runs/{runId}/checkpoints
@@ -287,6 +392,8 @@ POST /internal/runner/runs/{runId}/failed
 POST /internal/analysis/jobs/{analysisJobId}/completed
 POST /internal/analysis/jobs/{analysisJobId}/failed
 ```
+
+### Discovery checkpoint callback uses the same `X-Event-Id`, `X-Worker-Id`, `X-Signature` headers and the same checkpoint/artifact/observation shape as run checkpoint callbacks. Discovery finished callbacks additionally include `finalUrl` and recommendation raw `summary`.
 
 ### Checkpoint callback
 
@@ -341,6 +448,8 @@ Queues:
 
 ```text
 run.execute.request        # payload: scenarioTemplateVersionId + scenarioPlan
+discovery.execute.request  # payload: discoveryId + url + devicePreset + viewport + maxDurationMs + maxScrollCount
+discovery.evaluate.request # payload: discoveryId + evidencePacketRef
 analysis.request           # payload: evidencePacketId + analysisType(PRIMARY/REPROCESS/COMPARE)
 report.export.request      # payload: format(PDF/MARKDOWN/HTML/JSON)
 run.execute.dlq
@@ -374,6 +483,9 @@ Canonical event names:
 run_status_changed
 step_started
 step_finished
+discovery_status_changed
+discovery_checkpoint_created
+scenario_recommendations_ready
 checkpoint_created
 latest_frame_available
 issue_signal_detected
@@ -407,6 +519,9 @@ list_reports
 V1 선택 execute/export tool. client policy와 OAuth scope가 허용할 때만 활성화한다.
 
 ```text
+discover_site
+get_discovery_result
+create_run_from_discovery
 create_run
 start_run
 stop_run

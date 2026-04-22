@@ -80,8 +80,36 @@
         "value": "test+wedge@example.com"
       },
       "settle_strategy": {
-        "type": "fixed_short",
-        "timeout_ms": 500
+        "type": "response",
+        "timeout_ms": 2000,
+        "url_includes": "/api/signup/validate-email",
+        "method": "POST",
+        "status": 200
+      },
+      "checkpoint": true
+    },
+    {
+      "step_id": "step_004_expand_benefits",
+      "stage": "VALUE",
+      "description": "혜택 목록 확장 후 항목 수 증가 확인",
+      "action": {
+        "type": "click",
+        "target": {
+          "role": "button",
+          "text_any": [
+            "혜택 보기",
+            "See benefits"
+          ]
+        }
+      },
+      "settle_strategy": {
+        "type": "item_count_change",
+        "timeout_ms": 2000,
+        "target": {
+          "selector": "#signup-benefits li"
+        },
+        "expected_count": 3,
+        "count_delta": 2
       },
       "checkpoint": true
     }
