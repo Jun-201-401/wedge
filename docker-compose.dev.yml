@@ -18,6 +18,20 @@ services:
       timeout: 5s
       retries: 5
 
+  redis:
+    image: redis:8.6.2
+    container_name: wedge-redis-dev
+    command: ["redis-server", "--save", "60", "1", "--loglevel", "warning"]
+    ports:
+      - "127.0.0.1:${REDIS_PORT}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   rabbitmq:
     image: rabbitmq:4.2-management
     container_name: wedge-rabbitmq-dev
@@ -70,5 +84,6 @@ services:
 
 volumes:
   postgres_data:
+  redis_data:
   rabbitmq_data:
   minio_data:
