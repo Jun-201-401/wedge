@@ -1,0 +1,159 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.wedge.run.infrastructure.RunMapper">
+    <resultMap id="RunRecordResultMap" type="com.wedge.run.infrastructure.RunRecord">
+        <id property="id" column="id"/>
+        <result property="projectId" column="project_id"/>
+        <result property="name" column="name"/>
+        <result property="triggerSource" column="trigger_source"/>
+        <result property="startUrl" column="start_url"/>
+        <result property="goal" column="goal"/>
+        <result property="devicePreset" column="device_preset"/>
+        <result property="environmentJson" column="environment_jsonb"/>
+        <result property="scenarioTemplateVersionId" column="scenario_template_version_id"/>
+        <result property="scenarioPlanSchemaVersion" column="scenario_plan_schema_version"/>
+        <result property="scenarioPlanJson" column="scenario_plan_jsonb"/>
+        <result property="status" column="status"/>
+        <result property="resultCompleteness" column="result_completeness"/>
+        <result property="analysisStatus" column="analysis_status"/>
+        <result property="currentStepOrder" column="current_step_order"/>
+        <result property="startedAt" column="started_at"/>
+        <result property="finishedAt" column="finished_at"/>
+        <result property="failureCode" column="failure_code"/>
+        <result property="failureMessage" column="failure_message"/>
+        <result property="createdBy" column="created_by"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+        <result property="deletedAt" column="deleted_at"/>
+        <result property="version" column="version"/>
+    </resultMap>
+
+    <sql id="RunColumns">
+        id,
+        project_id,
+        name,
+        trigger_source,
+        start_url,
+        goal,
+        device_preset,
+        CAST(environment_jsonb AS TEXT) AS environment_jsonb,
+        scenario_template_version_id,
+        scenario_plan_schema_version,
+        CAST(scenario_plan_jsonb AS TEXT) AS scenario_plan_jsonb,
+        status,
+        result_completeness,
+        analysis_status,
+        current_step_order,
+        started_at,
+        finished_at,
+        failure_code,
+        failure_message,
+        created_by,
+        created_at,
+        updated_at,
+        deleted_at,
+        version
+    </sql>
+
+    <select id="findAll" resultMap="RunRecordResultMap">
+        SELECT <include refid="RunColumns"/>
+        FROM test_run
+        WHERE deleted_at IS NULL
+        <if test="projectId != null">
+            AND project_id = #{projectId}
+        </if>
+        <if test="status != null">
+            AND status = #{status}
+        </if>
+        ORDER BY created_at DESC, name ASC
+    </select>
+
+    <select id="findById" resultMap="RunRecordResultMap">
+        SELECT <include refid="RunColumns"/>
+        FROM test_run
+        WHERE id = #{runId}
+          AND deleted_at IS NULL
+    </select>
+
+    <insert id="insert" parameterType="com.wedge.run.infrastructure.RunRecord">
+        INSERT INTO test_run (
+            id,
+            project_id,
+            name,
+            trigger_source,
+            start_url,
+            goal,
+            device_preset,
+            environment_jsonb,
+            scenario_template_version_id,
+            scenario_plan_schema_version,
+            scenario_plan_jsonb,
+            status,
+            result_completeness,
+            analysis_status,
+            current_step_order,
+            started_at,
+            finished_at,
+            failure_code,
+            failure_message,
+            created_by
+        ) VALUES (
+            #{id},
+            #{projectId},
+            #{name},
+            #{triggerSource},
+            #{startUrl},
+            #{goal},
+            #{devicePreset},
+            CAST(#{environmentJson} AS jsonb),
+            #{scenarioTemplateVersionId},
+            #{scenarioPlanSchemaVersion},
+            CAST(#{scenarioPlanJson} AS jsonb),
+            #{status},
+            #{resultCompleteness},
+            #{analysisStatus},
+            #{currentStepOrder},
+            #{startedAt},
+            #{finishedAt},
+            #{failureCode},
+            #{failureMessage},
+            #{createdBy}
+        )
+    </insert>
+
+    <update id="updateExecutionState">
+        UPDATE test_run
+        SET status = #{nextStatus},
+            result_completeness = #{resultCompleteness},
+            started_at = #{startedAt},
+            finished_at = #{finishedAt},
+            updated_at = NOW(),
+            version = version + 1
+        WHERE id = #{runId}
+          AND status = #{expectedStatus}
+          AND deleted_at IS NULL
+    </update>
+
+    <update id="updateFailureState">
+        UPDATE test_run
+        SET status = 'FAILED',
+            result_completeness = #{resultCompleteness},
+            finished_at = #{finishedAt},
+            failure_code = #{failureCode},
+            failure_message = #{failureMessage},
+            updated_at = NOW(),
+            version = version + 1
+        WHERE id = #{runId}
+          AND status = #{expectedStatus}
+          AND deleted_at IS NULL
+    </update>
+
+    <update id="softDelete">
+        UPDATE test_run
+        SET deleted_at = NOW(),
+            updated_at = NOW(),
+            version = version + 1
+        WHERE id = #{runId}
+          AND deleted_at IS NULL
+    </update>
+</mapper>
