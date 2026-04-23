@@ -11,11 +11,23 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 @Service
 public class RunService {
     private final Map<UUID, RunResponse> runs = new ConcurrentHashMap<>();
+    private final RunRequestPublisher runRequestPublisher;
+    private final RunExecuteRequestMessageFactory runExecuteRequestMessageFactory;
+
+    @Autowired
+    public RunService(
+            RunRequestPublisher runRequestPublisher,
+            RunExecuteRequestMessageFactory runExecuteRequestMessageFactory
+    ) {
+        this.runRequestPublisher = runRequestPublisher;
+        this.runExecuteRequestMessageFactory = runExecuteRequestMessageFactory;
+    }
 
     public List<RunResponse> listRuns(UUID projectId, RunStatus status) {
         return runs.values().stream()
@@ -46,7 +58,13 @@ public class RunService {
     }
 
     public RunResponse startRun(UUID runId) {
-        return transition(runId, RunStatus.QUEUED, ResultCompleteness.NONE);
+        RunResponse current = getRun(runId);
+        RunStatusTransitionPolicy.validateTransition(current.status(), RunStatus.QUEUED);
+
+        RunResponse queued = current.withExecutionState(RunStatus.QUEUED, ResultCompleteness.NONE);
+        runRequestPublisher.publish(runExecuteRequestMessageFactory.create(queued));
+        runs.put(runId, queued);
+        return queued;
     }
 
     public RunResponse markAccepted(UUID runId) {

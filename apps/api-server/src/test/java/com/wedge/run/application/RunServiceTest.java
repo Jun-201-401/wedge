@@ -9,14 +9,18 @@ import com.wedge.run.api.dto.RunResponse;
 import com.wedge.run.domain.ResultCompleteness;
 import com.wedge.run.domain.RunStatus;
 import java.net.URI;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
 class RunServiceTest {
-    private final RunService runService = new RunService();
-
     @Test
     void createdRunCanBeRetrievedAndStarted() {
+        AtomicReference<RunExecuteRequestMessage> publishedMessage = new AtomicReference<>();
+        RunService runService = new RunService(
+                publishedMessage::set,
+                new RunExecuteRequestMessageFactory()
+        );
         RunResponse created = runService.createRun(sampleRequest());
 
         assertThat(runService.getRun(created.id()).status()).isEqualTo(RunStatus.CREATED);
@@ -25,10 +29,14 @@ class RunServiceTest {
 
         assertThat(queued.status()).isEqualTo(RunStatus.QUEUED);
         assertThat(queued.resultCompleteness()).isEqualTo(ResultCompleteness.NONE);
+        assertThat(publishedMessage.get()).isNotNull();
+        assertThat(publishedMessage.get().messageType()).isEqualTo("run.execute.request");
+        assertThat(publishedMessage.get().payload().get("runId")).isEqualTo(created.id().toString());
     }
 
     @Test
     void missingRunRaisesNotFoundBusinessException() {
+        RunService runService = new RunService(message -> {}, new RunExecuteRequestMessageFactory());
         assertThatThrownBy(() -> runService.getRun(UUID.randomUUID()))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("Run was not found.");
@@ -36,11 +44,28 @@ class RunServiceTest {
 
     @Test
     void invalidTransitionRaisesStateConflict() {
+        RunService runService = new RunService(message -> {}, new RunExecuteRequestMessageFactory());
         RunResponse created = runService.createRun(sampleRequest());
 
         assertThatThrownBy(() -> runService.finishRun(created.id(), false))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("CREATED -> COMPLETED");
+    }
+
+    @Test
+    void publishFailureDoesNotLeaveRunQueued() {
+        RunService runService = new RunService(
+                message -> {
+                    throw new IllegalStateException("mq unavailable");
+                },
+                new RunExecuteRequestMessageFactory()
+        );
+        RunResponse created = runService.createRun(sampleRequest());
+
+        assertThatThrownBy(() -> runService.startRun(created.id()))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("mq unavailable");
+        assertThat(runService.getRun(created.id()).status()).isEqualTo(RunStatus.CREATED);
     }
 
     private RunCreateRequest sampleRequest() {
