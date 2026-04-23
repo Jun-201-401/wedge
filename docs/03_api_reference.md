@@ -5,6 +5,13 @@
 이 문서는 Wedge의 API와 transport 계약을 사람과 AI agent가 이해할 수 있게 설명한다.  
 Machine-readable REST 계약은 `packages/contracts/openapi/wedge_openapi.yaml`을 기준으로 한다.
 
+## 1.1 읽는 법
+
+- 공통 응답/에러 형식은 `4. 공통 response 형식`을 먼저 확인한다.
+- 실제 public endpoint 목록은 `6. Public REST endpoint matrix`를 기준으로 본다.
+- Runner/Analyzer callback은 `8. Internal callback API`를 기준으로 본다.
+- Machine-readable 계약은 `packages/contracts/openapi/wedge_openapi.yaml`을 최종 기준으로 둔다.
+
 ## 2. Base path
 
 | Area | Base Path | Purpose |
@@ -82,6 +89,8 @@ Rules:
 
 ### Error response
 
+Generic resource or state errors use a stable `error.code` and may include resource-specific context in `details`.
+
 ```json
 {
   "error": {
@@ -91,6 +100,36 @@ Rules:
       "runId": "uuid",
       "currentStatus": "RUNNING"
     }
+  },
+  "meta": {
+    "requestId": "req_...",
+    "correlationId": "corr_..."
+  }
+}
+```
+
+### Unauthorized error response
+
+```json
+{
+  "error": {
+    "code": "unauthorized",
+    "message": "Authentication is required."
+  },
+  "meta": {
+    "requestId": "req_...",
+    "correlationId": "corr_..."
+  }
+}
+```
+
+### Forbidden error response
+
+```json
+{
+  "error": {
+    "code": "forbidden",
+    "message": "Permission is denied."
   },
   "meta": {
     "requestId": "req_...",
@@ -131,7 +170,9 @@ Rules:
 | 429 | `rate_limited` | too many requests |
 | 500 | `internal_error` | server error |
 
-Discovery/scenario-fit error codes are also stable branch codes: `DISCOVERY_NOT_FOUND`, `DISCOVERY_EXPIRED`, `DISCOVERY_FAILED`, `SCENARIO_NOT_APPLICABLE`, `SCENARIO_FIT_LOW_CONFIDENCE`, `NO_ENTRYPOINT_FOUND`, `UNSAFE_SCENARIO_ACTION`.
+Domain-specific error codes should still use stable `snake_case` values. Discovery/scenario-fit candidate codes include `discovery_not_found`, `discovery_expired`, `discovery_failed`, `scenario_not_applicable`, `scenario_fit_low_confidence`, `no_entrypoint_found`, and `unsafe_scenario_action`.
+
+Report/artifact candidate codes are deferred until the relevant API/service implementation exists. Expected first candidates are `report_not_found`, `artifact_not_found`, `report_not_ready`, `report_archived`, `report_share_expired`, and `report_share_revoked`.
 
 ## 6. Public REST endpoint matrix
 
