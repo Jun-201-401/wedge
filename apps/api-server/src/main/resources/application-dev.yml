@@ -11,10 +11,18 @@ spring:
     redis:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USER:guest}
+    password: ${RABBITMQ_PASSWORD:guest}
 
 jwt:
   secret: ${JWT_SECRET:wedge-local-dev-jwt-secret-change-me-32-characters-minimum}
 
 wedge:
+  runner:
+    mq:
+      run-execute-queue: ${WEDGE_RUN_EXECUTE_QUEUE:run.execute.request}
   internal:
     service-token: ${INTERNAL_SERVICE_TOKEN:wedge-local-dev-internal-service-token}
