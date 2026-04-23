@@ -436,6 +436,83 @@ POST /internal/analysis/jobs/{analysisJobId}/failed
 
 ### Discovery checkpoint callback uses the same `X-Event-Id`, `X-Worker-Id`, `X-Signature` headers and the same checkpoint/artifact/observation shape as run checkpoint callbacks. Discovery finished callbacks additionally include `finalUrl` and recommendation raw `summary`.
 
+### Runner callback payload examples
+
+The examples below show the run callback payloads sent from Runner to Spring. The machine-readable source of truth is `packages/contracts/internal/runner-callback.schema.json`.
+
+#### Accepted callback
+
+```http
+POST /internal/runner/runs/{runId}/accepted
+X-Event-Id: evt_runner_accepted_001
+X-Worker-Id: runner_001
+X-Signature: hmac-sha256=...
+```
+
+```json
+{
+  "workerId": "runner_001",
+  "acceptedAt": "2026-04-23T01:00:00Z",
+  "browserSessionId": "browser_session_001"
+}
+```
+
+#### Step event callback
+
+```http
+POST /internal/runner/runs/{runId}/step-events
+X-Event-Id: evt_step_batch_001
+X-Worker-Id: runner_001
+X-Signature: hmac-sha256=...
+```
+
+```json
+{
+  "events": [
+    {
+      "eventId": "9c6b0f8a-2e7b-4c4d-8e25-b6cc8f82c6c4",
+      "stepOrder": 1,
+      "stepKey": "step_001_goto",
+      "eventType": "STEP_STARTED",
+      "occurredAt": "2026-04-23T01:00:01Z",
+      "payload": {
+        "actionType": "goto",
+        "target": "https://example.com"
+      }
+    }
+  ]
+}
+```
+
+#### Artifact callback
+
+```http
+POST /internal/runner/runs/{runId}/artifacts
+X-Event-Id: evt_artifact_batch_001
+X-Worker-Id: runner_001
+X-Signature: hmac-sha256=...
+```
+
+```json
+{
+  "artifacts": [
+    {
+      "artifactId": "6c0e01a0-32c6-45fd-a73d-bd7dfdf5ac6b",
+      "stepKey": "step_001_goto",
+      "artifactType": "SCREENSHOT",
+      "bucket": "wedge-artifacts",
+      "key": "run_001/step_001_goto/screenshot.png",
+      "mimeType": "image/png",
+      "width": 1440,
+      "height": 900,
+      "sizeBytes": 128304,
+      "sha256": "b3f4c9d9c4f4b21c2f0f8e2d0f1e9d0b1c2a3f4e5d6c7b8a9f0e1d2c3b4a5968",
+      "createdAt": "2026-04-23T01:00:03Z"
+    }
+  ]
+}
+```
+
 ### Checkpoint callback
 
 Runner는 checkpoint batch를 Spring에 전달한다. Internal runner callback은 안정적인 ScenarioPlan `step_id`를 `stepKey`로 사용하고, Spring은 이 값을 DB UUID인 `test_run_step.id`로 해석한다.
@@ -462,6 +539,46 @@ X-Signature: hmac-sha256=...
       "artifactRefs": []
     }
   ]
+}
+```
+
+#### Finished callback
+
+```http
+POST /internal/runner/runs/{runId}/finished
+X-Event-Id: evt_runner_finished_001
+X-Worker-Id: runner_001
+X-Signature: hmac-sha256=...
+```
+
+```json
+{
+  "workerId": "runner_001",
+  "executionFinishedAt": "2026-04-23T01:01:00Z",
+  "summary": {
+    "completedStepCount": 3,
+    "failedStepCount": 0,
+    "stopped": false
+  }
+}
+```
+
+#### Failed callback
+
+```http
+POST /internal/runner/runs/{runId}/failed
+X-Event-Id: evt_runner_failed_001
+X-Worker-Id: runner_001
+X-Signature: hmac-sha256=...
+```
+
+```json
+{
+  "workerId": "runner_001",
+  "failedAt": "2026-04-23T01:01:00Z",
+  "failureCode": "RUNNER_EXECUTION_FAILED",
+  "failureMessage": "Navigation timed out after 30000ms.",
+  "resultCompleteness": "PARTIAL"
 }
 ```
 
