@@ -8,8 +8,6 @@ import com.wedge.internal.runner.dto.RunnerCheckpointsRequest;
 import com.wedge.internal.runner.dto.RunnerFailedRequest;
 import com.wedge.internal.runner.dto.RunnerFinishedRequest;
 import com.wedge.internal.runner.dto.RunnerStepEventsRequest;
-import com.wedge.run.api.dto.RunResponse;
-import com.wedge.run.application.RunService;
 import jakarta.validation.Valid;
 import java.util.Map;
 import java.util.UUID;
@@ -24,10 +22,10 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/internal/runner/runs/{runId}")
 public class RunnerCallbackController {
-    private final RunService runService;
+    private final RunnerCallbackService runnerCallbackService;
 
-    public RunnerCallbackController(RunService runService) {
-        this.runService = runService;
+    public RunnerCallbackController(RunnerCallbackService runnerCallbackService) {
+        this.runnerCallbackService = runnerCallbackService;
     }
 
     @PostMapping("/accepted")
@@ -38,9 +36,7 @@ public class RunnerCallbackController {
             @RequestHeader("X-Event-Id") String eventId,
             @RequestHeader("X-Signature") String signature
     ) {
-        callbackHeaders(workerId, eventId, signature).validateWorkerMatches(request.workerId());
-        RunResponse run = runService.markAccepted(runId);
-        return ApiResponse.ok(Map.of("runId", run.id(), "status", run.status()));
+        return ApiResponse.ok(runnerCallbackService.handleAccepted(runId, request, callbackHeaders(workerId, eventId, signature)));
     }
 
     @PostMapping("/step-events")
@@ -51,8 +47,7 @@ public class RunnerCallbackController {
             @RequestHeader("X-Event-Id") String eventId,
             @RequestHeader("X-Signature") String signature
     ) {
-        RunResponse run = runService.markRunningIfStarting(runId);
-        return ApiResponse.ok(Map.of("runId", run.id(), "status", run.status(), "eventCount", request.events().size()));
+        return ApiResponse.ok(runnerCallbackService.handleStepEvents(runId, request, callbackHeaders(workerId, eventId, signature)));
     }
 
     @PostMapping("/checkpoints")
@@ -63,8 +58,7 @@ public class RunnerCallbackController {
             @RequestHeader("X-Event-Id") String eventId,
             @RequestHeader("X-Signature") String signature
     ) {
-        runService.getRun(runId);
-        return ApiResponse.accepted(Map.of("runId", runId, "checkpointCount", request.checkpoints().size()));
+        return ApiResponse.accepted(runnerCallbackService.handleCheckpoints(runId, request, callbackHeaders(workerId, eventId, signature)));
     }
 
     @PostMapping("/artifacts")
@@ -75,8 +69,7 @@ public class RunnerCallbackController {
             @RequestHeader("X-Event-Id") String eventId,
             @RequestHeader("X-Signature") String signature
     ) {
-        runService.getRun(runId);
-        return ApiResponse.ok(Map.of("runId", runId, "artifactCount", request.artifacts().size()));
+        return ApiResponse.ok(runnerCallbackService.handleArtifacts(runId, request, callbackHeaders(workerId, eventId, signature)));
     }
 
     @PostMapping("/finished")
@@ -87,9 +80,7 @@ public class RunnerCallbackController {
             @RequestHeader("X-Event-Id") String eventId,
             @RequestHeader("X-Signature") String signature
     ) {
-        callbackHeaders(workerId, eventId, signature).validateWorkerMatches(request.workerId());
-        RunResponse run = runService.finishRun(runId, request.summary().stopped());
-        return ApiResponse.ok(Map.of("runId", run.id(), "status", run.status(), "resultCompleteness", run.resultCompleteness()));
+        return ApiResponse.ok(runnerCallbackService.handleFinished(runId, request, callbackHeaders(workerId, eventId, signature)));
     }
 
     @PostMapping("/failed")
@@ -100,9 +91,7 @@ public class RunnerCallbackController {
             @RequestHeader("X-Event-Id") String eventId,
             @RequestHeader("X-Signature") String signature
     ) {
-        callbackHeaders(workerId, eventId, signature).validateWorkerMatches(request.workerId());
-        RunResponse run = runService.failRun(runId, request.failureCode(), request.failureMessage(), request.resultCompleteness());
-        return ApiResponse.ok(Map.of("runId", run.id(), "status", run.status(), "resultCompleteness", run.resultCompleteness()));
+        return ApiResponse.ok(runnerCallbackService.handleFailed(runId, request, callbackHeaders(workerId, eventId, signature)));
     }
 
     private RunnerCallbackHeaders callbackHeaders(String workerId, String eventId, String signature) {
