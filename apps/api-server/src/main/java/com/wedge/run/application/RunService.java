@@ -6,18 +6,26 @@ import com.wedge.run.api.dto.RunCreateRequest;
 import com.wedge.run.api.dto.RunResponse;
 import com.wedge.run.domain.ResultCompleteness;
 import com.wedge.run.domain.RunStatus;
+import com.wedge.run.infrastructure.RunPersistenceAdapter;
 import java.util.List;
 import java.util.UUID;
-import com.wedge.run.infrastructure.RunPersistenceAdapter;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class RunService {
     private final RunPersistenceAdapter runPersistenceAdapter;
+    private final RunRequestPublisher runRequestPublisher;
+    private final RunExecuteRequestMessageFactory runExecuteRequestMessageFactory;
 
-    public RunService(RunPersistenceAdapter runPersistenceAdapter) {
+    public RunService(
+            RunPersistenceAdapter runPersistenceAdapter,
+            RunRequestPublisher runRequestPublisher,
+            RunExecuteRequestMessageFactory runExecuteRequestMessageFactory
+    ) {
         this.runPersistenceAdapter = runPersistenceAdapter;
+        this.runRequestPublisher = runRequestPublisher;
+        this.runExecuteRequestMessageFactory = runExecuteRequestMessageFactory;
     }
 
     @Transactional(readOnly = true)
@@ -45,7 +53,12 @@ public class RunService {
 
     @Transactional
     public RunResponse startRun(UUID runId) {
-        return transition(runId, RunStatus.QUEUED, ResultCompleteness.NONE);
+        RunResponse current = getRun(runId);
+        RunStatusTransitionPolicy.validateTransition(current.status(), RunStatus.QUEUED);
+
+        RunResponse queued = runPersistenceAdapter.updateExecutionState(current, RunStatus.QUEUED, ResultCompleteness.NONE);
+        runRequestPublisher.publish(runExecuteRequestMessageFactory.create(queued));
+        return queued;
     }
 
     @Transactional
