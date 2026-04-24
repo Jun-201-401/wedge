@@ -143,6 +143,74 @@ class RunServiceTest {
         verify(outboxMessagePersistenceAdapter, never()).appendRunExecuteMessage(any());
     }
 
+    @Test
+    void createRunRejectsMissingScenarioPlan() {
+        RunCreateRequest request = new RunCreateRequest(
+                UUID.randomUUID(),
+                "Landing CTA audit",
+                URI.create("https://example.com"),
+                "무료 체험 CTA까지의 흐름 점검",
+                "desktop",
+                UUID.randomUUID(),
+                null,
+                Map.of()
+        );
+
+        assertThatThrownBy(() -> runService.createRun(request))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("scenarioPlan is required.");
+    }
+
+    @Test
+    void createRunRejectsScenarioPlanWithMismatchedStartUrl() {
+        RunCreateRequest request = new RunCreateRequest(
+                UUID.randomUUID(),
+                "Landing CTA audit",
+                URI.create("https://example.com"),
+                "무료 체험 CTA까지의 흐름 점검",
+                "desktop",
+                UUID.randomUUID(),
+                null,
+                Map.of(
+                        "schema_version", "0.5",
+                        "plan_id", "plan_001",
+                        "scenario_type", "custom_compiled",
+                        "start_url", "https://other.example.com",
+                        "environment", Map.of("device", "desktop"),
+                        "steps", List.of(Map.of("step_id", "step_001"))
+                )
+        );
+
+        assertThatThrownBy(() -> runService.createRun(request))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("scenarioPlan.start_url must match startUrl.");
+    }
+
+    @Test
+    void createRunRejectsScenarioPlanWithMismatchedDevicePreset() {
+        RunCreateRequest request = new RunCreateRequest(
+                UUID.randomUUID(),
+                "Landing CTA audit",
+                URI.create("https://example.com"),
+                "무료 체험 CTA까지의 흐름 점검",
+                "desktop",
+                UUID.randomUUID(),
+                null,
+                Map.of(
+                        "schema_version", "0.5",
+                        "plan_id", "plan_001",
+                        "scenario_type", "custom_compiled",
+                        "start_url", "https://example.com",
+                        "environment", Map.of("device", "mobile"),
+                        "steps", List.of(Map.of("step_id", "step_001"))
+                )
+        );
+
+        assertThatThrownBy(() -> runService.createRun(request))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("scenarioPlan.environment.device must match devicePreset.");
+    }
+
     private RunCreateRequest sampleRequest() {
         return new RunCreateRequest(
                 UUID.randomUUID(),

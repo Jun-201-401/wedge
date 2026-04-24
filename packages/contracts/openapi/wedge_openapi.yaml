@@ -2332,6 +2332,7 @@ components:
       - startUrl
       - devicePreset
       - scenarioTemplateVersionId
+      - scenarioPlan
       - status
       - resultCompleteness
       - analysisStatus
