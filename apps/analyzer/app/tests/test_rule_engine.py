@@ -5,8 +5,15 @@ import json
 import unittest
 from pathlib import Path
 
+from app.contracts import semantic_enum, semantic_label_keys, semantic_response_properties, semantic_schema_version, semantic_task_type, semantic_task_types
 from app.normalization import SemanticLabelResolver
 from app.providers import (
+    ACTION_SPECIFICITY_LABELS,
+    PAGE_TYPE_LABELS,
+    PROVIDER_TYPES,
+    SCENARIO_RELEVANCE_LABELS,
+    SEMANTIC_CLASSIFICATION_SCHEMA_VERSION,
+    SEMANTIC_TASK_TYPE_CTA,
     DeterministicLexiconProvider,
     FastPathLexiconProvider,
     InternalLLMProvider,
@@ -25,6 +32,9 @@ from app.stage import StageContextBuilder, StageResolver
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
 SAMPLE_EVIDENCE_PATH = REPO_ROOT / "packages/contracts/examples/sample-evidence-packet.json"
+SEMANTIC_SCHEMA_PATH = REPO_ROOT / "packages/contracts/schemas/semantic-classification.schema.json"
+SEMANTIC_REQUEST_EXAMPLE_PATH = REPO_ROOT / "packages/contracts/examples/sample-semantic-classification-request.json"
+SEMANTIC_RESPONSE_EXAMPLE_PATH = REPO_ROOT / "packages/contracts/examples/sample-semantic-classification-response.json"
 RULE_ENGINE_FIXTURE_ROOT = Path(__file__).resolve().parent / "fixtures/rule_engine"
 
 
@@ -136,6 +146,36 @@ class RegistryLoaderTest(unittest.TestCase):
         broken["rules"][0]["severity_rules"] = [{"severity": False, "condition": "bad"}]
         with self.assertRaises(RuleRegistryError):
             validate_registry(broken)
+
+
+class SemanticClassificationContractTest(unittest.TestCase):
+    def test_semantic_contract_schema_examples_have_expected_shape(self) -> None:
+        schema = json.loads(SEMANTIC_SCHEMA_PATH.read_text(encoding="utf-8"))
+        request = json.loads(SEMANTIC_REQUEST_EXAMPLE_PATH.read_text(encoding="utf-8"))
+        response = json.loads(SEMANTIC_RESPONSE_EXAMPLE_PATH.read_text(encoding="utf-8"))
+
+        self.assertEqual(schema["$defs"]["schema_version"]["const"], "0.1")
+        self.assertEqual(request["schema_version"], schema["$defs"]["schema_version"]["const"])
+        self.assertEqual(response["schema_version"], schema["$defs"]["schema_version"]["const"])
+        self.assertEqual(request["task_type"], semantic_task_type())
+        self.assertEqual(response["task_type"], semantic_task_type())
+        self.assertEqual(semantic_task_types(), {"CTA_SEMANTIC_CLASSIFICATION"})
+        self.assertIn("context", schema["$defs"]["request"]["properties"]["input"]["properties"])
+        self.assertEqual(set(response["labels"]), {"scenario_relevance_label", "action_specificity_label", "page_type_label"})
+        self.assertNotIn("stage", schema["$defs"]["response"]["properties"])
+        self.assertNotIn("severity", schema["$defs"]["response"]["properties"])
+        self.assertNotIn("priority_score", schema["$defs"]["response"]["properties"])
+        self.assertNotIn("evidence_refs", schema["$defs"]["response"]["properties"])
+
+    def test_analyzer_semantic_vocabularies_follow_contract_schema(self) -> None:
+        self.assertEqual(SEMANTIC_CLASSIFICATION_SCHEMA_VERSION, semantic_schema_version())
+        self.assertEqual(SEMANTIC_TASK_TYPE_CTA, semantic_task_type())
+        self.assertEqual(SCENARIO_RELEVANCE_LABELS, semantic_enum("scenario_relevance_label"))
+        self.assertEqual(ACTION_SPECIFICITY_LABELS, semantic_enum("action_specificity_label"))
+        self.assertEqual(PAGE_TYPE_LABELS, semantic_enum("page_type_label"))
+        self.assertEqual(PROVIDER_TYPES, semantic_enum("provider_type"))
+        self.assertEqual(semantic_label_keys(), {"scenario_relevance_label", "action_specificity_label", "page_type_label"})
+        self.assertTrue({"schema_version", "task_type", "target_observation_ref", "provider", "labels", "confidence"}.issubset(semantic_response_properties()))
 
 
 class RuleEngineTest(unittest.TestCase):
@@ -357,7 +397,13 @@ class ScoringAndProviderTest(unittest.TestCase):
             target_ref="cp_001.obs_002",
         )
         data = result.as_observation_data()
+        self.assertEqual(set(data), semantic_response_properties() - {"provider_error"})
+        self.assertEqual(data["schema_version"], semantic_schema_version())
+        self.assertEqual(data["task_type"], SEMANTIC_TASK_TYPE_CTA)
+        self.assertEqual(data["provider"]["type"], "deterministic")
         self.assertEqual(data["labels"]["scenario_relevance_label"], "DIRECT_GOAL_ACTION")
+        self.assertNotIn("provider_type", data)
+        self.assertNotIn("provider_name", data)
         self.assertNotIn("severity", data)
         self.assertNotIn("priority_score", data)
 
@@ -448,7 +494,7 @@ class ScoringAndProviderTest(unittest.TestCase):
         )
 
         self.assertEqual(len(fallback.calls), 1)
-        self.assertEqual(result.provider_type, "internal_llm")
+        self.assertEqual(result.provider_type, "mock")
         self.assertEqual(result.labels["scenario_relevance_label"], "DIRECT_GOAL_ACTION")
         self.assertEqual(result.labels["action_specificity_label"], "GENERIC_BUT_ACTIONABLE")
 
@@ -456,7 +502,9 @@ class ScoringAndProviderTest(unittest.TestCase):
         sanitized = sanitize_semantic_label_result(
             {
                 "target_observation_ref": "evil.other",
+                "provider": {"type": "mcp", "name": "raw provider should not be trusted"},
                 "provider_type": "internal_llm",
+                "provider_name": "raw_provider_name_should_not_be_trusted",
                 "labels": {
                     "scenario_relevance_label": "DIRECT_GOAL_ACTION",
                     "action_specificity_label": "SPECIFIC_ACTION",
@@ -471,11 +519,14 @@ class ScoringAndProviderTest(unittest.TestCase):
                 "evidence_refs": ["evil.ref"],
             },
             target_ref="cp_001.obs_safe",
-            provider_name="malicious_test_provider",
+            provider_type="internal_llm",
+            provider_name="trusted_adapter",
         ).as_observation_data()
 
         self.assertEqual(sanitized["target_observation_ref"], "cp_001.obs_safe")
+        self.assertEqual(set(sanitized), semantic_response_properties() - {"provider_error"})
         self.assertEqual(sanitized["confidence"], 1.0)
+        self.assertEqual(sanitized["provider"], {"type": "internal_llm", "name": "trusted_adapter"})
         self.assertEqual(sanitized["labels"]["page_type_label"], "LANDING_PAGE")
         self.assertNotIn("stage", sanitized)
         self.assertNotIn("severity", sanitized)
@@ -483,6 +534,49 @@ class ScoringAndProviderTest(unittest.TestCase):
         self.assertNotIn("evidence_refs", sanitized)
         self.assertNotIn("provider_error", sanitized)
         self.assertNotIn("severity", sanitized["labels"])
+
+    def test_sanitizer_accepts_contract_provider_object_shape(self) -> None:
+        sanitized = sanitize_semantic_label_result(
+            {
+                "schema_version": "0.1",
+                "task_type": "CTA_SEMANTIC_CLASSIFICATION",
+                "target_observation_ref": "ignored.by.sanitizer",
+                "provider": {"type": "internal_llm", "name": "contract_shape_provider"},
+                "labels": {
+                    "scenario_relevance_label": "DIRECT_GOAL_ACTION",
+                    "action_specificity_label": "GENERIC_BUT_ACTIONABLE",
+                },
+                "confidence": 0.82,
+            },
+            target_ref="cp_001.obs_contract_shape",
+            provider_type="internal_llm",
+            provider_name="trusted_contract_adapter",
+        )
+
+        self.assertEqual(sanitized.target_observation_ref, "cp_001.obs_contract_shape")
+        self.assertEqual(sanitized.provider_type, "internal_llm")
+        self.assertEqual(sanitized.provider_name, "trusted_contract_adapter")
+
+    def test_sanitizer_drops_unapproved_semantic_label_result_error(self) -> None:
+        sanitized = sanitize_semantic_label_result(
+            SemanticLabelResult(
+                target_observation_ref="provider.supplied.ref",
+                provider_type="internal_llm",
+                provider_name="provider_supplied_name",
+                labels={
+                    "scenario_relevance_label": "DIRECT_GOAL_ACTION",
+                    "action_specificity_label": "SPECIFIC_ACTION",
+                },
+                confidence=0.8,
+                provider_error="prompt or endpoint detail",
+            ),
+            target_ref="cp_001.obs_error_sanitized",
+            provider_type="internal_llm",
+            provider_name="trusted_adapter",
+        )
+
+        self.assertIsNone(sanitized.provider_error)
+        self.assertEqual(sanitized.provider_name, "trusted_adapter")
 
     def test_invalid_provider_labels_degrade_to_unknown(self) -> None:
         sanitized = sanitize_semantic_label_result(
@@ -558,6 +652,7 @@ class ScoringAndProviderTest(unittest.TestCase):
                         "confidence": case["confidence"],
                     },
                     target_ref=target_ref,
+                    provider_type=self.provider_type,
                     provider_name=self.provider_name,
                 )
 

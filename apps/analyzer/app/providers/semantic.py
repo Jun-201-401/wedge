@@ -4,40 +4,18 @@ import math
 from dataclasses import dataclass, field
 from typing import Any, Callable, Protocol
 
-SCENARIO_RELEVANCE_LABELS = {
-    "DIRECT_GOAL_ACTION",
-    "RELATED_GOAL_ACTION",
-    "PREREQUISITE_ACTION",
-    "EXPLORATORY_ACTION",
-    "AUXILIARY_ACTION",
-    "IRRELEVANT_ACTION",
-    "UNKNOWN",
-}
+from app.contracts import semantic_enum, semantic_label_keys, semantic_schema_version, semantic_task_type
 
-ACTION_SPECIFICITY_LABELS = {
-    "SPECIFIC_ACTION",
-    "GENERIC_BUT_ACTIONABLE",
-    "PROGRESSION_ONLY",
-    "EXPLORATORY_LABEL",
-    "WEAK_OR_ICON_ONLY",
-    "NO_LABEL",
-    "UNKNOWN",
-}
-
-PAGE_TYPE_LABELS = {
-    "LANDING_PAGE",
-    "PRICING_PAGE",
-    "SIGNUP_PAGE",
-    "LOGIN_PAGE",
-    "BLOG_PAGE",
-    "CAREERS_PAGE",
-    "UNKNOWN",
-}
+SEMANTIC_CLASSIFICATION_SCHEMA_VERSION = semantic_schema_version()
+SEMANTIC_TASK_TYPE_CTA = semantic_task_type()
+SCENARIO_RELEVANCE_LABELS = semantic_enum("scenario_relevance_label")
+ACTION_SPECIFICITY_LABELS = semantic_enum("action_specificity_label")
+PAGE_TYPE_LABELS = semantic_enum("page_type_label")
+PROVIDER_TYPES = semantic_enum("provider_type")
 
 _LABEL_ALLOWLISTS = {
-    "scenario_relevance_label": SCENARIO_RELEVANCE_LABELS,
-    "action_specificity_label": ACTION_SPECIFICITY_LABELS,
-    "page_type_label": PAGE_TYPE_LABELS,
+    key: semantic_enum(key)
+    for key in semantic_label_keys()
 }
 
 _UNKNOWN_LABELS = {
@@ -65,9 +43,13 @@ class SemanticLabelResult:
 
     def as_observation_data(self) -> dict[str, Any]:
         data: dict[str, Any] = {
+            "schema_version": SEMANTIC_CLASSIFICATION_SCHEMA_VERSION,
+            "task_type": SEMANTIC_TASK_TYPE_CTA,
             "target_observation_ref": self.target_observation_ref,
-            "provider_type": self.provider_type,
-            "provider_name": self.provider_name,
+            "provider": {
+                "type": self.provider_type,
+                "name": self.provider_name,
+            },
             "confidence": self.confidence,
             "labels": dict(self.labels),
         }
@@ -178,6 +160,7 @@ class InternalLLMProvider:
         return sanitize_semantic_label_result(
             self._classifier(text=text, scenario_goal=scenario_goal, target_ref=target_ref),
             target_ref=target_ref,
+            provider_type=self.provider_type,
             provider_name=self.provider_name,
         )
 
@@ -201,6 +184,7 @@ class MCPSemanticProvider:
         return sanitize_semantic_label_result(
             self._classifier(text=text, scenario_goal=scenario_goal, target_ref=target_ref),
             target_ref=target_ref,
+            provider_type=self.provider_type,
             provider_name=self.provider_name,
         )
 
@@ -254,7 +238,12 @@ class MockSemanticProvider:
                 confidence=0.5,
             ),
         )
-        return sanitize_semantic_label_result(raw, target_ref=target_ref, provider_name="mock_semantic_provider")
+        return sanitize_semantic_label_result(
+            raw,
+            target_ref=target_ref,
+            provider_type="mock",
+            provider_name="mock_semantic_provider",
+        )
 
 
 def should_fallback_to_semantic_provider(
@@ -270,7 +259,13 @@ def should_fallback_to_semantic_provider(
     )
 
 
-def sanitize_semantic_label_result(raw: Any, *, target_ref: str, provider_name: str = "unknown_provider") -> SemanticLabelResult:
+def sanitize_semantic_label_result(
+    raw: Any,
+    *,
+    target_ref: str,
+    provider_type: str = "unknown",
+    provider_name: str = "unknown_provider",
+) -> SemanticLabelResult:
     """Convert provider output to the label-only annotation contract.
 
     Unsupported top-level fields such as stage/severity/priority/evidence_refs
@@ -281,31 +276,43 @@ def sanitize_semantic_label_result(raw: Any, *, target_ref: str, provider_name: 
     if isinstance(raw, SemanticLabelResult):
         labels = raw.labels
         confidence = raw.confidence
-        provider_type = raw.provider_type
-        raw_provider_name = raw.provider_name
-        provider_error = raw.provider_error
+        sanitized_provider_type = _sanitize_provider_type(provider_type if provider_type != "unknown" else raw.provider_type)
+        raw_provider_name = provider_name if provider_name != "unknown_provider" else raw.provider_name
+        provider_error = _sanitize_provider_error(raw.provider_error)
     elif isinstance(raw, dict):
         labels = raw.get("labels") if isinstance(raw.get("labels"), dict) else raw
         confidence = raw.get("confidence", 0.0)
-        provider_type = str(raw.get("provider_type") or "unknown")
-        raw_provider_name = str(raw.get("provider_name") or provider_name)
+        sanitized_provider_type = _sanitize_provider_type(provider_type)
+        raw_provider_name = provider_name
         provider_error = None
     else:
         labels = getattr(raw, "labels", {})
         confidence = getattr(raw, "confidence", 0.0)
-        provider_type = str(getattr(raw, "provider_type", "unknown"))
-        raw_provider_name = str(getattr(raw, "provider_name", provider_name))
+        sanitized_provider_type = _sanitize_provider_type(provider_type)
+        raw_provider_name = provider_name
         provider_error = None
 
     sanitized_labels = _sanitize_labels(labels)
     return SemanticLabelResult(
         target_observation_ref=target_ref,
-        provider_type=provider_type,
+        provider_type=sanitized_provider_type,
         provider_name=raw_provider_name,
         labels=sanitized_labels,
         confidence=_clamp_confidence(confidence),
         provider_error=provider_error,
     )
+
+
+def _sanitize_provider_type(value: Any) -> str:
+    if isinstance(value, str) and value in PROVIDER_TYPES:
+        return value
+    return "unknown"
+
+
+def _sanitize_provider_error(value: Any) -> str | None:
+    if value == "provider_unavailable":
+        return "provider_unavailable"
+    return None
 
 
 def _sanitize_labels(raw_labels: Any) -> dict[str, str]:
