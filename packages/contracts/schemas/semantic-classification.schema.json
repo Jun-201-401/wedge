@@ -1,0 +1,203 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wedge.example.com/contracts/schemas/semantic-classification.schema.json",
+  "title": "Wedge SemanticClassification",
+  "description": "Label-only semantic normalization contract. Providers may classify ambiguous evidence into bounded labels, but they must not emit final Rule Engine fields such as stage, severity, priority_score, issue text, recommendations, or evidence_refs.",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/request"
+    },
+    {
+      "$ref": "#/$defs/response"
+    }
+  ],
+  "$defs": {
+    "schema_version": {
+      "const": "0.1"
+    },
+    "task_type": {
+      "enum": [
+        "CTA_SEMANTIC_CLASSIFICATION"
+      ]
+    },
+    "provider_type": {
+      "enum": [
+        "deterministic",
+        "internal_llm",
+        "mcp",
+        "mock",
+        "unavailable",
+        "unknown"
+      ]
+    },
+    "scenario_relevance_label": {
+      "enum": [
+        "DIRECT_GOAL_ACTION",
+        "RELATED_GOAL_ACTION",
+        "PREREQUISITE_ACTION",
+        "EXPLORATORY_ACTION",
+        "AUXILIARY_ACTION",
+        "IRRELEVANT_ACTION",
+        "UNKNOWN"
+      ]
+    },
+    "action_specificity_label": {
+      "enum": [
+        "SPECIFIC_ACTION",
+        "GENERIC_BUT_ACTIONABLE",
+        "PROGRESSION_ONLY",
+        "EXPLORATORY_LABEL",
+        "WEAK_OR_ICON_ONLY",
+        "NO_LABEL",
+        "UNKNOWN"
+      ]
+    },
+    "page_type_label": {
+      "enum": [
+        "LANDING_PAGE",
+        "PRICING_PAGE",
+        "SIGNUP_PAGE",
+        "LOGIN_PAGE",
+        "BLOG_PAGE",
+        "CAREERS_PAGE",
+        "UNKNOWN"
+      ]
+    },
+    "labels": {
+      "type": "object",
+      "required": [
+        "scenario_relevance_label",
+        "action_specificity_label"
+      ],
+      "properties": {
+        "scenario_relevance_label": {
+          "$ref": "#/$defs/scenario_relevance_label"
+        },
+        "action_specificity_label": {
+          "$ref": "#/$defs/action_specificity_label"
+        },
+        "page_type_label": {
+          "$ref": "#/$defs/page_type_label"
+        }
+      },
+      "additionalProperties": false
+    },
+    "provider": {
+      "type": "object",
+      "required": [
+        "type",
+        "name"
+      ],
+      "properties": {
+        "type": {
+          "$ref": "#/$defs/provider_type"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "request": {
+      "type": "object",
+      "required": [
+        "schema_version",
+        "task_type",
+        "target_observation_ref",
+        "input"
+      ],
+      "properties": {
+        "schema_version": {
+          "$ref": "#/$defs/schema_version"
+        },
+        "task_type": {
+          "$ref": "#/$defs/task_type"
+        },
+        "target_observation_ref": {
+          "type": "string",
+          "minLength": 1
+        },
+        "input": {
+          "type": "object",
+          "required": [
+            "text",
+            "scenario_goal"
+          ],
+          "properties": {
+            "text": {
+              "type": "string"
+            },
+            "scenario_goal": {
+              "type": "string"
+            },
+            "context": {
+              "type": "object",
+              "description": "Optional bounded context for future semantic providers. This must remain evidence context only and must not include final Rule Engine fields.",
+              "properties": {
+                "locale": {
+                  "type": "string"
+                },
+                "page_url": {
+                  "type": "string"
+                },
+                "element_role": {
+                  "type": "string"
+                },
+                "accessible_name": {
+                  "type": "string"
+                },
+                "neighboring_text": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "response": {
+      "type": "object",
+      "required": [
+        "schema_version",
+        "task_type",
+        "target_observation_ref",
+        "provider",
+        "labels",
+        "confidence"
+      ],
+      "properties": {
+        "schema_version": {
+          "$ref": "#/$defs/schema_version"
+        },
+        "task_type": {
+          "$ref": "#/$defs/task_type"
+        },
+        "target_observation_ref": {
+          "type": "string",
+          "minLength": 1
+        },
+        "provider": {
+          "$ref": "#/$defs/provider"
+        },
+        "labels": {
+          "$ref": "#/$defs/labels"
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "provider_error": {
+          "enum": [
+            "provider_unavailable"
+          ]
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

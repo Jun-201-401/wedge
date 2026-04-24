@@ -1,0 +1,15 @@
+{
+  "schema_version": "0.1",
+  "task_type": "CTA_SEMANTIC_CLASSIFICATION",
+  "target_observation_ref": "cp_001.obs_002",
+  "provider": {
+    "type": "internal_llm",
+    "name": "internal_llm_semantic_provider"
+  },
+  "labels": {
+    "scenario_relevance_label": "DIRECT_GOAL_ACTION",
+    "action_specificity_label": "GENERIC_BUT_ACTIONABLE",
+    "page_type_label": "LANDING_PAGE"
+  },
+  "confidence": 0.82
+}

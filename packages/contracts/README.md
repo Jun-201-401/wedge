@@ -5,7 +5,7 @@ Canonical machine-readable contracts belong here. Human-readable design rational
 ## Directory roles
 
 - `openapi/`: REST API contract for public `/api` endpoints and internal callback surfaces.
-- `schemas/`: JSON Schema contracts for domain payloads such as ScenarioPlan, SiteDiscoveryResult, EvidencePacket, RuleRegistry, and JudgeResult.
+- `schemas/`: JSON Schema contracts for domain payloads such as ScenarioPlan, SiteDiscoveryResult, EvidencePacket, RuleRegistry, JudgeResult, and SemanticClassification.
 - `examples/`: sample payloads that should conform to schemas and can be reused as fixtures/mock data.
 - `mq/`: RabbitMQ canonical message envelope plus thin task-specific payload entrypoints.
 - `websocket/`: live event envelope and event variant schemas.
@@ -22,10 +22,13 @@ Canonical machine-readable contracts belong here. Human-readable design rational
 - `schemas/evidence-packet.schema.json`: checkpoint-centered evidence packet contract
 - `schemas/rule-registry.schema.json`: rule registry contract for analyzer criteria
 - `schemas/judge-result.schema.json`: analyzer/judge output contract
+- `schemas/semantic-classification.schema.json`: label-only semantic normalization request/response contract for provider adapters
 - `examples/sample-scenario-plan-signup.json`: ScenarioPlan fixture
 - `examples/sample-site-discovery-result.json`: SiteDiscoveryResult fixture
 - `examples/sample-evidence-packet.json`: EvidencePacket fixture
 - `examples/sample-judge-result.json`: JudgeResult fixture
+- `examples/sample-semantic-classification-request.json`: SemanticClassification provider request fixture
+- `examples/sample-semantic-classification-response.json`: SemanticClassification provider response fixture
 - `examples/sample-analyzer-completed.json`: analyzer completed callback example consuming settle observations
 - `examples/sample-runner-checkpoints.json`: runner callback checkpoint example including settle observation subtypes
 - `mq/messages.schema.json`: RabbitMQ common envelope and message type contract; this is the canonical MQ source
