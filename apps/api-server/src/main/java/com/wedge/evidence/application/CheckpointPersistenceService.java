@@ -40,11 +40,15 @@ public class CheckpointPersistenceService {
     }
 
     public int saveRunCheckpoints(UUID runId, RunnerCheckpointsRequest request) {
+        return saveRunCheckpoints(runId, request, Map.of());
+    }
+
+    public int saveRunCheckpoints(UUID runId, RunnerCheckpointsRequest request, Map<String, UUID> stepIdsByKey) {
         OffsetDateTime capturedAt = OffsetDateTime.now();
         UUID latestCheckpointId = null;
 
         for (RunnerCheckpointRequest checkpointRequest : request.checkpoints()) {
-            latestCheckpointId = saveOrFindCheckpointId(runId, checkpointRequest, capturedAt);
+            latestCheckpointId = saveOrFindCheckpointId(runId, checkpointRequest, capturedAt, stepIdsByKey.get(checkpointRequest.stepKey()));
         }
 
         if (latestCheckpointId != null) {
@@ -53,7 +57,7 @@ public class CheckpointPersistenceService {
         return request.checkpoints().size();
     }
 
-    private UUID saveOrFindCheckpointId(UUID runId, RunnerCheckpointRequest request, OffsetDateTime capturedAt) {
+    private UUID saveOrFindCheckpointId(UUID runId, RunnerCheckpointRequest request, OffsetDateTime capturedAt, UUID stepId) {
         Optional<Checkpoint> existingCheckpoint = checkpointMapper.findByRunIdAndCheckpointKey(
                 runId,
                 request.checkpointId()
@@ -62,16 +66,17 @@ public class CheckpointPersistenceService {
             return existingCheckpoint.get().getId();
         }
 
-        Checkpoint checkpoint = toCheckpoint(runId, request, capturedAt);
+        Checkpoint checkpoint = toCheckpoint(runId, request, capturedAt, stepId);
         checkpointMapper.insert(checkpoint);
         persistObservations(runId, checkpoint, request.observations());
         return checkpoint.getId();
     }
 
-    private Checkpoint toCheckpoint(UUID runId, RunnerCheckpointRequest request, OffsetDateTime capturedAt) {
+    private Checkpoint toCheckpoint(UUID runId, RunnerCheckpointRequest request, OffsetDateTime capturedAt, UUID stepId) {
         Checkpoint checkpoint = new Checkpoint();
         checkpoint.setId(UUID.randomUUID());
         checkpoint.setRunId(runId);
+        checkpoint.setStepId(stepId);
         checkpoint.setCheckpointKey(request.checkpointId());
         checkpoint.setStage(request.stage().name());
         checkpoint.setTriggerJsonb(toJson(request.trigger()));

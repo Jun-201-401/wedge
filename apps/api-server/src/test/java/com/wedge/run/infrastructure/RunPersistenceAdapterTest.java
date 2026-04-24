@@ -3,17 +3,23 @@ package com.wedge.run.infrastructure;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.wedge.common.error.BusinessException;
+import com.wedge.evidence.domain.Artifact;
+import com.wedge.evidence.domain.Checkpoint;
+import com.wedge.evidence.infrastructure.ArtifactMapper;
+import com.wedge.evidence.infrastructure.CheckpointMapper;
 import com.wedge.run.api.dto.RunCreateRequest;
 import com.wedge.run.api.dto.RunResponse;
 import com.wedge.run.application.RunExecutionRequestSource;
 import com.wedge.run.domain.AnalysisStatus;
 import com.wedge.run.domain.ResultCompleteness;
 import com.wedge.run.domain.RunStatus;
+import com.wedge.run.domain.StepStatus;
 import java.net.URI;
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -31,15 +37,23 @@ import org.mockito.junit.jupiter.MockitoExtension;
 class RunPersistenceAdapterTest {
     @Mock
     private RunMapper runMapper;
+    @Mock
+    private CheckpointMapper checkpointMapper;
+    @Mock
+    private ArtifactMapper artifactMapper;
 
     @Captor
     private ArgumentCaptor<RunRecord> runRecordCaptor;
+    @Captor
+    private ArgumentCaptor<Checkpoint> checkpointCaptor;
+    @Captor
+    private ArgumentCaptor<Artifact> artifactCaptor;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Test
     void createRunBuildsDefaultPersistenceRecord() {
-        RunPersistenceAdapter runPersistenceAdapter = new RunPersistenceAdapter(runMapper, objectMapper);
+        RunPersistenceAdapter runPersistenceAdapter = adapter();
         RunCreateRequest request = sampleRequest();
 
         RunResponse created = runPersistenceAdapter.createRun(request);
@@ -63,7 +77,7 @@ class RunPersistenceAdapterTest {
 
     @Test
     void listRunsMapsStoredRowsToApiResponses() {
-        RunPersistenceAdapter runPersistenceAdapter = new RunPersistenceAdapter(runMapper, objectMapper);
+        RunPersistenceAdapter runPersistenceAdapter = adapter();
         RunRecord stored = sampleRecord();
         when(runMapper.findAll(stored.getProjectId(), RunStatus.RUNNING)).thenReturn(List.of(stored));
 
@@ -77,7 +91,7 @@ class RunPersistenceAdapterTest {
 
     @Test
     void findRunReturnsMappedRunWhenPresent() {
-        RunPersistenceAdapter runPersistenceAdapter = new RunPersistenceAdapter(runMapper, objectMapper);
+        RunPersistenceAdapter runPersistenceAdapter = adapter();
         RunRecord stored = sampleRecord();
         when(runMapper.findById(stored.getId())).thenReturn(Optional.of(stored));
 
@@ -90,7 +104,7 @@ class RunPersistenceAdapterTest {
 
     @Test
     void findExecutionRequestSourceParsesStoredScenarioPlanJson() {
-        RunPersistenceAdapter runPersistenceAdapter = new RunPersistenceAdapter(runMapper, objectMapper);
+        RunPersistenceAdapter runPersistenceAdapter = adapter();
         RunRecord stored = sampleRecord();
         stored.setScenarioPlanJson("{\"schema_version\":\"0.5\",\"plan_id\":\"plan_001\"}");
         when(runMapper.findById(stored.getId())).thenReturn(Optional.of(stored));
@@ -103,7 +117,7 @@ class RunPersistenceAdapterTest {
 
     @Test
     void updateExecutionStateReturnsUpdatedApiShape() {
-        RunPersistenceAdapter runPersistenceAdapter = new RunPersistenceAdapter(runMapper, objectMapper);
+        RunPersistenceAdapter runPersistenceAdapter = adapter();
         RunResponse current = sampleResponse(RunStatus.CREATED, ResultCompleteness.NONE);
         when(runMapper.updateExecutionState(
                 current.id(),
@@ -122,7 +136,7 @@ class RunPersistenceAdapterTest {
 
     @Test
     void updateFailureStateRaisesConflictWhenConcurrentUpdateFails() {
-        RunPersistenceAdapter runPersistenceAdapter = new RunPersistenceAdapter(runMapper, objectMapper);
+        RunPersistenceAdapter runPersistenceAdapter = adapter();
         RunResponse current = sampleResponse(RunStatus.RUNNING, ResultCompleteness.PARTIAL);
         when(runMapper.updateFailureState(
                 org.mockito.ArgumentMatchers.eq(current.id()),
@@ -141,6 +155,89 @@ class RunPersistenceAdapterTest {
         ))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("RUNNING -> FAILED");
+    }
+
+    @Test
+    void resolveStepMapsStoredStepRow() {
+        UUID runId = UUID.randomUUID();
+        RunStepRecord stepRecord = new RunStepRecord();
+        stepRecord.setId(UUID.randomUUID());
+        stepRecord.setRunId(runId);
+        stepRecord.setStepOrder(3);
+        stepRecord.setStepKey("step_003_fill_email");
+        stepRecord.setStatus(StepStatus.PENDING);
+        when(runMapper.findStepByRunIdAndStepKey(runId, "step_003_fill_email")).thenReturn(Optional.of(stepRecord));
+
+        RunPersistenceAdapter adapter = new RunPersistenceAdapter(runMapper, checkpointMapper, artifactMapper, objectMapper);
+        RunPersistenceAdapter.ResolvedStep resolved = adapter.resolveStep(runId, "step_003_fill_email");
+
+        assertThat(resolved.id()).isEqualTo(stepRecord.getId());
+        assertThat(resolved.stepOrder()).isEqualTo(3);
+        assertThat(resolved.stepKey()).isEqualTo("step_003_fill_email");
+    }
+
+    @Test
+    void recordCheckpointStoresResolvedRunCheckpointAndUpdatesLatestPointer() {
+        UUID runId = UUID.randomUUID();
+        UUID stepId = UUID.randomUUID();
+        RunPersistenceAdapter adapter = new RunPersistenceAdapter(runMapper, checkpointMapper, artifactMapper, objectMapper);
+
+        UUID checkpointId = adapter.recordCheckpoint(
+                runId,
+                stepId,
+                "cp_001",
+                "CTA",
+                Map.of("type", "click"),
+                Map.of("strategy", "locator_visible", "durationMs", 1200, "status", "settled"),
+                Map.of("page", Map.of("url", "https://example.com/signup")),
+                List.of(),
+                List.of("artifact:screenshot_cp_001"),
+                OffsetDateTime.parse("2026-04-21T10:02:00+09:00"),
+                1200
+        );
+
+        verify(checkpointMapper).insert(checkpointCaptor.capture());
+        verify(runMapper).updateLatestCheckpoint(runId, checkpointId);
+        Checkpoint saved = checkpointCaptor.getValue();
+        assertThat(saved.getRunId()).isEqualTo(runId);
+        assertThat(saved.getStepId()).isEqualTo(stepId);
+        assertThat(saved.getCheckpointKey()).isEqualTo("cp_001");
+        assertThat(saved.getStage()).isEqualTo("CTA");
+    }
+
+    @Test
+    void recordArtifactStoresStepLinkedArtifactAndUpdatesLatestPointer() {
+        UUID runId = UUID.randomUUID();
+        UUID stepId = UUID.randomUUID();
+        UUID artifactId = UUID.randomUUID();
+        RunPersistenceAdapter adapter = new RunPersistenceAdapter(runMapper, checkpointMapper, artifactMapper, objectMapper);
+
+        UUID savedArtifactId = adapter.recordArtifact(
+                runId,
+                stepId,
+                artifactId,
+                "SCREENSHOT",
+                "bucket-a",
+                "runs/a/shot.png",
+                "image/png",
+                1440,
+                900,
+                42L,
+                "abc123",
+                OffsetDateTime.parse("2026-04-21T10:02:00+09:00")
+        );
+
+        verify(artifactMapper).insert(artifactCaptor.capture());
+        verify(runMapper).updateLatestArtifact(runId, artifactId);
+        Artifact saved = artifactCaptor.getValue();
+        assertThat(savedArtifactId).isEqualTo(artifactId);
+        assertThat(saved.getRunId()).isEqualTo(runId);
+        assertThat(saved.getStepId()).isEqualTo(stepId);
+        assertThat(saved.getArtifactType().name()).isEqualTo("SCREENSHOT");
+    }
+
+    private RunPersistenceAdapter adapter() {
+        return new RunPersistenceAdapter(runMapper, checkpointMapper, artifactMapper, objectMapper);
     }
 
     private RunCreateRequest sampleRequest() {

@@ -3,6 +3,7 @@ package com.wedge.internal.runner;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -31,7 +32,9 @@ import com.wedge.run.application.RunService;
 import com.wedge.run.domain.AnalysisStatus;
 import com.wedge.run.domain.ResultCompleteness;
 import com.wedge.run.domain.RunStatus;
+import com.wedge.run.domain.StepStatus;
 import com.wedge.run.infrastructure.RunMapper;
+import com.wedge.run.infrastructure.RunPersistenceAdapter;
 import java.net.URI;
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -52,6 +55,9 @@ class RunnerCallbackServiceTest {
     private RunService runService;
 
     @Mock
+    private RunPersistenceAdapter runPersistenceAdapter;
+
+    @Mock
     private ProcessedMessagePersistenceAdapter processedMessagePersistenceAdapter;
 
     @Mock
@@ -69,6 +75,7 @@ class RunnerCallbackServiceTest {
     void setUp() {
         runnerCallbackService = new RunnerCallbackService(
                 runService,
+                runPersistenceAdapter,
                 processedMessagePersistenceAdapter,
                 artifactPersistenceService,
                 checkpointPersistenceService,
@@ -97,9 +104,13 @@ class RunnerCallbackServiceTest {
     @Test
     void stepEventsCallbackPromotesRunToRunningAndCountsEvents() {
         UUID runId = UUID.randomUUID();
+        UUID stepId = UUID.randomUUID();
+        OffsetDateTime occurredAt = OffsetDateTime.parse("2026-04-21T10:01:00+09:00");
         RunResponse running = sampleRun(runId, RunStatus.RUNNING, ResultCompleteness.NONE);
         when(processedMessagePersistenceAdapter.tryMarkProcessed("runner.step-events", "evt_step_batch_001")).thenReturn(true);
         when(runService.markRunningIfStarting(runId)).thenReturn(running);
+        when(runPersistenceAdapter.resolveStep(runId, "step_001_goto"))
+                .thenReturn(new RunPersistenceAdapter.ResolvedStep(stepId, 1, "step_001_goto", StepStatus.PENDING));
 
         RunnerStepEventsRequest request = new RunnerStepEventsRequest(List.of(
                 new RunnerStepEvent(
@@ -107,7 +118,7 @@ class RunnerCallbackServiceTest {
                         1,
                         "step_001_goto",
                         RunnerStepEventType.STEP_STARTED,
-                        OffsetDateTime.parse("2026-04-21T10:01:00+09:00"),
+                        occurredAt,
                         Map.of("message", "started")
                 )
         ));
@@ -120,6 +131,9 @@ class RunnerCallbackServiceTest {
 
         assertThat(result.get("status")).isEqualTo(RunStatus.RUNNING);
         assertThat(result.get("eventCount")).isEqualTo(1);
+        verify(runPersistenceAdapter).updateCurrentStepOrder(runId, 1);
+        verify(runPersistenceAdapter).appendRunEvent(runId, stepId, "STEP_STARTED", Map.of("message", "started"), occurredAt);
+        verify(runPersistenceAdapter).updateStepState(stepId, StepStatus.RUNNING, occurredAt);
     }
 
     @Test
@@ -176,70 +190,61 @@ class RunnerCallbackServiceTest {
     }
 
     @Test
-    void artifactCallbackPersistsArtifactPayloads() {
+    void checkpointAndArtifactCallbacksResolveStepBeforeDelegatingPersistence() {
         UUID runId = UUID.randomUUID();
-        RunnerArtifactsRequest request = sampleArtifactRequest();
-        when(processedMessagePersistenceAdapter.tryMarkProcessed("runner.artifacts", "evt_artifact_001")).thenReturn(true);
-        when(runService.getRun(runId)).thenReturn(sampleRun(runId, RunStatus.RUNNING, ResultCompleteness.NONE));
-        when(artifactPersistenceService.saveRunArtifacts(runId, request)).thenReturn(1);
-
-        Map<String, Object> result = runnerCallbackService.handleArtifacts(
-                runId,
-                request,
-                new RunnerCallbackHeaders("runner_001", "evt_artifact_001", "hmac-sha256=sig")
-        );
-
-        assertThat(result.get("artifactCount")).isEqualTo(1);
-        verify(artifactPersistenceService).saveRunArtifacts(runId, request);
-    }
-
-    @Test
-    void artifactCallbackPersistsArtifactMetadataAndUpdatesLatestArtifact() {
-        UUID runId = UUID.randomUUID();
+        UUID stepId = UUID.randomUUID();
         UUID artifactId = UUID.randomUUID();
-        RunnerArtifactsRequest request = new RunnerArtifactsRequest(List.of(new RunnerArtifactRequest(
-                artifactId,
-                "step_001_goto",
-                RunnerArtifactType.SCREENSHOT,
-                "local-runner",
-                runId + "/step_001_goto/" + artifactId + "-screenshot.png",
-                "image/png",
-                1440,
-                900,
-                1234,
-                "sha256",
-                OffsetDateTime.parse("2026-04-21T10:02:00+09:00")
-        )));
-        when(processedMessagePersistenceAdapter.tryMarkProcessed("runner.artifacts", "evt_artifacts_001")).thenReturn(true);
-        when(runService.getRun(runId)).thenReturn(sampleRun(runId, RunStatus.RUNNING, ResultCompleteness.NONE));
-        when(artifactPersistenceService.saveRunArtifacts(runId, request)).thenReturn(1);
-
-        runnerCallbackService.handleArtifacts(
-                runId,
-                request,
-                headers("evt_artifacts_001")
-        );
-
-        verify(artifactPersistenceService).saveRunArtifacts(runId, request);
-        verify(runMapper).updateLatestArtifact(runId, artifactId);
-    }
-
-    @Test
-    void checkpointCallbackDelegatesCheckpointPersistence() {
-        UUID runId = UUID.randomUUID();
-        RunnerCheckpointsRequest request = sampleCheckpointRequest();
         when(processedMessagePersistenceAdapter.tryMarkProcessed("runner.checkpoints", "evt_checkpoint_001")).thenReturn(true);
+        when(processedMessagePersistenceAdapter.tryMarkProcessed("runner.artifacts", "evt_artifact_001")).thenReturn(true);
+        when(runPersistenceAdapter.resolveStep(runId, "step_002_click_signup"))
+                .thenReturn(new RunPersistenceAdapter.ResolvedStep(stepId, 2, "step_002_click_signup", StepStatus.RUNNING));
         when(runService.getRun(runId)).thenReturn(sampleRun(runId, RunStatus.RUNNING, ResultCompleteness.NONE));
-        when(checkpointPersistenceService.saveRunCheckpoints(runId, request)).thenReturn(1);
 
-        Map<String, Object> result = runnerCallbackService.handleCheckpoints(
+        RunnerCheckpointsRequest checkpointsRequest = new RunnerCheckpointsRequest(List.of(
+                new RunnerCheckpointRequest(
+                        "cp_001",
+                        "step_002_click_signup",
+                        RunnerCheckpointStage.CTA,
+                        Map.of("type", "click"),
+                        new RunnerSettleInfo("locator_visible", 1200, RunnerSettleStatus.settled),
+                        Map.of("page", Map.of("url", "https://example.com/signup")),
+                        List.of(),
+                        List.of(),
+                        List.of("artifact:screenshot_cp_001")
+                )
+        ));
+
+        RunnerArtifactsRequest artifactsRequest = new RunnerArtifactsRequest(List.of(
+                new RunnerArtifactRequest(
+                        artifactId,
+                        "step_002_click_signup",
+                        RunnerArtifactType.SCREENSHOT,
+                        "bucket-a",
+                        "runs/a/shot.png",
+                        "image/png",
+                        1440,
+                        900,
+                        42L,
+                        "abc123",
+                        OffsetDateTime.parse("2026-04-21T10:02:00+09:00")
+                )
+        ));
+
+        runnerCallbackService.handleCheckpoints(runId, checkpointsRequest, headers("evt_checkpoint_001"));
+        runnerCallbackService.handleArtifacts(runId, artifactsRequest, headers("evt_artifact_001"));
+
+        verify(runPersistenceAdapter, times(2)).updateCurrentStepOrder(runId, 2);
+        verify(checkpointPersistenceService).saveRunCheckpoints(
                 runId,
-                request,
-                headers("evt_checkpoint_001")
+                checkpointsRequest,
+                Map.of("step_002_click_signup", stepId)
         );
-
-        assertThat(result.get("checkpointCount")).isEqualTo(1);
-        verify(checkpointPersistenceService).saveRunCheckpoints(runId, request);
+        verify(artifactPersistenceService).saveRunArtifacts(
+                runId,
+                artifactsRequest,
+                Map.of("step_002_click_signup", stepId)
+        );
+        verify(runMapper).updateLatestArtifact(runId, artifactId);
     }
 
     @Test
@@ -270,7 +275,7 @@ class RunnerCallbackServiceTest {
         Map<String, Object> result = runnerCallbackService.handleCheckpoints(
                 runId,
                 request,
-                new RunnerCallbackHeaders("runner_001", "evt_checkpoint_001", "hmac-sha256=sig")
+                headers("evt_checkpoint_001")
         );
 
         assertThat(result.get("checkpointCount")).isEqualTo(1);
@@ -288,7 +293,7 @@ class RunnerCallbackServiceTest {
         Map<String, Object> result = runnerCallbackService.handleArtifacts(
                 runId,
                 request,
-                new RunnerCallbackHeaders("runner_001", "evt_artifact_001", "hmac-sha256=sig")
+                headers("evt_artifact_001")
         );
 
         assertThat(result.get("artifactCount")).isEqualTo(1);

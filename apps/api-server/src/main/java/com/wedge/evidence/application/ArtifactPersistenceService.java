@@ -5,6 +5,7 @@ import com.wedge.evidence.domain.ArtifactType;
 import com.wedge.evidence.infrastructure.ArtifactMapper;
 import com.wedge.internal.runner.dto.RunnerArtifactRequest;
 import com.wedge.internal.runner.dto.RunnerArtifactsRequest;
+import java.util.Map;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 
@@ -17,22 +18,27 @@ public class ArtifactPersistenceService {
     }
 
     public int saveRunArtifacts(UUID runId, RunnerArtifactsRequest request) {
-        request.artifacts().forEach(artifact -> saveIfAbsent(runId, artifact));
+        return saveRunArtifacts(runId, request, Map.of());
+    }
+
+    public int saveRunArtifacts(UUID runId, RunnerArtifactsRequest request, Map<String, UUID> stepIdsByKey) {
+        request.artifacts().forEach(artifact -> saveIfAbsent(runId, artifact, stepIdsByKey.get(artifact.stepKey())));
         return request.artifacts().size();
     }
 
-    private void saveIfAbsent(UUID runId, RunnerArtifactRequest request) {
+    private void saveIfAbsent(UUID runId, RunnerArtifactRequest request, UUID stepId) {
         if (artifactMapper.findById(request.artifactId()).isPresent()) {
             return;
         }
 
-        artifactMapper.insert(toArtifact(runId, request));
+        artifactMapper.insert(toArtifact(runId, request, stepId));
     }
 
-    private Artifact toArtifact(UUID runId, RunnerArtifactRequest request) {
+    private Artifact toArtifact(UUID runId, RunnerArtifactRequest request, UUID stepId) {
         Artifact artifact = new Artifact();
         artifact.setId(request.artifactId());
         artifact.setRunId(runId);
+        artifact.setStepId(stepId);
         artifact.setArtifactType(ArtifactType.valueOf(request.artifactType().name()));
         artifact.setS3Bucket(request.bucket());
         artifact.setS3Key(request.key());
