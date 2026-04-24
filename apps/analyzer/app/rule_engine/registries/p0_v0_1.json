@@ -1,0 +1,82 @@
+{
+  "schema_version": "0.5",
+  "registry_id": "registry_p0_v0_1",
+  "description": "Initial analyzer-local P0 Rule Engine registry for deterministic vertical slice.",
+  "rules": [
+    {
+      "criterion_id": "PATH-CTA-001",
+      "axis": "Path",
+      "applicableStages": ["FIRST_VIEW", "CTA"],
+      "evidence_level": "Operational",
+      "definition": "Selected scenario should expose a goal-relevant primary-like CTA in FIRST_VIEW or CTA stage.",
+      "required_observations": ["cta_candidate", "scenario_goal", "page_type", "first_view_bounds"],
+      "measurement_sources": ["dom", "layout", "screenshot", "ax"],
+      "signal_rule": "No primary-like CTA candidate is available in the stage context after deterministic signal extraction.",
+      "severity_rules": [
+        {"severity": 0, "condition": "primary-like CTA exists"},
+        {"severity": 1, "condition": "only weak CTA candidates exist"},
+        {"severity": 2, "condition": "no goal-relevant primary-like CTA in CTA stage"},
+        {"severity": 3, "condition": "entrypoint disabled, blocked, or unreachable"}
+      ],
+      "confidence_rule": "High when DOM, AX, layout, and screenshot align; cap when semantic/provider confidence is low or visual-only evidence is present.",
+      "fix_leverage_default": 1.0,
+      "output_template": "핵심 행동을 시작할 primary CTA가 충분히 드러나지 않아 다음 행동 선택이 어려울 수 있습니다.",
+      "source_refs": ["docs/05_judge_scoring_validation.md#9-path-cta-001-상세"]
+    },
+    {
+      "criterion_id": "PATH-CTA-002",
+      "axis": "Path",
+      "applicableStages": ["CTA"],
+      "evidence_level": "Operational",
+      "definition": "Primary-like CTAs should not excessively compete inside the same decision context.",
+      "required_observations": ["cta_candidate", "cta_cluster", "visual_emphasis"],
+      "measurement_sources": ["dom", "layout", "screenshot"],
+      "signal_rule": "primary_like_cta_count >= 3 in the CTA decision context.",
+      "severity_rules": [
+        {"severity": 0, "condition": "primary-like CTA count is 0-2"},
+        {"severity": 2, "condition": "primary-like CTA count is 3 or more"}
+      ],
+      "confidence_rule": "Use cluster observation confidence when present; otherwise use aggregate-signal medium confidence.",
+      "fix_leverage_default": 1.0,
+      "output_template": "같은 결정 순간에서 여러 primary급 CTA가 경쟁해 사용자가 첫 행동을 고르기 어려울 수 있습니다.",
+      "source_refs": ["docs/05_judge_scoring_validation.md#11-나머지-p0-rule-최소-정책"]
+    },
+    {
+      "criterion_id": "FRICTION-FORM-001",
+      "axis": "Friction",
+      "applicableStages": ["INPUT"],
+      "evidence_level": "Standard",
+      "definition": "Visible input fields should provide a label, accessible name, or equivalent instruction.",
+      "required_observations": ["form_field", "instruction_text"],
+      "measurement_sources": ["dom", "ax", "screenshot"],
+      "signal_rule": "A visible form field has neither clear label/instruction nor accessible name when label relation evidence is available.",
+      "severity_rules": [
+        {"severity": 0, "condition": "visible label or accessible name is clear"},
+        {"severity": 1, "condition": "placeholder-only label support"},
+        {"severity": 2, "condition": "visible field has no label or accessible name"}
+      ],
+      "confidence_rule": "Cap confidence if AX or label relation evidence is absent.",
+      "fix_leverage_default": 1.0,
+      "output_template": "입력 필드의 목적을 알려주는 label 또는 instruction이 부족해 입력 진행이 어려울 수 있습니다.",
+      "source_refs": ["docs/05_judge_scoring_validation.md#10-friction-form-001-상세"]
+    },
+    {
+      "criterion_id": "RELIABILITY-TECH-001",
+      "axis": "Reliability",
+      "applicableStages": ["CTA", "INPUT", "COMMIT"],
+      "evidence_level": "Technical",
+      "definition": "Failed requests or console/page errors immediately after user actions should be surfaced as reliability risk.",
+      "required_observations": ["network_failure", "console_error"],
+      "measurement_sources": ["network", "console", "scenario_log"],
+      "signal_rule": "failed request count or console error count is greater than zero in stage-attributed action context evidence.",
+      "severity_rules": [
+        {"severity": 0, "condition": "no failed request or console error evidence"},
+        {"severity": 2, "condition": "one or more failed requests or console errors after action"}
+      ],
+      "confidence_rule": "High for direct network/console observations or checkpoint-local state summaries. Run-level aggregate-only counters are diagnostic and do not emit staged issues.",
+      "fix_leverage_default": 1.0,
+      "output_template": "사용자 행동 직후 기술 오류가 관찰되어 진행 신뢰성이 낮아질 수 있습니다.",
+      "source_refs": ["docs/05_judge_scoring_validation.md#11-나머지-p0-rule-최소-정책"]
+    }
+  ]
+}
