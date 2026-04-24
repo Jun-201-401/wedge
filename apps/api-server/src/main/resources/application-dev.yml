@@ -3,22 +3,22 @@ spring:
     activate:
       on-profile: dev
   datasource:
-    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/wedge_dev}
-    username: ${SPRING_DATASOURCE_USERNAME:ssafy}
-    password: ${SPRING_DATASOURCE_PASSWORD:ssafy}
+    url: ${SPRING_DATASOURCE_URL}
+    username: ${SPRING_DATASOURCE_USERNAME}
+    password: ${SPRING_DATASOURCE_PASSWORD}
     driver-class-name: org.postgresql.Driver
   data:
     redis:
-      host: ${REDIS_HOST:localhost}
-      port: ${REDIS_PORT:6379}
+      host: ${REDIS_HOST}
+      port: ${REDIS_PORT}
   rabbitmq:
-    host: ${RABBITMQ_HOST:localhost}
-    port: ${RABBITMQ_PORT:5672}
-    username: ${RABBITMQ_USER:guest}
-    password: ${RABBITMQ_PASSWORD:guest}
+    host: ${RABBITMQ_HOST}
+    port: ${RABBITMQ_PORT}
+    username: ${RABBITMQ_USER}
+    password: ${RABBITMQ_PASSWORD}
 
 jwt:
-  secret: ${JWT_SECRET:wedge-local-dev-jwt-secret-change-me-32-characters-minimum}
+  secret: ${JWT_SECRET}
 
 wedge:
   runner:
@@ -26,4 +26,4 @@ wedge:
       exchange: ${WEDGE_RUNNER_MQ_EXCHANGE:wedge.direct}
       run-execute-queue: ${WEDGE_RUN_EXECUTE_QUEUE:run.execute.request}
   internal:
-    service-token: ${INTERNAL_SERVICE_TOKEN:wedge-local-dev-internal-service-token}
+    service-token: ${INTERNAL_SERVICE_TOKEN}
