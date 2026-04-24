@@ -4,7 +4,7 @@ from dataclasses import replace
 from typing import Any
 
 from app.contracts.stages import DecisionStage
-from app.providers import SemanticLabelResult, SemanticProviderPort
+from app.providers import SemanticLabelResult, SemanticProviderPort, sanitize_semantic_label_result
 from app.stage.stage_context_builder import StageContext
 
 
@@ -28,12 +28,17 @@ class SemanticLabelResolver:
                     continue
                 text = _cta_text(record.observation)
                 try:
-                    result = self._provider.classify_cta(
+                    raw_result = self._provider.classify_cta(
                         text=text,
                         scenario_goal=scenario_goal,
                         target_ref=record.ref,
                     )
-                except Exception as error:  # Provider failures must not own deterministic judgment.
+                    result = sanitize_semantic_label_result(
+                        raw_result,
+                        target_ref=record.ref,
+                        provider_name=type(self._provider).__name__,
+                    )
+                except Exception:  # Provider failures must not own deterministic judgment.
                     result = SemanticLabelResult(
                         target_observation_ref=record.ref,
                         provider_type="unavailable",
@@ -43,7 +48,7 @@ class SemanticLabelResolver:
                             "action_specificity_label": "UNKNOWN",
                         },
                         confidence=0.0,
-                        provider_error=str(error),
+                        provider_error="provider_unavailable",
                     )
                 annotations[record.ref] = result.as_observation_data()
             enriched[stage] = replace(context, semantic_annotations=annotations)

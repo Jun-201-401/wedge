@@ -28,7 +28,7 @@ def primary_cta_count(context: StageContext) -> tuple[int | None, float, list[st
     semantic_goal_ctas = [signal for signal in cta_signals(context) if signal.is_goal_relevant_action]
     if semantic_goal_ctas:
         best_signal = max(semantic_goal_ctas, key=lambda signal: signal.provider_confidence)
-        return 1, max(best_signal.provider_confidence, 0.6), [best_signal.observation_ref]
+        return 1, best_signal.provider_confidence, [best_signal.observation_ref]
 
     # FIRST_VIEW contexts can contain CTA observations whose own stage is CTA.
     # Scan raw checkpoint observations as a fallback so PATH-CTA-001 does not
