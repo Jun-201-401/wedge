@@ -145,6 +145,49 @@ test("real playwright mode select falls back to matching an option label", async
   }
 });
 
+test("real playwright mode scroll updates snapshot scroll position", async () => {
+  const fixtureRoot = await mkdtemp(join(tmpdir(), "wedge-runner-playwright-site-"));
+  const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-playwright-artifacts-"));
+  let session: Awaited<ReturnType<ReturnType<typeof createPlaywrightSessionFactory>["createSession"]>> | undefined;
+
+  try {
+    const { formUrl } = await createFixtureSite(fixtureRoot);
+    const browserFactory = createPlaywrightBrowserFactory(artifactsRoot);
+
+    session = await browserFactory.createSession({
+      runId: "run-playwright-scroll",
+      plan: createPlaywrightPlan(formUrl)
+    });
+
+    await executeGotoStep(session, formUrl, "step_open_scroll_fixture");
+
+    await session.execute(
+      {
+        type: "scroll",
+        value: 720
+      },
+      createStep({
+        step_id: "step_scroll_fixture",
+        stage: "VALUE",
+        description: "scroll the fixture page",
+        action: {
+          type: "scroll",
+          value: 720
+        }
+      })
+    );
+
+    const snapshot = session.snapshot();
+
+    assert.equal(snapshot.lastAction?.type, "scroll");
+    assert.ok(snapshot.scrollY >= 600);
+  } finally {
+    await session?.close();
+    await rm(fixtureRoot, { recursive: true, force: true });
+    await rm(artifactsRoot, { recursive: true, force: true });
+  }
+});
+
 test("real playwright mode click target navigates to the linked page", async () => {
   const fixtureRoot = await mkdtemp(join(tmpdir(), "wedge-runner-playwright-site-"));
   const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-playwright-artifacts-"));
@@ -1224,6 +1267,8 @@ async function createFixtureSite(root: string): Promise<{ formUrl: string; doneU
 
         <button id="danger-delete-trigger" type="button">Delete account</button>
       </section>
+
+      <div id="scroll-spacer" style="height: 2400px;"></div>
     </main>
     <script>
       const hoverTarget = document.getElementById("hover-target");

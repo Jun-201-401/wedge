@@ -340,7 +340,18 @@ class RealPlaywrightSession implements BrowserSession {
         }
         break;
       }
-      case "scroll":
+      case "scroll": {
+        assertScenarioActionAllowed(this.plan, this.state.currentUrl, action);
+        const requested = Number(action.value ?? 640);
+        const scrollDelta = Number.isFinite(requested) ? requested : 640;
+        await this.page.evaluate((delta) => {
+          const scope = globalThis as typeof globalThis & {
+            scrollBy?: (x: number, y: number) => void;
+          };
+          scope.scrollBy?.(0, delta);
+        }, scrollDelta);
+        break;
+      }
       case "checkpoint": {
         assertScenarioActionAllowed(this.plan, this.state.currentUrl, action);
         break;
