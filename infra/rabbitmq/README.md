@@ -55,7 +55,7 @@ WDAY-025(dummy publish/consume) 검증 후 실증 데이터로 값 결정 권장
 1. 관련 문서/계약 동기화 (publisher/consumer 코드가 생기면 routing_key 상수도 포함)
 2. RabbitMQ 컨테이너 재생성 — `management.load_definitions`는 부팅 시에만 로드되므로 `up -d`만으로는 반영 안 됨:
    ```bash
-   docker compose -f docker-compose.dev.yml up -d --force-recreate rabbitmq
+   docker compose -f compose.dev.yaml up -d --force-recreate rabbitmq
    ```
    (또는 `docker compose ... restart rabbitmq`)
 3. Management UI에서 exchange/queue/binding 반영 확인
@@ -64,10 +64,10 @@ WDAY-025(dummy publish/consume) 검증 후 실증 데이터로 값 결정 권장
 Breaking change (큐 이름/arguments 변경)는 기존 큐 삭제 필요. dev에서 RabbitMQ volume만 초기화하려면:
 
 ```bash
-docker compose -f docker-compose.dev.yml stop rabbitmq
-docker compose -f docker-compose.dev.yml rm -f rabbitmq
+docker compose -f compose.dev.yaml stop rabbitmq
+docker compose -f compose.dev.yaml rm -f rabbitmq
 docker volume rm wedge-dev_rabbitmq_data
-docker compose -f docker-compose.dev.yml up -d rabbitmq
+docker compose -f compose.dev.yaml up -d rabbitmq
 ```
 
 ⚠️ `docker compose down -v`는 **전체 스택의 모든 volume**(postgres/minio 포함)을 삭제하므로 사용 금지.
