@@ -2448,6 +2448,7 @@ components:
       - startUrl
       - devicePreset
       - scenarioTemplateVersionId
+      - scenarioPlan
       - status
       - resultCompleteness
       - analysisStatus
@@ -2490,6 +2491,9 @@ components:
           type: string
           format: uuid
         scenarioOverrides:
+          type: object
+          additionalProperties: true
+        scenarioPlan:
           type: object
           additionalProperties: true
       required:

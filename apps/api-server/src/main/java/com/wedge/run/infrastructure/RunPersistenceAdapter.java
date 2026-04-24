@@ -1,13 +1,18 @@
 package com.wedge.run.infrastructure;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.wedge.common.error.BusinessException;
 import com.wedge.common.error.ErrorCode;
 import com.wedge.run.api.dto.RunCreateRequest;
 import com.wedge.run.api.dto.RunResponse;
+import com.wedge.run.application.RunExecutionRequestSource;
 import com.wedge.run.domain.ResultCompleteness;
 import com.wedge.run.domain.RunStatus;
 import java.net.URI;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.stereotype.Component;
@@ -17,9 +22,11 @@ public class RunPersistenceAdapter {
     private static final String RUN_TYPE = "run";
 
     private final RunMapper runMapper;
+    private final ObjectMapper objectMapper;
 
-    public RunPersistenceAdapter(RunMapper runMapper) {
+    public RunPersistenceAdapter(RunMapper runMapper, ObjectMapper objectMapper) {
         this.runMapper = runMapper;
+        this.objectMapper = objectMapper;
     }
 
     public List<RunResponse> listRuns(UUID projectId, RunStatus status) {
@@ -32,8 +39,14 @@ public class RunPersistenceAdapter {
         return runMapper.findById(runId).map(this::toResponse);
     }
 
+    public Optional<RunExecutionRequestSource> findExecutionRequestSource(UUID runId) {
+        return runMapper.findById(runId).map(this::toExecutionRequestSource);
+    }
+
     public RunResponse createRun(RunCreateRequest request) {
         RunRecord record = RunRecord.created(request);
+        record.setScenarioPlanSchemaVersion(resolveScenarioPlanSchemaVersion(request.scenarioPlan()));
+        record.setScenarioPlanJson(writeJsonOrEmpty(request.scenarioPlan()));
         runMapper.insert(record);
         return toResponse(record);
     }
@@ -108,5 +121,47 @@ public class RunPersistenceAdapter {
                 record.getFailureMessage(),
                 null
         );
+    }
+
+    private RunExecutionRequestSource toExecutionRequestSource(RunRecord record) {
+        return new RunExecutionRequestSource(
+                record.getId(),
+                record.getProjectId(),
+                record.getTriggerSource(),
+                URI.create(record.getStartUrl()),
+                record.getGoal(),
+                record.getDevicePreset(),
+                record.getScenarioTemplateVersionId(),
+                readJsonMap(record.getScenarioPlanJson())
+        );
+    }
+
+    private String writeJsonOrEmpty(Map<String, Object> payload) {
+        if (payload == null || payload.isEmpty()) {
+            return "{}";
+        }
+
+        try {
+            return objectMapper.writeValueAsString(payload);
+        } catch (JsonProcessingException exception) {
+            throw new BusinessException(ErrorCode.INVALID_REQUEST, "scenarioPlan must be valid JSON", null, exception);
+        }
+    }
+
+    private Map<String, Object> readJsonMap(String rawJson) {
+        try {
+            return objectMapper.readValue(rawJson, new TypeReference<>() {});
+        } catch (JsonProcessingException exception) {
+            throw new IllegalStateException("Stored scenarioPlanJson is invalid", exception);
+        }
+    }
+
+    private String resolveScenarioPlanSchemaVersion(Map<String, Object> scenarioPlan) {
+        if (scenarioPlan == null) {
+            return null;
+        }
+
+        Object schemaVersion = scenarioPlan.get("schema_version");
+        return schemaVersion instanceof String value && !value.isBlank() ? value : null;
     }
 }

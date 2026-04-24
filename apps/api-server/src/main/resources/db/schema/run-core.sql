@@ -107,6 +107,19 @@ CREATE TABLE IF NOT EXISTS analysis_job (
     error_message           TEXT
 );
 
+CREATE TABLE IF NOT EXISTS outbox_message (
+    id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    aggregate_type      VARCHAR(80) NOT NULL,
+    aggregate_id        UUID NOT NULL,
+    event_type          VARCHAR(120) NOT NULL,
+    payload_jsonb       JSONB NOT NULL,
+    status              VARCHAR(32) NOT NULL DEFAULT 'PENDING' CHECK (status IN ('PENDING','PUBLISHED','FAILED')),
+    attempt_count       INTEGER NOT NULL DEFAULT 0,
+    next_attempt_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    published_at        TIMESTAMPTZ
+);
+
 CREATE TABLE IF NOT EXISTS processed_message (
     consumer_name           VARCHAR(120) NOT NULL,
     message_id              VARCHAR(160) NOT NULL,
@@ -134,3 +147,6 @@ CREATE INDEX IF NOT EXISTS idx_analysis_job_run_created
 
 CREATE INDEX IF NOT EXISTS idx_test_run_event_run_time
     ON test_run_event(run_id, occurred_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_outbox_pending
+    ON outbox_message(status, next_attempt_at);
