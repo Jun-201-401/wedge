@@ -1,0 +1,48 @@
+name: wedge-jenkins
+
+services:
+  docker:
+    image: docker:29.4.1-dind
+    privileged: true
+    restart: unless-stopped
+    environment:
+      DOCKER_TLS_CERTDIR: /certs
+    command: ["--storage-driver", "overlay2"]
+    networks:
+      - jenkins
+    volumes:
+      - jenkins-data:/var/jenkins_home
+      - jenkins-docker-certs:/certs/client
+    healthcheck:
+      test: ["CMD", "docker", "info"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  jenkins:
+    build:
+      context: ./infra/jenkins
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      docker:
+        condition: service_healthy
+    environment:
+      DOCKER_HOST: tcp://docker:2376
+      DOCKER_CERT_PATH: /certs/client
+      DOCKER_TLS_VERIFY: "1"
+      JENKINS_OPTS: --httpPort=8080
+    networks:
+      - jenkins
+    ports:
+      - "127.0.0.1:${JENKINS_EXTERNAL_PORT:-18081}:8080"
+    volumes:
+      - jenkins-data:/var/jenkins_home
+      - jenkins-docker-certs:/certs/client:ro
+
+networks:
+  jenkins:
+
+volumes:
+  jenkins-data:
+  jenkins-docker-certs:

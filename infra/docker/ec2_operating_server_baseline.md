@@ -111,7 +111,7 @@ docker-compose-plugin
 
 - 외부 공개 포트는 최소한으로 유지한다.
 - 현재 기준 외부 공개 대상은 `22/tcp`, `18080/tcp`만 잡는다.
-- Jenkins는 필요 시 `18081/tcp`를 후보로 보되, 기본값은 외부 비공개로 둔다.
+- Jenkins는 필요 시 `18081/tcp`를 후보로 보되, 기본값은 외부 비공개로 두고 `127.0.0.1` 바인딩 + SSH 터널로 접근한다.
 - PostgreSQL, Redis, RabbitMQ는 외부 포트를 열지 않는다.
 - 운영에서는 MinIO를 올리지 않고 AWS S3를 사용한다.
 
@@ -172,6 +172,13 @@ docker-compose-plugin
 1. Jenkins base build 확인
 2. Jenkins 배포 파이프라인 초안
 3. 운영용 compose / 배포 스크립트 정리
+
+### Jenkins 운영 원칙
+
+- Jenkins는 EC2 내부 Docker 컨테이너로 실행한다.
+- Jenkins UI는 `127.0.0.1:18081:8080` 으로만 바인딩한다.
+- UFW 에 Jenkins 포트를 추가로 allow 하지 않는다.
+- 로컬 PC 에서 SSH 터널로만 접근한다.
 
 ---
 
