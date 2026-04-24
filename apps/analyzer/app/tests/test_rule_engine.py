@@ -6,7 +6,16 @@ import unittest
 from pathlib import Path
 
 from app.normalization import SemanticLabelResolver
-from app.providers import DeterministicLexiconProvider, SemanticLabelResult
+from app.providers import (
+    DeterministicLexiconProvider,
+    FastPathLexiconProvider,
+    InternalLLMProvider,
+    MCPSemanticProvider,
+    MockSemanticProvider,
+    SemanticLabelResult,
+    SemanticProviderChain,
+    sanitize_semantic_label_result,
+)
 from app.rule_engine import analyze_evidence_packet, load_default_registry
 from app.rule_engine.contract_schema import schema_enum, schema_properties
 from app.rule_engine.evaluator import RuleEngine, RuleHandlerMissing
@@ -26,6 +35,12 @@ def load_sample_packet() -> dict:
 
 def load_rule_fixture(rule_id: str, fixture_name: str) -> dict:
     with (RULE_ENGINE_FIXTURE_ROOT / rule_id / fixture_name).open(encoding="utf-8") as file:
+        return json.load(file)
+
+
+def load_semantic_fixture(fixture_name: str) -> list[dict]:
+    fixture_path = Path(__file__).resolve().parent / "fixtures/semantic_normalization" / fixture_name
+    with fixture_path.open(encoding="utf-8") as file:
         return json.load(file)
 
 
@@ -398,6 +413,236 @@ class ScoringAndProviderTest(unittest.TestCase):
         result = analyze_evidence_packet(packet, semantic_provider=DirectActionProvider())
         criteria = [issue["criterion_id"] for issue in result["issues"]]
         self.assertNotIn("PATH-CTA-001", criteria)
+
+    def test_fast_path_lexicon_prefers_precision_over_recall(self) -> None:
+        provider = FastPathLexiconProvider()
+        clear = provider.classify_cta(text="무료 체험 시작", scenario_goal="회원가입 시작", target_ref="obs.clear")
+        ambiguous = provider.classify_cta(text="무료 사용해보기", scenario_goal="회원가입 시작", target_ref="obs.ambiguous")
+
+        self.assertEqual(clear.labels["scenario_relevance_label"], "DIRECT_GOAL_ACTION")
+        self.assertEqual(clear.labels["action_specificity_label"], "SPECIFIC_ACTION")
+        self.assertEqual(ambiguous.labels["scenario_relevance_label"], "UNKNOWN")
+        self.assertEqual(ambiguous.labels["action_specificity_label"], "UNKNOWN")
+
+    def test_provider_chain_invokes_fallback_for_unknown_fast_path(self) -> None:
+        fallback = MockSemanticProvider(
+            {
+                "cp_001.obs_semantic_cta": {
+                    "target_observation_ref": "cp_001.obs_semantic_cta",
+                    "provider_type": "internal_llm",
+                    "provider_name": "test_llm",
+                    "labels": {
+                        "scenario_relevance_label": "DIRECT_GOAL_ACTION",
+                        "action_specificity_label": "GENERIC_BUT_ACTIONABLE",
+                    },
+                    "confidence": 0.82,
+                }
+            }
+        )
+        chain = SemanticProviderChain(fallback=fallback)
+
+        result = chain.classify_cta(
+            text="무료 사용해보기",
+            scenario_goal="서비스 무료 체험 시작",
+            target_ref="cp_001.obs_semantic_cta",
+        )
+
+        self.assertEqual(len(fallback.calls), 1)
+        self.assertEqual(result.provider_type, "internal_llm")
+        self.assertEqual(result.labels["scenario_relevance_label"], "DIRECT_GOAL_ACTION")
+        self.assertEqual(result.labels["action_specificity_label"], "GENERIC_BUT_ACTIONABLE")
+
+    def test_provider_output_sanitizer_ignores_rule_owned_fields(self) -> None:
+        sanitized = sanitize_semantic_label_result(
+            {
+                "target_observation_ref": "evil.other",
+                "provider_type": "internal_llm",
+                "labels": {
+                    "scenario_relevance_label": "DIRECT_GOAL_ACTION",
+                    "action_specificity_label": "SPECIFIC_ACTION",
+                    "page_type_label": "LANDING_PAGE",
+                    "severity": "3",
+                },
+                "confidence": 2.5,
+                "provider_error": "secret prompt or endpoint details",
+                "stage": "COMMIT",
+                "severity": 3,
+                "priority_score": 999,
+                "evidence_refs": ["evil.ref"],
+            },
+            target_ref="cp_001.obs_safe",
+            provider_name="malicious_test_provider",
+        ).as_observation_data()
+
+        self.assertEqual(sanitized["target_observation_ref"], "cp_001.obs_safe")
+        self.assertEqual(sanitized["confidence"], 1.0)
+        self.assertEqual(sanitized["labels"]["page_type_label"], "LANDING_PAGE")
+        self.assertNotIn("stage", sanitized)
+        self.assertNotIn("severity", sanitized)
+        self.assertNotIn("priority_score", sanitized)
+        self.assertNotIn("evidence_refs", sanitized)
+        self.assertNotIn("provider_error", sanitized)
+        self.assertNotIn("severity", sanitized["labels"])
+
+    def test_invalid_provider_labels_degrade_to_unknown(self) -> None:
+        sanitized = sanitize_semantic_label_result(
+            {
+                "provider_type": "mcp",
+                "labels": {
+                    "scenario_relevance_label": "MAKE_ISSUE",
+                    "action_specificity_label": "SET_PRIORITY",
+                },
+                "confidence": True,
+            },
+            target_ref="cp_001.obs_bad_labels",
+            provider_name="bad_provider",
+        )
+
+        self.assertEqual(sanitized.labels["scenario_relevance_label"], "UNKNOWN")
+        self.assertEqual(sanitized.labels["action_specificity_label"], "UNKNOWN")
+        self.assertEqual(sanitized.confidence, 0.0)
+
+    def test_non_finite_provider_confidence_degrades_to_zero(self) -> None:
+        for confidence in ("nan", float("nan"), "inf", "-inf"):
+            with self.subTest(confidence=confidence):
+                sanitized = sanitize_semantic_label_result(
+                    {
+                        "provider_type": "internal_llm",
+                        "labels": {
+                            "scenario_relevance_label": "DIRECT_GOAL_ACTION",
+                            "action_specificity_label": "SPECIFIC_ACTION",
+                        },
+                        "confidence": confidence,
+                    },
+                    target_ref="cp_001.obs_non_finite",
+                    provider_name="bad_confidence_provider",
+                )
+                self.assertEqual(sanitized.confidence, 0.0)
+
+    def test_exploratory_fast_path_terms_fall_back_to_semantic_provider(self) -> None:
+        fallback = MockSemanticProvider(
+            {
+                "cp_001.obs_learn_more": {
+                    "provider_type": "internal_llm",
+                    "labels": {
+                        "scenario_relevance_label": "PREREQUISITE_ACTION",
+                        "action_specificity_label": "SPECIFIC_ACTION",
+                    },
+                    "confidence": 0.74,
+                }
+            }
+        )
+        result = SemanticProviderChain(fallback=fallback).classify_cta(
+            text="더 알아보기",
+            scenario_goal="구매 전 플랜 확인",
+            target_ref="cp_001.obs_learn_more",
+        )
+
+        self.assertEqual(len(fallback.calls), 1)
+        self.assertEqual(result.labels["scenario_relevance_label"], "PREREQUISITE_ACTION")
+        self.assertEqual(result.labels["action_specificity_label"], "SPECIFIC_ACTION")
+
+    def test_semantic_fixture_matrix_resolves_korean_cta_variants(self) -> None:
+        class FixtureProvider:
+            provider_type = "internal_llm"
+            provider_name = "fixture_semantic_provider"
+
+            def classify_cta(self, *, text: str, scenario_goal: str, target_ref: str):
+                case = fixture_by_text[text]
+                return sanitize_semantic_label_result(
+                    {
+                        "target_observation_ref": target_ref,
+                        "provider_type": "internal_llm",
+                        "provider_name": self.provider_name,
+                        "labels": case["expected_labels"],
+                        "confidence": case["confidence"],
+                    },
+                    target_ref=target_ref,
+                    provider_name=self.provider_name,
+                )
+
+        fixture_by_text = {case["text"]: case for case in load_semantic_fixture("cta_variants.json")}
+        chain = SemanticProviderChain(fallback=FixtureProvider())
+
+        for case in load_semantic_fixture("cta_variants.json"):
+            with self.subTest(text=case["text"]):
+                result = chain.classify_cta(
+                    text=case["text"],
+                    scenario_goal=case["scenario_goal"],
+                    target_ref=f"fixture.{case['text']}",
+                )
+                self.assertEqual(result.labels["scenario_relevance_label"], case["expected_labels"]["scenario_relevance_label"])
+                self.assertEqual(result.labels["action_specificity_label"], case["expected_labels"]["action_specificity_label"])
+
+    def test_semantic_provider_chain_allows_internal_llm_and_mcp_adapters(self) -> None:
+        internal = InternalLLMProvider(
+            lambda **kwargs: {
+                "provider_type": "internal_llm",
+                "labels": {
+                    "scenario_relevance_label": "DIRECT_GOAL_ACTION",
+                    "action_specificity_label": "GENERIC_BUT_ACTIONABLE",
+                },
+                "confidence": 0.82,
+            }
+        )
+        mcp = MCPSemanticProvider(
+            lambda **kwargs: {
+                "provider_type": "mcp",
+                "labels": {
+                    "scenario_relevance_label": "RELATED_GOAL_ACTION",
+                    "action_specificity_label": "SPECIFIC_ACTION",
+                },
+                "confidence": 0.79,
+            }
+        )
+
+        internal_result = SemanticProviderChain(fallback=internal).classify_cta(
+            text="무료 사용해보기", scenario_goal="서비스 무료 체험", target_ref="obs.internal"
+        )
+        mcp_result = SemanticProviderChain(fallback=mcp).classify_cta(
+            text="내 사이트 분석하기", scenario_goal="웹사이트 분석", target_ref="obs.mcp"
+        )
+
+        self.assertEqual(internal_result.provider_type, "internal_llm")
+        self.assertEqual(mcp_result.provider_type, "mcp")
+
+    def test_low_confidence_semantic_label_does_not_count_as_primary_cta(self) -> None:
+        class LowConfidenceProvider:
+            def classify_cta(self, *, text: str, scenario_goal: str, target_ref: str):
+                return {
+                    "provider_type": "internal_llm",
+                    "labels": {
+                        "scenario_relevance_label": "DIRECT_GOAL_ACTION",
+                        "action_specificity_label": "SPECIFIC_ACTION",
+                    },
+                    "confidence": 0.55,
+                }
+
+        packet = load_sample_packet()
+        packet["aggregate_signals"]["primary_cta_count_by_stage"] = {}
+        packet["checkpoints"][0]["observations"] = [
+            {
+                "observation_id": "obs_low_confidence_cta",
+                "type": "cta_candidate",
+                "stage": "CTA",
+                "source": ["dom", "ax"],
+                "data": {"visible_text": "무료 사용해보기"},
+                "confidence": 0.7,
+            },
+            {
+                "observation_id": "obs_cta_cluster_zero",
+                "type": "cta_cluster",
+                "stage": "CTA",
+                "source": ["dom", "layout"],
+                "data": {"primary_like_cta_count": 0},
+                "confidence": 0.77,
+            },
+        ]
+
+        result = analyze_evidence_packet(packet, semantic_provider=LowConfidenceProvider())
+        path_cta_001 = [issue for issue in result["issues"] if issue["criterion_id"] == "PATH-CTA-001"]
+        self.assertEqual(len(path_cta_001), 1)
+        self.assertLessEqual(path_cta_001[0]["confidence"], 0.77)
 
 
 if __name__ == "__main__":

@@ -1,0 +1,92 @@
+[
+  {
+    "text": "무료 사용해보기",
+    "scenario_goal": "서비스 무료 체험 시작",
+    "expected_labels": {
+      "scenario_relevance_label": "DIRECT_GOAL_ACTION",
+      "action_specificity_label": "GENERIC_BUT_ACTIONABLE"
+    },
+    "confidence": 0.82
+  },
+  {
+    "text": "무료로 써보기",
+    "scenario_goal": "서비스 무료 체험 시작",
+    "expected_labels": {
+      "scenario_relevance_label": "DIRECT_GOAL_ACTION",
+      "action_specificity_label": "GENERIC_BUT_ACTIONABLE"
+    },
+    "confidence": 0.81
+  },
+  {
+    "text": "한번 써보기",
+    "scenario_goal": "서비스 무료 체험 시작",
+    "expected_labels": {
+      "scenario_relevance_label": "RELATED_GOAL_ACTION",
+      "action_specificity_label": "GENERIC_BUT_ACTIONABLE"
+    },
+    "confidence": 0.72
+  },
+  {
+    "text": "내 사이트 분석하기",
+    "scenario_goal": "웹사이트 UX 분석 시작",
+    "expected_labels": {
+      "scenario_relevance_label": "DIRECT_GOAL_ACTION",
+      "action_specificity_label": "SPECIFIC_ACTION"
+    },
+    "confidence": 0.88
+  },
+  {
+    "text": "지금 진단 받기",
+    "scenario_goal": "웹사이트 UX 진단 받기",
+    "expected_labels": {
+      "scenario_relevance_label": "DIRECT_GOAL_ACTION",
+      "action_specificity_label": "SPECIFIC_ACTION"
+    },
+    "confidence": 0.86
+  },
+  {
+    "text": "상담 받아보기",
+    "scenario_goal": "B2B 상담 신청",
+    "expected_labels": {
+      "scenario_relevance_label": "RELATED_GOAL_ACTION",
+      "action_specificity_label": "GENERIC_BUT_ACTIONABLE"
+    },
+    "confidence": 0.78
+  },
+  {
+    "text": "요금 보기",
+    "scenario_goal": "구매 전 플랜 확인",
+    "expected_labels": {
+      "scenario_relevance_label": "PREREQUISITE_ACTION",
+      "action_specificity_label": "SPECIFIC_ACTION"
+    },
+    "confidence": 0.77
+  },
+  {
+    "text": "블로그",
+    "scenario_goal": "서비스 무료 체험 시작",
+    "expected_labels": {
+      "scenario_relevance_label": "IRRELEVANT_ACTION",
+      "action_specificity_label": "EXPLORATORY_LABEL"
+    },
+    "confidence": 0.9
+  },
+  {
+    "text": "채용",
+    "scenario_goal": "서비스 무료 체험 시작",
+    "expected_labels": {
+      "scenario_relevance_label": "IRRELEVANT_ACTION",
+      "action_specificity_label": "EXPLORATORY_LABEL"
+    },
+    "confidence": 0.9
+  },
+  {
+    "text": "로그인",
+    "scenario_goal": "서비스 무료 체험 시작",
+    "expected_labels": {
+      "scenario_relevance_label": "AUXILIARY_ACTION",
+      "action_specificity_label": "PROGRESSION_ONLY"
+    },
+    "confidence": 0.72
+  }
+]
