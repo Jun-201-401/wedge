@@ -5,39 +5,16 @@ from pathlib import Path
 from typing import Any
 
 from app.contracts.stages import is_decision_stage
+from app.rule_engine.contract_schema import schema_enum, schema_properties, schema_required
 
 DEFAULT_REGISTRY_PATH = Path(__file__).with_name("registries") / "p0_v0_1.json"
 
-TOP_LEVEL_FIELDS = {"schema_version", "registry_id", "description", "rules"}
-RULE_FIELDS = {
-    "criterion_id",
-    "axis",
-    "applicableStages",
-    "evidence_level",
-    "definition",
-    "required_observations",
-    "measurement_sources",
-    "signal_rule",
-    "severity_rules",
-    "exceptions",
-    "confidence_rule",
-    "fix_leverage_default",
-    "output_template",
-    "source_refs",
-    "stages",
-}
-AXES = {"Clarity", "Path", "Friction", "Trust", "Reliability", "Visual Integrity"}
-EVIDENCE_LEVELS = {"Standard", "Research-backed", "Expert Guide", "Operational", "Technical"}
-MEASUREMENT_SOURCES = {
-    "dom",
-    "layout",
-    "screenshot",
-    "ax",
-    "network",
-    "console",
-    "performance",
-    "scenario_log",
-}
+TOP_LEVEL_FIELDS = schema_properties(())
+RULE_FIELDS = schema_properties(("$defs", "rule"))
+REQUIRED_RULE_FIELDS = schema_required(("$defs", "rule"))
+AXES = schema_enum("axis")
+EVIDENCE_LEVELS = schema_enum("evidence_level")
+MEASUREMENT_SOURCES = schema_enum("source")
 
 
 class RuleRegistryError(ValueError):
@@ -101,19 +78,7 @@ def _validate_rule(rule: Any, index: int) -> None:
             f"Rule {rule.get('criterion_id', f'index {index}')} has unsupported fields: {sorted(unknown_rule_fields)}"
         )
 
-    for field in (
-        "criterion_id",
-        "axis",
-        "applicableStages",
-        "evidence_level",
-        "definition",
-        "required_observations",
-        "measurement_sources",
-        "signal_rule",
-        "severity_rules",
-        "confidence_rule",
-        "output_template",
-    ):
+    for field in REQUIRED_RULE_FIELDS:
         if field not in rule:
             criterion = rule.get("criterion_id", f"index {index}")
             raise RuleRegistryError(f"Rule {criterion} missing required field: {field}")

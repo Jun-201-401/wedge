@@ -36,15 +36,19 @@ class SemanticLabelResult:
     provider_name: str
     labels: dict[str, str] = field(default_factory=dict)
     confidence: float = 0.0
+    provider_error: str | None = None
 
     def as_observation_data(self) -> dict[str, Any]:
-        return {
+        data: dict[str, Any] = {
             "target_observation_ref": self.target_observation_ref,
             "provider_type": self.provider_type,
             "provider_name": self.provider_name,
             "confidence": self.confidence,
             "labels": dict(self.labels),
         }
+        if self.provider_error:
+            data["provider_error"] = self.provider_error
+        return data
 
 
 class SemanticProviderPort(Protocol):

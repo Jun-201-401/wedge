@@ -6,7 +6,8 @@ from typing import Any
 from app.contracts.stages import DECISION_STAGE_DISPLAY_NAMES, DECISION_STAGES, DecisionStage
 from app.providers import SemanticProviderPort
 from app.normalization import SemanticLabelResolver
-from app.rule_engine.evaluator import RuleEngine, RuleHit
+from app.rule_engine.evaluator import RuleEngine
+from app.rule_engine.models import RuleHit
 from app.rule_engine.registry_loader import load_default_registry
 from app.rule_engine.scoring import friction_score, overall_risk, stage_scores_from_issues
 from app.stage.stage_context_builder import StageContext, StageContextBuilder
