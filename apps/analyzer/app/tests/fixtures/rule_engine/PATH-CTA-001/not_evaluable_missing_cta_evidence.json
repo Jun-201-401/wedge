@@ -1,0 +1,26 @@
+{
+  "schema_version": "0.5",
+  "run_id": "fixture_path_cta_001_not_evaluable",
+  "scenario": {"goal": "회원가입 시작"},
+  "aggregate_signals": {"primary_cta_count_by_stage": {}},
+  "decisionStageSummary": {
+    "CTA": {"status": "OBSERVED", "checkpointIds": ["cp_cta"]}
+  },
+  "checkpoints": [
+    {
+      "checkpoint_id": "cp_cta",
+      "primaryStage": "CTA",
+      "state": {},
+      "observations": [
+        {
+          "observation_id": "obs_text_only",
+          "type": "cta_candidate",
+          "stage": "CTA",
+          "source": ["dom"],
+          "data": {"visible_text": "시작"},
+          "confidence": 0.7
+        }
+      ]
+    }
+  ]
+}

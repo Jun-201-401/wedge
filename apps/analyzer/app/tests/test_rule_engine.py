@@ -6,19 +6,26 @@ import unittest
 from pathlib import Path
 
 from app.normalization import SemanticLabelResolver
-from app.providers import DeterministicLexiconProvider
+from app.providers import DeterministicLexiconProvider, SemanticLabelResult
 from app.rule_engine import analyze_evidence_packet, load_default_registry
+from app.rule_engine.contract_schema import schema_enum, schema_properties
 from app.rule_engine.evaluator import RuleEngine, RuleHandlerMissing
 from app.rule_engine.registry_loader import RuleRegistryError, validate_registry
-from app.rule_engine.scoring import priority_score
+from app.rule_engine.scoring import DEFAULT_SCORING_POLICY, ScoringPolicy, overall_risk, priority_score
 from app.stage import StageContextBuilder, StageResolver
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
 SAMPLE_EVIDENCE_PATH = REPO_ROOT / "packages/contracts/examples/sample-evidence-packet.json"
+RULE_ENGINE_FIXTURE_ROOT = Path(__file__).resolve().parent / "fixtures/rule_engine"
 
 
 def load_sample_packet() -> dict:
     with SAMPLE_EVIDENCE_PATH.open(encoding="utf-8") as file:
+        return json.load(file)
+
+
+def load_rule_fixture(rule_id: str, fixture_name: str) -> dict:
+    with (RULE_ENGINE_FIXTURE_ROOT / rule_id / fixture_name).open(encoding="utf-8") as file:
         return json.load(file)
 
 
@@ -43,6 +50,14 @@ class RegistryLoaderTest(unittest.TestCase):
         registry = load_default_registry()
         self.assertEqual(registry["registry_id"], "registry_p0_v0_1")
         self.assertIn("PATH-CTA-001", [rule["criterion_id"] for rule in registry["rules"]])
+
+    def test_registry_loader_vocabularies_follow_contract_schema(self) -> None:
+        from app.rule_engine import registry_loader
+
+        self.assertEqual(registry_loader.RULE_FIELDS, schema_properties(("$defs", "rule")))
+        self.assertEqual(registry_loader.AXES, schema_enum("axis"))
+        self.assertEqual(registry_loader.EVIDENCE_LEVELS, schema_enum("evidence_level"))
+        self.assertEqual(registry_loader.MEASUREMENT_SOURCES, schema_enum("source"))
 
     def test_missing_applicable_stages_fails(self) -> None:
         registry = load_default_registry()
@@ -150,6 +165,17 @@ class RuleEngineTest(unittest.TestCase):
         criteria = [issue["criterion_id"] for issue in result["issues"]]
         self.assertNotIn("PATH-CTA-002", criteria)
 
+    def test_path_cta_001_fixture_matrix(self) -> None:
+        cases = [
+            ("issue_missing_cta.json", True),
+            ("not_evaluable_missing_cta_evidence.json", False),
+        ]
+        for fixture_name, should_emit in cases:
+            with self.subTest(fixture_name=fixture_name):
+                result = analyze_evidence_packet(load_rule_fixture("PATH-CTA-001", fixture_name))
+                criteria = [issue["criterion_id"] for issue in result["issues"]]
+                self.assertEqual("PATH-CTA-001" in criteria, should_emit)
+
     def test_lone_cta_candidate_without_readiness_is_not_issue(self) -> None:
         packet = load_sample_packet()
         packet["aggregate_signals"]["primary_cta_count_by_stage"] = {}
@@ -230,6 +256,28 @@ class RuleEngineTest(unittest.TestCase):
         self.assertEqual(reliability[0]["stage"], "INPUT")
         self.assertIn("cp_002.state.network_summary", reliability[0]["evidence_refs"])
 
+    def test_checkpoint_state_reliability_is_not_duplicated_across_observation_stages(self) -> None:
+        packet = load_sample_packet()
+        packet["aggregate_signals"]["primary_cta_count_by_stage"] = {"CTA": 1}
+        packet["checkpoints"][1]["state"]["network_summary"]["failed_request_count"] = 1
+        packet["checkpoints"][1]["observations"].append(
+            {
+                "observation_id": "obs_cross_stage_cta",
+                "type": "cta_candidate",
+                "stage": "CTA",
+                "source": ["dom"],
+                "data": {"visible_text": "무료로 시작하기"},
+                "confidence": 0.8,
+            }
+        )
+
+        result = analyze_evidence_packet(packet)
+
+        reliability = [issue for issue in result["issues"] if issue["criterion_id"] == "RELIABILITY-TECH-001"]
+        self.assertEqual(len(reliability), 1)
+        self.assertEqual(reliability[0]["stage"], "INPUT")
+        self.assertEqual(reliability[0]["evidence_refs"], ["cp_002.state.network_summary"])
+
     def test_registry_rule_without_handler_fails_fast(self) -> None:
         registry = load_default_registry()
         contexts = StageContextBuilder().build(load_sample_packet())
@@ -237,6 +285,14 @@ class RuleEngineTest(unittest.TestCase):
         broken["rules"][0]["criterion_id"] = "UNKNOWN-RULE-001"
         with self.assertRaises(RuleHandlerMissing):
             RuleEngine().evaluate(contexts=contexts, registry=broken)
+
+    def test_rule_engine_exposes_internal_evaluations_before_issue_mapping(self) -> None:
+        registry = load_default_registry()
+        contexts = StageContextBuilder().build(load_sample_packet())
+        evaluations = RuleEngine().evaluate_registry(contexts=contexts, registry=registry)
+        statuses = {(evaluation.criterion_id, evaluation.stage): evaluation.status for evaluation in evaluations}
+        self.assertEqual(statuses[("PATH-CTA-002", "CTA")], "ISSUE")
+        self.assertEqual(statuses[("FRICTION-FORM-001", "INPUT")], "NOT_EVALUABLE")
 
 
 class ContractShapeTest(unittest.TestCase):
@@ -267,6 +323,17 @@ class ContractShapeTest(unittest.TestCase):
 class ScoringAndProviderTest(unittest.TestCase):
     def test_priority_score_matches_documented_formula(self) -> None:
         self.assertEqual(priority_score(severity=2, stage="CTA", confidence=0.78), 2.03)
+        self.assertEqual(DEFAULT_SCORING_POLICY.policy_id, "scoring_policy_v0_5_default")
+
+    def test_scoring_policy_thresholds_are_versioned_inputs(self) -> None:
+        strict_policy = ScoringPolicy(
+            policy_id="strict_test_policy",
+            stage_weights=DEFAULT_SCORING_POLICY.stage_weights,
+            medium_risk_threshold=10,
+            high_risk_threshold=20,
+            critical_risk_threshold=30,
+        )
+        self.assertEqual(overall_risk(25, policy=strict_policy), "high")
 
     def test_deterministic_provider_returns_labels_only(self) -> None:
         result = DeterministicLexiconProvider().classify_cta(
@@ -286,6 +353,51 @@ class ScoringAndProviderTest(unittest.TestCase):
         value_annotations = enriched["VALUE"].semantic_annotations
         self.assertIn("cp_003.obs_005", value_annotations)
         self.assertIn("labels", value_annotations["cp_003.obs_005"])
+
+    def test_semantic_resolver_degrades_provider_failure_to_unknown_label(self) -> None:
+        class FailingProvider:
+            def classify_cta(self, *, text: str, scenario_goal: str, target_ref: str):
+                raise RuntimeError("provider unavailable")
+
+        packet = load_sample_packet()
+        contexts = StageContextBuilder().build(packet)
+        enriched = SemanticLabelResolver(FailingProvider()).enrich(contexts)
+        value_annotations = enriched["VALUE"].semantic_annotations
+        annotation = value_annotations["cp_003.obs_005"]
+        self.assertEqual(annotation["labels"]["scenario_relevance_label"], "UNKNOWN")
+        self.assertEqual(annotation["labels"]["action_specificity_label"], "UNKNOWN")
+        self.assertEqual(annotation["confidence"], 0.0)
+        self.assertIn("provider_error", annotation)
+
+    def test_semantic_cta_signal_can_prevent_missing_cta_issue(self) -> None:
+        class DirectActionProvider:
+            def classify_cta(self, *, text: str, scenario_goal: str, target_ref: str):
+                return SemanticLabelResult(
+                    target_observation_ref=target_ref,
+                    provider_type="test",
+                    provider_name="direct_action_provider",
+                    labels={
+                        "scenario_relevance_label": "DIRECT_GOAL_ACTION",
+                        "action_specificity_label": "SPECIFIC_ACTION",
+                    },
+                    confidence=0.91,
+                )
+
+        packet = load_sample_packet()
+        packet["aggregate_signals"]["primary_cta_count_by_stage"] = {}
+        packet["checkpoints"][0]["observations"] = [
+            {
+                "observation_id": "obs_semantic_cta",
+                "type": "cta_candidate",
+                "stage": "CTA",
+                "source": ["dom", "ax"],
+                "data": {"visible_text": "무료 사용해보기"},
+                "confidence": 0.7,
+            }
+        ]
+        result = analyze_evidence_packet(packet, semantic_provider=DirectActionProvider())
+        criteria = [issue["criterion_id"] for issue in result["issues"]]
+        self.assertNotIn("PATH-CTA-001", criteria)
 
 
 if __name__ == "__main__":
