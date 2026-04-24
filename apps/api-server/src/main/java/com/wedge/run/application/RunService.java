@@ -6,26 +6,31 @@ import com.wedge.run.api.dto.RunCreateRequest;
 import com.wedge.run.api.dto.RunResponse;
 import com.wedge.run.domain.ResultCompleteness;
 import com.wedge.run.domain.RunStatus;
+import com.wedge.run.infrastructure.OutboxMessagePersistenceAdapter;
 import com.wedge.run.infrastructure.RunPersistenceAdapter;
 import java.util.List;
 import java.util.UUID;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class RunService {
     private final RunPersistenceAdapter runPersistenceAdapter;
-    private final RunRequestPublisher runRequestPublisher;
     private final RunExecuteRequestMessageFactory runExecuteRequestMessageFactory;
+    private final OutboxMessagePersistenceAdapter outboxMessagePersistenceAdapter;
+    private final ApplicationEventPublisher applicationEventPublisher;
 
     public RunService(
             RunPersistenceAdapter runPersistenceAdapter,
-            RunRequestPublisher runRequestPublisher,
-            RunExecuteRequestMessageFactory runExecuteRequestMessageFactory
+            RunExecuteRequestMessageFactory runExecuteRequestMessageFactory,
+            OutboxMessagePersistenceAdapter outboxMessagePersistenceAdapter,
+            ApplicationEventPublisher applicationEventPublisher
     ) {
         this.runPersistenceAdapter = runPersistenceAdapter;
-        this.runRequestPublisher = runRequestPublisher;
         this.runExecuteRequestMessageFactory = runExecuteRequestMessageFactory;
+        this.outboxMessagePersistenceAdapter = outboxMessagePersistenceAdapter;
+        this.applicationEventPublisher = applicationEventPublisher;
     }
 
     @Transactional(readOnly = true)
@@ -54,10 +59,14 @@ public class RunService {
     @Transactional
     public RunResponse startRun(UUID runId) {
         RunResponse current = getRun(runId);
+        RunExecutionRequestSource executionRequestSource = runPersistenceAdapter.findExecutionRequestSource(runId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.RUN_NOT_FOUND));
         RunStatusTransitionPolicy.validateTransition(current.status(), RunStatus.QUEUED);
 
         RunResponse queued = runPersistenceAdapter.updateExecutionState(current, RunStatus.QUEUED, ResultCompleteness.NONE);
-        runRequestPublisher.publish(runExecuteRequestMessageFactory.create(queued));
+        RunExecuteRequestMessage message = runExecuteRequestMessageFactory.create(executionRequestSource);
+        UUID outboxMessageId = outboxMessagePersistenceAdapter.appendRunExecuteMessage(message);
+        applicationEventPublisher.publishEvent(new RunExecuteOutboxEnqueuedEvent(outboxMessageId));
         return queued;
     }
 

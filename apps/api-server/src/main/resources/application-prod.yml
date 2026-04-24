@@ -23,6 +23,7 @@ jwt:
 wedge:
   runner:
     mq:
+      exchange: ${WEDGE_RUNNER_MQ_EXCHANGE:wedge.direct}
       run-execute-queue: ${WEDGE_RUN_EXECUTE_QUEUE:run.execute.request}
   internal:
     service-token: ${INTERNAL_SERVICE_TOKEN}

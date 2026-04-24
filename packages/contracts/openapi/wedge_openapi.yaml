@@ -2376,6 +2376,9 @@ components:
         scenarioOverrides:
           type: object
           additionalProperties: true
+        scenarioPlan:
+          type: object
+          additionalProperties: true
       required:
       - projectId
       - name

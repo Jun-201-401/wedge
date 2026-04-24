@@ -13,6 +13,7 @@ public record RunCreateRequest(
         String goal,
         @NotBlank String devicePreset,
         @NotNull UUID scenarioTemplateVersionId,
-        Map<String, Object> scenarioOverrides
+        Map<String, Object> scenarioOverrides,
+        Map<String, Object> scenarioPlan
 ) {
 }

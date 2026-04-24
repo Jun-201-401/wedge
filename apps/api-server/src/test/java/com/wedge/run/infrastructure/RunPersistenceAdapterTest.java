@@ -6,22 +6,24 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.wedge.common.error.BusinessException;
 import com.wedge.run.api.dto.RunCreateRequest;
 import com.wedge.run.api.dto.RunResponse;
+import com.wedge.run.application.RunExecutionRequestSource;
 import com.wedge.run.domain.AnalysisStatus;
 import com.wedge.run.domain.ResultCompleteness;
 import com.wedge.run.domain.RunStatus;
 import java.net.URI;
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Captor;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -30,14 +32,14 @@ class RunPersistenceAdapterTest {
     @Mock
     private RunMapper runMapper;
 
-    @InjectMocks
-    private RunPersistenceAdapter runPersistenceAdapter;
-
     @Captor
     private ArgumentCaptor<RunRecord> runRecordCaptor;
 
+    private final ObjectMapper objectMapper = new ObjectMapper();
+
     @Test
     void createRunBuildsDefaultPersistenceRecord() {
+        RunPersistenceAdapter runPersistenceAdapter = new RunPersistenceAdapter(runMapper, objectMapper);
         RunCreateRequest request = sampleRequest();
 
         RunResponse created = runPersistenceAdapter.createRun(request);
@@ -47,7 +49,8 @@ class RunPersistenceAdapterTest {
         assertThat(persisted.getProjectId()).isEqualTo(request.projectId());
         assertThat(persisted.getTriggerSource()).isEqualTo("WEB");
         assertThat(persisted.getEnvironmentJson()).isEqualTo("{}");
-        assertThat(persisted.getScenarioPlanJson()).isEqualTo("{}");
+        assertThat(persisted.getScenarioPlanSchemaVersion()).isEqualTo("0.5");
+        assertThat(persisted.getScenarioPlanJson()).contains("\"plan_id\":\"plan_001\"");
         assertThat(persisted.getStatus()).isEqualTo(RunStatus.CREATED);
         assertThat(persisted.getResultCompleteness()).isEqualTo(ResultCompleteness.NONE);
         assertThat(persisted.getAnalysisStatus()).isEqualTo(AnalysisStatus.NOT_STARTED);
@@ -60,6 +63,7 @@ class RunPersistenceAdapterTest {
 
     @Test
     void listRunsMapsStoredRowsToApiResponses() {
+        RunPersistenceAdapter runPersistenceAdapter = new RunPersistenceAdapter(runMapper, objectMapper);
         RunRecord stored = sampleRecord();
         when(runMapper.findAll(stored.getProjectId(), RunStatus.RUNNING)).thenReturn(List.of(stored));
 
@@ -73,6 +77,7 @@ class RunPersistenceAdapterTest {
 
     @Test
     void findRunReturnsMappedRunWhenPresent() {
+        RunPersistenceAdapter runPersistenceAdapter = new RunPersistenceAdapter(runMapper, objectMapper);
         RunRecord stored = sampleRecord();
         when(runMapper.findById(stored.getId())).thenReturn(Optional.of(stored));
 
@@ -84,7 +89,21 @@ class RunPersistenceAdapterTest {
     }
 
     @Test
+    void findExecutionRequestSourceParsesStoredScenarioPlanJson() {
+        RunPersistenceAdapter runPersistenceAdapter = new RunPersistenceAdapter(runMapper, objectMapper);
+        RunRecord stored = sampleRecord();
+        stored.setScenarioPlanJson("{\"schema_version\":\"0.5\",\"plan_id\":\"plan_001\"}");
+        when(runMapper.findById(stored.getId())).thenReturn(Optional.of(stored));
+
+        RunExecutionRequestSource source = runPersistenceAdapter.findExecutionRequestSource(stored.getId()).orElseThrow();
+
+        assertThat(source.scenarioPlan()).containsEntry("schema_version", "0.5");
+        assertThat(source.scenarioPlan()).containsEntry("plan_id", "plan_001");
+    }
+
+    @Test
     void updateExecutionStateReturnsUpdatedApiShape() {
+        RunPersistenceAdapter runPersistenceAdapter = new RunPersistenceAdapter(runMapper, objectMapper);
         RunResponse current = sampleResponse(RunStatus.CREATED, ResultCompleteness.NONE);
         when(runMapper.updateExecutionState(
                 current.id(),
@@ -103,6 +122,7 @@ class RunPersistenceAdapterTest {
 
     @Test
     void updateFailureStateRaisesConflictWhenConcurrentUpdateFails() {
+        RunPersistenceAdapter runPersistenceAdapter = new RunPersistenceAdapter(runMapper, objectMapper);
         RunResponse current = sampleResponse(RunStatus.RUNNING, ResultCompleteness.PARTIAL);
         when(runMapper.updateFailureState(
                 org.mockito.ArgumentMatchers.eq(current.id()),
@@ -131,7 +151,12 @@ class RunPersistenceAdapterTest {
                 "무료 체험 CTA까지의 흐름 점검",
                 "desktop",
                 UUID.randomUUID(),
-                null
+                null,
+                Map.of(
+                        "schema_version", "0.5",
+                        "plan_id", "plan_001",
+                        "scenario_type", "custom_compiled"
+                )
         );
     }
 
@@ -153,6 +178,7 @@ class RunPersistenceAdapterTest {
         record.setFinishedAt(OffsetDateTime.parse("2026-04-21T10:05:00+09:00"));
         record.setFailureCode("RUNNER_TIMEOUT");
         record.setFailureMessage("Runner callback timed out");
+        record.setScenarioPlanJson("{}");
         return record;
     }
 

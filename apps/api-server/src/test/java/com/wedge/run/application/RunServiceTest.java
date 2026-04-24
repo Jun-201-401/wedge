@@ -2,7 +2,8 @@ package com.wedge.run.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.Mockito.doThrow;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -11,17 +12,21 @@ import com.wedge.run.api.dto.RunCreateRequest;
 import com.wedge.run.api.dto.RunResponse;
 import com.wedge.run.domain.ResultCompleteness;
 import com.wedge.run.domain.RunStatus;
+import com.wedge.run.infrastructure.OutboxMessagePersistenceAdapter;
 import com.wedge.run.infrastructure.RunPersistenceAdapter;
 import java.net.URI;
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 
 @ExtendWith(MockitoExtension.class)
 class RunServiceTest {
@@ -29,10 +34,13 @@ class RunServiceTest {
     private RunPersistenceAdapter runPersistenceAdapter;
 
     @Mock
-    private RunRequestPublisher runRequestPublisher;
+    private RunExecuteRequestMessageFactory runExecuteRequestMessageFactory;
 
     @Mock
-    private RunExecuteRequestMessageFactory runExecuteRequestMessageFactory;
+    private OutboxMessagePersistenceAdapter outboxMessagePersistenceAdapter;
+
+    @Mock
+    private ApplicationEventPublisher applicationEventPublisher;
 
     @InjectMocks
     private RunService runService;
@@ -43,11 +51,15 @@ class RunServiceTest {
         RunResponse created = sampleRun(RunStatus.CREATED, ResultCompleteness.NONE);
         RunResponse queued = sampleRun(created.id(), RunStatus.QUEUED, ResultCompleteness.NONE);
         RunExecuteRequestMessage message = sampleMessage(created.id());
+        UUID outboxMessageId = UUID.randomUUID();
+        RunExecutionRequestSource executionRequestSource = sampleExecutionRequestSource(created.id());
 
         when(runPersistenceAdapter.createRun(request)).thenReturn(created);
         when(runPersistenceAdapter.findRun(created.id())).thenReturn(Optional.of(created));
+        when(runPersistenceAdapter.findExecutionRequestSource(created.id())).thenReturn(Optional.of(executionRequestSource));
         when(runPersistenceAdapter.updateExecutionState(created, RunStatus.QUEUED, ResultCompleteness.NONE)).thenReturn(queued);
-        when(runExecuteRequestMessageFactory.create(queued)).thenReturn(message);
+        when(runExecuteRequestMessageFactory.create(executionRequestSource)).thenReturn(message);
+        when(outboxMessagePersistenceAdapter.appendRunExecuteMessage(message)).thenReturn(outboxMessageId);
 
         RunResponse persisted = runService.createRun(request);
         assertThat(persisted.status()).isEqualTo(RunStatus.CREATED);
@@ -57,7 +69,10 @@ class RunServiceTest {
 
         assertThat(started.status()).isEqualTo(RunStatus.QUEUED);
         assertThat(started.resultCompleteness()).isEqualTo(ResultCompleteness.NONE);
-        verify(runRequestPublisher).publish(message);
+        verify(outboxMessagePersistenceAdapter).appendRunExecuteMessage(message);
+        ArgumentCaptor<RunExecuteOutboxEnqueuedEvent> eventCaptor = ArgumentCaptor.forClass(RunExecuteOutboxEnqueuedEvent.class);
+        verify(applicationEventPublisher).publishEvent(eventCaptor.capture());
+        assertThat(eventCaptor.getValue().outboxMessageId()).isEqualTo(outboxMessageId);
     }
 
     @Test
@@ -102,19 +117,30 @@ class RunServiceTest {
     }
 
     @Test
-    void startRunPropagatesPublisherFailure() {
+    void startRunFailsWhenMaterializedScenarioPlanIsMissing() {
         RunResponse created = sampleRun(RunStatus.CREATED, ResultCompleteness.NONE);
-        RunResponse queued = sampleRun(created.id(), RunStatus.QUEUED, ResultCompleteness.NONE);
-        RunExecuteRequestMessage message = sampleMessage(created.id());
+        RunExecutionRequestSource executionRequestSource = new RunExecutionRequestSource(
+                created.id(),
+                created.projectId(),
+                created.triggerSource(),
+                created.startUrl(),
+                created.goal(),
+                created.devicePreset(),
+                created.scenarioTemplateVersionId(),
+                Map.of()
+        );
 
         when(runPersistenceAdapter.findRun(created.id())).thenReturn(Optional.of(created));
-        when(runPersistenceAdapter.updateExecutionState(created, RunStatus.QUEUED, ResultCompleteness.NONE)).thenReturn(queued);
-        when(runExecuteRequestMessageFactory.create(queued)).thenReturn(message);
-        doThrow(new IllegalStateException("mq unavailable")).when(runRequestPublisher).publish(message);
+        when(runPersistenceAdapter.findExecutionRequestSource(created.id())).thenReturn(Optional.of(executionRequestSource));
+        when(runPersistenceAdapter.updateExecutionState(created, RunStatus.QUEUED, ResultCompleteness.NONE))
+                .thenReturn(sampleRun(created.id(), RunStatus.QUEUED, ResultCompleteness.NONE));
+        when(runExecuteRequestMessageFactory.create(executionRequestSource))
+                .thenThrow(new IllegalStateException("Cannot publish run.execute.request without a materialized scenarioPlan"));
 
         assertThatThrownBy(() -> runService.startRun(created.id()))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("mq unavailable");
+                .hasMessageContaining("materialized scenarioPlan");
+        verify(outboxMessagePersistenceAdapter, never()).appendRunExecuteMessage(any());
     }
 
     private RunCreateRequest sampleRequest() {
@@ -125,7 +151,39 @@ class RunServiceTest {
                 "무료 체험 CTA까지의 흐름 점검",
                 "desktop",
                 UUID.randomUUID(),
-                null
+                null,
+                Map.of(
+                        "schema_version", "0.5",
+                        "plan_id", "plan_001",
+                        "scenario_type", "custom_compiled",
+                        "goal", "무료 체험 CTA까지의 흐름 점검",
+                        "start_url", "https://example.com",
+                        "environment", Map.of(
+                                "device", "desktop",
+                                "viewport", Map.of("width", 1440, "height", 900),
+                                "locale", "ko-KR",
+                                "timezone", "Asia/Seoul",
+                                "permissions", List.of(),
+                                "auth_state", "anonymous"
+                        ),
+                        "safety", Map.of(
+                                "allow_external_navigation", false,
+                                "allow_payment_commit", false,
+                                "allow_destructive_action", false,
+                                "use_synthetic_inputs", true,
+                                "stop_before_real_payment", true
+                        ),
+                        "steps", List.of(
+                                Map.of(
+                                        "step_id", "step_001_goto",
+                                        "stage", "FIRST_VIEW",
+                                        "description", "랜딩 첫 화면 로드",
+                                        "action", Map.of("type", "goto", "target", Map.of("url", "https://example.com")),
+                                        "settle_strategy", Map.of("type", "network_idle", "timeout_ms", 10000),
+                                        "checkpoint", true
+                                )
+                        )
+                )
         );
     }
 
@@ -168,6 +226,50 @@ class RunServiceTest {
                 runId.toString(),
                 "run:" + runId,
                 Map.of("runId", runId.toString())
+        );
+    }
+
+    private RunExecutionRequestSource sampleExecutionRequestSource(UUID runId) {
+        return new RunExecutionRequestSource(
+                runId,
+                UUID.randomUUID(),
+                "WEB",
+                URI.create("https://example.com"),
+                "무료 체험 CTA까지의 흐름 점검",
+                "desktop",
+                UUID.randomUUID(),
+                Map.of(
+                        "schema_version", "0.5",
+                        "plan_id", "plan_" + runId,
+                        "scenario_type", "custom_compiled",
+                        "goal", "무료 체험 CTA까지의 흐름 점검",
+                        "start_url", "https://example.com",
+                        "environment", Map.of(
+                                "device", "desktop",
+                                "viewport", Map.of("width", 1440, "height", 900),
+                                "locale", "ko-KR",
+                                "timezone", "Asia/Seoul",
+                                "permissions", List.of(),
+                                "auth_state", "anonymous"
+                        ),
+                        "safety", Map.of(
+                                "allow_external_navigation", false,
+                                "allow_payment_commit", false,
+                                "allow_destructive_action", false,
+                                "use_synthetic_inputs", true,
+                                "stop_before_real_payment", true
+                        ),
+                        "steps", List.of(
+                                Map.of(
+                                        "step_id", "step_001_goto",
+                                        "stage", "FIRST_VIEW",
+                                        "description", "랜딩 첫 화면 로드",
+                                        "action", Map.of("type", "goto", "target", Map.of("url", "https://example.com")),
+                                        "settle_strategy", Map.of("type", "network_idle", "timeout_ms", 10000),
+                                        "checkpoint", true
+                                )
+                        )
+                )
         );
     }
 }
