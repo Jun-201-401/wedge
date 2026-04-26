@@ -10,6 +10,7 @@ pipeline {
         GIT_BRANCH = 'feature/ec2-prod-baseline'
         IMAGE_NAME = 'wedge-api-server'
         DEPLOY_HOST = 'k14c104.p.ssafy.io'
+        SSH_OPTS = '-o StrictHostKeyChecking=yes -o UserKnownHostsFile=/var/jenkins_home/.ssh/known_hosts -o UpdateHostKeys=no'
     }
 
     stages {
@@ -50,9 +51,9 @@ tar \
   --exclude=apps/runner/node_modules \
   -czf /tmp/wedge-deploy.tar.gz .
 
-scp -i "$EC2_KEY" /tmp/wedge-deploy.tar.gz "$EC2_USER@$DEPLOY_HOST:/tmp/wedge-deploy.tar.gz"
+scp -i "$EC2_KEY" $SSH_OPTS /tmp/wedge-deploy.tar.gz "$EC2_USER@$DEPLOY_HOST:/tmp/wedge-deploy.tar.gz"
 
-ssh -i "$EC2_KEY" "$EC2_USER@$DEPLOY_HOST" 'bash -s' << 'EOF'
+ssh -i "$EC2_KEY" $SSH_OPTS "$EC2_USER@$DEPLOY_HOST" 'bash -s' << 'EOF'
 set -e
 
 cd /srv/wedge
