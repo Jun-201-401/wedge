@@ -39,6 +39,7 @@ services:
     volumes:
       - jenkins-data:/var/jenkins_home
       - jenkins-docker-certs:/certs/client:ro
+      - ./infra/jenkins/ssh:/var/jenkins_home/.ssh:ro
 
 networks:
   jenkins:
