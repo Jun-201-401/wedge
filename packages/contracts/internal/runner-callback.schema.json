@@ -260,7 +260,7 @@
       "required": [
         "checkpointId",
         "stepKey",
-        "stage",
+        "primaryStage",
         "trigger",
         "settle",
         "state",
@@ -273,13 +273,9 @@
           "type": "string"
         },
         "stage": {
-          "enum": [
-            "FIRST_VIEW",
-            "VALUE",
-            "CTA",
-            "INPUT",
-            "COMMIT"
-          ]
+          "$ref": "#/$defs/DecisionStage",
+          "deprecated": true,
+          "description": "Deprecated alias for primaryStage during migration."
         },
         "trigger": {
           "type": "object",
@@ -381,6 +377,10 @@
         "stepKey": {
           "type": "string",
           "minLength": 1
+        },
+        "primaryStage": {
+          "$ref": "#/$defs/DecisionStage",
+          "description": "Primary stage of checkpoint based on ScenarioStep.stage or action context."
         }
       },
       "title": "Checkpoint",
@@ -694,6 +694,17 @@
         "failedAt",
         "failureCode",
         "failureMessage"
+      ]
+    },
+    "DecisionStage": {
+      "type": "string",
+      "description": "Operational decision moment label. Runner passes ScenarioStep.stage as checkpoint primaryStage; LLM does not infer it.",
+      "enum": [
+        "FIRST_VIEW",
+        "VALUE",
+        "CTA",
+        "INPUT",
+        "COMMIT"
       ]
     }
   }

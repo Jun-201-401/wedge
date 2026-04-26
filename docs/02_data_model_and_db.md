@@ -35,6 +35,7 @@ Agent / MCP / Outbox / ProcessedMessage / Worker
 - 분석 실패와 브라우저 실행 실패는 다른 문제다.
 - `status`는 브라우저 실행 lifecycle만 표현하고, 분석 진행은 `analysis_status`로만 표현한다.
 - `scenario_fit_status`는 시스템 오류가 아니라 선택한 시나리오가 해당 URL에서 실행 가능한지를 표현한다.
+- `scenario_fit_status`는 Stage issue와 다르다. `test_run.scenario_fit_status`는 URL과 선택 시나리오의 적용 가능성이고, `analysis_finding.stage`는 실제 관찰된 issue가 속한 decision moment다.
 
 예시:
 
@@ -132,6 +133,16 @@ V1 기본 mismatch 정책:
 
 Scenario mismatch는 실패가 아니라 URL과 선택 시나리오의 fit 결과다.
 
+### test_run_step
+
+`test_run_step.stage`는 ScenarioPlan의 `step.stage`를 저장한다.
+
+- type: varchar
+- values: `FIRST_VIEW`, `VALUE`, `CTA`, `INPUT`, `COMMIT`
+- purpose: Runner checkpoint의 `primaryStage` 기본값과 Analyzer StageContext 구성 기준
+
+V1 template scenario와 `custom_compiled` scenario 모두 `stage`가 채워진 step plan을 저장해야 한다.
+
 ## 4. Evidence 저장 구조
 
 기존 `page_snapshot` 중심 모델은 폐기한다.
@@ -149,6 +160,11 @@ test_run or site_discovery
 
 Checkpoint는 의미 있는 상태 전이 이후 생성한다. `checkpoint.source_type`은 `RUN` 또는 `DISCOVERY`이며, `RUN`이면 `run_id`, `DISCOVERY`이면 `discovery_id`를 가진다.
 
+Stage 관련 필드:
+
+- `checkpoint.primary_stage`: checkpoint의 기본 stage. Scenario step 또는 trigger/action context에서 결정한다.
+- 기존 `checkpoint.stage`가 있다면 migration 기간 동안 `primary_stage`의 alias로만 해석한다.
+
 예시:
 
 - initial page load settled
@@ -160,6 +176,12 @@ Checkpoint는 의미 있는 상태 전이 이후 생성한다. `checkpoint.sourc
 ### observation
 
 Observation은 raw DOM이나 screenshot에서 추출한 normalized fact다. Observation은 checkpoint를 통해 Run/Discovery source를 추적한다.
+
+Stage 관련 필드:
+
+- `observation.stage`: 해당 observation이 속한 decision stage.
+- `observation.stage`는 `checkpoint.primary_stage`와 다를 수 있다.
+- 예: first viewport checkpoint 안에 `heading_structure(FIRST_VIEW)`, `first_view_message(VALUE)`, `cta_cluster(CTA)`가 동시에 존재할 수 있다.
 
 Examples:
 
@@ -190,6 +212,30 @@ Examples:
 DB normalized tables가 운영 조회에 유리하고, packet snapshot은 Analyzer 재실행/디버깅에 유리하다.
 
 둘 다 유지한다.
+
+### analysis finding / rule hit stage
+
+`rule_hit.stage`와 `analysis_finding.stage`는 필수로 저장한다.
+
+- `rule_hit.stage`: Rule Engine이 어떤 StageContext에서 criterion을 실행했는지.
+- `analysis_finding.stage`: issue가 속한 decision stage.
+- 둘 다 Decision Map과 priority calculation에 사용한다.
+
+`decision_map`은 별도 lifecycle 테이블로 만들지 않고 `analysis_job.output_jsonb` 또는 report summary JSON 안에 저장하는 것을 권장한다.
+
+DecisionMap item:
+
+- `stage`
+- `status`
+- `issueIds`
+- `summary`
+- `evidenceRefs`
+
+`stage_status`를 DB 테이블로 따로 만들지 않는 이유:
+
+- Stage status는 분석 결과의 파생값이다.
+- Run lifecycle 상태와 혼동하면 안 된다.
+- 재분석 또는 RuleRegistry 변경 시 output JSON을 재생성하는 편이 안전하다.
 
 ## 5. Soft delete
 

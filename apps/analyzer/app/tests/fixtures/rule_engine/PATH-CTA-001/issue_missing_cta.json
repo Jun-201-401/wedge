@@ -1,0 +1,26 @@
+{
+  "schema_version": "0.5",
+  "run_id": "fixture_path_cta_001_issue",
+  "scenario": {"goal": "회원가입 시작"},
+  "aggregate_signals": {"primary_cta_count_by_stage": {}},
+  "decisionStageSummary": {
+    "CTA": {"status": "OBSERVED", "checkpointIds": ["cp_cta"]}
+  },
+  "checkpoints": [
+    {
+      "checkpoint_id": "cp_cta",
+      "primaryStage": "CTA",
+      "state": {},
+      "observations": [
+        {
+          "observation_id": "obs_cluster_zero",
+          "type": "cta_cluster",
+          "stage": "CTA",
+          "source": ["dom", "layout"],
+          "data": {"primary_like_cta_count": 0},
+          "confidence": 0.82
+        }
+      ]
+    }
+  ]
+}

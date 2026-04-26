@@ -26,15 +26,6 @@
     }
   },
   "$defs": {
-    "stage": {
-      "enum": [
-        "FIRST_VIEW",
-        "VALUE",
-        "CTA",
-        "INPUT",
-        "COMMIT"
-      ]
-    },
     "axis": {
       "enum": [
         "Clarity",
@@ -71,7 +62,7 @@
       "required": [
         "criterion_id",
         "axis",
-        "stages",
+        "applicableStages",
         "evidence_level",
         "definition",
         "required_observations",
@@ -88,12 +79,6 @@
         "axis": {
           "$ref": "#/$defs/axis"
         },
-        "stages": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/stage"
-          }
-        },
         "evidence_level": {
           "$ref": "#/$defs/evidence_level"
         },
@@ -104,7 +89,8 @@
           "type": "array",
           "items": {
             "type": "string"
-          }
+          },
+          "description": "Observation types required by the rule. Equivalent conceptual name: requiredObservationTypes."
         },
         "measurement_sources": {
           "type": "array",
@@ -128,7 +114,8 @@
           }
         },
         "confidence_rule": {
-          "type": "string"
+          "type": "string",
+          "description": "Confidence calculation rule. Confidence may increase when DOM, AX, layout, screenshot, network, or performance observations agree within the same StageContext."
         },
         "fix_leverage_default": {
           "type": "number",
@@ -143,9 +130,28 @@
           "items": {
             "type": "string"
           }
+        },
+        "applicableStages": {
+          "type": "array",
+          "minItems": 1,
+          "description": "DecisionStage values where this rule is executed. The Rule Engine must not evaluate the rule against the whole page outside these StageContexts.",
+          "items": {
+            "$ref": "#/$defs/DecisionStage"
+          },
+          "uniqueItems": true
+        },
+        "stages": {
+          "type": "array",
+          "deprecated": true,
+          "description": "Deprecated alias for applicableStages. New registries should use applicableStages.",
+          "items": {
+            "$ref": "#/$defs/DecisionStage"
+          },
+          "uniqueItems": true
         }
       },
-      "additionalProperties": false
+      "additionalProperties": false,
+      "description": "A code-executable Judge rule. It evaluates only the StageContext entries listed in applicableStages and must output stage, axis, criterion, and evidenceRefs through Rule Engine results."
     },
     "severity_rule": {
       "type": "object",
@@ -164,6 +170,17 @@
         }
       },
       "additionalProperties": false
+    },
+    "DecisionStage": {
+      "type": "string",
+      "description": "Operational decision moment label. Rules run only inside matching StageContext values.",
+      "enum": [
+        "FIRST_VIEW",
+        "VALUE",
+        "CTA",
+        "INPUT",
+        "COMMIT"
+      ]
     }
   }
 }

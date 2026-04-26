@@ -202,15 +202,6 @@
         "CONTENT_ONLY"
       ]
     },
-    "stage": {
-      "enum": [
-        "FIRST_VIEW",
-        "VALUE",
-        "CTA",
-        "INPUT",
-        "COMMIT"
-      ]
-    },
     "target": {
       "type": [
         "object",
@@ -353,7 +344,8 @@
           "type": "string"
         },
         "stage": {
-          "$ref": "#/$defs/stage"
+          "$ref": "#/$defs/DecisionStage",
+          "description": "Operational decision moment for this scenario step. Template and custom_compiled plans must include it so checkpoints inherit a primaryStage without LLM inference."
         },
         "description": {
           "type": "string"
@@ -373,6 +365,17 @@
         }
       },
       "additionalProperties": false
+    },
+    "DecisionStage": {
+      "type": "string",
+      "description": "Decision moment label used by Checkpoint, Observation, Rule Engine, and Decision Map. It is not inferred by LLM in V1.",
+      "enum": [
+        "FIRST_VIEW",
+        "VALUE",
+        "CTA",
+        "INPUT",
+        "COMMIT"
+      ]
     }
   }
 }

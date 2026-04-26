@@ -1,0 +1,14 @@
+{
+  "schema_version": "0.1",
+  "task_type": "CTA_SEMANTIC_CLASSIFICATION",
+  "target_observation_ref": "cp_001.obs_002",
+  "input": {
+    "text": "무료 사용해보기",
+    "scenario_goal": "서비스 무료 체험 시작",
+    "context": {
+      "locale": "ko-KR",
+      "element_role": "button",
+      "accessible_name": "무료 사용해보기"
+    }
+  }
+}

@@ -85,6 +85,8 @@ Runner는 DB에 직접 쓰지 않는다.
 - SiteDiscoveryResult 또는 EvidencePacket 입력
 - flow candidate / scenario recommendation 평가
 - RuleRegistry 로드
+- StageResolver 실행
+- StageContextBuilder로 stage별 evidence context 구성
 - Observation → Signal → Judgment 계산
 - severity/confidence/priority 계산
 - JudgeResult 생성
@@ -92,6 +94,8 @@ Runner는 DB에 직접 쓰지 않는다.
 - Analyzer callback 호출
 
 FastAPI는 run lifecycle의 기준 서버가 아니다.
+
+Analyzer의 Stage 책임은 code-level enum 처리다. Stage는 LLM이 판단하는 심리 상태가 아니라 `ScenarioStep.stage`, `Checkpoint.primaryStage`, `Observation.stage`, `Rule.applicableStages`, `JudgeIssue.stage`, `DecisionMapItem.stage`를 연결하는 operational label이다.
 
 ### 2.5 RabbitMQ
 
@@ -177,9 +181,10 @@ Blocked actions:
 12. If fit is not applicable, Spring/Runner records scenario_fit_status and ScenarioMismatchReport without treating it as a system failure
 13. Spring materializes EvidencePacket from checkpoint/observation/artifact rows
 14. Spring creates analysis_job(evidence_packet_id=...) and publishes analysis.request when full analysis is needed
-15. Analyzer produces JudgeResult; scenario mismatch remains separate from UX scoring unless the user goal explicitly asks for that entrypoint
-16. Spring stores analysis_job, rule_hit, analysis_finding, nudge, report
-17. React receives WebSocket events and renders discovery, run, report, or mismatch outcome
+15. Analyzer runs StageResolver, builds StageContext objects, and evaluates only rules whose applicableStages match each context
+16. Analyzer produces JudgeResult; scenario mismatch remains separate from UX scoring unless the user goal explicitly asks for that entrypoint
+17. Spring stores analysis_job, rule_hit, analysis_finding, nudge, report
+18. React receives WebSocket events and renders discovery, run, Decision Map report, or mismatch outcome
 ```
 
 ## 4. Spring 패키지 구조
@@ -300,6 +305,9 @@ apps/analyzer/
     api/
       health.py
       analyze.py
+    stage/
+      stage_resolver.py
+      stage_context_builder.py
     discovery/
       flow_candidate_extractor.py
       scenario_recommender.py
@@ -320,6 +328,44 @@ apps/analyzer/
       spring_callback.py
     tests/
 ```
+
+StageResolver responsibilities:
+
+- `ScenarioStep.stage`를 checkpoint `primaryStage`에 전달한다.
+- observation type에 따라 `Observation.stage`를 보정한다.
+- checkpoint 안의 여러 observation이 서로 다른 stage를 가질 수 있게 허용한다.
+- LLM이 stage를 임의 판단하지 않도록 보장한다.
+
+Analyzer Judge flow:
+
+```text
+EvidencePacket
+  → StageResolver
+  → StageContextBuilder
+  → RuleEngine
+  → JudgeResult
+  → LLMExplainer
+```
+
+LLMAnalyzer / LLMExplainer는 다음을 하지 않는다.
+
+- Stage 결정
+- severity/confidence 변경
+- evidence 없는 issue 생성
+- criterion에 없는 문제명 생성
+
+LLMAnalyzer / LLMExplainer는 다음만 한다.
+
+- explanation
+- Nudge
+- validation questions
+- report language polish
+
+구현 원칙:
+
+- Stage는 code-level enum이다.
+- Stage는 report grouping과 priority calculation에 사용된다.
+- Rule Engine은 stage별 context에서 rule을 실행한다.
 
 ## 7. React 구조
 

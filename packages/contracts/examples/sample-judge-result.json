@@ -150,26 +150,62 @@
   ],
   "decision_map": [
     {
-      "stage": "CTA",
-      "status": "warning",
-      "issue_ids": [
-        "issue_001"
-      ]
-    },
-    {
-      "stage": "INPUT",
-      "status": "warning",
-      "issue_ids": [
-        "issue_002",
-        "issue_004"
+      "stage": "FIRST_VIEW",
+      "status": "PASS",
+      "summary": "첫 화면에서 핵심 메시지와 주요 행동 후보가 관찰되었습니다.",
+      "displayName": "첫 화면 이해",
+      "issueIds": [],
+      "evidenceRefs": [
+        "cp_001.obs_001"
       ]
     },
     {
       "stage": "VALUE",
-      "status": "warning",
-      "issue_ids": [
+      "status": "WARNING",
+      "summary": "가치 제안은 관찰되지만 혜택 목록 확장 후 정보량이 증가합니다.",
+      "displayName": "가치 이해",
+      "issueIds": [
         "issue_003"
+      ],
+      "evidenceRefs": [
+        "cp_001.obs_011",
+        "cp_003.obs_006",
+        "cp_005.obs_010"
       ]
+    },
+    {
+      "stage": "CTA",
+      "status": "WARNING",
+      "summary": "같은 결정 순간에서 primary급 CTA가 3개 경쟁합니다.",
+      "displayName": "행동 선택",
+      "issueIds": [
+        "issue_001"
+      ],
+      "evidenceRefs": [
+        "cp_001.obs_002"
+      ]
+    },
+    {
+      "stage": "INPUT",
+      "status": "WARNING",
+      "summary": "이메일 입력 검증이 비동기 response와 timeout에 의존합니다.",
+      "displayName": "입력 진행",
+      "issueIds": [
+        "issue_002",
+        "issue_004"
+      ],
+      "evidenceRefs": [
+        "cp_002.obs_004",
+        "cp_004.obs_008"
+      ]
+    },
+    {
+      "stage": "COMMIT",
+      "status": "NOT_APPLICABLE",
+      "summary": "이 회원가입 시작 흐름 샘플에서는 제출/결제 직전 단계가 필요하지 않습니다.",
+      "displayName": "최종 확정",
+      "issueIds": [],
+      "evidenceRefs": []
     }
   ],
   "nudges": [

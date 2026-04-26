@@ -65,7 +65,8 @@
       "type": "array",
       "items": {
         "$ref": "#/$defs/stage_score"
-      }
+      },
+      "description": "Optional legacy/diagnostic aggregate. User-facing reports should prefer decision_map over stage-only score tables."
     },
     "issues": {
       "type": "array",
@@ -75,8 +76,9 @@
     },
     "decision_map": {
       "type": "array",
+      "description": "User journey Decision Map grouped by operational stage. Internal enum values are rendered with user-facing labels in UI.",
       "items": {
-        "type": "object"
+        "$ref": "#/$defs/decision_map_item"
       }
     },
     "scenario_mismatch_report": {
@@ -100,6 +102,17 @@
       "items": {
         "type": "string"
       }
+    },
+    "scenarioMismatchReport": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/scenario_mismatch_report"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "CamelCase alias for scenario_mismatch_report in API projections. Scenario mismatch is separate from JudgeIssue."
     }
   },
   "$defs": {
@@ -161,15 +174,6 @@
       },
       "additionalProperties": false
     },
-    "stage": {
-      "enum": [
-        "FIRST_VIEW",
-        "VALUE",
-        "CTA",
-        "INPUT",
-        "COMMIT"
-      ]
-    },
     "stage_score": {
       "type": "object",
       "required": [
@@ -179,7 +183,7 @@
       ],
       "properties": {
         "stage": {
-          "$ref": "#/$defs/stage"
+          "$ref": "#/$defs/DecisionStage"
         },
         "score": {
           "type": "number",
@@ -214,7 +218,8 @@
           "type": "string"
         },
         "stage": {
-          "$ref": "#/$defs/stage"
+          "$ref": "#/$defs/DecisionStage",
+          "description": "DecisionStage assigned by Rule Engine based on StageContext. LLM cannot change it."
         },
         "axis": {
           "type": "string"
@@ -277,7 +282,8 @@
             "type": "string"
           }
         }
-      }
+      },
+      "description": "Judge issue produced by Rule Engine. issue.stage is assigned from StageContext; LLM cannot create a new stage or move the issue to another stage."
     },
     "nudge": {
       "type": "object",
@@ -318,6 +324,71 @@
           "type": "string"
         }
       }
+    },
+    "DecisionStage": {
+      "type": "string",
+      "description": "Operational decision moment label assigned by Rule Engine StageContext, not by LLM.",
+      "enum": [
+        "FIRST_VIEW",
+        "VALUE",
+        "CTA",
+        "INPUT",
+        "COMMIT"
+      ]
+    },
+    "StageStatus": {
+      "type": "string",
+      "description": "Decision Map status for a stage. This is derived report state, not run lifecycle state.",
+      "enum": [
+        "OBSERVED",
+        "PASS",
+        "WARNING",
+        "BLOCKED",
+        "NOT_OBSERVED",
+        "NOT_APPLICABLE"
+      ]
+    },
+    "decision_map_item": {
+      "type": "object",
+      "required": [
+        "stage",
+        "displayName",
+        "status",
+        "issueIds",
+        "summary",
+        "evidenceRefs"
+      ],
+      "properties": {
+        "stage": {
+          "$ref": "#/$defs/DecisionStage"
+        },
+        "displayName": {
+          "type": "string",
+          "description": "User-facing label such as 첫 화면 이해, 가치 이해, 행동 선택, 입력 진행, 최종 확정."
+        },
+        "status": {
+          "$ref": "#/$defs/StageStatus"
+        },
+        "issueIds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "summary": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "evidenceRefs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
     }
   }
 }

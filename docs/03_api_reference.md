@@ -238,6 +238,25 @@ GET    /api/runs/{runId}/evidence-packet
 
 `/api/runs/{runId}/signals`는 `rule_hit` raw table이 아니라 user-facing issue signal projection이다. 저장 기준은 `analysis_finding`/`nudge`와 EvidencePacket references다.
 
+Issue response는 stage를 필수로 포함한다.
+
+```json
+{
+  "issueId": "issue_001",
+  "criterionId": "PATH-CTA-002",
+  "stage": "CTA",
+  "axis": "Path",
+  "severity": 2,
+  "confidence": 0.78,
+  "priorityScore": 2.03,
+  "evidenceRefs": ["cp_001.obs_002"],
+  "summary": "같은 결정 순간에서 primary급 CTA가 3개 경쟁합니다.",
+  "recommendations": ["Primary CTA를 1개로 정리하세요."]
+}
+```
+
+`stage`는 backend Rule Engine이 StageContext에서 정한다. LLM은 stage 값을 생성하거나 수정하지 않는다. UI는 enum을 그대로 노출하지 않고 `FIRST_VIEW → 첫 화면 이해`, `VALUE → 가치 이해`, `CTA → 행동 선택`, `INPUT → 입력 진행`, `COMMIT → 최종 확정`으로 변환해 보여준다.
+
 ### Analysis
 
 ```text
@@ -255,6 +274,40 @@ GET  /api/reports/{reportId}
 GET  /api/reports/{reportId}/shares
 POST /api/reports/{reportId}/shares
 ```
+
+Run result 또는 report response는 Decision Map을 포함한다.
+
+```json
+{
+  "decisionMap": [
+    {
+      "stage": "FIRST_VIEW",
+      "displayName": "첫 화면 이해",
+      "status": "PASS",
+      "issueIds": [],
+      "summary": "첫 화면에서 핵심 메시지와 CTA가 관찰되었습니다."
+    },
+    {
+      "stage": "CTA",
+      "displayName": "행동 선택",
+      "status": "WARNING",
+      "issueIds": ["issue_001"],
+      "summary": "같은 결정 순간에서 primary급 CTA가 3개 경쟁합니다."
+    },
+    {
+      "stage": "INPUT",
+      "displayName": "입력 진행",
+      "status": "NOT_APPLICABLE",
+      "issueIds": []
+    }
+  ]
+}
+```
+
+`scenarioFitStatus`와 `decisionMap.status`는 다른 값이다.
+
+- `scenarioFitStatus`: 선택한 시나리오가 URL에 적용 가능한지.
+- `decisionMap.status`: 관찰된 stage에서 issue가 있는지.
 
 ## 7. 주요 request 예시
 
@@ -530,7 +583,7 @@ X-Signature: hmac-sha256=...
     {
       "checkpointId": "cp_001",
       "stepKey": "step_001_goto",
-      "stage": "FIRST_VIEW",
+      "primaryStage": "FIRST_VIEW",
       "trigger": {"type": "goto", "target": "https://example.com"},
       "settle": {"strategy": "network_idle", "durationMs": 1832, "status": "settled"},
       "state": {},
