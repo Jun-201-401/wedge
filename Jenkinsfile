@@ -1,22 +1,63 @@
-def sendMattermostNotify(String result) {
+def runLogged(String scriptText) {
+    sh """#!/bin/bash
+set -euo pipefail
+{
+${scriptText}
+} 2>&1 | tee -a "${env.WORKSPACE}/${env.LOG_FILE}"
+"""
+}
+
+def sendMMNotify(boolean success, Map info) {
     try {
-        def success = result == 'SUCCESS'
         def color = success ? '#36a64f' : '#dc3545'
-        def statusText = success ? 'succeeded' : 'failed'
+        def emoji = success ? ':jenkins7:' : ':angry_jenkins:'
+        def statusMsg = success ? '성공' : '실패'
+
+        def mainText = "### ${emoji} Wedge ${info.action ?: 'Build'} ${statusMsg}\n"
+        def links = []
+        if (info.mention) {
+            links << info.mention
+        }
+        if (info.buildUrl) {
+            links << "[빌드 결과 확인](${info.buildUrl})"
+        }
+        mainText += links.join(' | ')
+
+        def fields = []
+        if (info.branch) {
+            fields << [short: false, title: 'Branch', value: "`${info.branch}`"]
+        }
+        if (info.commit) {
+            fields << [short: false, title: 'Commit', value: info.commit]
+        }
+
+        def buildValue = "`${env.BUILD_NUMBER}`"
+        if (info.duration) {
+            buildValue += " · ${info.duration}"
+        }
+        fields << [short: !success, title: 'Build', value: buildValue]
+
+        if (!success && info.failedStage) {
+            fields << [short: true, title: 'Failed Stage', value: "`${info.failedStage}`"]
+        }
+
+        def attachments = [[
+            color : color,
+            fields: fields
+        ]]
+
+        if (!success && info.details) {
+            attachments << [
+                color: color,
+                text : "**Error Log:**\n```text\n${info.details}\n```"
+            ]
+        }
 
         def payload = [
             username   : 'Jenkins',
-            icon_emoji : ':jenkins:',
-            text       : "Wedge api-server deployment ${statusText}",
-            attachments: [[
-                color : color,
-                fields: [
-                    [short: false, title: 'Result', value: result],
-                    [short: false, title: 'Job', value: "${env.JOB_NAME} #${env.BUILD_NUMBER}"],
-                    [short: false, title: 'Branch', value: env.GIT_BRANCH],
-                    [short: false, title: 'Build', value: env.BUILD_URL]
-                ]
-            ]]
+            icon_emoji : emoji,
+            text       : mainText,
+            attachments: attachments
         ]
 
         writeFile file: 'mattermost-payload.json', text: groovy.json.JsonOutput.toJson(payload)
@@ -30,7 +71,7 @@ curl -fsS --max-time 10 -H 'Content-Type: application/json' \
 '''
         }
     } catch (err) {
-        echo "Mattermost notification failed: ${err}"
+        echo "Mattermost notify failed: ${err}"
     }
 }
 
@@ -62,37 +103,64 @@ pipeline {
         IMAGE_NAME = 'wedge-api-server'
         DEPLOY_HOST = 'k14c104.p.ssafy.io'
         SSH_OPTS = '-o StrictHostKeyChecking=yes -o UserKnownHostsFile=/var/jenkins_home/.ssh/known_hosts -o UpdateHostKeys=no'
+        LOG_FILE = 'jenkins-console.log'
     }
 
     stages {
+        stage('Init') {
+            steps {
+                script {
+                    env.FAILED_STAGE = 'Init'
+                    env.COMMIT_MSG = ''
+                }
+                writeFile file: env.LOG_FILE, text: ''
+            }
+        }
+
         stage('Checkout') {
             steps {
+                script {
+                    env.FAILED_STAGE = 'Checkout'
+                }
                 git branch: "${GIT_BRANCH}",
                     credentialsId: 'gitlab-https',
                     url: "${GIT_URL}"
+                script {
+                    env.COMMIT_MSG = sh(script: 'git log -1 --pretty=%s', returnStdout: true).trim()
+                }
             }
         }
 
         stage('Docker Info') {
             steps {
-                sh 'docker version'
+                script {
+                    env.FAILED_STAGE = 'Docker Info'
+                    runLogged('docker version')
+                }
             }
         }
 
         stage('Build Image') {
             steps {
-                sh 'docker build -f apps/api-server/Dockerfile -t "${IMAGE_NAME}:ci-${BUILD_NUMBER}" apps/api-server'
+                script {
+                    env.FAILED_STAGE = 'Build Image'
+                    runLogged('docker build -f apps/api-server/Dockerfile -t "${IMAGE_NAME}:ci-${BUILD_NUMBER}" apps/api-server')
+                }
             }
         }
 
         stage('Deploy to EC2') {
             steps {
+                script {
+                    env.FAILED_STAGE = 'Deploy to EC2'
+                }
                 withCredentials([sshUserPrivateKey(
                     credentialsId: 'ec2-ssh',
                     keyFileVariable: 'EC2_KEY',
                     usernameVariable: 'EC2_USER'
                 )]) {
-                    sh '''
+                    script {
+                        runLogged('''
 set -e
 
 tar \
@@ -130,17 +198,55 @@ echo "Health check failed"
 docker compose --env-file .env.prod -f compose.prod.yaml logs --tail=100 api-server
 exit 1
 EOF
-                    '''
+                        ''')
+                    }
                 }
             }
         }
     }
 
     post {
-        always {
+        success {
             script {
-                sendMattermostNotify(currentBuild.currentResult ?: 'SUCCESS')
+                def duration = currentBuild.durationString.replace(' and counting', '')
+                sendMMNotify(true, [
+                    branch  : env.GIT_BRANCH,
+                    commit  : env.COMMIT_MSG ?: '',
+                    duration: duration,
+                    action  : 'Deploy',
+                    buildUrl: env.BUILD_URL
+                ])
             }
+        }
+
+        failure {
+            script {
+                def duration = currentBuild.durationString.replace(' and counting', '')
+                def details = ''
+
+                try {
+                    details = readFile(file: env.LOG_FILE).trim()
+                    if (details.length() > 4000) {
+                        details = details.substring(details.length() - 4000)
+                    }
+                } catch (err) {
+                    details = "Error log collection failed: ${err}"
+                }
+
+                sendMMNotify(false, [
+                    mention    : '@here',
+                    branch     : env.GIT_BRANCH,
+                    commit     : env.COMMIT_MSG ?: '',
+                    duration   : duration,
+                    action     : 'Deploy',
+                    failedStage: env.FAILED_STAGE ?: 'unknown',
+                    details    : details,
+                    buildUrl   : env.BUILD_URL
+                ])
+            }
+        }
+
+        always {
             deleteDir()
         }
     }
