@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.wedge.evidence.infrastructure.ObservationMapper">
+    <resultMap id="ObservationResultMap" type="com.wedge.evidence.domain.Observation">
+        <id property="id" column="id"/>
+        <result property="checkpointId" column="checkpoint_id"/>
+        <result property="runId" column="run_id"/>
+        <result property="observationKey" column="observation_key"/>
+        <result property="observationType" column="observation_type"/>
+        <result property="stage" column="stage"/>
+        <result property="sourcesJsonb" column="sources_jsonb"/>
+        <result property="dataJsonb" column="data_jsonb"/>
+        <result property="confidence" column="confidence"/>
+        <result property="createdAt" column="created_at"/>
+    </resultMap>
+
+    <sql id="ObservationColumns">
+        id, checkpoint_id, run_id, observation_key, observation_type, stage,
+        CAST(sources_jsonb AS TEXT) AS sources_jsonb,
+        CAST(data_jsonb AS TEXT) AS data_jsonb,
+        confidence, created_at
+    </sql>
+
+    <select id="findByRunId" resultMap="ObservationResultMap">
+        SELECT <include refid="ObservationColumns"/>
+        FROM observation
+        WHERE run_id = #{runId}
+        ORDER BY created_at ASC, observation_key ASC
+    </select>
+
+    <select id="findByCheckpointId" resultMap="ObservationResultMap">
+        SELECT <include refid="ObservationColumns"/>
+        FROM observation
+        WHERE checkpoint_id = #{checkpointId}
+        ORDER BY created_at ASC, observation_key ASC
+    </select>
+
+    <insert id="insert" parameterType="com.wedge.evidence.domain.Observation">
+        INSERT INTO observation (
+            id, checkpoint_id, run_id, observation_key, observation_type, stage,
+            sources_jsonb, data_jsonb, confidence
+        )
+        VALUES (
+            #{id}, #{checkpointId}, #{runId}, #{observationKey}, #{observationType}, #{stage},
+            CAST(#{sourcesJsonb} AS jsonb), CAST(#{dataJsonb} AS jsonb), #{confidence}
+        )
+    </insert>
+</mapper>
