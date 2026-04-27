@@ -11,6 +11,7 @@ import java.util.UUID;
 @Mapper
 public interface ArtifactMapper {
     Optional<Artifact> findById(@Param("id") UUID id);
+    Optional<Artifact> findByRunIdAndId(@Param("runId") UUID runId, @Param("id") UUID id);
     List<Artifact> findByRunId(@Param("runId") UUID runId);
     int insert(Artifact artifact);
 }

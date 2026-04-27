@@ -5,6 +5,16 @@ export type RunnerBrowserMode = "simulated" | "playwright";
 export type RunnerBrowserName = "chromium" | "firefox" | "webkit";
 export type RunnerCallbackMode = "file" | "http";
 
+const DEFAULT_RETRY_DELAYS_MS = [200, 1000, 3000] as const;
+const DEFAULT_OUTBOX_LOCK_STALE_MS = 30_000;
+const DEFAULT_OUTBOX_REPLAY_INTERVAL_MS = 5_000;
+const DEFAULT_OUTBOX_HEARTBEAT_INTERVAL_MS = 60_000;
+const DEFAULT_OUTBOX_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
+const DEFAULT_OUTBOX_MAX_RECORDS = 1_000;
+const DEFAULT_CALLBACK_TIMEOUT_MS = 5_000;
+const DEFAULT_BROWSER_TIMEOUT_MS = 30_000;
+const DEFAULT_SIMULATED_DELAY_CAP_MS = 25;
+
 export interface RunnerConfig {
   serviceName: string;
   workerId: string;
@@ -51,69 +61,72 @@ export function loadRunnerConfig(overrides: Partial<RunnerConfig> = {}): RunnerC
   const artifactsRoot =
     overrides.artifactsRoot ??
     resolve(process.cwd(), process.env.RUNNER_ARTIFACTS_ROOT ?? ".runner-artifacts");
-  const callbackMode = parseCallbackMode(overrides.callbackMode ?? process.env.RUNNER_CALLBACK_MODE);
+  const callbackBaseUrl = overrides.callbackBaseUrl ?? process.env.RUNNER_CALLBACK_BASE_URL ?? undefined;
+  const callbackMode = resolveCallbackMode(
+    overrides.callbackMode ?? process.env.RUNNER_CALLBACK_MODE,
+    callbackBaseUrl
+  );
   const callbackRetryDelaysMs =
-    overrides.callbackRetryDelaysMs ?? parseNumberList(process.env.RUNNER_CALLBACK_RETRY_DELAYS_MS, [200, 1000, 3000]);
+    overrides.callbackRetryDelaysMs ?? parseNumberList(process.env.RUNNER_CALLBACK_RETRY_DELAYS_MS, DEFAULT_RETRY_DELAYS_MS);
   const callbackOutboxLockStaleMs = parseNumber(
     overrides.callbackOutboxLockStaleMs,
     process.env.RUNNER_CALLBACK_OUTBOX_LOCK_STALE_MS,
-    30_000
+    DEFAULT_OUTBOX_LOCK_STALE_MS
   );
   const callbackOutboxReplayIntervalMs = parseNumber(
     overrides.callbackOutboxReplayIntervalMs,
     process.env.RUNNER_CALLBACK_OUTBOX_REPLAY_INTERVAL_MS,
-    5_000
+    DEFAULT_OUTBOX_REPLAY_INTERVAL_MS
   );
   const callbackOutboxHeartbeatIntervalMs = parseNumber(
     overrides.callbackOutboxHeartbeatIntervalMs,
     process.env.RUNNER_CALLBACK_OUTBOX_HEARTBEAT_INTERVAL_MS,
-    60_000
+    DEFAULT_OUTBOX_HEARTBEAT_INTERVAL_MS
   );
   const callbackOutboxRetentionMs = parseNumber(
     overrides.callbackOutboxRetentionMs,
     process.env.RUNNER_CALLBACK_OUTBOX_RETENTION_MS,
-    7 * 24 * 60 * 60 * 1000
+    DEFAULT_OUTBOX_RETENTION_MS
   );
   const callbackOutboxMaxRecords = parseNumber(
     overrides.callbackOutboxMaxRecords,
     process.env.RUNNER_CALLBACK_OUTBOX_MAX_RECORDS,
-    1_000
+    DEFAULT_OUTBOX_MAX_RECORDS
   );
-  const callbackBaseUrl = overrides.callbackBaseUrl ?? process.env.RUNNER_CALLBACK_BASE_URL ?? undefined;
   const callbackTimeoutMs = parseNumber(
     overrides.callbackTimeoutMs,
     process.env.RUNNER_CALLBACK_TIMEOUT_MS,
-    5_000
+    DEFAULT_CALLBACK_TIMEOUT_MS
   );
   const callbackAuthToken = overrides.callbackAuthToken ?? process.env.RUNNER_CALLBACK_AUTH_TOKEN ?? undefined;
   const callbackSignatureSecret =
     overrides.callbackSignatureSecret ?? process.env.RUNNER_CALLBACK_SIGNATURE_SECRET ?? undefined;
   const artifactRetryDelaysMs =
-    overrides.artifactRetryDelaysMs ?? parseNumberList(process.env.RUNNER_ARTIFACT_RETRY_DELAYS_MS, [200, 1000, 3000]);
+    overrides.artifactRetryDelaysMs ?? parseNumberList(process.env.RUNNER_ARTIFACT_RETRY_DELAYS_MS, DEFAULT_RETRY_DELAYS_MS);
   const artifactOutboxLockStaleMs = parseNumber(
     overrides.artifactOutboxLockStaleMs,
     process.env.RUNNER_ARTIFACT_OUTBOX_LOCK_STALE_MS,
-    30_000
+    DEFAULT_OUTBOX_LOCK_STALE_MS
   );
   const artifactOutboxReplayIntervalMs = parseNumber(
     overrides.artifactOutboxReplayIntervalMs,
     process.env.RUNNER_ARTIFACT_OUTBOX_REPLAY_INTERVAL_MS,
-    5_000
+    DEFAULT_OUTBOX_REPLAY_INTERVAL_MS
   );
   const artifactOutboxHeartbeatIntervalMs = parseNumber(
     overrides.artifactOutboxHeartbeatIntervalMs,
     process.env.RUNNER_ARTIFACT_OUTBOX_HEARTBEAT_INTERVAL_MS,
-    60_000
+    DEFAULT_OUTBOX_HEARTBEAT_INTERVAL_MS
   );
   const artifactOutboxRetentionMs = parseNumber(
     overrides.artifactOutboxRetentionMs,
     process.env.RUNNER_ARTIFACT_OUTBOX_RETENTION_MS,
-    7 * 24 * 60 * 60 * 1000
+    DEFAULT_OUTBOX_RETENTION_MS
   );
   const artifactOutboxMaxRecords = parseNumber(
     overrides.artifactOutboxMaxRecords,
     process.env.RUNNER_ARTIFACT_OUTBOX_MAX_RECORDS,
-    1_000
+    DEFAULT_OUTBOX_MAX_RECORDS
   );
   const mqConsumerEnabled = parseBoolean(
     overrides.mqConsumerEnabled,
@@ -135,12 +148,12 @@ export function loadRunnerConfig(overrides: Partial<RunnerConfig> = {}): RunnerC
   const browserLaunchTimeoutMs = parseNumber(
     overrides.browserLaunchTimeoutMs,
     process.env.RUNNER_BROWSER_LAUNCH_TIMEOUT_MS,
-    30_000
+    DEFAULT_BROWSER_TIMEOUT_MS
   );
   const browserNavigationTimeoutMs = parseNumber(
     overrides.browserNavigationTimeoutMs,
     process.env.RUNNER_BROWSER_NAVIGATION_TIMEOUT_MS,
-    30_000
+    DEFAULT_BROWSER_TIMEOUT_MS
   );
 
   return {
@@ -191,13 +204,24 @@ export function loadRunnerConfig(overrides: Partial<RunnerConfig> = {}): RunnerC
     browserLaunchTimeoutMs,
     browserNavigationTimeoutMs,
     playwrightBrowsersPath: overrides.playwrightBrowsersPath ?? process.env.PLAYWRIGHT_BROWSERS_PATH ?? undefined,
-    simulatedDelayCapMs: parseNumber(overrides.simulatedDelayCapMs, process.env.RUNNER_SIMULATED_DELAY_CAP_MS, 25)
+    simulatedDelayCapMs: parseNumber(
+      overrides.simulatedDelayCapMs,
+      process.env.RUNNER_SIMULATED_DELAY_CAP_MS,
+      DEFAULT_SIMULATED_DELAY_CAP_MS
+    )
   };
 }
 
-function parseCallbackMode(value: RunnerConfig["callbackMode"] | string | undefined): RunnerCallbackMode {
+function resolveCallbackMode(
+  value: RunnerConfig["callbackMode"] | string | undefined,
+  callbackBaseUrl?: string
+): RunnerCallbackMode {
   if (value === "file" || value === "http") {
     return value;
+  }
+
+  if (callbackBaseUrl) {
+    return "http";
   }
 
   return "file";
@@ -260,7 +284,7 @@ function parseNumber(
   return Number.isFinite(parsed) ? parsed : defaultValue;
 }
 
-function parseNumberList(envValue: string | undefined, defaultValue: number[]): number[] {
+function parseNumberList(envValue: string | undefined, defaultValue: readonly number[]): number[] {
   if (!envValue) {
     return [...defaultValue];
   }

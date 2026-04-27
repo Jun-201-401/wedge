@@ -1,0 +1,89 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+
+test('app routes /runs/:runId to the run monitor page', () => {
+  const source = fs.readFileSync(new URL('../../src/app/App.tsx', import.meta.url), 'utf8');
+  const pages = fs.readFileSync(new URL('../../src/pages/index.ts', import.meta.url), 'utf8');
+
+  assert.match(pages, /pathPrefix: RUN_MONITOR_PATH_PREFIX/);
+  assert.match(source, /import \{ getRunIdFromPath \}/);
+  assert.match(source, /<RunMonitorPage runId=\{runId\} \/>/);
+});
+
+test('run monitor page exposes Sprint 2 live cockpit essentials with Korean-facing labels', () => {
+  const source = fs.readFileSync(new URL('../../src/pages/run-monitor/RunMonitorPage.tsx', import.meta.url), 'utf8');
+  const stateHook = fs.readFileSync(new URL('../../src/features/run-monitor/lib/useRunMonitorState.ts', import.meta.url), 'utf8');
+  const viewModel = fs.readFileSync(new URL('../../src/features/run-monitor/lib/runMonitorViewModel.ts', import.meta.url), 'utf8');
+
+  assert.match(source, /실시간 시뮬레이션/);
+  assert.match(source, /대상/);
+  assert.match(source, /Run/);
+  assert.match(source, /시나리오 경로/);
+  assert.match(source, /작업 로그/);
+  assert.match(source, /전체 진행률/);
+  assert.match(source, /현재 체크포인트/);
+  assert.match(source, /currentCheckpoint/);
+  assert.match(source, /useRunMonitorState\(runId, mockData, isMockRun\)/);
+  assert.match(stateHook, /getRun\(runId\)/);
+  assert.match(stateHook, /getRunLive\(runId\)/);
+  assert.match(stateHook, /getRunEvidencePacket\(runId\)/);
+  assert.match(stateHook, /evidencePacket/);
+  assert.match(stateHook, /isEvidenceLoading/);
+  assert.match(stateHook, /window\.setTimeout\(\(\) => void loadRunState\(false\), RUN_MONITOR_REFRESH_INTERVAL_MS\)/);
+  assert.match(stateHook, /shouldRefreshRunLive\(liveResponse\.data\.status\)/);
+  assert.match(source, /visibleSteps\.map/);
+  assert.match(source, /visibleLogs\.map/);
+  assert.match(source, /API 상태 스냅샷/);
+  assert.match(source, /buildApiSnapshotSteps/);
+  assert.match(source, /buildApiSnapshotLogs/);
+  assert.match(source, /화면 캡처 대기 중/);
+  assert.match(source, /Evidence Packet/);
+  assert.match(source, /EvidencePanel/);
+  assert.match(viewModel, /checkpoint\.artifact_refs/);
+  assert.match(source, /getEvidenceArtifactLabel/);
+  assert.match(source, /getEvidenceObservationSummary/);
+  assert.match(source, /findEvidenceScreenshotArtifact/);
+  assert.match(stateHook, /Run 상태를 불러오지 못했습니다/);
+  assert.match(source, /RunMonitorStatePage/);
+  assert.match(source, /role="progressbar"/);
+  assert.match(source, /aria-valuenow=\{progressPercent\}/);
+  assert.match(source, /run-monitor-agent-pointer/);
+  assert.match(source, /run-monitor-scan-line/);
+  assert.match(source, /run-monitor-detection-box/);
+  assert.match(source, /run-monitor-mock-cta/);
+  assert.match(source, /모의 프리뷰/);
+  assert.match(source, /선택한 흐름/);
+  assert.match(source, /확인 범위/);
+  assert.match(source, /getDepthLabel/);
+  assert.match(source, /getDevicePresetLabel/);
+  assert.match(viewModel, /데스크톱/);
+  assert.doesNotMatch(source, /<button type="button">\{mockData\.previewCallToAction\}<\/button>/);
+});
+
+test('run monitor css follows the live cockpit visual language', () => {
+  const css = fs.readFileSync(new URL('../../src/pages/run-monitor/RunMonitorPage.css', import.meta.url), 'utf8');
+
+  assert.match(css, /\.run-monitor-page\s*\{[\s\S]*?background: #fff/);
+  assert.match(css, /\.run-monitor-cockpit\s*\{[\s\S]*?grid-template-columns: minmax\(0, 1fr\) 26\.25rem/);
+  assert.match(css, /\.run-monitor-browser\s*\{[\s\S]*?box-shadow: 0 28px 80px/);
+  assert.match(css, /\.run-monitor-browser__mode-pill\s*\{[\s\S]*?background: rgba\(240, 249, 255, 0\.78\)/);
+  assert.match(css, /\.run-monitor-target-inline span\s*\{[\s\S]*?color: #64748b/);
+  assert.match(css, /\.run-monitor-stop-link\s*\{[\s\S]*?color: #64748b/);
+  assert.match(css, /\.run-monitor-target-inline strong\s*\{[\s\S]*?font-weight: 800/);
+  assert.match(css, /\.run-monitor-section-title h1,[\s\S]*?\.run-monitor-evidence h2,[\s\S]*?\.run-monitor-log h2\s*\{[\s\S]*?color: #475569/);
+  assert.match(css, /\.run-monitor-evidence__cards\s*\{[\s\S]*?display: grid/);
+  assert.match(css, /\.run-monitor-evidence-card\s*\{[\s\S]*?box-shadow: 0 8px 22px/);
+  assert.match(css, /\.run-monitor-evidence-card__artifacts ul,[\s\S]*?\.run-monitor-evidence-card__observations ul\s*\{[\s\S]*?list-style: none/);
+  assert.match(css, /\.run-monitor-agent-pointer\s*\{[\s\S]*?animation: runMonitorPointerMove/);
+  assert.match(css, /\.run-monitor-scan-line\s*\{[\s\S]*?animation: runMonitorScanning/);
+  assert.match(css, /\.run-monitor-detection-box\s*\{[\s\S]*?border: 1px dashed #0ea5e9/);
+  assert.match(css, /\.run-monitor-state-card\s*\{[\s\S]*?box-shadow: 0 28px 80px/);
+  assert.match(css, /\.run-monitor-mock-cta\s*\{[\s\S]*?display: inline-flex/);
+  assert.match(css, /\.run-monitor-browser__empty-state\s*\{[\s\S]*?text-align: center/);
+  assert.doesNotMatch(css, /\.run-monitor-step--(?:complete|pending)\s*\{[\s\S]*?opacity:/);
+  assert.match(css, /\.run-monitor-step--complete \.run-monitor-step__head h3,\s*\n\.run-monitor-step--pending \.run-monitor-step__head h3\s*\{[\s\S]*?color: #64748b/);
+  assert.match(css, /\.run-monitor-step--complete \.run-monitor-step__content p,\s*\n\.run-monitor-step--pending \.run-monitor-step__content p\s*\{[\s\S]*?color: #94a3b8/);
+  assert.match(css, /@media \(max-width: 1080px\)/);
+  assert.match(css, /@media \(prefers-reduced-motion: reduce\)/);
+});

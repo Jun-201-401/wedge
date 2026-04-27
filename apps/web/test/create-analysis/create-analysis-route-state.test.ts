@@ -9,6 +9,8 @@ import {
 
 type ScenarioId = 'landing-cta' | 'signup-form';
 type DepthId = 'hero-only' | 'next-screen';
+const projectId = '11111111-1111-4111-8111-111111111111';
+const scenarioTemplateVersionId = '22222222-2222-4222-8222-222222222222';
 
 const options: CreateAnalysisRouteOptions<ScenarioId, DepthId> = {
   defaultDepthId: 'hero-only',
@@ -69,6 +71,38 @@ test('parseCreateAnalysisRouteState restores setup and ready scenario state', ()
     scenarioId: 'signup-form',
     depthId: 'hero-only',
   });
+});
+
+test('create-analysis route state preserves valid run creation context', () => {
+  assert.deepEqual(
+    parseCreateAnalysisRouteState(
+      `?step=preflight&url=example.com&projectId=${projectId}&scenarioTemplateVersionId=${scenarioTemplateVersionId}`,
+      options,
+    ),
+    {
+      stage: 'discovering',
+      submittedUrl: 'https://example.com/',
+      scenarioId: null,
+      depthId: null,
+      projectId,
+      scenarioTemplateVersionId,
+    },
+  );
+
+  assert.equal(
+    buildCreateAnalysisPath(
+      {
+        stage: 'ready',
+        submittedUrl: 'https://example.com/',
+        scenarioId: 'landing-cta',
+        depthId: 'next-screen',
+        projectId,
+        scenarioTemplateVersionId,
+      },
+      options,
+    ),
+    `/create-analysis?step=ready&url=https%3A%2F%2Fexample.com%2F&scenario=landing-cta&depth=next-screen&projectId=${projectId}&scenarioTemplateVersionId=${scenarioTemplateVersionId}`,
+  );
 });
 
 test('parseCreateAnalysisRouteState falls back to recommendations for invalid scenario', () => {
