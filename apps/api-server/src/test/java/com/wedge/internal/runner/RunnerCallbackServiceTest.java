@@ -9,7 +9,12 @@ import static org.mockito.Mockito.when;
 import com.wedge.common.error.BusinessException;
 import com.wedge.common.infrastructure.ProcessedMessagePersistenceAdapter;
 import com.wedge.evidence.application.CheckpointPersistenceService;
+import com.wedge.evidence.domain.Artifact;
+import com.wedge.evidence.domain.ArtifactType;
+import com.wedge.evidence.infrastructure.ArtifactMapper;
 import com.wedge.internal.runner.dto.RunnerAcceptedRequest;
+import com.wedge.internal.runner.dto.RunnerArtifactRequest;
+import com.wedge.internal.runner.dto.RunnerArtifactType;
 import com.wedge.internal.runner.dto.RunnerArtifactsRequest;
 import com.wedge.internal.runner.dto.RunnerCallbackHeaders;
 import com.wedge.internal.runner.dto.RunnerCheckpointRequest;
@@ -28,19 +33,24 @@ import com.wedge.run.application.RunService;
 import com.wedge.run.domain.AnalysisStatus;
 import com.wedge.run.domain.ResultCompleteness;
 import com.wedge.run.domain.RunStatus;
+import com.wedge.run.infrastructure.RunMapper;
 import java.net.URI;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 @ExtendWith(MockitoExtension.class)
 class RunnerCallbackServiceTest {
+    private static final String WORKER_ID = "runner_001";
+    private static final String SIGNATURE = "hmac-sha256=sig";
+
     @Mock
     private RunService runService;
 
@@ -48,10 +58,26 @@ class RunnerCallbackServiceTest {
     private ProcessedMessagePersistenceAdapter processedMessagePersistenceAdapter;
 
     @Mock
+    private ArtifactMapper artifactMapper;
+
+    @Mock
     private CheckpointPersistenceService checkpointPersistenceService;
 
-    @InjectMocks
+    @Mock
+    private RunMapper runMapper;
+
     private RunnerCallbackService runnerCallbackService;
+
+    @BeforeEach
+    void setUp() {
+        runnerCallbackService = new RunnerCallbackService(
+                runService,
+                processedMessagePersistenceAdapter,
+                artifactMapper,
+                checkpointPersistenceService,
+                runMapper
+        );
+    }
 
     @Test
     void acceptedCallbackTransitionsRunToStarting() {
@@ -62,8 +88,8 @@ class RunnerCallbackServiceTest {
 
         Map<String, Object> result = runnerCallbackService.handleAccepted(
                 runId,
-                new RunnerAcceptedRequest("runner_001", OffsetDateTime.parse("2026-04-21T10:00:00+09:00"), "browser-1"),
-                new RunnerCallbackHeaders("runner_001", "evt_accepted_001", "hmac-sha256=sig")
+                new RunnerAcceptedRequest(WORKER_ID, OffsetDateTime.parse("2026-04-21T10:00:00+09:00"), "browser-1"),
+                headers("evt_accepted_001")
         );
 
         assertThat(result.get("runId")).isEqualTo(runId);
@@ -92,7 +118,7 @@ class RunnerCallbackServiceTest {
         Map<String, Object> result = runnerCallbackService.handleStepEvents(
                 runId,
                 request,
-                new RunnerCallbackHeaders("runner_001", "evt_step_batch_001", "hmac-sha256=sig")
+                headers("evt_step_batch_001")
         );
 
         assertThat(result.get("status")).isEqualTo(RunStatus.RUNNING);
@@ -112,7 +138,7 @@ class RunnerCallbackServiceTest {
                         "Runner callback timed out",
                         ResultCompleteness.PARTIAL
                 ),
-                new RunnerCallbackHeaders("runner_001", "evt_failed_001", "hmac-sha256=sig")
+                headers("evt_failed_001")
         ))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("Runner worker id header does not match payload.");
@@ -128,11 +154,11 @@ class RunnerCallbackServiceTest {
         Map<String, Object> result = runnerCallbackService.handleFinished(
                 runId,
                 new RunnerFinishedRequest(
-                        "runner_001",
+                        WORKER_ID,
                         OffsetDateTime.parse("2026-04-21T10:05:00+09:00"),
                         new RunnerFinishedSummary(5, 0, false)
                 ),
-                new RunnerCallbackHeaders("runner_001", "evt_finished_001", "hmac-sha256=sig")
+                headers("evt_finished_001")
         );
 
         assertThat(result.get("status")).isEqualTo(RunStatus.COMPLETED);
@@ -146,14 +172,49 @@ class RunnerCallbackServiceTest {
         assertThatThrownBy(() -> runnerCallbackService.handleArtifacts(
                 runId,
                 new RunnerArtifactsRequest(List.of()),
-                new RunnerCallbackHeaders("runner_001", "", "hmac-sha256=sig")
+                new RunnerCallbackHeaders(WORKER_ID, "", SIGNATURE)
         ))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("Runner callback headers are required.");
     }
 
     @Test
-    void checkpointCallbackPersistsCheckpointPayloads() {
+    void artifactCallbackPersistsArtifactMetadataAndUpdatesLatestArtifact() {
+        UUID runId = UUID.randomUUID();
+        UUID artifactId = UUID.randomUUID();
+        when(processedMessagePersistenceAdapter.tryMarkProcessed("runner.artifacts", "evt_artifacts_001")).thenReturn(true);
+        when(runService.getRun(runId)).thenReturn(sampleRun(runId, RunStatus.RUNNING, ResultCompleteness.NONE));
+
+        runnerCallbackService.handleArtifacts(
+                runId,
+                new RunnerArtifactsRequest(List.of(new RunnerArtifactRequest(
+                        artifactId,
+                        "step_001_goto",
+                        RunnerArtifactType.SCREENSHOT,
+                        "local-runner",
+                        runId + "/step_001_goto/" + artifactId + "-screenshot.png",
+                        "image/png",
+                        1440,
+                        900,
+                        1234,
+                        "sha256",
+                        OffsetDateTime.parse("2026-04-21T10:02:00+09:00")
+                ))),
+                headers("evt_artifacts_001")
+        );
+
+        ArgumentCaptor<Artifact> artifactCaptor = ArgumentCaptor.forClass(Artifact.class);
+        verify(artifactMapper).insert(artifactCaptor.capture());
+        Artifact artifact = artifactCaptor.getValue();
+        assertThat(artifact.getId()).isEqualTo(artifactId);
+        assertThat(artifact.getRunId()).isEqualTo(runId);
+        assertThat(artifact.getArtifactType()).isEqualTo(ArtifactType.SCREENSHOT);
+        assertThat(artifact.getS3Key()).contains("step_001_goto");
+        verify(runMapper).updateLatestArtifact(runId, artifactId);
+    }
+
+    @Test
+    void checkpointCallbackDelegatesCheckpointPersistence() {
         UUID runId = UUID.randomUUID();
         RunnerCheckpointsRequest request = sampleCheckpointRequest();
         when(processedMessagePersistenceAdapter.tryMarkProcessed("runner.checkpoints", "evt_checkpoint_001")).thenReturn(true);
@@ -163,7 +224,7 @@ class RunnerCallbackServiceTest {
         Map<String, Object> result = runnerCallbackService.handleCheckpoints(
                 runId,
                 request,
-                new RunnerCallbackHeaders("runner_001", "evt_checkpoint_001", "hmac-sha256=sig")
+                headers("evt_checkpoint_001")
         );
 
         assertThat(result.get("checkpointCount")).isEqualTo(1);
@@ -179,8 +240,8 @@ class RunnerCallbackServiceTest {
 
         Map<String, Object> result = runnerCallbackService.handleAccepted(
                 runId,
-                new RunnerAcceptedRequest("runner_001", OffsetDateTime.parse("2026-04-21T10:00:00+09:00"), "browser-1"),
-                new RunnerCallbackHeaders("runner_001", "evt_accepted_001", "hmac-sha256=sig")
+                new RunnerAcceptedRequest(WORKER_ID, OffsetDateTime.parse("2026-04-21T10:00:00+09:00"), "browser-1"),
+                headers("evt_accepted_001")
         );
 
         assertThat(result.get("status")).isEqualTo(RunStatus.STARTING);
@@ -198,7 +259,7 @@ class RunnerCallbackServiceTest {
         Map<String, Object> result = runnerCallbackService.handleCheckpoints(
                 runId,
                 request,
-                new RunnerCallbackHeaders("runner_001", "evt_checkpoint_001", "hmac-sha256=sig")
+                headers("evt_checkpoint_001")
         );
 
         assertThat(result.get("checkpointCount")).isEqualTo(1);
@@ -227,6 +288,10 @@ class RunnerCallbackServiceTest {
                 null,
                 null
         );
+    }
+
+    private RunnerCallbackHeaders headers(String eventId) {
+        return new RunnerCallbackHeaders(WORKER_ID, eventId, SIGNATURE);
     }
 
     private RunnerCheckpointsRequest sampleCheckpointRequest() {

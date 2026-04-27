@@ -35,5 +35,9 @@ public interface RunMapper {
             @Param("failureMessage") String failureMessage
     );
 
+    int updateLatestArtifact(@Param("runId") UUID runId, @Param("artifactId") UUID artifactId);
+
+    int updateLatestCheckpoint(@Param("runId") UUID runId, @Param("checkpointId") UUID checkpointId);
+
     int softDelete(@Param("runId") UUID runId);
 }

@@ -7,14 +7,18 @@ import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.wedge.evidence.domain.Checkpoint;
+import com.wedge.evidence.domain.Observation;
 import com.wedge.evidence.infrastructure.CheckpointMapper;
+import com.wedge.evidence.infrastructure.ObservationMapper;
 import com.wedge.internal.runner.dto.RunnerCheckpointRequest;
 import com.wedge.internal.runner.dto.RunnerCheckpointStage;
 import com.wedge.internal.runner.dto.RunnerCheckpointsRequest;
 import com.wedge.internal.runner.dto.RunnerSettleInfo;
 import com.wedge.internal.runner.dto.RunnerSettleStatus;
+import com.wedge.run.infrastructure.RunMapper;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -29,14 +33,28 @@ class CheckpointPersistenceServiceTest {
     @Mock
     private CheckpointMapper checkpointMapper;
 
+    @Mock
+    private ObservationMapper observationMapper;
+
+    @Mock
+    private RunMapper runMapper;
+
     @Captor
     private ArgumentCaptor<Checkpoint> checkpointCaptor;
+
+    @Captor
+    private ArgumentCaptor<Observation> observationCaptor;
 
     private CheckpointPersistenceService checkpointPersistenceService;
 
     @BeforeEach
     void setUp() {
-        checkpointPersistenceService = new CheckpointPersistenceService(checkpointMapper, new ObjectMapper());
+        checkpointPersistenceService = new CheckpointPersistenceService(
+                checkpointMapper,
+                observationMapper,
+                runMapper,
+                new ObjectMapper()
+        );
     }
 
     @Test
@@ -53,6 +71,7 @@ class CheckpointPersistenceServiceTest {
                 List.of(),
                 List.of("artifact-response-screenshot")
         )));
+        when(checkpointMapper.findByRunIdAndCheckpointKey(runId, "checkpoint-response-1")).thenReturn(Optional.empty());
 
         int savedCount = checkpointPersistenceService.saveRunCheckpoints(runId, request);
 
@@ -71,19 +90,60 @@ class CheckpointPersistenceServiceTest {
         assertThat(checkpoint.getArtifactRefsJsonb()).contains("artifact-response-screenshot");
         assertThat(checkpoint.getCapturedAt()).isNotNull();
         assertThat(checkpoint.getDurationMs()).isEqualTo(216);
+        verify(runMapper).updateLatestCheckpoint(runId, checkpoint.getId());
+    }
+
+    @Test
+    void saveRunCheckpointsPersistsNormalizedObservations() {
+        UUID runId = UUID.randomUUID();
+        RunnerCheckpointsRequest request = new RunnerCheckpointsRequest(List.of(new RunnerCheckpointRequest(
+                "cp_001",
+                "step_001_goto",
+                RunnerCheckpointStage.FIRST_VIEW,
+                Map.of("actionType", "goto"),
+                new RunnerSettleInfo("network_idle", 1200, RunnerSettleStatus.settled),
+                Map.of("url", "https://example.com"),
+                List.of(Map.of(
+                        "type", "cta_candidate",
+                        "target", "text=Start free",
+                        "confidence", 0.86
+                )),
+                List.of(Map.of("type", "last_action", "action", "goto")),
+                List.of("artifact:" + UUID.randomUUID())
+        )));
+        when(checkpointMapper.findByRunIdAndCheckpointKey(runId, "cp_001")).thenReturn(Optional.empty());
+
+        checkpointPersistenceService.saveRunCheckpoints(runId, request);
+
+        verify(checkpointMapper).insert(checkpointCaptor.capture());
+        Checkpoint checkpoint = checkpointCaptor.getValue();
+        verify(observationMapper).insert(observationCaptor.capture());
+        Observation observation = observationCaptor.getValue();
+        assertThat(observation.getRunId()).isEqualTo(runId);
+        assertThat(observation.getCheckpointId()).isEqualTo(checkpoint.getId());
+        assertThat(observation.getObservationKey()).isEqualTo("cp_001.obs_001");
+        assertThat(observation.getObservationType()).isEqualTo("cta_candidate");
+        assertThat(observation.getStage()).isEqualTo("CTA");
+        assertThat(observation.getSourcesJsonb()).contains("dom");
+        assertThat(observation.getDataJsonb()).contains("Start free");
     }
 
     @Test
     void saveRunCheckpointsSkipsAlreadyStoredCheckpointKey() {
         UUID runId = UUID.randomUUID();
+        UUID checkpointId = UUID.randomUUID();
+        Checkpoint existingCheckpoint = new Checkpoint();
+        existingCheckpoint.setId(checkpointId);
         RunnerCheckpointsRequest request = sampleCheckpointRequest();
         when(checkpointMapper.findByRunIdAndCheckpointKey(runId, "checkpoint-response-1"))
-                .thenReturn(java.util.Optional.of(new Checkpoint()));
+                .thenReturn(Optional.of(existingCheckpoint));
 
         int savedCount = checkpointPersistenceService.saveRunCheckpoints(runId, request);
 
         assertThat(savedCount).isEqualTo(1);
         verify(checkpointMapper, never()).insert(org.mockito.ArgumentMatchers.any());
+        verify(observationMapper, never()).insert(org.mockito.ArgumentMatchers.any());
+        verify(runMapper).updateLatestCheckpoint(runId, checkpointId);
     }
 
     private RunnerCheckpointsRequest sampleCheckpointRequest() {

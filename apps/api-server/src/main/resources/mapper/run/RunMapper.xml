@@ -148,6 +148,24 @@
           AND deleted_at IS NULL
     </update>
 
+    <update id="updateLatestArtifact">
+        UPDATE test_run
+        SET latest_artifact_id = #{artifactId},
+            updated_at = NOW(),
+            version = version + 1
+        WHERE id = #{runId}
+          AND deleted_at IS NULL
+    </update>
+
+    <update id="updateLatestCheckpoint">
+        UPDATE test_run
+        SET latest_checkpoint_id = #{checkpointId},
+            updated_at = NOW(),
+            version = version + 1
+        WHERE id = #{runId}
+          AND deleted_at IS NULL
+    </update>
+
     <update id="softDelete">
         UPDATE test_run
         SET deleted_at = NOW(),

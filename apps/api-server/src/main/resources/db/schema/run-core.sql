@@ -87,6 +87,69 @@ CREATE TABLE IF NOT EXISTS test_run_event (
     created_at              TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS artifact (
+    id                      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    source_type             VARCHAR(16) NOT NULL DEFAULT 'RUN' CHECK (source_type IN ('RUN','DISCOVERY')),
+    run_id                  UUID REFERENCES test_run(id) ON DELETE CASCADE,
+    discovery_id            UUID,
+    step_id                 UUID REFERENCES test_run_step(id) ON DELETE SET NULL,
+    artifact_type           VARCHAR(32) NOT NULL CHECK (artifact_type IN ('FRAME','SCREENSHOT','DOM_SNAPSHOT','AX_TREE','TRACE','HAR','CONSOLE_LOG','REPORT_PDF','REPORT_MARKDOWN','REPORT_HTML','REPORT_JSON','OTHER')),
+    s3_bucket               VARCHAR(160) NOT NULL,
+    s3_key                  TEXT NOT NULL,
+    public_url              TEXT,
+    mime_type               VARCHAR(120) NOT NULL,
+    width                   INTEGER,
+    height                  INTEGER,
+    size_bytes              BIGINT NOT NULL DEFAULT 0,
+    sha256                  VARCHAR(64),
+    captured_at             TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    created_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CHECK (
+        (source_type = 'RUN' AND run_id IS NOT NULL)
+        OR (source_type = 'DISCOVERY' AND discovery_id IS NOT NULL)
+    )
+);
+
+CREATE TABLE IF NOT EXISTS checkpoint (
+    id                      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    source_type             VARCHAR(16) NOT NULL DEFAULT 'RUN' CHECK (source_type IN ('RUN','DISCOVERY')),
+    run_id                  UUID REFERENCES test_run(id) ON DELETE CASCADE,
+    discovery_id            UUID,
+    step_id                 UUID REFERENCES test_run_step(id) ON DELETE SET NULL,
+    checkpoint_key          VARCHAR(120) NOT NULL,
+    stage                   VARCHAR(32) CHECK (stage IN ('FIRST_VIEW','VALUE','CTA','INPUT','COMMIT')),
+    trigger_jsonb           JSONB NOT NULL,
+    settle_jsonb            JSONB NOT NULL,
+    state_jsonb             JSONB NOT NULL,
+    delta_jsonb             JSONB NOT NULL DEFAULT '[]'::jsonb,
+    artifact_refs_jsonb     JSONB NOT NULL DEFAULT '[]'::jsonb,
+    captured_at             TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    duration_ms             INTEGER,
+    created_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CHECK (
+        (source_type = 'RUN' AND run_id IS NOT NULL)
+        OR (source_type = 'DISCOVERY' AND discovery_id IS NOT NULL)
+    ),
+    UNIQUE (run_id, checkpoint_key),
+    UNIQUE (discovery_id, checkpoint_key)
+);
+
+CREATE TABLE IF NOT EXISTS observation (
+    id                      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    checkpoint_id           UUID NOT NULL REFERENCES checkpoint(id) ON DELETE CASCADE,
+    run_id                  UUID REFERENCES test_run(id) ON DELETE CASCADE,
+    discovery_id            UUID,
+    observation_key         VARCHAR(120) NOT NULL,
+    observation_type        VARCHAR(64) NOT NULL,
+    stage                   VARCHAR(32) CHECK (stage IN ('FIRST_VIEW','VALUE','CTA','INPUT','COMMIT')),
+    sources_jsonb           JSONB NOT NULL DEFAULT '[]'::jsonb,
+    data_jsonb              JSONB NOT NULL,
+    confidence              NUMERIC(4,3),
+    created_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (run_id, observation_key),
+    UNIQUE (discovery_id, observation_key)
+);
+
 CREATE TABLE IF NOT EXISTS analysis_job (
     id                      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     run_id                  UUID NOT NULL REFERENCES test_run(id) ON DELETE CASCADE,
@@ -147,6 +210,15 @@ CREATE INDEX IF NOT EXISTS idx_analysis_job_run_created
 
 CREATE INDEX IF NOT EXISTS idx_test_run_event_run_time
     ON test_run_event(run_id, occurred_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_artifact_run_created
+    ON artifact(source_type, run_id, created_at);
+
+CREATE INDEX IF NOT EXISTS idx_checkpoint_run_captured
+    ON checkpoint(source_type, run_id, captured_at);
+
+CREATE INDEX IF NOT EXISTS idx_observation_run_type
+    ON observation(run_id, observation_type);
 
 CREATE INDEX IF NOT EXISTS idx_outbox_pending
     ON outbox_message(status, next_attempt_at);
