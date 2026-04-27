@@ -133,6 +133,7 @@ test('run monitor view model maps evidence packet artifacts and observations', (
   assert.equal(screenshot?.artifact_id, 'screenshot-1');
   assert.equal(getEvidenceArtifactLabel(evidencePacket.artifacts[0]), '스크린샷');
   assert.equal(getEvidenceArtifactLabel(evidencePacket.artifacts[1]), 'DOM 스냅샷');
+  assert.equal(getEvidenceArtifactLabel({ ...evidencePacket.artifacts[1], type: 'unknown_type' }), 'unknown_type');
 
   const checkpointArtifacts = getCheckpointArtifacts(evidencePacket.checkpoints[0], evidencePacket.artifacts);
   assert.deepEqual(
@@ -147,8 +148,18 @@ test('run monitor view model maps evidence packet artifacts and observations', (
       type: 'fallback_type',
       stage: 'form',
       source: ['runner'],
-      data: { text: '대체 문구' },
+      data: { target: '   ', text: ' 대체 문구 ' },
     }),
     '대체 문구',
+  );
+  assert.equal(
+    getEvidenceObservationSummary({
+      observation_id: 'observation-3',
+      type: 'fallback_type',
+      stage: 'form',
+      source: ['runner'],
+      data: {},
+    }),
+    'fallback_type',
   );
 });

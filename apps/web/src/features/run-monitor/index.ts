@@ -11,7 +11,6 @@ export {
   getCheckpointArtifacts,
   getDepthLabel,
   getDevicePresetLabel,
-  getEvidenceArtifactHref,
   getEvidenceArtifactLabel,
   getEvidenceCheckpointTitle,
   getEvidenceObservationSummary,

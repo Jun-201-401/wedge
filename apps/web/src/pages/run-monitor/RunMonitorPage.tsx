@@ -12,7 +12,6 @@ import {
   getCheckpointArtifacts,
   getDepthLabel,
   getDevicePresetLabel,
-  getEvidenceArtifactHref,
   getEvidenceArtifactLabel,
   getEvidenceCheckpointTitle,
   getEvidenceObservationSummary,
@@ -129,22 +128,15 @@ function EvidencePanel({
   isEvidenceLoading: boolean;
   evidenceLoadError: string;
 }) {
-  if (isEvidenceLoading) {
-    return (
-      <section className="run-monitor-evidence" aria-labelledby="evidence-title">
-        <h2 id="evidence-title">Evidence Packet</h2>
-        <p className="run-monitor-evidence__status">Runner evidence를 불러오는 중입니다.</p>
-      </section>
-    );
-  }
-
   if (!evidencePacket) {
+    const statusMessage = isEvidenceLoading
+      ? 'Runner evidence를 불러오는 중입니다.'
+      : evidenceLoadError || 'Runner evidence가 도착하면 checkpoint, artifact, observation이 표시됩니다.';
+
     return (
       <section className="run-monitor-evidence" aria-labelledby="evidence-title">
         <h2 id="evidence-title">Evidence Packet</h2>
-        <p className="run-monitor-evidence__status">
-          {evidenceLoadError || 'Runner evidence가 도착하면 checkpoint, artifact, observation이 표시됩니다.'}
-        </p>
+        <p className="run-monitor-evidence__status">{statusMessage}</p>
       </section>
     );
   }
@@ -184,7 +176,7 @@ function EvidencePanel({
                   <ul>
                     {checkpointArtifacts.map((artifact) => (
                       <li key={artifact.artifact_id}>
-                        <a href={getEvidenceArtifactHref(artifact)} target="_blank" rel="noreferrer">
+                        <a href={artifact.uri} target="_blank" rel="noreferrer">
                           {getEvidenceArtifactLabel(artifact)}
                         </a>
                         <span>{artifact.mime_type ?? artifact.type}</span>

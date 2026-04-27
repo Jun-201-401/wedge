@@ -14,6 +14,12 @@ export type RunStatusTone = 'complete' | 'failed' | 'queued' | 'running' | 'stop
 
 export const RUN_MONITOR_REFRESH_INTERVAL_MS = 5000;
 
+const EVIDENCE_ARTIFACT_LABELS: Record<string, string> = {
+  console_log: '콘솔 로그',
+  dom_snapshot: 'DOM 스냅샷',
+  screenshot: '스크린샷',
+};
+
 export function getDepthLabel(depth: string | null) {
   if (depth === 'next-screen') {
     return '다음 화면까지 보기';
@@ -207,19 +213,7 @@ export function findEvidenceScreenshotArtifact(evidencePacket: EvidencePacket | 
 }
 
 export function getEvidenceArtifactLabel(artifact: EvidenceArtifact) {
-  if (artifact.type === 'screenshot') {
-    return '스크린샷';
-  }
-
-  if (artifact.type === 'dom_snapshot') {
-    return 'DOM 스냅샷';
-  }
-
-  if (artifact.type === 'console_log') {
-    return '콘솔 로그';
-  }
-
-  return artifact.type;
+  return EVIDENCE_ARTIFACT_LABELS[artifact.type] ?? artifact.type;
 }
 
 export function getEvidenceCheckpointTitle(checkpoint: EvidenceCheckpoint, index: number) {
@@ -235,10 +229,6 @@ export function getEvidenceObservationSummary(observation: EvidenceObservation) 
   return target ?? text ?? message ?? fieldKey ?? observation.type;
 }
 
-export function getEvidenceArtifactHref(artifact: EvidenceArtifact) {
-  return artifact.uri;
-}
-
 export function getCheckpointArtifacts(checkpoint: EvidenceCheckpoint, artifacts: EvidenceArtifact[]) {
   const artifactIds = new Set(checkpoint.artifact_refs.map(normalizeArtifactRef));
   return artifacts.filter((artifact) => artifactIds.has(artifact.artifact_id));
@@ -249,5 +239,10 @@ function normalizeArtifactRef(ref: string) {
 }
 
 function readString(value: unknown) {
-  return typeof value === 'string' && value.trim() ? value : null;
+  if (typeof value !== 'string') {
+    return null;
+  }
+
+  const text = value.trim();
+  return text || null;
 }
