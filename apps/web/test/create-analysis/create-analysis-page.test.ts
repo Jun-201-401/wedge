@@ -150,6 +150,8 @@ test('create analysis ready run controls remain wired', () => {
   assert.match(source, /import \{ buildMockRunId, buildRunMonitorPath \}/);
   assert.match(source, /getCreateRunIds/);
   assert.match(source, /const createRunIds = useMemo/);
+  assert.match(source, /readCreateRunContextFromEnv\(import\.meta\.env\)/);
+  assert.match(source, /withCreateRunContextFallback/);
   assert.match(source, /projectId: createRunIds\.projectId/);
   assert.match(source, /scenarioTemplateVersionId: createRunIds\.scenarioTemplateVersionId/);
   assert.match(source, /scenarioPlan: buildPrototypeScenarioPlan/);
@@ -179,7 +181,9 @@ test('create analysis page wires stages to browser history query state', () => {
   );
 
   assert.match(source, /parseCreateAnalysisRouteState\(window\.location\.search, CREATE_ANALYSIS_ROUTE_OPTIONS\)/);
-  assert.match(source, /buildCreateAnalysisPath\(nextRouteState, CREATE_ANALYSIS_ROUTE_OPTIONS\)/);
+  assert.match(source, /routeStateWithDevContext = withCreateRunContextFallback\(nextRouteState, DEV_CREATE_RUN_CONTEXT\)/);
+  assert.match(source, /buildCreateAnalysisPath\(routeStateWithDevContext, CREATE_ANALYSIS_ROUTE_OPTIONS\)/);
+  assert.match(source, /setRouteState\(routeStateWithDevContext\)/);
   assert.match(source, /window\.history\.pushState\(null, '', nextPath\)/);
   assert.match(source, /window\.history\.replaceState\(null, '', nextPath\)/);
   assert.match(source, /window\.addEventListener\('popstate', handlePopState\)/);

@@ -18,6 +18,11 @@ export interface CreateAnalysisRouteOptions<TScenarioId extends string = string,
   validScenarioIds: readonly TScenarioId[];
 }
 
+export interface CreateRunContext {
+  projectId: string;
+  scenarioTemplateVersionId: string;
+}
+
 const DEFAULT_BASE_PATH = '/create-analysis';
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -43,9 +48,12 @@ function isRouteStep(value: string | null): value is keyof typeof STEP_TO_STAGE 
   return value !== null && Object.prototype.hasOwnProperty.call(STEP_TO_STAGE, value);
 }
 
+function readUuidValue(value: string | null | undefined) {
+  return value !== null && value !== undefined && UUID_PATTERN.test(value) ? value : null;
+}
+
 function readUuidParam(params: URLSearchParams, name: string) {
-  const value = params.get(name);
-  return value !== null && UUID_PATTERN.test(value) ? value : null;
+  return readUuidValue(params.get(name));
 }
 
 function readCreateRunContext(params: URLSearchParams) {
@@ -77,6 +85,38 @@ function inputRouteState<TScenarioId extends string, TDepthId extends string>(
     scenarioId: null,
     depthId: null,
     ...createRunContext,
+  };
+}
+
+export function readCreateRunContextFromEnv(env: Record<string, string | undefined>): Partial<CreateRunContext> {
+  const projectId = readUuidValue(env.VITE_DEV_PROJECT_ID);
+  const scenarioTemplateVersionId = readUuidValue(env.VITE_DEV_SCENARIO_TEMPLATE_VERSION_ID);
+
+  if (!projectId || !scenarioTemplateVersionId) {
+    return {};
+  }
+
+  return {
+    projectId,
+    scenarioTemplateVersionId,
+  };
+}
+
+export function withCreateRunContextFallback<TScenarioId extends string, TDepthId extends string>(
+  state: CreateAnalysisRouteState<TScenarioId, TDepthId>,
+  fallbackContext: Partial<CreateRunContext>,
+): CreateAnalysisRouteState<TScenarioId, TDepthId> {
+  const projectId = readUuidValue(fallbackContext.projectId);
+  const scenarioTemplateVersionId = readUuidValue(fallbackContext.scenarioTemplateVersionId);
+
+  if (hasCreateRunContext(state) || !projectId || !scenarioTemplateVersionId) {
+    return state;
+  }
+
+  return {
+    ...state,
+    projectId,
+    scenarioTemplateVersionId,
   };
 }
 
