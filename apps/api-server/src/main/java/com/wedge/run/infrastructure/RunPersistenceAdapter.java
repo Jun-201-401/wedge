@@ -10,7 +10,9 @@ import com.wedge.run.api.dto.RunResponse;
 import com.wedge.run.application.RunExecutionRequestSource;
 import com.wedge.run.domain.ResultCompleteness;
 import com.wedge.run.domain.RunStatus;
+import com.wedge.run.domain.StepStatus;
 import java.net.URI;
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -24,9 +26,15 @@ public class RunPersistenceAdapter {
     private final RunMapper runMapper;
     private final ObjectMapper objectMapper;
 
-    public RunPersistenceAdapter(RunMapper runMapper, ObjectMapper objectMapper) {
+    public RunPersistenceAdapter(
+            RunMapper runMapper,
+            ObjectMapper objectMapper
+    ) {
         this.runMapper = runMapper;
         this.objectMapper = objectMapper;
+    }
+
+    public record ResolvedStep(UUID id, int stepOrder, String stepKey, StepStatus status) {
     }
 
     public List<RunResponse> listRuns(UUID projectId, RunStatus status) {
@@ -48,6 +56,7 @@ public class RunPersistenceAdapter {
         record.setScenarioPlanSchemaVersion(resolveScenarioPlanSchemaVersion(request.scenarioPlan()));
         record.setScenarioPlanJson(writeJsonOrEmpty(request.scenarioPlan()));
         runMapper.insert(record);
+        insertScenarioSteps(record.getId(), request.scenarioPlan());
         return toResponse(record);
     }
 
@@ -96,8 +105,94 @@ public class RunPersistenceAdapter {
         return runMapper.softDelete(runId) > 0;
     }
 
+    public ResolvedStep resolveStep(UUID runId, String stepKey) {
+        return runMapper.findStepByRunIdAndStepKey(runId, stepKey)
+                .map(step -> new ResolvedStep(step.getId(), step.getStepOrder(), step.getStepKey(), step.getStatus()))
+                .orElseThrow(() -> new BusinessException(
+                        ErrorCode.INVALID_REQUEST,
+                        "Runner callback step key was not found for the run: " + stepKey
+                ));
+    }
+
+    public void updateCurrentStepOrder(UUID runId, int stepOrder) {
+        runMapper.updateCurrentStepOrder(runId, stepOrder);
+    }
+
+    public void updateStepState(UUID stepId, StepStatus nextStatus, OffsetDateTime occurredAt) {
+        OffsetDateTime startedAt = nextStatus == StepStatus.RUNNING ? occurredAt : null;
+        OffsetDateTime finishedAt = switch (nextStatus) {
+            case PASSED, FAILED, SKIPPED, BLOCKED, STOPPED -> occurredAt;
+            default -> null;
+        };
+        runMapper.updateStepState(stepId, nextStatus, startedAt, finishedAt, null, null);
+    }
+
+    public void appendRunEvent(UUID runId, UUID stepId, String eventType, Map<String, Object> payload, OffsetDateTime occurredAt) {
+        runMapper.insertRunEvent(
+                UUID.randomUUID(),
+                runId,
+                stepId,
+                eventType,
+                "RUNNER",
+                writeJson(payload),
+                occurredAt
+        );
+    }
+
+    private void insertScenarioSteps(UUID runId, Map<String, Object> scenarioPlan) {
+        Object steps = scenarioPlan.get("steps");
+        if (!(steps instanceof List<?> stepList) || stepList.isEmpty()) {
+            throw new BusinessException(ErrorCode.INVALID_REQUEST, "scenarioPlan.steps must contain at least one step.");
+        }
+
+        for (int index = 0; index < stepList.size(); index++) {
+            Map<String, Object> step = requireMap(stepList.get(index), "scenarioPlan.steps[" + index + "]");
+            RunStepRecord record = new RunStepRecord();
+            record.setId(UUID.randomUUID());
+            record.setRunId(runId);
+            record.setStepOrder(index + 1);
+            record.setStepKey(requireNonBlankString(step, "step_id", "scenarioPlan.steps[" + index + "].step_id"));
+            record.setStepName(requireNonBlankString(step, "description", "scenarioPlan.steps[" + index + "].description"));
+            record.setStage(requireNonBlankString(step, "stage", "scenarioPlan.steps[" + index + "].stage"));
+            record.setStepType(resolveStepType(step, index));
+            record.setStatus(StepStatus.PENDING);
+            runMapper.insertStep(record);
+        }
+    }
+
+    private String resolveStepType(Map<String, Object> step, int index) {
+        Map<String, Object> action = requireMap(step.get("action"), "scenarioPlan.steps[" + index + "].action");
+        String actionType = requireNonBlankString(action, "type", "scenarioPlan.steps[" + index + "].action.type");
+        return actionType.toUpperCase().replace('-', '_');
+    }
+
+    private Map<String, Object> requireMap(Object value, String name) {
+        if (value instanceof Map<?, ?> rawMap) {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> mapValue = (Map<String, Object>) rawMap;
+            return mapValue;
+        }
+        throw new BusinessException(ErrorCode.INVALID_REQUEST, name + " must be an object.");
+    }
+
+    private String requireNonBlankString(Map<String, Object> source, String key, String name) {
+        Object value = source.get(key);
+        if (value instanceof String text && !text.isBlank()) {
+            return text;
+        }
+        throw new BusinessException(ErrorCode.INVALID_REQUEST, name + " is required.");
+    }
+
     private BusinessException stateConflict(RunStatus from, RunStatus to) {
         return new BusinessException(ErrorCode.STATE_CONFLICT, "Run state changed during transition: " + from + " -> " + to);
+    }
+
+    private String writeJson(Object value) {
+        try {
+            return objectMapper.writeValueAsString(value);
+        } catch (JsonProcessingException exception) {
+            throw new BusinessException(ErrorCode.INTERNAL_ERROR, "Failed to serialize runner callback payload.");
+        }
     }
 
     private RunResponse toResponse(RunRecord record) {

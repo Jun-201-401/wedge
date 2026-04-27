@@ -4,15 +4,23 @@ import com.wedge.common.infrastructure.ProcessedMessagePersistenceAdapter;
 import com.wedge.evidence.application.ArtifactPersistenceService;
 import com.wedge.evidence.application.CheckpointPersistenceService;
 import com.wedge.internal.runner.dto.RunnerAcceptedRequest;
+import com.wedge.internal.runner.dto.RunnerArtifactRequest;
 import com.wedge.internal.runner.dto.RunnerArtifactsRequest;
 import com.wedge.internal.runner.dto.RunnerCallbackHeaders;
+import com.wedge.internal.runner.dto.RunnerCheckpointRequest;
 import com.wedge.internal.runner.dto.RunnerCheckpointsRequest;
 import com.wedge.internal.runner.dto.RunnerFailedRequest;
 import com.wedge.internal.runner.dto.RunnerFinishedRequest;
+import com.wedge.internal.runner.dto.RunnerStepEvent;
+import com.wedge.internal.runner.dto.RunnerStepEventType;
 import com.wedge.internal.runner.dto.RunnerStepEventsRequest;
 import com.wedge.run.api.dto.RunResponse;
 import com.wedge.run.application.RunService;
+import com.wedge.run.domain.RunStatus;
+import com.wedge.run.domain.StepStatus;
 import com.wedge.run.infrastructure.RunMapper;
+import com.wedge.run.infrastructure.RunPersistenceAdapter;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
@@ -28,6 +36,7 @@ public class RunnerCallbackService {
     private static final String FAILED_CONSUMER = "runner.failed";
 
     private final RunService runService;
+    private final RunPersistenceAdapter runPersistenceAdapter;
     private final ProcessedMessagePersistenceAdapter processedMessagePersistenceAdapter;
     private final ArtifactPersistenceService artifactPersistenceService;
     private final CheckpointPersistenceService checkpointPersistenceService;
@@ -35,12 +44,14 @@ public class RunnerCallbackService {
 
     public RunnerCallbackService(
             RunService runService,
+            RunPersistenceAdapter runPersistenceAdapter,
             ProcessedMessagePersistenceAdapter processedMessagePersistenceAdapter,
             ArtifactPersistenceService artifactPersistenceService,
             CheckpointPersistenceService checkpointPersistenceService,
             RunMapper runMapper
     ) {
         this.runService = runService;
+        this.runPersistenceAdapter = runPersistenceAdapter;
         this.processedMessagePersistenceAdapter = processedMessagePersistenceAdapter;
         this.artifactPersistenceService = artifactPersistenceService;
         this.checkpointPersistenceService = checkpointPersistenceService;
@@ -71,6 +82,9 @@ public class RunnerCallbackService {
         }
 
         RunResponse run = runService.markRunningIfStarting(runId);
+        if (!isTerminalStatus(run.status())) {
+            request.events().forEach(event -> applyStepEvent(runId, event));
+        }
         return Map.of("runId", run.id(), "status", run.status(), "eventCount", request.events().size());
     }
 
@@ -84,7 +98,8 @@ public class RunnerCallbackService {
         }
 
         runService.getRun(runId);
-        int checkpointCount = checkpointPersistenceService.saveRunCheckpoints(runId, request);
+        Map<String, UUID> stepIdsByKey = resolveCheckpointSteps(runId, request);
+        int checkpointCount = checkpointPersistenceService.saveRunCheckpoints(runId, request, stepIdsByKey);
         return Map.of("runId", runId, "checkpointCount", checkpointCount);
     }
 
@@ -98,7 +113,8 @@ public class RunnerCallbackService {
         }
 
         runService.getRun(runId);
-        int artifactCount = artifactPersistenceService.saveRunArtifacts(runId, request);
+        Map<String, UUID> stepIdsByKey = resolveArtifactSteps(runId, request);
+        int artifactCount = artifactPersistenceService.saveRunArtifacts(runId, request, stepIdsByKey);
         UUID latestArtifactId = request.artifacts().get(request.artifacts().size() - 1).artifactId();
         if (latestArtifactId != null) {
             runMapper.updateLatestArtifact(runId, latestArtifactId);
@@ -134,6 +150,49 @@ public class RunnerCallbackService {
         return Map.of("runId", run.id(), "status", run.status(), "resultCompleteness", run.resultCompleteness());
     }
 
+    private void applyStepEvent(UUID runId, RunnerStepEvent event) {
+        RunPersistenceAdapter.ResolvedStep step = runPersistenceAdapter.resolveStep(runId, event.stepKey());
+        runPersistenceAdapter.updateCurrentStepOrder(runId, step.stepOrder());
+        runPersistenceAdapter.appendRunEvent(runId, step.id(), event.eventType().name(), event.payload(), event.occurredAt());
+
+        StepStatus nextStatus = mapStepStatus(event.eventType());
+        if (nextStatus != null) {
+            runPersistenceAdapter.updateStepState(step.id(), nextStatus, event.occurredAt());
+        }
+    }
+
+    private Map<String, UUID> resolveCheckpointSteps(UUID runId, RunnerCheckpointsRequest request) {
+        Map<String, UUID> stepIdsByKey = new LinkedHashMap<>();
+        for (RunnerCheckpointRequest checkpoint : request.checkpoints()) {
+            RunPersistenceAdapter.ResolvedStep step = runPersistenceAdapter.resolveStep(runId, checkpoint.stepKey());
+            runPersistenceAdapter.updateCurrentStepOrder(runId, step.stepOrder());
+            stepIdsByKey.put(checkpoint.stepKey(), step.id());
+        }
+        return stepIdsByKey;
+    }
+
+    private Map<String, UUID> resolveArtifactSteps(UUID runId, RunnerArtifactsRequest request) {
+        Map<String, UUID> stepIdsByKey = new LinkedHashMap<>();
+        for (RunnerArtifactRequest artifact : request.artifacts()) {
+            RunPersistenceAdapter.ResolvedStep step = runPersistenceAdapter.resolveStep(runId, artifact.stepKey());
+            runPersistenceAdapter.updateCurrentStepOrder(runId, step.stepOrder());
+            stepIdsByKey.put(artifact.stepKey(), step.id());
+        }
+        return stepIdsByKey;
+    }
+
+    private StepStatus mapStepStatus(RunnerStepEventType eventType) {
+        return switch (eventType) {
+            case STEP_STARTED -> StepStatus.RUNNING;
+            case STEP_COMPLETED -> StepStatus.PASSED;
+            default -> null;
+        };
+    }
+
+    private boolean isTerminalStatus(RunStatus status) {
+        return status == RunStatus.COMPLETED || status == RunStatus.FAILED || status == RunStatus.STOPPED;
+    }
+
     private boolean isDuplicate(String consumerName, String eventId) {
         return !processedMessagePersistenceAdapter.tryMarkProcessed(consumerName, eventId);
     }
@@ -160,5 +219,4 @@ public class RunnerCallbackService {
                 "duplicate", true
         );
     }
-
 }

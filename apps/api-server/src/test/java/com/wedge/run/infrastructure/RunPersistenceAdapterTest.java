@@ -3,6 +3,8 @@ package com.wedge.run.infrastructure;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -14,6 +16,7 @@ import com.wedge.run.application.RunExecutionRequestSource;
 import com.wedge.run.domain.AnalysisStatus;
 import com.wedge.run.domain.ResultCompleteness;
 import com.wedge.run.domain.RunStatus;
+import com.wedge.run.domain.StepStatus;
 import java.net.URI;
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -31,15 +34,15 @@ import org.mockito.junit.jupiter.MockitoExtension;
 class RunPersistenceAdapterTest {
     @Mock
     private RunMapper runMapper;
-
     @Captor
     private ArgumentCaptor<RunRecord> runRecordCaptor;
-
+    @Captor
+    private ArgumentCaptor<RunStepRecord> runStepRecordCaptor;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Test
     void createRunBuildsDefaultPersistenceRecord() {
-        RunPersistenceAdapter runPersistenceAdapter = new RunPersistenceAdapter(runMapper, objectMapper);
+        RunPersistenceAdapter runPersistenceAdapter = adapter();
         RunCreateRequest request = sampleRequest();
 
         RunResponse created = runPersistenceAdapter.createRun(request);
@@ -54,6 +57,15 @@ class RunPersistenceAdapterTest {
         assertThat(persisted.getStatus()).isEqualTo(RunStatus.CREATED);
         assertThat(persisted.getResultCompleteness()).isEqualTo(ResultCompleteness.NONE);
         assertThat(persisted.getAnalysisStatus()).isEqualTo(AnalysisStatus.NOT_STARTED);
+        verify(runMapper, times(2)).insertStep(runStepRecordCaptor.capture());
+        List<RunStepRecord> persistedSteps = runStepRecordCaptor.getAllValues();
+        assertThat(persistedSteps)
+                .extracting(RunStepRecord::getStepOrder, RunStepRecord::getStepKey, RunStepRecord::getStepName, RunStepRecord::getStage, RunStepRecord::getStepType, RunStepRecord::getStatus)
+                .containsExactly(
+                        org.assertj.core.groups.Tuple.tuple(1, "step_001_goto", "랜딩 첫 화면 로드", "FIRST_VIEW", "GOTO", StepStatus.PENDING),
+                        org.assertj.core.groups.Tuple.tuple(2, "step_002_click_signup", "CTA 클릭", "CTA", "CLICK", StepStatus.PENDING)
+                );
+        assertThat(persistedSteps).allSatisfy(step -> assertThat(step.getRunId()).isEqualTo(persisted.getId()));
 
         assertThat(created.id()).isEqualTo(persisted.getId());
         assertThat(created.projectId()).isEqualTo(request.projectId());
@@ -63,7 +75,7 @@ class RunPersistenceAdapterTest {
 
     @Test
     void listRunsMapsStoredRowsToApiResponses() {
-        RunPersistenceAdapter runPersistenceAdapter = new RunPersistenceAdapter(runMapper, objectMapper);
+        RunPersistenceAdapter runPersistenceAdapter = adapter();
         RunRecord stored = sampleRecord();
         when(runMapper.findAll(stored.getProjectId(), RunStatus.RUNNING)).thenReturn(List.of(stored));
 
@@ -77,7 +89,7 @@ class RunPersistenceAdapterTest {
 
     @Test
     void findRunReturnsMappedRunWhenPresent() {
-        RunPersistenceAdapter runPersistenceAdapter = new RunPersistenceAdapter(runMapper, objectMapper);
+        RunPersistenceAdapter runPersistenceAdapter = adapter();
         RunRecord stored = sampleRecord();
         when(runMapper.findById(stored.getId())).thenReturn(Optional.of(stored));
 
@@ -90,7 +102,7 @@ class RunPersistenceAdapterTest {
 
     @Test
     void findExecutionRequestSourceParsesStoredScenarioPlanJson() {
-        RunPersistenceAdapter runPersistenceAdapter = new RunPersistenceAdapter(runMapper, objectMapper);
+        RunPersistenceAdapter runPersistenceAdapter = adapter();
         RunRecord stored = sampleRecord();
         stored.setScenarioPlanJson("{\"schema_version\":\"0.5\",\"plan_id\":\"plan_001\"}");
         when(runMapper.findById(stored.getId())).thenReturn(Optional.of(stored));
@@ -103,7 +115,7 @@ class RunPersistenceAdapterTest {
 
     @Test
     void updateExecutionStateReturnsUpdatedApiShape() {
-        RunPersistenceAdapter runPersistenceAdapter = new RunPersistenceAdapter(runMapper, objectMapper);
+        RunPersistenceAdapter runPersistenceAdapter = adapter();
         RunResponse current = sampleResponse(RunStatus.CREATED, ResultCompleteness.NONE);
         when(runMapper.updateExecutionState(
                 current.id(),
@@ -122,7 +134,7 @@ class RunPersistenceAdapterTest {
 
     @Test
     void updateFailureStateRaisesConflictWhenConcurrentUpdateFails() {
-        RunPersistenceAdapter runPersistenceAdapter = new RunPersistenceAdapter(runMapper, objectMapper);
+        RunPersistenceAdapter runPersistenceAdapter = adapter();
         RunResponse current = sampleResponse(RunStatus.RUNNING, ResultCompleteness.PARTIAL);
         when(runMapper.updateFailureState(
                 org.mockito.ArgumentMatchers.eq(current.id()),
@@ -143,6 +155,29 @@ class RunPersistenceAdapterTest {
                 .hasMessageContaining("RUNNING -> FAILED");
     }
 
+    @Test
+    void resolveStepMapsStoredStepRow() {
+        UUID runId = UUID.randomUUID();
+        RunStepRecord stepRecord = new RunStepRecord();
+        stepRecord.setId(UUID.randomUUID());
+        stepRecord.setRunId(runId);
+        stepRecord.setStepOrder(3);
+        stepRecord.setStepKey("step_003_fill_email");
+        stepRecord.setStatus(StepStatus.PENDING);
+        when(runMapper.findStepByRunIdAndStepKey(runId, "step_003_fill_email")).thenReturn(Optional.of(stepRecord));
+
+        RunPersistenceAdapter adapter = new RunPersistenceAdapter(runMapper, objectMapper);
+        RunPersistenceAdapter.ResolvedStep resolved = adapter.resolveStep(runId, "step_003_fill_email");
+
+        assertThat(resolved.id()).isEqualTo(stepRecord.getId());
+        assertThat(resolved.stepOrder()).isEqualTo(3);
+        assertThat(resolved.stepKey()).isEqualTo("step_003_fill_email");
+    }
+
+    private RunPersistenceAdapter adapter() {
+        return new RunPersistenceAdapter(runMapper, objectMapper);
+    }
+
     private RunCreateRequest sampleRequest() {
         return new RunCreateRequest(
                 UUID.randomUUID(),
@@ -155,7 +190,21 @@ class RunPersistenceAdapterTest {
                 Map.of(
                         "schema_version", "0.5",
                         "plan_id", "plan_001",
-                        "scenario_type", "custom_compiled"
+                        "scenario_type", "custom_compiled",
+                        "steps", List.of(
+                                Map.of(
+                                        "step_id", "step_001_goto",
+                                        "stage", "FIRST_VIEW",
+                                        "description", "랜딩 첫 화면 로드",
+                                        "action", Map.of("type", "goto")
+                                ),
+                                Map.of(
+                                        "step_id", "step_002_click_signup",
+                                        "stage", "CTA",
+                                        "description", "CTA 클릭",
+                                        "action", Map.of("type", "click")
+                                )
+                        )
                 )
         );
     }

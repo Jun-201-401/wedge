@@ -28,6 +28,21 @@
         <result property="version" column="version"/>
     </resultMap>
 
+    <resultMap id="RunStepRecordResultMap" type="com.wedge.run.infrastructure.RunStepRecord">
+        <id property="id" column="id"/>
+        <result property="runId" column="run_id"/>
+        <result property="stepOrder" column="step_order"/>
+        <result property="stepKey" column="step_key"/>
+        <result property="stepName" column="step_name"/>
+        <result property="stage" column="stage"/>
+        <result property="stepType" column="step_type"/>
+        <result property="status" column="status"/>
+        <result property="startedAt" column="started_at"/>
+        <result property="finishedAt" column="finished_at"/>
+        <result property="errorCode" column="error_code"/>
+        <result property="errorMessage" column="error_message"/>
+    </resultMap>
+
     <sql id="RunColumns">
         id,
         project_id,
@@ -73,6 +88,14 @@
         FROM test_run
         WHERE id = #{runId}
           AND deleted_at IS NULL
+    </select>
+
+    <select id="findStepByRunIdAndStepKey" resultMap="RunStepRecordResultMap">
+        SELECT id, run_id, step_order, step_key, step_name, stage, step_type,
+               status, started_at, finished_at, error_code, error_message
+        FROM test_run_step
+        WHERE run_id = #{runId}
+          AND step_key = #{stepKey}
     </select>
 
     <insert id="insert" parameterType="com.wedge.run.infrastructure.RunRecord">
@@ -121,6 +144,28 @@
         )
     </insert>
 
+    <insert id="insertStep" parameterType="com.wedge.run.infrastructure.RunStepRecord">
+        INSERT INTO test_run_step (
+            id,
+            run_id,
+            step_order,
+            step_key,
+            step_name,
+            stage,
+            step_type,
+            status
+        ) VALUES (
+            #{id},
+            #{runId},
+            #{stepOrder},
+            #{stepKey},
+            #{stepName},
+            #{stage},
+            #{stepType},
+            #{status}
+        )
+    </insert>
+
     <update id="updateExecutionState">
         UPDATE test_run
         SET status = #{nextStatus},
@@ -148,9 +193,9 @@
           AND deleted_at IS NULL
     </update>
 
-    <update id="updateLatestArtifact">
+    <update id="updateCurrentStepOrder">
         UPDATE test_run
-        SET latest_artifact_id = #{artifactId},
+        SET current_step_order = GREATEST(COALESCE(current_step_order, 0), #{currentStepOrder}),
             updated_at = NOW(),
             version = version + 1
         WHERE id = #{runId}
@@ -165,6 +210,50 @@
         WHERE id = #{runId}
           AND deleted_at IS NULL
     </update>
+
+    <update id="updateLatestArtifact">
+        UPDATE test_run
+        SET latest_artifact_id = #{artifactId},
+            updated_at = NOW(),
+            version = version + 1
+        WHERE id = #{runId}
+          AND deleted_at IS NULL
+    </update>
+
+    <update id="updateStepState">
+        UPDATE test_run_step
+        SET status = #{nextStatus},
+            started_at = COALESCE(#{startedAt}, started_at),
+            finished_at = CASE
+                WHEN #{finishedAt} IS NOT NULL THEN #{finishedAt}
+                ELSE finished_at
+            END,
+            error_code = #{errorCode},
+            error_message = #{errorMessage},
+            updated_at = NOW(),
+            version = version + 1
+        WHERE id = #{stepId}
+    </update>
+
+    <insert id="insertRunEvent">
+        INSERT INTO test_run_event (
+            id,
+            run_id,
+            step_id,
+            event_type,
+            source,
+            payload_jsonb,
+            occurred_at
+        ) VALUES (
+            #{id},
+            #{runId},
+            #{stepId},
+            #{eventType},
+            #{source},
+            CAST(#{payloadJson} AS jsonb),
+            #{occurredAt}
+        )
+    </insert>
 
     <update id="softDelete">
         UPDATE test_run
