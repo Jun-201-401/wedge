@@ -26,6 +26,8 @@ Canonical machine-readable contracts belong here. Human-readable design rational
 - `examples/sample-scenario-plan-signup.json`: ScenarioPlan fixture
 - `examples/sample-site-discovery-result.json`: SiteDiscoveryResult fixture
 - `examples/sample-evidence-packet.json`: EvidencePacket fixture
+- `examples/sample-run-artifacts-response.json`: prototype REST fixture for `GET /api/runs/{runId}/artifacts`
+- `examples/sample-run-evidence-packet-response.json`: prototype REST fixture for `GET /api/runs/{runId}/evidence-packet`
 - `examples/sample-judge-result.json`: JudgeResult fixture
 - `examples/sample-semantic-classification-request.json`: SemanticClassification provider request fixture
 - `examples/sample-semantic-classification-response.json`: SemanticClassification provider response fixture
