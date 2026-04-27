@@ -25,11 +25,21 @@
         WHERE id = #{id}
     </select>
 
+    <select id="findByRunIdAndId" resultMap="ArtifactResultMap">
+        SELECT id, run_id, step_id, artifact_type, s3_bucket, s3_key, public_url, mime_type,
+               width, height, size_bytes, sha256, captured_at, created_at
+        FROM artifact
+        WHERE source_type = 'RUN'
+          AND run_id = #{runId}
+          AND id = #{id}
+    </select>
+
     <select id="findByRunId" resultMap="ArtifactResultMap">
         SELECT id, run_id, step_id, artifact_type, s3_bucket, s3_key, public_url, mime_type,
                width, height, size_bytes, sha256, captured_at, created_at
         FROM artifact
-        WHERE run_id = #{runId}
+        WHERE source_type = 'RUN'
+          AND run_id = #{runId}
         ORDER BY created_at DESC
     </select>
 
