@@ -1,6 +1,7 @@
 package com.wedge.internal.runner;
 
 import com.wedge.common.infrastructure.ProcessedMessagePersistenceAdapter;
+import com.wedge.evidence.application.ArtifactPersistenceService;
 import com.wedge.evidence.application.CheckpointPersistenceService;
 import com.wedge.internal.runner.dto.RunnerAcceptedRequest;
 import com.wedge.internal.runner.dto.RunnerArtifactsRequest;
@@ -27,15 +28,18 @@ public class RunnerCallbackService {
 
     private final RunService runService;
     private final ProcessedMessagePersistenceAdapter processedMessagePersistenceAdapter;
+    private final ArtifactPersistenceService artifactPersistenceService;
     private final CheckpointPersistenceService checkpointPersistenceService;
 
     public RunnerCallbackService(
             RunService runService,
             ProcessedMessagePersistenceAdapter processedMessagePersistenceAdapter,
+            ArtifactPersistenceService artifactPersistenceService,
             CheckpointPersistenceService checkpointPersistenceService
     ) {
         this.runService = runService;
         this.processedMessagePersistenceAdapter = processedMessagePersistenceAdapter;
+        this.artifactPersistenceService = artifactPersistenceService;
         this.checkpointPersistenceService = checkpointPersistenceService;
     }
 
@@ -90,7 +94,8 @@ public class RunnerCallbackService {
         }
 
         runService.getRun(runId);
-        return Map.of("runId", runId, "artifactCount", request.artifacts().size());
+        int artifactCount = artifactPersistenceService.saveRunArtifacts(runId, request);
+        return Map.of("runId", runId, "artifactCount", artifactCount);
     }
 
     @Transactional
