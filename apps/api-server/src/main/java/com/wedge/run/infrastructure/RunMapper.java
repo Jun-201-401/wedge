@@ -20,6 +20,8 @@ public interface RunMapper {
 
     int insert(RunRecord run);
 
+    int insertStep(RunStepRecord step);
+
     int updateExecutionState(
             @Param("runId") UUID runId,
             @Param("expectedStatus") RunStatus expectedStatus,

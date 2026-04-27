@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -45,6 +46,8 @@ class RunPersistenceAdapterTest {
     @Captor
     private ArgumentCaptor<RunRecord> runRecordCaptor;
     @Captor
+    private ArgumentCaptor<RunStepRecord> runStepRecordCaptor;
+    @Captor
     private ArgumentCaptor<Checkpoint> checkpointCaptor;
     @Captor
     private ArgumentCaptor<Artifact> artifactCaptor;
@@ -68,6 +71,15 @@ class RunPersistenceAdapterTest {
         assertThat(persisted.getStatus()).isEqualTo(RunStatus.CREATED);
         assertThat(persisted.getResultCompleteness()).isEqualTo(ResultCompleteness.NONE);
         assertThat(persisted.getAnalysisStatus()).isEqualTo(AnalysisStatus.NOT_STARTED);
+        verify(runMapper, times(2)).insertStep(runStepRecordCaptor.capture());
+        List<RunStepRecord> persistedSteps = runStepRecordCaptor.getAllValues();
+        assertThat(persistedSteps)
+                .extracting(RunStepRecord::getStepOrder, RunStepRecord::getStepKey, RunStepRecord::getStepName, RunStepRecord::getStage, RunStepRecord::getStepType, RunStepRecord::getStatus)
+                .containsExactly(
+                        org.assertj.core.groups.Tuple.tuple(1, "step_001_goto", "랜딩 첫 화면 로드", "FIRST_VIEW", "GOTO", StepStatus.PENDING),
+                        org.assertj.core.groups.Tuple.tuple(2, "step_002_click_signup", "CTA 클릭", "CTA", "CLICK", StepStatus.PENDING)
+                );
+        assertThat(persistedSteps).allSatisfy(step -> assertThat(step.getRunId()).isEqualTo(persisted.getId()));
 
         assertThat(created.id()).isEqualTo(persisted.getId());
         assertThat(created.projectId()).isEqualTo(request.projectId());
@@ -252,7 +264,21 @@ class RunPersistenceAdapterTest {
                 Map.of(
                         "schema_version", "0.5",
                         "plan_id", "plan_001",
-                        "scenario_type", "custom_compiled"
+                        "scenario_type", "custom_compiled",
+                        "steps", List.of(
+                                Map.of(
+                                        "step_id", "step_001_goto",
+                                        "stage", "FIRST_VIEW",
+                                        "description", "랜딩 첫 화면 로드",
+                                        "action", Map.of("type", "goto")
+                                ),
+                                Map.of(
+                                        "step_id", "step_002_click_signup",
+                                        "stage", "CTA",
+                                        "description", "CTA 클릭",
+                                        "action", Map.of("type", "click")
+                                )
+                        )
                 )
         );
     }
