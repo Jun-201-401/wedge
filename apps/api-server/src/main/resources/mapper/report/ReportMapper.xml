@@ -41,7 +41,8 @@
             artifact_id, created_by
         )
         VALUES (
-            #{id}, #{runId}, #{analysisJobId}, #{title}, #{format}, #{status}, #{summaryJsonb}, #{decisionMapJsonb},
+            #{id}, #{runId}, #{analysisJobId}, #{title}, #{format}, #{status},
+            CAST(#{summaryJsonb} AS jsonb), CAST(#{decisionMapJsonb} AS jsonb),
             #{artifactId}, #{createdBy}
         )
     </insert>

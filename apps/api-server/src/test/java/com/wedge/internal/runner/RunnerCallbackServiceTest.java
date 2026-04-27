@@ -8,10 +8,8 @@ import static org.mockito.Mockito.when;
 
 import com.wedge.common.error.BusinessException;
 import com.wedge.common.infrastructure.ProcessedMessagePersistenceAdapter;
+import com.wedge.evidence.application.ArtifactPersistenceService;
 import com.wedge.evidence.application.CheckpointPersistenceService;
-import com.wedge.evidence.domain.Artifact;
-import com.wedge.evidence.domain.ArtifactType;
-import com.wedge.evidence.infrastructure.ArtifactMapper;
 import com.wedge.internal.runner.dto.RunnerAcceptedRequest;
 import com.wedge.internal.runner.dto.RunnerArtifactRequest;
 import com.wedge.internal.runner.dto.RunnerArtifactType;
@@ -42,7 +40,6 @@ import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -58,7 +55,7 @@ class RunnerCallbackServiceTest {
     private ProcessedMessagePersistenceAdapter processedMessagePersistenceAdapter;
 
     @Mock
-    private ArtifactMapper artifactMapper;
+    private ArtifactPersistenceService artifactPersistenceService;
 
     @Mock
     private CheckpointPersistenceService checkpointPersistenceService;
@@ -73,7 +70,7 @@ class RunnerCallbackServiceTest {
         runnerCallbackService = new RunnerCallbackService(
                 runService,
                 processedMessagePersistenceAdapter,
-                artifactMapper,
+                artifactPersistenceService,
                 checkpointPersistenceService,
                 runMapper
         );
@@ -179,37 +176,51 @@ class RunnerCallbackServiceTest {
     }
 
     @Test
+    void artifactCallbackPersistsArtifactPayloads() {
+        UUID runId = UUID.randomUUID();
+        RunnerArtifactsRequest request = sampleArtifactRequest();
+        when(processedMessagePersistenceAdapter.tryMarkProcessed("runner.artifacts", "evt_artifact_001")).thenReturn(true);
+        when(runService.getRun(runId)).thenReturn(sampleRun(runId, RunStatus.RUNNING, ResultCompleteness.NONE));
+        when(artifactPersistenceService.saveRunArtifacts(runId, request)).thenReturn(1);
+
+        Map<String, Object> result = runnerCallbackService.handleArtifacts(
+                runId,
+                request,
+                new RunnerCallbackHeaders("runner_001", "evt_artifact_001", "hmac-sha256=sig")
+        );
+
+        assertThat(result.get("artifactCount")).isEqualTo(1);
+        verify(artifactPersistenceService).saveRunArtifacts(runId, request);
+    }
+
+    @Test
     void artifactCallbackPersistsArtifactMetadataAndUpdatesLatestArtifact() {
         UUID runId = UUID.randomUUID();
         UUID artifactId = UUID.randomUUID();
+        RunnerArtifactsRequest request = new RunnerArtifactsRequest(List.of(new RunnerArtifactRequest(
+                artifactId,
+                "step_001_goto",
+                RunnerArtifactType.SCREENSHOT,
+                "local-runner",
+                runId + "/step_001_goto/" + artifactId + "-screenshot.png",
+                "image/png",
+                1440,
+                900,
+                1234,
+                "sha256",
+                OffsetDateTime.parse("2026-04-21T10:02:00+09:00")
+        )));
         when(processedMessagePersistenceAdapter.tryMarkProcessed("runner.artifacts", "evt_artifacts_001")).thenReturn(true);
         when(runService.getRun(runId)).thenReturn(sampleRun(runId, RunStatus.RUNNING, ResultCompleteness.NONE));
+        when(artifactPersistenceService.saveRunArtifacts(runId, request)).thenReturn(1);
 
         runnerCallbackService.handleArtifacts(
                 runId,
-                new RunnerArtifactsRequest(List.of(new RunnerArtifactRequest(
-                        artifactId,
-                        "step_001_goto",
-                        RunnerArtifactType.SCREENSHOT,
-                        "local-runner",
-                        runId + "/step_001_goto/" + artifactId + "-screenshot.png",
-                        "image/png",
-                        1440,
-                        900,
-                        1234,
-                        "sha256",
-                        OffsetDateTime.parse("2026-04-21T10:02:00+09:00")
-                ))),
+                request,
                 headers("evt_artifacts_001")
         );
 
-        ArgumentCaptor<Artifact> artifactCaptor = ArgumentCaptor.forClass(Artifact.class);
-        verify(artifactMapper).insert(artifactCaptor.capture());
-        Artifact artifact = artifactCaptor.getValue();
-        assertThat(artifact.getId()).isEqualTo(artifactId);
-        assertThat(artifact.getRunId()).isEqualTo(runId);
-        assertThat(artifact.getArtifactType()).isEqualTo(ArtifactType.SCREENSHOT);
-        assertThat(artifact.getS3Key()).contains("step_001_goto");
+        verify(artifactPersistenceService).saveRunArtifacts(runId, request);
         verify(runMapper).updateLatestArtifact(runId, artifactId);
     }
 
@@ -259,12 +270,30 @@ class RunnerCallbackServiceTest {
         Map<String, Object> result = runnerCallbackService.handleCheckpoints(
                 runId,
                 request,
-                headers("evt_checkpoint_001")
+                new RunnerCallbackHeaders("runner_001", "evt_checkpoint_001", "hmac-sha256=sig")
         );
 
         assertThat(result.get("checkpointCount")).isEqualTo(1);
         assertThat(result.get("duplicate")).isEqualTo(true);
         verify(checkpointPersistenceService, never()).saveRunCheckpoints(runId, request);
+    }
+
+    @Test
+    void duplicateArtifactCallbackDoesNotPersistAgain() {
+        UUID runId = UUID.randomUUID();
+        RunnerArtifactsRequest request = sampleArtifactRequest();
+        when(processedMessagePersistenceAdapter.tryMarkProcessed("runner.artifacts", "evt_artifact_001")).thenReturn(false);
+        when(runService.getRun(runId)).thenReturn(sampleRun(runId, RunStatus.RUNNING, ResultCompleteness.NONE));
+
+        Map<String, Object> result = runnerCallbackService.handleArtifacts(
+                runId,
+                request,
+                new RunnerCallbackHeaders("runner_001", "evt_artifact_001", "hmac-sha256=sig")
+        );
+
+        assertThat(result.get("artifactCount")).isEqualTo(1);
+        assertThat(result.get("duplicate")).isEqualTo(true);
+        verify(artifactPersistenceService, never()).saveRunArtifacts(runId, request);
     }
 
     private RunResponse sampleRun(UUID runId, RunStatus status, ResultCompleteness resultCompleteness) {
@@ -292,6 +321,22 @@ class RunnerCallbackServiceTest {
 
     private RunnerCallbackHeaders headers(String eventId) {
         return new RunnerCallbackHeaders(WORKER_ID, eventId, SIGNATURE);
+    }
+
+    private RunnerArtifactsRequest sampleArtifactRequest() {
+        return new RunnerArtifactsRequest(List.of(new RunnerArtifactRequest(
+                UUID.randomUUID(),
+                "step_001_click_cta",
+                RunnerArtifactType.SCREENSHOT,
+                "wedge-artifacts",
+                "run-1/step_001_click_cta/screenshot.png",
+                "image/png",
+                1440,
+                900,
+                1024,
+                "7c6a180b36896a0a8c02787eeafb0e4c2d7ea40a6abdd2a7636f3f4c1c4a7b1f",
+                OffsetDateTime.parse("2026-04-27T10:15:00+09:00")
+        )));
     }
 
     private RunnerCheckpointsRequest sampleCheckpointRequest() {
