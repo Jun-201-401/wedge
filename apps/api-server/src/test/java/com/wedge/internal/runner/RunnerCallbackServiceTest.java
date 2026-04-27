@@ -10,9 +10,6 @@ import com.wedge.common.error.BusinessException;
 import com.wedge.common.infrastructure.ProcessedMessagePersistenceAdapter;
 import com.wedge.evidence.application.ArtifactPersistenceService;
 import com.wedge.evidence.application.CheckpointPersistenceService;
-import com.wedge.evidence.domain.Artifact;
-import com.wedge.evidence.domain.ArtifactType;
-import com.wedge.evidence.infrastructure.ArtifactMapper;
 import com.wedge.internal.runner.dto.RunnerAcceptedRequest;
 import com.wedge.internal.runner.dto.RunnerArtifactRequest;
 import com.wedge.internal.runner.dto.RunnerArtifactType;
@@ -43,7 +40,6 @@ import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -57,9 +53,6 @@ class RunnerCallbackServiceTest {
 
     @Mock
     private ProcessedMessagePersistenceAdapter processedMessagePersistenceAdapter;
-
-    @Mock
-    private ArtifactMapper artifactMapper;
 
     @Mock
     private ArtifactPersistenceService artifactPersistenceService;
@@ -77,7 +70,7 @@ class RunnerCallbackServiceTest {
         runnerCallbackService = new RunnerCallbackService(
                 runService,
                 processedMessagePersistenceAdapter,
-                artifactMapper,
+                artifactPersistenceService,
                 checkpointPersistenceService,
                 runMapper
         );
@@ -204,34 +197,30 @@ class RunnerCallbackServiceTest {
     void artifactCallbackPersistsArtifactMetadataAndUpdatesLatestArtifact() {
         UUID runId = UUID.randomUUID();
         UUID artifactId = UUID.randomUUID();
+        RunnerArtifactsRequest request = new RunnerArtifactsRequest(List.of(new RunnerArtifactRequest(
+                artifactId,
+                "step_001_goto",
+                RunnerArtifactType.SCREENSHOT,
+                "local-runner",
+                runId + "/step_001_goto/" + artifactId + "-screenshot.png",
+                "image/png",
+                1440,
+                900,
+                1234,
+                "sha256",
+                OffsetDateTime.parse("2026-04-21T10:02:00+09:00")
+        )));
         when(processedMessagePersistenceAdapter.tryMarkProcessed("runner.artifacts", "evt_artifacts_001")).thenReturn(true);
         when(runService.getRun(runId)).thenReturn(sampleRun(runId, RunStatus.RUNNING, ResultCompleteness.NONE));
+        when(artifactPersistenceService.saveRunArtifacts(runId, request)).thenReturn(1);
 
         runnerCallbackService.handleArtifacts(
                 runId,
-                new RunnerArtifactsRequest(List.of(new RunnerArtifactRequest(
-                        artifactId,
-                        "step_001_goto",
-                        RunnerArtifactType.SCREENSHOT,
-                        "local-runner",
-                        runId + "/step_001_goto/" + artifactId + "-screenshot.png",
-                        "image/png",
-                        1440,
-                        900,
-                        1234,
-                        "sha256",
-                        OffsetDateTime.parse("2026-04-21T10:02:00+09:00")
-                ))),
+                request,
                 headers("evt_artifacts_001")
         );
 
-        ArgumentCaptor<Artifact> artifactCaptor = ArgumentCaptor.forClass(Artifact.class);
-        verify(artifactMapper).insert(artifactCaptor.capture());
-        Artifact artifact = artifactCaptor.getValue();
-        assertThat(artifact.getId()).isEqualTo(artifactId);
-        assertThat(artifact.getRunId()).isEqualTo(runId);
-        assertThat(artifact.getArtifactType()).isEqualTo(ArtifactType.SCREENSHOT);
-        assertThat(artifact.getS3Key()).contains("step_001_goto");
+        verify(artifactPersistenceService).saveRunArtifacts(runId, request);
         verify(runMapper).updateLatestArtifact(runId, artifactId);
     }
 

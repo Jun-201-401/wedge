@@ -3,11 +3,7 @@ package com.wedge.internal.runner;
 import com.wedge.common.infrastructure.ProcessedMessagePersistenceAdapter;
 import com.wedge.evidence.application.ArtifactPersistenceService;
 import com.wedge.evidence.application.CheckpointPersistenceService;
-import com.wedge.evidence.domain.Artifact;
-import com.wedge.evidence.domain.ArtifactType;
-import com.wedge.evidence.infrastructure.ArtifactMapper;
 import com.wedge.internal.runner.dto.RunnerAcceptedRequest;
-import com.wedge.internal.runner.dto.RunnerArtifactRequest;
 import com.wedge.internal.runner.dto.RunnerArtifactsRequest;
 import com.wedge.internal.runner.dto.RunnerCallbackHeaders;
 import com.wedge.internal.runner.dto.RunnerCheckpointsRequest;
@@ -17,7 +13,6 @@ import com.wedge.internal.runner.dto.RunnerStepEventsRequest;
 import com.wedge.run.api.dto.RunResponse;
 import com.wedge.run.application.RunService;
 import com.wedge.run.infrastructure.RunMapper;
-import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
@@ -35,7 +30,6 @@ public class RunnerCallbackService {
     private final RunService runService;
     private final ProcessedMessagePersistenceAdapter processedMessagePersistenceAdapter;
     private final ArtifactPersistenceService artifactPersistenceService;
-    private final ArtifactMapper artifactMapper;
     private final CheckpointPersistenceService checkpointPersistenceService;
     private final RunMapper runMapper;
 
@@ -43,14 +37,11 @@ public class RunnerCallbackService {
             RunService runService,
             ProcessedMessagePersistenceAdapter processedMessagePersistenceAdapter,
             ArtifactPersistenceService artifactPersistenceService,
-            CheckpointPersistenceService checkpointPersistenceService
-            ArtifactMapper artifactMapper,
             CheckpointPersistenceService checkpointPersistenceService,
             RunMapper runMapper
     ) {
         this.runService = runService;
         this.processedMessagePersistenceAdapter = processedMessagePersistenceAdapter;
-        this.artifactMapper = artifactMapper;
         this.artifactPersistenceService = artifactPersistenceService;
         this.checkpointPersistenceService = checkpointPersistenceService;
         this.runMapper = runMapper;
@@ -107,12 +98,11 @@ public class RunnerCallbackService {
         }
 
         runService.getRun(runId);
-        UUID latestArtifactId = persistArtifacts(runId, request.artifacts());
+        int artifactCount = artifactPersistenceService.saveRunArtifacts(runId, request);
+        UUID latestArtifactId = request.artifacts().get(request.artifacts().size() - 1).artifactId();
         if (latestArtifactId != null) {
             runMapper.updateLatestArtifact(runId, latestArtifactId);
         }
-        return Map.of("runId", runId, "artifactCount", request.artifacts().size());
-        int artifactCount = artifactPersistenceService.saveRunArtifacts(runId, request);
         return Map.of("runId", runId, "artifactCount", artifactCount);
     }
 
@@ -171,29 +161,4 @@ public class RunnerCallbackService {
         );
     }
 
-    private UUID persistArtifacts(UUID runId, List<RunnerArtifactRequest> artifactRequests) {
-        UUID latestArtifactId = null;
-        for (RunnerArtifactRequest artifactRequest : artifactRequests) {
-            Artifact artifact = toArtifact(runId, artifactRequest);
-            artifactMapper.insert(artifact);
-            latestArtifactId = artifact.getId();
-        }
-        return latestArtifactId;
-    }
-
-    private Artifact toArtifact(UUID runId, RunnerArtifactRequest request) {
-        Artifact artifact = new Artifact();
-        artifact.setId(request.artifactId());
-        artifact.setRunId(runId);
-        artifact.setArtifactType(ArtifactType.valueOf(request.artifactType().name()));
-        artifact.setS3Bucket(request.bucket());
-        artifact.setS3Key(request.key());
-        artifact.setMimeType(request.mimeType());
-        artifact.setWidth(request.width());
-        artifact.setHeight(request.height());
-        artifact.setSizeBytes(request.sizeBytes());
-        artifact.setSha256(request.sha256());
-        artifact.setCapturedAt(request.createdAt());
-        return artifact;
-    }
 }
