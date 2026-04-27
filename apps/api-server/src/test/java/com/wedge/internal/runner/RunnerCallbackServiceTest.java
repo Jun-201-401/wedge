@@ -8,12 +8,18 @@ import static org.mockito.Mockito.when;
 
 import com.wedge.common.error.BusinessException;
 import com.wedge.common.infrastructure.ProcessedMessagePersistenceAdapter;
+import com.wedge.evidence.application.CheckpointPersistenceService;
 import com.wedge.internal.runner.dto.RunnerAcceptedRequest;
 import com.wedge.internal.runner.dto.RunnerArtifactsRequest;
 import com.wedge.internal.runner.dto.RunnerCallbackHeaders;
+import com.wedge.internal.runner.dto.RunnerCheckpointRequest;
+import com.wedge.internal.runner.dto.RunnerCheckpointStage;
+import com.wedge.internal.runner.dto.RunnerCheckpointsRequest;
 import com.wedge.internal.runner.dto.RunnerFailedRequest;
 import com.wedge.internal.runner.dto.RunnerFinishedRequest;
 import com.wedge.internal.runner.dto.RunnerFinishedSummary;
+import com.wedge.internal.runner.dto.RunnerSettleInfo;
+import com.wedge.internal.runner.dto.RunnerSettleStatus;
 import com.wedge.internal.runner.dto.RunnerStepEvent;
 import com.wedge.internal.runner.dto.RunnerStepEventType;
 import com.wedge.internal.runner.dto.RunnerStepEventsRequest;
@@ -40,6 +46,9 @@ class RunnerCallbackServiceTest {
 
     @Mock
     private ProcessedMessagePersistenceAdapter processedMessagePersistenceAdapter;
+
+    @Mock
+    private CheckpointPersistenceService checkpointPersistenceService;
 
     @InjectMocks
     private RunnerCallbackService runnerCallbackService;
@@ -144,6 +153,24 @@ class RunnerCallbackServiceTest {
     }
 
     @Test
+    void checkpointCallbackPersistsCheckpointPayloads() {
+        UUID runId = UUID.randomUUID();
+        RunnerCheckpointsRequest request = sampleCheckpointRequest();
+        when(processedMessagePersistenceAdapter.tryMarkProcessed("runner.checkpoints", "evt_checkpoint_001")).thenReturn(true);
+        when(runService.getRun(runId)).thenReturn(sampleRun(runId, RunStatus.RUNNING, ResultCompleteness.NONE));
+        when(checkpointPersistenceService.saveRunCheckpoints(runId, request)).thenReturn(1);
+
+        Map<String, Object> result = runnerCallbackService.handleCheckpoints(
+                runId,
+                request,
+                new RunnerCallbackHeaders("runner_001", "evt_checkpoint_001", "hmac-sha256=sig")
+        );
+
+        assertThat(result.get("checkpointCount")).isEqualTo(1);
+        verify(checkpointPersistenceService).saveRunCheckpoints(runId, request);
+    }
+
+    @Test
     void duplicateAcceptedCallbackDoesNotTransitionRunAgain() {
         UUID runId = UUID.randomUUID();
         RunResponse current = sampleRun(runId, RunStatus.STARTING, ResultCompleteness.NONE);
@@ -159,6 +186,24 @@ class RunnerCallbackServiceTest {
         assertThat(result.get("status")).isEqualTo(RunStatus.STARTING);
         assertThat(result.get("duplicate")).isEqualTo(true);
         verify(runService, never()).markAccepted(runId);
+    }
+
+    @Test
+    void duplicateCheckpointCallbackDoesNotPersistAgain() {
+        UUID runId = UUID.randomUUID();
+        RunnerCheckpointsRequest request = sampleCheckpointRequest();
+        when(processedMessagePersistenceAdapter.tryMarkProcessed("runner.checkpoints", "evt_checkpoint_001")).thenReturn(false);
+        when(runService.getRun(runId)).thenReturn(sampleRun(runId, RunStatus.RUNNING, ResultCompleteness.NONE));
+
+        Map<String, Object> result = runnerCallbackService.handleCheckpoints(
+                runId,
+                request,
+                new RunnerCallbackHeaders("runner_001", "evt_checkpoint_001", "hmac-sha256=sig")
+        );
+
+        assertThat(result.get("checkpointCount")).isEqualTo(1);
+        assertThat(result.get("duplicate")).isEqualTo(true);
+        verify(checkpointPersistenceService, never()).saveRunCheckpoints(runId, request);
     }
 
     private RunResponse sampleRun(UUID runId, RunStatus status, ResultCompleteness resultCompleteness) {
@@ -182,5 +227,19 @@ class RunnerCallbackServiceTest {
                 null,
                 null
         );
+    }
+
+    private RunnerCheckpointsRequest sampleCheckpointRequest() {
+        return new RunnerCheckpointsRequest(List.of(new RunnerCheckpointRequest(
+                "checkpoint-response-1",
+                "step_003_fill_email",
+                RunnerCheckpointStage.INPUT,
+                Map.of("stepOrder", 3),
+                new RunnerSettleInfo("response", 216, RunnerSettleStatus.settled),
+                Map.of("url", "https://example.com/signup"),
+                List.of(Map.of("type", "form_field")),
+                List.of(),
+                List.of("artifact-response-screenshot")
+        )));
     }
 }
