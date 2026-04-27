@@ -9,19 +9,20 @@ ${scriptText}
 
 def sendMMNotify(boolean success, Map info) {
     try {
-        def color = success ? '#36a64f' : '#dc3545'
+        def action = info.action ?: 'Build'
         def emoji = success ? ':jenkins7:' : ':angry_jenkins:'
-        def statusMsg = success ? '성공' : '실패'
+        def statusMsg = success ? '성공 ✅' : '실패 ❌'
+        def color = success ? '#36a64f' : '#dc3545'
 
-        def mainText = "### ${emoji} Wedge ${info.action ?: 'Build'} ${statusMsg}\n"
+        def mainText = "### ${emoji} Wedge ${action} ${statusMsg}\n"
         def links = []
         if (info.mention) {
-            links << info.mention
+            links << "${info.mention}"
         }
         if (info.buildUrl) {
             links << "[빌드 결과 확인](${info.buildUrl})"
         }
-        mainText += links.join(' | ')
+        mainText += links.join(' ｜ ')
 
         def fields = []
         if (info.branch) {
