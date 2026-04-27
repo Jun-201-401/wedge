@@ -1,6 +1,6 @@
-# docker-compose.dev.yml 버전 선정 근거
+# compose.dev.yaml 버전 선정 근거
 
-이 문서는 `S14P31C104/docker-compose.dev.yml`에서 사용하는 이미지 버전 선정 근거를 정리한다.
+이 문서는 `S14P31C104/compose.dev.yaml`에서 사용하는 이미지 버전 선정 근거를 정리한다.
 
 ---
 
@@ -81,7 +81,7 @@ image: rabbitmq:4.2-management
 
 ### 선정 버전
 ```
-image: minio/minio:latest
+image: minio/minio:RELEASE.2025-09-07T16-13-09Z
 ```
 
 ### 선정 근거
@@ -97,12 +97,17 @@ image: minio/minio:latest
 
 Wedge는 S3 파일 저장/조회만 필요. RabbitMQ도 별도 운영 중이라 LocalStack 불필요.
 
-**`latest` 선정 이유:**
+**날짜 기반 release tag 선정 이유:**
 
-- MinIO는 날짜 기반 릴리즈(`RELEASE.XXXX`) 사용으로 특정 버전 고정 시 태그가 길고 관리 불편
-- 로컬 개발 전용 (운영 서버 미사용)
-- 한달 프로젝트라 중간 버전 변경 가능성 없음
-- `compose up` 시점 버전으로 고정됨 (자동 업데이트 아님)
+- MinIO 공식 배포 태그는 날짜 기반 `RELEASE.XXXX` 형식을 사용한다
+- `latest` 대신 명시적 release tag를 사용해야 팀원 간 dev 환경 재현성이 유지된다
+- 현재 dev compose는 팀 공용 실행 진입점이므로 실행 시점마다 다른 이미지를 받는 구성을 피한다
+
+**`mc` 클라이언트 태그 분리 이유:**
+
+- MinIO 서버와 초기화용 `mc`는 별도 이미지로 배포된다
+- `minio-init`는 healthcheck 대신 `mc ready`로 준비 완료를 직접 확인한 뒤 버킷을 생성한다
+- 이 방식이 최근 MinIO 이미지에서 `curl` 미포함으로 인해 healthcheck가 깨지는 문제를 피하기에 더 안전하다
 
 ### 포트 정보
 
@@ -112,10 +117,13 @@ Wedge는 S3 파일 저장/조회만 필요. RabbitMQ도 별도 운영 중이라 
 | 9001 | Management UI (브라우저 접속) |
 
 ### 버킷
-- `wedge-artifacts`: mc 컨테이너가 `compose up` 시 자동 생성
+- `wedge-artifacts`: `minio-init` 컨테이너가 `mc ready` 확인 후 자동 생성
 
 ### 참고 링크
-- Docker Hub: https://hub.docker.com/r/minio/minio/tags
+- MinIO Container Docs: https://min.io/docs/minio/container/index.html
+- MinIO Healthcheck API: https://min.io/docs/minio/macos/operations/monitoring/healthcheck-probe.html
+- Docker Hub (MinIO): https://hub.docker.com/r/minio/minio/tags
+- Docker Hub (mc): https://hub.docker.com/r/minio/mc/tags
 
 ---
 

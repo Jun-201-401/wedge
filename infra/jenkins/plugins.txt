@@ -1,0 +1,5 @@
+workflow-aggregator
+git
+docker-workflow
+credentials-binding
+generic-webhook-trigger

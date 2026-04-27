@@ -10,10 +10,10 @@ spring:
   data:
     redis:
       host: ${REDIS_HOST}
-      port: ${REDIS_PORT:6379}
+      port: 6379
   rabbitmq:
     host: ${RABBITMQ_HOST}
-    port: ${RABBITMQ_PORT:5672}
+    port: 5672
     username: ${RABBITMQ_USER}
     password: ${RABBITMQ_PASSWORD}
 
@@ -23,7 +23,7 @@ jwt:
 wedge:
   runner:
     mq:
-      exchange: ${WEDGE_RUNNER_MQ_EXCHANGE:wedge.direct}
-      run-execute-queue: ${WEDGE_RUN_EXECUTE_QUEUE:run.execute.request}
+      exchange: ${WEDGE_RUNNER_MQ_EXCHANGE}
+      run-execute-queue: ${WEDGE_RUN_EXECUTE_QUEUE}
   internal:
     service-token: ${INTERNAL_SERVICE_TOKEN}
