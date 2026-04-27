@@ -1,0 +1,85 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+
+import type { Run } from '../../src/entities/run';
+import { resolveRunReportState } from '../../src/pages/run-report/lib/runReportState';
+
+const completedRun: Run = {
+  id: '11111111-1111-4111-8111-111111111111',
+  type: 'run',
+  projectId: '22222222-2222-4222-8222-222222222222',
+  name: '첫 화면 CTA 점검',
+  triggerSource: 'WEB',
+  startUrl: 'https://example.com/',
+  goal: '첫 화면 CTA 점검',
+  devicePreset: 'desktop',
+  scenarioTemplateVersionId: '33333333-3333-4333-8333-333333333333',
+  status: 'COMPLETED',
+  resultCompleteness: 'FINAL',
+  analysisStatus: 'COMPLETED',
+  currentStepOrder: 12,
+  startedAt: '2026-04-27T01:00:00.000Z',
+  finishedAt: '2026-04-27T01:01:24.000Z',
+  failureCode: null,
+  failureMessage: null,
+  latestSnapshot: null,
+};
+
+test('resolveRunReportState renders mock reports without calling real API readiness states', () => {
+  assert.deepEqual(resolveRunReportState({
+    isMockRun: true,
+    isRunLoading: false,
+    runLoadError: '',
+    run: null,
+  }), { kind: 'mock-ready' });
+});
+
+test('resolveRunReportState exposes loading and error states for real runs', () => {
+  assert.equal(resolveRunReportState({
+    isMockRun: false,
+    isRunLoading: true,
+    runLoadError: '',
+    run: null,
+  }).kind, 'loading');
+
+  const errorState = resolveRunReportState({
+    isMockRun: false,
+    isRunLoading: false,
+    runLoadError: '접근 권한 없음',
+    run: null,
+  });
+
+  assert.equal(errorState.kind, 'error');
+  assert.equal(errorState.message, '접근 권한 없음');
+});
+
+test('resolveRunReportState treats missing real run data as an error', () => {
+  const missingRun = resolveRunReportState({
+    isMockRun: false,
+    isRunLoading: false,
+    runLoadError: '',
+    run: null,
+  });
+
+  assert.equal(missingRun.kind, 'error');
+  assert.equal(missingRun.title, 'Run을 찾을 수 없습니다');
+});
+
+test('resolveRunReportState blocks incomplete real runs and completed real runs without report API data', () => {
+  const notReady = resolveRunReportState({
+    isMockRun: false,
+    isRunLoading: false,
+    runLoadError: '',
+    run: { ...completedRun, status: 'RUNNING', analysisStatus: 'RUNNING' },
+  });
+
+  assert.equal(notReady.kind, 'not-ready');
+  assert.match(notReady.message, /실행 중/);
+
+  assert.equal(resolveRunReportState({
+    isMockRun: false,
+    isRunLoading: false,
+    runLoadError: '',
+    run: completedRun,
+  }).kind, 'api-pending');
+});

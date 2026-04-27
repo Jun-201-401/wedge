@@ -228,7 +228,7 @@
   align-items: center;
   justify-content: center;
   border-radius: 999px;
-  background: #020617;
+  background: #334155;
   padding: 0.85rem 1.15rem;
   color: #fff;
   font-size: 0.78rem;
@@ -588,7 +588,7 @@
   align-items: center;
   justify-content: center;
   border-radius: 999px;
-  background: #020617;
+  background: #111827;
   color: #fff;
   font-size: 0.88rem;
   font-weight: 900;
@@ -1205,6 +1205,53 @@
 .run-monitor-log__item--warning span {
   color: #0ea5e9;
   font-weight: 900;
+}
+
+.run-monitor-report-cta {
+  border: 1px solid rgba(14, 165, 233, 0.12);
+  border-radius: 1.25rem;
+  background: rgba(240, 249, 255, 0.62);
+  padding: 1rem;
+}
+
+.run-monitor-report-cta span {
+  display: block;
+  margin-bottom: 0.4rem;
+  color: #0ea5e9;
+  font-size: 0.56rem;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.run-monitor-report-cta strong {
+  display: block;
+  color: #020617;
+  font-size: 0.82rem;
+  font-weight: 900;
+  letter-spacing: -0.025em;
+}
+
+.run-monitor-report-cta p {
+  margin: 0.55rem 0 0.9rem;
+  color: #64748b;
+  font-size: 0.68rem;
+  font-weight: 600;
+  line-height: 1.55;
+}
+
+.run-monitor-report-cta a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 999px;
+  background: #334155;
+  padding: 0.7rem 0.9rem;
+  color: #fff;
+  font-size: 0.68rem;
+  font-weight: 900;
+  text-decoration: none;
 }
 
 .run-monitor-sr-only {

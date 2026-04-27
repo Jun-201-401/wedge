@@ -5,6 +5,7 @@ import type { EvidencePacket, Run, RunLive } from '../../src/entities/run';
 import {
   buildApiSnapshotLogs,
   buildApiSnapshotSteps,
+  canOpenRunReport,
   findEvidenceScreenshotArtifact,
   getApiCheckpoint,
   getApiProgressPercent,
@@ -162,4 +163,10 @@ test('run monitor view model maps evidence packet artifacts and observations', (
     }),
     'fallback_type',
   );
+});
+
+
+test('run report CTA stays limited to mock runs until report API is connected', () => {
+  assert.equal(canOpenRunReport(true), true);
+  assert.equal(canOpenRunReport(false), false);
 });

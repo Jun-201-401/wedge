@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react';
 
 import { CreateAnalysisPage } from '../pages/create-analysis';
 import { LandingPage } from '../pages/landing';
-import { RunMonitorPage, pages } from '../pages';
-import { getRunIdFromPath } from '../pages/run-monitor/lib/runMonitorRoute';
+import { RunMonitorPage, RunReportPage } from '../pages';
+import { resolveAppRoute } from './appRoute';
 
 function getCurrentPath() {
   return window.location.pathname;
@@ -19,13 +19,17 @@ export function App() {
     return () => window.removeEventListener('popstate', handlePopState);
   }, []);
 
-  const runId = getRunIdFromPath(currentPath);
+  const route = resolveAppRoute(currentPath);
 
-  if (runId) {
-    return <RunMonitorPage runId={runId} />;
+  if (route.kind === 'run-report') {
+    return <RunReportPage runId={route.runId} />;
   }
 
-  if (currentPath === pages.createAnalysis.path) {
+  if (route.kind === 'run-monitor') {
+    return <RunMonitorPage runId={route.runId} />;
+  }
+
+  if (route.kind === 'create-analysis') {
     return <CreateAnalysisPage />;
   }
 

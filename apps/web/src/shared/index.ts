@@ -1,3 +1,6 @@
+export { getScenarioLabel } from './lib/scenarioLabels';
+
 export const shared = {
-  description: "Shared frontend utilities and primitives will live here."
+  name: 'shared',
+  description: 'Shared frontend utilities.',
 };

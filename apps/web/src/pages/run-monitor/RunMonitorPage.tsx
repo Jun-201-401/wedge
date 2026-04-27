@@ -6,6 +6,7 @@ import {
   buildApiSnapshotLogs,
   buildApiSnapshotSteps,
   buildMockRunMonitorData,
+  canOpenRunReport,
   findEvidenceScreenshotArtifact,
   getApiCheckpoint,
   getApiProgressPercent,
@@ -15,13 +16,14 @@ import {
   getEvidenceArtifactLabel,
   getEvidenceCheckpointTitle,
   getEvidenceObservationSummary,
-  getScenarioLabel,
   getStatusTone,
   getStepStatusLabel,
   type RunStatusTone,
   type StepStatus,
   useRunMonitorState,
 } from '../../features/run-monitor';
+import { getScenarioLabel } from '../../shared';
+import { buildRunReportPath } from '../run-report/lib/runReportRoute';
 import { isMockRunId } from './lib/runMonitorRoute';
 import './RunMonitorPage.css';
 
@@ -248,6 +250,14 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
   const evidenceScreenshotUrl = findEvidenceScreenshotArtifact(evidencePacket)?.uri ?? null;
   const snapshotUrl = live.latestFrame?.url ?? run.latestSnapshot?.url ?? evidenceScreenshotUrl;
   const traceModeLabel = isApiFallback ? '모의 실행' : 'API 상태 스냅샷';
+  const canOpenReport = canOpenRunReport(isMockRun);
+  const reportPath = canOpenReport
+    ? buildRunReportPath(run.id, {
+        submittedUrl: run.startUrl,
+        scenarioId: readQueryParam('scenario') ?? 'landing-cta',
+        depthId: readQueryParam('depth') ?? 'hero-only',
+      })
+    : null;
   const visibleSteps = isApiFallback ? mockData.steps : buildApiSnapshotSteps(run, live);
   const visibleLogs = isApiFallback ? mockData.logs : buildApiSnapshotLogs(run, live);
   const timelineNote = isApiFallback
@@ -367,14 +377,23 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
           <section className="run-monitor-live-insight" aria-labelledby="live-insight-title">
             <div className="run-monitor-live-insight__label">
               <span aria-hidden="true" />
-              <h2 id="live-insight-title">현재 체크포인트</h2>
+              <h2 id="live-insight-title">{canOpenReport ? '리포트 준비 완료' : '현재 체크포인트'}</h2>
             </div>
-            <div className="run-monitor-live-insight__card">
-              <strong>{currentCheckpoint}</strong>
-              <p>
-                선택한 <span>{run.goal ?? run.name}</span> 흐름에서 화면 위계와 전환 마찰 근거를 수집하고 있습니다.
-              </p>
-            </div>
+            {reportPath ? (
+              <div className="run-monitor-live-insight__card run-monitor-live-insight__card--report run-monitor-report-cta">
+                <span>다음 화면</span>
+                <strong>분석 결과 리포트</strong>
+                <p>모의 실행에서는 발견된 마찰, 근거, 개선안을 바로 확인합니다. 실제 리포트는 API 연결 후 열립니다.</p>
+                <a href={reportPath}>모의 리포트 보기</a>
+              </div>
+            ) : (
+              <div className="run-monitor-live-insight__card">
+                <strong>{currentCheckpoint}</strong>
+                <p>
+                  선택한 <span>{run.goal ?? run.name}</span> 흐름에서 화면 위계와 전환 마찰 근거를 수집하고 있습니다.
+                </p>
+              </div>
+            )}
           </section>
 
           <div className="run-monitor-panel-scroll">
@@ -442,7 +461,6 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
               </ul>
             </section>
           </div>
-
         </aside>
       </main>
     </div>

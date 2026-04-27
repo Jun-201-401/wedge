@@ -7,8 +7,8 @@ test('app routes /runs/:runId to the run monitor page', () => {
   const pages = fs.readFileSync(new URL('../../src/pages/index.ts', import.meta.url), 'utf8');
 
   assert.match(pages, /pathPrefix: RUN_MONITOR_PATH_PREFIX/);
-  assert.match(source, /import \{ getRunIdFromPath \}/);
-  assert.match(source, /<RunMonitorPage runId=\{runId\} \/>/);
+  assert.match(source, /import \{ resolveAppRoute \}/);
+  assert.match(source, /<RunMonitorPage runId=\{route\.runId\} \/>/);
 });
 
 test('run monitor page exposes Sprint 2 live cockpit essentials with Korean-facing labels', () => {
@@ -23,6 +23,7 @@ test('run monitor page exposes Sprint 2 live cockpit essentials with Korean-faci
   assert.match(source, /작업 로그/);
   assert.match(source, /전체 진행률/);
   assert.match(source, /현재 체크포인트/);
+  assert.match(source, /리포트 준비 완료/);
   assert.match(source, /currentCheckpoint/);
   assert.match(source, /useRunMonitorState\(runId, mockData, isMockRun\)/);
   assert.match(stateHook, /getRun\(runId\)/);
@@ -79,7 +80,8 @@ test('run monitor css follows the live cockpit visual language', () => {
   assert.match(css, /\.run-monitor-scan-line\s*\{[\s\S]*?animation: runMonitorScanning/);
   assert.match(css, /\.run-monitor-detection-box\s*\{[\s\S]*?border: 1px dashed #0ea5e9/);
   assert.match(css, /\.run-monitor-state-card\s*\{[\s\S]*?box-shadow: 0 28px 80px/);
-  assert.match(css, /\.run-monitor-mock-cta\s*\{[\s\S]*?display: inline-flex/);
+  assert.match(css, /\.run-monitor-mock-cta\s*\{[\s\S]*?background: #111827/);
+  assert.match(css, /\.run-monitor-report-cta a\s*\{[\s\S]*?background: #334155/);
   assert.match(css, /\.run-monitor-browser__empty-state\s*\{[\s\S]*?text-align: center/);
   assert.doesNotMatch(css, /\.run-monitor-step--(?:complete|pending)\s*\{[\s\S]*?opacity:/);
   assert.match(css, /\.run-monitor-step--complete \.run-monitor-step__head h3,\s*\n\.run-monitor-step--pending \.run-monitor-step__head h3\s*\{[\s\S]*?color: #64748b/);

@@ -1,4 +1,15 @@
+export { RunReportBrand, RunReportViewer } from './components/RunReportViewer';
+export { buildMockRunReportData } from './lib/runReportMock';
+export type {
+  DecisionNodeTone,
+  FindingSeverity,
+  ReportDecisionNode,
+  ReportFinding,
+  ReportRecommendation,
+  RunReportViewModel,
+} from './lib/runReportViewModel';
+
 export const reportViewerFeature = {
-  name: "report-viewer",
-  description: "Placeholder for report and evidence viewing UI."
+  name: 'report-viewer',
+  description: 'Report and evidence viewing UI.',
 };

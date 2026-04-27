@@ -200,6 +200,12 @@ export function buildApiSnapshotLogs(run: Run, live: RunLive): RunActionLog[] {
   ];
 }
 
+export function canOpenRunReport(isMockRun: boolean) {
+  // Real report/evidence payloads are not connected yet. Keep the CTA limited to
+  // explicit mock/demo runs so completed API runs do not navigate to a dead-end report page.
+  return isMockRun;
+}
+
 export function shouldRefreshRunLive(status: RunStatus) {
   return status === 'CREATED' || status === 'QUEUED' || status === 'STARTING' || status === 'RUNNING' || status === 'STOP_REQUESTED';
 }
