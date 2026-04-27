@@ -1,7 +1,12 @@
 package com.wedge.internal.runner;
 
 import com.wedge.common.infrastructure.ProcessedMessagePersistenceAdapter;
+import com.wedge.evidence.application.CheckpointPersistenceService;
+import com.wedge.evidence.domain.Artifact;
+import com.wedge.evidence.domain.ArtifactType;
+import com.wedge.evidence.infrastructure.ArtifactMapper;
 import com.wedge.internal.runner.dto.RunnerAcceptedRequest;
+import com.wedge.internal.runner.dto.RunnerArtifactRequest;
 import com.wedge.internal.runner.dto.RunnerArtifactsRequest;
 import com.wedge.internal.runner.dto.RunnerCallbackHeaders;
 import com.wedge.internal.runner.dto.RunnerCheckpointsRequest;
@@ -10,6 +15,8 @@ import com.wedge.internal.runner.dto.RunnerFinishedRequest;
 import com.wedge.internal.runner.dto.RunnerStepEventsRequest;
 import com.wedge.run.api.dto.RunResponse;
 import com.wedge.run.application.RunService;
+import com.wedge.run.infrastructure.RunMapper;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
@@ -26,13 +33,22 @@ public class RunnerCallbackService {
 
     private final RunService runService;
     private final ProcessedMessagePersistenceAdapter processedMessagePersistenceAdapter;
+    private final ArtifactMapper artifactMapper;
+    private final CheckpointPersistenceService checkpointPersistenceService;
+    private final RunMapper runMapper;
 
     public RunnerCallbackService(
             RunService runService,
-            ProcessedMessagePersistenceAdapter processedMessagePersistenceAdapter
+            ProcessedMessagePersistenceAdapter processedMessagePersistenceAdapter,
+            ArtifactMapper artifactMapper,
+            CheckpointPersistenceService checkpointPersistenceService,
+            RunMapper runMapper
     ) {
         this.runService = runService;
         this.processedMessagePersistenceAdapter = processedMessagePersistenceAdapter;
+        this.artifactMapper = artifactMapper;
+        this.checkpointPersistenceService = checkpointPersistenceService;
+        this.runMapper = runMapper;
     }
 
     @Transactional
@@ -72,7 +88,8 @@ public class RunnerCallbackService {
         }
 
         runService.getRun(runId);
-        return Map.of("runId", runId, "checkpointCount", request.checkpoints().size());
+        int checkpointCount = checkpointPersistenceService.saveRunCheckpoints(runId, request);
+        return Map.of("runId", runId, "checkpointCount", checkpointCount);
     }
 
     @Transactional
@@ -85,6 +102,10 @@ public class RunnerCallbackService {
         }
 
         runService.getRun(runId);
+        UUID latestArtifactId = persistArtifacts(runId, request.artifacts());
+        if (latestArtifactId != null) {
+            runMapper.updateLatestArtifact(runId, latestArtifactId);
+        }
         return Map.of("runId", runId, "artifactCount", request.artifacts().size());
     }
 
@@ -141,5 +162,31 @@ public class RunnerCallbackService {
                 key, value,
                 "duplicate", true
         );
+    }
+
+    private UUID persistArtifacts(UUID runId, List<RunnerArtifactRequest> artifactRequests) {
+        UUID latestArtifactId = null;
+        for (RunnerArtifactRequest artifactRequest : artifactRequests) {
+            Artifact artifact = toArtifact(runId, artifactRequest);
+            artifactMapper.insert(artifact);
+            latestArtifactId = artifact.getId();
+        }
+        return latestArtifactId;
+    }
+
+    private Artifact toArtifact(UUID runId, RunnerArtifactRequest request) {
+        Artifact artifact = new Artifact();
+        artifact.setId(request.artifactId());
+        artifact.setRunId(runId);
+        artifact.setArtifactType(ArtifactType.valueOf(request.artifactType().name()));
+        artifact.setS3Bucket(request.bucket());
+        artifact.setS3Key(request.key());
+        artifact.setMimeType(request.mimeType());
+        artifact.setWidth(request.width());
+        artifact.setHeight(request.height());
+        artifact.setSizeBytes(request.sizeBytes());
+        artifact.setSha256(request.sha256());
+        artifact.setCapturedAt(request.createdAt());
+        return artifact;
     }
 }

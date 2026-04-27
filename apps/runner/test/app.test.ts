@@ -1,10 +1,18 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile } from "node:fs/promises";
+import { createServer, type Server } from "node:http";
+import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import test from "node:test";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createRunnerApp } from "../src/app.ts";
 import { loadExampleMessage } from "./support.ts";
+
+interface ReceivedCallbackRequest {
+  method: string;
+  url: string;
+  headers: Record<string, string | string[] | undefined>;
+  body: string;
+}
 
 test("createRunnerApp executes example scenario and writes callback log", async () => {
   const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-artifacts-"));
@@ -25,6 +33,114 @@ test("createRunnerApp executes example scenario and writes callback log", async 
   assert.match(callbackLog, /"callbackType":"finished"/);
   assert.match(callbackLog, /"callbackType":"checkpoints"/);
 });
+
+test("createRunnerApp sends prototype evidence callbacks to API when callback base URL is configured", async () => {
+  const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-api-callbacks-"));
+  const callbackServer = await createCallbackCaptureServer();
+
+  try {
+    const app = createRunnerApp({
+      workerId: "runner-test-worker",
+      artifactsRoot,
+      callbackBaseUrl: callbackServer.baseUrl,
+      simulatedDelayCapMs: 1
+    });
+
+    const result = await app.processMessageFile(join("examples", "run-execute.request.json"));
+    const receivedUrls = callbackServer.received.map((request) => request.url);
+    const artifactCallback = findCallback(callbackServer.received, "artifacts");
+    const checkpointCallback = findCallback(callbackServer.received, "checkpoints");
+    const finishedCallback = findCallback(callbackServer.received, "finished");
+    const artifactFiles = await readdir(artifactsRoot, {
+      recursive: true
+    });
+
+    assert.equal(app.config.callbackMode, "http");
+    assert.equal(result.summary.completedStepCount, 4);
+    assert.ok(receivedUrls.some((url) => url.endsWith("/accepted")));
+    assert.ok(receivedUrls.some((url) => url.endsWith("/step-events")));
+    assert.ok(artifactCallback);
+    assert.ok(checkpointCallback);
+    assert.ok(finishedCallback);
+    assert.equal(artifactCallback?.method, "POST");
+    assert.equal(artifactCallback?.headers["x-worker-id"], "runner-test-worker");
+    assert.match(artifactCallback?.body ?? "", /"artifacts":\[/);
+    assert.match(artifactCallback?.body ?? "", /"artifactType":"SCREENSHOT"/);
+    assert.match(checkpointCallback?.body ?? "", /"checkpoints":\[/);
+    assert.match(checkpointCallback?.body ?? "", /"artifactRefs":\[/);
+    assert.match(finishedCallback?.body ?? "", /"completedStepCount":4/);
+    assert.ok(artifactFiles.some((path) => String(path).endsWith("-screenshot.svg")));
+  } finally {
+    await callbackServer.close();
+    await rm(artifactsRoot, {
+      recursive: true,
+      force: true
+    });
+  }
+});
+
+async function createCallbackCaptureServer(): Promise<{
+  baseUrl: string;
+  received: ReceivedCallbackRequest[];
+  close: () => Promise<void>;
+}> {
+  const received: ReceivedCallbackRequest[] = [];
+  const server = createServer((request, response) => {
+    let body = "";
+    request.setEncoding("utf8");
+    request.on("data", (chunk) => {
+      body += chunk;
+    });
+    request.on("end", () => {
+      received.push({
+        method: request.method ?? "",
+        url: request.url ?? "",
+        headers: request.headers,
+        body
+      });
+      response.writeHead(200, {
+        "content-type": "application/json"
+      });
+      response.end(JSON.stringify({ ok: true }));
+    });
+  });
+
+  await listenOnLocalhost(server);
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+
+  return {
+    baseUrl: `http://127.0.0.1:${address.port}`,
+    received,
+    close: () => closeServer(server)
+  };
+}
+
+function findCallback(received: ReceivedCallbackRequest[], callbackType: string): ReceivedCallbackRequest | undefined {
+  return received.find((request) => request.url.endsWith(`/${callbackType}`));
+}
+
+function listenOnLocalhost(server: Server): Promise<void> {
+  return new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      server.off("error", reject);
+      resolve();
+    });
+  });
+}
+
+function closeServer(server: Server): Promise<void> {
+  return new Promise((resolve, reject) => {
+    server.close((error) => {
+      if (error) {
+        reject(error);
+        return;
+      }
+      resolve();
+    });
+  });
+}
 
 test("createRunnerApp stops after stop_when step requests stop", async () => {
   const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-stop-artifacts-"));

@@ -1,6 +1,8 @@
 package com.wedge.run.api;
 
 import com.wedge.common.response.ApiResponse;
+import com.wedge.evidence.api.dto.ArtifactResponse;
+import com.wedge.evidence.application.EvidenceService;
 import com.wedge.run.api.dto.RunActionRequest;
 import com.wedge.run.api.dto.RunCreateRequest;
 import com.wedge.run.api.dto.RunLiveResponse;
@@ -12,6 +14,8 @@ import jakarta.validation.Valid;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import org.springframework.core.io.Resource;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -27,9 +31,11 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/runs")
 public class RunController {
     private final RunService runService;
+    private final EvidenceService evidenceService;
 
-    public RunController(RunService runService) {
+    public RunController(RunService runService, EvidenceService evidenceService) {
         this.runService = runService;
+        this.evidenceService = evidenceService;
     }
 
     @GetMapping
@@ -106,9 +112,16 @@ public class RunController {
     }
 
     @GetMapping("/{runId}/artifacts")
-    public ResponseEntity<ApiResponse<List<Object>>> listRunArtifacts(@PathVariable UUID runId) {
-        runService.getRun(runId);
-        return ApiResponse.ok(List.of());
+    public ResponseEntity<ApiResponse<List<ArtifactResponse>>> listRunArtifacts(@PathVariable UUID runId) {
+        return ApiResponse.ok(evidenceService.listRunArtifacts(runId));
+    }
+
+    @GetMapping("/{runId}/artifacts/{artifactId}/content")
+    public ResponseEntity<Resource> getRunArtifactContent(@PathVariable UUID runId, @PathVariable UUID artifactId) {
+        EvidenceService.ArtifactContent artifactContent = evidenceService.getRunArtifactContent(runId, artifactId);
+        return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType(artifactContent.mimeType()))
+                .body(artifactContent.resource());
     }
 
     @GetMapping("/{runId}/signals")
@@ -118,8 +131,7 @@ public class RunController {
     }
 
     @GetMapping("/{runId}/evidence-packet")
-    public ResponseEntity<ApiResponse<Object>> getEvidencePacket(@PathVariable UUID runId) {
-        runService.getRun(runId);
-        return ApiResponse.ok(Map.of("runId", runId));
+    public ResponseEntity<ApiResponse<Map<String, Object>>> getEvidencePacket(@PathVariable UUID runId) {
+        return ApiResponse.ok(evidenceService.getRunEvidencePacket(runId));
     }
 }

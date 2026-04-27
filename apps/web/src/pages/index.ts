@@ -1,5 +1,9 @@
+import { RUN_MONITOR_PATH_PREFIX } from './run-monitor/lib/runMonitorRoute';
+
 export { CreateAnalysisPage } from './create-analysis';
 export { LandingPage } from './landing';
+export { RunMonitorPage } from './run-monitor';
+export { RUN_MONITOR_PATH_PREFIX } from './run-monitor/lib/runMonitorRoute';
 
 export const pages = {
   createAnalysis: {
@@ -9,5 +13,9 @@ export const pages = {
   home: {
     id: 'landing',
     path: '/',
+  },
+  runMonitor: {
+    id: 'run-monitor',
+    pathPrefix: RUN_MONITOR_PATH_PREFIX,
   },
 } as const;

@@ -7,6 +7,8 @@ export interface CreateAnalysisRouteState<TScenarioId extends string = string, T
   submittedUrl: string | null;
   scenarioId: TScenarioId | null;
   depthId: TDepthId | null;
+  projectId?: string;
+  scenarioTemplateVersionId?: string;
 }
 
 export interface CreateAnalysisRouteOptions<TScenarioId extends string = string, TDepthId extends string = string> {
@@ -17,6 +19,7 @@ export interface CreateAnalysisRouteOptions<TScenarioId extends string = string,
 }
 
 const DEFAULT_BASE_PATH = '/create-analysis';
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const STEP_TO_STAGE = {
   preflight: 'discovering',
@@ -40,12 +43,40 @@ function isRouteStep(value: string | null): value is keyof typeof STEP_TO_STAGE 
   return value !== null && Object.prototype.hasOwnProperty.call(STEP_TO_STAGE, value);
 }
 
-function inputRouteState<TScenarioId extends string, TDepthId extends string>(): CreateAnalysisRouteState<TScenarioId, TDepthId> {
+function readUuidParam(params: URLSearchParams, name: string) {
+  const value = params.get(name);
+  return value !== null && UUID_PATTERN.test(value) ? value : null;
+}
+
+function readCreateRunContext(params: URLSearchParams) {
+  const projectId = readUuidParam(params, 'projectId');
+  const scenarioTemplateVersionId = readUuidParam(params, 'scenarioTemplateVersionId');
+
+  if (!projectId || !scenarioTemplateVersionId) {
+    return {};
+  }
+
+  return {
+    projectId,
+    scenarioTemplateVersionId,
+  };
+}
+
+function hasCreateRunContext<TScenarioId extends string, TDepthId extends string>(
+  state: CreateAnalysisRouteState<TScenarioId, TDepthId>,
+): state is CreateAnalysisRouteState<TScenarioId, TDepthId> & { projectId: string; scenarioTemplateVersionId: string } {
+  return UUID_PATTERN.test(state.projectId ?? '') && UUID_PATTERN.test(state.scenarioTemplateVersionId ?? '');
+}
+
+function inputRouteState<TScenarioId extends string, TDepthId extends string>(
+  createRunContext: Partial<Pick<CreateAnalysisRouteState<TScenarioId, TDepthId>, 'projectId' | 'scenarioTemplateVersionId'>> = {},
+): CreateAnalysisRouteState<TScenarioId, TDepthId> {
   return {
     stage: 'input',
     submittedUrl: null,
     scenarioId: null,
     depthId: null,
+    ...createRunContext,
   };
 }
 
@@ -56,15 +87,16 @@ export function parseCreateAnalysisRouteState<TScenarioId extends string, TDepth
   const params = new URLSearchParams(search);
   const step = params.get('step');
   const parsedStage = isRouteStep(step) ? STEP_TO_STAGE[step] : 'input';
+  const createRunContext = readCreateRunContext(params);
 
   if (parsedStage === 'input') {
-    return inputRouteState();
+    return inputRouteState(createRunContext);
   }
 
   const submittedUrl = normalizeAnalysisUrl(params.get('url') ?? '');
 
   if (!submittedUrl) {
-    return inputRouteState();
+    return inputRouteState(createRunContext);
   }
 
   if (parsedStage === 'discovering' || parsedStage === 'recommendations') {
@@ -73,6 +105,7 @@ export function parseCreateAnalysisRouteState<TScenarioId extends string, TDepth
       submittedUrl,
       scenarioId: null,
       depthId: null,
+      ...createRunContext,
     };
   }
 
@@ -84,6 +117,7 @@ export function parseCreateAnalysisRouteState<TScenarioId extends string, TDepth
       submittedUrl,
       scenarioId: null,
       depthId: null,
+      ...createRunContext,
     };
   }
 
@@ -95,6 +129,7 @@ export function parseCreateAnalysisRouteState<TScenarioId extends string, TDepth
     submittedUrl,
     scenarioId,
     depthId: safeDepthId,
+    ...createRunContext,
   };
 }
 
@@ -105,6 +140,15 @@ export function buildCreateAnalysisPath<TScenarioId extends string, TDepthId ext
   const basePath = options.basePath ?? DEFAULT_BASE_PATH;
 
   if (state.stage === 'input') {
+    if (hasCreateRunContext(state)) {
+      const inputParams = new URLSearchParams({
+        projectId: state.projectId,
+        scenarioTemplateVersionId: state.scenarioTemplateVersionId,
+      });
+
+      return `${basePath}?${inputParams.toString()}`;
+    }
+
     return basePath;
   }
 
@@ -119,6 +163,8 @@ export function buildCreateAnalysisPath<TScenarioId extends string, TDepthId ext
         submittedUrl: state.submittedUrl,
         scenarioId: null,
         depthId: null,
+        projectId: state.projectId,
+        scenarioTemplateVersionId: state.scenarioTemplateVersionId,
       },
       options,
     );
@@ -132,6 +178,11 @@ export function buildCreateAnalysisPath<TScenarioId extends string, TDepthId ext
   if ((state.stage === 'onboarding' || state.stage === 'ready') && state.scenarioId) {
     params.set('scenario', state.scenarioId);
     params.set('depth', state.depthId ?? options.defaultDepthId);
+  }
+
+  if (hasCreateRunContext(state)) {
+    params.set('projectId', state.projectId);
+    params.set('scenarioTemplateVersionId', state.scenarioTemplateVersionId);
   }
 
   return `${basePath}?${params.toString()}`;

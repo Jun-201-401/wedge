@@ -12,83 +12,64 @@ test("runner TypeScript mirror stays aligned with canonical scenario and MQ cont
   const scenarioSchema = await readJson(resolve(repoRoot, "packages/contracts/schemas/scenario-plan.schema.json"));
   const mqSchema = await readJson(resolve(repoRoot, "packages/contracts/mq/messages.schema.json"));
 
-  assert.deepEqual(
-    extractTypeAliasStringUnion(runnerTypesSource, "ScenarioActionType"),
-    scenarioSchema.$defs.action.properties.type.enum
+  assertTypeAliasMatchesSchemaEnum(
+    runnerTypesSource,
+    "ScenarioActionType",
+    scenarioSchema,
+    scenarioSchema.$defs.action.properties.type
   );
-  assert.deepEqual(
-    extractTypeAliasStringUnion(runnerTypesSource, "SettleStrategyType"),
-    scenarioSchema.$defs.settle_strategy.properties.type.enum
+  assertTypeAliasMatchesSchemaEnum(
+    runnerTypesSource,
+    "SettleStrategyType",
+    scenarioSchema,
+    scenarioSchema.$defs.settle_strategy.properties.type
   );
-  assert.deepEqual(extractTypeAliasStringUnion(runnerTypesSource, "ScenarioStage"), scenarioSchema.$defs.stage.enum);
-  assert.deepEqual(
-    extractPropertyStringUnion(runnerTypesSource, "scenario_type"),
-    scenarioSchema.properties.scenario_type.enum
+  assertTypeAliasMatchesSchemaEnum(
+    runnerTypesSource,
+    "ScenarioStage",
+    scenarioSchema,
+    scenarioSchema.$defs.stage ?? scenarioSchema.$defs.DecisionStage
   );
-  assert.deepEqual(
-    extractPropertyStringUnion(runnerTypesSource, "device"),
-    scenarioSchema.properties.environment.properties.device.enum
+
+  assertPropertyMatchesSchemaEnum(runnerTypesSource, "scenario_type", scenarioSchema, scenarioSchema.properties.scenario_type);
+  assertPropertyMatchesSchemaEnum(runnerTypesSource, "device", scenarioSchema, scenarioSchema.properties.environment.properties.device);
+  assertPropertyMatchesSchemaEnum(
+    runnerTypesSource,
+    "auth_state",
+    scenarioSchema,
+    scenarioSchema.properties.environment.properties.auth_state
   );
-  assert.deepEqual(
-    extractPropertyStringUnion(runnerTypesSource, "auth_state"),
-    scenarioSchema.properties.environment.properties.auth_state.enum
-  );
-  assert.deepEqual(
-    extractPropertyStringUnion(runnerTypesSource, "triggerSource"),
-    mqSchema.$defs.RunExecutePayload.properties.triggerSource.enum
-  );
-  assert.deepEqual(
-    extractPropertyStringUnion(runnerTypesSource, "devicePreset"),
-    mqSchema.$defs.RunExecutePayload.properties.devicePreset.enum
-  );
-  assert.deepEqual(extractPropertyStringUnion(runnerTypesSource, "messageType"), [mqSchema.$defs.RunExecuteMessage.properties.messageType.const]);
-  assert.equal(
-    extractPropertyPrimitiveType(runnerTypesSource, "url_includes"),
-    normalizeSchemaPrimitiveType(scenarioSchema.$defs.settle_strategy.properties.url_includes.type)
-  );
-  assert.equal(
-    extractPropertyPrimitiveType(runnerTypesSource, "method"),
-    normalizeSchemaPrimitiveType(scenarioSchema.$defs.settle_strategy.properties.method.type)
-  );
-  assert.equal(
-    extractPropertyPrimitiveType(runnerTypesSource, "status"),
-    normalizeSchemaPrimitiveType(scenarioSchema.$defs.settle_strategy.properties.status.type)
-  );
-  assert.equal(
-    extractPropertyPrimitiveType(runnerTypesSource, "expected_count"),
-    normalizeSchemaPrimitiveType(scenarioSchema.$defs.settle_strategy.properties.expected_count.type)
-  );
-  assert.equal(
-    extractPropertyPrimitiveType(runnerTypesSource, "min_count"),
-    normalizeSchemaPrimitiveType(scenarioSchema.$defs.settle_strategy.properties.min_count.type)
-  );
-  assert.equal(
-    extractPropertyPrimitiveType(runnerTypesSource, "max_count"),
-    normalizeSchemaPrimitiveType(scenarioSchema.$defs.settle_strategy.properties.max_count.type)
-  );
-  assert.equal(
-    extractPropertyPrimitiveType(runnerTypesSource, "count_delta"),
-    normalizeSchemaPrimitiveType(scenarioSchema.$defs.settle_strategy.properties.count_delta.type)
-  );
+  assertPropertyMatchesSchemaEnum(runnerTypesSource, "triggerSource", mqSchema, mqSchema.$defs.RunExecutePayload.properties.triggerSource);
+  assertPropertyMatchesSchemaEnum(runnerTypesSource, "devicePreset", mqSchema, mqSchema.$defs.RunExecutePayload.properties.devicePreset);
+  assertPropertyMatchesSchemaEnum(runnerTypesSource, "messageType", mqSchema, mqSchema.$defs.RunExecuteMessage.properties.messageType);
+
+  assertPropertyPrimitiveMatchesSchema(runnerTypesSource, "url_includes", scenarioSchema.$defs.settle_strategy.properties.url_includes);
+  assertPropertyPrimitiveMatchesSchema(runnerTypesSource, "method", scenarioSchema.$defs.settle_strategy.properties.method);
+  assertPropertyPrimitiveMatchesSchema(runnerTypesSource, "status", scenarioSchema.$defs.settle_strategy.properties.status);
+  assertPropertyPrimitiveMatchesSchema(runnerTypesSource, "expected_count", scenarioSchema.$defs.settle_strategy.properties.expected_count);
+  assertPropertyPrimitiveMatchesSchema(runnerTypesSource, "min_count", scenarioSchema.$defs.settle_strategy.properties.min_count);
+  assertPropertyPrimitiveMatchesSchema(runnerTypesSource, "max_count", scenarioSchema.$defs.settle_strategy.properties.max_count);
+  assertPropertyPrimitiveMatchesSchema(runnerTypesSource, "count_delta", scenarioSchema.$defs.settle_strategy.properties.count_delta);
 });
 
 test("runner TypeScript mirror stays aligned with canonical runner callback literals", async () => {
   const runnerTypesSource = await readRunnerTypesSource();
   const callbackSchema = await readJson(resolve(repoRoot, "packages/contracts/internal/runner-callback.schema.json"));
 
-  assert.deepEqual(
-    extractPropertyStringUnion(runnerTypesSource, "eventType"),
-    callbackSchema.$defs.StepEvent.properties.eventType.enum
+  assertPropertyMatchesSchemaEnum(runnerTypesSource, "eventType", callbackSchema, callbackSchema.$defs.StepEvent.properties.eventType);
+  assertPropertyMatchesSchemaEnum(runnerTypesSource, "artifactType", callbackSchema, callbackSchema.$defs.Artifact.properties.artifactType);
+  assertPropertyMatchesSchemaEnum(
+    runnerTypesSource,
+    "resultCompleteness",
+    callbackSchema,
+    callbackSchema.$defs.Failed.properties.resultCompleteness
   );
-  assert.deepEqual(
-    extractPropertyStringUnion(runnerTypesSource, "artifactType"),
-    callbackSchema.$defs.Artifact.properties.artifactType.enum
+  assertTypeAliasMatchesSchemaEnum(
+    runnerTypesSource,
+    "ScenarioStage",
+    callbackSchema,
+    callbackSchema.$defs.Checkpoint.properties.stage
   );
-  assert.deepEqual(
-    extractPropertyStringUnion(runnerTypesSource, "resultCompleteness"),
-    callbackSchema.$defs.Failed.properties.resultCompleteness.enum
-  );
-  assert.deepEqual(extractTypeAliasStringUnion(runnerTypesSource, "ScenarioStage"), callbackSchema.$defs.Checkpoint.properties.stage.enum);
 });
 
 async function readRunnerTypesSource(): Promise<string> {
@@ -129,4 +110,50 @@ function escapeRegex(value: string): string {
 
 function normalizeSchemaPrimitiveType(value: string): string {
   return value === "integer" ? "number" : value;
+}
+
+function assertTypeAliasMatchesSchemaEnum(
+  source: string,
+  typeName: string,
+  rootSchema: any,
+  schemaNode: any
+): void {
+  assert.deepEqual(extractTypeAliasStringUnion(source, typeName), schemaEnum(rootSchema, schemaNode));
+}
+
+function assertPropertyMatchesSchemaEnum(
+  source: string,
+  propertyName: string,
+  rootSchema: any,
+  schemaNode: any
+): void {
+  assert.deepEqual(extractPropertyStringUnion(source, propertyName), schemaEnum(rootSchema, schemaNode));
+}
+
+function assertPropertyPrimitiveMatchesSchema(source: string, propertyName: string, schemaNode: any): void {
+  assert.equal(extractPropertyPrimitiveType(source, propertyName), normalizeSchemaPrimitiveType(schemaNode.type));
+}
+
+function schemaEnum(rootSchema: any, schemaNode: any): string[] {
+  const resolvedNode = resolveSchemaNode(rootSchema, schemaNode);
+  if (Array.isArray(resolvedNode.enum)) {
+    return resolvedNode.enum;
+  }
+  if (typeof resolvedNode.const === "string") {
+    return [resolvedNode.const];
+  }
+
+  assert.fail(`Schema node does not expose enum/const: ${JSON.stringify(resolvedNode)}`);
+}
+
+function resolveSchemaNode(rootSchema: any, schemaNode: any): any {
+  if (typeof schemaNode?.$ref !== "string") {
+    return schemaNode;
+  }
+
+  assert.ok(schemaNode.$ref.startsWith("#/"), `Only local JSON pointers are supported: ${schemaNode.$ref}`);
+  return schemaNode.$ref
+    .slice(2)
+    .split("/")
+    .reduce((node: any, segment: string) => node?.[segment.replaceAll("~1", "/").replaceAll("~0", "~")], rootSchema);
 }
