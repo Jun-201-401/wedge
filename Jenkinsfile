@@ -16,13 +16,13 @@ pipeline {
             printPostContent: false,
             shouldNotFlatten: false,
             regexpFilterText: '$ref',
-            regexpFilterExpression: '^refs/heads/feature/ec2-prod-baseline$'
+            regexpFilterExpression: '^refs/heads/develop$'
         )
     }
 
     environment {
         GIT_URL = 'https://lab.ssafy.com/s14-final/S14P31C104.git'
-        GIT_BRANCH = 'feature/ec2-prod-baseline'
+        GIT_BRANCH = 'develop'
         IMAGE_NAME = 'wedge-api-server'
         DEPLOY_HOST = 'k14c104.p.ssafy.io'
         SSH_OPTS = '-o StrictHostKeyChecking=yes -o UserKnownHostsFile=/var/jenkins_home/.ssh/known_hosts -o UpdateHostKeys=no'
