@@ -850,6 +850,48 @@ paths:
           $ref: '#/components/responses/Conflict'
         '422':
           $ref: '#/components/responses/ValidationError'
+  /api/runs/{runId}/artifacts/{artifactId}/content:
+    get:
+      tags:
+      - Artifacts
+      operationId: getRunArtifactContent
+      summary: Get run artifact binary content
+      description: Prototype-friendly content endpoint for locally stored runner artifacts such as screenshots and DOM snapshots. Production deployments may redirect to signed object-storage URLs.
+      security:
+      - oauth2:
+        - wedge.read
+      parameters:
+      - $ref: '#/components/parameters/RunId'
+      - $ref: '#/components/parameters/ArtifactId'
+      responses:
+        '200':
+          description: Artifact binary content
+          content:
+            image/png:
+              schema:
+                type: string
+                format: binary
+            text/html:
+              schema:
+                type: string
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
   /api/runs/{runId}/signals:
     get:
       tags:
@@ -1732,6 +1774,13 @@ components:
       schema:
         type: string
         format: uuid
+    ArtifactId:
+      name: artifactId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
     AnalysisJobId:
       name: analysisJobId
       in: path
@@ -2448,6 +2497,7 @@ components:
       - startUrl
       - devicePreset
       - scenarioTemplateVersionId
+      - scenarioPlan
       - status
       - resultCompleteness
       - analysisStatus
@@ -2490,6 +2540,9 @@ components:
           type: string
           format: uuid
         scenarioOverrides:
+          type: object
+          additionalProperties: true
+        scenarioPlan:
           type: object
           additionalProperties: true
       required:
@@ -2623,6 +2676,9 @@ components:
           type: string
           format: uuid
           nullable: true
+        stepKey:
+          type: string
+          nullable: true
         artifactType:
           type: string
           enum:
@@ -2658,6 +2714,10 @@ components:
         url:
           type: string
           format: uri
+          nullable: true
+        contentUrl:
+          type: string
+          description: API-relative URL for retrieving artifact bytes through Wedge. Useful for local prototype storage where no public object URL exists.
           nullable: true
         createdAt:
           type: string
@@ -3386,6 +3446,107 @@ components:
       required:
       - data
       - meta
+    EvidenceObservation:
+      type: object
+      properties:
+        observation_id:
+          type: string
+        type:
+          type: string
+        stage:
+          $ref: '#/components/schemas/DecisionStage'
+        source:
+          type: array
+          items:
+            type: string
+        data:
+          type: object
+          additionalProperties: true
+        confidence:
+          type: number
+          minimum: 0
+          maximum: 1
+      required:
+      - observation_id
+      - type
+      - stage
+      - source
+      - data
+      additionalProperties: true
+    EvidenceCheckpoint:
+      type: object
+      properties:
+        checkpoint_id:
+          type: string
+        step_id:
+          type: string
+          nullable: true
+        primaryStage:
+          $ref: '#/components/schemas/DecisionStage'
+        trigger:
+          type: object
+          additionalProperties: true
+        settle:
+          type: object
+          additionalProperties: true
+        state:
+          type: object
+          additionalProperties: true
+        observations:
+          type: array
+          items:
+            $ref: '#/components/schemas/EvidenceObservation'
+        deltas:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        artifact_refs:
+          type: array
+          items:
+            type: string
+      required:
+      - checkpoint_id
+      - primaryStage
+      - trigger
+      - settle
+      - state
+      - observations
+      - deltas
+      - artifact_refs
+      additionalProperties: true
+    EvidenceArtifact:
+      type: object
+      properties:
+        artifact_id:
+          type: string
+        type:
+          type: string
+          enum:
+          - frame
+          - screenshot
+          - dom_snapshot
+          - ax_tree
+          - trace
+          - har
+          - console_log
+          - report
+          - other
+        uri:
+          type: string
+        mime_type:
+          type: string
+        size_bytes:
+          type: integer
+          minimum: 0
+        metadata:
+          type: object
+          additionalProperties: true
+      required:
+      - artifact_id
+      - type
+      - uri
+      additionalProperties: true
     EvidencePacket:
       type: object
       description: Domain EvidencePacket. Full validation uses packages/contracts/schemas/evidence-packet.schema.json.
@@ -3417,7 +3578,7 @@ components:
         checkpoints:
           type: array
           items:
-            type: object
+            $ref: '#/components/schemas/EvidenceCheckpoint'
         aggregate_signals:
           type: object
         scenario_fit:
@@ -3427,7 +3588,7 @@ components:
           type: array
           minItems: 1
           items:
-            type: object
+            $ref: '#/components/schemas/EvidenceArtifact'
     SingleEvidencePacketResponse:
       type: object
       properties:
@@ -3443,7 +3604,7 @@ components:
       required:
       - checkpointId
       - stepKey
-      - primaryStage
+      - stage
       - trigger
       - settle
       - state
@@ -3455,13 +3616,13 @@ components:
           type: string
         stepKey:
           type: string
-        primaryStage:
-          $ref: '#/components/schemas/DecisionStage'
         stage:
+          $ref: '#/components/schemas/DecisionStage'
+        primaryStage:
           allOf:
           - $ref: '#/components/schemas/DecisionStage'
           deprecated: true
-          description: Deprecated alias for primaryStage during migration.
+          description: Deprecated alias retained for older runner callback producers. New runner callbacks should emit stage; EvidencePacket uses primaryStage.
         trigger:
           type: object
           additionalProperties: true

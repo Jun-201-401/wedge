@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.wedge.run.infrastructure.OutboxMessageMapper">
+    <resultMap id="OutboxMessageResultMap" type="com.wedge.run.infrastructure.OutboxMessageRecord">
+        <id property="id" column="id"/>
+        <result property="aggregateType" column="aggregate_type"/>
+        <result property="aggregateId" column="aggregate_id"/>
+        <result property="eventType" column="event_type"/>
+        <result property="payloadJson" column="payload_jsonb"/>
+    </resultMap>
+
+    <insert id="insert" parameterType="com.wedge.run.infrastructure.OutboxMessageRecord">
+        INSERT INTO outbox_message (
+            id,
+            aggregate_type,
+            aggregate_id,
+            event_type,
+            payload_jsonb
+        ) VALUES (
+            #{id},
+            #{aggregateType},
+            #{aggregateId},
+            #{eventType},
+            CAST(#{payloadJson} AS jsonb)
+        )
+    </insert>
+
+    <select id="findById" resultMap="OutboxMessageResultMap">
+        SELECT
+            id,
+            aggregate_type,
+            aggregate_id,
+            event_type,
+            CAST(payload_jsonb AS TEXT) AS payload_jsonb
+        FROM outbox_message
+        WHERE id = #{outboxMessageId}
+    </select>
+
+    <update id="markPublished">
+        UPDATE outbox_message
+        SET status = 'PUBLISHED',
+            attempt_count = attempt_count + 1,
+            published_at = #{publishedAt}
+        WHERE id = #{outboxMessageId}
+    </update>
+
+    <update id="markFailed">
+        UPDATE outbox_message
+        SET status = 'FAILED',
+            attempt_count = attempt_count + 1,
+            next_attempt_at = #{nextAttemptAt}
+        WHERE id = #{outboxMessageId}
+    </update>
+</mapper>

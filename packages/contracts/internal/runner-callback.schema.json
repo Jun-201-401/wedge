@@ -260,7 +260,7 @@
       "required": [
         "checkpointId",
         "stepKey",
-        "primaryStage",
+        "stage",
         "trigger",
         "settle",
         "state",
@@ -274,8 +274,7 @@
         },
         "stage": {
           "$ref": "#/$defs/DecisionStage",
-          "deprecated": true,
-          "description": "Deprecated alias for primaryStage during migration."
+          "description": "Runner callback stage emitted from ScenarioStep.stage. EvidencePacket may normalize this field to primaryStage."
         },
         "trigger": {
           "type": "object",
@@ -380,7 +379,8 @@
         },
         "primaryStage": {
           "$ref": "#/$defs/DecisionStage",
-          "description": "Primary stage of checkpoint based on ScenarioStep.stage or action context."
+          "deprecated": true,
+          "description": "Deprecated alias retained for older runner callback producers. New runner callbacks should emit stage."
         }
       },
       "title": "Checkpoint",
