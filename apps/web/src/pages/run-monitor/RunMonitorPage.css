@@ -273,6 +273,7 @@
 .run-monitor-section-title h1,
 .run-monitor-panel-heading h2,
 .run-monitor-live-insight__label h2,
+.run-monitor-evidence h2,
 .run-monitor-context h2,
 .run-monitor-timeline h2,
 .run-monitor-log h2 {
@@ -795,12 +796,14 @@
   background: #e5e7eb;
 }
 
+.run-monitor-evidence,
 .run-monitor-context,
 .run-monitor-timeline,
 .run-monitor-log {
   margin-bottom: 3rem;
 }
 
+.run-monitor-evidence h2,
 .run-monitor-context h2,
 .run-monitor-timeline h2,
 .run-monitor-log h2 {
@@ -840,6 +843,196 @@
   letter-spacing: -0.01em;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.run-monitor-evidence__heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+}
+
+.run-monitor-evidence__heading h2 {
+  margin-bottom: 0;
+}
+
+.run-monitor-evidence__heading span,
+.run-monitor-evidence__status {
+  color: #94a3b8;
+  font-size: 0.62rem;
+  font-weight: 800;
+  line-height: 1.5;
+}
+
+.run-monitor-evidence__heading span {
+  flex: 0 0 auto;
+  border: 1px solid #f1f5f9;
+  border-radius: 999px;
+  background: #f8fafc;
+  padding: 0.28rem 0.58rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.run-monitor-evidence__status {
+  margin: 0;
+  border: 1px dashed #e2e8f0;
+  border-radius: 1rem;
+  background: #f8fafc;
+  padding: 1rem;
+}
+
+.run-monitor-evidence__cards {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.run-monitor-evidence-card {
+  border: 1px solid #f1f5f9;
+  border-radius: 1rem;
+  background: #fff;
+  padding: 1rem;
+  box-shadow: 0 8px 22px rgba(148, 163, 184, 0.08);
+}
+
+.run-monitor-evidence-card__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.85rem;
+}
+
+.run-monitor-evidence-card__head strong {
+  min-width: 0;
+  color: #020617;
+  font-size: 0.76rem;
+  font-weight: 900;
+  line-height: 1.3;
+  letter-spacing: -0.02em;
+}
+
+.run-monitor-evidence-card__head span {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: rgba(240, 249, 255, 0.78);
+  padding: 0.25rem 0.5rem;
+  color: #0284c7;
+  font-size: 0.52rem;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.run-monitor-evidence-card__meta {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem;
+  margin: 0 0 1rem;
+}
+
+.run-monitor-evidence-card__meta div {
+  min-width: 0;
+  border-radius: 0.8rem;
+  background: #f8fafc;
+  padding: 0.65rem;
+}
+
+.run-monitor-evidence-card__meta dt,
+.run-monitor-evidence-card__artifacts h3,
+.run-monitor-evidence-card__observations h3 {
+  margin: 0;
+  color: #cbd5e1;
+  font-size: 0.52rem;
+  font-weight: 900;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.run-monitor-evidence-card__meta dd {
+  overflow: hidden;
+  margin: 0.3rem 0 0;
+  color: #020617;
+  font-size: 0.68rem;
+  font-weight: 900;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.run-monitor-evidence-card__artifacts {
+  margin-bottom: 1rem;
+}
+
+.run-monitor-evidence-card__artifacts h3,
+.run-monitor-evidence-card__observations h3 {
+  margin-bottom: 0.5rem;
+}
+
+.run-monitor-evidence-card__artifacts ul,
+.run-monitor-evidence-card__observations ul {
+  display: grid;
+  gap: 0.45rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.run-monitor-evidence-card__artifacts li,
+.run-monitor-evidence-card__observations li {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  border: 1px solid #f8fafc;
+  border-radius: 0.75rem;
+  padding: 0.55rem 0.65rem;
+}
+
+.run-monitor-evidence-card__artifacts a {
+  overflow: hidden;
+  color: #0284c7;
+  font-size: 0.66rem;
+  font-weight: 900;
+  text-decoration: none;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.run-monitor-evidence-card__artifacts a:hover {
+  color: #0369a1;
+}
+
+.run-monitor-evidence-card__artifacts span,
+.run-monitor-evidence-card__observations span,
+.run-monitor-evidence-card__observations p {
+  color: #94a3b8;
+  font-size: 0.62rem;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
+.run-monitor-evidence-card__artifacts span {
+  flex: 0 0 auto;
+}
+
+.run-monitor-evidence-card__observations strong {
+  flex: 0 0 auto;
+  color: #64748b;
+  font-size: 0.62rem;
+  font-weight: 900;
+}
+
+.run-monitor-evidence-card__observations span {
+  overflow: hidden;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.run-monitor-evidence-card__observations p {
+  margin: 0;
 }
 
 .run-monitor-placeholder-note {

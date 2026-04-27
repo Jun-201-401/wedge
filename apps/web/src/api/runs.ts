@@ -1,6 +1,14 @@
 import type { AckResponse, ApiResponse, RequestOptions } from './http';
 import { requestJson } from './http';
-import type { AnalysisStatus, Run, RunActionRequest, RunCreateRequest, RunLive, RunStatus } from '../entities/run';
+import type {
+  AnalysisStatus,
+  EvidencePacket,
+  Run,
+  RunActionRequest,
+  RunCreateRequest,
+  RunLive,
+  RunStatus,
+} from '../entities/run';
 
 export interface ListRunsParams {
   projectId?: string;
@@ -67,6 +75,10 @@ export function getRunLive(runId: string, options?: RequestOptions) {
   return requestJson<ApiResponse<RunLive>>(`/runs/${runId}/live`, options);
 }
 
+export function getRunEvidencePacket(runId: string, options?: RequestOptions) {
+  return requestJson<ApiResponse<EvidencePacket>>(`/runs/${runId}/evidence-packet`, options);
+}
+
 export function listRunSteps(runId: string, options?: RequestOptions) {
   return requestJson<ApiResponse<unknown[]>>(`/runs/${runId}/steps`, options);
 }
@@ -79,5 +91,6 @@ export const runsApi = {
   startRun,
   stopRun,
   getRunLive,
+  getRunEvidencePacket,
   listRunSteps,
 };

@@ -1,4 +1,12 @@
-import type { Run, RunLive, RunStatus } from '../../../entities/run';
+import type {
+  EvidenceArtifact,
+  EvidenceCheckpoint,
+  EvidenceObservation,
+  EvidencePacket,
+  Run,
+  RunLive,
+  RunStatus,
+} from '../../../entities/run';
 import { RUN_STATUS_LABEL } from '../../../entities/run';
 import type { RunActionLog, RunStepItem, StepStatus } from './runMonitorMock';
 
@@ -188,4 +196,58 @@ export function buildApiSnapshotLogs(run: Run, live: RunLive): RunActionLog[] {
 
 export function shouldRefreshRunLive(status: RunStatus) {
   return status === 'CREATED' || status === 'QUEUED' || status === 'STARTING' || status === 'RUNNING' || status === 'STOP_REQUESTED';
+}
+
+export function findEvidenceScreenshotArtifact(evidencePacket: EvidencePacket | null): EvidenceArtifact | null {
+  if (!evidencePacket) {
+    return null;
+  }
+
+  return evidencePacket.artifacts.find((artifact) => artifact.type === 'screenshot') ?? null;
+}
+
+export function getEvidenceArtifactLabel(artifact: EvidenceArtifact) {
+  if (artifact.type === 'screenshot') {
+    return '스크린샷';
+  }
+
+  if (artifact.type === 'dom_snapshot') {
+    return 'DOM 스냅샷';
+  }
+
+  if (artifact.type === 'console_log') {
+    return '콘솔 로그';
+  }
+
+  return artifact.type;
+}
+
+export function getEvidenceCheckpointTitle(checkpoint: EvidenceCheckpoint, index: number) {
+  const stepId = checkpoint.step_id ? ` · ${checkpoint.step_id}` : '';
+  return `Checkpoint ${index + 1}${stepId}`;
+}
+
+export function getEvidenceObservationSummary(observation: EvidenceObservation) {
+  const target = readString(observation.data.target);
+  const text = readString(observation.data.text);
+  const message = readString(observation.data.message);
+  const fieldKey = readString(observation.data.field_key);
+  return target ?? text ?? message ?? fieldKey ?? observation.type;
+}
+
+export function getEvidenceArtifactHref(artifact: EvidenceArtifact) {
+  return artifact.uri;
+}
+
+export function getCheckpointArtifacts(checkpoint: EvidenceCheckpoint, artifacts: EvidenceArtifact[]) {
+  const artifactIds = new Set(checkpoint.artifact_refs.map(normalizeArtifactRef));
+  return artifacts.filter((artifact) => artifactIds.has(artifact.artifact_id));
+}
+
+function normalizeArtifactRef(ref: string) {
+  return ref.startsWith('artifact:') ? ref.slice('artifact:'.length) : ref;
+}
+
+function readString(value: unknown) {
+  return typeof value === 'string' && value.trim() ? value : null;
 }
