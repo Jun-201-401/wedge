@@ -16,6 +16,7 @@ import com.wedge.internal.runner.dto.RunnerStepEventType;
 import com.wedge.internal.runner.dto.RunnerStepEventsRequest;
 import com.wedge.run.api.dto.RunResponse;
 import com.wedge.run.application.RunService;
+import com.wedge.run.domain.RunStatus;
 import com.wedge.run.domain.StepStatus;
 import com.wedge.run.infrastructure.RunMapper;
 import com.wedge.run.infrastructure.RunPersistenceAdapter;
@@ -81,7 +82,9 @@ public class RunnerCallbackService {
         }
 
         RunResponse run = runService.markRunningIfStarting(runId);
-        request.events().forEach(event -> applyStepEvent(runId, event));
+        if (!isTerminalStatus(run.status())) {
+            request.events().forEach(event -> applyStepEvent(runId, event));
+        }
         return Map.of("runId", run.id(), "status", run.status(), "eventCount", request.events().size());
     }
 
@@ -184,6 +187,10 @@ public class RunnerCallbackService {
             case STEP_COMPLETED -> StepStatus.PASSED;
             default -> null;
         };
+    }
+
+    private boolean isTerminalStatus(RunStatus status) {
+        return status == RunStatus.COMPLETED || status == RunStatus.FAILED || status == RunStatus.STOPPED;
     }
 
     private boolean isDuplicate(String consumerName, String eventId) {

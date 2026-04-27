@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.wedge.common.error.BusinessException;
@@ -134,6 +135,35 @@ class RunnerCallbackServiceTest {
         verify(runPersistenceAdapter).updateCurrentStepOrder(runId, 1);
         verify(runPersistenceAdapter).appendRunEvent(runId, stepId, "STEP_STARTED", Map.of("message", "started"), occurredAt);
         verify(runPersistenceAdapter).updateStepState(stepId, StepStatus.RUNNING, occurredAt);
+    }
+
+    @Test
+    void stepEventsCallbackDoesNotMutateStepsAfterRunIsTerminal() {
+        UUID runId = UUID.randomUUID();
+        RunResponse completed = sampleRun(runId, RunStatus.COMPLETED, ResultCompleteness.FINAL);
+        when(processedMessagePersistenceAdapter.tryMarkProcessed("runner.step-events", "evt_late_step_001")).thenReturn(true);
+        when(runService.markRunningIfStarting(runId)).thenReturn(completed);
+
+        RunnerStepEventsRequest request = new RunnerStepEventsRequest(List.of(
+                new RunnerStepEvent(
+                        UUID.randomUUID(),
+                        3,
+                        "step_003_done",
+                        RunnerStepEventType.STEP_COMPLETED,
+                        OffsetDateTime.parse("2026-04-21T10:06:00+09:00"),
+                        Map.of("message", "late")
+                )
+        ));
+
+        Map<String, Object> result = runnerCallbackService.handleStepEvents(
+                runId,
+                request,
+                headers("evt_late_step_001")
+        );
+
+        assertThat(result.get("status")).isEqualTo(RunStatus.COMPLETED);
+        assertThat(result.get("eventCount")).isEqualTo(1);
+        verifyNoInteractions(runPersistenceAdapter);
     }
 
     @Test

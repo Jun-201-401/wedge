@@ -195,7 +195,7 @@
 
     <update id="updateCurrentStepOrder">
         UPDATE test_run
-        SET current_step_order = #{currentStepOrder},
+        SET current_step_order = GREATEST(COALESCE(current_step_order, 0), #{currentStepOrder}),
             updated_at = NOW(),
             version = version + 1
         WHERE id = #{runId}
