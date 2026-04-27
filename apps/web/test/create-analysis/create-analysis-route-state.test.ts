@@ -4,6 +4,8 @@ import assert from 'node:assert/strict';
 import {
   buildCreateAnalysisPath,
   parseCreateAnalysisRouteState,
+  readCreateRunContextFromEnv,
+  withCreateRunContextFallback,
   type CreateAnalysisRouteOptions,
 } from '../../src/pages/create-analysis/lib/createAnalysisRouteState';
 
@@ -102,6 +104,68 @@ test('create-analysis route state preserves valid run creation context', () => {
       options,
     ),
     `/create-analysis?step=ready&url=https%3A%2F%2Fexample.com%2F&scenario=landing-cta&depth=next-screen&projectId=${projectId}&scenarioTemplateVersionId=${scenarioTemplateVersionId}`,
+  );
+});
+
+test('create-analysis route state can use dev env run context as fallback', () => {
+  const fallbackContext = readCreateRunContextFromEnv({
+    VITE_DEV_PROJECT_ID: projectId,
+    VITE_DEV_SCENARIO_TEMPLATE_VERSION_ID: scenarioTemplateVersionId,
+  });
+
+  assert.deepEqual(fallbackContext, { projectId, scenarioTemplateVersionId });
+
+  assert.deepEqual(
+    withCreateRunContextFallback(
+      { stage: 'input', submittedUrl: null, scenarioId: null, depthId: null },
+      fallbackContext,
+    ),
+    {
+      stage: 'input',
+      submittedUrl: null,
+      scenarioId: null,
+      depthId: null,
+      projectId,
+      scenarioTemplateVersionId,
+    },
+  );
+
+  assert.deepEqual(
+    readCreateRunContextFromEnv({
+      VITE_DEV_PROJECT_ID: 'not-a-uuid',
+      VITE_DEV_SCENARIO_TEMPLATE_VERSION_ID: scenarioTemplateVersionId,
+    }),
+    {},
+  );
+
+  assert.equal(
+    buildCreateAnalysisPath(
+      { stage: 'input', submittedUrl: null, scenarioId: null, depthId: null, ...fallbackContext },
+      options,
+    ),
+    `/create-analysis?projectId=${projectId}&scenarioTemplateVersionId=${scenarioTemplateVersionId}`,
+  );
+
+  assert.deepEqual(
+    withCreateRunContextFallback(
+      {
+        stage: 'input',
+        submittedUrl: null,
+        scenarioId: null,
+        depthId: null,
+        projectId: '33333333-3333-4333-8333-333333333333',
+        scenarioTemplateVersionId: '44444444-4444-4444-8444-444444444444',
+      },
+      fallbackContext,
+    ),
+    {
+      stage: 'input',
+      submittedUrl: null,
+      scenarioId: null,
+      depthId: null,
+      projectId: '33333333-3333-4333-8333-333333333333',
+      scenarioTemplateVersionId: '44444444-4444-4444-8444-444444444444',
+    },
   );
 });
 

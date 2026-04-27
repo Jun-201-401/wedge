@@ -6,9 +6,11 @@ import { buildMockRunId, buildRunMonitorPath } from '../run-monitor/lib/runMonit
 import {
   buildCreateAnalysisPath,
   parseCreateAnalysisRouteState,
+  readCreateRunContextFromEnv,
   type CreateAnalysisRouteOptions,
   type CreateAnalysisRouteState,
   type CreateAnalysisRouteStage,
+  withCreateRunContextFallback,
 } from './lib/createAnalysisRouteState';
 import { normalizeAnalysisUrl } from './lib/createAnalysisUrl';
 import './CreateAnalysisPage.css';
@@ -133,6 +135,7 @@ const CREATE_ANALYSIS_ROUTE_OPTIONS: CreateAnalysisRouteOptions<ScenarioId, Scen
   validDepthIds: SCENARIO_DEPTH_IDS,
   validScenarioIds: SCENARIO_IDS,
 };
+const DEV_CREATE_RUN_CONTEXT = readCreateRunContextFromEnv(import.meta.env);
 
 interface CreateRunIds {
   projectId: string;
@@ -176,7 +179,10 @@ function getInitialRouteState(): CreateAnalysisPageRouteState {
     };
   }
 
-  return parseCreateAnalysisRouteState(window.location.search, CREATE_ANALYSIS_ROUTE_OPTIONS);
+  return withCreateRunContextFallback(
+    parseCreateAnalysisRouteState(window.location.search, CREATE_ANALYSIS_ROUTE_OPTIONS),
+    DEV_CREATE_RUN_CONTEXT,
+  );
 }
 
 function findScenarioById(scenarioId: ScenarioId | null) {
@@ -608,7 +614,8 @@ export function CreateAnalysisPage() {
   const normalizedUrl = useMemo(() => normalizeAnalysisUrl(urlInput), [urlInput]);
   const canSubmit = urlInput.trim().length > 0;
   const navigateToRouteState = useCallback((nextRouteState: CreateAnalysisPageRouteState, historyMode: 'push' | 'replace' = 'push') => {
-    const nextPath = buildCreateAnalysisPath(nextRouteState, CREATE_ANALYSIS_ROUTE_OPTIONS);
+    const routeStateWithDevContext = withCreateRunContextFallback(nextRouteState, DEV_CREATE_RUN_CONTEXT);
+    const nextPath = buildCreateAnalysisPath(routeStateWithDevContext, CREATE_ANALYSIS_ROUTE_OPTIONS);
 
     if (historyMode === 'replace') {
       window.history.replaceState(null, '', nextPath);
@@ -616,12 +623,15 @@ export function CreateAnalysisPage() {
       window.history.pushState(null, '', nextPath);
     }
 
-    setRouteState(nextRouteState);
+    setRouteState(routeStateWithDevContext);
   }, []);
 
   useEffect(() => {
     const handlePopState = () => {
-      setRouteState(parseCreateAnalysisRouteState(window.location.search, CREATE_ANALYSIS_ROUTE_OPTIONS));
+      setRouteState(withCreateRunContextFallback(
+        parseCreateAnalysisRouteState(window.location.search, CREATE_ANALYSIS_ROUTE_OPTIONS),
+        DEV_CREATE_RUN_CONTEXT,
+      ));
     };
 
     window.addEventListener('popstate', handlePopState);
