@@ -152,6 +152,11 @@ test('create analysis ready run controls remain wired', () => {
   assert.match(source, /const createRunIds = useMemo/);
   assert.match(source, /projectId: createRunIds\.projectId/);
   assert.match(source, /scenarioTemplateVersionId: createRunIds\.scenarioTemplateVersionId/);
+  assert.match(source, /scenarioPlan: buildPrototypeScenarioPlan/);
+  assert.match(source, /schema_version: 'prototype\.v1'/);
+  assert.match(source, /start_url: submittedUrl/);
+  assert.match(source, /device: 'desktop'/);
+  assert.match(source, /step_type: 'CHECKPOINT'/);
   assert.match(source, /createdRunId = response\.data\.id/);
   assert.match(source, /await startRun\(createdRunId\)/);
   assert.match(source, /Run은 생성됐지만 시작 요청에 실패했습니다/);

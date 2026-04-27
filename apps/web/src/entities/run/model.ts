@@ -49,6 +49,7 @@ export interface RunCreateRequest {
   devicePreset: DevicePreset;
   scenarioTemplateVersionId: string;
   scenarioOverrides?: Record<string, unknown>;
+  scenarioPlan: Record<string, unknown>;
 }
 
 export interface RunActionRequest {
