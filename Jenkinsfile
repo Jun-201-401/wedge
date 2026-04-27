@@ -1,3 +1,39 @@
+def sendMattermostNotify(String result) {
+    try {
+        def success = result == 'SUCCESS'
+        def color = success ? '#36a64f' : '#dc3545'
+        def statusText = success ? 'succeeded' : 'failed'
+
+        def payload = [
+            username   : 'Jenkins',
+            icon_emoji : ':jenkins:',
+            text       : "Wedge api-server deployment ${statusText}",
+            attachments: [[
+                color : color,
+                fields: [
+                    [short: false, title: 'Result', value: result],
+                    [short: false, title: 'Job', value: "${env.JOB_NAME} #${env.BUILD_NUMBER}"],
+                    [short: false, title: 'Branch', value: env.GIT_BRANCH],
+                    [short: false, title: 'Build', value: env.BUILD_URL]
+                ]
+            ]]
+        ]
+
+        writeFile file: 'mattermost-payload.json', text: groovy.json.JsonOutput.toJson(payload)
+
+        withCredentials([string(credentialsId: 'mattermost-webhook', variable: 'MM_WEBHOOK')]) {
+            sh '''
+set +x
+curl -fsS --max-time 10 -H 'Content-Type: application/json' \
+  --data-binary @mattermost-payload.json \
+  "$MM_WEBHOOK" || true
+'''
+        }
+    } catch (err) {
+        echo "Mattermost notification failed: ${err}"
+    }
+}
+
 pipeline {
     agent any
 
@@ -102,6 +138,9 @@ EOF
 
     post {
         always {
+            script {
+                sendMattermostNotify(currentBuild.currentResult ?: 'SUCCESS')
+            }
             deleteDir()
         }
     }
