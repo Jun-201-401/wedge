@@ -5,6 +5,21 @@ pipeline {
         disableConcurrentBuilds()
     }
 
+    triggers {
+        GenericTrigger(
+            genericVariables: [
+                [key: 'ref', value: '$.ref']
+            ],
+            causeString: 'Triggered by GitLab webhook: $ref',
+            tokenCredentialId: 'gitlab-webhook-token',
+            printContributedVariables: false,
+            printPostContent: false,
+            shouldNotFlatten: false,
+            regexpFilterText: '$ref',
+            regexpFilterExpression: '^refs/heads/feature/ec2-prod-baseline$'
+        )
+    }
+
     environment {
         GIT_URL = 'https://lab.ssafy.com/s14-final/S14P31C104.git'
         GIT_BRANCH = 'feature/ec2-prod-baseline'
