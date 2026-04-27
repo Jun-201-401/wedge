@@ -27,6 +27,9 @@ test('run monitor page exposes Sprint 2 live cockpit essentials with Korean-faci
   assert.match(source, /useRunMonitorState\(runId, mockData, isMockRun\)/);
   assert.match(stateHook, /getRun\(runId\)/);
   assert.match(stateHook, /getRunLive\(runId\)/);
+  assert.match(stateHook, /getRunEvidencePacket\(runId\)/);
+  assert.match(stateHook, /evidencePacket/);
+  assert.match(stateHook, /isEvidenceLoading/);
   assert.match(stateHook, /window\.setTimeout\(\(\) => void loadRunState\(false\), RUN_MONITOR_REFRESH_INTERVAL_MS\)/);
   assert.match(stateHook, /shouldRefreshRunLive\(liveResponse\.data\.status\)/);
   assert.match(source, /visibleSteps\.map/);
@@ -35,6 +38,12 @@ test('run monitor page exposes Sprint 2 live cockpit essentials with Korean-faci
   assert.match(source, /buildApiSnapshotSteps/);
   assert.match(source, /buildApiSnapshotLogs/);
   assert.match(source, /화면 캡처 대기 중/);
+  assert.match(source, /Evidence Packet/);
+  assert.match(source, /EvidencePanel/);
+  assert.match(viewModel, /checkpoint\.artifact_refs/);
+  assert.match(source, /getEvidenceArtifactLabel/);
+  assert.match(source, /getEvidenceObservationSummary/);
+  assert.match(source, /findEvidenceScreenshotArtifact/);
   assert.match(stateHook, /Run 상태를 불러오지 못했습니다/);
   assert.match(source, /RunMonitorStatePage/);
   assert.match(source, /role="progressbar"/);
@@ -62,7 +71,10 @@ test('run monitor css follows the live cockpit visual language', () => {
   assert.match(css, /\.run-monitor-target-inline span\s*\{[\s\S]*?color: #64748b/);
   assert.match(css, /\.run-monitor-stop-link\s*\{[\s\S]*?color: #64748b/);
   assert.match(css, /\.run-monitor-target-inline strong\s*\{[\s\S]*?font-weight: 800/);
-  assert.match(css, /\.run-monitor-section-title h1,[\s\S]*?\.run-monitor-log h2\s*\{[\s\S]*?color: #475569/);
+  assert.match(css, /\.run-monitor-section-title h1,[\s\S]*?\.run-monitor-evidence h2,[\s\S]*?\.run-monitor-log h2\s*\{[\s\S]*?color: #475569/);
+  assert.match(css, /\.run-monitor-evidence__cards\s*\{[\s\S]*?display: grid/);
+  assert.match(css, /\.run-monitor-evidence-card\s*\{[\s\S]*?box-shadow: 0 8px 22px/);
+  assert.match(css, /\.run-monitor-evidence-card__artifacts ul,[\s\S]*?\.run-monitor-evidence-card__observations ul\s*\{[\s\S]*?list-style: none/);
   assert.match(css, /\.run-monitor-agent-pointer\s*\{[\s\S]*?animation: runMonitorPointerMove/);
   assert.match(css, /\.run-monitor-scan-line\s*\{[\s\S]*?animation: runMonitorScanning/);
   assert.match(css, /\.run-monitor-detection-box\s*\{[\s\S]*?border: 1px dashed #0ea5e9/);

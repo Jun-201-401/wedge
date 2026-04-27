@@ -63,6 +63,52 @@ export interface RunLive {
   latestFrame?: LatestSnapshot | null;
 }
 
+export interface EvidenceObservation {
+  observation_id: string;
+  type: string;
+  stage: string;
+  source: string[];
+  data: Record<string, unknown>;
+  confidence?: number | null;
+}
+
+export interface EvidenceCheckpoint {
+  checkpoint_id: string;
+  step_id?: string | null;
+  primaryStage: string;
+  trigger: Record<string, unknown>;
+  settle: Record<string, unknown>;
+  state: Record<string, unknown>;
+  observations: EvidenceObservation[];
+  deltas: Record<string, unknown>[];
+  artifact_refs: string[];
+}
+
+export interface EvidenceArtifact {
+  artifact_id: string;
+  type: string;
+  uri: string;
+  mime_type?: string | null;
+  size_bytes?: number | null;
+  metadata?: Record<string, unknown>;
+}
+
+export interface EvidencePacket {
+  schema_version?: string;
+  execution_type?: 'DISCOVERY' | 'RUN' | string;
+  run_id?: string | null;
+  discovery_id?: string | null;
+  url?: string;
+  final_url?: string | null;
+  scenario?: Record<string, unknown>;
+  environment?: Record<string, unknown>;
+  checkpoints: EvidenceCheckpoint[];
+  aggregate_signals?: Record<string, unknown>;
+  scenario_fit?: Record<string, unknown> | null;
+  artifacts: EvidenceArtifact[];
+  collection_notes?: string[];
+}
+
 export const RUN_STATUS_LABEL: Record<RunStatus, string> = {
   CREATED: '생성됨',
   QUEUED: '대기 중',

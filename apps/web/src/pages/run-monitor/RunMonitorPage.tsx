@@ -1,14 +1,20 @@
 import { useMemo } from 'react';
 
+import type { EvidencePacket } from '../../entities/run';
 import { RUN_STATUS_LABEL } from '../../entities/run';
 import {
   buildApiSnapshotLogs,
   buildApiSnapshotSteps,
   buildMockRunMonitorData,
+  findEvidenceScreenshotArtifact,
   getApiCheckpoint,
   getApiProgressPercent,
+  getCheckpointArtifacts,
   getDepthLabel,
   getDevicePresetLabel,
+  getEvidenceArtifactLabel,
+  getEvidenceCheckpointTitle,
+  getEvidenceObservationSummary,
   getScenarioLabel,
   getStatusTone,
   getStepStatusLabel,
@@ -113,13 +119,113 @@ function RunMonitorStatePage({ runId, title, message }: { runId: string; title: 
   );
 }
 
+function EvidencePanel({
+  evidencePacket,
+  isEvidenceLoading,
+  evidenceLoadError,
+}: {
+  evidencePacket: EvidencePacket | null;
+  isEvidenceLoading: boolean;
+  evidenceLoadError: string;
+}) {
+  if (!evidencePacket) {
+    const statusMessage = isEvidenceLoading
+      ? 'Runner evidence를 불러오는 중입니다.'
+      : evidenceLoadError || 'Runner evidence가 도착하면 checkpoint, artifact, observation이 표시됩니다.';
+
+    return (
+      <section className="run-monitor-evidence" aria-labelledby="evidence-title">
+        <h2 id="evidence-title">Evidence Packet</h2>
+        <p className="run-monitor-evidence__status">{statusMessage}</p>
+      </section>
+    );
+  }
+
+  return (
+    <section className="run-monitor-evidence" aria-labelledby="evidence-title">
+      <div className="run-monitor-evidence__heading">
+        <h2 id="evidence-title">Evidence Packet</h2>
+        <span>{evidencePacket.checkpoints.length} checkpoints</span>
+      </div>
+
+      <div className="run-monitor-evidence__cards">
+        {evidencePacket.checkpoints.map((checkpoint, index) => {
+          const checkpointArtifacts = getCheckpointArtifacts(checkpoint, evidencePacket.artifacts);
+
+          return (
+            <article key={checkpoint.checkpoint_id} className="run-monitor-evidence-card">
+              <div className="run-monitor-evidence-card__head">
+                <strong>{getEvidenceCheckpointTitle(checkpoint, index)}</strong>
+                <span>{checkpoint.primaryStage}</span>
+              </div>
+
+              <dl className="run-monitor-evidence-card__meta">
+                <div>
+                  <dt>Settle</dt>
+                  <dd>{String(checkpoint.settle.status ?? 'unknown')}</dd>
+                </div>
+                <div>
+                  <dt>Artifacts</dt>
+                  <dd>{checkpointArtifacts.length}</dd>
+                </div>
+              </dl>
+
+              {checkpointArtifacts.length > 0 && (
+                <div className="run-monitor-evidence-card__artifacts">
+                  <h3>Artifacts</h3>
+                  <ul>
+                    {checkpointArtifacts.map((artifact) => (
+                      <li key={artifact.artifact_id}>
+                        <a href={artifact.uri} target="_blank" rel="noreferrer">
+                          {getEvidenceArtifactLabel(artifact)}
+                        </a>
+                        <span>{artifact.mime_type ?? artifact.type}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              <div className="run-monitor-evidence-card__observations">
+                <h3>Observations</h3>
+                {checkpoint.observations.length > 0 ? (
+                  <ul>
+                    {checkpoint.observations.map((observation) => (
+                      <li key={observation.observation_id}>
+                        <strong>{observation.type}</strong>
+                        <span>{getEvidenceObservationSummary(observation)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p>Observation이 아직 없습니다.</p>
+                )}
+              </div>
+            </article>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 export function RunMonitorPage({ runId }: RunMonitorPageProps) {
   const fallbackUrl = getFallbackUrl();
   const scenarioLabel = getScenarioLabel(readQueryParam('scenario'));
   const depthLabel = getDepthLabel(readQueryParam('depth'));
   const mockData = useMemo(() => buildMockRunMonitorData(runId, fallbackUrl, scenarioLabel), [fallbackUrl, runId, scenarioLabel]);
   const isMockRun = isMockRunId(runId);
-  const { run, live, isApiFallback, hasRealRunSnapshot, isRealRunLoading, apiLoadError } = useRunMonitorState(runId, mockData, isMockRun);
+  const {
+    run,
+    live,
+    isApiFallback,
+    hasRealRunSnapshot,
+    isRealRunLoading,
+    apiLoadError,
+    evidencePacket,
+    isEvidenceLoading,
+    evidenceLoadError,
+  } = useRunMonitorState(runId, mockData, isMockRun);
 
   if (isRealRunLoading) {
     return (
@@ -139,7 +245,8 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
   const statusLabel = RUN_STATUS_LABEL[live.status];
   const progressPercent = isApiFallback ? mockData.progressPercent : getApiProgressPercent(live);
   const currentCheckpoint = isApiFallback ? (live.currentAction ?? mockData.currentCheckpoint) : getApiCheckpoint(live);
-  const snapshotUrl = live.latestFrame?.url ?? run.latestSnapshot?.url ?? null;
+  const evidenceScreenshotUrl = findEvidenceScreenshotArtifact(evidencePacket)?.uri ?? null;
+  const snapshotUrl = live.latestFrame?.url ?? run.latestSnapshot?.url ?? evidenceScreenshotUrl;
   const traceModeLabel = isApiFallback ? '모의 실행' : 'API 상태 스냅샷';
   const visibleSteps = isApiFallback ? mockData.steps : buildApiSnapshotSteps(run, live);
   const visibleLogs = isApiFallback ? mockData.logs : buildApiSnapshotLogs(run, live);
@@ -271,6 +378,14 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
           </section>
 
           <div className="run-monitor-panel-scroll">
+            {!isApiFallback && (
+              <EvidencePanel
+                evidencePacket={evidencePacket}
+                isEvidenceLoading={isEvidenceLoading}
+                evidenceLoadError={evidenceLoadError}
+              />
+            )}
+
             <section className="run-monitor-context" aria-label="실행 정보">
               <h2>실행 정보</h2>
               <dl>
