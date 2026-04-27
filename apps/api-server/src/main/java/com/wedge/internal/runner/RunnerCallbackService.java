@@ -1,20 +1,14 @@
 package com.wedge.internal.runner;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.wedge.common.infrastructure.ProcessedMessagePersistenceAdapter;
+import com.wedge.evidence.application.CheckpointPersistenceService;
 import com.wedge.evidence.domain.Artifact;
 import com.wedge.evidence.domain.ArtifactType;
-import com.wedge.evidence.domain.Checkpoint;
-import com.wedge.evidence.domain.Observation;
 import com.wedge.evidence.infrastructure.ArtifactMapper;
-import com.wedge.evidence.infrastructure.CheckpointMapper;
-import com.wedge.evidence.infrastructure.ObservationMapper;
 import com.wedge.internal.runner.dto.RunnerAcceptedRequest;
 import com.wedge.internal.runner.dto.RunnerArtifactRequest;
 import com.wedge.internal.runner.dto.RunnerArtifactsRequest;
 import com.wedge.internal.runner.dto.RunnerCallbackHeaders;
-import com.wedge.internal.runner.dto.RunnerCheckpointRequest;
 import com.wedge.internal.runner.dto.RunnerCheckpointsRequest;
 import com.wedge.internal.runner.dto.RunnerFailedRequest;
 import com.wedge.internal.runner.dto.RunnerFinishedRequest;
@@ -22,9 +16,6 @@ import com.wedge.internal.runner.dto.RunnerStepEventsRequest;
 import com.wedge.run.api.dto.RunResponse;
 import com.wedge.run.application.RunService;
 import com.wedge.run.infrastructure.RunMapper;
-import java.math.BigDecimal;
-import java.time.OffsetDateTime;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -43,27 +34,21 @@ public class RunnerCallbackService {
     private final RunService runService;
     private final ProcessedMessagePersistenceAdapter processedMessagePersistenceAdapter;
     private final ArtifactMapper artifactMapper;
-    private final CheckpointMapper checkpointMapper;
-    private final ObservationMapper observationMapper;
+    private final CheckpointPersistenceService checkpointPersistenceService;
     private final RunMapper runMapper;
-    private final ObjectMapper objectMapper;
 
     public RunnerCallbackService(
             RunService runService,
             ProcessedMessagePersistenceAdapter processedMessagePersistenceAdapter,
             ArtifactMapper artifactMapper,
-            CheckpointMapper checkpointMapper,
-            ObservationMapper observationMapper,
-            RunMapper runMapper,
-            ObjectMapper objectMapper
+            CheckpointPersistenceService checkpointPersistenceService,
+            RunMapper runMapper
     ) {
         this.runService = runService;
         this.processedMessagePersistenceAdapter = processedMessagePersistenceAdapter;
         this.artifactMapper = artifactMapper;
-        this.checkpointMapper = checkpointMapper;
-        this.observationMapper = observationMapper;
+        this.checkpointPersistenceService = checkpointPersistenceService;
         this.runMapper = runMapper;
-        this.objectMapper = objectMapper;
     }
 
     @Transactional
@@ -103,11 +88,8 @@ public class RunnerCallbackService {
         }
 
         runService.getRun(runId);
-        UUID latestCheckpointId = persistCheckpoints(runId, request.checkpoints());
-        if (latestCheckpointId != null) {
-            runMapper.updateLatestCheckpoint(runId, latestCheckpointId);
-        }
-        return Map.of("runId", runId, "checkpointCount", request.checkpoints().size());
+        int checkpointCount = checkpointPersistenceService.saveRunCheckpoints(runId, request);
+        return Map.of("runId", runId, "checkpointCount", checkpointCount);
     }
 
     @Transactional
@@ -192,17 +174,6 @@ public class RunnerCallbackService {
         return latestArtifactId;
     }
 
-    private UUID persistCheckpoints(UUID runId, List<RunnerCheckpointRequest> checkpointRequests) {
-        UUID latestCheckpointId = null;
-        for (RunnerCheckpointRequest checkpointRequest : checkpointRequests) {
-            Checkpoint checkpoint = toCheckpoint(runId, checkpointRequest);
-            checkpointMapper.insert(checkpoint);
-            latestCheckpointId = checkpoint.getId();
-            persistObservations(runId, checkpoint, checkpointRequest.observations());
-        }
-        return latestCheckpointId;
-    }
-
     private Artifact toArtifact(UUID runId, RunnerArtifactRequest request) {
         Artifact artifact = new Artifact();
         artifact.setId(request.artifactId());
@@ -217,131 +188,5 @@ public class RunnerCallbackService {
         artifact.setSha256(request.sha256());
         artifact.setCapturedAt(request.createdAt());
         return artifact;
-    }
-
-    private Checkpoint toCheckpoint(UUID runId, RunnerCheckpointRequest request) {
-        Checkpoint checkpoint = new Checkpoint();
-        checkpoint.setId(UUID.randomUUID());
-        checkpoint.setRunId(runId);
-        checkpoint.setCheckpointKey(request.checkpointId());
-        checkpoint.setStage(request.stage().name());
-        checkpoint.setTriggerJsonb(writeJson(request.trigger()));
-        checkpoint.setSettleJsonb(writeJson(toSettlePayload(request)));
-        checkpoint.setStateJsonb(writeJson(request.state()));
-        checkpoint.setDeltaJsonb(writeJson(request.deltas()));
-        checkpoint.setArtifactRefsJsonb(writeJson(request.artifactRefs()));
-        checkpoint.setDurationMs(request.settle().durationMs());
-        checkpoint.setCapturedAt(OffsetDateTime.now());
-        return checkpoint;
-    }
-
-    private Map<String, Object> toSettlePayload(RunnerCheckpointRequest request) {
-        return Map.of(
-                "strategy", request.settle().strategy(),
-                "durationMs", request.settle().durationMs(),
-                "status", request.settle().status().name()
-        );
-    }
-
-    private void persistObservations(UUID runId, Checkpoint checkpoint, List<Map<String, Object>> observations) {
-        int observationIndex = 1;
-        for (Map<String, Object> observationPayload : observations) {
-            Observation observation = toObservation(runId, checkpoint, observationPayload, observationIndex);
-            observationMapper.insert(observation);
-            observationIndex += 1;
-        }
-    }
-
-    private Observation toObservation(
-            UUID runId,
-            Checkpoint checkpoint,
-            Map<String, Object> payload,
-            int observationIndex
-    ) {
-        Observation observation = new Observation();
-        observation.setId(UUID.randomUUID());
-        observation.setCheckpointId(checkpoint.getId());
-        observation.setRunId(runId);
-        observation.setObservationKey(readString(payload, "observation_id",
-                checkpoint.getCheckpointKey() + ".obs_" + String.format("%03d", observationIndex)));
-        observation.setObservationType(readString(payload, "type", "other"));
-        observation.setStage(readString(payload, "stage", inferObservationStage(observation.getObservationType(), checkpoint.getStage())));
-        observation.setSourcesJsonb(writeJson(readSources(payload, observation.getObservationType())));
-        observation.setDataJsonb(writeJson(extractObservationData(payload)));
-        observation.setConfidence(readConfidence(payload));
-        return observation;
-    }
-
-    private String inferObservationStage(String observationType, String fallbackStage) {
-        return switch (observationType) {
-            case "cta_candidate", "cta_cluster", "cta_text_specificity" -> "CTA";
-            case "form_field", "form_error", "required_field", "missing_label", "error_recovery", "submit_disabled" -> "INPUT";
-            case "trust_signal", "final_submit_candidate", "terms_privacy_signal", "payment_or_sensitive_action" -> "COMMIT";
-            case "value_proposition", "feature_summary", "audience_signal" -> "VALUE";
-            default -> fallbackStage;
-        };
-    }
-
-    private List<String> readSources(Map<String, Object> payload, String observationType) {
-        Object source = payload.get("source");
-        if (source == null) {
-            source = payload.get("sources");
-        }
-
-        if (source instanceof List<?> sourceList) {
-            return sourceList.stream()
-                    .map(String::valueOf)
-                    .toList();
-        }
-
-        return switch (observationType) {
-            case "console_error" -> List.of("console");
-            case "network_failure", "settle_response" -> List.of("network");
-            case "cta_candidate", "form_field" -> List.of("dom");
-            case "settle_item_count_change" -> List.of("scenario_log");
-            default -> List.of("scenario_log");
-        };
-    }
-
-    private Map<String, Object> extractObservationData(Map<String, Object> payload) {
-        Map<String, Object> data = new LinkedHashMap<>(payload);
-        data.remove("observation_id");
-        data.remove("type");
-        data.remove("stage");
-        data.remove("source");
-        data.remove("sources");
-        data.remove("confidence");
-        return data;
-    }
-
-    private String readString(Map<String, Object> payload, String key, String defaultValue) {
-        Object value = payload.get(key);
-        if (value instanceof String text && !text.isBlank()) {
-            return text;
-        }
-        return defaultValue;
-    }
-
-    private BigDecimal readConfidence(Map<String, Object> payload) {
-        Object value = payload.get("confidence");
-        if (value instanceof Number number) {
-            return BigDecimal.valueOf(number.doubleValue());
-        }
-        if (value instanceof String text && !text.isBlank()) {
-            try {
-                return new BigDecimal(text);
-            } catch (NumberFormatException ignored) {
-                return null;
-            }
-        }
-        return null;
-    }
-
-    private String writeJson(Object payload) {
-        try {
-            return objectMapper.writeValueAsString(payload);
-        } catch (JsonProcessingException exception) {
-            throw new IllegalStateException("Failed to serialize runner evidence callback payload", exception);
-        }
     }
 }
