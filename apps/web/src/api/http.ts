@@ -21,12 +21,25 @@ export interface RequestOptions extends RequestInit {
 
 const DEFAULT_API_BASE_URL = '/api';
 
+function readAccessToken() {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+
+  return window.localStorage.getItem('wedge.accessToken') ?? window.localStorage.getItem('accessToken');
+}
+
 export async function requestJson<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const { idempotencyKey, headers, ...requestOptions } = options;
   const requestHeaders = new Headers(headers);
 
   if (idempotencyKey) {
     requestHeaders.set('Idempotency-Key', idempotencyKey);
+  }
+
+  const accessToken = readAccessToken();
+  if (accessToken && !requestHeaders.has('Authorization')) {
+    requestHeaders.set('Authorization', `Bearer ${accessToken}`);
   }
 
   if (requestOptions.body && !requestHeaders.has('Content-Type')) {
