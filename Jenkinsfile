@@ -10,11 +10,12 @@ ${scriptText}
 def sendMMNotify(boolean success, Map info) {
     try {
         def action = info.action ?: 'Build'
+        def service = info.service ? "[${info.service}] " : ''
         def emoji = success ? ':jenkins7:' : ':angry_jenkins:'
         def statusMsg = success ? '성공 ✅' : '실패 ❌'
         def color = success ? '#36a64f' : '#dc3545'
 
-        def mainText = "### ${emoji} Wedge ${action} ${statusMsg}\n"
+        def mainText = "### ${emoji} ${service}Wedge ${action} ${statusMsg}\n"
         def links = []
         if (info.mention) {
             links << "${info.mention}"
@@ -214,7 +215,8 @@ EOF
                     branch  : env.GIT_BRANCH,
                     commit  : env.COMMIT_MSG ?: '',
                     duration: duration,
-                    action  : 'api-server Deploy',
+                    service : 'api-server',
+                    action  : 'Deploy',
                     buildUrl: env.BUILD_URL
                 ])
             }
@@ -239,7 +241,8 @@ EOF
                     branch     : env.GIT_BRANCH,
                     commit     : env.COMMIT_MSG ?: '',
                     duration   : duration,
-                    action     : 'api-server Deploy',
+                    service    : 'api-server',
+                    action     : 'Deploy',
                     failedStage: env.FAILED_STAGE ?: 'unknown',
                     details    : details,
                     buildUrl   : env.BUILD_URL
