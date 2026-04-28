@@ -12,6 +12,7 @@ import com.wedge.internal.runner.dto.RunnerCheckpointsRequest;
 import com.wedge.internal.runner.dto.RunnerFailedRequest;
 import com.wedge.internal.runner.dto.RunnerFinishedRequest;
 import com.wedge.internal.runner.dto.RunnerStepEventsRequest;
+import com.wedge.run.application.RunnerCallbackService;
 import com.wedge.run.application.command.RunnerAcceptedCommand;
 import com.wedge.run.application.command.RunnerCallbackContext;
 import com.wedge.run.application.command.RunnerFailedCommand;

@@ -10,6 +10,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.wedge.common.error.GlobalExceptionHandler;
 import com.wedge.common.web.RequestIdFilter;
+import com.wedge.run.application.RunnerCallbackService;
 import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;

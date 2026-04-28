@@ -1,4 +1,4 @@
-package com.wedge.internal.runner;
+package com.wedge.run.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -26,7 +26,6 @@ import com.wedge.run.application.command.RunnerFailedCommand;
 import com.wedge.run.application.command.RunnerFinishedCommand;
 import com.wedge.run.application.command.RunnerStepEventCommand;
 import com.wedge.run.application.command.RunnerStepEventsCommand;
-import com.wedge.run.application.RunService;
 import com.wedge.run.domain.AnalysisStatus;
 import com.wedge.run.domain.ResultCompleteness;
 import com.wedge.run.domain.RunStatus;

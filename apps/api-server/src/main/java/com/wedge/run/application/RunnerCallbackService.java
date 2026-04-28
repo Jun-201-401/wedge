@@ -1,4 +1,4 @@
-package com.wedge.internal.runner;
+package com.wedge.run.application;
 
 import com.wedge.common.infrastructure.ProcessedMessagePersistenceAdapter;
 import com.wedge.evidence.application.ArtifactPersistenceService;
@@ -14,7 +14,6 @@ import com.wedge.run.application.command.RunnerFailedCommand;
 import com.wedge.run.application.command.RunnerFinishedCommand;
 import com.wedge.run.application.command.RunnerStepEventCommand;
 import com.wedge.run.application.command.RunnerStepEventsCommand;
-import com.wedge.run.application.RunService;
 import com.wedge.run.domain.RunStatus;
 import com.wedge.run.domain.StepStatus;
 import com.wedge.run.infrastructure.RunMapper;
