@@ -103,6 +103,7 @@ pipeline {
         GIT_URL = 'https://lab.ssafy.com/s14-final/S14P31C104.git'
         GIT_BRANCH = 'develop'
         IMAGE_NAME = 'wedge-api-server'
+        WEB_IMAGE_NAME = 'wedge-web'
         DEPLOY_HOST = 'k14c104.p.ssafy.io'
         SSH_OPTS = '-o StrictHostKeyChecking=yes -o UserKnownHostsFile=/var/jenkins_home/.ssh/known_hosts -o UpdateHostKeys=no'
         LOG_FILE = 'jenkins-console.log'
@@ -142,11 +143,14 @@ pipeline {
             }
         }
 
-        stage('Build Image') {
+        stage('Build Images') {
             steps {
                 script {
-                    env.FAILED_STAGE = 'Build Image'
-                    runLogged('docker build -f apps/api-server/Dockerfile -t "${IMAGE_NAME}:ci-${BUILD_NUMBER}" apps/api-server')
+                    env.FAILED_STAGE = 'Build Images'
+                    runLogged('''
+docker build -f apps/api-server/Dockerfile -t "${IMAGE_NAME}:ci-${BUILD_NUMBER}" apps/api-server
+docker build -f apps/web/Dockerfile -t "${WEB_IMAGE_NAME}:ci-${BUILD_NUMBER}" apps/web
+                    ''')
                 }
             }
         }
@@ -169,6 +173,8 @@ tar \
   --exclude=.git \
   --exclude=.gradle \
   --exclude=apps/api-server/build \
+  --exclude=apps/web/dist \
+  --exclude=apps/web/node_modules \
   --exclude=apps/runner/node_modules \
   -czf /tmp/wedge-deploy.tar.gz .
 
@@ -184,20 +190,22 @@ tar \
   -xzf /tmp/wedge-deploy.tar.gz -C /srv/wedge
 
 docker build -f apps/api-server/Dockerfile -t wedge-api-server:deploy-local apps/api-server
-docker compose --env-file .env.prod -f compose.prod.yaml up -d api-server nginx
+docker build -f apps/web/Dockerfile -t wedge-web:deploy-local apps/web
+docker compose --env-file .env.prod -f compose.prod.yaml up -d api-server web nginx
 
 for i in 1 2 3 4 5 6 7 8 9 10; do
-    if curl -fsS http://localhost:18080/actuator/health > /dev/null 2>&1; then
+    if curl -fsS http://localhost:18080/actuator/health > /dev/null 2>&1 \
+        && curl -fsS http://localhost:18080/ > /dev/null 2>&1; then
         echo "Health check passed"
         exit 0
     fi
 
-    echo "Waiting for api-server health..."
+    echo "Waiting for web and api-server health..."
     sleep 3
 done
 
 echo "Health check failed"
-docker compose --env-file .env.prod -f compose.prod.yaml logs --tail=100 api-server
+docker compose --env-file .env.prod -f compose.prod.yaml logs --tail=100 api-server web nginx
 exit 1
 EOF
                         ''')
@@ -215,7 +223,7 @@ EOF
                     branch  : env.GIT_BRANCH,
                     commit  : env.COMMIT_MSG ?: '',
                     duration: duration,
-                    service : 'api-server',
+                    service : 'api-server/web',
                     action  : 'Deploy',
                     buildUrl: env.BUILD_URL
                 ])
@@ -241,7 +249,7 @@ EOF
                     branch     : env.GIT_BRANCH,
                     commit     : env.COMMIT_MSG ?: '',
                     duration   : duration,
-                    service    : 'api-server',
+                    service    : 'api-server/web',
                     action     : 'Deploy',
                     failedStage: env.FAILED_STAGE ?: 'unknown',
                     details    : details,
