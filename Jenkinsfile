@@ -223,7 +223,6 @@ EOF
                     branch  : env.GIT_BRANCH,
                     commit  : env.COMMIT_MSG ?: '',
                     duration: duration,
-                    service : 'api-server/web',
                     action  : 'Deploy',
                     buildUrl: env.BUILD_URL
                 ])
@@ -249,7 +248,6 @@ EOF
                     branch     : env.GIT_BRANCH,
                     commit     : env.COMMIT_MSG ?: '',
                     duration   : duration,
-                    service    : 'api-server/web',
                     action     : 'Deploy',
                     failedStage: env.FAILED_STAGE ?: 'unknown',
                     details    : details,
