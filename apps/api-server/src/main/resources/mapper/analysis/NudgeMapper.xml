@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.wedge.analysis.infrastructure.NudgeMapper">
+    <resultMap id="NudgeResultMap" type="com.wedge.analysis.domain.Nudge">
+        <id property="id" column="id"/>
+        <result property="analysisJobId" column="analysis_job_id"/>
+        <result property="findingId" column="finding_id"/>
+        <result property="rankOrder" column="rank_order"/>
+        <result property="title" column="title"/>
+        <result property="rationale" column="rationale"/>
+        <result property="recommendation" column="recommendation"/>
+        <result property="difficulty" column="difficulty"/>
+        <result property="expectedEffect" column="expected_effect"/>
+        <result property="validationQuestion" column="validation_question"/>
+        <result property="createdAt" column="created_at"/>
+    </resultMap>
+
+    <select id="findByAnalysisJobId" resultMap="NudgeResultMap">
+        SELECT id, analysis_job_id, finding_id, rank_order, title, rationale, recommendation,
+               difficulty, expected_effect, validation_question, created_at
+        FROM nudge
+        WHERE analysis_job_id = #{analysisJobId}
+        ORDER BY rank_order ASC
+    </select>
+
+    <insert id="insert" parameterType="com.wedge.analysis.domain.Nudge">
+        INSERT INTO nudge (
+            id, analysis_job_id, finding_id, rank_order, title, rationale, recommendation,
+            difficulty, expected_effect, validation_question
+        )
+        VALUES (
+            #{id}, #{analysisJobId}, #{findingId}, #{rankOrder}, #{title}, #{rationale}, #{recommendation},
+            #{difficulty}, #{expectedEffect}, #{validationQuestion}
+        )
+    </insert>
+
+    <delete id="deleteByAnalysisJobId">
+        DELETE FROM nudge
+        WHERE analysis_job_id = #{analysisJobId}
+    </delete>
+</mapper>

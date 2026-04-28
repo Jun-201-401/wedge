@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.wedge.analysis.infrastructure.AnalysisJobMapper">
+    <resultMap id="AnalysisJobResultMap" type="com.wedge.analysis.domain.AnalysisJob">
+        <id property="id" column="id"/>
+        <result property="runId" column="run_id"/>
+        <result property="jobType" column="job_type"/>
+        <result property="status" column="status"/>
+        <result property="evidencePacketId" column="evidence_packet_id"/>
+        <result property="ruleRegistryId" column="rule_registry_id"/>
+        <result property="judgeSchemaVersion" column="judge_schema_version"/>
+        <result property="analyzerVersion" column="analyzer_version"/>
+        <result property="promptVersion" column="prompt_version"/>
+        <result property="modelInfoJsonb" column="model_info_jsonb"/>
+        <result property="outputJsonb" column="output_jsonb"/>
+        <result property="frictionScore" column="friction_score"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="startedAt" column="started_at"/>
+        <result property="finishedAt" column="finished_at"/>
+        <result property="errorCode" column="error_code"/>
+        <result property="errorMessage" column="error_message"/>
+    </resultMap>
+
+    <sql id="AnalysisJobColumns">
+        id, run_id, job_type, status, evidence_packet_id, rule_registry_id, judge_schema_version,
+        analyzer_version, prompt_version,
+        CAST(model_info_jsonb AS TEXT) AS model_info_jsonb,
+        CAST(output_jsonb AS TEXT) AS output_jsonb,
+        friction_score, created_at, started_at, finished_at, error_code, error_message
+    </sql>
+
+    <select id="findById" resultMap="AnalysisJobResultMap">
+        SELECT <include refid="AnalysisJobColumns"/>
+        FROM analysis_job
+        WHERE id = #{id}
+    </select>
+
+    <insert id="upsertCompleted" parameterType="com.wedge.analysis.domain.AnalysisJob">
+        INSERT INTO analysis_job (
+            id, run_id, status, rule_registry_id, judge_schema_version, analyzer_version,
+            prompt_version, model_info_jsonb, output_jsonb, friction_score, finished_at
+        )
+        VALUES (
+            #{id}, #{runId}, #{status}, #{ruleRegistryId}, #{judgeSchemaVersion}, #{analyzerVersion},
+            #{promptVersion}, CAST(#{modelInfoJsonb} AS jsonb), CAST(#{outputJsonb} AS jsonb),
+            #{frictionScore}, #{finishedAt}
+        )
+        ON CONFLICT (id) DO UPDATE SET
+            run_id = EXCLUDED.run_id,
+            status = EXCLUDED.status,
+            rule_registry_id = COALESCE(EXCLUDED.rule_registry_id, analysis_job.rule_registry_id),
+            judge_schema_version = EXCLUDED.judge_schema_version,
+            analyzer_version = EXCLUDED.analyzer_version,
+            prompt_version = EXCLUDED.prompt_version,
+            model_info_jsonb = EXCLUDED.model_info_jsonb,
+            output_jsonb = EXCLUDED.output_jsonb,
+            friction_score = EXCLUDED.friction_score,
+            finished_at = EXCLUDED.finished_at,
+            error_code = NULL,
+            error_message = NULL
+    </insert>
+
+    <insert id="upsertFailed" parameterType="com.wedge.analysis.domain.AnalysisJob">
+        INSERT INTO analysis_job (
+            id, run_id, status, finished_at, error_code, error_message
+        )
+        VALUES (
+            #{id}, #{runId}, #{status}, #{finishedAt}, #{errorCode}, #{errorMessage}
+        )
+        ON CONFLICT (id) DO UPDATE SET
+            run_id = EXCLUDED.run_id,
+            status = EXCLUDED.status,
+            finished_at = EXCLUDED.finished_at,
+            error_code = EXCLUDED.error_code,
+            error_message = EXCLUDED.error_message
+    </insert>
+</mapper>
