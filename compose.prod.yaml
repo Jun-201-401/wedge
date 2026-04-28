@@ -7,10 +7,16 @@ services:
     depends_on:
       api-server:
         condition: service_started
+      web:
+        condition: service_started
     ports:
       - "${NGINX_EXTERNAL_PORT:-18080}:80"
     volumes:
       - ./infra/nginx/wedge.prod.conf:/etc/nginx/conf.d/default.conf:ro
+
+  web:
+    image: ${WEB_IMAGE:-wedge-web:deploy-local}
+    restart: unless-stopped
 
   postgres:
     image: postgres:17
