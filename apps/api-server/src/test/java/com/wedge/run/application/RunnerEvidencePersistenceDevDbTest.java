@@ -25,9 +25,9 @@ import org.springframework.jdbc.core.JdbcTemplate;
 @Tag("dev-db")
 @EnabledIfSystemProperty(named = "wedge.dev-db-tests", matches = "true")
 @SpringBootTest(properties = {
-        "spring.datasource.url=jdbc:postgresql://localhost:5432/wedge_dev",
-        "spring.datasource.username=ssafy",
-        "spring.datasource.password=ssafy",
+        "spring.datasource.url=${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/wedge_dev}",
+        "spring.datasource.username=${SPRING_DATASOURCE_USERNAME:ssafy}",
+        "spring.datasource.password=${SPRING_DATASOURCE_PASSWORD:ssafy}",
         "spring.datasource.driver-class-name=org.postgresql.Driver",
         "jwt.secret=dev-db-test-secret-must-be-at-least-32-bytes",
         "wedge.internal.service-token=wedge-local-dev-internal-service-token"
