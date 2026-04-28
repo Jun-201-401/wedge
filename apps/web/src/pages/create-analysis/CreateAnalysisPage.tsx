@@ -13,6 +13,7 @@ import {
   withCreateRunContextFallback,
 } from './lib/createAnalysisRouteState';
 import { normalizeAnalysisUrl } from './lib/createAnalysisUrl';
+import { buildPrototypeScenarioPlan } from './lib/prototypeScenarioPlan';
 import './CreateAnalysisPage.css';
 
 type DiscoveryStepStatus = 'complete' | 'active' | 'pending';
@@ -208,54 +209,6 @@ function getCreateRunIds(routeState: CreateAnalysisPageRouteState): CreateRunIds
   return {
     projectId,
     scenarioTemplateVersionId,
-  };
-}
-
-function buildPrototypeScenarioPlan({
-  submittedUrl,
-  selectedScenario,
-  selectedDepth,
-}: {
-  submittedUrl: string;
-  selectedScenario: ScenarioRecommendation;
-  selectedDepth: ScenarioDepthOption;
-}) {
-  return {
-    schema_version: 'prototype.v1',
-    plan_id: `web-${selectedScenario.id}-${selectedDepth.id}`,
-    scenario_type: selectedScenario.id,
-    start_url: submittedUrl,
-    goal: selectedScenario.summary,
-    environment: {
-      device: 'desktop',
-      depth_id: selectedDepth.id,
-    },
-    steps: [
-      {
-        step_order: 1,
-        step_key: 'open-start-url',
-        step_name: '대상 URL 열기',
-        step_type: 'GOTO',
-        target: {
-          url: submittedUrl,
-        },
-      },
-      {
-        step_order: 2,
-        step_key: `checkpoint-${selectedScenario.id}`,
-        step_name: selectedScenario.title,
-        step_type: 'CHECKPOINT',
-        target: {
-          scenario_id: selectedScenario.id,
-          depth_id: selectedDepth.id,
-        },
-        notes: [selectedScenario.evidence, selectedDepth.detail],
-      },
-    ],
-    safety: {
-      mode: 'read_only_navigation',
-      blocked_actions: ['purchase', 'delete', 'oauth_bypass'],
-    },
   };
 }
 
