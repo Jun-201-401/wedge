@@ -23,10 +23,12 @@ import com.wedge.run.infrastructure.RunPersistenceAdapter;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
+@RequiredArgsConstructor
 public class RunnerCallbackService {
     private static final String ACCEPTED_CONSUMER = "runner.accepted";
     private static final String STEP_EVENTS_CONSUMER = "runner.step-events";
@@ -41,22 +43,6 @@ public class RunnerCallbackService {
     private final ArtifactPersistenceService artifactPersistenceService;
     private final CheckpointPersistenceService checkpointPersistenceService;
     private final RunMapper runMapper;
-
-    public RunnerCallbackService(
-            RunService runService,
-            RunPersistenceAdapter runPersistenceAdapter,
-            ProcessedMessagePersistenceAdapter processedMessagePersistenceAdapter,
-            ArtifactPersistenceService artifactPersistenceService,
-            CheckpointPersistenceService checkpointPersistenceService,
-            RunMapper runMapper
-    ) {
-        this.runService = runService;
-        this.runPersistenceAdapter = runPersistenceAdapter;
-        this.processedMessagePersistenceAdapter = processedMessagePersistenceAdapter;
-        this.artifactPersistenceService = artifactPersistenceService;
-        this.checkpointPersistenceService = checkpointPersistenceService;
-        this.runMapper = runMapper;
-    }
 
     @Transactional
     public Map<String, Object> handleAccepted(UUID runId, RunnerAcceptedRequest request, RunnerCallbackHeaders headers) {
