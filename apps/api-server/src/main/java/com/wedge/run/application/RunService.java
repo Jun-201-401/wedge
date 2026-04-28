@@ -12,28 +12,18 @@ import java.net.URI;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
+@RequiredArgsConstructor
 public class RunService {
     private final RunPersistenceAdapter runPersistenceAdapter;
     private final RunExecuteRequestMessageFactory runExecuteRequestMessageFactory;
     private final OutboxMessagePersistenceAdapter outboxMessagePersistenceAdapter;
     private final ApplicationEventPublisher applicationEventPublisher;
-
-    public RunService(
-            RunPersistenceAdapter runPersistenceAdapter,
-            RunExecuteRequestMessageFactory runExecuteRequestMessageFactory,
-            OutboxMessagePersistenceAdapter outboxMessagePersistenceAdapter,
-            ApplicationEventPublisher applicationEventPublisher
-    ) {
-        this.runPersistenceAdapter = runPersistenceAdapter;
-        this.runExecuteRequestMessageFactory = runExecuteRequestMessageFactory;
-        this.outboxMessagePersistenceAdapter = outboxMessagePersistenceAdapter;
-        this.applicationEventPublisher = applicationEventPublisher;
-    }
 
     @Transactional(readOnly = true)
     public List<RunResponse> listRuns(UUID projectId, RunStatus status) {
