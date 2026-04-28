@@ -98,6 +98,7 @@ JSON Schema 기준 필수 필드는 다음과 같다.
 | Field | 설명 | 저장 후보 |
 |---|---|---|
 | `evidence_level` | Operational, Standard, Technical 등 evidence 강도 | `rule_hit.evidence_level` |
+| `problem_components` | 문제가 되는 UI 컴포넌트와 Playwright 좌표 | `analysis_finding.evidence_refs_jsonb` 확장 또는 `output_jsonb` |
 | `observations` | issue 판단에 사용한 observation 요약 | `rule_hit.observations_jsonb` |
 | `signals` | Rule Engine 내부 signal | `rule_hit.signals_jsonb` |
 | `impact_hypothesis` | 사용자 영향 가설 | `analysis_finding.impact_hypothesis` |
@@ -108,6 +109,33 @@ JSON Schema 기준 필수 필드는 다음과 같다.
 
 - `docs/04_domain_payload_contracts.md`의 issue 필수 목록에는 `issue_id`가 빠져 있지만, JSON Schema 기준으로는 `issue_id`가 필수다.
 - 저장 구조는 JSON Schema를 우선 기준으로 삼는다.
+
+### 문제 컴포넌트 좌표
+
+시나리오가 문제가 되는 컴포넌트를 함께 전달해야 하는 경우 `issues[].problem_components[]`에 저장한다. 이 값은 문제 판단의 source of truth가 아니라, 사용자가 리포트에서 문제 위치를 확인하거나 UI가 screenshot 위에 하이라이트를 그리기 위한 evidence projection이다.
+
+`problem_components[]` 필드:
+
+| Field | Required | 설명 |
+|---|---|---|
+| `component_id` | 필수 | issue 내부 컴포넌트 식별자 |
+| `evidence_ref` | 필수 | 해당 컴포넌트를 만든 observation ref. 예: `cp_001.obs_002` |
+| `label` | 선택 | 접근성 이름 또는 사용자-facing 이름 |
+| `role` | 선택 | button, link, input 등 DOM/AX role |
+| `text` | 선택 | 화면에 보이는 텍스트 |
+| `selector` | 선택 | Runner가 좌표를 얻을 때 사용한 selector 또는 locator 설명 |
+| `coordinate_space` | 필수 | 좌표 기준. Playwright `locator.boundingBox()` 기준은 `viewport` |
+| `bounding_box` | 필수 | `{ x, y, width, height }` |
+| `viewport` | 선택 | 좌표 수집 당시 viewport `{ width, height }` |
+| `screenshot_artifact_id` | 선택 | 좌표와 맞춰 볼 screenshot artifact id |
+
+수집 기준:
+
+- 좌표는 Runner가 Playwright `locator.boundingBox()`로 수집한다.
+- `x`, `y`, `width`, `height`는 viewport 기준 값이다.
+- 요소가 보이지 않거나 bounding box가 없으면 `problem_components`에 넣지 않고 observation/evidence ref만 유지한다.
+- 좌표만으로 컴포넌트를 식별하지 않는다. 항상 `evidence_ref`와 가능하면 `selector`, `label`, `role`, `screenshot_artifact_id`를 함께 둔다.
+- 저장 구조가 별도 component table을 갖기 전까지는 원본 `analysis_job.output_jsonb`에 보존하고, 조회가 필요한 경우 `analysis_finding.evidence_refs_jsonb`에 projection한다.
 
 ## 6. decision_map 필수 데이터
 
@@ -247,6 +275,28 @@ LLM이 할 수 있는 일:
       "confidence": 0.82,
       "priority_score": 72.5,
       "evidence_refs": ["cp_001.obs_002"],
+      "problem_components": [
+        {
+          "component_id": "component_001",
+          "evidence_ref": "cp_001.obs_002",
+          "label": "무료 시작",
+          "role": "button",
+          "text": "무료 시작",
+          "selector": "button:has-text(\"무료 시작\")",
+          "coordinate_space": "viewport",
+          "bounding_box": {
+            "x": 680,
+            "y": 412,
+            "width": 128,
+            "height": 44
+          },
+          "viewport": {
+            "width": 1440,
+            "height": 900
+          },
+          "screenshot_artifact_id": "artifact_screenshot_001"
+        }
+      ],
       "summary": "핵심 CTA가 첫 화면에서 충분히 명확하지 않습니다.",
       "recommendations": [
         "첫 화면의 primary CTA를 하나로 명확히 정리합니다."
