@@ -2,7 +2,6 @@ package com.wedge.run.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -14,14 +13,16 @@ import com.wedge.common.error.BusinessException;
 import com.wedge.common.infrastructure.ProcessedMessagePersistenceAdapter;
 import com.wedge.evidence.application.ArtifactPersistenceService;
 import com.wedge.evidence.application.CheckpointPersistenceService;
-import com.wedge.evidence.application.command.SaveRunArtifactCommand;
 import com.wedge.evidence.application.command.SaveRunArtifactsCommand;
-import com.wedge.evidence.application.command.SaveRunCheckpointCommand;
 import com.wedge.evidence.application.command.SaveRunCheckpointsCommand;
 import com.wedge.evidence.domain.ArtifactType;
 import com.wedge.run.api.dto.RunResponse;
 import com.wedge.run.application.command.RunnerAcceptedCommand;
+import com.wedge.run.application.command.RunnerArtifactCommand;
+import com.wedge.run.application.command.RunnerArtifactsCommand;
 import com.wedge.run.application.command.RunnerCallbackContext;
+import com.wedge.run.application.command.RunnerCheckpointCommand;
+import com.wedge.run.application.command.RunnerCheckpointsCommand;
 import com.wedge.run.application.command.RunnerFailedCommand;
 import com.wedge.run.application.command.RunnerFinishedCommand;
 import com.wedge.run.application.command.RunnerStepEventCommand;
@@ -39,6 +40,7 @@ import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -205,7 +207,7 @@ class RunnerCallbackServiceTest {
 
         assertThatThrownBy(() -> runnerCallbackService.handleArtifacts(
                 runId,
-                new SaveRunArtifactsCommand(List.of()),
+                new RunnerArtifactsCommand(List.of()),
                 new RunnerCallbackContext(WORKER_ID, "", SIGNATURE)
         ))
                 .isInstanceOf(BusinessException.class)
@@ -223,8 +225,8 @@ class RunnerCallbackServiceTest {
                 .thenReturn(new RunPersistenceAdapter.ResolvedStep(stepId, 2, "step_002_click_signup", StepStatus.RUNNING));
         when(runService.getRun(runId)).thenReturn(sampleRun(runId, RunStatus.RUNNING, ResultCompleteness.NONE));
 
-        SaveRunCheckpointsCommand checkpointsCommand = new SaveRunCheckpointsCommand(List.of(
-                new SaveRunCheckpointCommand(
+        RunnerCheckpointsCommand checkpointsCommand = new RunnerCheckpointsCommand(List.of(
+                new RunnerCheckpointCommand(
                         "cp_001",
                         "step_002_click_signup",
                         "CTA",
@@ -238,11 +240,11 @@ class RunnerCallbackServiceTest {
                 )
         ));
 
-        SaveRunArtifactsCommand artifactsCommand = new SaveRunArtifactsCommand(List.of(
-                new SaveRunArtifactCommand(
+        RunnerArtifactsCommand artifactsCommand = new RunnerArtifactsCommand(List.of(
+                new RunnerArtifactCommand(
                         artifactId,
                         "step_002_click_signup",
-                        ArtifactType.SCREENSHOT,
+                        "SCREENSHOT",
                         "bucket-a",
                         "runs/a/shot.png",
                         "image/png",
@@ -258,16 +260,23 @@ class RunnerCallbackServiceTest {
         runnerCallbackService.handleArtifacts(runId, artifactsCommand, headers("evt_artifact_001"));
 
         verify(runPersistenceAdapter, times(2)).updateCurrentStepOrder(runId, 2);
-        verify(checkpointPersistenceService).saveRunCheckpoints(
-                eq(runId),
-                any(SaveRunCheckpointsCommand.class),
-                eq(Map.of("step_002_click_signup", stepId))
-        );
-        verify(artifactPersistenceService).saveRunArtifacts(
-                eq(runId),
-                any(SaveRunArtifactsCommand.class),
-                eq(Map.of("step_002_click_signup", stepId))
-        );
+        ArgumentCaptor<SaveRunCheckpointsCommand> checkpointsCaptor = ArgumentCaptor.forClass(SaveRunCheckpointsCommand.class);
+        verify(checkpointPersistenceService).saveRunCheckpoints(eq(runId), checkpointsCaptor.capture(), eq(Map.of("step_002_click_signup", stepId)));
+        assertThat(checkpointsCaptor.getValue().checkpoints()).singleElement().satisfies(checkpoint -> {
+            assertThat(checkpoint.checkpointKey()).isEqualTo("cp_001");
+            assertThat(checkpoint.stepKey()).isEqualTo("step_002_click_signup");
+            assertThat(checkpoint.stage()).isEqualTo("CTA");
+            assertThat(checkpoint.durationMs()).isEqualTo(1200);
+            assertThat(checkpoint.artifactRefs()).containsExactly("artifact:screenshot_cp_001");
+        });
+        ArgumentCaptor<SaveRunArtifactsCommand> artifactsCaptor = ArgumentCaptor.forClass(SaveRunArtifactsCommand.class);
+        verify(artifactPersistenceService).saveRunArtifacts(eq(runId), artifactsCaptor.capture(), eq(Map.of("step_002_click_signup", stepId)));
+        assertThat(artifactsCaptor.getValue().artifacts()).singleElement().satisfies(artifact -> {
+            assertThat(artifact.artifactId()).isEqualTo(artifactId);
+            assertThat(artifact.stepKey()).isEqualTo("step_002_click_signup");
+            assertThat(artifact.artifactType()).isEqualTo(ArtifactType.SCREENSHOT);
+            assertThat(artifact.key()).isEqualTo("runs/a/shot.png");
+        });
         verify(runPersistenceAdapter).updateLatestArtifact(runId, artifactId);
     }
 
@@ -292,7 +301,7 @@ class RunnerCallbackServiceTest {
     @Test
     void duplicateCheckpointCallbackDoesNotPersistAgain() {
         UUID runId = UUID.randomUUID();
-        SaveRunCheckpointsCommand command = sampleCheckpointCommand();
+        RunnerCheckpointsCommand command = sampleCheckpointCommand();
         when(processedMessagePersistenceAdapter.tryMarkProcessed("runner.checkpoints", "evt_checkpoint_001")).thenReturn(false);
         when(runService.getRun(runId)).thenReturn(sampleRun(runId, RunStatus.RUNNING, ResultCompleteness.NONE));
 
@@ -310,7 +319,7 @@ class RunnerCallbackServiceTest {
     @Test
     void duplicateArtifactCallbackDoesNotPersistAgain() {
         UUID runId = UUID.randomUUID();
-        SaveRunArtifactsCommand command = sampleArtifactCommand();
+        RunnerArtifactsCommand command = sampleArtifactCommand();
         when(processedMessagePersistenceAdapter.tryMarkProcessed("runner.artifacts", "evt_artifact_001")).thenReturn(false);
         when(runService.getRun(runId)).thenReturn(sampleRun(runId, RunStatus.RUNNING, ResultCompleteness.NONE));
 
@@ -352,11 +361,11 @@ class RunnerCallbackServiceTest {
         return new RunnerCallbackContext(WORKER_ID, eventId, SIGNATURE);
     }
 
-    private SaveRunArtifactsCommand sampleArtifactCommand() {
-        return new SaveRunArtifactsCommand(List.of(new SaveRunArtifactCommand(
+    private RunnerArtifactsCommand sampleArtifactCommand() {
+        return new RunnerArtifactsCommand(List.of(new RunnerArtifactCommand(
                 UUID.randomUUID(),
                 "step_001_click_cta",
-                ArtifactType.SCREENSHOT,
+                "SCREENSHOT",
                 "wedge-artifacts",
                 "run-1/step_001_click_cta/screenshot.png",
                 "image/png",
@@ -368,8 +377,8 @@ class RunnerCallbackServiceTest {
         )));
     }
 
-    private SaveRunCheckpointsCommand sampleCheckpointCommand() {
-        return new SaveRunCheckpointsCommand(List.of(new SaveRunCheckpointCommand(
+    private RunnerCheckpointsCommand sampleCheckpointCommand() {
+        return new RunnerCheckpointsCommand(List.of(new RunnerCheckpointCommand(
                 "checkpoint-response-1",
                 "step_003_fill_email",
                 "INPUT",

@@ -7,9 +7,14 @@ import com.wedge.evidence.application.command.SaveRunArtifactCommand;
 import com.wedge.evidence.application.command.SaveRunArtifactsCommand;
 import com.wedge.evidence.application.command.SaveRunCheckpointCommand;
 import com.wedge.evidence.application.command.SaveRunCheckpointsCommand;
+import com.wedge.evidence.domain.ArtifactType;
 import com.wedge.run.api.dto.RunResponse;
 import com.wedge.run.application.command.RunnerAcceptedCommand;
+import com.wedge.run.application.command.RunnerArtifactCommand;
+import com.wedge.run.application.command.RunnerArtifactsCommand;
 import com.wedge.run.application.command.RunnerCallbackContext;
+import com.wedge.run.application.command.RunnerCheckpointCommand;
+import com.wedge.run.application.command.RunnerCheckpointsCommand;
 import com.wedge.run.application.command.RunnerFailedCommand;
 import com.wedge.run.application.command.RunnerFinishedCommand;
 import com.wedge.run.application.command.RunnerStepEventCommand;
@@ -71,7 +76,7 @@ public class RunnerCallbackService {
     }
 
     @Transactional
-    public Map<String, Object> handleCheckpoints(UUID runId, SaveRunCheckpointsCommand command, RunnerCallbackContext context) {
+    public Map<String, Object> handleCheckpoints(UUID runId, RunnerCheckpointsCommand command, RunnerCallbackContext context) {
         context.validateRequired();
 
         if (isDuplicate(CHECKPOINTS_CONSUMER, context.eventId())) {
@@ -80,13 +85,14 @@ public class RunnerCallbackService {
         }
 
         runService.getRun(runId);
-        Map<String, UUID> stepIdsByKey = resolveCheckpointSteps(runId, command);
-        int checkpointCount = checkpointPersistenceService.saveRunCheckpoints(runId, command, stepIdsByKey);
+        SaveRunCheckpointsCommand saveCommand = toSaveRunCheckpointsCommand(command);
+        Map<String, UUID> stepIdsByKey = resolveCheckpointSteps(runId, saveCommand);
+        int checkpointCount = checkpointPersistenceService.saveRunCheckpoints(runId, saveCommand, stepIdsByKey);
         return Map.of("runId", runId, "checkpointCount", checkpointCount);
     }
 
     @Transactional
-    public Map<String, Object> handleArtifacts(UUID runId, SaveRunArtifactsCommand command, RunnerCallbackContext context) {
+    public Map<String, Object> handleArtifacts(UUID runId, RunnerArtifactsCommand command, RunnerCallbackContext context) {
         context.validateRequired();
 
         if (isDuplicate(ARTIFACTS_CONSUMER, context.eventId())) {
@@ -95,8 +101,9 @@ public class RunnerCallbackService {
         }
 
         runService.getRun(runId);
-        Map<String, UUID> stepIdsByKey = resolveArtifactSteps(runId, command);
-        int artifactCount = artifactPersistenceService.saveRunArtifacts(runId, command, stepIdsByKey);
+        SaveRunArtifactsCommand saveCommand = toSaveRunArtifactsCommand(command);
+        Map<String, UUID> stepIdsByKey = resolveArtifactSteps(runId, saveCommand);
+        int artifactCount = artifactPersistenceService.saveRunArtifacts(runId, saveCommand, stepIdsByKey);
         UUID latestArtifactId = command.artifacts().get(command.artifacts().size() - 1).artifactId();
         if (latestArtifactId != null) {
             runPersistenceAdapter.updateLatestArtifact(runId, latestArtifactId);
@@ -141,6 +148,49 @@ public class RunnerCallbackService {
         if (nextStatus != null) {
             runPersistenceAdapter.updateStepState(step.id(), nextStatus, event.occurredAt());
         }
+    }
+
+    private SaveRunCheckpointsCommand toSaveRunCheckpointsCommand(RunnerCheckpointsCommand command) {
+        return new SaveRunCheckpointsCommand(command.checkpoints().stream()
+                .map(this::toSaveRunCheckpointCommand)
+                .toList());
+    }
+
+    private SaveRunCheckpointCommand toSaveRunCheckpointCommand(RunnerCheckpointCommand checkpoint) {
+        return new SaveRunCheckpointCommand(
+                checkpoint.checkpointId(),
+                checkpoint.stepKey(),
+                checkpoint.stage(),
+                checkpoint.trigger(),
+                checkpoint.settle(),
+                checkpoint.durationMs(),
+                checkpoint.state(),
+                checkpoint.observations(),
+                checkpoint.deltas(),
+                checkpoint.artifactRefs()
+        );
+    }
+
+    private SaveRunArtifactsCommand toSaveRunArtifactsCommand(RunnerArtifactsCommand command) {
+        return new SaveRunArtifactsCommand(command.artifacts().stream()
+                .map(this::toSaveRunArtifactCommand)
+                .toList());
+    }
+
+    private SaveRunArtifactCommand toSaveRunArtifactCommand(RunnerArtifactCommand artifact) {
+        return new SaveRunArtifactCommand(
+                artifact.artifactId(),
+                artifact.stepKey(),
+                ArtifactType.valueOf(artifact.artifactType()),
+                artifact.bucket(),
+                artifact.key(),
+                artifact.mimeType(),
+                artifact.width(),
+                artifact.height(),
+                artifact.sizeBytes(),
+                artifact.sha256(),
+                artifact.createdAt()
+        );
     }
 
     private Map<String, UUID> resolveCheckpointSteps(UUID runId, SaveRunCheckpointsCommand command) {

@@ -1,11 +1,6 @@
 package com.wedge.run.api.internal.runner;
 
 import com.wedge.common.response.ApiResponse;
-import com.wedge.evidence.application.command.SaveRunArtifactCommand;
-import com.wedge.evidence.application.command.SaveRunArtifactsCommand;
-import com.wedge.evidence.application.command.SaveRunCheckpointCommand;
-import com.wedge.evidence.application.command.SaveRunCheckpointsCommand;
-import com.wedge.evidence.domain.ArtifactType;
 import com.wedge.run.api.internal.runner.dto.RunnerAcceptedRequest;
 import com.wedge.run.api.internal.runner.dto.RunnerArtifactsRequest;
 import com.wedge.run.api.internal.runner.dto.RunnerCheckpointsRequest;
@@ -14,7 +9,11 @@ import com.wedge.run.api.internal.runner.dto.RunnerFinishedRequest;
 import com.wedge.run.api.internal.runner.dto.RunnerStepEventsRequest;
 import com.wedge.run.application.RunnerCallbackService;
 import com.wedge.run.application.command.RunnerAcceptedCommand;
+import com.wedge.run.application.command.RunnerArtifactCommand;
+import com.wedge.run.application.command.RunnerArtifactsCommand;
 import com.wedge.run.application.command.RunnerCallbackContext;
+import com.wedge.run.application.command.RunnerCheckpointCommand;
+import com.wedge.run.application.command.RunnerCheckpointsCommand;
 import com.wedge.run.application.command.RunnerFailedCommand;
 import com.wedge.run.application.command.RunnerFinishedCommand;
 import com.wedge.run.application.command.RunnerStepEventCommand;
@@ -67,7 +66,7 @@ public class RunnerCallbackController {
             @RequestHeader("X-Event-Id") String eventId,
             @RequestHeader("X-Signature") String signature
     ) {
-        return ApiResponse.accepted(runnerCallbackService.handleCheckpoints(runId, toSaveRunCheckpointsCommand(request), callbackContext(workerId, eventId, signature)));
+        return ApiResponse.accepted(runnerCallbackService.handleCheckpoints(runId, toCheckpointsCommand(request), callbackContext(workerId, eventId, signature)));
     }
 
     @PostMapping("/artifacts")
@@ -78,7 +77,7 @@ public class RunnerCallbackController {
             @RequestHeader("X-Event-Id") String eventId,
             @RequestHeader("X-Signature") String signature
     ) {
-        return ApiResponse.ok(runnerCallbackService.handleArtifacts(runId, toSaveRunArtifactsCommand(request), callbackContext(workerId, eventId, signature)));
+        return ApiResponse.ok(runnerCallbackService.handleArtifacts(runId, toArtifactsCommand(request), callbackContext(workerId, eventId, signature)));
     }
 
     @PostMapping("/finished")
@@ -120,9 +119,9 @@ public class RunnerCallbackController {
                 .toList());
     }
 
-    private SaveRunCheckpointsCommand toSaveRunCheckpointsCommand(RunnerCheckpointsRequest request) {
-        return new SaveRunCheckpointsCommand(request.checkpoints().stream()
-                .map(checkpoint -> new SaveRunCheckpointCommand(
+    private RunnerCheckpointsCommand toCheckpointsCommand(RunnerCheckpointsRequest request) {
+        return new RunnerCheckpointsCommand(request.checkpoints().stream()
+                .map(checkpoint -> new RunnerCheckpointCommand(
                         checkpoint.checkpointId(),
                         checkpoint.stepKey(),
                         checkpoint.stage().name(),
@@ -141,12 +140,12 @@ public class RunnerCallbackController {
                 .toList());
     }
 
-    private SaveRunArtifactsCommand toSaveRunArtifactsCommand(RunnerArtifactsRequest request) {
-        return new SaveRunArtifactsCommand(request.artifacts().stream()
-                .map(artifact -> new SaveRunArtifactCommand(
+    private RunnerArtifactsCommand toArtifactsCommand(RunnerArtifactsRequest request) {
+        return new RunnerArtifactsCommand(request.artifacts().stream()
+                .map(artifact -> new RunnerArtifactCommand(
                         artifact.artifactId(),
                         artifact.stepKey(),
-                        ArtifactType.valueOf(artifact.artifactType().name()),
+                        artifact.artifactType().name(),
                         artifact.bucket(),
                         artifact.key(),
                         artifact.mimeType(),
