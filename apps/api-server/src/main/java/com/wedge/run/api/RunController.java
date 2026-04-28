@@ -14,6 +14,7 @@ import jakarta.validation.Valid;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.core.io.Resource;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -29,14 +30,10 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/api/runs")
+@RequiredArgsConstructor
 public class RunController {
     private final RunService runService;
     private final EvidenceService evidenceService;
-
-    public RunController(RunService runService, EvidenceService evidenceService) {
-        this.runService = runService;
-        this.evidenceService = evidenceService;
-    }
 
     @GetMapping
     public ResponseEntity<ApiResponse<List<RunResponse>>> listRuns(
