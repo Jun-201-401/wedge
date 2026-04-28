@@ -14,25 +14,18 @@ import com.wedge.common.error.BusinessException;
 import com.wedge.common.infrastructure.ProcessedMessagePersistenceAdapter;
 import com.wedge.evidence.application.ArtifactPersistenceService;
 import com.wedge.evidence.application.CheckpointPersistenceService;
+import com.wedge.evidence.application.command.SaveRunArtifactCommand;
 import com.wedge.evidence.application.command.SaveRunArtifactsCommand;
+import com.wedge.evidence.application.command.SaveRunCheckpointCommand;
 import com.wedge.evidence.application.command.SaveRunCheckpointsCommand;
-import com.wedge.internal.runner.dto.RunnerAcceptedRequest;
-import com.wedge.internal.runner.dto.RunnerArtifactRequest;
-import com.wedge.internal.runner.dto.RunnerArtifactType;
-import com.wedge.internal.runner.dto.RunnerArtifactsRequest;
-import com.wedge.internal.runner.dto.RunnerCallbackHeaders;
-import com.wedge.internal.runner.dto.RunnerCheckpointRequest;
-import com.wedge.internal.runner.dto.RunnerCheckpointStage;
-import com.wedge.internal.runner.dto.RunnerCheckpointsRequest;
-import com.wedge.internal.runner.dto.RunnerFailedRequest;
-import com.wedge.internal.runner.dto.RunnerFinishedRequest;
-import com.wedge.internal.runner.dto.RunnerFinishedSummary;
-import com.wedge.internal.runner.dto.RunnerSettleInfo;
-import com.wedge.internal.runner.dto.RunnerSettleStatus;
-import com.wedge.internal.runner.dto.RunnerStepEvent;
-import com.wedge.internal.runner.dto.RunnerStepEventType;
-import com.wedge.internal.runner.dto.RunnerStepEventsRequest;
+import com.wedge.evidence.domain.ArtifactType;
 import com.wedge.run.api.dto.RunResponse;
+import com.wedge.run.application.command.RunnerAcceptedCommand;
+import com.wedge.run.application.command.RunnerCallbackContext;
+import com.wedge.run.application.command.RunnerFailedCommand;
+import com.wedge.run.application.command.RunnerFinishedCommand;
+import com.wedge.run.application.command.RunnerStepEventCommand;
+import com.wedge.run.application.command.RunnerStepEventsCommand;
 import com.wedge.run.application.RunService;
 import com.wedge.run.domain.AnalysisStatus;
 import com.wedge.run.domain.ResultCompleteness;
@@ -97,7 +90,7 @@ class RunnerCallbackServiceTest {
 
         Map<String, Object> result = runnerCallbackService.handleAccepted(
                 runId,
-                new RunnerAcceptedRequest(WORKER_ID, OffsetDateTime.parse("2026-04-21T10:00:00+09:00"), "browser-1"),
+                new RunnerAcceptedCommand(WORKER_ID, OffsetDateTime.parse("2026-04-21T10:00:00+09:00"), "browser-1"),
                 headers("evt_accepted_001")
         );
 
@@ -117,12 +110,12 @@ class RunnerCallbackServiceTest {
         when(runPersistenceAdapter.resolveStep(runId, "step_001_goto"))
                 .thenReturn(new RunPersistenceAdapter.ResolvedStep(stepId, 1, "step_001_goto", StepStatus.PENDING));
 
-        RunnerStepEventsRequest request = new RunnerStepEventsRequest(List.of(
-                new RunnerStepEvent(
+        RunnerStepEventsCommand command = new RunnerStepEventsCommand(List.of(
+                new RunnerStepEventCommand(
                         UUID.randomUUID(),
                         1,
                         "step_001_goto",
-                        RunnerStepEventType.STEP_STARTED,
+                        "STEP_STARTED",
                         occurredAt,
                         Map.of("message", "started")
                 )
@@ -130,7 +123,7 @@ class RunnerCallbackServiceTest {
 
         Map<String, Object> result = runnerCallbackService.handleStepEvents(
                 runId,
-                request,
+                command,
                 headers("evt_step_batch_001")
         );
 
@@ -148,12 +141,12 @@ class RunnerCallbackServiceTest {
         when(processedMessagePersistenceAdapter.tryMarkProcessed("runner.step-events", "evt_late_step_001")).thenReturn(true);
         when(runService.markRunningIfStarting(runId)).thenReturn(completed);
 
-        RunnerStepEventsRequest request = new RunnerStepEventsRequest(List.of(
-                new RunnerStepEvent(
+        RunnerStepEventsCommand command = new RunnerStepEventsCommand(List.of(
+                new RunnerStepEventCommand(
                         UUID.randomUUID(),
                         3,
                         "step_003_done",
-                        RunnerStepEventType.STEP_COMPLETED,
+                        "STEP_COMPLETED",
                         OffsetDateTime.parse("2026-04-21T10:06:00+09:00"),
                         Map.of("message", "late")
                 )
@@ -161,7 +154,7 @@ class RunnerCallbackServiceTest {
 
         Map<String, Object> result = runnerCallbackService.handleStepEvents(
                 runId,
-                request,
+                command,
                 headers("evt_late_step_001")
         );
 
@@ -176,7 +169,7 @@ class RunnerCallbackServiceTest {
 
         assertThatThrownBy(() -> runnerCallbackService.handleFailed(
                 runId,
-                new RunnerFailedRequest(
+                new RunnerFailedCommand(
                         "runner_002",
                         OffsetDateTime.parse("2026-04-21T10:03:00+09:00"),
                         "RUNNER_TIMEOUT",
@@ -198,10 +191,12 @@ class RunnerCallbackServiceTest {
 
         Map<String, Object> result = runnerCallbackService.handleFinished(
                 runId,
-                new RunnerFinishedRequest(
+                new RunnerFinishedCommand(
                         WORKER_ID,
                         OffsetDateTime.parse("2026-04-21T10:05:00+09:00"),
-                        new RunnerFinishedSummary(5, 0, false)
+                        5,
+                        0,
+                        false
                 ),
                 headers("evt_finished_001")
         );
@@ -216,8 +211,8 @@ class RunnerCallbackServiceTest {
 
         assertThatThrownBy(() -> runnerCallbackService.handleArtifacts(
                 runId,
-                new RunnerArtifactsRequest(List.of()),
-                new RunnerCallbackHeaders(WORKER_ID, "", SIGNATURE)
+                new SaveRunArtifactsCommand(List.of()),
+                new RunnerCallbackContext(WORKER_ID, "", SIGNATURE)
         ))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("Runner callback headers are required.");
@@ -234,13 +229,14 @@ class RunnerCallbackServiceTest {
                 .thenReturn(new RunPersistenceAdapter.ResolvedStep(stepId, 2, "step_002_click_signup", StepStatus.RUNNING));
         when(runService.getRun(runId)).thenReturn(sampleRun(runId, RunStatus.RUNNING, ResultCompleteness.NONE));
 
-        RunnerCheckpointsRequest checkpointsRequest = new RunnerCheckpointsRequest(List.of(
-                new RunnerCheckpointRequest(
+        SaveRunCheckpointsCommand checkpointsCommand = new SaveRunCheckpointsCommand(List.of(
+                new SaveRunCheckpointCommand(
                         "cp_001",
                         "step_002_click_signup",
-                        RunnerCheckpointStage.CTA,
+                        "CTA",
                         Map.of("type", "click"),
-                        new RunnerSettleInfo("locator_visible", 1200, RunnerSettleStatus.settled),
+                        Map.of("strategy", "locator_visible", "durationMs", 1200, "status", "settled"),
+                        1200,
                         Map.of("page", Map.of("url", "https://example.com/signup")),
                         List.of(),
                         List.of(),
@@ -248,11 +244,11 @@ class RunnerCallbackServiceTest {
                 )
         ));
 
-        RunnerArtifactsRequest artifactsRequest = new RunnerArtifactsRequest(List.of(
-                new RunnerArtifactRequest(
+        SaveRunArtifactsCommand artifactsCommand = new SaveRunArtifactsCommand(List.of(
+                new SaveRunArtifactCommand(
                         artifactId,
                         "step_002_click_signup",
-                        RunnerArtifactType.SCREENSHOT,
+                        ArtifactType.SCREENSHOT,
                         "bucket-a",
                         "runs/a/shot.png",
                         "image/png",
@@ -264,8 +260,8 @@ class RunnerCallbackServiceTest {
                 )
         ));
 
-        runnerCallbackService.handleCheckpoints(runId, checkpointsRequest, headers("evt_checkpoint_001"));
-        runnerCallbackService.handleArtifacts(runId, artifactsRequest, headers("evt_artifact_001"));
+        runnerCallbackService.handleCheckpoints(runId, checkpointsCommand, headers("evt_checkpoint_001"));
+        runnerCallbackService.handleArtifacts(runId, artifactsCommand, headers("evt_artifact_001"));
 
         verify(runPersistenceAdapter, times(2)).updateCurrentStepOrder(runId, 2);
         verify(checkpointPersistenceService).saveRunCheckpoints(
@@ -290,7 +286,7 @@ class RunnerCallbackServiceTest {
 
         Map<String, Object> result = runnerCallbackService.handleAccepted(
                 runId,
-                new RunnerAcceptedRequest(WORKER_ID, OffsetDateTime.parse("2026-04-21T10:00:00+09:00"), "browser-1"),
+                new RunnerAcceptedCommand(WORKER_ID, OffsetDateTime.parse("2026-04-21T10:00:00+09:00"), "browser-1"),
                 headers("evt_accepted_001")
         );
 
@@ -302,13 +298,13 @@ class RunnerCallbackServiceTest {
     @Test
     void duplicateCheckpointCallbackDoesNotPersistAgain() {
         UUID runId = UUID.randomUUID();
-        RunnerCheckpointsRequest request = sampleCheckpointRequest();
+        SaveRunCheckpointsCommand command = sampleCheckpointCommand();
         when(processedMessagePersistenceAdapter.tryMarkProcessed("runner.checkpoints", "evt_checkpoint_001")).thenReturn(false);
         when(runService.getRun(runId)).thenReturn(sampleRun(runId, RunStatus.RUNNING, ResultCompleteness.NONE));
 
         Map<String, Object> result = runnerCallbackService.handleCheckpoints(
                 runId,
-                request,
+                command,
                 headers("evt_checkpoint_001")
         );
 
@@ -320,13 +316,13 @@ class RunnerCallbackServiceTest {
     @Test
     void duplicateArtifactCallbackDoesNotPersistAgain() {
         UUID runId = UUID.randomUUID();
-        RunnerArtifactsRequest request = sampleArtifactRequest();
+        SaveRunArtifactsCommand command = sampleArtifactCommand();
         when(processedMessagePersistenceAdapter.tryMarkProcessed("runner.artifacts", "evt_artifact_001")).thenReturn(false);
         when(runService.getRun(runId)).thenReturn(sampleRun(runId, RunStatus.RUNNING, ResultCompleteness.NONE));
 
         Map<String, Object> result = runnerCallbackService.handleArtifacts(
                 runId,
-                request,
+                command,
                 headers("evt_artifact_001")
         );
 
@@ -358,15 +354,15 @@ class RunnerCallbackServiceTest {
         );
     }
 
-    private RunnerCallbackHeaders headers(String eventId) {
-        return new RunnerCallbackHeaders(WORKER_ID, eventId, SIGNATURE);
+    private RunnerCallbackContext headers(String eventId) {
+        return new RunnerCallbackContext(WORKER_ID, eventId, SIGNATURE);
     }
 
-    private RunnerArtifactsRequest sampleArtifactRequest() {
-        return new RunnerArtifactsRequest(List.of(new RunnerArtifactRequest(
+    private SaveRunArtifactsCommand sampleArtifactCommand() {
+        return new SaveRunArtifactsCommand(List.of(new SaveRunArtifactCommand(
                 UUID.randomUUID(),
                 "step_001_click_cta",
-                RunnerArtifactType.SCREENSHOT,
+                ArtifactType.SCREENSHOT,
                 "wedge-artifacts",
                 "run-1/step_001_click_cta/screenshot.png",
                 "image/png",
@@ -378,13 +374,14 @@ class RunnerCallbackServiceTest {
         )));
     }
 
-    private RunnerCheckpointsRequest sampleCheckpointRequest() {
-        return new RunnerCheckpointsRequest(List.of(new RunnerCheckpointRequest(
+    private SaveRunCheckpointsCommand sampleCheckpointCommand() {
+        return new SaveRunCheckpointsCommand(List.of(new SaveRunCheckpointCommand(
                 "checkpoint-response-1",
                 "step_003_fill_email",
-                RunnerCheckpointStage.INPUT,
+                "INPUT",
                 Map.of("stepOrder", 3),
-                new RunnerSettleInfo("response", 216, RunnerSettleStatus.settled),
+                Map.of("strategy", "response", "durationMs", 216, "status", "settled"),
+                216,
                 Map.of("url", "https://example.com/signup"),
                 List.of(Map.of("type", "form_field")),
                 List.of(),

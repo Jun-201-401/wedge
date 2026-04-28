@@ -7,19 +7,13 @@ import com.wedge.evidence.application.command.SaveRunArtifactCommand;
 import com.wedge.evidence.application.command.SaveRunArtifactsCommand;
 import com.wedge.evidence.application.command.SaveRunCheckpointCommand;
 import com.wedge.evidence.application.command.SaveRunCheckpointsCommand;
-import com.wedge.evidence.domain.ArtifactType;
-import com.wedge.internal.runner.dto.RunnerAcceptedRequest;
-import com.wedge.internal.runner.dto.RunnerArtifactRequest;
-import com.wedge.internal.runner.dto.RunnerArtifactsRequest;
-import com.wedge.internal.runner.dto.RunnerCallbackHeaders;
-import com.wedge.internal.runner.dto.RunnerCheckpointRequest;
-import com.wedge.internal.runner.dto.RunnerCheckpointsRequest;
-import com.wedge.internal.runner.dto.RunnerFailedRequest;
-import com.wedge.internal.runner.dto.RunnerFinishedRequest;
-import com.wedge.internal.runner.dto.RunnerStepEvent;
-import com.wedge.internal.runner.dto.RunnerStepEventType;
-import com.wedge.internal.runner.dto.RunnerStepEventsRequest;
 import com.wedge.run.api.dto.RunResponse;
+import com.wedge.run.application.command.RunnerAcceptedCommand;
+import com.wedge.run.application.command.RunnerCallbackContext;
+import com.wedge.run.application.command.RunnerFailedCommand;
+import com.wedge.run.application.command.RunnerFinishedCommand;
+import com.wedge.run.application.command.RunnerStepEventCommand;
+import com.wedge.run.application.command.RunnerStepEventsCommand;
 import com.wedge.run.application.RunService;
 import com.wedge.run.domain.RunStatus;
 import com.wedge.run.domain.StepStatus;
@@ -50,11 +44,11 @@ public class RunnerCallbackService {
     private final RunMapper runMapper;
 
     @Transactional
-    public Map<String, Object> handleAccepted(UUID runId, RunnerAcceptedRequest request, RunnerCallbackHeaders headers) {
-        headers.validateRequired();
-        headers.validateWorkerMatches(request.workerId());
+    public Map<String, Object> handleAccepted(UUID runId, RunnerAcceptedCommand command, RunnerCallbackContext context) {
+        context.validateRequired();
+        context.validateWorkerMatches(command.workerId());
 
-        Map<String, Object> duplicateResponse = duplicateStatusResponse(ACCEPTED_CONSUMER, headers.eventId(), runId);
+        Map<String, Object> duplicateResponse = duplicateStatusResponse(ACCEPTED_CONSUMER, context.eventId(), runId);
         if (duplicateResponse != null) {
             return duplicateResponse;
         }
@@ -64,51 +58,49 @@ public class RunnerCallbackService {
     }
 
     @Transactional
-    public Map<String, Object> handleStepEvents(UUID runId, RunnerStepEventsRequest request, RunnerCallbackHeaders headers) {
-        headers.validateRequired();
+    public Map<String, Object> handleStepEvents(UUID runId, RunnerStepEventsCommand command, RunnerCallbackContext context) {
+        context.validateRequired();
 
-        Map<String, Object> duplicateResponse = duplicateStatusResponse(STEP_EVENTS_CONSUMER, headers.eventId(), runId);
+        Map<String, Object> duplicateResponse = duplicateStatusResponse(STEP_EVENTS_CONSUMER, context.eventId(), runId);
         if (duplicateResponse != null) {
-            return extendDuplicateResponse(duplicateResponse, "eventCount", request.events().size());
+            return extendDuplicateResponse(duplicateResponse, "eventCount", command.events().size());
         }
 
         RunResponse run = runService.markRunningIfStarting(runId);
         if (!isTerminalStatus(run.status())) {
-            request.events().forEach(event -> applyStepEvent(runId, event));
+            command.events().forEach(event -> applyStepEvent(runId, event));
         }
-        return Map.of("runId", run.id(), "status", run.status(), "eventCount", request.events().size());
+        return Map.of("runId", run.id(), "status", run.status(), "eventCount", command.events().size());
     }
 
     @Transactional
-    public Map<String, Object> handleCheckpoints(UUID runId, RunnerCheckpointsRequest request, RunnerCallbackHeaders headers) {
-        headers.validateRequired();
+    public Map<String, Object> handleCheckpoints(UUID runId, SaveRunCheckpointsCommand command, RunnerCallbackContext context) {
+        context.validateRequired();
 
-        if (isDuplicate(CHECKPOINTS_CONSUMER, headers.eventId())) {
+        if (isDuplicate(CHECKPOINTS_CONSUMER, context.eventId())) {
             runService.getRun(runId);
-            return Map.of("runId", runId, "checkpointCount", request.checkpoints().size(), "duplicate", true);
+            return Map.of("runId", runId, "checkpointCount", command.checkpoints().size(), "duplicate", true);
         }
 
         runService.getRun(runId);
-        Map<String, UUID> stepIdsByKey = resolveCheckpointSteps(runId, request);
-        SaveRunCheckpointsCommand command = toSaveRunCheckpointsCommand(request);
+        Map<String, UUID> stepIdsByKey = resolveCheckpointSteps(runId, command);
         int checkpointCount = checkpointPersistenceService.saveRunCheckpoints(runId, command, stepIdsByKey);
         return Map.of("runId", runId, "checkpointCount", checkpointCount);
     }
 
     @Transactional
-    public Map<String, Object> handleArtifacts(UUID runId, RunnerArtifactsRequest request, RunnerCallbackHeaders headers) {
-        headers.validateRequired();
+    public Map<String, Object> handleArtifacts(UUID runId, SaveRunArtifactsCommand command, RunnerCallbackContext context) {
+        context.validateRequired();
 
-        if (isDuplicate(ARTIFACTS_CONSUMER, headers.eventId())) {
+        if (isDuplicate(ARTIFACTS_CONSUMER, context.eventId())) {
             runService.getRun(runId);
-            return Map.of("runId", runId, "artifactCount", request.artifacts().size(), "duplicate", true);
+            return Map.of("runId", runId, "artifactCount", command.artifacts().size(), "duplicate", true);
         }
 
         runService.getRun(runId);
-        Map<String, UUID> stepIdsByKey = resolveArtifactSteps(runId, request);
-        SaveRunArtifactsCommand command = toSaveRunArtifactsCommand(request);
+        Map<String, UUID> stepIdsByKey = resolveArtifactSteps(runId, command);
         int artifactCount = artifactPersistenceService.saveRunArtifacts(runId, command, stepIdsByKey);
-        UUID latestArtifactId = request.artifacts().get(request.artifacts().size() - 1).artifactId();
+        UUID latestArtifactId = command.artifacts().get(command.artifacts().size() - 1).artifactId();
         if (latestArtifactId != null) {
             runMapper.updateLatestArtifact(runId, latestArtifactId);
         }
@@ -116,76 +108,37 @@ public class RunnerCallbackService {
     }
 
     @Transactional
-    public Map<String, Object> handleFinished(UUID runId, RunnerFinishedRequest request, RunnerCallbackHeaders headers) {
-        headers.validateRequired();
-        headers.validateWorkerMatches(request.workerId());
+    public Map<String, Object> handleFinished(UUID runId, RunnerFinishedCommand command, RunnerCallbackContext context) {
+        context.validateRequired();
+        context.validateWorkerMatches(command.workerId());
 
-        Map<String, Object> duplicateResponse = duplicateStatusResponse(FINISHED_CONSUMER, headers.eventId(), runId);
+        Map<String, Object> duplicateResponse = duplicateStatusResponse(FINISHED_CONSUMER, context.eventId(), runId);
         if (duplicateResponse != null) {
             return extendDuplicateResponse(duplicateResponse, "resultCompleteness", duplicateResponse.get("resultCompleteness"));
         }
 
-        RunResponse run = runService.finishRun(runId, request.summary().stopped());
+        RunResponse run = runService.finishRun(runId, command.stopped());
         return Map.of("runId", run.id(), "status", run.status(), "resultCompleteness", run.resultCompleteness());
     }
 
     @Transactional
-    public Map<String, Object> handleFailed(UUID runId, RunnerFailedRequest request, RunnerCallbackHeaders headers) {
-        headers.validateRequired();
-        headers.validateWorkerMatches(request.workerId());
+    public Map<String, Object> handleFailed(UUID runId, RunnerFailedCommand command, RunnerCallbackContext context) {
+        context.validateRequired();
+        context.validateWorkerMatches(command.workerId());
 
-        Map<String, Object> duplicateResponse = duplicateStatusResponse(FAILED_CONSUMER, headers.eventId(), runId);
+        Map<String, Object> duplicateResponse = duplicateStatusResponse(FAILED_CONSUMER, context.eventId(), runId);
         if (duplicateResponse != null) {
             return extendDuplicateResponse(duplicateResponse, "resultCompleteness", duplicateResponse.get("resultCompleteness"));
         }
 
-        RunResponse run = runService.failRun(runId, request.failureCode(), request.failureMessage(), request.resultCompleteness());
+        RunResponse run = runService.failRun(runId, command.failureCode(), command.failureMessage(), command.resultCompleteness());
         return Map.of("runId", run.id(), "status", run.status(), "resultCompleteness", run.resultCompleteness());
     }
 
-    private SaveRunCheckpointsCommand toSaveRunCheckpointsCommand(RunnerCheckpointsRequest request) {
-        return new SaveRunCheckpointsCommand(request.checkpoints().stream()
-                .map(checkpoint -> new SaveRunCheckpointCommand(
-                        checkpoint.checkpointId(),
-                        checkpoint.stepKey(),
-                        checkpoint.stage().name(),
-                        checkpoint.trigger(),
-                        Map.of(
-                                "strategy", checkpoint.settle().strategy(),
-                                "durationMs", checkpoint.settle().durationMs(),
-                                "status", checkpoint.settle().status().name()
-                        ),
-                        checkpoint.settle().durationMs(),
-                        checkpoint.state(),
-                        checkpoint.observations(),
-                        checkpoint.deltas(),
-                        checkpoint.artifactRefs()
-                ))
-                .toList());
-    }
-
-    private SaveRunArtifactsCommand toSaveRunArtifactsCommand(RunnerArtifactsRequest request) {
-        return new SaveRunArtifactsCommand(request.artifacts().stream()
-                .map(artifact -> new SaveRunArtifactCommand(
-                        artifact.artifactId(),
-                        artifact.stepKey(),
-                        ArtifactType.valueOf(artifact.artifactType().name()),
-                        artifact.bucket(),
-                        artifact.key(),
-                        artifact.mimeType(),
-                        artifact.width(),
-                        artifact.height(),
-                        artifact.sizeBytes(),
-                        artifact.sha256(),
-                        artifact.createdAt()
-                ))
-                .toList());
-    }
-
-    private void applyStepEvent(UUID runId, RunnerStepEvent event) {
+    private void applyStepEvent(UUID runId, RunnerStepEventCommand event) {
         RunPersistenceAdapter.ResolvedStep step = runPersistenceAdapter.resolveStep(runId, event.stepKey());
         runPersistenceAdapter.updateCurrentStepOrder(runId, step.stepOrder());
-        runPersistenceAdapter.appendRunEvent(runId, step.id(), event.eventType().name(), event.payload(), event.occurredAt());
+        runPersistenceAdapter.appendRunEvent(runId, step.id(), event.eventType(), event.payload(), event.occurredAt());
 
         StepStatus nextStatus = mapStepStatus(event.eventType());
         if (nextStatus != null) {
@@ -193,9 +146,9 @@ public class RunnerCallbackService {
         }
     }
 
-    private Map<String, UUID> resolveCheckpointSteps(UUID runId, RunnerCheckpointsRequest request) {
+    private Map<String, UUID> resolveCheckpointSteps(UUID runId, SaveRunCheckpointsCommand command) {
         Map<String, UUID> stepIdsByKey = new LinkedHashMap<>();
-        for (RunnerCheckpointRequest checkpoint : request.checkpoints()) {
+        for (SaveRunCheckpointCommand checkpoint : command.checkpoints()) {
             RunPersistenceAdapter.ResolvedStep step = runPersistenceAdapter.resolveStep(runId, checkpoint.stepKey());
             runPersistenceAdapter.updateCurrentStepOrder(runId, step.stepOrder());
             stepIdsByKey.put(checkpoint.stepKey(), step.id());
@@ -203,9 +156,9 @@ public class RunnerCallbackService {
         return stepIdsByKey;
     }
 
-    private Map<String, UUID> resolveArtifactSteps(UUID runId, RunnerArtifactsRequest request) {
+    private Map<String, UUID> resolveArtifactSteps(UUID runId, SaveRunArtifactsCommand command) {
         Map<String, UUID> stepIdsByKey = new LinkedHashMap<>();
-        for (RunnerArtifactRequest artifact : request.artifacts()) {
+        for (SaveRunArtifactCommand artifact : command.artifacts()) {
             RunPersistenceAdapter.ResolvedStep step = runPersistenceAdapter.resolveStep(runId, artifact.stepKey());
             runPersistenceAdapter.updateCurrentStepOrder(runId, step.stepOrder());
             stepIdsByKey.put(artifact.stepKey(), step.id());
@@ -213,10 +166,10 @@ public class RunnerCallbackService {
         return stepIdsByKey;
     }
 
-    private StepStatus mapStepStatus(RunnerStepEventType eventType) {
+    private StepStatus mapStepStatus(String eventType) {
         return switch (eventType) {
-            case STEP_STARTED -> StepStatus.RUNNING;
-            case STEP_COMPLETED -> StepStatus.PASSED;
+            case "STEP_STARTED" -> StepStatus.RUNNING;
+            case "STEP_COMPLETED" -> StepStatus.PASSED;
             default -> null;
         };
     }

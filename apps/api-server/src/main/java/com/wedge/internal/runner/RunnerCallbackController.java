@@ -1,13 +1,23 @@
 package com.wedge.internal.runner;
 
 import com.wedge.common.response.ApiResponse;
+import com.wedge.evidence.application.command.SaveRunArtifactCommand;
+import com.wedge.evidence.application.command.SaveRunArtifactsCommand;
+import com.wedge.evidence.application.command.SaveRunCheckpointCommand;
+import com.wedge.evidence.application.command.SaveRunCheckpointsCommand;
+import com.wedge.evidence.domain.ArtifactType;
 import com.wedge.internal.runner.dto.RunnerAcceptedRequest;
 import com.wedge.internal.runner.dto.RunnerArtifactsRequest;
-import com.wedge.internal.runner.dto.RunnerCallbackHeaders;
 import com.wedge.internal.runner.dto.RunnerCheckpointsRequest;
 import com.wedge.internal.runner.dto.RunnerFailedRequest;
 import com.wedge.internal.runner.dto.RunnerFinishedRequest;
 import com.wedge.internal.runner.dto.RunnerStepEventsRequest;
+import com.wedge.run.application.command.RunnerAcceptedCommand;
+import com.wedge.run.application.command.RunnerCallbackContext;
+import com.wedge.run.application.command.RunnerFailedCommand;
+import com.wedge.run.application.command.RunnerFinishedCommand;
+import com.wedge.run.application.command.RunnerStepEventCommand;
+import com.wedge.run.application.command.RunnerStepEventsCommand;
 import jakarta.validation.Valid;
 import java.util.Map;
 import java.util.UUID;
@@ -34,7 +44,7 @@ public class RunnerCallbackController {
             @RequestHeader("X-Event-Id") String eventId,
             @RequestHeader("X-Signature") String signature
     ) {
-        return ApiResponse.ok(runnerCallbackService.handleAccepted(runId, request, callbackHeaders(workerId, eventId, signature)));
+        return ApiResponse.ok(runnerCallbackService.handleAccepted(runId, toAcceptedCommand(request), callbackContext(workerId, eventId, signature)));
     }
 
     @PostMapping("/step-events")
@@ -45,7 +55,7 @@ public class RunnerCallbackController {
             @RequestHeader("X-Event-Id") String eventId,
             @RequestHeader("X-Signature") String signature
     ) {
-        return ApiResponse.ok(runnerCallbackService.handleStepEvents(runId, request, callbackHeaders(workerId, eventId, signature)));
+        return ApiResponse.ok(runnerCallbackService.handleStepEvents(runId, toStepEventsCommand(request), callbackContext(workerId, eventId, signature)));
     }
 
     @PostMapping("/checkpoints")
@@ -56,7 +66,7 @@ public class RunnerCallbackController {
             @RequestHeader("X-Event-Id") String eventId,
             @RequestHeader("X-Signature") String signature
     ) {
-        return ApiResponse.accepted(runnerCallbackService.handleCheckpoints(runId, request, callbackHeaders(workerId, eventId, signature)));
+        return ApiResponse.accepted(runnerCallbackService.handleCheckpoints(runId, toSaveRunCheckpointsCommand(request), callbackContext(workerId, eventId, signature)));
     }
 
     @PostMapping("/artifacts")
@@ -67,7 +77,7 @@ public class RunnerCallbackController {
             @RequestHeader("X-Event-Id") String eventId,
             @RequestHeader("X-Signature") String signature
     ) {
-        return ApiResponse.ok(runnerCallbackService.handleArtifacts(runId, request, callbackHeaders(workerId, eventId, signature)));
+        return ApiResponse.ok(runnerCallbackService.handleArtifacts(runId, toSaveRunArtifactsCommand(request), callbackContext(workerId, eventId, signature)));
     }
 
     @PostMapping("/finished")
@@ -78,7 +88,7 @@ public class RunnerCallbackController {
             @RequestHeader("X-Event-Id") String eventId,
             @RequestHeader("X-Signature") String signature
     ) {
-        return ApiResponse.ok(runnerCallbackService.handleFinished(runId, request, callbackHeaders(workerId, eventId, signature)));
+        return ApiResponse.ok(runnerCallbackService.handleFinished(runId, toFinishedCommand(request), callbackContext(workerId, eventId, signature)));
     }
 
     @PostMapping("/failed")
@@ -89,10 +99,86 @@ public class RunnerCallbackController {
             @RequestHeader("X-Event-Id") String eventId,
             @RequestHeader("X-Signature") String signature
     ) {
-        return ApiResponse.ok(runnerCallbackService.handleFailed(runId, request, callbackHeaders(workerId, eventId, signature)));
+        return ApiResponse.ok(runnerCallbackService.handleFailed(runId, toFailedCommand(request), callbackContext(workerId, eventId, signature)));
     }
 
-    private RunnerCallbackHeaders callbackHeaders(String workerId, String eventId, String signature) {
-        return new RunnerCallbackHeaders(workerId, eventId, signature);
+    private RunnerAcceptedCommand toAcceptedCommand(RunnerAcceptedRequest request) {
+        return new RunnerAcceptedCommand(request.workerId(), request.acceptedAt(), request.browserSessionId());
+    }
+
+    private RunnerStepEventsCommand toStepEventsCommand(RunnerStepEventsRequest request) {
+        return new RunnerStepEventsCommand(request.events().stream()
+                .map(event -> new RunnerStepEventCommand(
+                        event.eventId(),
+                        event.stepOrder(),
+                        event.stepKey(),
+                        event.eventType().name(),
+                        event.occurredAt(),
+                        event.payload()
+                ))
+                .toList());
+    }
+
+    private SaveRunCheckpointsCommand toSaveRunCheckpointsCommand(RunnerCheckpointsRequest request) {
+        return new SaveRunCheckpointsCommand(request.checkpoints().stream()
+                .map(checkpoint -> new SaveRunCheckpointCommand(
+                        checkpoint.checkpointId(),
+                        checkpoint.stepKey(),
+                        checkpoint.stage().name(),
+                        checkpoint.trigger(),
+                        Map.of(
+                                "strategy", checkpoint.settle().strategy(),
+                                "durationMs", checkpoint.settle().durationMs(),
+                                "status", checkpoint.settle().status().name()
+                        ),
+                        checkpoint.settle().durationMs(),
+                        checkpoint.state(),
+                        checkpoint.observations(),
+                        checkpoint.deltas(),
+                        checkpoint.artifactRefs()
+                ))
+                .toList());
+    }
+
+    private SaveRunArtifactsCommand toSaveRunArtifactsCommand(RunnerArtifactsRequest request) {
+        return new SaveRunArtifactsCommand(request.artifacts().stream()
+                .map(artifact -> new SaveRunArtifactCommand(
+                        artifact.artifactId(),
+                        artifact.stepKey(),
+                        ArtifactType.valueOf(artifact.artifactType().name()),
+                        artifact.bucket(),
+                        artifact.key(),
+                        artifact.mimeType(),
+                        artifact.width(),
+                        artifact.height(),
+                        artifact.sizeBytes(),
+                        artifact.sha256(),
+                        artifact.createdAt()
+                ))
+                .toList());
+    }
+
+    private RunnerFinishedCommand toFinishedCommand(RunnerFinishedRequest request) {
+        return new RunnerFinishedCommand(
+                request.workerId(),
+                request.executionFinishedAt(),
+                request.summary().completedStepCount(),
+                request.summary().failedStepCount(),
+                request.summary().stopped()
+        );
+    }
+
+    private RunnerFailedCommand toFailedCommand(RunnerFailedRequest request) {
+        return new RunnerFailedCommand(
+                request.workerId(),
+                request.failedAt(),
+                request.failureCode(),
+                request.failureMessage(),
+                request.resultCompleteness()
+        );
+    }
+
+    private RunnerCallbackContext callbackContext(String workerId, String eventId, String signature) {
+        return new RunnerCallbackContext(workerId, eventId, signature);
     }
 }
