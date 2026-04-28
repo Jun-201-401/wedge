@@ -185,7 +185,8 @@ set -e
 
 cd /srv/wedge
 
-rm -rf apps/api-server/src apps/web/src apps/web/public
+test "$PWD" = "/srv/wedge"
+rm -rf apps/api-server apps/web
 
 tar \
   --exclude=.env.prod \
