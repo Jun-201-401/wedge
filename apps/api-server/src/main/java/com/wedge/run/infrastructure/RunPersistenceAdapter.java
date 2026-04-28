@@ -112,6 +112,10 @@ public class RunPersistenceAdapter {
         runMapper.updateCurrentStepOrder(runId, stepOrder);
     }
 
+    public void updateLatestArtifact(UUID runId, UUID artifactId) {
+        runMapper.updateLatestArtifact(runId, artifactId);
+    }
+
     public void updateStepState(UUID stepId, StepStatus nextStatus, OffsetDateTime occurredAt) {
         OffsetDateTime startedAt = nextStatus == StepStatus.RUNNING ? occurredAt : null;
         OffsetDateTime finishedAt = switch (nextStatus) {

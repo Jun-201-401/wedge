@@ -30,7 +30,6 @@ import com.wedge.run.domain.AnalysisStatus;
 import com.wedge.run.domain.ResultCompleteness;
 import com.wedge.run.domain.RunStatus;
 import com.wedge.run.domain.StepStatus;
-import com.wedge.run.infrastructure.RunMapper;
 import com.wedge.run.infrastructure.RunPersistenceAdapter;
 import java.net.URI;
 import java.time.OffsetDateTime;
@@ -63,9 +62,6 @@ class RunnerCallbackServiceTest {
     @Mock
     private CheckpointPersistenceService checkpointPersistenceService;
 
-    @Mock
-    private RunMapper runMapper;
-
     private RunnerCallbackService runnerCallbackService;
 
     @BeforeEach
@@ -75,8 +71,7 @@ class RunnerCallbackServiceTest {
                 runPersistenceAdapter,
                 processedMessagePersistenceAdapter,
                 artifactPersistenceService,
-                checkpointPersistenceService,
-                runMapper
+                checkpointPersistenceService
         );
     }
 
@@ -273,7 +268,7 @@ class RunnerCallbackServiceTest {
                 any(SaveRunArtifactsCommand.class),
                 eq(Map.of("step_002_click_signup", stepId))
         );
-        verify(runMapper).updateLatestArtifact(runId, artifactId);
+        verify(runPersistenceAdapter).updateLatestArtifact(runId, artifactId);
     }
 
     @Test

@@ -16,7 +16,6 @@ import com.wedge.run.application.command.RunnerStepEventCommand;
 import com.wedge.run.application.command.RunnerStepEventsCommand;
 import com.wedge.run.domain.RunStatus;
 import com.wedge.run.domain.StepStatus;
-import com.wedge.run.infrastructure.RunMapper;
 import com.wedge.run.infrastructure.RunPersistenceAdapter;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -40,7 +39,6 @@ public class RunnerCallbackService {
     private final ProcessedMessagePersistenceAdapter processedMessagePersistenceAdapter;
     private final ArtifactPersistenceService artifactPersistenceService;
     private final CheckpointPersistenceService checkpointPersistenceService;
-    private final RunMapper runMapper;
 
     @Transactional
     public Map<String, Object> handleAccepted(UUID runId, RunnerAcceptedCommand command, RunnerCallbackContext context) {
@@ -101,7 +99,7 @@ public class RunnerCallbackService {
         int artifactCount = artifactPersistenceService.saveRunArtifacts(runId, command, stepIdsByKey);
         UUID latestArtifactId = command.artifacts().get(command.artifacts().size() - 1).artifactId();
         if (latestArtifactId != null) {
-            runMapper.updateLatestArtifact(runId, latestArtifactId);
+            runPersistenceAdapter.updateLatestArtifact(runId, latestArtifactId);
         }
         return Map.of("runId", runId, "artifactCount", artifactCount);
     }
