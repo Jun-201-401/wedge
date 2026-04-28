@@ -3,7 +3,13 @@ package com.wedge.evidence.application;
 import com.wedge.common.error.BusinessException;
 import com.wedge.common.error.ErrorCode;
 import com.wedge.evidence.api.dto.ArtifactResponse;
+import com.wedge.evidence.api.dto.EvidenceCountsResponse;
+import com.wedge.evidence.api.dto.LatestCheckpointResponse;
+import com.wedge.evidence.api.dto.RunEvidenceSummaryResponse;
 import com.wedge.evidence.domain.Artifact;
+import com.wedge.evidence.domain.ArtifactType;
+import com.wedge.evidence.domain.Checkpoint;
+import com.wedge.evidence.domain.Observation;
 import com.wedge.evidence.infrastructure.ArtifactMapper;
 import com.wedge.evidence.infrastructure.CheckpointMapper;
 import com.wedge.evidence.infrastructure.ObservationMapper;
@@ -50,6 +56,30 @@ public class EvidenceService {
     }
 
     @Transactional(readOnly = true)
+    public RunEvidenceSummaryResponse getRunEvidenceSummary(UUID runId) {
+        return getRunEvidenceSummary(runService.getRun(runId));
+    }
+
+    @Transactional(readOnly = true)
+    public RunEvidenceSummaryResponse getRunEvidenceSummary(RunResponse run) {
+        UUID runId = run.id();
+        List<Artifact> artifacts = artifactMapper.findByRunId(runId);
+        List<Checkpoint> checkpoints = checkpointMapper.findByRunId(runId);
+        List<Observation> observations = observationMapper.findByRunId(runId);
+
+        Checkpoint latestCheckpoint = checkpoints.isEmpty() ? null : checkpoints.get(checkpoints.size() - 1);
+        Artifact latestArtifact = artifacts.isEmpty() ? null : artifacts.get(0);
+        Artifact latestFrameArtifact = findLatestFrameArtifact(artifacts);
+
+        return new RunEvidenceSummaryResponse(
+                toLatestCheckpointResponse(latestCheckpoint, observations),
+                latestArtifact == null ? null : ArtifactResponse.from(latestArtifact),
+                latestFrameArtifact == null ? null : ArtifactResponse.from(latestFrameArtifact),
+                new EvidenceCountsResponse(checkpoints.size(), observations.size(), artifacts.size())
+        );
+    }
+
+    @Transactional(readOnly = true)
     public Map<String, Object> getRunEvidencePacket(UUID runId) {
         RunResponse run = runService.getRun(runId);
         return evidencePacketAssembler.assemble(
@@ -67,6 +97,37 @@ public class EvidenceService {
                 .orElseThrow(() -> new BusinessException(ErrorCode.RUN_NOT_FOUND, "Artifact was not found."));
         Resource resource = artifactContentStore.load(artifact);
         return new ArtifactContent(resource, artifact.getMimeType());
+    }
+
+    private Artifact findLatestFrameArtifact(List<Artifact> artifacts) {
+        return artifacts.stream()
+                .filter(artifact -> artifact.getArtifactType() == ArtifactType.SCREENSHOT || artifact.getArtifactType() == ArtifactType.FRAME)
+                .findFirst()
+                .orElse(null);
+    }
+
+    private LatestCheckpointResponse toLatestCheckpointResponse(Checkpoint checkpoint, List<Observation> observations) {
+        if (checkpoint == null) {
+            return null;
+        }
+        int observationCount = (int) observations.stream()
+                .filter(observation -> checkpoint.getId().equals(observation.getCheckpointId()))
+                .count();
+        return new LatestCheckpointResponse(
+                checkpoint.getCheckpointKey(),
+                checkpoint.getStepId(),
+                checkpoint.getStage(),
+                readCheckpointUrl(checkpoint),
+                checkpoint.getCapturedAt(),
+                checkpoint.getDurationMs(),
+                observationCount,
+                evidencePacketAssembler.readJsonList(checkpoint.getArtifactRefsJsonb()).size()
+        );
+    }
+
+    private String readCheckpointUrl(Checkpoint checkpoint) {
+        Object url = evidencePacketAssembler.readJsonMap(checkpoint.getStateJsonb()).get("url");
+        return url == null ? null : url.toString();
     }
 
     public record ArtifactContent(Resource resource, String mimeType) {

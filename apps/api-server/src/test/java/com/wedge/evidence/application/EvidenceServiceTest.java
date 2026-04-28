@@ -6,6 +6,7 @@ import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.wedge.evidence.api.dto.ArtifactResponse;
+import com.wedge.evidence.api.dto.RunEvidenceSummaryResponse;
 import com.wedge.evidence.domain.Artifact;
 import com.wedge.evidence.domain.ArtifactType;
 import com.wedge.evidence.domain.Checkpoint;
@@ -104,6 +105,34 @@ class EvidenceServiceTest {
         assertThat(content.resource()).isSameAs(resource);
         assertThat(content.mimeType()).isEqualTo("image/png");
         verify(artifactContentStore).load(artifact);
+    }
+
+    @Test
+    void getRunEvidenceSummaryReturnsLatestEvidenceForLivePolling() {
+        UUID runId = UUID.randomUUID();
+        UUID checkpointId = UUID.randomUUID();
+        UUID artifactId = UUID.randomUUID();
+        when(artifactMapper.findByRunId(runId)).thenReturn(List.of(sampleArtifact(runId, artifactId)));
+        when(checkpointMapper.findByRunId(runId)).thenReturn(List.of(sampleCheckpoint(runId, checkpointId, artifactId)));
+        when(observationMapper.findByRunId(runId)).thenReturn(List.of(sampleObservation(runId, checkpointId)));
+        EvidenceService evidenceService = newService();
+
+        RunEvidenceSummaryResponse summary = evidenceService.getRunEvidenceSummary(sampleRun(runId));
+
+        assertThat(summary.latestCheckpoint()).isNotNull();
+        assertThat(summary.latestCheckpoint().checkpointId()).isEqualTo("cp_001");
+        assertThat(summary.latestCheckpoint().stage()).isEqualTo("FIRST_VIEW");
+        assertThat(summary.latestCheckpoint().url()).isEqualTo("https://example.com");
+        assertThat(summary.latestCheckpoint().observationCount()).isEqualTo(1);
+        assertThat(summary.latestCheckpoint().artifactRefCount()).isEqualTo(1);
+        assertThat(summary.latestArtifact()).isNotNull();
+        assertThat(summary.latestArtifact().id()).isEqualTo(artifactId);
+        assertThat(summary.latestFrameArtifact()).isNotNull();
+        assertThat(summary.latestFrameArtifact().id()).isEqualTo(artifactId);
+        assertThat(summary.latestFrameArtifact().contentUrl()).isEqualTo("/api/runs/" + runId + "/artifacts/" + artifactId + "/content");
+        assertThat(summary.evidenceCounts().checkpointCount()).isEqualTo(1);
+        assertThat(summary.evidenceCounts().observationCount()).isEqualTo(1);
+        assertThat(summary.evidenceCounts().artifactCount()).isEqualTo(1);
     }
 
     private EvidenceService newService() {

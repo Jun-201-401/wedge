@@ -22,6 +22,16 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 
+/**
+ * 실제 Runner Docker나 HTTP endpoint를 실행하지 않고, Runner가 보낼 callback payload를 직접 만들어
+ * Spring service -> MyBatis -> dev PostgreSQL 저장/조회 경로를 검증한다.
+ *
+ * 보장 범위: checkpoint / observation / artifact 저장, stepKey -> stepId 연결, latest evidence pointer 갱신,
+ * EvidencePacket 재조립.
+ * 보장하지 않는 범위: 브라우저 시나리오 실행, HTTP/security filter 경유, Runner Docker full smoke.
+ *
+ * 실행 전제: dev PostgreSQL이 떠 있고, `-Dwedge.dev-db-tests=true`를 명시해야 한다.
+ */
 @Tag("dev-db")
 @EnabledIfSystemProperty(named = "wedge.dev-db-tests", matches = "true")
 @SpringBootTest(properties = {
