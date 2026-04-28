@@ -455,6 +455,15 @@
   background: #fff;
 }
 
+.run-report-evidence-preview__image {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: top center;
+}
+
 .run-report-evidence-preview__site {
   position: absolute;
   inset: 0;

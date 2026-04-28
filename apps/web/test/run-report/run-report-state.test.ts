@@ -16,7 +16,7 @@ const completedRun: Run = {
   scenarioTemplateVersionId: '33333333-3333-4333-8333-333333333333',
   status: 'COMPLETED',
   resultCompleteness: 'FINAL',
-  analysisStatus: 'COMPLETED',
+  analysisStatus: 'NOT_STARTED',
   currentStepOrder: 12,
   startedAt: '2026-04-27T01:00:00.000Z',
   finishedAt: '2026-04-27T01:01:24.000Z',
@@ -31,7 +31,7 @@ test('resolveRunReportState renders mock reports without calling real API readin
     isRunLoading: false,
     runLoadError: '',
     run: null,
-  }), { kind: 'mock-ready' });
+  }), { kind: 'ready' });
 });
 
 test('resolveRunReportState exposes loading and error states for real runs', () => {
@@ -65,7 +65,7 @@ test('resolveRunReportState treats missing real run data as an error', () => {
   assert.equal(missingRun.title, 'Run을 찾을 수 없습니다');
 });
 
-test('resolveRunReportState blocks incomplete real runs and completed real runs without report API data', () => {
+test('resolveRunReportState blocks incomplete real runs and completed real runs without evidence data', () => {
   const notReady = resolveRunReportState({
     isMockRun: false,
     isRunLoading: false,
@@ -82,4 +82,12 @@ test('resolveRunReportState blocks incomplete real runs and completed real runs 
     runLoadError: '',
     run: completedRun,
   }).kind, 'api-pending');
+
+  assert.equal(resolveRunReportState({
+    isMockRun: false,
+    isRunLoading: false,
+    runLoadError: '',
+    run: completedRun,
+    evidencePacket: { checkpoints: [{ checkpoint_id: 'cp-1', primaryStage: 'CTA', trigger: {}, settle: {}, state: {}, observations: [], deltas: [], artifact_refs: [] }], artifacts: [] },
+  }).kind, 'ready');
 });

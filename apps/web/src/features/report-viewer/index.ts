@@ -1,5 +1,6 @@
 export { RunReportBrand, RunReportViewer } from './components/RunReportViewer';
 export { buildMockRunReportData } from './lib/runReportMock';
+export { buildRunReportFromEvidence } from './lib/runReportFromEvidence';
 export type {
   DecisionNodeTone,
   FindingSeverity,

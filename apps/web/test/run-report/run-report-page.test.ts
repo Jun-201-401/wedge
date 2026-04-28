@@ -26,10 +26,13 @@ test('run report page follows the report.html result-first layout', () => {
   assert.match(source, /CTA 전환 마찰 리포트/);
   assert.match(source, /function RunReportStatePage/);
   assert.match(source, /getRun\(runId\)/);
+  assert.match(source, /getRunEvidencePacket\(runId\)/);
   assert.match(source, /buildMockRunReportData/);
-  assert.match(source, /if \(!isMockRun\)/);
+  assert.match(source, /buildRunReportFromEvidence/);
+  assert.match(source, /if \(isMockRun\)/);
   assert.match(source, /리포트 준비 중입니다/);
   assert.match(source, /리포트 데이터 연결 대기 중입니다/);
+  assert.match(source, /리포트 근거를 불러오는 중입니다/);
   assert.match(source, /Run을 찾을 수 없습니다/);
   assert.match(source, /분석 완료/);
   assert.match(source, /Report ID:/);
@@ -98,11 +101,11 @@ test('run monitor exposes a report CTA into /runs/:runId/report', () => {
 
   assert.match(source, /import \{ buildRunReportPath \}/);
   assert.match(source, /const reportPath = canOpenReport[\s\S]*buildRunReportPath\(run\.id/);
-  assert.match(source, /const canOpenReport = canOpenRunReport\(isMockRun\)/);
+  assert.match(source, /const canOpenReport = canOpenRunReport\(isMockRun, run, evidencePacket\)/);
   assert.match(source, /canOpenReport \? '리포트 준비 완료' : '현재 체크포인트'/);
   assert.match(source, /분석 결과 리포트/);
-  assert.match(source, /모의 리포트 보기/);
-  assert.doesNotMatch(source, /리포트 준비 중/);
+  assert.match(source, /리포트 보기/);
+  assert.doesNotMatch(source, /모의 리포트 보기/);
   assert.match(css, /\.run-monitor-report-cta\s*\{[\s\S]*?background: rgba\(240, 249, 255, 0\.62\)/);
   assert.match(css, /\.run-monitor-report-cta a\s*\{[\s\S]*?background: #334155/);
   assert.doesNotMatch(css, /\.run-monitor-report-cta button/);
