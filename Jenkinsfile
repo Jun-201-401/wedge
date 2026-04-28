@@ -185,6 +185,8 @@ set -e
 
 cd /srv/wedge
 
+rm -rf apps/api-server/src apps/web/src apps/web/public
+
 tar \
   --exclude=.env.prod \
   -xzf /tmp/wedge-deploy.tar.gz -C /srv/wedge
