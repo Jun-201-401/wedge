@@ -17,22 +17,16 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 @Component
+@RequiredArgsConstructor
 public class RunPersistenceAdapter {
     private static final String RUN_TYPE = "run";
 
     private final RunMapper runMapper;
     private final ObjectMapper objectMapper;
-
-    public RunPersistenceAdapter(
-            RunMapper runMapper,
-            ObjectMapper objectMapper
-    ) {
-        this.runMapper = runMapper;
-        this.objectMapper = objectMapper;
-    }
 
     public record ResolvedStep(UUID id, int stepOrder, String stepKey, StepStatus status) {
     }
