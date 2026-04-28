@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 
-import { getRun } from '../../api/runs';
-import type { Run } from '../../entities/run';
-import { buildMockRunReportData, RunReportBrand, RunReportViewer } from '../../features/report-viewer';
+import { getRun, getRunEvidencePacket } from '../../api/runs';
+import type { EvidencePacket, Run } from '../../entities/run';
+import { buildMockRunReportData, buildRunReportFromEvidence, RunReportBrand, RunReportViewer } from '../../features/report-viewer';
 import { isMockRunId } from '../run-monitor/lib/runMonitorRoute';
 import { resolveRunReportState } from './lib/runReportState';
 
@@ -60,19 +60,29 @@ export function RunReportPage({ runId }: RunReportPageProps) {
   const [run, setRun] = useState<Run | null>(null);
   const [isRunLoading, setIsRunLoading] = useState(!isMockRun);
   const [runLoadError, setRunLoadError] = useState('');
+  const [evidencePacket, setEvidencePacket] = useState<EvidencePacket | null>(null);
+  const [isEvidenceLoading, setIsEvidenceLoading] = useState(false);
+  const [evidenceLoadError, setEvidenceLoadError] = useState('');
   const report = useMemo(() => {
-    if (!isMockRun) {
+    if (isMockRun) {
+      return buildMockRunReportData(runId, targetUrl, scenarioId);
+    }
+
+    if (!run || !evidencePacket) {
       return null;
     }
 
-    return buildMockRunReportData(runId, targetUrl, scenarioId);
-  }, [isMockRun, runId, scenarioId, targetUrl]);
+    return buildRunReportFromEvidence({ run, evidencePacket, scenarioId });
+  }, [evidencePacket, isMockRun, run, runId, scenarioId, targetUrl]);
 
   useEffect(() => {
     if (isMockRun) {
       setRun(null);
+      setEvidencePacket(null);
       setIsRunLoading(false);
+      setIsEvidenceLoading(false);
       setRunLoadError('');
+      setEvidenceLoadError('');
       return;
     }
 
@@ -80,7 +90,10 @@ export function RunReportPage({ runId }: RunReportPageProps) {
 
     async function loadRunForReport() {
       setIsRunLoading(true);
+      setIsEvidenceLoading(false);
       setRunLoadError('');
+      setEvidenceLoadError('');
+      setEvidencePacket(null);
 
       try {
         const response = await getRun(runId);
@@ -89,8 +102,35 @@ export function RunReportPage({ runId }: RunReportPageProps) {
           return;
         }
 
-        setRun(response.data);
+        const nextRun = response.data;
+        setRun(nextRun);
         setIsRunLoading(false);
+
+        if (nextRun.status !== 'COMPLETED') {
+          return;
+        }
+
+        setIsEvidenceLoading(true);
+
+        try {
+          const evidenceResponse = await getRunEvidencePacket(runId);
+
+          if (!isActive) {
+            return;
+          }
+
+          setEvidencePacket(evidenceResponse.data);
+        } catch {
+          if (!isActive) {
+            return;
+          }
+
+          setEvidenceLoadError('Evidence Packet을 불러오지 못했습니다. Runner callback 저장이 완료됐는지 확인해주세요.');
+        } finally {
+          if (isActive) {
+            setIsEvidenceLoading(false);
+          }
+        }
       } catch {
         if (!isActive) {
           return;
@@ -108,9 +148,17 @@ export function RunReportPage({ runId }: RunReportPageProps) {
     };
   }, [isMockRun, runId]);
 
-  const reportState = resolveRunReportState({ isMockRun, isRunLoading, runLoadError, run });
+  const reportState = resolveRunReportState({
+    isMockRun,
+    isRunLoading,
+    runLoadError,
+    run,
+    isEvidenceLoading,
+    evidenceLoadError,
+    evidencePacket,
+  });
 
-  if (reportState.kind !== 'mock-ready') {
+  if (reportState.kind !== 'ready') {
     return <RunReportStatePage runId={runId} title={reportState.title} message={reportState.message} />;
   }
 

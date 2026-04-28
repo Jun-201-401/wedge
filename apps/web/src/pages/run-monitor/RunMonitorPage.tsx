@@ -250,7 +250,7 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
   const evidenceScreenshotUrl = findEvidenceScreenshotArtifact(evidencePacket)?.uri ?? null;
   const snapshotUrl = live.latestFrame?.url ?? run.latestSnapshot?.url ?? evidenceScreenshotUrl;
   const traceModeLabel = isApiFallback ? '모의 실행' : 'API 상태 스냅샷';
-  const canOpenReport = canOpenRunReport(isMockRun);
+  const canOpenReport = canOpenRunReport(isMockRun, run, evidencePacket);
   const reportPath = canOpenReport
     ? buildRunReportPath(run.id, {
         submittedUrl: run.startUrl,
@@ -383,8 +383,8 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
               <div className="run-monitor-live-insight__card run-monitor-live-insight__card--report run-monitor-report-cta">
                 <span>다음 화면</span>
                 <strong>분석 결과 리포트</strong>
-                <p>모의 실행에서는 발견된 마찰, 근거, 개선안을 바로 확인합니다. 실제 리포트는 API 연결 후 열립니다.</p>
-                <a href={reportPath}>모의 리포트 보기</a>
+                <p>수집된 Evidence Packet을 바탕으로 발견된 근거와 개선안을 확인합니다.</p>
+                <a href={reportPath}>리포트 보기</a>
               </div>
             ) : (
               <div className="run-monitor-live-insight__card">

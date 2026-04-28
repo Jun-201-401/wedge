@@ -144,18 +144,22 @@ export function RunReportViewer({ report }: RunReportViewerProps) {
                 </div>
 
                 <div className="run-report-evidence-preview" aria-label="분석 근거 화면 축약 미리보기">
-                  <div className="run-report-evidence-preview__site">
-                    <div className="run-report-evidence-preview__nav" aria-hidden="true">
-                      <span />
-                      <span />
-                      <span />
+                  {report.evidencePreviewUrl ? (
+                    <img className="run-report-evidence-preview__image" src={report.evidencePreviewUrl} alt="실제 실행에서 수집된 evidence 화면" />
+                  ) : (
+                    <div className="run-report-evidence-preview__site">
+                      <div className="run-report-evidence-preview__nav" aria-hidden="true">
+                        <span />
+                        <span />
+                        <span />
+                      </div>
+                      <div className="run-report-evidence-preview__hero">
+                        <small>{report.heroSubtitle}</small>
+                        <strong>{report.heroTitle}</strong>
+                        <button type="button">{report.heroCallToAction}</button>
+                      </div>
                     </div>
-                    <div className="run-report-evidence-preview__hero">
-                      <small>{report.heroSubtitle}</small>
-                      <strong>{report.heroTitle}</strong>
-                      <button type="button">{report.heroCallToAction}</button>
-                    </div>
-                  </div>
+                  )}
                   {primaryFinding ? (
                     <div
                       className={`run-report-friction-marker run-report-friction-marker--${primaryFinding.severity}`}
