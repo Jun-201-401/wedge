@@ -8,7 +8,6 @@ import com.wedge.run.domain.ResultCompleteness;
 import com.wedge.run.domain.RunStatus;
 import com.wedge.run.infrastructure.OutboxMessagePersistenceAdapter;
 import com.wedge.run.infrastructure.RunPersistenceAdapter;
-import java.net.URI;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
