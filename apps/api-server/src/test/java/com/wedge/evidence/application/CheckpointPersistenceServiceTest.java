@@ -6,15 +6,12 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.wedge.evidence.application.command.SaveRunCheckpointCommand;
+import com.wedge.evidence.application.command.SaveRunCheckpointsCommand;
 import com.wedge.evidence.domain.Checkpoint;
 import com.wedge.evidence.domain.Observation;
 import com.wedge.evidence.infrastructure.CheckpointMapper;
 import com.wedge.evidence.infrastructure.ObservationMapper;
-import com.wedge.internal.runner.dto.RunnerCheckpointRequest;
-import com.wedge.internal.runner.dto.RunnerCheckpointStage;
-import com.wedge.internal.runner.dto.RunnerCheckpointsRequest;
-import com.wedge.internal.runner.dto.RunnerSettleInfo;
-import com.wedge.internal.runner.dto.RunnerSettleStatus;
 import com.wedge.run.infrastructure.RunMapper;
 import java.util.List;
 import java.util.Map;
@@ -60,12 +57,13 @@ class CheckpointPersistenceServiceTest {
     @Test
     void saveRunCheckpointsMapsRunnerPayloadToCheckpointRows() {
         UUID runId = UUID.randomUUID();
-        RunnerCheckpointsRequest request = new RunnerCheckpointsRequest(List.of(new RunnerCheckpointRequest(
+        SaveRunCheckpointsCommand command = new SaveRunCheckpointsCommand(List.of(new SaveRunCheckpointCommand(
                 "checkpoint-response-1",
                 "step_003_fill_email",
-                RunnerCheckpointStage.INPUT,
+                "INPUT",
                 Map.of("actionType", "fill"),
-                new RunnerSettleInfo("response", 216, RunnerSettleStatus.settled),
+                Map.of("strategy", "response", "durationMs", 216, "status", "settled"),
+                216,
                 Map.of("url", "https://example.com/signup"),
                 List.of(Map.of("type", "form_field")),
                 List.of(),
@@ -73,7 +71,7 @@ class CheckpointPersistenceServiceTest {
         )));
         when(checkpointMapper.findByRunIdAndCheckpointKey(runId, "checkpoint-response-1")).thenReturn(Optional.empty());
 
-        int savedCount = checkpointPersistenceService.saveRunCheckpoints(runId, request);
+        int savedCount = checkpointPersistenceService.saveRunCheckpoints(runId, command);
 
         assertThat(savedCount).isEqualTo(1);
         verify(checkpointMapper).insert(checkpointCaptor.capture());
@@ -96,12 +94,13 @@ class CheckpointPersistenceServiceTest {
     @Test
     void saveRunCheckpointsPersistsNormalizedObservations() {
         UUID runId = UUID.randomUUID();
-        RunnerCheckpointsRequest request = new RunnerCheckpointsRequest(List.of(new RunnerCheckpointRequest(
+        SaveRunCheckpointsCommand command = new SaveRunCheckpointsCommand(List.of(new SaveRunCheckpointCommand(
                 "cp_001",
                 "step_001_goto",
-                RunnerCheckpointStage.FIRST_VIEW,
+                "FIRST_VIEW",
                 Map.of("actionType", "goto"),
-                new RunnerSettleInfo("network_idle", 1200, RunnerSettleStatus.settled),
+                Map.of("strategy", "network_idle", "durationMs", 1200, "status", "settled"),
+                1200,
                 Map.of("url", "https://example.com"),
                 List.of(Map.of(
                         "type", "cta_candidate",
@@ -113,7 +112,7 @@ class CheckpointPersistenceServiceTest {
         )));
         when(checkpointMapper.findByRunIdAndCheckpointKey(runId, "cp_001")).thenReturn(Optional.empty());
 
-        checkpointPersistenceService.saveRunCheckpoints(runId, request);
+        checkpointPersistenceService.saveRunCheckpoints(runId, command);
 
         verify(checkpointMapper).insert(checkpointCaptor.capture());
         Checkpoint checkpoint = checkpointCaptor.getValue();
@@ -134,11 +133,11 @@ class CheckpointPersistenceServiceTest {
         UUID checkpointId = UUID.randomUUID();
         Checkpoint existingCheckpoint = new Checkpoint();
         existingCheckpoint.setId(checkpointId);
-        RunnerCheckpointsRequest request = sampleCheckpointRequest();
+        SaveRunCheckpointsCommand command = sampleCheckpointCommand();
         when(checkpointMapper.findByRunIdAndCheckpointKey(runId, "checkpoint-response-1"))
                 .thenReturn(Optional.of(existingCheckpoint));
 
-        int savedCount = checkpointPersistenceService.saveRunCheckpoints(runId, request);
+        int savedCount = checkpointPersistenceService.saveRunCheckpoints(runId, command);
 
         assertThat(savedCount).isEqualTo(1);
         verify(checkpointMapper, never()).insert(org.mockito.ArgumentMatchers.any());
@@ -146,13 +145,14 @@ class CheckpointPersistenceServiceTest {
         verify(runMapper).updateLatestCheckpoint(runId, checkpointId);
     }
 
-    private RunnerCheckpointsRequest sampleCheckpointRequest() {
-        return new RunnerCheckpointsRequest(List.of(new RunnerCheckpointRequest(
+    private SaveRunCheckpointsCommand sampleCheckpointCommand() {
+        return new SaveRunCheckpointsCommand(List.of(new SaveRunCheckpointCommand(
                 "checkpoint-response-1",
                 "step_003_fill_email",
-                RunnerCheckpointStage.INPUT,
+                "INPUT",
                 Map.of("actionType", "fill"),
-                new RunnerSettleInfo("response", 216, RunnerSettleStatus.settled),
+                Map.of("strategy", "response", "durationMs", 216, "status", "settled"),
+                216,
                 Map.of("url", "https://example.com/signup"),
                 List.of(Map.of("type", "form_field")),
                 List.of(),

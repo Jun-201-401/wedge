@@ -8,32 +8,21 @@ import com.wedge.run.domain.ResultCompleteness;
 import com.wedge.run.domain.RunStatus;
 import com.wedge.run.infrastructure.OutboxMessagePersistenceAdapter;
 import com.wedge.run.infrastructure.RunPersistenceAdapter;
-import java.net.URI;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
+@RequiredArgsConstructor
 public class RunService {
     private final RunPersistenceAdapter runPersistenceAdapter;
     private final RunExecuteRequestMessageFactory runExecuteRequestMessageFactory;
     private final OutboxMessagePersistenceAdapter outboxMessagePersistenceAdapter;
     private final ApplicationEventPublisher applicationEventPublisher;
-
-    public RunService(
-            RunPersistenceAdapter runPersistenceAdapter,
-            RunExecuteRequestMessageFactory runExecuteRequestMessageFactory,
-            OutboxMessagePersistenceAdapter outboxMessagePersistenceAdapter,
-            ApplicationEventPublisher applicationEventPublisher
-    ) {
-        this.runPersistenceAdapter = runPersistenceAdapter;
-        this.runExecuteRequestMessageFactory = runExecuteRequestMessageFactory;
-        this.outboxMessagePersistenceAdapter = outboxMessagePersistenceAdapter;
-        this.applicationEventPublisher = applicationEventPublisher;
-    }
+    private final ScenarioPlanValidator scenarioPlanValidator;
 
     @Transactional(readOnly = true)
     public List<RunResponse> listRuns(UUID projectId, RunStatus status) {
@@ -42,7 +31,7 @@ public class RunService {
 
     @Transactional
     public RunResponse createRun(RunCreateRequest request) {
-        validateScenarioPlan(request);
+        scenarioPlanValidator.validateCreateRequest(request);
         return runPersistenceAdapter.createRun(request);
     }
 
@@ -114,50 +103,5 @@ public class RunService {
     private RunResponse transition(RunResponse current, RunStatus nextStatus, ResultCompleteness resultCompleteness) {
         RunStatusTransitionPolicy.validateTransition(current.status(), nextStatus);
         return runPersistenceAdapter.updateExecutionState(current, nextStatus, resultCompleteness);
-    }
-
-    private void validateScenarioPlan(RunCreateRequest request) {
-        Map<String, Object> scenarioPlan = request.scenarioPlan();
-        if (scenarioPlan == null || scenarioPlan.isEmpty()) {
-            throw new BusinessException(ErrorCode.INVALID_REQUEST, "scenarioPlan is required.");
-        }
-
-        requireNonBlankString(scenarioPlan, "schema_version");
-        requireNonBlankString(scenarioPlan, "plan_id");
-        requireNonBlankString(scenarioPlan, "scenario_type");
-
-        String planStartUrl = requireNonBlankString(scenarioPlan, "start_url");
-        if (!request.startUrl().toString().equals(planStartUrl)) {
-            throw new BusinessException(ErrorCode.INVALID_REQUEST, "scenarioPlan.start_url must match startUrl.");
-        }
-
-        Map<String, Object> environment = requireMap(scenarioPlan, "environment");
-        String planDevice = requireNonBlankString(environment, "device");
-        if (!request.devicePreset().equals(planDevice)) {
-            throw new BusinessException(ErrorCode.INVALID_REQUEST, "scenarioPlan.environment.device must match devicePreset.");
-        }
-
-        Object steps = scenarioPlan.get("steps");
-        if (!(steps instanceof List<?> stepList) || stepList.isEmpty()) {
-            throw new BusinessException(ErrorCode.INVALID_REQUEST, "scenarioPlan.steps must contain at least one step.");
-        }
-    }
-
-    private Map<String, Object> requireMap(Map<String, Object> source, String key) {
-        Object value = source.get(key);
-        if (value instanceof Map<?, ?> rawMap) {
-            @SuppressWarnings("unchecked")
-            Map<String, Object> mapValue = (Map<String, Object>) rawMap;
-            return mapValue;
-        }
-        throw new BusinessException(ErrorCode.INVALID_REQUEST, "scenarioPlan." + key + " must be an object.");
-    }
-
-    private String requireNonBlankString(Map<String, Object> source, String key) {
-        Object value = source.get(key);
-        if (value instanceof String text && !text.isBlank()) {
-            return text;
-        }
-        throw new BusinessException(ErrorCode.INVALID_REQUEST, "scenarioPlan." + key + " is required.");
     }
 }

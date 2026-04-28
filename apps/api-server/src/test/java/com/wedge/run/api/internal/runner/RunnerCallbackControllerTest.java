@@ -1,0 +1,280 @@
+package com.wedge.run.api.internal.runner;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.wedge.common.error.GlobalExceptionHandler;
+import com.wedge.common.web.RequestIdFilter;
+import com.wedge.evidence.domain.ArtifactType;
+import com.wedge.run.api.internal.runner.dto.RunnerArtifactType;
+import com.wedge.run.application.RunnerCallbackAckResponse;
+import com.wedge.run.application.RunnerCallbackService;
+import com.wedge.run.application.command.RunnerAcceptedCommand;
+import com.wedge.run.application.command.RunnerArtifactsCommand;
+import com.wedge.run.application.command.RunnerCallbackContext;
+import com.wedge.run.application.command.RunnerCheckpointsCommand;
+import com.wedge.run.application.command.RunnerFailedCommand;
+import com.wedge.run.application.command.RunnerFinishedCommand;
+import com.wedge.run.application.command.RunnerStepEventsCommand;
+import com.wedge.run.domain.ResultCompleteness;
+import com.wedge.run.domain.RunStatus;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
+import org.springframework.http.MediaType;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.ResultActions;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+
+class RunnerCallbackControllerTest {
+    private final RunnerCallbackService runnerCallbackService = org.mockito.Mockito.mock(RunnerCallbackService.class);
+    private final MockMvc mockMvc = MockMvcBuilders.standaloneSetup(new RunnerCallbackController(runnerCallbackService))
+            .setControllerAdvice(new GlobalExceptionHandler())
+            .addFilters(new RequestIdFilter())
+            .build();
+    private final ObjectMapper objectMapper = new ObjectMapper();
+
+    @Test
+    void acceptedCallbackMapsRequestToCommandAndReturnsDataEnvelope() throws Exception {
+        UUID runId = UUID.randomUUID();
+        when(runnerCallbackService.handleAccepted(eq(runId), any(), any()))
+                .thenReturn(new RunnerCallbackAckResponse(runId, RunStatus.STARTING, null, null, null, null, null));
+
+        postJson(runId, "accepted", "req_runner_accepted", "evt_accepted_001", Map.of(
+                        "workerId", "runner_001",
+                        "acceptedAt", "2026-04-21T10:00:00+09:00",
+                        "browserSessionId", "browser-1"
+                ))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.runId").value(runId.toString()))
+                .andExpect(jsonPath("$.data.status").value("STARTING"))
+                .andExpect(jsonPath("$.meta.requestId").value("req_runner_accepted"));
+
+        ArgumentCaptor<RunnerAcceptedCommand> commandCaptor = ArgumentCaptor.forClass(RunnerAcceptedCommand.class);
+        ArgumentCaptor<RunnerCallbackContext> contextCaptor = ArgumentCaptor.forClass(RunnerCallbackContext.class);
+        verify(runnerCallbackService).handleAccepted(eq(runId), commandCaptor.capture(), contextCaptor.capture());
+        assertThat(commandCaptor.getValue().workerId()).isEqualTo("runner_001");
+        assertThat(commandCaptor.getValue().acceptedAt().toString()).isEqualTo("2026-04-21T01:00Z");
+        assertThat(commandCaptor.getValue().browserSessionId()).isEqualTo("browser-1");
+        assertThat(contextCaptor.getValue()).isEqualTo(new RunnerCallbackContext("runner_001", "evt_accepted_001", "hmac-sha256=sig"));
+    }
+
+    @Test
+    void stepEventsCallbackMapsRequestToCommand() throws Exception {
+        UUID runId = UUID.randomUUID();
+        UUID eventId = UUID.randomUUID();
+        when(runnerCallbackService.handleStepEvents(eq(runId), any(), any()))
+                .thenReturn(new RunnerCallbackAckResponse(runId, RunStatus.RUNNING, null, 1, null, null, null));
+
+        postJson(runId, "step-events", "req_runner_steps", "evt_step_batch_001", Map.of(
+                        "events", List.of(Map.of(
+                                "eventId", eventId.toString(),
+                                "stepOrder", 2,
+                                "stepKey", "step_002_click_signup",
+                                "eventType", "STEP_COMPLETED",
+                                "occurredAt", "2026-04-21T10:01:00+09:00",
+                                "payload", Map.of("message", "done")
+                        ))
+                ))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.eventCount").value(1));
+
+        ArgumentCaptor<RunnerStepEventsCommand> commandCaptor = ArgumentCaptor.forClass(RunnerStepEventsCommand.class);
+        verify(runnerCallbackService).handleStepEvents(eq(runId), commandCaptor.capture(), any());
+        assertThat(commandCaptor.getValue().events()).singleElement().satisfies(event -> {
+            assertThat(event.eventId()).isEqualTo(eventId);
+            assertThat(event.stepOrder()).isEqualTo(2);
+            assertThat(event.stepKey()).isEqualTo("step_002_click_signup");
+            assertThat(event.eventType()).isEqualTo("STEP_COMPLETED");
+            assertThat(event.occurredAt().toString()).isEqualTo("2026-04-21T01:01Z");
+            assertThat(event.payload()).isEqualTo(Map.of("message", "done"));
+        });
+    }
+
+    @Test
+    void checkpointCallbackMapsRequestToRunCommandAndReturnsAcceptedStatus() throws Exception {
+        UUID runId = UUID.randomUUID();
+        when(runnerCallbackService.handleCheckpoints(eq(runId), any(), any()))
+                .thenReturn(new RunnerCallbackAckResponse(runId, null, null, null, 1, null, null));
+
+        postJson(runId, "checkpoints", "req_runner_checkpoints", "evt_checkpoint_001", checkpointBody())
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.data.runId").value(runId.toString()))
+                .andExpect(jsonPath("$.data.checkpointCount").value(1))
+                .andExpect(jsonPath("$.data.status").doesNotExist())
+                .andExpect(jsonPath("$.data.resultCompleteness").doesNotExist())
+                .andExpect(jsonPath("$.meta.requestId").value("req_runner_checkpoints"));
+
+        ArgumentCaptor<RunnerCheckpointsCommand> commandCaptor = ArgumentCaptor.forClass(RunnerCheckpointsCommand.class);
+        verify(runnerCallbackService).handleCheckpoints(eq(runId), commandCaptor.capture(), any());
+        assertThat(commandCaptor.getValue().checkpoints()).singleElement().satisfies(checkpoint -> {
+            assertThat(checkpoint.checkpointId()).isEqualTo("cp_001");
+            assertThat(checkpoint.stepKey()).isEqualTo("step_001_goto");
+            assertThat(checkpoint.stage()).isEqualTo("FIRST_VIEW");
+            assertThat(checkpoint.trigger()).isEqualTo(Map.of("type", "goto"));
+            assertThat(checkpoint.settle()).isEqualTo(Map.of("strategy", "network_idle", "durationMs", 1000, "status", "settled"));
+            assertThat(checkpoint.durationMs()).isEqualTo(1000);
+            assertThat(checkpoint.state()).isEqualTo(Map.of("url", "https://example.com"));
+            assertThat(checkpoint.observations()).containsExactly(Map.of("type", "hero"));
+            assertThat(checkpoint.deltas()).containsExactly(Map.of("field", "title"));
+            assertThat(checkpoint.artifactRefs()).containsExactly("artifact:screenshot_cp_001");
+        });
+    }
+
+    @Test
+    void artifactCallbackMapsRequestToRunCommand() throws Exception {
+        UUID runId = UUID.randomUUID();
+        UUID artifactId = UUID.randomUUID();
+        when(runnerCallbackService.handleArtifacts(eq(runId), any(), any()))
+                .thenReturn(new RunnerCallbackAckResponse(runId, null, null, null, null, 1, null));
+
+        postJson(runId, "artifacts", "req_runner_artifacts", "evt_artifact_001", Map.of(
+                        "artifacts", List.of(artifactBody(artifactId))
+                ))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.artifactCount").value(1))
+                .andExpect(jsonPath("$.data.status").doesNotExist())
+                .andExpect(jsonPath("$.data.resultCompleteness").doesNotExist());
+
+        ArgumentCaptor<RunnerArtifactsCommand> commandCaptor = ArgumentCaptor.forClass(RunnerArtifactsCommand.class);
+        verify(runnerCallbackService).handleArtifacts(eq(runId), commandCaptor.capture(), any());
+        assertThat(commandCaptor.getValue().artifacts()).singleElement().satisfies(artifact -> {
+            assertThat(artifact.artifactId()).isEqualTo(artifactId);
+            assertThat(artifact.stepKey()).isEqualTo("step_002_click_signup");
+            assertThat(artifact.artifactType()).isEqualTo("SCREENSHOT");
+            assertThat(artifact.bucket()).isEqualTo("bucket-a");
+            assertThat(artifact.key()).isEqualTo("runs/a/shot.png");
+            assertThat(artifact.mimeType()).isEqualTo("image/png");
+            assertThat(artifact.width()).isEqualTo(1440);
+            assertThat(artifact.height()).isEqualTo(900);
+            assertThat(artifact.sizeBytes()).isEqualTo(42L);
+            assertThat(artifact.sha256()).isEqualTo("abc123");
+            assertThat(artifact.createdAt().toString()).isEqualTo("2026-04-21T01:02Z");
+        });
+    }
+
+    @Test
+    void finishedCallbackMapsRequestToCommand() throws Exception {
+        UUID runId = UUID.randomUUID();
+        when(runnerCallbackService.handleFinished(eq(runId), any(), any()))
+                .thenReturn(new RunnerCallbackAckResponse(runId, RunStatus.COMPLETED, ResultCompleteness.FINAL, null, null, null, null));
+
+        postJson(runId, "finished", "req_runner_finished", "evt_finished_001", Map.of(
+                        "workerId", "runner_001",
+                        "executionFinishedAt", "2026-04-21T10:05:00+09:00",
+                        "summary", Map.of("completedStepCount", 5, "failedStepCount", 0, "stopped", false)
+                ))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("COMPLETED"));
+
+        ArgumentCaptor<RunnerFinishedCommand> commandCaptor = ArgumentCaptor.forClass(RunnerFinishedCommand.class);
+        verify(runnerCallbackService).handleFinished(eq(runId), commandCaptor.capture(), any());
+        assertThat(commandCaptor.getValue().workerId()).isEqualTo("runner_001");
+        assertThat(commandCaptor.getValue().executionFinishedAt().toString()).isEqualTo("2026-04-21T01:05Z");
+        assertThat(commandCaptor.getValue().completedStepCount()).isEqualTo(5);
+        assertThat(commandCaptor.getValue().failedStepCount()).isZero();
+        assertThat(commandCaptor.getValue().stopped()).isFalse();
+    }
+
+    @Test
+    void failedCallbackMapsRequestToCommand() throws Exception {
+        UUID runId = UUID.randomUUID();
+        when(runnerCallbackService.handleFailed(eq(runId), any(), any()))
+                .thenReturn(new RunnerCallbackAckResponse(runId, RunStatus.FAILED, ResultCompleteness.PARTIAL, null, null, null, null));
+
+        postJson(runId, "failed", "req_runner_failed", "evt_failed_001", Map.of(
+                        "workerId", "runner_001",
+                        "failedAt", "2026-04-21T10:03:00+09:00",
+                        "failureCode", "RUNNER_TIMEOUT",
+                        "failureMessage", "Runner callback timed out",
+                        "resultCompleteness", "PARTIAL"
+                ))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("FAILED"));
+
+        ArgumentCaptor<RunnerFailedCommand> commandCaptor = ArgumentCaptor.forClass(RunnerFailedCommand.class);
+        verify(runnerCallbackService).handleFailed(eq(runId), commandCaptor.capture(), any());
+        assertThat(commandCaptor.getValue().workerId()).isEqualTo("runner_001");
+        assertThat(commandCaptor.getValue().failedAt().toString()).isEqualTo("2026-04-21T01:03Z");
+        assertThat(commandCaptor.getValue().failureCode()).isEqualTo("RUNNER_TIMEOUT");
+        assertThat(commandCaptor.getValue().failureMessage()).isEqualTo("Runner callback timed out");
+        assertThat(commandCaptor.getValue().resultCompleteness()).isEqualTo(ResultCompleteness.PARTIAL);
+    }
+
+    @Test
+    void emptyCallbackBatchesAreRejectedBeforeService() throws Exception {
+        UUID runId = UUID.randomUUID();
+
+        postJson(runId, "step-events", "req_empty_steps", "evt_empty_steps", Map.of("events", List.of()))
+                .andExpect(status().isUnprocessableEntity());
+        postJson(runId, "checkpoints", "req_empty_checkpoints", "evt_empty_checkpoints", Map.of("checkpoints", List.of()))
+                .andExpect(status().isUnprocessableEntity());
+        postJson(runId, "artifacts", "req_empty_artifacts", "evt_empty_artifacts", Map.of("artifacts", List.of()))
+                .andExpect(status().isUnprocessableEntity());
+
+        verifyNoInteractions(runnerCallbackService);
+    }
+
+    @Test
+    void runnerArtifactTypesStayCompatibleWithEvidenceArtifactTypes() {
+        for (RunnerArtifactType type : RunnerArtifactType.values()) {
+            assertThatCode(() -> ArtifactType.valueOf(type.name()))
+                    .as("Runner artifact type %s should map to evidence ArtifactType", type)
+                    .doesNotThrowAnyException();
+        }
+    }
+
+    private ResultActions postJson(UUID runId, String path, String requestId, String eventId, Map<String, Object> body) throws Exception {
+        return mockMvc.perform(post("/internal/runner/runs/{runId}/{path}", runId, path)
+                .contentType(MediaType.APPLICATION_JSON)
+                .header("X-Request-Id", requestId)
+                .header("X-Worker-Id", "runner_001")
+                .header("X-Event-Id", eventId)
+                .header("X-Signature", "hmac-sha256=sig")
+                .content(objectMapper.writeValueAsString(body)));
+    }
+
+    private Map<String, Object> artifactBody(UUID artifactId) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("artifactId", artifactId.toString());
+        body.put("stepKey", "step_002_click_signup");
+        body.put("artifactType", "SCREENSHOT");
+        body.put("bucket", "bucket-a");
+        body.put("key", "runs/a/shot.png");
+        body.put("mimeType", "image/png");
+        body.put("width", 1440);
+        body.put("height", 900);
+        body.put("sizeBytes", 42);
+        body.put("sha256", "abc123");
+        body.put("createdAt", "2026-04-21T10:02:00+09:00");
+        return body;
+    }
+
+    private Map<String, Object> checkpointBody() {
+        return Map.of(
+                "checkpoints", List.of(Map.of(
+                        "checkpointId", "cp_001",
+                        "stepKey", "step_001_goto",
+                        "stage", "FIRST_VIEW",
+                        "trigger", Map.of("type", "goto"),
+                        "settle", Map.of("strategy", "network_idle", "durationMs", 1000, "status", "settled"),
+                        "state", Map.of("url", "https://example.com"),
+                        "observations", List.of(Map.of("type", "hero")),
+                        "deltas", List.of(Map.of("field", "title")),
+                        "artifactRefs", List.of("artifact:screenshot_cp_001")
+                ))
+        );
+    }
+}

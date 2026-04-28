@@ -3,4 +3,8 @@ name = "wedge-analyzer"
 version = "0.1.0"
 description = "Minimal scaffold for the Wedge analyzer service."
 requires-python = ">=3.11"
-dependencies = []
+dependencies = [
+    "fastapi",
+    "uvicorn",
+    "pydantic",
+]

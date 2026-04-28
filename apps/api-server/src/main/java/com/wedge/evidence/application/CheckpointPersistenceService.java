@@ -4,12 +4,12 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.wedge.common.error.BusinessException;
 import com.wedge.common.error.ErrorCode;
+import com.wedge.evidence.application.command.SaveRunCheckpointCommand;
+import com.wedge.evidence.application.command.SaveRunCheckpointsCommand;
 import com.wedge.evidence.domain.Checkpoint;
 import com.wedge.evidence.domain.Observation;
 import com.wedge.evidence.infrastructure.CheckpointMapper;
 import com.wedge.evidence.infrastructure.ObservationMapper;
-import com.wedge.internal.runner.dto.RunnerCheckpointRequest;
-import com.wedge.internal.runner.dto.RunnerCheckpointsRequest;
 import com.wedge.run.infrastructure.RunMapper;
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
@@ -18,49 +18,39 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 @Service
+@RequiredArgsConstructor
 public class CheckpointPersistenceService {
     private final CheckpointMapper checkpointMapper;
     private final ObservationMapper observationMapper;
     private final RunMapper runMapper;
     private final ObjectMapper objectMapper;
 
-    public CheckpointPersistenceService(
-            CheckpointMapper checkpointMapper,
-            ObservationMapper observationMapper,
-            RunMapper runMapper,
-            ObjectMapper objectMapper
-    ) {
-        this.checkpointMapper = checkpointMapper;
-        this.observationMapper = observationMapper;
-        this.runMapper = runMapper;
-        this.objectMapper = objectMapper;
+    public int saveRunCheckpoints(UUID runId, SaveRunCheckpointsCommand command) {
+        return saveRunCheckpoints(runId, command, Map.of());
     }
 
-    public int saveRunCheckpoints(UUID runId, RunnerCheckpointsRequest request) {
-        return saveRunCheckpoints(runId, request, Map.of());
-    }
-
-    public int saveRunCheckpoints(UUID runId, RunnerCheckpointsRequest request, Map<String, UUID> stepIdsByKey) {
+    public int saveRunCheckpoints(UUID runId, SaveRunCheckpointsCommand command, Map<String, UUID> stepIdsByKey) {
         OffsetDateTime capturedAt = OffsetDateTime.now();
         UUID latestCheckpointId = null;
 
-        for (RunnerCheckpointRequest checkpointRequest : request.checkpoints()) {
-            latestCheckpointId = saveOrFindCheckpointId(runId, checkpointRequest, capturedAt, stepIdsByKey.get(checkpointRequest.stepKey()));
+        for (SaveRunCheckpointCommand checkpoint : command.checkpoints()) {
+            latestCheckpointId = saveOrFindCheckpointId(runId, checkpoint, capturedAt, stepIdsByKey.get(checkpoint.stepKey()));
         }
 
         if (latestCheckpointId != null) {
             runMapper.updateLatestCheckpoint(runId, latestCheckpointId);
         }
-        return request.checkpoints().size();
+        return command.checkpoints().size();
     }
 
-    private UUID saveOrFindCheckpointId(UUID runId, RunnerCheckpointRequest request, OffsetDateTime capturedAt, UUID stepId) {
+    private UUID saveOrFindCheckpointId(UUID runId, SaveRunCheckpointCommand request, OffsetDateTime capturedAt, UUID stepId) {
         Optional<Checkpoint> existingCheckpoint = checkpointMapper.findByRunIdAndCheckpointKey(
                 runId,
-                request.checkpointId()
+                request.checkpointKey()
         );
         if (existingCheckpoint.isPresent()) {
             return existingCheckpoint.get().getId();
@@ -72,20 +62,20 @@ public class CheckpointPersistenceService {
         return checkpoint.getId();
     }
 
-    private Checkpoint toCheckpoint(UUID runId, RunnerCheckpointRequest request, OffsetDateTime capturedAt, UUID stepId) {
+    private Checkpoint toCheckpoint(UUID runId, SaveRunCheckpointCommand request, OffsetDateTime capturedAt, UUID stepId) {
         Checkpoint checkpoint = new Checkpoint();
         checkpoint.setId(UUID.randomUUID());
         checkpoint.setRunId(runId);
         checkpoint.setStepId(stepId);
-        checkpoint.setCheckpointKey(request.checkpointId());
-        checkpoint.setStage(request.stage().name());
+        checkpoint.setCheckpointKey(request.checkpointKey());
+        checkpoint.setStage(request.stage());
         checkpoint.setTriggerJsonb(toJson(request.trigger()));
         checkpoint.setSettleJsonb(toJson(request.settle()));
         checkpoint.setStateJsonb(toJson(request.state()));
         checkpoint.setDeltaJsonb(toJson(request.deltas()));
         checkpoint.setArtifactRefsJsonb(toJson(request.artifactRefs()));
         checkpoint.setCapturedAt(capturedAt);
-        checkpoint.setDurationMs(request.settle().durationMs());
+        checkpoint.setDurationMs(request.durationMs());
         return checkpoint;
     }
 

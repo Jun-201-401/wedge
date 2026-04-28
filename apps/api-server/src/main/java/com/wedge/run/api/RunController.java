@@ -4,9 +4,11 @@ import com.wedge.common.response.ApiResponse;
 import com.wedge.evidence.api.dto.ArtifactResponse;
 import com.wedge.evidence.application.EvidenceService;
 import com.wedge.run.api.dto.RunActionRequest;
+import com.wedge.run.api.dto.RunActionResponse;
 import com.wedge.run.api.dto.RunCreateRequest;
 import com.wedge.run.api.dto.RunLiveResponse;
 import com.wedge.run.api.dto.RunResponse;
+import com.wedge.run.api.dto.RunStepResponse;
 import com.wedge.run.application.RunService;
 import com.wedge.run.domain.AnalysisStatus;
 import com.wedge.run.domain.RunStatus;
@@ -14,6 +16,7 @@ import jakarta.validation.Valid;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.core.io.Resource;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -29,14 +32,10 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/api/runs")
+@RequiredArgsConstructor
 public class RunController {
     private final RunService runService;
     private final EvidenceService evidenceService;
-
-    public RunController(RunService runService, EvidenceService evidenceService) {
-        this.runService = runService;
-        this.evidenceService = evidenceService;
-    }
 
     @GetMapping
     public ResponseEntity<ApiResponse<List<RunResponse>>> listRuns(
@@ -69,22 +68,22 @@ public class RunController {
     }
 
     @PostMapping("/{runId}/start")
-    public ResponseEntity<ApiResponse<Map<String, Object>>> startRun(
+    public ResponseEntity<ApiResponse<RunActionResponse>> startRun(
             @PathVariable UUID runId,
             @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey
     ) {
         RunResponse run = runService.startRun(runId);
-        return ApiResponse.accepted(Map.of("runId", run.id(), "status", run.status()));
+        return ApiResponse.accepted(RunActionResponse.from(run));
     }
 
     @PostMapping("/{runId}/stop")
-    public ResponseEntity<ApiResponse<Map<String, Object>>> stopRun(
+    public ResponseEntity<ApiResponse<RunActionResponse>> stopRun(
             @PathVariable UUID runId,
             @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
             @RequestBody(required = false) RunActionRequest request
     ) {
         RunResponse run = runService.stopRun(runId);
-        return ApiResponse.accepted(Map.of("runId", run.id(), "status", run.status()));
+        return ApiResponse.accepted(RunActionResponse.from(run));
     }
 
     @GetMapping("/{runId}/live")
@@ -100,9 +99,9 @@ public class RunController {
     }
 
     @GetMapping("/{runId}/steps/{stepId}")
-    public ResponseEntity<ApiResponse<Object>> getRunStep(@PathVariable UUID runId, @PathVariable UUID stepId) {
+    public ResponseEntity<ApiResponse<RunStepResponse>> getRunStep(@PathVariable UUID runId, @PathVariable UUID stepId) {
         runService.getRun(runId);
-        return ApiResponse.ok(Map.of("runId", runId, "stepId", stepId));
+        return ApiResponse.ok(new RunStepResponse(runId, stepId));
     }
 
     @GetMapping("/{runId}/events")
