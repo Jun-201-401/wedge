@@ -106,13 +106,14 @@ export function readConfig(env = process.env) {
     timeoutMs: parsePositiveInt(env.WEDGE_SMOKE_TIMEOUT_MS, DEFAULT_TIMEOUT_MS),
     pollIntervalMs: parsePositiveInt(env.WEDGE_SMOKE_POLL_INTERVAL_MS, DEFAULT_POLL_INTERVAL_MS),
     requireEvidenceArtifacts: readBoolean(env.WEDGE_SMOKE_REQUIRE_ARTIFACTS, false),
+    healthPath: normalizePath(env.WEDGE_SMOKE_HEALTH_PATH ?? '/actuator/health'),
   };
 }
 
 export async function runSmoke(config = readConfig()) {
   validateConfig(config);
 
-  await assertHealth(config.apiBaseUrl);
+  await assertHealth(config);
   const accessToken = config.accessToken ?? await authenticate(config);
   const createdRun = await createRun(config, accessToken);
   const runId = createdRun.id;
@@ -155,10 +156,12 @@ function validateConfig(config) {
   }
 }
 
-async function assertHealth(apiBaseUrl) {
-  const response = await fetch(`${apiBaseUrl}/health`);
+async function assertHealth(config) {
+  const response = await fetch(`${config.apiBaseUrl}${config.healthPath}`);
   if (!response.ok) {
-    throw new Error(`API health check failed: ${response.status} ${response.statusText}`);
+    const details = await response.text();
+    const suffix = details ? ` ${details}` : ` ${response.statusText}`;
+    throw new Error(`API health check failed at ${config.healthPath}: ${response.status}${suffix}`);
   }
 }
 
@@ -322,6 +325,15 @@ async function requestJson(config, path, options = {}) {
   }
 
   return payload;
+}
+
+function normalizePath(value) {
+  const path = String(value ?? '').trim();
+  if (!path) {
+    return '/actuator/health';
+  }
+
+  return path.startsWith('/') ? path : `/${path}`;
 }
 
 function parsePositiveInt(value, fallback) {

@@ -32,11 +32,22 @@ With those values present, `/create-analysis` keeps the run context through the 
 
 ## Real run E2E smoke
 
+Before the first local run, seed the dev database with the stable smoke project and scenario template IDs:
+
+```bash
+node infra/scripts/seed-real-run-smoke.mjs
+```
+
+Keep the printed IDs in the repository-root `.env`:
+
+```env
+WEDGE_SMOKE_PROJECT_ID=8f06dca8-9c4d-4f20-b1a8-1d5ee40a9923
+WEDGE_SMOKE_SCENARIO_TEMPLATE_VERSION_ID=5c5f4c77-0c32-4ab3-9841-2b6f6cc07a40
+```
+
 After the API server and MQ-backed runner are running, use the repo-level smoke script to verify the full prototype path:
 
 ```bash
-WEDGE_SMOKE_PROJECT_ID=<project-uuid> \
-WEDGE_SMOKE_SCENARIO_TEMPLATE_VERSION_ID=<scenario-template-version-uuid> \
 node infra/scripts/real-run-e2e-smoke.mjs
 ```
 

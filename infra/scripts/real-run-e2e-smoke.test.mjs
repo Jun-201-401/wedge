@@ -29,6 +29,7 @@ test('smoke script reads config from existing web dev env names', () => {
     WEDGE_SMOKE_API_BASE_URL: 'http://localhost:8080/',
     WEDGE_SMOKE_WEB_BASE_URL: 'http://localhost:5173/',
     WEDGE_SMOKE_TIMEOUT_MS: '12345',
+    WEDGE_SMOKE_HEALTH_PATH: 'actuator/health',
   });
 
   assert.equal(config.projectId, '11111111-1111-4111-8111-111111111111');
@@ -36,6 +37,7 @@ test('smoke script reads config from existing web dev env names', () => {
   assert.equal(config.apiBaseUrl, 'http://localhost:8080');
   assert.equal(config.webBaseUrl, 'http://localhost:5173');
   assert.equal(config.timeoutMs, 12345);
+  assert.equal(config.healthPath, '/actuator/health');
 });
 
 test('smoke script helpers validate UUIDs and normalize base URLs', () => {
