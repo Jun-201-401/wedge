@@ -18,26 +18,16 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 @Service
+@RequiredArgsConstructor
 public class CheckpointPersistenceService {
     private final CheckpointMapper checkpointMapper;
     private final ObservationMapper observationMapper;
     private final RunMapper runMapper;
     private final ObjectMapper objectMapper;
-
-    public CheckpointPersistenceService(
-            CheckpointMapper checkpointMapper,
-            ObservationMapper observationMapper,
-            RunMapper runMapper,
-            ObjectMapper objectMapper
-    ) {
-        this.checkpointMapper = checkpointMapper;
-        this.observationMapper = observationMapper;
-        this.runMapper = runMapper;
-        this.objectMapper = objectMapper;
-    }
 
     public int saveRunCheckpoints(UUID runId, RunnerCheckpointsRequest request) {
         return saveRunCheckpoints(runId, request, Map.of());

@@ -7,15 +7,13 @@ import com.wedge.internal.runner.dto.RunnerArtifactRequest;
 import com.wedge.internal.runner.dto.RunnerArtifactsRequest;
 import java.util.Map;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 @Service
+@RequiredArgsConstructor
 public class ArtifactPersistenceService {
     private final ArtifactMapper artifactMapper;
-
-    public ArtifactPersistenceService(ArtifactMapper artifactMapper) {
-        this.artifactMapper = artifactMapper;
-    }
 
     public int saveRunArtifacts(UUID runId, RunnerArtifactsRequest request) {
         return saveRunArtifacts(runId, request, Map.of());
