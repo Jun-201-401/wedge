@@ -191,7 +191,8 @@ tar \
 
 docker build -f apps/api-server/Dockerfile -t wedge-api-server:deploy-local apps/api-server
 docker build -f apps/web/Dockerfile -t wedge-web:deploy-local apps/web
-docker compose --env-file .env.prod -f compose.prod.yaml up -d api-server web nginx
+docker compose --env-file .env.prod -f compose.prod.yaml up -d api-server web
+docker compose --env-file .env.prod -f compose.prod.yaml up -d --force-recreate nginx
 
 for i in 1 2 3 4 5 6 7 8 9 10; do
     if curl -fsS http://localhost:18080/actuator/health > /dev/null 2>&1 \
