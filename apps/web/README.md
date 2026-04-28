@@ -29,3 +29,17 @@ localStorage.setItem('wedge.accessToken', '<access-token>')
 ```
 
 With those values present, `/create-analysis` keeps the run context through the flow and the ready step can call `POST /api/runs` with a prototype `scenarioPlan`.
+
+## Real run E2E smoke
+
+After the API server and MQ-backed runner are running, use the repo-level smoke script to verify the full prototype path:
+
+```bash
+WEDGE_SMOKE_PROJECT_ID=<project-uuid> \
+WEDGE_SMOKE_SCENARIO_TEMPLATE_VERSION_ID=<scenario-template-version-uuid> \
+node infra/scripts/real-run-e2e-smoke.mjs
+```
+
+The script signs in or creates a local smoke user, calls `POST /api/runs`, starts the run, waits for the runner callbacks to complete the run, and verifies that `/api/runs/{runId}/evidence-packet` contains persisted checkpoints. It prints the `/runs/{runId}` monitor URL to open in the web app.
+
+For the Docker dev runner, keep `RUNNER_CALLBACK_BASE_URL` pointed at the local API server and set `INTERNAL_SERVICE_TOKEN` to the same value used by the API server.
