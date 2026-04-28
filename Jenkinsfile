@@ -195,8 +195,8 @@ docker compose --env-file .env.prod -f compose.prod.yaml up -d api-server web
 docker compose --env-file .env.prod -f compose.prod.yaml up -d --force-recreate nginx
 
 for i in 1 2 3 4 5 6 7 8 9 10; do
-    if curl -fsS http://localhost:18080/actuator/health > /dev/null 2>&1 \
-        && curl -fsS http://localhost:18080/ > /dev/null 2>&1; then
+    if curl -kfsS https://localhost/actuator/health > /dev/null 2>&1 \
+        && curl -kfsS https://localhost/ > /dev/null 2>&1; then
         echo "Health check passed"
         exit 0
     fi
