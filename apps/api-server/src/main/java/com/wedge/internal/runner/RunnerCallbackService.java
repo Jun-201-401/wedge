@@ -3,6 +3,11 @@ package com.wedge.internal.runner;
 import com.wedge.common.infrastructure.ProcessedMessagePersistenceAdapter;
 import com.wedge.evidence.application.ArtifactPersistenceService;
 import com.wedge.evidence.application.CheckpointPersistenceService;
+import com.wedge.evidence.application.command.SaveRunArtifactCommand;
+import com.wedge.evidence.application.command.SaveRunArtifactsCommand;
+import com.wedge.evidence.application.command.SaveRunCheckpointCommand;
+import com.wedge.evidence.application.command.SaveRunCheckpointsCommand;
+import com.wedge.evidence.domain.ArtifactType;
 import com.wedge.internal.runner.dto.RunnerAcceptedRequest;
 import com.wedge.internal.runner.dto.RunnerArtifactRequest;
 import com.wedge.internal.runner.dto.RunnerArtifactsRequest;
@@ -85,7 +90,8 @@ public class RunnerCallbackService {
 
         runService.getRun(runId);
         Map<String, UUID> stepIdsByKey = resolveCheckpointSteps(runId, request);
-        int checkpointCount = checkpointPersistenceService.saveRunCheckpoints(runId, request, stepIdsByKey);
+        SaveRunCheckpointsCommand command = toSaveRunCheckpointsCommand(request);
+        int checkpointCount = checkpointPersistenceService.saveRunCheckpoints(runId, command, stepIdsByKey);
         return Map.of("runId", runId, "checkpointCount", checkpointCount);
     }
 
@@ -100,7 +106,8 @@ public class RunnerCallbackService {
 
         runService.getRun(runId);
         Map<String, UUID> stepIdsByKey = resolveArtifactSteps(runId, request);
-        int artifactCount = artifactPersistenceService.saveRunArtifacts(runId, request, stepIdsByKey);
+        SaveRunArtifactsCommand command = toSaveRunArtifactsCommand(request);
+        int artifactCount = artifactPersistenceService.saveRunArtifacts(runId, command, stepIdsByKey);
         UUID latestArtifactId = request.artifacts().get(request.artifacts().size() - 1).artifactId();
         if (latestArtifactId != null) {
             runMapper.updateLatestArtifact(runId, latestArtifactId);
@@ -134,6 +141,45 @@ public class RunnerCallbackService {
 
         RunResponse run = runService.failRun(runId, request.failureCode(), request.failureMessage(), request.resultCompleteness());
         return Map.of("runId", run.id(), "status", run.status(), "resultCompleteness", run.resultCompleteness());
+    }
+
+    private SaveRunCheckpointsCommand toSaveRunCheckpointsCommand(RunnerCheckpointsRequest request) {
+        return new SaveRunCheckpointsCommand(request.checkpoints().stream()
+                .map(checkpoint -> new SaveRunCheckpointCommand(
+                        checkpoint.checkpointId(),
+                        checkpoint.stepKey(),
+                        checkpoint.stage().name(),
+                        checkpoint.trigger(),
+                        Map.of(
+                                "strategy", checkpoint.settle().strategy(),
+                                "durationMs", checkpoint.settle().durationMs(),
+                                "status", checkpoint.settle().status().name()
+                        ),
+                        checkpoint.settle().durationMs(),
+                        checkpoint.state(),
+                        checkpoint.observations(),
+                        checkpoint.deltas(),
+                        checkpoint.artifactRefs()
+                ))
+                .toList());
+    }
+
+    private SaveRunArtifactsCommand toSaveRunArtifactsCommand(RunnerArtifactsRequest request) {
+        return new SaveRunArtifactsCommand(request.artifacts().stream()
+                .map(artifact -> new SaveRunArtifactCommand(
+                        artifact.artifactId(),
+                        artifact.stepKey(),
+                        ArtifactType.valueOf(artifact.artifactType().name()),
+                        artifact.bucket(),
+                        artifact.key(),
+                        artifact.mimeType(),
+                        artifact.width(),
+                        artifact.height(),
+                        artifact.sizeBytes(),
+                        artifact.sha256(),
+                        artifact.createdAt()
+                ))
+                .toList());
     }
 
     private void applyStepEvent(UUID runId, RunnerStepEvent event) {

@@ -2,6 +2,8 @@ package com.wedge.internal.runner;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -12,6 +14,8 @@ import com.wedge.common.error.BusinessException;
 import com.wedge.common.infrastructure.ProcessedMessagePersistenceAdapter;
 import com.wedge.evidence.application.ArtifactPersistenceService;
 import com.wedge.evidence.application.CheckpointPersistenceService;
+import com.wedge.evidence.application.command.SaveRunArtifactsCommand;
+import com.wedge.evidence.application.command.SaveRunCheckpointsCommand;
 import com.wedge.internal.runner.dto.RunnerAcceptedRequest;
 import com.wedge.internal.runner.dto.RunnerArtifactRequest;
 import com.wedge.internal.runner.dto.RunnerArtifactType;
@@ -265,14 +269,14 @@ class RunnerCallbackServiceTest {
 
         verify(runPersistenceAdapter, times(2)).updateCurrentStepOrder(runId, 2);
         verify(checkpointPersistenceService).saveRunCheckpoints(
-                runId,
-                checkpointsRequest,
-                Map.of("step_002_click_signup", stepId)
+                eq(runId),
+                any(SaveRunCheckpointsCommand.class),
+                eq(Map.of("step_002_click_signup", stepId))
         );
         verify(artifactPersistenceService).saveRunArtifacts(
-                runId,
-                artifactsRequest,
-                Map.of("step_002_click_signup", stepId)
+                eq(runId),
+                any(SaveRunArtifactsCommand.class),
+                eq(Map.of("step_002_click_signup", stepId))
         );
         verify(runMapper).updateLatestArtifact(runId, artifactId);
     }
@@ -310,7 +314,7 @@ class RunnerCallbackServiceTest {
 
         assertThat(result.get("checkpointCount")).isEqualTo(1);
         assertThat(result.get("duplicate")).isEqualTo(true);
-        verify(checkpointPersistenceService, never()).saveRunCheckpoints(runId, request);
+        verifyNoInteractions(checkpointPersistenceService);
     }
 
     @Test
@@ -328,7 +332,7 @@ class RunnerCallbackServiceTest {
 
         assertThat(result.get("artifactCount")).isEqualTo(1);
         assertThat(result.get("duplicate")).isEqualTo(true);
-        verify(artifactPersistenceService, never()).saveRunArtifacts(runId, request);
+        verifyNoInteractions(artifactPersistenceService);
     }
 
     private RunResponse sampleRun(UUID runId, RunStatus status, ResultCompleteness resultCompleteness) {

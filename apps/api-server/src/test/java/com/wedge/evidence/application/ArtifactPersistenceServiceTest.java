@@ -5,12 +5,11 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.wedge.evidence.application.command.SaveRunArtifactCommand;
+import com.wedge.evidence.application.command.SaveRunArtifactsCommand;
 import com.wedge.evidence.domain.Artifact;
 import com.wedge.evidence.domain.ArtifactType;
 import com.wedge.evidence.infrastructure.ArtifactMapper;
-import com.wedge.internal.runner.dto.RunnerArtifactRequest;
-import com.wedge.internal.runner.dto.RunnerArtifactType;
-import com.wedge.internal.runner.dto.RunnerArtifactsRequest;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -43,10 +42,10 @@ class ArtifactPersistenceServiceTest {
         UUID runId = UUID.randomUUID();
         UUID artifactId = UUID.randomUUID();
         OffsetDateTime createdAt = OffsetDateTime.parse("2026-04-27T10:15:00+09:00");
-        RunnerArtifactsRequest request = new RunnerArtifactsRequest(List.of(new RunnerArtifactRequest(
+        SaveRunArtifactsCommand command = new SaveRunArtifactsCommand(List.of(new SaveRunArtifactCommand(
                 artifactId,
                 "step_001_click_cta",
-                RunnerArtifactType.SCREENSHOT,
+                ArtifactType.SCREENSHOT,
                 "wedge-artifacts",
                 "run-1/step_001_click_cta/screenshot.png",
                 "image/png",
@@ -57,7 +56,7 @@ class ArtifactPersistenceServiceTest {
                 createdAt
         )));
 
-        int savedCount = artifactPersistenceService.saveRunArtifacts(runId, request);
+        int savedCount = artifactPersistenceService.saveRunArtifacts(runId, command);
 
         assertThat(savedCount).isEqualTo(1);
         verify(artifactMapper).insert(artifactCaptor.capture());
@@ -81,20 +80,20 @@ class ArtifactPersistenceServiceTest {
     void saveRunArtifactsSkipsAlreadyStoredArtifactId() {
         UUID runId = UUID.randomUUID();
         UUID artifactId = UUID.randomUUID();
-        RunnerArtifactsRequest request = new RunnerArtifactsRequest(List.of(sampleArtifactRequest(artifactId)));
+        SaveRunArtifactsCommand command = new SaveRunArtifactsCommand(List.of(sampleArtifactCommand(artifactId)));
         when(artifactMapper.findById(artifactId)).thenReturn(Optional.of(new Artifact()));
 
-        int savedCount = artifactPersistenceService.saveRunArtifacts(runId, request);
+        int savedCount = artifactPersistenceService.saveRunArtifacts(runId, command);
 
         assertThat(savedCount).isEqualTo(1);
         verify(artifactMapper, never()).insert(org.mockito.ArgumentMatchers.any());
     }
 
-    private RunnerArtifactRequest sampleArtifactRequest(UUID artifactId) {
-        return new RunnerArtifactRequest(
+    private SaveRunArtifactCommand sampleArtifactCommand(UUID artifactId) {
+        return new SaveRunArtifactCommand(
                 artifactId,
                 "step_001_click_cta",
-                RunnerArtifactType.DOM_SNAPSHOT,
+                ArtifactType.DOM_SNAPSHOT,
                 "wedge-artifacts",
                 "run-1/step_001_click_cta/dom.html",
                 "text/html",

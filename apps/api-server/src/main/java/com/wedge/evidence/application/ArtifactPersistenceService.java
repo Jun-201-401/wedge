@@ -1,10 +1,9 @@
 package com.wedge.evidence.application;
 
 import com.wedge.evidence.domain.Artifact;
-import com.wedge.evidence.domain.ArtifactType;
+import com.wedge.evidence.application.command.SaveRunArtifactCommand;
+import com.wedge.evidence.application.command.SaveRunArtifactsCommand;
 import com.wedge.evidence.infrastructure.ArtifactMapper;
-import com.wedge.internal.runner.dto.RunnerArtifactRequest;
-import com.wedge.internal.runner.dto.RunnerArtifactsRequest;
 import java.util.Map;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
@@ -15,16 +14,16 @@ import org.springframework.stereotype.Service;
 public class ArtifactPersistenceService {
     private final ArtifactMapper artifactMapper;
 
-    public int saveRunArtifacts(UUID runId, RunnerArtifactsRequest request) {
-        return saveRunArtifacts(runId, request, Map.of());
+    public int saveRunArtifacts(UUID runId, SaveRunArtifactsCommand command) {
+        return saveRunArtifacts(runId, command, Map.of());
     }
 
-    public int saveRunArtifacts(UUID runId, RunnerArtifactsRequest request, Map<String, UUID> stepIdsByKey) {
-        request.artifacts().forEach(artifact -> saveIfAbsent(runId, artifact, stepIdsByKey.get(artifact.stepKey())));
-        return request.artifacts().size();
+    public int saveRunArtifacts(UUID runId, SaveRunArtifactsCommand command, Map<String, UUID> stepIdsByKey) {
+        command.artifacts().forEach(artifact -> saveIfAbsent(runId, artifact, stepIdsByKey.get(artifact.stepKey())));
+        return command.artifacts().size();
     }
 
-    private void saveIfAbsent(UUID runId, RunnerArtifactRequest request, UUID stepId) {
+    private void saveIfAbsent(UUID runId, SaveRunArtifactCommand request, UUID stepId) {
         if (artifactMapper.findById(request.artifactId()).isPresent()) {
             return;
         }
@@ -32,12 +31,12 @@ public class ArtifactPersistenceService {
         artifactMapper.insert(toArtifact(runId, request, stepId));
     }
 
-    private Artifact toArtifact(UUID runId, RunnerArtifactRequest request, UUID stepId) {
+    private Artifact toArtifact(UUID runId, SaveRunArtifactCommand request, UUID stepId) {
         Artifact artifact = new Artifact();
         artifact.setId(request.artifactId());
         artifact.setRunId(runId);
         artifact.setStepId(stepId);
-        artifact.setArtifactType(ArtifactType.valueOf(request.artifactType().name()));
+        artifact.setArtifactType(request.artifactType());
         artifact.setS3Bucket(request.bucket());
         artifact.setS3Key(request.key());
         artifact.setMimeType(request.mimeType());
