@@ -1,4 +1,4 @@
-package com.wedge.internal.runner.dto;
+package com.wedge.run.api.internal.runner.dto;
 
 import com.wedge.common.error.BusinessException;
 import com.wedge.common.error.ErrorCode;

@@ -1,4 +1,4 @@
-package com.wedge.internal.runner.dto;
+package com.wedge.run.api.internal.runner.dto;
 
 public enum RunnerArtifactType {
     FRAME,

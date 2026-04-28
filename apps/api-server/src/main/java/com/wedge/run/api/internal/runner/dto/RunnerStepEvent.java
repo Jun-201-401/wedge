@@ -1,4 +1,4 @@
-package com.wedge.internal.runner.dto;
+package com.wedge.run.api.internal.runner.dto;
 
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;

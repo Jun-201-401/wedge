@@ -1,4 +1,4 @@
-package com.wedge.internal.runner;
+package com.wedge.run.api.internal.runner;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;

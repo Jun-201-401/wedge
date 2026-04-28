@@ -1,4 +1,4 @@
-package com.wedge.internal.runner.dto;
+package com.wedge.run.api.internal.runner.dto;
 
 import com.wedge.run.domain.ResultCompleteness;
 import jakarta.validation.constraints.NotBlank;
