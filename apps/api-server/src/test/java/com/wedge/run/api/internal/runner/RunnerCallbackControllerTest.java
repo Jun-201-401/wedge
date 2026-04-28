@@ -16,6 +16,7 @@ import com.wedge.common.error.GlobalExceptionHandler;
 import com.wedge.common.web.RequestIdFilter;
 import com.wedge.evidence.domain.ArtifactType;
 import com.wedge.run.api.internal.runner.dto.RunnerArtifactType;
+import com.wedge.run.application.RunnerCallbackAckResponse;
 import com.wedge.run.application.RunnerCallbackService;
 import com.wedge.run.application.command.RunnerAcceptedCommand;
 import com.wedge.run.application.command.RunnerArtifactsCommand;
@@ -25,6 +26,7 @@ import com.wedge.run.application.command.RunnerFailedCommand;
 import com.wedge.run.application.command.RunnerFinishedCommand;
 import com.wedge.run.application.command.RunnerStepEventsCommand;
 import com.wedge.run.domain.ResultCompleteness;
+import com.wedge.run.domain.RunStatus;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -48,7 +50,7 @@ class RunnerCallbackControllerTest {
     void acceptedCallbackMapsRequestToCommandAndReturnsDataEnvelope() throws Exception {
         UUID runId = UUID.randomUUID();
         when(runnerCallbackService.handleAccepted(eq(runId), any(), any()))
-                .thenReturn(Map.of("runId", runId, "status", "STARTING"));
+                .thenReturn(new RunnerCallbackAckResponse(runId, RunStatus.STARTING, null, null, null, null, null));
 
         postJson(runId, "accepted", "req_runner_accepted", "evt_accepted_001", Map.of(
                         "workerId", "runner_001",
@@ -74,7 +76,7 @@ class RunnerCallbackControllerTest {
         UUID runId = UUID.randomUUID();
         UUID eventId = UUID.randomUUID();
         when(runnerCallbackService.handleStepEvents(eq(runId), any(), any()))
-                .thenReturn(Map.of("runId", runId, "status", "RUNNING", "eventCount", 1));
+                .thenReturn(new RunnerCallbackAckResponse(runId, RunStatus.RUNNING, null, 1, null, null, null));
 
         postJson(runId, "step-events", "req_runner_steps", "evt_step_batch_001", Map.of(
                         "events", List.of(Map.of(
@@ -105,12 +107,14 @@ class RunnerCallbackControllerTest {
     void checkpointCallbackMapsRequestToRunCommandAndReturnsAcceptedStatus() throws Exception {
         UUID runId = UUID.randomUUID();
         when(runnerCallbackService.handleCheckpoints(eq(runId), any(), any()))
-                .thenReturn(Map.of("runId", runId, "checkpointCount", 1));
+                .thenReturn(new RunnerCallbackAckResponse(runId, null, null, null, 1, null, null));
 
         postJson(runId, "checkpoints", "req_runner_checkpoints", "evt_checkpoint_001", checkpointBody())
                 .andExpect(status().isAccepted())
                 .andExpect(jsonPath("$.data.runId").value(runId.toString()))
                 .andExpect(jsonPath("$.data.checkpointCount").value(1))
+                .andExpect(jsonPath("$.data.status").doesNotExist())
+                .andExpect(jsonPath("$.data.resultCompleteness").doesNotExist())
                 .andExpect(jsonPath("$.meta.requestId").value("req_runner_checkpoints"));
 
         ArgumentCaptor<RunnerCheckpointsCommand> commandCaptor = ArgumentCaptor.forClass(RunnerCheckpointsCommand.class);
@@ -134,13 +138,15 @@ class RunnerCallbackControllerTest {
         UUID runId = UUID.randomUUID();
         UUID artifactId = UUID.randomUUID();
         when(runnerCallbackService.handleArtifacts(eq(runId), any(), any()))
-                .thenReturn(Map.of("runId", runId, "artifactCount", 1));
+                .thenReturn(new RunnerCallbackAckResponse(runId, null, null, null, null, 1, null));
 
         postJson(runId, "artifacts", "req_runner_artifacts", "evt_artifact_001", Map.of(
                         "artifacts", List.of(artifactBody(artifactId))
                 ))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.artifactCount").value(1));
+                .andExpect(jsonPath("$.data.artifactCount").value(1))
+                .andExpect(jsonPath("$.data.status").doesNotExist())
+                .andExpect(jsonPath("$.data.resultCompleteness").doesNotExist());
 
         ArgumentCaptor<RunnerArtifactsCommand> commandCaptor = ArgumentCaptor.forClass(RunnerArtifactsCommand.class);
         verify(runnerCallbackService).handleArtifacts(eq(runId), commandCaptor.capture(), any());
@@ -163,7 +169,7 @@ class RunnerCallbackControllerTest {
     void finishedCallbackMapsRequestToCommand() throws Exception {
         UUID runId = UUID.randomUUID();
         when(runnerCallbackService.handleFinished(eq(runId), any(), any()))
-                .thenReturn(Map.of("runId", runId, "status", "COMPLETED", "resultCompleteness", "FINAL"));
+                .thenReturn(new RunnerCallbackAckResponse(runId, RunStatus.COMPLETED, ResultCompleteness.FINAL, null, null, null, null));
 
         postJson(runId, "finished", "req_runner_finished", "evt_finished_001", Map.of(
                         "workerId", "runner_001",
@@ -186,7 +192,7 @@ class RunnerCallbackControllerTest {
     void failedCallbackMapsRequestToCommand() throws Exception {
         UUID runId = UUID.randomUUID();
         when(runnerCallbackService.handleFailed(eq(runId), any(), any()))
-                .thenReturn(Map.of("runId", runId, "status", "FAILED", "resultCompleteness", "PARTIAL"));
+                .thenReturn(new RunnerCallbackAckResponse(runId, RunStatus.FAILED, ResultCompleteness.PARTIAL, null, null, null, null));
 
         postJson(runId, "failed", "req_runner_failed", "evt_failed_001", Map.of(
                         "workerId", "runner_001",

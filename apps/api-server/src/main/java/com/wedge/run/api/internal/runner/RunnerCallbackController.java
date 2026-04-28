@@ -7,6 +7,7 @@ import com.wedge.run.api.internal.runner.dto.RunnerCheckpointsRequest;
 import com.wedge.run.api.internal.runner.dto.RunnerFailedRequest;
 import com.wedge.run.api.internal.runner.dto.RunnerFinishedRequest;
 import com.wedge.run.api.internal.runner.dto.RunnerStepEventsRequest;
+import com.wedge.run.application.RunnerCallbackAckResponse;
 import com.wedge.run.application.RunnerCallbackService;
 import com.wedge.run.application.command.RunnerAcceptedCommand;
 import com.wedge.run.application.command.RunnerArtifactCommand;
@@ -37,7 +38,7 @@ public class RunnerCallbackController {
     private final RunnerCallbackService runnerCallbackService;
 
     @PostMapping("/accepted")
-    public ResponseEntity<ApiResponse<Map<String, Object>>> handleRunnerAccepted(
+    public ResponseEntity<ApiResponse<RunnerCallbackAckResponse>> handleRunnerAccepted(
             @PathVariable UUID runId,
             @Valid @RequestBody RunnerAcceptedRequest request,
             @RequestHeader("X-Worker-Id") String workerId,
@@ -48,7 +49,7 @@ public class RunnerCallbackController {
     }
 
     @PostMapping("/step-events")
-    public ResponseEntity<ApiResponse<Map<String, Object>>> handleRunnerStepEvents(
+    public ResponseEntity<ApiResponse<RunnerCallbackAckResponse>> handleRunnerStepEvents(
             @PathVariable UUID runId,
             @Valid @RequestBody RunnerStepEventsRequest request,
             @RequestHeader("X-Worker-Id") String workerId,
@@ -59,7 +60,7 @@ public class RunnerCallbackController {
     }
 
     @PostMapping("/checkpoints")
-    public ResponseEntity<ApiResponse<Map<String, Object>>> handleRunnerCheckpoints(
+    public ResponseEntity<ApiResponse<RunnerCallbackAckResponse>> handleRunnerCheckpoints(
             @PathVariable UUID runId,
             @Valid @RequestBody RunnerCheckpointsRequest request,
             @RequestHeader("X-Worker-Id") String workerId,
@@ -70,7 +71,7 @@ public class RunnerCallbackController {
     }
 
     @PostMapping("/artifacts")
-    public ResponseEntity<ApiResponse<Map<String, Object>>> handleRunnerArtifacts(
+    public ResponseEntity<ApiResponse<RunnerCallbackAckResponse>> handleRunnerArtifacts(
             @PathVariable UUID runId,
             @Valid @RequestBody RunnerArtifactsRequest request,
             @RequestHeader("X-Worker-Id") String workerId,
@@ -81,7 +82,7 @@ public class RunnerCallbackController {
     }
 
     @PostMapping("/finished")
-    public ResponseEntity<ApiResponse<Map<String, Object>>> handleRunnerFinished(
+    public ResponseEntity<ApiResponse<RunnerCallbackAckResponse>> handleRunnerFinished(
             @PathVariable UUID runId,
             @Valid @RequestBody RunnerFinishedRequest request,
             @RequestHeader("X-Worker-Id") String workerId,
@@ -92,7 +93,7 @@ public class RunnerCallbackController {
     }
 
     @PostMapping("/failed")
-    public ResponseEntity<ApiResponse<Map<String, Object>>> handleRunnerFailed(
+    public ResponseEntity<ApiResponse<RunnerCallbackAckResponse>> handleRunnerFailed(
             @PathVariable UUID runId,
             @Valid @RequestBody RunnerFailedRequest request,
             @RequestHeader("X-Worker-Id") String workerId,

@@ -84,14 +84,14 @@ class RunnerCallbackServiceTest {
         when(processedMessagePersistenceAdapter.tryMarkProcessed("runner.accepted", "evt_accepted_001")).thenReturn(true);
         when(runService.markAccepted(runId)).thenReturn(starting);
 
-        Map<String, Object> result = runnerCallbackService.handleAccepted(
+        RunnerCallbackAckResponse result = runnerCallbackService.handleAccepted(
                 runId,
                 new RunnerAcceptedCommand(WORKER_ID, OffsetDateTime.parse("2026-04-21T10:00:00+09:00"), "browser-1"),
                 headers("evt_accepted_001")
         );
 
-        assertThat(result.get("runId")).isEqualTo(runId);
-        assertThat(result.get("status")).isEqualTo(RunStatus.STARTING);
+        assertThat(result.runId()).isEqualTo(runId);
+        assertThat(result.status()).isEqualTo(RunStatus.STARTING);
         verify(runService).markAccepted(runId);
     }
 
@@ -117,14 +117,14 @@ class RunnerCallbackServiceTest {
                 )
         ));
 
-        Map<String, Object> result = runnerCallbackService.handleStepEvents(
+        RunnerCallbackAckResponse result = runnerCallbackService.handleStepEvents(
                 runId,
                 command,
                 headers("evt_step_batch_001")
         );
 
-        assertThat(result.get("status")).isEqualTo(RunStatus.RUNNING);
-        assertThat(result.get("eventCount")).isEqualTo(1);
+        assertThat(result.status()).isEqualTo(RunStatus.RUNNING);
+        assertThat(result.eventCount()).isEqualTo(1);
         verify(runPersistenceAdapter).updateCurrentStepOrder(runId, 1);
         verify(runPersistenceAdapter).appendRunEvent(runId, stepId, "STEP_STARTED", Map.of("message", "started"), occurredAt);
         verify(runPersistenceAdapter).updateStepState(stepId, StepStatus.RUNNING, occurredAt);
@@ -148,14 +148,14 @@ class RunnerCallbackServiceTest {
                 )
         ));
 
-        Map<String, Object> result = runnerCallbackService.handleStepEvents(
+        RunnerCallbackAckResponse result = runnerCallbackService.handleStepEvents(
                 runId,
                 command,
                 headers("evt_late_step_001")
         );
 
-        assertThat(result.get("status")).isEqualTo(RunStatus.COMPLETED);
-        assertThat(result.get("eventCount")).isEqualTo(1);
+        assertThat(result.status()).isEqualTo(RunStatus.COMPLETED);
+        assertThat(result.eventCount()).isEqualTo(1);
         verifyNoInteractions(runPersistenceAdapter);
     }
 
@@ -185,7 +185,7 @@ class RunnerCallbackServiceTest {
         when(processedMessagePersistenceAdapter.tryMarkProcessed("runner.finished", "evt_finished_001")).thenReturn(true);
         when(runService.finishRun(runId, false)).thenReturn(completed);
 
-        Map<String, Object> result = runnerCallbackService.handleFinished(
+        RunnerCallbackAckResponse result = runnerCallbackService.handleFinished(
                 runId,
                 new RunnerFinishedCommand(
                         WORKER_ID,
@@ -197,8 +197,8 @@ class RunnerCallbackServiceTest {
                 headers("evt_finished_001")
         );
 
-        assertThat(result.get("status")).isEqualTo(RunStatus.COMPLETED);
-        assertThat(result.get("resultCompleteness")).isEqualTo(ResultCompleteness.FINAL);
+        assertThat(result.status()).isEqualTo(RunStatus.COMPLETED);
+        assertThat(result.resultCompleteness()).isEqualTo(ResultCompleteness.FINAL);
     }
 
     @Test
@@ -287,14 +287,14 @@ class RunnerCallbackServiceTest {
         when(processedMessagePersistenceAdapter.tryMarkProcessed("runner.accepted", "evt_accepted_001")).thenReturn(false);
         when(runService.getRun(runId)).thenReturn(current);
 
-        Map<String, Object> result = runnerCallbackService.handleAccepted(
+        RunnerCallbackAckResponse result = runnerCallbackService.handleAccepted(
                 runId,
                 new RunnerAcceptedCommand(WORKER_ID, OffsetDateTime.parse("2026-04-21T10:00:00+09:00"), "browser-1"),
                 headers("evt_accepted_001")
         );
 
-        assertThat(result.get("status")).isEqualTo(RunStatus.STARTING);
-        assertThat(result.get("duplicate")).isEqualTo(true);
+        assertThat(result.status()).isEqualTo(RunStatus.STARTING);
+        assertThat(result.duplicate()).isTrue();
         verify(runService, never()).markAccepted(runId);
     }
 
@@ -305,14 +305,14 @@ class RunnerCallbackServiceTest {
         when(processedMessagePersistenceAdapter.tryMarkProcessed("runner.checkpoints", "evt_checkpoint_001")).thenReturn(false);
         when(runService.getRun(runId)).thenReturn(sampleRun(runId, RunStatus.RUNNING, ResultCompleteness.NONE));
 
-        Map<String, Object> result = runnerCallbackService.handleCheckpoints(
+        RunnerCallbackAckResponse result = runnerCallbackService.handleCheckpoints(
                 runId,
                 command,
                 headers("evt_checkpoint_001")
         );
 
-        assertThat(result.get("checkpointCount")).isEqualTo(1);
-        assertThat(result.get("duplicate")).isEqualTo(true);
+        assertThat(result.checkpointCount()).isEqualTo(1);
+        assertThat(result.duplicate()).isTrue();
         verifyNoInteractions(checkpointPersistenceService);
     }
 
@@ -323,14 +323,14 @@ class RunnerCallbackServiceTest {
         when(processedMessagePersistenceAdapter.tryMarkProcessed("runner.artifacts", "evt_artifact_001")).thenReturn(false);
         when(runService.getRun(runId)).thenReturn(sampleRun(runId, RunStatus.RUNNING, ResultCompleteness.NONE));
 
-        Map<String, Object> result = runnerCallbackService.handleArtifacts(
+        RunnerCallbackAckResponse result = runnerCallbackService.handleArtifacts(
                 runId,
                 command,
                 headers("evt_artifact_001")
         );
 
-        assertThat(result.get("artifactCount")).isEqualTo(1);
-        assertThat(result.get("duplicate")).isEqualTo(true);
+        assertThat(result.artifactCount()).isEqualTo(1);
+        assertThat(result.duplicate()).isTrue();
         verifyNoInteractions(artifactPersistenceService);
     }
 

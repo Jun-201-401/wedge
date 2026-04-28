@@ -86,7 +86,7 @@ class EvidenceServiceTest {
                 artifactMapper,
                 checkpointMapper,
                 observationMapper,
-                new ObjectMapper(),
+                new EvidencePacketAssembler(new ObjectMapper()),
                 "../runner/.runner-artifacts"
         );
     }
