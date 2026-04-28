@@ -1,8 +1,8 @@
-import type { Run } from '../../../entities/run';
+import type { EvidencePacket, Run } from '../../../entities/run';
 import { RUN_STATUS_LABEL } from '../../../entities/run';
 
 export type RunReportResolution =
-  | { kind: 'mock-ready' }
+  | { kind: 'ready' }
   | { kind: 'loading'; title: string; message: string }
   | { kind: 'error'; title: string; message: string }
   | { kind: 'not-ready'; title: string; message: string }
@@ -13,6 +13,13 @@ interface ResolveRunReportStateInput {
   isRunLoading: boolean;
   runLoadError: string;
   run: Run | null;
+  isEvidenceLoading?: boolean;
+  evidenceLoadError?: string;
+  evidencePacket?: EvidencePacket | null;
+}
+
+function hasReportEvidence(evidencePacket: EvidencePacket | null | undefined) {
+  return Array.isArray(evidencePacket?.checkpoints) && evidencePacket.checkpoints.length > 0;
 }
 
 export function resolveRunReportState({
@@ -20,9 +27,12 @@ export function resolveRunReportState({
   isRunLoading,
   runLoadError,
   run,
+  isEvidenceLoading = false,
+  evidenceLoadError = '',
+  evidencePacket = null,
 }: ResolveRunReportStateInput): RunReportResolution {
   if (isMockRun) {
-    return { kind: 'mock-ready' };
+    return { kind: 'ready' };
   }
 
   if (isRunLoading) {
@@ -49,17 +59,37 @@ export function resolveRunReportState({
     };
   }
 
-  if (run.status !== 'COMPLETED' || run.analysisStatus !== 'COMPLETED') {
+  if (run.status !== 'COMPLETED') {
     return {
       kind: 'not-ready',
       title: '리포트 준비 중입니다',
-      message: `현재 Run 상태는 ${RUN_STATUS_LABEL[run.status]}입니다. 분석이 완료되면 결과 리포트를 확인할 수 있습니다.`,
+      message: `현재 Run 상태는 ${RUN_STATUS_LABEL[run.status]}입니다. 실행이 완료되면 결과 리포트를 확인할 수 있습니다.`,
     };
   }
 
-  return {
-    kind: 'api-pending',
-    title: '리포트 데이터 연결 대기 중입니다',
-    message: 'Run은 완료됐지만 실제 report/evidence API가 아직 연결되지 않아 mock 결과를 표시하지 않습니다.',
-  };
+  if (isEvidenceLoading) {
+    return {
+      kind: 'loading',
+      title: '리포트 근거를 불러오는 중입니다',
+      message: '완료된 Run의 Evidence Packet을 리포트 형태로 변환하고 있습니다.',
+    };
+  }
+
+  if (evidenceLoadError) {
+    return {
+      kind: 'error',
+      title: '리포트 근거를 불러오지 못했습니다',
+      message: evidenceLoadError,
+    };
+  }
+
+  if (!hasReportEvidence(evidencePacket)) {
+    return {
+      kind: 'api-pending',
+      title: '리포트 데이터 연결 대기 중입니다',
+      message: 'Run은 완료됐지만 리포트로 변환할 Evidence Packet checkpoint가 아직 없습니다.',
+    };
+  }
+
+  return { kind: 'ready' };
 }

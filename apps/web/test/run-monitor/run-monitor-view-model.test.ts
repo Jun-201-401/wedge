@@ -166,7 +166,9 @@ test('run monitor view model maps evidence packet artifacts and observations', (
 });
 
 
-test('run report CTA stays limited to mock runs until report API is connected', () => {
+test('run report CTA opens for mock runs or completed real runs with evidence checkpoints', () => {
   assert.equal(canOpenRunReport(true), true);
   assert.equal(canOpenRunReport(false), false);
+  assert.equal(canOpenRunReport(false, baseRun, evidencePacket), false);
+  assert.equal(canOpenRunReport(false, { ...baseRun, status: 'COMPLETED' }, evidencePacket), true);
 });
