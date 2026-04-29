@@ -56,9 +56,10 @@ public class JudgeResultPersistenceService {
     }
 
     public Map<String, Object> saveCompleted(AnalyzerCompletedRequest request) {
+        List<Map<String, Object>> issues = readList(request.judgeResult(), "issues");
+        validateIssueStages(issues);
         analysisJobMapper.upsertCompleted(toCompletedAnalysisJob(request));
         clearProjectionRows(request.analysisJobId());
-        List<Map<String, Object>> issues = readList(request.judgeResult(), "issues");
         Map<String, UUID> findingIdsByIssueId = persistIssues(request.analysisJobId(), request.runId(), issues);
         int nudgeCount = persistNudges(request, findingIdsByIssueId);
         upsertReport(request);
@@ -149,7 +150,7 @@ public class JudgeResultPersistenceService {
         ruleHit.setAnalysisJobId(analysisJobId);
         ruleHit.setRunId(runId);
         ruleHit.setCriterionId(readString(issue, "criterion_id", "UNKNOWN"));
-        ruleHit.setStage(readStage(issue));
+        ruleHit.setStage(readRequiredStage(issue));
         ruleHit.setAxis(readString(issue, "axis", "UNKNOWN"));
         ruleHit.setSeverity(readInteger(issue, "severity", 0));
         ruleHit.setConfidence(readDecimal(issue, "confidence", BigDecimal.ZERO));
@@ -171,7 +172,7 @@ public class JudgeResultPersistenceService {
         finding.setTitle(readTitle(issue));
         finding.setSummary(readString(issue, "summary", finding.getTitle()));
         finding.setCategory(readString(issue, "category", readString(issue, "criterion_id", "JUDGE_RESULT")));
-        finding.setStage(readStage(issue));
+        finding.setStage(readRequiredStage(issue));
         finding.setAxis(readString(issue, "axis", null));
         finding.setSeverity(readInteger(issue, "severity", null));
         finding.setConfidence(readDecimal(issue, "confidence", null));
@@ -232,6 +233,12 @@ public class JudgeResultPersistenceService {
         return readDecimal(readMap(judgeResult, "summary"), "friction_score", null);
     }
 
+    private void validateIssueStages(List<Map<String, Object>> issues) {
+        for (Map<String, Object> issue : issues) {
+            readRequiredStage(issue);
+        }
+    }
+
     @SuppressWarnings("unchecked")
     private List<Map<String, Object>> readList(Map<String, Object> payload, String key) {
         return readListValue(payload, key).stream()
@@ -264,7 +271,18 @@ public class JudgeResultPersistenceService {
 
     private String readStage(Map<String, Object> payload) {
         String stage = readString(payload, "stage", null);
+        if (stage == null) {
+            return null;
+        }
         return VALID_STAGES.contains(stage) ? stage : null;
+    }
+
+    private String readRequiredStage(Map<String, Object> payload) {
+        String stage = readStage(payload);
+        if (stage == null) {
+            throw new BusinessException(ErrorCode.INVALID_REQUEST, "JudgeResult issue stage is required.");
+        }
+        return stage;
     }
 
     private String readDifficulty(Map<String, Object> payload) {
