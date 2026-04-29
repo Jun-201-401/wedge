@@ -50,3 +50,14 @@ test("createS3ArtifactStore uploads artifacts through S3-compatible putObject an
   assert.equal(artifact.sizeBytes, Buffer.byteLength("image-body"));
   assert.equal(artifact.sha256, createHash("sha256").update("image-body").digest("hex"));
 });
+
+test("createS3ArtifactStore rejects partial explicit S3 credentials", () => {
+  assert.throws(
+    () => createS3ArtifactStore(createRunnerTestConfig({
+      artifactBucket: "wedge-artifacts",
+      artifactS3AccessKeyId: "artifact-access-key",
+      artifactS3SecretAccessKey: undefined
+    })),
+    /must be set together/
+  );
+});

@@ -191,13 +191,13 @@ export function loadRunnerConfig(overrides: Partial<RunnerConfig> = {}): RunnerC
     artifactStoreMode,
     artifactBucket: overrides.artifactBucket ?? process.env.RUNNER_ARTIFACT_BUCKET ?? "local-runner",
     artifactS3Endpoint: overrides.artifactS3Endpoint ?? process.env.RUNNER_ARTIFACT_S3_ENDPOINT ?? undefined,
-    artifactS3Region: overrides.artifactS3Region ?? process.env.RUNNER_ARTIFACT_S3_REGION ?? "us-east-1",
-    artifactS3AccessKeyId: overrides.artifactS3AccessKeyId ?? process.env.RUNNER_ARTIFACT_S3_ACCESS_KEY_ID ?? undefined,
-    artifactS3SecretAccessKey: overrides.artifactS3SecretAccessKey ?? process.env.RUNNER_ARTIFACT_S3_SECRET_ACCESS_KEY ?? undefined,
+    artifactS3Region: overrides.artifactS3Region ?? process.env.RUNNER_ARTIFACT_S3_REGION ?? process.env.AWS_REGION ?? "us-east-1",
+    artifactS3AccessKeyId: overrides.artifactS3AccessKeyId ?? process.env.RUNNER_ARTIFACT_S3_ACCESS_KEY_ID ?? process.env.AWS_ACCESS_KEY_ID ?? undefined,
+    artifactS3SecretAccessKey: overrides.artifactS3SecretAccessKey ?? process.env.RUNNER_ARTIFACT_S3_SECRET_ACCESS_KEY ?? process.env.AWS_SECRET_ACCESS_KEY ?? undefined,
     artifactS3ForcePathStyle: parseBoolean(
       overrides.artifactS3ForcePathStyle,
       process.env.RUNNER_ARTIFACT_S3_FORCE_PATH_STYLE,
-      true
+      false
     ),
     artifactOutboxFile:
       overrides.artifactOutboxFile ??

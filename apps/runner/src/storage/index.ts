@@ -153,14 +153,6 @@ export function createS3ArtifactStore(
   >,
   putObject?: (input: S3PutObjectInput) => Promise<void>
 ): ArtifactStore {
-  if (!config.artifactS3Endpoint) {
-    throw new Error("RUNNER_ARTIFACT_S3_ENDPOINT is required when RUNNER_ARTIFACT_STORAGE=s3");
-  }
-
-  if (!config.artifactS3AccessKeyId || !config.artifactS3SecretAccessKey) {
-    throw new Error("RUNNER_ARTIFACT_S3_ACCESS_KEY_ID and RUNNER_ARTIFACT_S3_SECRET_ACCESS_KEY are required when RUNNER_ARTIFACT_STORAGE=s3");
-  }
-
   const putArtifactObject = putObject ?? createS3PutObject(config);
 
   return {
@@ -194,15 +186,27 @@ function createS3PutObject(
     | "artifactS3ForcePathStyle"
   >
 ): (input: S3PutObjectInput) => Promise<void> {
-  const client = new S3Client({
+  if ((config.artifactS3AccessKeyId && !config.artifactS3SecretAccessKey) || (!config.artifactS3AccessKeyId && config.artifactS3SecretAccessKey)) {
+    throw new Error("RUNNER_ARTIFACT_S3_ACCESS_KEY_ID and RUNNER_ARTIFACT_S3_SECRET_ACCESS_KEY must be set together");
+  }
+
+  const clientConfig: ConstructorParameters<typeof S3Client>[0] = {
     region: config.artifactS3Region,
-    endpoint: config.artifactS3Endpoint,
-    forcePathStyle: config.artifactS3ForcePathStyle,
-    credentials: {
+    forcePathStyle: config.artifactS3ForcePathStyle
+  };
+
+  if (config.artifactS3Endpoint) {
+    clientConfig.endpoint = config.artifactS3Endpoint;
+  }
+
+  if (config.artifactS3AccessKeyId && config.artifactS3SecretAccessKey) {
+    clientConfig.credentials = {
       accessKeyId: config.artifactS3AccessKeyId as string,
       secretAccessKey: config.artifactS3SecretAccessKey as string
-    }
-  });
+    };
+  }
+
+  const client = new S3Client(clientConfig);
 
   return async (input) => {
     await client.send(new PutObjectCommand({
