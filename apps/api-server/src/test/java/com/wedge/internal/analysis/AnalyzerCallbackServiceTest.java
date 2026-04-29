@@ -1,0 +1,90 @@
+package com.wedge.internal.analysis;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+import com.wedge.analysis.application.JudgeResultPersistenceService;
+import com.wedge.common.error.BusinessException;
+import com.wedge.common.infrastructure.ProcessedMessagePersistenceAdapter;
+import com.wedge.internal.analysis.dto.AnalyzerCallbackHeaders;
+import com.wedge.internal.analysis.dto.AnalyzerCompletedRequest;
+import java.time.OffsetDateTime;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+
+@ExtendWith(MockitoExtension.class)
+class AnalyzerCallbackServiceTest {
+    @Mock
+    private JudgeResultPersistenceService judgeResultPersistenceService;
+
+    @Mock
+    private ProcessedMessagePersistenceAdapter processedMessagePersistenceAdapter;
+
+    private AnalyzerCallbackService analyzerCallbackService;
+
+    @BeforeEach
+    void setUp() {
+        analyzerCallbackService = new AnalyzerCallbackService(judgeResultPersistenceService, processedMessagePersistenceAdapter);
+    }
+
+    @Test
+    void completedCallbackDelegatesPersistenceOnce() {
+        UUID analysisJobId = UUID.randomUUID();
+        AnalyzerCompletedRequest request = completedRequest(analysisJobId);
+        when(processedMessagePersistenceAdapter.tryMarkProcessed("analyzer.completed", "evt_analyzer_001")).thenReturn(true);
+        when(judgeResultPersistenceService.saveCompleted(request)).thenReturn(Map.of("status", "COMPLETED"));
+
+        Map<String, Object> result = analyzerCallbackService.handleCompleted(analysisJobId, request, headers("evt_analyzer_001"));
+
+        assertThat(result.get("status")).isEqualTo("COMPLETED");
+        verify(judgeResultPersistenceService).saveCompleted(request);
+    }
+
+    @Test
+    void duplicateCompletedCallbackDoesNotPersistAgain() {
+        UUID analysisJobId = UUID.randomUUID();
+        AnalyzerCompletedRequest request = completedRequest(analysisJobId);
+        when(processedMessagePersistenceAdapter.tryMarkProcessed("analyzer.completed", "evt_analyzer_001")).thenReturn(false);
+
+        Map<String, Object> result = analyzerCallbackService.handleCompleted(analysisJobId, request, headers("evt_analyzer_001"));
+
+        assertThat(result.get("duplicate")).isEqualTo(true);
+        verify(judgeResultPersistenceService, never()).saveCompleted(request);
+    }
+
+    @Test
+    void completedCallbackRequiresMatchingAnalysisJobId() {
+        AnalyzerCompletedRequest request = completedRequest(UUID.randomUUID());
+
+        assertThatThrownBy(() -> analyzerCallbackService.handleCompleted(UUID.randomUUID(), request, headers("evt_analyzer_001")))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Analyzer callback analysisJobId does not match path.");
+    }
+
+    private AnalyzerCallbackHeaders headers(String eventId) {
+        return new AnalyzerCallbackHeaders("analyzer_001", eventId, "hmac-sha256=sig");
+    }
+
+    private AnalyzerCompletedRequest completedRequest(UUID analysisJobId) {
+        return new AnalyzerCompletedRequest(
+                analysisJobId,
+                UUID.randomUUID(),
+                "analyzer-0.5.0",
+                "judge-prompts-2026-04-21",
+                Map.of("llm", "gpt-5.4-mini"),
+                List.of(),
+                List.of(),
+                Map.of("summary", Map.of(), "issues", List.of(), "decision_map", List.of()),
+                OffsetDateTime.parse("2026-04-28T11:00:00+09:00")
+        );
+    }
+}
