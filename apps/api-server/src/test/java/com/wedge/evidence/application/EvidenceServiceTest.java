@@ -75,6 +75,7 @@ class EvidenceServiceTest {
         assertThat(packet.get("run_id")).isEqualTo(runId.toString());
         assertThat((List<?>) packet.get("checkpoints")).hasSize(1);
         assertThat((List<?>) packet.get("artifacts")).hasSize(1);
+        assertEvidenceObservation(packet);
         @SuppressWarnings("unchecked")
         Map<String, Object> aggregateSignals = (Map<String, Object>) packet.get("aggregate_signals");
         assertThat(aggregateSignals).containsEntry("cta_candidate_count", 1L);
@@ -89,6 +90,18 @@ class EvidenceServiceTest {
                 new EvidencePacketAssembler(new ObjectMapper()),
                 "../runner/.runner-artifacts"
         );
+    }
+
+    @SuppressWarnings("unchecked")
+    private void assertEvidenceObservation(Map<String, Object> packet) {
+        List<Map<String, Object>> checkpoints = (List<Map<String, Object>>) packet.get("checkpoints");
+        List<Map<String, Object>> observations = (List<Map<String, Object>>) checkpoints.get(0).get("observations");
+        Map<String, Object> observation = observations.get(0);
+        assertThat(observation).containsEntry("observation_id", "cp_001.obs_001");
+        assertThat(observation).containsEntry("type", "cta_candidate");
+        assertThat(observation).containsEntry("stage", "CTA");
+        assertThat((List<String>) observation.get("source")).containsExactly("dom");
+        assertThat((Map<String, Object>) observation.get("data")).containsEntry("target", "text=Start free");
     }
 
     private RunResponse sampleRun(UUID runId) {
