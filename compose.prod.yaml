@@ -91,7 +91,39 @@ services:
       JWT_SECRET: ${JWT_SECRET}
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN}
 
+  runner:
+    image: ${RUNNER_IMAGE:-wedge-runner:deploy-local}
+    restart: unless-stopped
+    init: true
+    depends_on:
+      api-server:
+        condition: service_started
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      RUNNER_SERVICE_NAME: runner
+      RUNNER_MQ_CONSUMER_ENABLED: "true"
+      RUNNER_MQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672/%2F
+      RUNNER_MQ_QUEUE_RUN_EXECUTE: ${WEDGE_RUN_EXECUTE_QUEUE}
+      RUNNER_MQ_PREFETCH: 1
+      RUNNER_MQ_REQUEUE_ON_FAILURE: "false"
+      RUNNER_BROWSER_MODE: playwright
+      RUNNER_BROWSER_HEADLESS: "true"
+      RUNNER_CALLBACK_MODE: http
+      RUNNER_CALLBACK_BASE_URL: http://api-server:8080
+      RUNNER_CALLBACK_AUTH_TOKEN: ${INTERNAL_SERVICE_TOKEN}
+      RUNNER_ARTIFACTS_ROOT: /app/apps/runner/.runner-artifacts
+      RUNNER_ARTIFACT_STORAGE: ${RUNNER_ARTIFACT_STORAGE}
+      RUNNER_ARTIFACT_BUCKET: ${RUNNER_ARTIFACT_BUCKET}
+      AWS_REGION: ${AWS_REGION}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+    shm_size: 1gb
+    volumes:
+      - runner_data:/app/apps/runner/.runner-artifacts
+
 volumes:
   postgres_data:
   redis_data:
   rabbitmq_data:
+  runner_data:
