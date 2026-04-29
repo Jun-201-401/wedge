@@ -10,7 +10,6 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.http.ResponseEntity;
-
 import java.util.List;
 
 @RestControllerAdvice
@@ -47,7 +46,7 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiErrorResponse> handleUnexpected(Exception exception) {
-        log.error("Unexpected server error", exception);
+        log.error("Unexpected API error", exception);
         return ApiErrorResponse.of(ErrorCode.INTERNAL_ERROR);
     }
 

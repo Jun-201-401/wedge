@@ -8,6 +8,9 @@ import com.wedge.run.application.command.RunnerArtifactsCommand;
 import com.wedge.run.application.command.RunnerCallbackContext;
 import com.wedge.run.application.command.RunnerCheckpointCommand;
 import com.wedge.run.application.command.RunnerCheckpointsCommand;
+import com.wedge.run.application.command.RunnerStepEventCommand;
+import com.wedge.run.application.command.RunnerStepEventsCommand;
+import com.wedge.run.domain.RunStatus;
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -52,6 +55,8 @@ class RunnerEvidencePersistenceDevDbTest {
     private static final UUID ARTIFACT_ID = UUID.fromString("77777777-7777-7777-7777-777777777777");
 
     private static final String STEP_KEY = "step_001_click_cta";
+    private static final String STEP_STARTED_EVENT_ID = "dev-db-runner-step-started-event";
+    private static final String STEP_COMPLETED_EVENT_ID = "dev-db-runner-step-completed-event";
     private static final String CHECKPOINT_EVENT_ID = "dev-db-runner-checkpoints-event";
     private static final String ARTIFACT_EVENT_ID = "dev-db-runner-artifacts-event";
 
@@ -166,6 +171,47 @@ class RunnerEvidencePersistenceDevDbTest {
                 .containsEntry("stage", "CTA"));
     }
 
+    @Test
+    void runnerStepEventCallbacksPersistRunEventsAndStepStateWithNullableFailureColumns() {
+        RunnerCallbackAckResponse startedResponse = runnerCallbackService.handleStepEvents(
+                RUN_ID,
+                stepEventsCommand("STEP_STARTED", "2026-04-28T00:00:00Z"),
+                context(STEP_STARTED_EVENT_ID)
+        );
+        RunnerCallbackAckResponse completedResponse = runnerCallbackService.handleStepEvents(
+                RUN_ID,
+                stepEventsCommand("STEP_COMPLETED", "2026-04-28T00:00:01Z"),
+                context(STEP_COMPLETED_EVENT_ID)
+        );
+
+        assertThat(startedResponse.runId()).isEqualTo(RUN_ID);
+        assertThat(startedResponse.status()).isEqualTo(RunStatus.RUNNING);
+        assertThat(startedResponse.eventCount()).isEqualTo(1);
+        assertThat(completedResponse.eventCount()).isEqualTo(1);
+
+        Map<String, Object> step = selectRow(
+                "SELECT status, started_at, finished_at, error_code, error_message FROM test_run_step WHERE id = ?",
+                STEP_ID
+        );
+        assertThat(step.get("status")).isEqualTo("PASSED");
+        assertThat(step.get("started_at")).isNotNull();
+        assertThat(step.get("finished_at")).isNotNull();
+        assertThat(step.get("error_code")).isNull();
+        assertThat(step.get("error_message")).isNull();
+
+        List<Map<String, Object>> events = jdbcTemplate.queryForList(
+                "SELECT event_type, source, CAST(payload_jsonb AS TEXT) AS payload_jsonb "
+                        + "FROM test_run_event WHERE run_id = ? ORDER BY occurred_at",
+                RUN_ID
+        );
+        assertThat(events).hasSize(2);
+        assertThat(events).extracting(event -> event.get("event_type"))
+                .containsExactly("STEP_STARTED", "STEP_COMPLETED");
+        assertThat(events).extracting(event -> event.get("source"))
+                .containsExactly("RUNNER", "RUNNER");
+        assertThat((String) events.get(0).get("payload_jsonb")).contains("dev-db step event");
+    }
+
     private RunnerCheckpointsCommand checkpointCommand() {
         return new RunnerCheckpointsCommand(List.of(new RunnerCheckpointCommand(
                 "cp_dev_db_001",
@@ -189,6 +235,17 @@ class RunnerEvidencePersistenceDevDbTest {
                 )),
                 List.of(Map.of("type", "last_action", "action", "click")),
                 List.of(ARTIFACT_ID.toString())
+        )));
+    }
+
+    private RunnerStepEventsCommand stepEventsCommand(String eventType, String occurredAt) {
+        return new RunnerStepEventsCommand(List.of(new RunnerStepEventCommand(
+                UUID.randomUUID(),
+                1,
+                STEP_KEY,
+                eventType,
+                OffsetDateTime.parse(occurredAt),
+                Map.of("message", "dev-db step event")
         )));
     }
 
@@ -283,9 +340,12 @@ class RunnerEvidencePersistenceDevDbTest {
         jdbcTemplate.update("DELETE FROM artifact WHERE run_id = ?", RUN_ID);
         jdbcTemplate.update("DELETE FROM test_run_event WHERE run_id = ?", RUN_ID);
         jdbcTemplate.update(
-                "DELETE FROM processed_message WHERE consumer_name IN (?, ?) AND message_id IN (?, ?)",
+                "DELETE FROM processed_message WHERE consumer_name IN (?, ?, ?) AND message_id IN (?, ?, ?, ?)",
+                "runner.step-events",
                 "runner.checkpoints",
                 "runner.artifacts",
+                STEP_STARTED_EVENT_ID,
+                STEP_COMPLETED_EVENT_ID,
                 CHECKPOINT_EVENT_ID,
                 ARTIFACT_EVENT_ID
         );

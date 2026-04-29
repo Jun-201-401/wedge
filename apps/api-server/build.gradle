@@ -43,6 +43,7 @@ dependencies {
 
 tasks.named('test') {
     useJUnitPlatform()
+    systemProperty 'wedge.dev-db-tests', System.getProperty('wedge.dev-db-tests', 'false')
 }
 
 tasks.named('bootRun') {

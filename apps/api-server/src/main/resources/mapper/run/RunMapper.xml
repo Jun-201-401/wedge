@@ -170,8 +170,8 @@
         UPDATE test_run
         SET status = #{nextStatus},
             result_completeness = #{resultCompleteness},
-            started_at = #{startedAt},
-            finished_at = #{finishedAt},
+            started_at = #{startedAt,jdbcType=TIMESTAMP},
+            finished_at = #{finishedAt,jdbcType=TIMESTAMP},
             updated_at = NOW(),
             version = version + 1
         WHERE id = #{runId}
@@ -183,9 +183,9 @@
         UPDATE test_run
         SET status = 'FAILED',
             result_completeness = #{resultCompleteness},
-            finished_at = #{finishedAt},
-            failure_code = #{failureCode},
-            failure_message = #{failureMessage},
+            finished_at = #{finishedAt,jdbcType=TIMESTAMP},
+            failure_code = #{failureCode,jdbcType=VARCHAR},
+            failure_message = #{failureMessage,jdbcType=VARCHAR},
             updated_at = NOW(),
             version = version + 1
         WHERE id = #{runId}
@@ -223,10 +223,10 @@
     <update id="updateStepState">
         UPDATE test_run_step
         SET status = #{nextStatus},
-            started_at = COALESCE(CAST(#{startedAt} AS TIMESTAMPTZ), started_at),
-            finished_at = COALESCE(CAST(#{finishedAt} AS TIMESTAMPTZ), finished_at),
-            error_code = #{errorCode},
-            error_message = #{errorMessage},
+            started_at = COALESCE(CAST(#{startedAt,jdbcType=TIMESTAMP} AS TIMESTAMPTZ), started_at),
+            finished_at = COALESCE(CAST(#{finishedAt,jdbcType=TIMESTAMP} AS TIMESTAMPTZ), finished_at),
+            error_code = #{errorCode,jdbcType=VARCHAR},
+            error_message = #{errorMessage,jdbcType=VARCHAR},
             updated_at = NOW()
         WHERE id = #{stepId}
     </update>
