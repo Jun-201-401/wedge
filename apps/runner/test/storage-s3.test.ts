@@ -42,7 +42,7 @@ test("createS3ArtifactStore uploads artifacts through S3-compatible putObject an
 
   assert.equal(uploads.length, 1);
   assert.equal(uploads[0].bucket, "wedge-artifacts");
-  assert.equal(uploads[0].key, "run-1/step-001-main/artifact-1-screenshot.png");
+  assert.equal(uploads[0].key, "runs/run-1/step-001-main/artifact-1-screenshot.png");
   assert.equal(uploads[0].contentType, "image/png");
   assert.equal(uploads[0].body.toString(), "image-body");
   assert.equal(artifact.bucket, "wedge-artifacts");

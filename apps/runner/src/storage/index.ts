@@ -242,7 +242,7 @@ function toStoredArtifact(bucket: string, draft: StoredArtifactDraft): Artifact 
 
 function createArtifactKey(runId: string, artifact: ArtifactDraft): string {
   const artifactName = `${artifact.artifactId}-${sanitizePathFragment(artifact.artifactType.toLowerCase())}.${artifact.fileExtension}`;
-  return posix.join(runId, sanitizePathFragment(artifact.stepKey), artifactName);
+  return posix.join("runs", runId, sanitizePathFragment(artifact.stepKey), artifactName);
 }
 
 function createFilesystemPath(artifactsRoot: string, artifactKey: string): string {
