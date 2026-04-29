@@ -108,7 +108,7 @@ export function loadRunnerConfig(overrides: Partial<RunnerConfig> = {}): RunnerC
   const callbackAuthToken = overrides.callbackAuthToken ?? process.env.RUNNER_CALLBACK_AUTH_TOKEN ?? undefined;
   const callbackSignatureSecret =
     overrides.callbackSignatureSecret ?? process.env.RUNNER_CALLBACK_SIGNATURE_SECRET ?? undefined;
-  const artifactStoreMode = resolveArtifactStoreMode(overrides.artifactStoreMode ?? process.env.RUNNER_ARTIFACT_STORE);
+  const artifactStoreMode = resolveArtifactStoreMode(overrides.artifactStoreMode ?? process.env.RUNNER_ARTIFACT_STORAGE);
   const artifactRetryDelaysMs =
     overrides.artifactRetryDelaysMs ?? parseNumberList(process.env.RUNNER_ARTIFACT_RETRY_DELAYS_MS, DEFAULT_RETRY_DELAYS_MS);
   const artifactOutboxLockStaleMs = parseNumber(

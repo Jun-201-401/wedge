@@ -3,7 +3,7 @@ import test from "node:test";
 import { loadRunnerConfig } from "../src/config/index.ts";
 
 const ARTIFACT_ENV_KEYS = [
-  "RUNNER_ARTIFACT_STORE",
+  "RUNNER_ARTIFACT_STORAGE",
   "RUNNER_ARTIFACT_BUCKET",
   "RUNNER_ARTIFACT_S3_ENDPOINT",
   "RUNNER_ARTIFACT_S3_REGION",
@@ -31,7 +31,7 @@ test("loadRunnerConfig defaults artifact storage to filesystem", () => {
 test("loadRunnerConfig reads S3 artifact storage environment", () => {
   withArtifactEnv(
     {
-      RUNNER_ARTIFACT_STORE: "s3",
+      RUNNER_ARTIFACT_STORAGE: "s3",
       RUNNER_ARTIFACT_BUCKET: "wedge-artifacts-prod",
       RUNNER_ARTIFACT_S3_ENDPOINT: "https://s3.ap-northeast-2.amazonaws.com",
       RUNNER_ARTIFACT_S3_REGION: "ap-northeast-2",
@@ -54,7 +54,7 @@ test("loadRunnerConfig reads S3 artifact storage environment", () => {
 });
 
 test("loadRunnerConfig falls back to filesystem for unsupported artifact storage values", () => {
-  withArtifactEnv({ RUNNER_ARTIFACT_STORE: "memory" }, () => {
+  withArtifactEnv({ RUNNER_ARTIFACT_STORAGE: "memory" }, () => {
     const config = loadRunnerConfig({ serviceName: "runner-test" });
 
     assert.equal(config.artifactStoreMode, "filesystem");

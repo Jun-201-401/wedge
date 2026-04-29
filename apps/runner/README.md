@@ -51,10 +51,10 @@ Run `node infra/scripts/seed-real-run-smoke.mjs` once to create the local smoke 
 
 ## MinIO / S3-compatible artifact storage
 
-The runner defaults to local filesystem artifacts for fast local smoke tests. To upload artifacts to MinIO or S3 instead, switch the artifact store mode and provide S3-compatible credentials:
+The runner defaults to local filesystem artifacts for fast local smoke tests. To upload artifacts to MinIO or S3 instead, switch the artifact storage mode and provide S3-compatible credentials:
 
 ```bash
-RUNNER_ARTIFACT_STORE=s3 \
+RUNNER_ARTIFACT_STORAGE=s3 \
 RUNNER_ARTIFACT_BUCKET=wedge-artifacts \
 RUNNER_ARTIFACT_S3_ENDPOINT=http://localhost:9000 \
 RUNNER_ARTIFACT_S3_REGION=us-east-1 \
@@ -64,10 +64,10 @@ RUNNER_ARTIFACT_S3_FORCE_PATH_STYLE=true \
 npm run start -- --message-file examples/run-execute.request.json
 ```
 
-For `compose.dev.yaml`, keep the default `RUNNER_ARTIFACT_STORE=filesystem` unless the API server is also configured to read artifacts from MinIO. To test MinIO end-to-end locally, add these values to your local `.env`:
+For `compose.dev.yaml`, keep the default `RUNNER_ARTIFACT_STORAGE=filesystem` unless the API server is also configured to read artifacts from MinIO. To test MinIO end-to-end locally, add these values to your local `.env`:
 
 ```bash
-RUNNER_ARTIFACT_STORE=s3
+RUNNER_ARTIFACT_STORAGE=s3
 RUNNER_ARTIFACT_BUCKET=wedge-artifacts
 RUNNER_ARTIFACT_S3_ENDPOINT=http://minio:9000
 RUNNER_ARTIFACT_S3_REGION=us-east-1

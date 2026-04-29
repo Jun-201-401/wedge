@@ -172,11 +172,11 @@ export function createS3ArtifactStore(
   putObject: (input: S3PutObjectInput) => Promise<void> = putS3Object
 ): ArtifactStore {
   if (!config.artifactS3Endpoint) {
-    throw new Error("RUNNER_ARTIFACT_S3_ENDPOINT is required when RUNNER_ARTIFACT_STORE=s3");
+    throw new Error("RUNNER_ARTIFACT_S3_ENDPOINT is required when RUNNER_ARTIFACT_STORAGE=s3");
   }
 
   if (!config.artifactS3AccessKeyId || !config.artifactS3SecretAccessKey) {
-    throw new Error("RUNNER_ARTIFACT_S3_ACCESS_KEY_ID and RUNNER_ARTIFACT_S3_SECRET_ACCESS_KEY are required when RUNNER_ARTIFACT_STORE=s3");
+    throw new Error("RUNNER_ARTIFACT_S3_ACCESS_KEY_ID and RUNNER_ARTIFACT_S3_SECRET_ACCESS_KEY are required when RUNNER_ARTIFACT_STORAGE=s3");
   }
 
   return {
