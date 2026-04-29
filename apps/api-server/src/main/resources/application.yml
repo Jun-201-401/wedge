@@ -16,6 +16,9 @@ wedge:
       access-key-id: ${WEDGE_ARTIFACT_S3_ACCESS_KEY_ID:}
       secret-access-key: ${WEDGE_ARTIFACT_S3_SECRET_ACCESS_KEY:}
       force-path-style: ${WEDGE_ARTIFACT_S3_FORCE_PATH_STYLE:false}
+  auth:
+    refresh-cookie:
+      secure: true
 
 mybatis:
   mapper-locations: classpath*:mapper/**/*.xml
@@ -39,8 +42,3 @@ management:
 jwt:
   access-expiration: ${JWT_ACCESS_EXPIRATION:3600000}
   refresh-expiration: ${JWT_REFRESH_EXPIRATION:604800000}
-
-wedge:
-  auth:
-    refresh-cookie:
-      secure: true
