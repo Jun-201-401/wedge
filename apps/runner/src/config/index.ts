@@ -4,7 +4,7 @@ import { resolve } from "node:path";
 export type RunnerBrowserMode = "simulated" | "playwright";
 export type RunnerBrowserName = "chromium" | "firefox" | "webkit";
 export type RunnerCallbackMode = "file" | "http";
-export type RunnerArtifactStorage = "filesystem" | "s3";
+export type RunnerArtifactStoreMode = "filesystem" | "s3";
 
 const DEFAULT_RETRY_DELAYS_MS = [200, 1000, 3000] as const;
 const DEFAULT_OUTBOX_LOCK_STALE_MS = 30_000;
@@ -34,10 +34,13 @@ export interface RunnerConfig {
   callbackTimeoutMs: number;
   callbackAuthToken?: string;
   callbackSignatureSecret?: string;
-  artifactStorage: RunnerArtifactStorage;
+  artifactStoreMode: RunnerArtifactStoreMode;
   artifactBucket: string;
-  artifactPrefix: string;
-  awsRegion?: string;
+  artifactS3Endpoint?: string;
+  artifactS3Region: string;
+  artifactS3AccessKeyId?: string;
+  artifactS3SecretAccessKey?: string;
+  artifactS3ForcePathStyle: boolean;
   artifactOutboxFile: string;
   artifactOutboxLockFile: string;
   artifactOutboxLockStaleMs: number;
@@ -105,9 +108,7 @@ export function loadRunnerConfig(overrides: Partial<RunnerConfig> = {}): RunnerC
   const callbackAuthToken = overrides.callbackAuthToken ?? process.env.RUNNER_CALLBACK_AUTH_TOKEN ?? undefined;
   const callbackSignatureSecret =
     overrides.callbackSignatureSecret ?? process.env.RUNNER_CALLBACK_SIGNATURE_SECRET ?? undefined;
-  const artifactStorage = parseArtifactStorage(
-    overrides.artifactStorage ?? process.env.RUNNER_ARTIFACT_STORAGE
-  );
+  const artifactStoreMode = resolveArtifactStoreMode(overrides.artifactStoreMode ?? process.env.RUNNER_ARTIFACT_STORE);
   const artifactRetryDelaysMs =
     overrides.artifactRetryDelaysMs ?? parseNumberList(process.env.RUNNER_ARTIFACT_RETRY_DELAYS_MS, DEFAULT_RETRY_DELAYS_MS);
   const artifactOutboxLockStaleMs = parseNumber(
@@ -187,10 +188,17 @@ export function loadRunnerConfig(overrides: Partial<RunnerConfig> = {}): RunnerC
     callbackTimeoutMs,
     callbackAuthToken,
     callbackSignatureSecret,
-    artifactStorage,
+    artifactStoreMode,
     artifactBucket: overrides.artifactBucket ?? process.env.RUNNER_ARTIFACT_BUCKET ?? "local-runner",
-    artifactPrefix: overrides.artifactPrefix ?? process.env.RUNNER_ARTIFACT_PREFIX ?? "",
-    awsRegion: overrides.awsRegion ?? process.env.AWS_REGION ?? undefined,
+    artifactS3Endpoint: overrides.artifactS3Endpoint ?? process.env.RUNNER_ARTIFACT_S3_ENDPOINT ?? undefined,
+    artifactS3Region: overrides.artifactS3Region ?? process.env.RUNNER_ARTIFACT_S3_REGION ?? "us-east-1",
+    artifactS3AccessKeyId: overrides.artifactS3AccessKeyId ?? process.env.RUNNER_ARTIFACT_S3_ACCESS_KEY_ID ?? undefined,
+    artifactS3SecretAccessKey: overrides.artifactS3SecretAccessKey ?? process.env.RUNNER_ARTIFACT_S3_SECRET_ACCESS_KEY ?? undefined,
+    artifactS3ForcePathStyle: parseBoolean(
+      overrides.artifactS3ForcePathStyle,
+      process.env.RUNNER_ARTIFACT_S3_FORCE_PATH_STYLE,
+      true
+    ),
     artifactOutboxFile:
       overrides.artifactOutboxFile ??
       resolve(artifactsRoot, process.env.RUNNER_ARTIFACT_OUTBOX_FILE ?? "artifact-outbox.jsonl"),
@@ -237,6 +245,18 @@ function resolveCallbackMode(
   return "file";
 }
 
+function resolveArtifactStoreMode(value: RunnerArtifactStoreMode | string | undefined): RunnerArtifactStoreMode {
+  if (value === "filesystem" || value === "local" || value === "file") {
+    return "filesystem";
+  }
+
+  if (value === "s3" || value === "minio") {
+    return "s3";
+  }
+
+  return "filesystem";
+}
+
 function parseBrowserMode(value: RunnerConfig["browserMode"] | string | undefined): RunnerBrowserMode {
   if (value === "simulated" || value === "playwright") {
     return value;
@@ -251,14 +271,6 @@ function parseBrowserName(value: RunnerConfig["browserName"] | string | undefine
   }
 
   return "chromium";
-}
-
-function parseArtifactStorage(value: RunnerConfig["artifactStorage"] | string | undefined): RunnerArtifactStorage {
-  if (value === "filesystem" || value === "s3") {
-    return value;
-  }
-
-  return "filesystem";
 }
 
 function parseBoolean(
