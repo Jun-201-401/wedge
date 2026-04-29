@@ -47,4 +47,4 @@ Artifacts are written under `.runner-artifacts/{runId}/{stepKey}/...`; callback 
 - `RUNNER_CALLBACK_AUTH_TOKEN` reuses `INTERNAL_SERVICE_TOKEN`; it must match `wedge.internal.service-token` in the API server.
 - `RUNNER_ARTIFACTS_ROOT` points at the mounted `.runner-artifacts` volume so API artifact content URLs can resolve local files.
 
-Run `node infra/scripts/real-run-e2e-smoke.mjs` from the repository root after the API and runner are both up to verify create/start/MQ/callback/evidence packet behavior.
+Run `node infra/scripts/seed-real-run-smoke.mjs` once to create the local smoke project/scenario rows, then run `node infra/scripts/real-run-e2e-smoke.mjs` from the repository root after the API and runner are both up to verify create/start/MQ/callback/evidence packet behavior.

@@ -90,6 +90,7 @@ services:
       RUNNER_MQ_REQUEUE_ON_FAILURE: "false"
       RUNNER_BROWSER_MODE: playwright
       RUNNER_BROWSER_HEADLESS: "true"
+      RUNNER_CALLBACK_MODE: http
       RUNNER_CALLBACK_BASE_URL: ${RUNNER_CALLBACK_BASE_URL:-http://host.docker.internal:8080}
       RUNNER_CALLBACK_AUTH_TOKEN: ${INTERNAL_SERVICE_TOKEN}
       RUNNER_ARTIFACTS_ROOT: /app/apps/runner/.runner-artifacts
