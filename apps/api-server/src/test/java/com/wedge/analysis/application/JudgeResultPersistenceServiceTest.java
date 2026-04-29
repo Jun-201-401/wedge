@@ -1,0 +1,221 @@
+package com.wedge.analysis.application;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.wedge.analysis.domain.AnalysisFinding;
+import com.wedge.analysis.domain.AnalysisJob;
+import com.wedge.analysis.domain.Nudge;
+import com.wedge.analysis.domain.RuleHit;
+import com.wedge.analysis.infrastructure.AnalysisFindingMapper;
+import com.wedge.analysis.infrastructure.AnalysisJobMapper;
+import com.wedge.analysis.infrastructure.NudgeMapper;
+import com.wedge.analysis.infrastructure.RuleHitMapper;
+import com.wedge.internal.analysis.dto.AnalyzerCompletedRequest;
+import com.wedge.internal.analysis.dto.AnalyzerFailedRequest;
+import com.wedge.report.domain.Report;
+import com.wedge.report.infrastructure.ReportMapper;
+import com.wedge.run.domain.AnalysisJobStatus;
+import java.math.BigDecimal;
+import java.time.OffsetDateTime;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.Captor;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+
+@ExtendWith(MockitoExtension.class)
+class JudgeResultPersistenceServiceTest {
+    private final ObjectMapper objectMapper = new ObjectMapper();
+
+    @Mock
+    private AnalysisJobMapper analysisJobMapper;
+
+    @Mock
+    private RuleHitMapper ruleHitMapper;
+
+    @Mock
+    private AnalysisFindingMapper analysisFindingMapper;
+
+    @Mock
+    private NudgeMapper nudgeMapper;
+
+    @Mock
+    private ReportMapper reportMapper;
+
+    @Captor
+    private ArgumentCaptor<AnalysisJob> analysisJobCaptor;
+
+    @Captor
+    private ArgumentCaptor<RuleHit> ruleHitCaptor;
+
+    @Captor
+    private ArgumentCaptor<AnalysisFinding> findingCaptor;
+
+    @Captor
+    private ArgumentCaptor<Nudge> nudgeCaptor;
+
+    @Captor
+    private ArgumentCaptor<Report> reportCaptor;
+
+    private JudgeResultPersistenceService judgeResultPersistenceService;
+
+    @BeforeEach
+    void setUp() {
+        judgeResultPersistenceService = new JudgeResultPersistenceService(
+                analysisJobMapper,
+                ruleHitMapper,
+                analysisFindingMapper,
+                nudgeMapper,
+                reportMapper,
+                objectMapper
+        );
+    }
+
+    @Test
+    void saveCompletedPersistsJudgeResultProjections() throws Exception {
+        UUID analysisJobId = UUID.randomUUID();
+        UUID runId = UUID.randomUUID();
+        AnalyzerCompletedRequest request = completedRequest(analysisJobId, runId);
+        when(reportMapper.updateAnalysisProjection(org.mockito.ArgumentMatchers.any())).thenReturn(0);
+
+        Map<String, Object> response = judgeResultPersistenceService.saveCompleted(request);
+
+        assertThat(response.get("status")).isEqualTo(AnalysisJobStatus.COMPLETED);
+        assertThat(response.get("issueCount")).isEqualTo(1);
+        assertThat(response.get("nudgeCount")).isEqualTo(1);
+        verifyCompletedJob(analysisJobId, runId);
+        verifyIssueProjection(analysisJobId, runId);
+        verifyNudgeProjection(analysisJobId);
+        verifyReportProjection(analysisJobId, runId);
+    }
+
+    @Test
+    void saveFailedMarksAnalysisJobFailed() {
+        UUID analysisJobId = UUID.randomUUID();
+        UUID runId = UUID.randomUUID();
+        AnalyzerFailedRequest request = new AnalyzerFailedRequest(
+                analysisJobId,
+                runId,
+                OffsetDateTime.parse("2026-04-28T11:10:00+09:00"),
+                "ANALYZER_TIMEOUT",
+                "Analyzer timed out"
+        );
+
+        Map<String, Object> response = judgeResultPersistenceService.saveFailed(request);
+
+        assertThat(response.get("status")).isEqualTo(AnalysisJobStatus.FAILED);
+        verify(analysisJobMapper).upsertFailed(analysisJobCaptor.capture());
+        AnalysisJob analysisJob = analysisJobCaptor.getValue();
+        assertThat(analysisJob.getId()).isEqualTo(analysisJobId);
+        assertThat(analysisJob.getRunId()).isEqualTo(runId);
+        assertThat(analysisJob.getErrorCode()).isEqualTo("ANALYZER_TIMEOUT");
+    }
+
+    private void verifyCompletedJob(UUID analysisJobId, UUID runId) throws Exception {
+        verify(analysisJobMapper).upsertCompleted(analysisJobCaptor.capture());
+        AnalysisJob analysisJob = analysisJobCaptor.getValue();
+        assertThat(analysisJob.getId()).isEqualTo(analysisJobId);
+        assertThat(analysisJob.getRunId()).isEqualTo(runId);
+        assertThat(analysisJob.getFrictionScore()).isEqualByComparingTo(new BigDecimal("61.0"));
+        Map<String, Object> output = objectMapper.readValue(analysisJob.getOutputJsonb(), new TypeReference<>() {});
+        assertThat(output).containsKeys("judgeResult", "topFindings", "nudges");
+    }
+
+    private void verifyIssueProjection(UUID analysisJobId, UUID runId) throws Exception {
+        verify(ruleHitMapper).insert(ruleHitCaptor.capture());
+        RuleHit ruleHit = ruleHitCaptor.getValue();
+        assertThat(ruleHit.getAnalysisJobId()).isEqualTo(analysisJobId);
+        assertThat(ruleHit.getRunId()).isEqualTo(runId);
+        assertThat(ruleHit.getCriterionId()).isEqualTo("INPUT-ASYNC-001");
+        assertThat(ruleHit.getEvidenceRefsJsonb()).contains("cp_002.obs_004");
+
+        verify(analysisFindingMapper).insert(findingCaptor.capture());
+        AnalysisFinding finding = findingCaptor.getValue();
+        assertThat(finding.getRankOrder()).isEqualTo(1);
+        assertThat(finding.getCategory()).isEqualTo("INPUT-ASYNC-001");
+        assertThat(finding.getSummary()).isEqualTo("이메일 검증 상태가 지연됩니다.");
+    }
+
+    private void verifyNudgeProjection(UUID analysisJobId) {
+        verify(nudgeMapper).insert(nudgeCaptor.capture());
+        Nudge nudge = nudgeCaptor.getValue();
+        assertThat(nudge.getAnalysisJobId()).isEqualTo(analysisJobId);
+        assertThat(nudge.getFindingId()).isEqualTo(findingCaptor.getValue().getId());
+        assertThat(nudge.getRecommendation()).isEqualTo("검증 진행 상태를 입력 필드 근처에 표시합니다.");
+    }
+
+    private void verifyReportProjection(UUID analysisJobId, UUID runId) {
+        verify(reportMapper).updateAnalysisProjection(reportCaptor.capture());
+        verify(reportMapper).insert(reportCaptor.capture());
+        Report report = reportCaptor.getAllValues().get(0);
+        assertThat(report.getAnalysisJobId()).isEqualTo(analysisJobId);
+        assertThat(report.getRunId()).isEqualTo(runId);
+        assertThat(report.getSummaryJsonb()).contains("friction_score");
+        assertThat(report.getDecisionMapJsonb()).contains("INPUT");
+    }
+
+    private AnalyzerCompletedRequest completedRequest(UUID analysisJobId, UUID runId) {
+        return new AnalyzerCompletedRequest(
+                analysisJobId,
+                runId,
+                "analyzer-0.5.0",
+                "judge-prompts-2026-04-21",
+                Map.of("llm", "gpt-5.4-mini"),
+                List.of(Map.of("rank", 1, "title", "입력 검증 지연")),
+                List.of(Map.of("title", "top-level nudge")),
+                judgeResult(runId),
+                OffsetDateTime.parse("2026-04-28T11:00:00+09:00")
+        );
+    }
+
+    private Map<String, Object> judgeResult(UUID runId) {
+        return Map.of(
+                "schema_version", "0.5",
+                "run_id", runId.toString(),
+                "summary", Map.of("friction_score", 61.0, "top_issues_count", 1),
+                "issues", List.of(issue()),
+                "decision_map", List.of(Map.of("stage", "INPUT", "status", "WARNING")),
+                "nudges", List.of(nudge())
+        );
+    }
+
+    private Map<String, Object> issue() {
+        Map<String, Object> issue = new LinkedHashMap<>();
+        issue.put("issue_id", "issue_002");
+        issue.put("criterion_id", "INPUT-ASYNC-001");
+        issue.put("stage", "INPUT");
+        issue.put("axis", "Clarity");
+        issue.put("severity", 1);
+        issue.put("confidence", 0.72);
+        issue.put("priority_score", 1.44);
+        issue.put("evidence_refs", List.of("cp_002.obs_004"));
+        issue.put("observations", List.of("validation response observed"));
+        issue.put("signals", List.of("server round-trip"));
+        issue.put("summary", "이메일 검증 상태가 지연됩니다.");
+        issue.put("impact_hypothesis", "사용자가 입력 반영 여부를 확신하기 어렵습니다.");
+        return issue;
+    }
+
+    private Map<String, Object> nudge() {
+        return Map.of(
+                "nudge_id", "nudge_002",
+                "issue_id", "issue_002",
+                "title", "검증 상태 표시",
+                "rationale", "비동기 검증 evidence가 있습니다.",
+                "recommendation", "검증 진행 상태를 입력 필드 근처에 표시합니다.",
+                "difficulty", "LOW",
+                "expected_effect", "입력 불확실성을 줄입니다.",
+                "validation_question", "사용자가 검증 중임을 인지하나요?"
+        );
+    }
+}

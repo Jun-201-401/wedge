@@ -1,0 +1,306 @@
+package com.wedge.analysis.application;
+
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.wedge.analysis.domain.AnalysisFinding;
+import com.wedge.analysis.domain.AnalysisJob;
+import com.wedge.analysis.domain.Nudge;
+import com.wedge.analysis.domain.RuleHit;
+import com.wedge.analysis.infrastructure.AnalysisFindingMapper;
+import com.wedge.analysis.infrastructure.AnalysisJobMapper;
+import com.wedge.analysis.infrastructure.NudgeMapper;
+import com.wedge.analysis.infrastructure.RuleHitMapper;
+import com.wedge.common.error.BusinessException;
+import com.wedge.common.error.ErrorCode;
+import com.wedge.internal.analysis.dto.AnalyzerCompletedRequest;
+import com.wedge.internal.analysis.dto.AnalyzerFailedRequest;
+import com.wedge.report.domain.Report;
+import com.wedge.report.domain.ReportFormat;
+import com.wedge.report.infrastructure.ReportMapper;
+import com.wedge.run.domain.AnalysisJobStatus;
+import com.wedge.run.domain.ReportStatus;
+import java.math.BigDecimal;
+import java.time.OffsetDateTime;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import org.springframework.stereotype.Service;
+
+@Service
+public class JudgeResultPersistenceService {
+    private static final List<String> VALID_STAGES = List.of("FIRST_VIEW", "VALUE", "CTA", "INPUT", "COMMIT");
+    private static final List<String> VALID_DIFFICULTIES = List.of("LOW", "MEDIUM", "HIGH");
+
+    private final AnalysisJobMapper analysisJobMapper;
+    private final RuleHitMapper ruleHitMapper;
+    private final AnalysisFindingMapper analysisFindingMapper;
+    private final NudgeMapper nudgeMapper;
+    private final ReportMapper reportMapper;
+    private final ObjectMapper objectMapper;
+
+    public JudgeResultPersistenceService(
+            AnalysisJobMapper analysisJobMapper,
+            RuleHitMapper ruleHitMapper,
+            AnalysisFindingMapper analysisFindingMapper,
+            NudgeMapper nudgeMapper,
+            ReportMapper reportMapper,
+            ObjectMapper objectMapper
+    ) {
+        this.analysisJobMapper = analysisJobMapper;
+        this.ruleHitMapper = ruleHitMapper;
+        this.analysisFindingMapper = analysisFindingMapper;
+        this.nudgeMapper = nudgeMapper;
+        this.reportMapper = reportMapper;
+        this.objectMapper = objectMapper;
+    }
+
+    public Map<String, Object> saveCompleted(AnalyzerCompletedRequest request) {
+        analysisJobMapper.upsertCompleted(toCompletedAnalysisJob(request));
+        clearProjectionRows(request.analysisJobId());
+        List<Map<String, Object>> issues = readList(request.judgeResult(), "issues");
+        Map<String, UUID> findingIdsByIssueId = persistIssues(request.analysisJobId(), request.runId(), issues);
+        int nudgeCount = persistNudges(request, findingIdsByIssueId);
+        upsertReport(request);
+        return completedResponse(request, issues.size(), nudgeCount);
+    }
+
+    public Map<String, Object> saveFailed(AnalyzerFailedRequest request) {
+        analysisJobMapper.upsertFailed(toFailedAnalysisJob(request));
+        return Map.of(
+                "analysisJobId", request.analysisJobId(),
+                "runId", request.runId(),
+                "status", AnalysisJobStatus.FAILED
+        );
+    }
+
+    private AnalysisJob toCompletedAnalysisJob(AnalyzerCompletedRequest request) {
+        AnalysisJob analysisJob = new AnalysisJob();
+        analysisJob.setId(request.analysisJobId());
+        analysisJob.setRunId(request.runId());
+        analysisJob.setStatus(AnalysisJobStatus.COMPLETED);
+        analysisJob.setJudgeSchemaVersion(readString(request.judgeResult(), "schema_version", null));
+        analysisJob.setAnalyzerVersion(request.analyzerVersion());
+        analysisJob.setPromptVersion(request.promptVersion());
+        analysisJob.setModelInfoJsonb(toJson(request.modelInfo()));
+        analysisJob.setOutputJsonb(toJson(completedOutput(request)));
+        analysisJob.setFrictionScore(readFrictionScore(request.judgeResult()));
+        analysisJob.setFinishedAt(request.completedAt());
+        return analysisJob;
+    }
+
+    private AnalysisJob toFailedAnalysisJob(AnalyzerFailedRequest request) {
+        AnalysisJob analysisJob = new AnalysisJob();
+        analysisJob.setId(request.analysisJobId());
+        analysisJob.setRunId(request.runId());
+        analysisJob.setStatus(AnalysisJobStatus.FAILED);
+        analysisJob.setFinishedAt(request.failedAt());
+        analysisJob.setErrorCode(request.errorCode());
+        analysisJob.setErrorMessage(request.errorMessage());
+        return analysisJob;
+    }
+
+    private Map<String, Object> completedOutput(AnalyzerCompletedRequest request) {
+        Map<String, Object> output = new LinkedHashMap<>();
+        output.put("analysisJobId", request.analysisJobId());
+        output.put("runId", request.runId());
+        output.put("analyzerVersion", request.analyzerVersion());
+        output.put("promptVersion", request.promptVersion());
+        output.put("modelInfo", request.modelInfo());
+        output.put("topFindings", request.topFindings());
+        output.put("nudges", request.nudges());
+        output.put("judgeResult", request.judgeResult());
+        output.put("completedAt", request.completedAt().toString());
+        return output;
+    }
+
+    private void clearProjectionRows(UUID analysisJobId) {
+        nudgeMapper.deleteByAnalysisJobId(analysisJobId);
+        analysisFindingMapper.deleteByAnalysisJobId(analysisJobId);
+        ruleHitMapper.deleteByAnalysisJobId(analysisJobId);
+    }
+
+    private Map<String, UUID> persistIssues(UUID analysisJobId, UUID runId, List<Map<String, Object>> issues) {
+        Map<String, UUID> findingIdsByIssueId = new LinkedHashMap<>();
+        int rankOrder = 1;
+        for (Map<String, Object> issue : issues) {
+            ruleHitMapper.insert(toRuleHit(analysisJobId, runId, issue));
+            AnalysisFinding finding = toAnalysisFinding(analysisJobId, runId, issue, rankOrder);
+            analysisFindingMapper.insert(finding);
+            putIssueId(findingIdsByIssueId, issue, finding.getId());
+            rankOrder += 1;
+        }
+        return findingIdsByIssueId;
+    }
+
+    private int persistNudges(AnalyzerCompletedRequest request, Map<String, UUID> findingIdsByIssueId) {
+        List<Map<String, Object>> nudges = readList(request.judgeResult(), "nudges");
+        int rankOrder = 1;
+        for (Map<String, Object> nudgePayload : nudges) {
+            nudgeMapper.insert(toNudge(request.analysisJobId(), nudgePayload, rankOrder, findingIdsByIssueId));
+            rankOrder += 1;
+        }
+        return nudges.size();
+    }
+
+    private RuleHit toRuleHit(UUID analysisJobId, UUID runId, Map<String, Object> issue) {
+        RuleHit ruleHit = new RuleHit();
+        ruleHit.setId(UUID.randomUUID());
+        ruleHit.setAnalysisJobId(analysisJobId);
+        ruleHit.setRunId(runId);
+        ruleHit.setCriterionId(readString(issue, "criterion_id", "UNKNOWN"));
+        ruleHit.setStage(readStage(issue));
+        ruleHit.setAxis(readString(issue, "axis", "UNKNOWN"));
+        ruleHit.setSeverity(readInteger(issue, "severity", 0));
+        ruleHit.setConfidence(readDecimal(issue, "confidence", BigDecimal.ZERO));
+        ruleHit.setPriorityScore(readDecimal(issue, "priority_score", BigDecimal.ZERO));
+        ruleHit.setEvidenceLevel(readString(issue, "evidence_level", null));
+        ruleHit.setEvidenceRefsJsonb(toJson(readListValue(issue, "evidence_refs")));
+        ruleHit.setObservationsJsonb(toJson(readListValue(issue, "observations")));
+        ruleHit.setSignalsJsonb(toJson(readListValue(issue, "signals")));
+        ruleHit.setExceptionsJsonb(toJson(readListValue(issue, "exceptions_applied")));
+        return ruleHit;
+    }
+
+    private AnalysisFinding toAnalysisFinding(UUID analysisJobId, UUID runId, Map<String, Object> issue, int rankOrder) {
+        AnalysisFinding finding = new AnalysisFinding();
+        finding.setId(UUID.randomUUID());
+        finding.setAnalysisJobId(analysisJobId);
+        finding.setRunId(runId);
+        finding.setRankOrder(rankOrder);
+        finding.setTitle(readTitle(issue));
+        finding.setSummary(readString(issue, "summary", finding.getTitle()));
+        finding.setCategory(readString(issue, "category", readString(issue, "criterion_id", "JUDGE_RESULT")));
+        finding.setStage(readStage(issue));
+        finding.setAxis(readString(issue, "axis", null));
+        finding.setSeverity(readInteger(issue, "severity", null));
+        finding.setConfidence(readDecimal(issue, "confidence", null));
+        finding.setPriorityScore(readDecimal(issue, "priority_score", null));
+        finding.setImpactHypothesis(readString(issue, "impact_hypothesis", null));
+        finding.setEvidenceRefsJsonb(toJson(readListValue(issue, "evidence_refs")));
+        return finding;
+    }
+
+    private Nudge toNudge(UUID analysisJobId, Map<String, Object> payload, int rankOrder, Map<String, UUID> findingIdsByIssueId) {
+        Nudge nudge = new Nudge();
+        nudge.setId(UUID.randomUUID());
+        nudge.setAnalysisJobId(analysisJobId);
+        nudge.setFindingId(findingIdsByIssueId.get(readString(payload, "issue_id", "")));
+        nudge.setRankOrder(rankOrder);
+        nudge.setTitle(readString(payload, "title", "Improvement suggestion"));
+        nudge.setRationale(readString(payload, "rationale", "Generated from JudgeResult evidence."));
+        nudge.setRecommendation(readString(payload, "recommendation", "Adjust the UI flow to reduce observed friction."));
+        nudge.setDifficulty(readDifficulty(payload));
+        nudge.setExpectedEffect(readString(payload, "expected_effect", null));
+        nudge.setValidationQuestion(readString(payload, "validation_question", null));
+        return nudge;
+    }
+
+    private void upsertReport(AnalyzerCompletedRequest request) {
+        Report report = new Report();
+        report.setId(UUID.randomUUID());
+        report.setRunId(request.runId());
+        report.setAnalysisJobId(request.analysisJobId());
+        report.setTitle("JudgeResult analysis report");
+        report.setFormat(ReportFormat.JSON);
+        report.setStatus(ReportStatus.READY);
+        report.setSummaryJsonb(toJson(readMap(request.judgeResult(), "summary")));
+        report.setDecisionMapJsonb(toJson(readListValue(request.judgeResult(), "decision_map")));
+        if (reportMapper.updateAnalysisProjection(report) == 0) {
+            reportMapper.insert(report);
+        }
+    }
+
+    private Map<String, Object> completedResponse(AnalyzerCompletedRequest request, int issueCount, int nudgeCount) {
+        return Map.of(
+                "analysisJobId", request.analysisJobId(),
+                "runId", request.runId(),
+                "status", AnalysisJobStatus.COMPLETED,
+                "issueCount", issueCount,
+                "nudgeCount", nudgeCount
+        );
+    }
+
+    private void putIssueId(Map<String, UUID> findingIdsByIssueId, Map<String, Object> issue, UUID findingId) {
+        String issueId = readString(issue, "issue_id", null);
+        if (issueId != null) {
+            findingIdsByIssueId.put(issueId, findingId);
+        }
+    }
+
+    private BigDecimal readFrictionScore(Map<String, Object> judgeResult) {
+        return readDecimal(readMap(judgeResult, "summary"), "friction_score", null);
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<Map<String, Object>> readList(Map<String, Object> payload, String key) {
+        return readListValue(payload, key).stream()
+                .filter(Map.class::isInstance)
+                .map(item -> (Map<String, Object>) item)
+                .toList();
+    }
+
+    private List<Object> readListValue(Map<String, Object> payload, String key) {
+        Object value = payload.get(key);
+        if (value instanceof List<?> list) {
+            return List.copyOf(list);
+        }
+        return List.of();
+    }
+
+    private Map<String, Object> readMap(Map<String, Object> payload, String key) {
+        Object value = payload.get(key);
+        if (value instanceof Map<?, ?> map) {
+            Map<String, Object> result = new LinkedHashMap<>();
+            map.forEach((mapKey, mapValue) -> result.put(String.valueOf(mapKey), mapValue));
+            return result;
+        }
+        return Map.of();
+    }
+
+    private String readTitle(Map<String, Object> issue) {
+        return readString(issue, "title", readString(issue, "summary", readString(issue, "criterion_id", "JudgeResult finding")));
+    }
+
+    private String readStage(Map<String, Object> payload) {
+        String stage = readString(payload, "stage", null);
+        return VALID_STAGES.contains(stage) ? stage : null;
+    }
+
+    private String readDifficulty(Map<String, Object> payload) {
+        String difficulty = readString(payload, "difficulty", null);
+        return VALID_DIFFICULTIES.contains(difficulty) ? difficulty : null;
+    }
+
+    private String readString(Map<String, Object> payload, String key, String defaultValue) {
+        Object value = payload.get(key);
+        if (value instanceof String text && !text.isBlank()) {
+            return text;
+        }
+        return defaultValue;
+    }
+
+    private Integer readInteger(Map<String, Object> payload, String key, Integer defaultValue) {
+        Object value = payload.get(key);
+        if (value instanceof Number number) {
+            return number.intValue();
+        }
+        return defaultValue;
+    }
+
+    private BigDecimal readDecimal(Map<String, Object> payload, String key, BigDecimal defaultValue) {
+        Object value = payload.get(key);
+        if (value instanceof Number number) {
+            return BigDecimal.valueOf(number.doubleValue());
+        }
+        return defaultValue;
+    }
+
+    private String toJson(Object value) {
+        try {
+            return objectMapper.writeValueAsString(value);
+        } catch (JsonProcessingException exception) {
+            throw new BusinessException(ErrorCode.INVALID_REQUEST, "JudgeResult payload cannot be serialized.", null, exception);
+        }
+    }
+}
