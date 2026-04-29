@@ -105,7 +105,6 @@ public class RunController {
         ));
     }
 
-
     private LatestSnapshotResponse toLatestFrame(ArtifactResponse frameArtifact, LatestSnapshotResponse fallback) {
         if (frameArtifact == null) {
             return fallback;
