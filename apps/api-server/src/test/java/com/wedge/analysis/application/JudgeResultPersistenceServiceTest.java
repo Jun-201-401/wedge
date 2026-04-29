@@ -1,6 +1,8 @@
 package com.wedge.analysis.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -14,6 +16,8 @@ import com.wedge.analysis.infrastructure.AnalysisFindingMapper;
 import com.wedge.analysis.infrastructure.AnalysisJobMapper;
 import com.wedge.analysis.infrastructure.NudgeMapper;
 import com.wedge.analysis.infrastructure.RuleHitMapper;
+import com.wedge.common.error.BusinessException;
+import com.wedge.common.error.ErrorCode;
 import com.wedge.internal.analysis.dto.AnalyzerCompletedRequest;
 import com.wedge.internal.analysis.dto.AnalyzerFailedRequest;
 import com.wedge.report.domain.Report;
@@ -121,6 +125,42 @@ class JudgeResultPersistenceServiceTest {
         assertThat(analysisJob.getErrorCode()).isEqualTo("ANALYZER_TIMEOUT");
     }
 
+    @Test
+    void saveCompletedRejectsIssueWithoutStage() {
+        UUID analysisJobId = UUID.randomUUID();
+        UUID runId = UUID.randomUUID();
+        Map<String, Object> issue = issue();
+        issue.remove("stage");
+        AnalyzerCompletedRequest request = completedRequest(analysisJobId, runId, List.of(issue));
+
+        assertThatThrownBy(() -> judgeResultPersistenceService.saveCompleted(request))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.INVALID_REQUEST);
+
+        verify(analysisJobMapper, never()).upsertCompleted(org.mockito.ArgumentMatchers.any());
+        verify(ruleHitMapper, never()).insert(org.mockito.ArgumentMatchers.any());
+        verify(analysisFindingMapper, never()).insert(org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    void saveCompletedRejectsIssueWithInvalidStage() {
+        UUID analysisJobId = UUID.randomUUID();
+        UUID runId = UUID.randomUUID();
+        Map<String, Object> issue = issue();
+        issue.put("stage", "UNKNOWN_STAGE");
+        AnalyzerCompletedRequest request = completedRequest(analysisJobId, runId, List.of(issue));
+
+        assertThatThrownBy(() -> judgeResultPersistenceService.saveCompleted(request))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.INVALID_REQUEST);
+
+        verify(analysisJobMapper, never()).upsertCompleted(org.mockito.ArgumentMatchers.any());
+        verify(ruleHitMapper, never()).insert(org.mockito.ArgumentMatchers.any());
+        verify(analysisFindingMapper, never()).insert(org.mockito.ArgumentMatchers.any());
+    }
+
     private void verifyCompletedJob(UUID analysisJobId, UUID runId) throws Exception {
         verify(analysisJobMapper).upsertCompleted(analysisJobCaptor.capture());
         AnalysisJob analysisJob = analysisJobCaptor.getValue();
@@ -165,6 +205,14 @@ class JudgeResultPersistenceServiceTest {
     }
 
     private AnalyzerCompletedRequest completedRequest(UUID analysisJobId, UUID runId) {
+        return completedRequest(analysisJobId, runId, List.of(issue()));
+    }
+
+    private AnalyzerCompletedRequest completedRequest(
+            UUID analysisJobId,
+            UUID runId,
+            List<Map<String, Object>> issues
+    ) {
         return new AnalyzerCompletedRequest(
                 analysisJobId,
                 runId,
@@ -173,17 +221,17 @@ class JudgeResultPersistenceServiceTest {
                 Map.of("llm", "gpt-5.4-mini"),
                 List.of(Map.of("rank", 1, "title", "입력 검증 지연")),
                 List.of(Map.of("title", "top-level nudge")),
-                judgeResult(runId),
+                judgeResult(runId, issues),
                 OffsetDateTime.parse("2026-04-28T11:00:00+09:00")
         );
     }
 
-    private Map<String, Object> judgeResult(UUID runId) {
+    private Map<String, Object> judgeResult(UUID runId, List<Map<String, Object>> issues) {
         return Map.of(
                 "schema_version", "0.5",
                 "run_id", runId.toString(),
                 "summary", Map.of("friction_score", 61.0, "top_issues_count", 1),
-                "issues", List.of(issue()),
+                "issues", issues,
                 "decision_map", List.of(Map.of("stage", "INPUT", "status", "WARNING")),
                 "nudges", List.of(nudge())
         );
