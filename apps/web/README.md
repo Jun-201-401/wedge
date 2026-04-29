@@ -9,6 +9,20 @@ React frontend for the Wedge landing page, run monitoring, evidence viewing, rep
 - `npm test`: run landing regression tests
 - `npm run typecheck`: run TypeScript diagnostics
 
+## Local development on Windows
+
+Run the Spring API server and Vite frontend from the same OS environment when possible. For the current IntelliJ-based backend workflow, start the frontend from Windows PowerShell:
+
+```powershell
+cd C:\Users\SSAFY\Desktop\S14P31C104\apps\web
+npm install
+npm run dev
+```
+
+Then open `http://localhost:5173/`. Vite is configured with `strictPort: true`, so if port 5173 is already occupied it fails instead of silently moving to 5174. When Vite runs on Windows, `/api` proxies to `http://localhost:8080`.
+
+If you intentionally run Vite from WSL while the API server runs in Windows IntelliJ, `/api` proxies to `http://host.docker.internal:8080`; however, browser access to WSL-hosted dev servers depends on local WSL networking, so the Windows PowerShell flow above is the recommended default.
+
 ## Architecture
 
 See `../../docs/wedge_frontend_architecture.md` for frontend stack and boundary decisions.
@@ -22,13 +36,9 @@ VITE_DEV_PROJECT_ID=<project-uuid>
 VITE_DEV_SCENARIO_TEMPLATE_VERSION_ID=<scenario-template-version-uuid>
 ```
 
-If the API requires authentication, store a valid access token in the browser before starting the run flow:
+If the API requires authentication, sign in through `/login` before starting the run flow. The browser receives the refresh token as an HttpOnly cookie and keeps the access token in memory only; do not seed auth with `localStorage`.
 
-```js
-localStorage.setItem('wedge.accessToken', '<access-token>')
-```
-
-With those values present, `/create-analysis` keeps the run context through the flow and the ready step can call `POST /api/runs` with a prototype `scenarioPlan`.
+With the auth cookie and dev IDs present, `/create-analysis` keeps the run context through the flow and the ready step can call `POST /api/runs` with a prototype `scenarioPlan`.
 
 ## Real run E2E smoke
 
