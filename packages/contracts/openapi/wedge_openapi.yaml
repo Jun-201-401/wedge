@@ -1042,15 +1042,13 @@ paths:
         - wedge.read
       parameters:
       - $ref: '#/components/parameters/RunId'
-      - $ref: '#/components/parameters/Cursor'
-      - $ref: '#/components/parameters/Limit'
       responses:
         '200':
           description: Reports
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ListReportResponse'
+                $ref: '#/components/schemas/ListReportSummaryResponse'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -2904,6 +2902,8 @@ components:
           type: string
           format: uuid
           nullable: true
+        title:
+          type: string
         format:
           type: string
           enum:
@@ -2952,9 +2952,116 @@ components:
       required:
       - id
       - runId
+      - title
       - format
       - status
       - createdAt
+    ReportSummary:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        runId:
+          type: string
+          format: uuid
+        analysisJobId:
+          type: string
+          format: uuid
+          nullable: true
+        title:
+          type: string
+        format:
+          type: string
+          enum:
+          - PDF
+          - MARKDOWN
+          - HTML
+          - JSON
+        status:
+          type: string
+          enum:
+          - GENERATING
+          - READY
+          - FAILED
+          - ARCHIVED
+        frictionScore:
+          type: number
+          nullable: true
+          description: Preview score extracted from report.summary_jsonb.friction_score.
+        summary:
+          type: object
+          additionalProperties: true
+          description: Lightweight report summary projection for list and preview cards.
+          nullable: true
+        decisionMap:
+          type: array
+          items:
+            $ref: '#/components/schemas/DecisionMapItem'
+        topFindings:
+          type: array
+          description: Top 3 high-priority findings for report summary preview.
+          items:
+            $ref: '#/components/schemas/ReportTopFinding'
+        createdAt:
+          type: string
+          format: date-time
+      required:
+      - id
+      - runId
+      - title
+      - format
+      - status
+      - decisionMap
+      - topFindings
+      - createdAt
+    ReportTopFinding:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        rank:
+          type: integer
+        title:
+          type: string
+        summary:
+          type: string
+        stage:
+          $ref: '#/components/schemas/DecisionStage'
+        severity:
+          type: integer
+          nullable: true
+        confidence:
+          type: number
+          nullable: true
+        priorityScore:
+          type: number
+          nullable: true
+        previewImage:
+          allOf:
+          - $ref: '#/components/schemas/ReportPreviewImage'
+          nullable: true
+      required:
+      - id
+      - rank
+      - title
+      - summary
+      - stage
+    ReportPreviewImage:
+      type: object
+      properties:
+        artifact:
+          $ref: '#/components/schemas/Artifact'
+        source:
+          type: string
+          enum:
+          - STAGE_SCREENSHOT
+          - REPORT_ARTIFACT
+          - LATEST_SCREENSHOT
+      required:
+      - artifact
+      - source
     ReportCreateRequest:
       type: object
       properties:
@@ -3369,6 +3476,18 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Report'
+        meta:
+          $ref: '#/components/schemas/Meta'
+      required:
+      - data
+      - meta
+    ListReportSummaryResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/ReportSummary'
         meta:
           $ref: '#/components/schemas/Meta'
       required:
