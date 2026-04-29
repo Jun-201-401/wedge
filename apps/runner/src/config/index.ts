@@ -4,6 +4,7 @@ import { resolve } from "node:path";
 export type RunnerBrowserMode = "simulated" | "playwright";
 export type RunnerBrowserName = "chromium" | "firefox" | "webkit";
 export type RunnerCallbackMode = "file" | "http";
+export type RunnerArtifactStorage = "filesystem" | "s3";
 
 const DEFAULT_RETRY_DELAYS_MS = [200, 1000, 3000] as const;
 const DEFAULT_OUTBOX_LOCK_STALE_MS = 30_000;
@@ -33,7 +34,10 @@ export interface RunnerConfig {
   callbackTimeoutMs: number;
   callbackAuthToken?: string;
   callbackSignatureSecret?: string;
+  artifactStorage: RunnerArtifactStorage;
   artifactBucket: string;
+  artifactPrefix: string;
+  awsRegion?: string;
   artifactOutboxFile: string;
   artifactOutboxLockFile: string;
   artifactOutboxLockStaleMs: number;
@@ -101,6 +105,9 @@ export function loadRunnerConfig(overrides: Partial<RunnerConfig> = {}): RunnerC
   const callbackAuthToken = overrides.callbackAuthToken ?? process.env.RUNNER_CALLBACK_AUTH_TOKEN ?? undefined;
   const callbackSignatureSecret =
     overrides.callbackSignatureSecret ?? process.env.RUNNER_CALLBACK_SIGNATURE_SECRET ?? undefined;
+  const artifactStorage = parseArtifactStorage(
+    overrides.artifactStorage ?? process.env.RUNNER_ARTIFACT_STORAGE
+  );
   const artifactRetryDelaysMs =
     overrides.artifactRetryDelaysMs ?? parseNumberList(process.env.RUNNER_ARTIFACT_RETRY_DELAYS_MS, DEFAULT_RETRY_DELAYS_MS);
   const artifactOutboxLockStaleMs = parseNumber(
@@ -180,7 +187,10 @@ export function loadRunnerConfig(overrides: Partial<RunnerConfig> = {}): RunnerC
     callbackTimeoutMs,
     callbackAuthToken,
     callbackSignatureSecret,
+    artifactStorage,
     artifactBucket: overrides.artifactBucket ?? process.env.RUNNER_ARTIFACT_BUCKET ?? "local-runner",
+    artifactPrefix: overrides.artifactPrefix ?? process.env.RUNNER_ARTIFACT_PREFIX ?? "",
+    awsRegion: overrides.awsRegion ?? process.env.AWS_REGION ?? undefined,
     artifactOutboxFile:
       overrides.artifactOutboxFile ??
       resolve(artifactsRoot, process.env.RUNNER_ARTIFACT_OUTBOX_FILE ?? "artifact-outbox.jsonl"),
@@ -241,6 +251,14 @@ function parseBrowserName(value: RunnerConfig["browserName"] | string | undefine
   }
 
   return "chromium";
+}
+
+function parseArtifactStorage(value: RunnerConfig["artifactStorage"] | string | undefined): RunnerArtifactStorage {
+  if (value === "filesystem" || value === "s3") {
+    return value;
+  }
+
+  return "filesystem";
 }
 
 function parseBoolean(
