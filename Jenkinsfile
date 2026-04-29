@@ -104,6 +104,7 @@ pipeline {
         GIT_BRANCH = 'develop'
         IMAGE_NAME = 'wedge-api-server'
         WEB_IMAGE_NAME = 'wedge-web'
+        RUNNER_IMAGE_NAME = 'wedge-runner'
         DEPLOY_HOST = 'k14c104.p.ssafy.io'
         SSH_OPTS = '-o StrictHostKeyChecking=yes -o UserKnownHostsFile=/var/jenkins_home/.ssh/known_hosts -o UpdateHostKeys=no'
         LOG_FILE = 'jenkins-console.log'
@@ -150,6 +151,7 @@ pipeline {
                     runLogged('''
 docker build -f apps/api-server/Dockerfile -t "${IMAGE_NAME}:ci-${BUILD_NUMBER}" apps/api-server
 docker build -f apps/web/Dockerfile -t "${WEB_IMAGE_NAME}:ci-${BUILD_NUMBER}" apps/web
+docker build -f apps/runner/Dockerfile -t "${RUNNER_IMAGE_NAME}:ci-${BUILD_NUMBER}" .
                     ''')
                 }
             }
@@ -176,6 +178,7 @@ tar \
   --exclude=apps/web/dist \
   --exclude=apps/web/node_modules \
   --exclude=apps/runner/node_modules \
+  --exclude=apps/runner/.runner-artifacts \
   -czf /tmp/wedge-deploy.tar.gz .
 
 scp -i "$EC2_KEY" $SSH_OPTS /tmp/wedge-deploy.tar.gz "$EC2_USER@$DEPLOY_HOST:/tmp/wedge-deploy.tar.gz"
@@ -186,7 +189,7 @@ set -e
 cd /srv/wedge
 
 test "$PWD" = "/srv/wedge"
-rm -rf apps/api-server apps/web
+rm -rf apps/api-server apps/web apps/runner
 
 tar \
   --exclude=.env.prod \
@@ -194,22 +197,24 @@ tar \
 
 docker build -f apps/api-server/Dockerfile -t wedge-api-server:deploy-local apps/api-server
 docker build -f apps/web/Dockerfile -t wedge-web:deploy-local apps/web
-docker compose --env-file .env.prod -f compose.prod.yaml up -d api-server web
+docker build -f apps/runner/Dockerfile -t wedge-runner:deploy-local .
+docker compose --env-file .env.prod -f compose.prod.yaml up -d api-server web runner
 docker compose --env-file .env.prod -f compose.prod.yaml up -d --force-recreate nginx
 
 for i in 1 2 3 4 5 6 7 8 9 10; do
     if curl -kfsS https://localhost/actuator/health > /dev/null 2>&1 \
-        && curl -kfsS https://localhost/ > /dev/null 2>&1; then
+        && curl -kfsS https://localhost/ > /dev/null 2>&1 \
+        && docker compose --env-file .env.prod -f compose.prod.yaml ps --status running --services runner | grep -qx runner; then
         echo "Health check passed"
         exit 0
     fi
 
-    echo "Waiting for web and api-server health..."
+    echo "Waiting for web, api-server, and runner health..."
     sleep 3
 done
 
 echo "Health check failed"
-docker compose --env-file .env.prod -f compose.prod.yaml logs --tail=100 api-server web nginx
+docker compose --env-file .env.prod -f compose.prod.yaml logs --tail=100 api-server web runner nginx
 exit 1
 EOF
                         ''')
