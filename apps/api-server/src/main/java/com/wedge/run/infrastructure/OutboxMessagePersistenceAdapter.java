@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.wedge.run.application.RunExecuteRequestMessage;
 import java.time.OffsetDateTime;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -14,6 +15,10 @@ import org.springframework.stereotype.Component;
 @Component
 public class OutboxMessagePersistenceAdapter {
     private static final String RUN_AGGREGATE_TYPE = "RUN";
+    private static final String RUN_EXECUTE_EVENT_TYPE = "run.execute.request";
+    private static final long PENDING_RETRY_GRACE_SECONDS = 5;
+    private static final long RETRY_DELAY_SECONDS = 30;
+    private static final int MAX_PUBLISH_ATTEMPTS = 10;
 
     private final OutboxMessageMapper outboxMessageMapper;
     private final ObjectMapper objectMapper;
@@ -45,8 +50,24 @@ public class OutboxMessagePersistenceAdapter {
         return outboxMessageId;
     }
 
-    public Optional<RunExecuteRequestMessage> findRunExecuteMessage(UUID outboxMessageId) {
-        return outboxMessageMapper.findById(outboxMessageId).map(this::toRunExecuteRequestMessage);
+    public Optional<RunExecuteRequestMessage> findRunExecuteMessageForPublish(UUID outboxMessageId) {
+        return outboxMessageMapper.findById(outboxMessageId, RUN_EXECUTE_EVENT_TYPE, MAX_PUBLISH_ATTEMPTS)
+                .map(this::toRunExecuteRequestMessage);
+    }
+
+    public List<RunExecuteOutboxMessage> findDueRunExecuteMessages(int limit) {
+        OffsetDateTime now = OffsetDateTime.now();
+        OffsetDateTime pendingBefore = now.minusSeconds(PENDING_RETRY_GRACE_SECONDS);
+        return outboxMessageMapper.findDueRunExecuteMessages(
+                        RUN_EXECUTE_EVENT_TYPE,
+                        now,
+                        pendingBefore,
+                        MAX_PUBLISH_ATTEMPTS,
+                        limit
+                )
+                .stream()
+                .map(record -> new RunExecuteOutboxMessage(record.getId(), toRunExecuteRequestMessage(record)))
+                .toList();
     }
 
     public void markPublished(UUID outboxMessageId) {
@@ -54,7 +75,7 @@ public class OutboxMessagePersistenceAdapter {
     }
 
     public void markFailed(UUID outboxMessageId) {
-        outboxMessageMapper.markFailed(outboxMessageId, OffsetDateTime.now());
+        outboxMessageMapper.markFailed(outboxMessageId, OffsetDateTime.now().plusSeconds(RETRY_DELAY_SECONDS));
     }
 
     private RunExecuteRequestMessage toRunExecuteRequestMessage(OutboxMessageRecord record) {
@@ -92,5 +113,11 @@ public class OutboxMessagePersistenceAdapter {
     private String readString(Map<String, Object> payload, String key) {
         Object value = payload.get(key);
         return value == null ? null : value.toString();
+    }
+
+    public record RunExecuteOutboxMessage(
+            UUID outboxMessageId,
+            RunExecuteRequestMessage runExecuteRequestMessage
+    ) {
     }
 }
