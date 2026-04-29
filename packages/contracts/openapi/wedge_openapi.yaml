@@ -2987,9 +2987,61 @@ components:
           nullable: true
         latestFrame:
           $ref: '#/components/schemas/LatestSnapshot'
+          nullable: true
+        latestCheckpoint:
+          $ref: '#/components/schemas/LatestCheckpoint'
+          nullable: true
+        latestArtifact:
+          $ref: '#/components/schemas/Artifact'
+          nullable: true
+        evidenceCounts:
+          $ref: '#/components/schemas/RunEvidenceCounts'
       required:
       - runId
       - status
+    LatestCheckpoint:
+      type: object
+      properties:
+        checkpointId:
+          type: string
+        stepId:
+          type: string
+          format: uuid
+          nullable: true
+        stage:
+          type: string
+          nullable: true
+        url:
+          type: string
+          nullable: true
+        capturedAt:
+          type: string
+          format: date-time
+          nullable: true
+        durationMs:
+          type: integer
+          nullable: true
+        observationCount:
+          type: integer
+        artifactRefCount:
+          type: integer
+      required:
+      - checkpointId
+      - observationCount
+      - artifactRefCount
+    RunEvidenceCounts:
+      type: object
+      properties:
+        checkpointCount:
+          type: integer
+        observationCount:
+          type: integer
+        artifactCount:
+          type: integer
+      required:
+      - checkpointCount
+      - observationCount
+      - artifactCount
     RunnerAcceptedRequest:
       type: object
       properties:

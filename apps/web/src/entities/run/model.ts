@@ -56,12 +56,50 @@ export interface RunActionRequest {
   reason?: string | null;
 }
 
+export interface RunArtifact {
+  id: string;
+  runId: string;
+  stepId?: string | null;
+  stepKey?: string | null;
+  artifactType: string;
+  bucket: string;
+  key: string;
+  mimeType: string;
+  width?: number | null;
+  height?: number | null;
+  sizeBytes: number;
+  sha256?: string | null;
+  url?: string | null;
+  contentUrl?: string | null;
+  createdAt?: string | null;
+}
+
+export interface LatestCheckpoint {
+  checkpointId: string;
+  stepId?: string | null;
+  stage?: string | null;
+  url?: string | null;
+  capturedAt?: string | null;
+  durationMs?: number | null;
+  observationCount: number;
+  artifactRefCount: number;
+}
+
+export interface RunEvidenceCounts {
+  checkpointCount: number;
+  observationCount: number;
+  artifactCount: number;
+}
+
 export interface RunLive {
   runId: string;
   status: RunStatus;
   currentStepOrder?: number | null;
   currentAction?: string | null;
   latestFrame?: LatestSnapshot | null;
+  latestCheckpoint?: LatestCheckpoint | null;
+  latestArtifact?: RunArtifact | null;
+  evidenceCounts?: RunEvidenceCounts | null;
 }
 
 export interface EvidenceObservation {

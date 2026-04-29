@@ -179,7 +179,7 @@ public class EvidencePacketAssembler {
         };
     }
 
-    private Map<String, Object> readJsonMap(String rawJson) {
+    Map<String, Object> readJsonMap(String rawJson) {
         if (rawJson == null || rawJson.isBlank()) {
             return Map.of();
         }
@@ -191,7 +191,7 @@ public class EvidencePacketAssembler {
         }
     }
 
-    private List<Object> readJsonList(String rawJson) {
+    List<Object> readJsonList(String rawJson) {
         if (rawJson == null || rawJson.isBlank()) {
             return List.of();
         }

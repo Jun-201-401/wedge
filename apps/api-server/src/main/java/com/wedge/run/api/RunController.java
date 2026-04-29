@@ -2,10 +2,12 @@ package com.wedge.run.api;
 
 import com.wedge.common.response.ApiResponse;
 import com.wedge.evidence.api.dto.ArtifactResponse;
+import com.wedge.evidence.api.dto.RunEvidenceSummaryResponse;
 import com.wedge.evidence.application.EvidenceService;
 import com.wedge.run.api.dto.RunActionRequest;
 import com.wedge.run.api.dto.RunActionResponse;
 import com.wedge.run.api.dto.RunCreateRequest;
+import com.wedge.run.api.dto.LatestSnapshotResponse;
 import com.wedge.run.api.dto.RunLiveResponse;
 import com.wedge.run.api.dto.RunResponse;
 import com.wedge.run.api.dto.RunStepResponse;
@@ -13,6 +15,7 @@ import com.wedge.run.application.RunService;
 import com.wedge.run.domain.AnalysisStatus;
 import com.wedge.run.domain.RunStatus;
 import jakarta.validation.Valid;
+import java.net.URI;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -89,7 +92,29 @@ public class RunController {
     @GetMapping("/{runId}/live")
     public ResponseEntity<ApiResponse<RunLiveResponse>> getRunLive(@PathVariable UUID runId) {
         RunResponse run = runService.getRun(runId);
-        return ApiResponse.ok(new RunLiveResponse(run.id(), run.status(), run.currentStepOrder(), null, run.latestSnapshot()));
+        RunEvidenceSummaryResponse evidenceSummary = evidenceService.getRunEvidenceSummary(run);
+        return ApiResponse.ok(new RunLiveResponse(
+                run.id(),
+                run.status(),
+                run.currentStepOrder(),
+                null,
+                toLatestFrame(evidenceSummary.latestFrameArtifact(), run.latestSnapshot()),
+                evidenceSummary.latestCheckpoint(),
+                evidenceSummary.latestArtifact(),
+                evidenceSummary.evidenceCounts()
+        ));
+    }
+
+    private LatestSnapshotResponse toLatestFrame(ArtifactResponse frameArtifact, LatestSnapshotResponse fallback) {
+        if (frameArtifact == null) {
+            return fallback;
+        }
+        String url = frameArtifact.url() == null || frameArtifact.url().isBlank()
+                ? frameArtifact.contentUrl()
+                : frameArtifact.url();
+        return url == null || url.isBlank()
+                ? fallback
+                : new LatestSnapshotResponse(frameArtifact.id(), URI.create(url), frameArtifact.createdAt());
     }
 
     @GetMapping("/{runId}/steps")
