@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import test from "node:test";
-import { createS3ArtifactStore, createS3SignedRequest } from "../src/storage/index.ts";
+import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { createS3ArtifactStore } from "../src/storage/index.ts";
 
 const minioEndpoint = process.env.WEDGE_MINIO_E2E_ENDPOINT;
 const minioAccessKeyId = process.env.WEDGE_MINIO_E2E_ACCESS_KEY_ID;
@@ -47,24 +48,21 @@ test(
     assert.equal(artifact.sizeBytes, Buffer.byteLength(body));
     assert.equal(artifact.sha256, createHash("sha256").update(body).digest("hex"));
 
-    const request = createS3SignedRequest({
-      method: "GET",
-      endpoint: minioEndpoint as string,
+    const client = new S3Client({
       region: minioRegion,
-      bucket: minioBucket as string,
-      key: artifact.key,
-      accessKeyId: minioAccessKeyId as string,
-      secretAccessKey: minioSecretAccessKey as string,
-      payloadHash: createHash("sha256").update("").digest("hex"),
-      forcePathStyle: true
+      endpoint: minioEndpoint as string,
+      forcePathStyle: true,
+      credentials: {
+        accessKeyId: minioAccessKeyId as string,
+        secretAccessKey: minioSecretAccessKey as string
+      }
     });
-    const response = await fetch(request.url, {
-      method: "GET",
-      headers: request.headers
-    });
-    const downloaded = await response.text();
+    const response = await client.send(new GetObjectCommand({
+      Bucket: minioBucket as string,
+      Key: artifact.key
+    }));
+    const downloaded = await response.Body?.transformToString();
 
-    assert.equal(response.status, 200, downloaded);
     assert.equal(downloaded, body);
   }
 );
