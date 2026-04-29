@@ -23,7 +23,16 @@ public class S3ArtifactStorageConfig {
             @Value("${wedge.artifacts.s3.access-key-id:}") String accessKeyId,
             @Value("${wedge.artifacts.s3.secret-access-key:}") String secretAccessKey
     ) {
-        if (accessKeyId == null || accessKeyId.isBlank() || secretAccessKey == null || secretAccessKey.isBlank()) {
+        boolean hasAccessKeyId = accessKeyId != null && !accessKeyId.isBlank();
+        boolean hasSecretAccessKey = secretAccessKey != null && !secretAccessKey.isBlank();
+
+        if (hasAccessKeyId != hasSecretAccessKey) {
+            throw new IllegalStateException(
+                    "wedge.artifacts.s3.access-key-id and wedge.artifacts.s3.secret-access-key must be set together"
+            );
+        }
+
+        if (!hasAccessKeyId) {
             return DefaultCredentialsProvider.create();
         }
         return StaticCredentialsProvider.create(AwsBasicCredentials.create(accessKeyId, secretAccessKey));
