@@ -21,7 +21,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 public class InternalServiceTokenFilter extends OncePerRequestFilter {
     private static final String AUTHORIZATION_HEADER = "Authorization";
     private static final String BEARER_PREFIX = "Bearer ";
-    private static final List<String> INTERNAL_CALLBACK_PATHS = List.of("/internal/runner/**");
+    private static final List<String> INTERNAL_CALLBACK_PATHS = List.of("/internal/runner/**", "/internal/analysis/**");
 
     private final JsonAuthenticationEntryPoint authenticationEntryPoint;
     private final AntPathMatcher pathMatcher = new AntPathMatcher();

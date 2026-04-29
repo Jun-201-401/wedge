@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.wedge.analysis.infrastructure.RuleHitMapper">
+    <resultMap id="RuleHitResultMap" type="com.wedge.analysis.domain.RuleHit">
+        <id property="id" column="id"/>
+        <result property="analysisJobId" column="analysis_job_id"/>
+        <result property="runId" column="run_id"/>
+        <result property="criterionId" column="criterion_id"/>
+        <result property="stage" column="stage"/>
+        <result property="axis" column="axis"/>
+        <result property="severity" column="severity"/>
+        <result property="confidence" column="confidence"/>
+        <result property="priorityScore" column="priority_score"/>
+        <result property="evidenceLevel" column="evidence_level"/>
+        <result property="evidenceRefsJsonb" column="evidence_refs_jsonb"/>
+        <result property="observationsJsonb" column="observations_jsonb"/>
+        <result property="signalsJsonb" column="signals_jsonb"/>
+        <result property="exceptionsJsonb" column="exceptions_jsonb"/>
+        <result property="createdAt" column="created_at"/>
+    </resultMap>
+
+    <sql id="RuleHitColumns">
+        id, analysis_job_id, run_id, criterion_id, stage, axis, severity, confidence, priority_score,
+        evidence_level, CAST(evidence_refs_jsonb AS TEXT) AS evidence_refs_jsonb,
+        CAST(observations_jsonb AS TEXT) AS observations_jsonb,
+        CAST(signals_jsonb AS TEXT) AS signals_jsonb,
+        CAST(exceptions_jsonb AS TEXT) AS exceptions_jsonb, created_at
+    </sql>
+
+    <select id="findByAnalysisJobId" resultMap="RuleHitResultMap">
+        SELECT <include refid="RuleHitColumns"/>
+        FROM rule_hit
+        WHERE analysis_job_id = #{analysisJobId}
+        ORDER BY created_at ASC, id ASC
+    </select>
+
+    <insert id="insert" parameterType="com.wedge.analysis.domain.RuleHit">
+        INSERT INTO rule_hit (
+            id, analysis_job_id, run_id, criterion_id, stage, axis, severity, confidence,
+            priority_score, evidence_level, evidence_refs_jsonb, observations_jsonb,
+            signals_jsonb, exceptions_jsonb
+        )
+        VALUES (
+            #{id}, #{analysisJobId}, #{runId}, #{criterionId}, #{stage}, #{axis}, #{severity}, #{confidence},
+            #{priorityScore}, #{evidenceLevel}, CAST(#{evidenceRefsJsonb} AS jsonb), CAST(#{observationsJsonb} AS jsonb),
+            CAST(#{signalsJsonb} AS jsonb), CAST(#{exceptionsJsonb} AS jsonb)
+        )
+    </insert>
+
+    <delete id="deleteByAnalysisJobId">
+        DELETE FROM rule_hit
+        WHERE analysis_job_id = #{analysisJobId}
+    </delete>
+</mapper>

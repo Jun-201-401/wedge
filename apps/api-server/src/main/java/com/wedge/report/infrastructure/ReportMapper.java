@@ -12,5 +12,6 @@ import java.util.UUID;
 public interface ReportMapper {
     Optional<Report> findById(@Param("id") UUID id);
     List<Report> findByRunId(@Param("runId") UUID runId);
+    int updateAnalysisProjection(Report report);
     int insert(Report report);
 }

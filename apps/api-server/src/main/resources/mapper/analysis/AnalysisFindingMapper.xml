@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.wedge.analysis.infrastructure.AnalysisFindingMapper">
+    <resultMap id="AnalysisFindingResultMap" type="com.wedge.analysis.domain.AnalysisFinding">
+        <id property="id" column="id"/>
+        <result property="analysisJobId" column="analysis_job_id"/>
+        <result property="runId" column="run_id"/>
+        <result property="rankOrder" column="rank_order"/>
+        <result property="title" column="title"/>
+        <result property="summary" column="summary"/>
+        <result property="category" column="category"/>
+        <result property="stage" column="stage"/>
+        <result property="axis" column="axis"/>
+        <result property="severity" column="severity"/>
+        <result property="confidence" column="confidence"/>
+        <result property="priorityScore" column="priority_score"/>
+        <result property="impactHypothesis" column="impact_hypothesis"/>
+        <result property="evidenceRefsJsonb" column="evidence_refs_jsonb"/>
+        <result property="createdAt" column="created_at"/>
+    </resultMap>
+
+    <sql id="AnalysisFindingColumns">
+        id, analysis_job_id, run_id, rank_order, title, summary, category, stage, axis,
+        severity, confidence, priority_score, impact_hypothesis,
+        CAST(evidence_refs_jsonb AS TEXT) AS evidence_refs_jsonb, created_at
+    </sql>
+
+    <select id="findByAnalysisJobId" resultMap="AnalysisFindingResultMap">
+        SELECT <include refid="AnalysisFindingColumns"/>
+        FROM analysis_finding
+        WHERE analysis_job_id = #{analysisJobId}
+        ORDER BY rank_order ASC
+    </select>
+
+    <insert id="insert" parameterType="com.wedge.analysis.domain.AnalysisFinding">
+        INSERT INTO analysis_finding (
+            id, analysis_job_id, run_id, rank_order, title, summary, category, stage, axis,
+            severity, confidence, priority_score, impact_hypothesis, evidence_refs_jsonb
+        )
+        VALUES (
+            #{id}, #{analysisJobId}, #{runId}, #{rankOrder}, #{title}, #{summary}, #{category}, #{stage}, #{axis},
+            #{severity}, #{confidence}, #{priorityScore}, #{impactHypothesis}, CAST(#{evidenceRefsJsonb} AS jsonb)
+        )
+    </insert>
+
+    <delete id="deleteByAnalysisJobId">
+        DELETE FROM analysis_finding
+        WHERE analysis_job_id = #{analysisJobId}
+    </delete>
+</mapper>
