@@ -1,6 +1,7 @@
 package com.wedge.evidence.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -21,9 +22,12 @@ import java.net.URI;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.core.io.ByteArrayResource;
+import org.springframework.core.io.Resource;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -40,6 +44,9 @@ class EvidenceServiceTest {
 
     @Mock
     private ObservationMapper observationMapper;
+
+    @Mock
+    private ArtifactContentStore artifactContentStore;
 
     @Test
     void listRunArtifactsAddsPrototypeContentUrlAndStepKey() {
@@ -81,6 +88,24 @@ class EvidenceServiceTest {
         assertThat(aggregateSignals).containsEntry("cta_candidate_count", 1L);
     }
 
+    @Test
+    void getRunArtifactContentLoadsFromConfiguredStore() {
+        UUID runId = UUID.randomUUID();
+        UUID artifactId = UUID.randomUUID();
+        Artifact artifact = sampleArtifact(runId, artifactId);
+        Resource resource = new ByteArrayResource("artifact".getBytes());
+        when(runService.getRun(runId)).thenReturn(sampleRun(runId));
+        when(artifactMapper.findByRunIdAndId(runId, artifactId)).thenReturn(Optional.of(artifact));
+        when(artifactContentStore.load(artifact)).thenReturn(resource);
+        EvidenceService evidenceService = newService();
+
+        EvidenceService.ArtifactContent content = evidenceService.getRunArtifactContent(runId, artifactId);
+
+        assertThat(content.resource()).isSameAs(resource);
+        assertThat(content.mimeType()).isEqualTo("image/png");
+        verify(artifactContentStore).load(artifact);
+    }
+
     private EvidenceService newService() {
         return new EvidenceService(
                 runService,
@@ -88,7 +113,7 @@ class EvidenceServiceTest {
                 checkpointMapper,
                 observationMapper,
                 new EvidencePacketAssembler(new ObjectMapper()),
-                "../runner/.runner-artifacts"
+                artifactContentStore
         );
     }
 

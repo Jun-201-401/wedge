@@ -9,12 +9,9 @@ import com.wedge.evidence.infrastructure.CheckpointMapper;
 import com.wedge.evidence.infrastructure.ObservationMapper;
 import com.wedge.run.api.dto.RunResponse;
 import com.wedge.run.application.RunService;
-import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.core.io.FileSystemResource;
 import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -26,7 +23,7 @@ public class EvidenceService {
     private final CheckpointMapper checkpointMapper;
     private final ObservationMapper observationMapper;
     private final EvidencePacketAssembler evidencePacketAssembler;
-    private final Path artifactRoot;
+    private final ArtifactContentStore artifactContentStore;
 
     public EvidenceService(
             RunService runService,
@@ -34,14 +31,14 @@ public class EvidenceService {
             CheckpointMapper checkpointMapper,
             ObservationMapper observationMapper,
             EvidencePacketAssembler evidencePacketAssembler,
-            @Value("${wedge.artifacts.local-root:../runner/.runner-artifacts}") String artifactRoot
+            ArtifactContentStore artifactContentStore
     ) {
         this.runService = runService;
         this.artifactMapper = artifactMapper;
         this.checkpointMapper = checkpointMapper;
         this.observationMapper = observationMapper;
         this.evidencePacketAssembler = evidencePacketAssembler;
-        this.artifactRoot = Path.of(artifactRoot).toAbsolutePath().normalize();
+        this.artifactContentStore = artifactContentStore;
     }
 
     @Transactional(readOnly = true)
@@ -68,23 +65,8 @@ public class EvidenceService {
         runService.getRun(runId);
         Artifact artifact = artifactMapper.findByRunIdAndId(runId, artifactId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.RUN_NOT_FOUND, "Artifact was not found."));
-        Path contentPath = resolveArtifactPath(artifact.getS3Key());
-        Resource resource = new FileSystemResource(contentPath);
-        if (!resource.exists() || !resource.isReadable()) {
-            throw new BusinessException(ErrorCode.RUN_NOT_FOUND, "Artifact content was not found.");
-        }
+        Resource resource = artifactContentStore.load(artifact);
         return new ArtifactContent(resource, artifact.getMimeType());
-    }
-
-    private Path resolveArtifactPath(String key) {
-        if (key == null || key.isBlank()) {
-            throw new BusinessException(ErrorCode.INVALID_REQUEST, "Artifact key is required.");
-        }
-        Path resolved = artifactRoot.resolve(key).normalize();
-        if (!resolved.startsWith(artifactRoot)) {
-            throw new BusinessException(ErrorCode.FORBIDDEN, "Artifact key escapes artifact root.");
-        }
-        return resolved;
     }
 
     public record ArtifactContent(Resource resource, String mimeType) {

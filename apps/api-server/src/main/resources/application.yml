@@ -2,6 +2,15 @@ spring:
   application:
     name: wedge-api-server
 
+aws:
+  region: ${AWS_REGION:ap-northeast-2}
+
+wedge:
+  artifacts:
+    storage: ${WEDGE_ARTIFACT_STORAGE:filesystem}
+    bucket: ${WEDGE_ARTIFACT_BUCKET:}
+    local-root: ${WEDGE_ARTIFACT_LOCAL_ROOT:../runner/.runner-artifacts}
+
 mybatis:
   mapper-locations: classpath*:mapper/**/*.xml
   type-handlers-package: com.wedge.common.mybatis
