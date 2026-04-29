@@ -1,6 +1,10 @@
 package com.wedge.run.application;
 
 import com.wedge.run.infrastructure.OutboxMessagePersistenceAdapter;
+import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -9,6 +13,9 @@ import org.springframework.transaction.event.TransactionalEventListener;
 
 @Component
 public class RunExecuteOutboxDispatcher {
+    private static final Logger log = LoggerFactory.getLogger(RunExecuteOutboxDispatcher.class);
+    private static final int RETRY_BATCH_SIZE = 50;
+
     private final OutboxMessagePersistenceAdapter outboxMessagePersistenceAdapter;
     private final RunRequestPublisher runRequestPublisher;
 
@@ -23,13 +30,32 @@ public class RunExecuteOutboxDispatcher {
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void handle(RunExecuteOutboxEnqueuedEvent event) {
-        outboxMessagePersistenceAdapter.findRunExecuteMessage(event.outboxMessageId()).ifPresent(message -> {
-            try {
-                runRequestPublisher.publish(message);
-                outboxMessagePersistenceAdapter.markPublished(event.outboxMessageId());
-            } catch (RuntimeException exception) {
-                outboxMessagePersistenceAdapter.markFailed(event.outboxMessageId());
-            }
+        outboxMessagePersistenceAdapter.findRunExecuteMessageForPublish(event.outboxMessageId()).ifPresent(message -> {
+            dispatch(event.outboxMessageId(), message);
         });
+    }
+
+    @Scheduled(fixedDelayString = "${wedge.outbox.run-execute.retry-fixed-delay-ms:5000}")
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void retryDueMessages() {
+        outboxMessagePersistenceAdapter.findDueRunExecuteMessages(RETRY_BATCH_SIZE)
+                .forEach(message -> dispatch(message.outboxMessageId(), message.runExecuteRequestMessage()));
+    }
+
+    private void dispatch(UUID outboxMessageId, RunExecuteRequestMessage message) {
+        try {
+            runRequestPublisher.publish(message);
+            outboxMessagePersistenceAdapter.markPublished(outboxMessageId);
+        } catch (RuntimeException exception) {
+            log.warn(
+                    "Failed to publish run.execute.request outbox message id={} messageId={} correlationId={} idempotencyKey={}",
+                    outboxMessageId,
+                    message.messageId(),
+                    message.correlationId(),
+                    message.idempotencyKey(),
+                    exception
+            );
+            outboxMessagePersistenceAdapter.markFailed(outboxMessageId);
+        }
     }
 }

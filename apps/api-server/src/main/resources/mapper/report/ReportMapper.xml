@@ -46,4 +46,14 @@
             #{artifactId}, #{createdBy}
         )
     </insert>
+
+    <update id="updateAnalysisProjection" parameterType="com.wedge.report.domain.Report">
+        UPDATE report
+        SET summary_jsonb = CAST(#{summaryJsonb} AS jsonb),
+            decision_map_jsonb = CAST(#{decisionMapJsonb} AS jsonb),
+            status = #{status},
+            updated_at = NOW()
+        WHERE analysis_job_id = #{analysisJobId}
+          AND deleted_at IS NULL
+    </update>
 </mapper>

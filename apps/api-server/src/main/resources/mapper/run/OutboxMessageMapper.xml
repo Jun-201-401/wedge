@@ -34,6 +34,28 @@
             CAST(payload_jsonb AS TEXT) AS payload_jsonb
         FROM outbox_message
         WHERE id = #{outboxMessageId}
+          AND event_type = #{eventType}
+          AND status IN ('PENDING', 'FAILED')
+          AND attempt_count &lt; #{maxAttempts}
+        FOR UPDATE SKIP LOCKED
+    </select>
+
+    <select id="findDueRunExecuteMessages" resultMap="OutboxMessageResultMap">
+        SELECT
+            id,
+            aggregate_type,
+            aggregate_id,
+            event_type,
+            CAST(payload_jsonb AS TEXT) AS payload_jsonb
+        FROM outbox_message
+        WHERE status IN ('PENDING', 'FAILED')
+          AND event_type = #{eventType}
+          AND next_attempt_at &lt;= #{now}
+          AND (status = 'FAILED' OR created_at &lt;= #{pendingBefore})
+          AND attempt_count &lt; #{maxAttempts}
+        ORDER BY next_attempt_at ASC, created_at ASC
+        LIMIT #{limit}
+        FOR UPDATE SKIP LOCKED
     </select>
 
     <update id="markPublished">
@@ -42,6 +64,7 @@
             attempt_count = attempt_count + 1,
             published_at = #{publishedAt}
         WHERE id = #{outboxMessageId}
+          AND status != 'PUBLISHED'
     </update>
 
     <update id="markFailed">
@@ -50,5 +73,6 @@
             attempt_count = attempt_count + 1,
             next_attempt_at = #{nextAttemptAt}
         WHERE id = #{outboxMessageId}
+          AND status != 'PUBLISHED'
     </update>
 </mapper>
