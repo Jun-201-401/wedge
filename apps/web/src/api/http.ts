@@ -1,3 +1,6 @@
+import { clearAuthToken, readAccessToken, saveAuthToken } from './authSession';
+import type { AuthToken } from '../entities/auth';
+
 export interface ApiMeta {
   requestId: string;
   correlationId?: string | null;
@@ -20,17 +23,10 @@ export interface RequestOptions extends RequestInit {
 }
 
 const DEFAULT_API_BASE_URL = '/api';
+const AUTH_REFRESH_PATH = '/auth/refresh';
+const AUTH_PUBLIC_PATHS = new Set(['/auth/signup', '/auth/login', AUTH_REFRESH_PATH]);
 
-function readAccessToken() {
-  if (typeof window === 'undefined') {
-    return null;
-  }
-
-  return window.localStorage.getItem('wedge.accessToken') ?? window.localStorage.getItem('accessToken');
-}
-
-export async function requestJson<T>(path: string, options: RequestOptions = {}): Promise<T> {
-  const { idempotencyKey, headers, ...requestOptions } = options;
+function createRequestHeaders(headers: HeadersInit | undefined, body: BodyInit | null | undefined, idempotencyKey?: string) {
   const requestHeaders = new Headers(headers);
 
   if (idempotencyKey) {
@@ -42,15 +38,43 @@ export async function requestJson<T>(path: string, options: RequestOptions = {})
     requestHeaders.set('Authorization', `Bearer ${accessToken}`);
   }
 
-  if (requestOptions.body && !requestHeaders.has('Content-Type')) {
+  if (body && !requestHeaders.has('Content-Type')) {
     requestHeaders.set('Content-Type', 'application/json');
   }
 
-  const response = await fetch(`${DEFAULT_API_BASE_URL}${path}`, {
-    ...requestOptions,
-    headers: requestHeaders,
+  return requestHeaders;
+}
+
+function shouldRefreshAfterUnauthorized(path: string) {
+  return !AUTH_PUBLIC_PATHS.has(path);
+}
+
+let refreshAccessTokenPromise: Promise<boolean> | null = null;
+
+async function refreshAccessToken() {
+  const response = await fetch(`${DEFAULT_API_BASE_URL}${AUTH_REFRESH_PATH}`, {
+    method: 'POST',
+    credentials: 'include',
   });
 
+  if (!response.ok) {
+    clearAuthToken();
+    return false;
+  }
+
+  const refreshed = (await response.json()) as ApiResponse<AuthToken>;
+  saveAuthToken(refreshed.data);
+  return true;
+}
+
+function refreshAccessTokenOnce() {
+  refreshAccessTokenPromise ??= refreshAccessToken().finally(() => {
+    refreshAccessTokenPromise = null;
+  });
+  return refreshAccessTokenPromise;
+}
+
+async function parseJsonResponse<T>(response: Response): Promise<T> {
   if (!response.ok) {
     throw new Error(`Wedge API request failed: ${response.status} ${response.statusText}`);
   }
@@ -60,4 +84,25 @@ export async function requestJson<T>(path: string, options: RequestOptions = {})
   }
 
   return (await response.json()) as T;
+}
+
+export async function requestJson<T>(path: string, options: RequestOptions = {}): Promise<T> {
+  const { idempotencyKey, headers, ...requestOptions } = options;
+  const body = requestOptions.body ?? null;
+  const request = {
+    ...requestOptions,
+    credentials: requestOptions.credentials ?? 'include',
+    headers: createRequestHeaders(headers, body, idempotencyKey),
+  } satisfies RequestInit;
+
+  let response = await fetch(`${DEFAULT_API_BASE_URL}${path}`, request);
+
+  if (response.status === 401 && shouldRefreshAfterUnauthorized(path) && await refreshAccessTokenOnce()) {
+    response = await fetch(`${DEFAULT_API_BASE_URL}${path}`, {
+      ...request,
+      headers: createRequestHeaders(headers, body, idempotencyKey),
+    });
+  }
+
+  return parseJsonResponse<T>(response);
 }

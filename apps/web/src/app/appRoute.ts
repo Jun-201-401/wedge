@@ -1,8 +1,11 @@
 import { getRunReportIdFromPath } from '../pages/run-report/lib/runReportRoute';
 import { getRunIdFromPath } from '../pages/run-monitor/lib/runMonitorRoute';
+import { CREATE_ANALYSIS_PATH, LOGIN_PATH, SIGNUP_PATH } from '../shared/lib/appPaths';
 
 export type AppRoute =
   | { kind: 'landing' }
+  | { kind: 'login' }
+  | { kind: 'signup' }
   | { kind: 'create-analysis' }
   | { kind: 'run-monitor'; runId: string }
   | { kind: 'run-report'; runId: string };
@@ -20,7 +23,15 @@ export function resolveAppRoute(pathname: string): AppRoute {
     return { kind: 'run-monitor', runId };
   }
 
-  if (pathname === '/create-analysis') {
+  if (pathname === LOGIN_PATH) {
+    return { kind: 'login' };
+  }
+
+  if (pathname === SIGNUP_PATH) {
+    return { kind: 'signup' };
+  }
+
+  if (pathname === CREATE_ANALYSIS_PATH) {
     return { kind: 'create-analysis' };
   }
 
