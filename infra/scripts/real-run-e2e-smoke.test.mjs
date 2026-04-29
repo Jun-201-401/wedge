@@ -3,9 +3,11 @@ import assert from 'node:assert/strict';
 
 import {
   buildPrototypeScenarioPlan,
+  isFatalPollError,
   isUuid,
   normalizeBaseUrl,
   readConfig,
+  validateTerminalDetails,
 } from './real-run-e2e-smoke.mjs';
 
 test('smoke script builds a runner-compatible scenario plan', () => {
@@ -30,6 +32,7 @@ test('smoke script reads config from existing web dev env names', () => {
     WEDGE_SMOKE_WEB_BASE_URL: 'http://localhost:5173/',
     WEDGE_SMOKE_TIMEOUT_MS: '12345',
     WEDGE_SMOKE_HEALTH_PATH: 'actuator/health',
+    WEDGE_SMOKE_EXPECTED_STATUS: 'failed',
   });
 
   assert.equal(config.projectId, '11111111-1111-4111-8111-111111111111');
@@ -38,10 +41,24 @@ test('smoke script reads config from existing web dev env names', () => {
   assert.equal(config.webBaseUrl, 'http://localhost:5173');
   assert.equal(config.timeoutMs, 12345);
   assert.equal(config.healthPath, '/actuator/health');
+  assert.equal(config.expectedStatus, 'FAILED');
 });
 
 test('smoke script helpers validate UUIDs and normalize base URLs', () => {
   assert.equal(isUuid('11111111-1111-4111-8111-111111111111'), true);
   assert.equal(isUuid('not-a-uuid'), false);
   assert.equal(normalizeBaseUrl('http://localhost:8080///'), 'http://localhost:8080');
+});
+
+test('smoke script treats terminal mismatch as fatal and requires failed-run details', () => {
+  assert.equal(isFatalPollError(new Error('Run reached terminal status COMPLETED, expected FAILED')), true);
+  assert.doesNotThrow(() => validateTerminalDetails({
+    status: 'FAILED',
+    failureCode: 'RUNNER_EXECUTION_FAILED',
+    failureMessage: 'navigation failed',
+  }, 'FAILED'));
+  assert.throws(
+    () => validateTerminalDetails({ status: 'FAILED', failureCode: null, failureMessage: null }, 'FAILED'),
+    /failureCode\/failureMessage/
+  );
 });

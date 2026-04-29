@@ -49,6 +49,16 @@ Artifacts are written under `.runner-artifacts/{runId}/{stepKey}/...`; callback 
 
 Run `node infra/scripts/seed-real-run-smoke.mjs` once to create the local smoke project/scenario rows, then run `node infra/scripts/real-run-e2e-smoke.mjs` from the repository root after the API and runner are both up to verify create/start/MQ/callback/evidence packet behavior.
 
+To verify the failure branch, run the same script with an unreachable target and expected terminal status:
+
+```bash
+WEDGE_SMOKE_TARGET_URL=http://127.0.0.1:9/ \
+WEDGE_SMOKE_EXPECTED_STATUS=FAILED \
+node infra/scripts/real-run-e2e-smoke.mjs
+```
+
+If a WSL setup cannot route from the runner container to the host API server, stop the compose runner and run a local MQ consumer from `apps/runner` with `RUNNER_CALLBACK_BASE_URL=http://localhost:8080`.
+
 ## MinIO / S3-compatible artifact storage
 
 The runner defaults to local filesystem artifacts for fast local smoke tests. To upload artifacts to MinIO or S3 instead, switch the artifact storage mode and provide S3-compatible credentials:
