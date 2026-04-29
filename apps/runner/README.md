@@ -48,3 +48,40 @@ Artifacts are written under `.runner-artifacts/{runId}/{stepKey}/...`; callback 
 - `RUNNER_ARTIFACTS_ROOT` points at the mounted `.runner-artifacts` volume so API artifact content URLs can resolve local files.
 
 Run `node infra/scripts/seed-real-run-smoke.mjs` once to create the local smoke project/scenario rows, then run `node infra/scripts/real-run-e2e-smoke.mjs` from the repository root after the API and runner are both up to verify create/start/MQ/callback/evidence packet behavior.
+
+## MinIO / S3-compatible artifact storage
+
+The runner defaults to local filesystem artifacts for fast local smoke tests. To upload artifacts to MinIO or S3 instead, switch the artifact storage mode and provide S3-compatible credentials:
+
+```bash
+RUNNER_ARTIFACT_STORAGE=s3 \
+RUNNER_ARTIFACT_BUCKET=wedge-artifacts \
+RUNNER_ARTIFACT_S3_ENDPOINT=http://localhost:9000 \
+RUNNER_ARTIFACT_S3_REGION=us-east-1 \
+RUNNER_ARTIFACT_S3_ACCESS_KEY_ID=<MINIO_ROOT_USER> \
+RUNNER_ARTIFACT_S3_SECRET_ACCESS_KEY=<MINIO_ROOT_PASSWORD> \
+RUNNER_ARTIFACT_S3_FORCE_PATH_STYLE=true \
+npm run start -- --message-file examples/run-execute.request.json
+```
+
+For `compose.dev.yaml`, keep the default `RUNNER_ARTIFACT_STORAGE=filesystem` unless the API server is also configured to read artifacts from MinIO. To test MinIO end-to-end locally, add these values to your local `.env`:
+
+```bash
+RUNNER_ARTIFACT_STORAGE=s3
+RUNNER_ARTIFACT_BUCKET=wedge-artifacts
+RUNNER_ARTIFACT_S3_ENDPOINT=http://minio:9000
+RUNNER_ARTIFACT_S3_REGION=us-east-1
+RUNNER_ARTIFACT_S3_ACCESS_KEY_ID=<MINIO_ROOT_USER>
+RUNNER_ARTIFACT_S3_SECRET_ACCESS_KEY=<MINIO_ROOT_PASSWORD>
+RUNNER_ARTIFACT_S3_FORCE_PATH_STYLE=true
+
+WEDGE_ARTIFACT_STORAGE=s3
+WEDGE_ARTIFACT_BUCKET=wedge-artifacts
+WEDGE_ARTIFACT_S3_ENDPOINT=http://localhost:9000
+WEDGE_ARTIFACT_S3_REGION=us-east-1
+WEDGE_ARTIFACT_S3_ACCESS_KEY_ID=<MINIO_ROOT_USER>
+WEDGE_ARTIFACT_S3_SECRET_ACCESS_KEY=<MINIO_ROOT_PASSWORD>
+WEDGE_ARTIFACT_S3_FORCE_PATH_STYLE=true
+```
+
+The runner still sends only artifact metadata (`bucket`, `key`, size, hash) through callbacks. The API server uses that metadata to serve `/api/runs/{runId}/artifacts/{artifactId}/content` from either local files or S3/MinIO, depending on `WEDGE_ARTIFACT_STORAGE`.
