@@ -40,7 +40,7 @@
         FOR UPDATE SKIP LOCKED
     </select>
 
-    <select id="findDueRunExecuteMessages" resultMap="OutboxMessageResultMap">
+    <select id="findDueMessages" resultMap="OutboxMessageResultMap">
         SELECT
             id,
             aggregate_type,

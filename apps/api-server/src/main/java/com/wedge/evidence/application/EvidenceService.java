@@ -1,5 +1,7 @@
 package com.wedge.evidence.application;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.wedge.common.error.BusinessException;
 import com.wedge.common.error.ErrorCode;
 import com.wedge.evidence.api.dto.ArtifactResponse;
@@ -9,9 +11,11 @@ import com.wedge.evidence.api.dto.RunEvidenceSummaryResponse;
 import com.wedge.evidence.domain.Artifact;
 import com.wedge.evidence.domain.ArtifactType;
 import com.wedge.evidence.domain.Checkpoint;
+import com.wedge.evidence.domain.EvidencePacketSnapshot;
 import com.wedge.evidence.domain.Observation;
 import com.wedge.evidence.infrastructure.ArtifactMapper;
 import com.wedge.evidence.infrastructure.CheckpointMapper;
+import com.wedge.evidence.infrastructure.EvidencePacketMapper;
 import com.wedge.evidence.infrastructure.ObservationMapper;
 import com.wedge.run.api.dto.RunResponse;
 import com.wedge.run.application.RunService;
@@ -24,27 +28,35 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class EvidenceService {
+    private static final String EVIDENCE_SCHEMA_VERSION = "0.5";
+
     private final RunService runService;
     private final ArtifactMapper artifactMapper;
     private final CheckpointMapper checkpointMapper;
     private final ObservationMapper observationMapper;
+    private final EvidencePacketMapper evidencePacketMapper;
     private final EvidencePacketAssembler evidencePacketAssembler;
     private final ArtifactContentStore artifactContentStore;
+    private final ObjectMapper objectMapper;
 
     public EvidenceService(
             RunService runService,
             ArtifactMapper artifactMapper,
             CheckpointMapper checkpointMapper,
             ObservationMapper observationMapper,
+            EvidencePacketMapper evidencePacketMapper,
             EvidencePacketAssembler evidencePacketAssembler,
-            ArtifactContentStore artifactContentStore
+            ArtifactContentStore artifactContentStore,
+            ObjectMapper objectMapper
     ) {
         this.runService = runService;
         this.artifactMapper = artifactMapper;
         this.checkpointMapper = checkpointMapper;
         this.observationMapper = observationMapper;
+        this.evidencePacketMapper = evidencePacketMapper;
         this.evidencePacketAssembler = evidencePacketAssembler;
         this.artifactContentStore = artifactContentStore;
+        this.objectMapper = objectMapper;
     }
 
     @Transactional(readOnly = true)
@@ -90,6 +102,33 @@ public class EvidenceService {
         );
     }
 
+    @Transactional
+    public EvidencePacketSnapshot materializeRunEvidencePacketSnapshot(UUID runId) {
+        RunResponse run = runService.getRun(runId);
+        List<Artifact> artifacts = artifactMapper.findByRunId(runId);
+        List<Checkpoint> checkpoints = checkpointMapper.findByRunId(runId);
+        List<Observation> observations = observationMapper.findByRunId(runId);
+        Map<String, Object> packet = evidencePacketAssembler.assemble(run, artifacts, checkpoints, observations);
+
+        EvidencePacketSnapshot snapshot = new EvidencePacketSnapshot();
+        snapshot.setId(UUID.randomUUID());
+        snapshot.setExecutionType("RUN");
+        snapshot.setRunId(runId);
+        snapshot.setSchemaVersion(String.valueOf(packet.getOrDefault("schema_version", EVIDENCE_SCHEMA_VERSION)));
+        snapshot.setPacketJsonb(writeJson(packet));
+        snapshot.setCheckpointCount(checkpoints.size());
+        snapshot.setObservationCount(observations.size());
+        snapshot.setArtifactCount(artifacts.size());
+        return evidencePacketMapper.upsertRunSnapshot(snapshot);
+    }
+
+    @Transactional(readOnly = true)
+    public Map<String, Object> getEvidencePacketSnapshot(UUID evidencePacketId) {
+        EvidencePacketSnapshot snapshot = evidencePacketMapper.findById(evidencePacketId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.RUN_NOT_FOUND, "EvidencePacket snapshot was not found."));
+        return readJsonMap(snapshot.getPacketJsonb());
+    }
+
     @Transactional(readOnly = true)
     public ArtifactContent getRunArtifactContent(UUID runId, UUID artifactId) {
         runService.getRun(runId);
@@ -128,6 +167,22 @@ public class EvidenceService {
     private String readCheckpointUrl(Checkpoint checkpoint) {
         Object url = evidencePacketAssembler.readJsonMap(checkpoint.getStateJsonb()).get("url");
         return url == null ? null : url.toString();
+    }
+
+    private String writeJson(Map<String, Object> value) {
+        try {
+            return objectMapper.writeValueAsString(value);
+        } catch (JsonProcessingException exception) {
+            throw new IllegalStateException("Failed to serialize EvidencePacket snapshot.", exception);
+        }
+    }
+
+    private Map<String, Object> readJsonMap(String rawJson) {
+        try {
+            return objectMapper.readValue(rawJson, new com.fasterxml.jackson.core.type.TypeReference<>() {});
+        } catch (JsonProcessingException exception) {
+            throw new IllegalStateException("Stored EvidencePacket snapshot JSON is invalid.", exception);
+        }
     }
 
     public record ArtifactContent(Resource resource, String mimeType) {

@@ -19,9 +19,15 @@ class EvidencePacketClient:
     auth_token: str = ""
     timeout_seconds: float = 10.0
 
+    def fetch_by_packet_id(self, evidence_packet_id: str) -> dict[str, Any]:
+        return self._get_packet(f"/internal/analysis/evidence-packets/{evidence_packet_id}")
+
     def fetch_by_run_id(self, run_id: str) -> dict[str, Any]:
+        return self._get_packet(f"/api/runs/{run_id}/evidence-packet")
+
+    def _get_packet(self, path: str) -> dict[str, Any]:
         http_request = request.Request(
-            f"{self.base_url.rstrip('/')}/api/runs/{run_id}/evidence-packet",
+            f"{self.base_url.rstrip('/')}{path}",
             method="GET",
             headers=self._headers(),
         )

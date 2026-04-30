@@ -135,13 +135,17 @@ ScenarioPlan
   → BrowserWorker action/settle
   → checkpoint + artifact callbacks
   → Spring evidence materializer
-  → EvidencePacket stored with evidencePacketId
-  → analysis.request(evidencePacketId)
+  → Spring stores EvidencePacket snapshot and outbox_message stores analysis.request(evidencePacketId)
+  → RabbitMQ analysis.request
   → StageResolver
   → StageContextBuilder
   → RuleEngine
   → JudgeResult
+  → Analyzer callback stores analysis projection
+  → Spring report API/service generates report row from completed analysis
 ```
+
+현재 MVP 점검 범위에서는 Analyzer MQ consumer 구현에 맞춰 Spring이 EvidencePacket snapshot을 저장하고 `analysis.request`에는 `evidencePacketId`를 포함한다. Analyzer는 service token으로 `/internal/analysis/evidence-packets/{evidencePacketId}`를 호출해 packet을 가져간다.
 
 Top-level fields:
 
@@ -227,7 +231,7 @@ RuleRegistry는 Judge criterion을 code-executable rule metadata로 표현한다
 
 ## 9. JudgeResult
 
-JudgeResult is the canonical analyzer output. Analyzer completed callback must include this payload, and Spring stores it on `analysis_job.output_jsonb` plus user-facing projections (`analysis_finding`, `nudge`, `report`).
+JudgeResult is the canonical analyzer output. Analyzer completed callback must include this payload, and Spring stores it on `analysis_job.output_jsonb` plus user-facing projections (`analysis_finding`, `nudge`). Report rows are generated later from the completed analysis projection by the Spring report API/service.
 
 포함 항목:
 

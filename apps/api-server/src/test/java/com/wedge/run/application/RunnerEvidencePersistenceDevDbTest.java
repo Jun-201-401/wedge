@@ -165,8 +165,10 @@ class RunnerEvidencePersistenceDevDbTest {
                 .containsEntry("observation_count", 1)
                 .containsEntry("artifact_count", 1)
                 .containsEntry("cta_candidate_count", 1L);
+        assertThat(checkpoints).first().satisfies(checkpointMap ->
+                assertThat(checkpointMap).containsEntry("step_id", STEP_KEY));
         assertThat(observations).first().satisfies(observationMap -> assertThat(observationMap)
-                .containsEntry("observation_id", "cp_dev_db_001.obs_cta")
+                .containsEntry("observation_id", "obs_cta")
                 .containsEntry("type", "cta_candidate")
                 .containsEntry("stage", "CTA"));
     }

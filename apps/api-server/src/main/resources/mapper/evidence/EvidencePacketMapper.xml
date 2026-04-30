@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.wedge.evidence.infrastructure.EvidencePacketMapper">
+    <resultMap id="EvidencePacketSnapshotResultMap" type="com.wedge.evidence.domain.EvidencePacketSnapshot">
+        <id property="id" column="id"/>
+        <result property="executionType" column="execution_type"/>
+        <result property="runId" column="run_id"/>
+        <result property="discoveryId" column="discovery_id"/>
+        <result property="schemaVersion" column="schema_version"/>
+        <result property="packetJsonb" column="packet_jsonb"/>
+        <result property="checkpointCount" column="checkpoint_count"/>
+        <result property="observationCount" column="observation_count"/>
+        <result property="artifactCount" column="artifact_count"/>
+        <result property="createdAt" column="created_at"/>
+    </resultMap>
+
+    <select id="findById" resultMap="EvidencePacketSnapshotResultMap">
+        SELECT id, execution_type, run_id, discovery_id, schema_version,
+               CAST(packet_jsonb AS TEXT) AS packet_jsonb,
+               checkpoint_count, observation_count, artifact_count, created_at
+        FROM evidence_packet
+        WHERE id = #{id}
+    </select>
+
+    <select id="upsertRunSnapshot" parameterType="com.wedge.evidence.domain.EvidencePacketSnapshot" resultMap="EvidencePacketSnapshotResultMap">
+        INSERT INTO evidence_packet (
+            id, execution_type, run_id, schema_version, packet_jsonb, checkpoint_count, observation_count, artifact_count
+        )
+        VALUES (
+            #{id}, 'RUN', #{runId}, #{schemaVersion}, CAST(#{packetJsonb} AS jsonb), #{checkpointCount}, #{observationCount}, #{artifactCount}
+        )
+        ON CONFLICT (run_id, schema_version) DO UPDATE SET
+            id = evidence_packet.id
+        RETURNING id, execution_type, run_id, discovery_id, schema_version,
+                  CAST(packet_jsonb AS TEXT) AS packet_jsonb,
+                  checkpoint_count, observation_count, artifact_count, created_at
+    </select>
+</mapper>

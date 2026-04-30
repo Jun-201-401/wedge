@@ -17,7 +17,7 @@ public interface OutboxMessageMapper {
             @Param("maxAttempts") int maxAttempts
     );
 
-    List<OutboxMessageRecord> findDueRunExecuteMessages(
+    List<OutboxMessageRecord> findDueMessages(
             @Param("eventType") String eventType,
             @Param("now") OffsetDateTime now,
             @Param("pendingBefore") OffsetDateTime pendingBefore,
