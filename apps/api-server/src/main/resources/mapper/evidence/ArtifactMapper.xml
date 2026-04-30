@@ -34,6 +34,37 @@
           AND id = #{id}
     </select>
 
+    <select id="findLatestScreenshotByRunIdAndStage" resultMap="ArtifactResultMap">
+        SELECT DISTINCT a.id, a.run_id, a.step_id, a.artifact_type, a.s3_bucket, a.s3_key, a.public_url, a.mime_type,
+               a.width, a.height, a.size_bytes, a.sha256, a.captured_at, a.created_at
+        FROM checkpoint c
+        JOIN artifact a
+          ON a.source_type = 'RUN'
+         AND a.run_id = c.run_id
+         AND a.artifact_type = 'SCREENSHOT'
+         AND EXISTS (
+             SELECT 1
+             FROM jsonb_array_elements_text(c.artifact_refs_jsonb) AS artifact_ref(value)
+             WHERE REPLACE(artifact_ref.value, 'artifact:', '') = a.id::text
+         )
+        WHERE c.source_type = 'RUN'
+          AND c.run_id = #{runId}
+          AND c.stage = #{stage}
+        ORDER BY a.captured_at DESC, a.created_at DESC
+        LIMIT 1
+    </select>
+
+    <select id="findLatestScreenshotByRunId" resultMap="ArtifactResultMap">
+        SELECT id, run_id, step_id, artifact_type, s3_bucket, s3_key, public_url, mime_type,
+               width, height, size_bytes, sha256, captured_at, created_at
+        FROM artifact
+        WHERE source_type = 'RUN'
+          AND run_id = #{runId}
+          AND artifact_type = 'SCREENSHOT'
+        ORDER BY captured_at DESC, created_at DESC
+        LIMIT 1
+    </select>
+
     <select id="findByRunId" resultMap="ArtifactResultMap">
         SELECT id, run_id, step_id, artifact_type, s3_bucket, s3_key, public_url, mime_type,
                width, height, size_bytes, sha256, captured_at, created_at

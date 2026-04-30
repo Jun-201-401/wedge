@@ -31,3 +31,5 @@ wedge:
   auth:
     refresh-cookie:
       secure: ${WEDGE_REFRESH_COOKIE_SECURE:false}
+  report:
+    project-access-check-enabled: ${WEDGE_REPORT_PROJECT_ACCESS_CHECK_ENABLED:false}
