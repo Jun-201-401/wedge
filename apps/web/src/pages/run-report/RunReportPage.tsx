@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 
-import { getRun, getRunEvidencePacket } from '../../api/runs';
+import { getRun, getRunEvidencePacket, listRunArtifacts } from '../../api/runs';
 import type { EvidencePacket, Run } from '../../entities/run';
-import { buildMockRunReportData, buildRunReportFromEvidence, RunReportBrand, RunReportViewer } from '../../features/report-viewer';
+import { buildMockRunReportData, buildRunReportFromEvidence, hydrateEvidenceArtifacts, RunReportBrand, RunReportViewer } from '../../features/report-viewer';
 import { isMockRunId } from '../run-monitor/lib/runMonitorRoute';
 import { resolveRunReportState } from './lib/runReportState';
 
@@ -46,7 +46,10 @@ function RunReportStatePage({ runId, title, message }: { runId: string; title: s
           <span>Report</span>
           <h1 id="run-report-state-title">{title}</h1>
           <p>{message}</p>
-          <a href={`/runs/${encodeURIComponent(runId)}`}>실시간 상태로 돌아가기</a>
+          <div className="run-report-state-card__actions">
+            <a href={`/runs/${encodeURIComponent(runId)}`}>실시간 상태로 돌아가기</a>
+            <a href="/create-analysis">새 분석 만들기</a>
+          </div>
         </section>
       </main>
     </div>
@@ -119,7 +122,18 @@ export function RunReportPage({ runId }: RunReportPageProps) {
             return;
           }
 
-          setEvidencePacket(evidenceResponse.data);
+          let nextEvidencePacket = evidenceResponse.data;
+
+          try {
+            const artifactsResponse = await listRunArtifacts(runId);
+            nextEvidencePacket = hydrateEvidenceArtifacts(nextEvidencePacket, artifactsResponse.data);
+          } catch {
+            // Artifact list is a preview/download enhancement; the EvidencePacket is sufficient for the report.
+          }
+
+          if (isActive) {
+            setEvidencePacket(nextEvidencePacket);
+          }
         } catch {
           if (!isActive) {
             return;

@@ -39,6 +39,18 @@
         ORDER BY created_at DESC
     </select>
 
+    <select id="findByAnalysisJobId" resultMap="ReportResultMap">
+        SELECT id, run_id, analysis_job_id, title, format, status,
+               CAST(summary_jsonb AS TEXT) AS summary_jsonb,
+               CAST(decision_map_jsonb AS TEXT) AS decision_map_jsonb,
+               artifact_id, created_by, created_at, updated_at, deleted_at, version
+        FROM report
+        WHERE analysis_job_id = #{analysisJobId}
+          AND deleted_at IS NULL
+        ORDER BY created_at DESC
+        LIMIT 1
+    </select>
+
     <insert id="insert" parameterType="com.wedge.report.domain.Report">
         INSERT INTO report (
             id, run_id, analysis_job_id, title, format, status, summary_jsonb, decision_map_jsonb,
@@ -49,6 +61,7 @@
             CAST(#{summaryJsonb} AS jsonb), CAST(#{decisionMapJsonb} AS jsonb),
             #{artifactId}, #{createdBy}
         )
+        ON CONFLICT (analysis_job_id) WHERE deleted_at IS NULL DO NOTHING
     </insert>
 
     <update id="updateAnalysisProjection" parameterType="com.wedge.report.domain.Report">

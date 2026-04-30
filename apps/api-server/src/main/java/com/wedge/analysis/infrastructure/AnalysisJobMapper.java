@@ -10,6 +10,10 @@ import org.apache.ibatis.annotations.Param;
 public interface AnalysisJobMapper {
     Optional<AnalysisJob> findById(@Param("id") UUID id);
 
+    Optional<AnalysisJob> findLatestByRunId(@Param("runId") UUID runId);
+
+    int insertQueued(AnalysisJob analysisJob);
+
     int upsertCompleted(AnalysisJob analysisJob);
 
     int upsertFailed(AnalysisJob analysisJob);

@@ -47,6 +47,7 @@ paths:
               description: >-
                 HttpOnly refresh token cookie (`wedge_refresh_token`); attributes: `Path=/api/auth`, `HttpOnly`,
                 `SameSite=Lax`, `Max-Age` set to refresh TTL, and `Secure` in production/HTTPS contexts.
+              description: "HttpOnly refresh token cookie (`wedge_refresh_token`); attributes: `Path=/api/auth`, `HttpOnly`, `SameSite=Lax`, `Max-Age` set to refresh TTL, and `Secure` in production/HTTPS contexts."
               schema:
                 type: string
           content:
@@ -78,6 +79,7 @@ paths:
               description: >-
                 HttpOnly refresh token cookie (`wedge_refresh_token`); attributes: `Path=/api/auth`, `HttpOnly`,
                 `SameSite=Lax`, `Max-Age` set to refresh TTL, and `Secure` in production/HTTPS contexts.
+              description: "HttpOnly refresh token cookie (`wedge_refresh_token`); attributes: `Path=/api/auth`, `HttpOnly`, `SameSite=Lax`, `Max-Age` set to refresh TTL, and `Secure` in production/HTTPS contexts."
               schema:
                 type: string
           content:
@@ -111,6 +113,7 @@ paths:
               description: >-
                 Rotated HttpOnly refresh token cookie (`wedge_refresh_token`); attributes: `Path=/api/auth`, `HttpOnly`,
                 `SameSite=Lax`, `Max-Age` set to refresh TTL, and `Secure` in production/HTTPS contexts.
+              description: "Rotated HttpOnly refresh token cookie (`wedge_refresh_token`); attributes: `Path=/api/auth`, `HttpOnly`, `SameSite=Lax`, `Max-Age` set to refresh TTL, and `Secure` in production/HTTPS contexts."
               schema:
                 type: string
           content:
@@ -121,6 +124,7 @@ paths:
           description: Refresh cookie missing, invalid, or expired. Also expires the browser refresh cookie.
           headers:
             Set-Cookie:
+              description: "Expired HttpOnly refresh token cookie (`wedge_refresh_token`); attributes: `Path=/api/auth`, `HttpOnly`, `SameSite=Lax`, `Max-Age=0`, and `Secure` in production/HTTPS contexts."
               description: >-
                 Expired HttpOnly refresh token cookie (`wedge_refresh_token`); attributes: `Path=/api/auth`, `HttpOnly`,
                 `SameSite=Lax`, `Max-Age=0`, and `Secure` in production/HTTPS contexts.
@@ -143,6 +147,7 @@ paths:
           description: Logged out
           headers:
             Set-Cookie:
+              description: "Expired HttpOnly refresh token cookie (`wedge_refresh_token`); attributes: `Path=/api/auth`, `HttpOnly`, `SameSite=Lax`, `Max-Age=0`, and `Secure` in production/HTTPS contexts."
               description: >-
                 Expired HttpOnly refresh token cookie (`wedge_refresh_token`); attributes: `Path=/api/auth`, `HttpOnly`,
                 `SameSite=Lax`, `Max-Age=0`, and `Secure` in production/HTTPS contexts.
@@ -974,6 +979,35 @@ paths:
           $ref: '#/components/responses/Conflict'
         '422':
           $ref: '#/components/responses/ValidationError'
+  /api/runs/{runId}/analysis:
+    post:
+      tags:
+      - Analysis
+      operationId: requestRunAnalysis
+      summary: Request primary analysis for completed run
+      description: MVP endpoint that materializes the run EvidencePacket snapshot and publishes analysis.request with evidencePacketId.
+      security:
+      - oauth2:
+        - wedge.execute
+      parameters:
+      - $ref: '#/components/parameters/RunId'
+      responses:
+        '202':
+          description: Analysis request queued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SingleAnalysisRequestResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
   /api/runs/{runId}/analysis-jobs:
     get:
       tags:
@@ -1060,6 +1094,61 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/SingleAnalysisJobResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /api/runs/{runId}/report:
+    get:
+      tags:
+      - Reports
+      operationId: getRunReportProjection
+      summary: Get generated or generatable run report projection
+      security:
+      - oauth2:
+        - wedge.read
+      parameters:
+      - $ref: '#/components/parameters/RunId'
+      responses:
+        '200':
+          description: Run report projection
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SingleRunReportResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+    post:
+      tags:
+      - Reports
+      operationId: generateRunReportProjection
+      summary: Generate run report projection from completed analysis
+      security:
+      - oauth2:
+        - wedge.execute
+      parameters:
+      - $ref: '#/components/parameters/RunId'
+      responses:
+        '201':
+          description: Run report generated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SingleRunReportResponse'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -1614,6 +1703,30 @@ paths:
           $ref: '#/components/responses/Conflict'
         '422':
           $ref: '#/components/responses/ValidationError'
+  /internal/analysis/evidence-packets/{evidencePacketId}:
+    get:
+      tags:
+      - InternalAnalyzer
+      operationId: getInternalEvidencePacketSnapshot
+      summary: Get EvidencePacket snapshot for Analyzer
+      description: Internal service-token endpoint for Analyzer workers to fetch the immutable EvidencePacket snapshot referenced by analysis.request.evidencePacketId.
+      security:
+      - InternalBearer: []
+      parameters:
+      - $ref: '#/components/parameters/EvidencePacketId'
+      responses:
+        '200':
+          description: EvidencePacket snapshot
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SingleEvidencePacketResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
   /api/runs/{runId}/evidence-packet:
     get:
       tags:
@@ -1820,6 +1933,13 @@ components:
         format: uuid
     AnalysisJobId:
       name: analysisJobId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    EvidencePacketId:
+      name: evidencePacketId
       in: path
       required: true
       schema:
@@ -2918,6 +3038,123 @@ components:
           nullable: true
       required:
       - analysisType
+    AnalysisRequestResponse:
+      type: object
+      properties:
+        analysisJobId:
+          type: string
+          format: uuid
+        runId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum:
+          - QUEUED
+        analysisType:
+          type: string
+          enum:
+          - PRIMARY
+        evidencePacketId:
+          type: string
+          format: uuid
+        evidencePacketIncluded:
+          type: boolean
+        checkpointCount:
+          type: integer
+        artifactCount:
+          type: integer
+      required:
+      - analysisJobId
+      - runId
+      - status
+      - analysisType
+      - evidencePacketId
+      - evidencePacketIncluded
+      - checkpointCount
+      - artifactCount
+    RunReport:
+      type: object
+      properties:
+        runId:
+          type: string
+          format: uuid
+        reportStatus:
+          type: string
+          enum:
+          - NOT_READY
+          - GENERATABLE
+          - READY
+          - FAILED
+        analysisStatus:
+          type: string
+        analysisJobId:
+          type: string
+          format: uuid
+          nullable: true
+        reportId:
+          type: string
+          format: uuid
+          nullable: true
+        title:
+          type: string
+          nullable: true
+        format:
+          type: string
+          enum:
+          - PDF
+          - MARKDOWN
+          - HTML
+          - JSON
+          nullable: true
+        status:
+          type: string
+          enum:
+          - GENERATING
+          - READY
+          - FAILED
+          - ARCHIVED
+          nullable: true
+        summary:
+          type: object
+          additionalProperties: true
+        decisionMap:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        findings:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        nudges:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        errorCode:
+          type: string
+          nullable: true
+        errorMessage:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+          nullable: true
+        updatedAt:
+          type: string
+          format: date-time
+          nullable: true
+      required:
+      - runId
+      - reportStatus
+      - analysisStatus
+      - summary
+      - decisionMap
+      - findings
+      - nudges
     Report:
       type: object
       properties:
@@ -3682,6 +3919,16 @@ components:
       required:
       - data
       - meta
+    SingleAnalysisRequestResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/AnalysisRequestResponse'
+        meta:
+          $ref: '#/components/schemas/Meta'
+      required:
+      - data
+      - meta
     ListAnalysisJobResponse:
       type: object
       properties:
@@ -3689,6 +3936,16 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/AnalysisJob'
+        meta:
+          $ref: '#/components/schemas/Meta'
+      required:
+      - data
+      - meta
+    SingleRunReportResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/RunReport'
         meta:
           $ref: '#/components/schemas/Meta'
       required:

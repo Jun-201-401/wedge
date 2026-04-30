@@ -23,6 +23,7 @@ test('resolveAppRoute routes monitor, create-analysis, and landing paths', () =>
     runId: runUuid,
   });
   assert.deepEqual(resolveAppRoute('/create-analysis'), { kind: 'create-analysis' });
+  assert.deepEqual(resolveAppRoute('/runs'), { kind: 'runs-list' });
   assert.deepEqual(resolveAppRoute('/login'), { kind: 'login' });
   assert.deepEqual(resolveAppRoute('/signup'), { kind: 'signup' });
   assert.deepEqual(resolveAppRoute('/'), { kind: 'landing' });

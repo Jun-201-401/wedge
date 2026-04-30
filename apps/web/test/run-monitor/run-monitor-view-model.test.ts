@@ -6,6 +6,8 @@ import {
   buildApiSnapshotLogs,
   buildApiSnapshotSteps,
   canOpenRunReport,
+  canRequestRunDelete,
+  canRequestRunStop,
   findEvidenceScreenshotArtifact,
   getApiCheckpoint,
   getApiProgressPercent,
@@ -54,6 +56,20 @@ test('run monitor view model refreshes only live statuses', () => {
   assert.equal(shouldRefreshRunLive('STOPPED'), false);
   assert.equal(shouldRefreshRunLive('COMPLETED'), false);
   assert.equal(shouldRefreshRunLive('FAILED'), false);
+});
+
+test('run monitor view model exposes lifecycle command availability by status', () => {
+  assert.equal(canRequestRunStop('CREATED'), true);
+  assert.equal(canRequestRunStop('QUEUED'), true);
+  assert.equal(canRequestRunStop('STARTING'), true);
+  assert.equal(canRequestRunStop('RUNNING'), true);
+  assert.equal(canRequestRunStop('STOP_REQUESTED'), false);
+  assert.equal(canRequestRunStop('COMPLETED'), false);
+
+  assert.equal(canRequestRunDelete('COMPLETED'), true);
+  assert.equal(canRequestRunDelete('FAILED'), true);
+  assert.equal(canRequestRunDelete('STOPPED'), true);
+  assert.equal(canRequestRunDelete('RUNNING'), false);
 });
 
 test('run monitor view model handles stop requested without falling back to fresh-run copy', () => {

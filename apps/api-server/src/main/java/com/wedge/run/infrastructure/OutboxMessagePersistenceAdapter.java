@@ -3,6 +3,7 @@ package com.wedge.run.infrastructure;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.wedge.analysis.application.AnalysisRequestMessage;
 import com.wedge.run.application.RunExecuteRequestMessage;
 import java.time.OffsetDateTime;
 import java.util.LinkedHashMap;
@@ -15,7 +16,9 @@ import org.springframework.stereotype.Component;
 @Component
 public class OutboxMessagePersistenceAdapter {
     private static final String RUN_AGGREGATE_TYPE = "RUN";
+    private static final String ANALYSIS_JOB_AGGREGATE_TYPE = "ANALYSIS_JOB";
     private static final String RUN_EXECUTE_EVENT_TYPE = "run.execute.request";
+    private static final String ANALYSIS_REQUEST_EVENT_TYPE = "analysis.request";
     private static final long PENDING_RETRY_GRACE_SECONDS = 5;
     private static final long RETRY_DELAY_SECONDS = 30;
     private static final int MAX_PUBLISH_ATTEMPTS = 10;
@@ -29,6 +32,14 @@ public class OutboxMessagePersistenceAdapter {
     }
 
     public UUID appendRunExecuteMessage(RunExecuteRequestMessage message) {
+        return appendMessage(RUN_AGGREGATE_TYPE, UUID.fromString(message.correlationId()), message);
+    }
+
+    public UUID appendAnalysisRequestMessage(AnalysisRequestMessage message, UUID analysisJobId) {
+        return appendMessage(ANALYSIS_JOB_AGGREGATE_TYPE, analysisJobId, message);
+    }
+
+    private UUID appendMessage(String aggregateType, UUID aggregateId, RunExecuteRequestMessage message) {
         UUID outboxMessageId = UUID.randomUUID();
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("messageId", message.messageId());
@@ -42,8 +53,30 @@ public class OutboxMessagePersistenceAdapter {
 
         outboxMessageMapper.insert(new OutboxMessageRecord(
                 outboxMessageId,
-                RUN_AGGREGATE_TYPE,
-                UUID.fromString(message.correlationId()),
+                aggregateType,
+                aggregateId,
+                message.messageType(),
+                writeJson(payload)
+        ));
+        return outboxMessageId;
+    }
+
+    private UUID appendMessage(String aggregateType, UUID aggregateId, AnalysisRequestMessage message) {
+        UUID outboxMessageId = UUID.randomUUID();
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("messageId", message.messageId());
+        payload.put("messageType", message.messageType());
+        payload.put("schemaVersion", message.schemaVersion());
+        payload.put("createdAt", message.createdAt());
+        payload.put("producer", message.producer());
+        payload.put("correlationId", message.correlationId());
+        payload.put("idempotencyKey", message.idempotencyKey());
+        payload.put("payload", message.payload());
+
+        outboxMessageMapper.insert(new OutboxMessageRecord(
+                outboxMessageId,
+                aggregateType,
+                aggregateId,
                 message.messageType(),
                 writeJson(payload)
         ));
@@ -55,10 +88,15 @@ public class OutboxMessagePersistenceAdapter {
                 .map(this::toRunExecuteRequestMessage);
     }
 
+    public Optional<AnalysisRequestMessage> findAnalysisRequestMessageForPublish(UUID outboxMessageId) {
+        return outboxMessageMapper.findById(outboxMessageId, ANALYSIS_REQUEST_EVENT_TYPE, MAX_PUBLISH_ATTEMPTS)
+                .map(this::toAnalysisRequestMessage);
+    }
+
     public List<RunExecuteOutboxMessage> findDueRunExecuteMessages(int limit) {
         OffsetDateTime now = OffsetDateTime.now();
         OffsetDateTime pendingBefore = now.minusSeconds(PENDING_RETRY_GRACE_SECONDS);
-        return outboxMessageMapper.findDueRunExecuteMessages(
+        return outboxMessageMapper.findDueMessages(
                         RUN_EXECUTE_EVENT_TYPE,
                         now,
                         pendingBefore,
@@ -67,6 +105,21 @@ public class OutboxMessagePersistenceAdapter {
                 )
                 .stream()
                 .map(record -> new RunExecuteOutboxMessage(record.getId(), toRunExecuteRequestMessage(record)))
+                .toList();
+    }
+
+    public List<AnalysisRequestOutboxMessage> findDueAnalysisRequestMessages(int limit) {
+        OffsetDateTime now = OffsetDateTime.now();
+        OffsetDateTime pendingBefore = now.minusSeconds(PENDING_RETRY_GRACE_SECONDS);
+        return outboxMessageMapper.findDueMessages(
+                        ANALYSIS_REQUEST_EVENT_TYPE,
+                        now,
+                        pendingBefore,
+                        MAX_PUBLISH_ATTEMPTS,
+                        limit
+                )
+                .stream()
+                .map(record -> new AnalysisRequestOutboxMessage(record.getId(), toAnalysisRequestMessage(record)))
                 .toList();
     }
 
@@ -83,6 +136,22 @@ public class OutboxMessagePersistenceAdapter {
         @SuppressWarnings("unchecked")
         Map<String, Object> messagePayload = (Map<String, Object>) payload.get("payload");
         return new RunExecuteRequestMessage(
+                readString(payload, "messageId"),
+                readString(payload, "messageType"),
+                readString(payload, "schemaVersion"),
+                readString(payload, "createdAt"),
+                readString(payload, "producer"),
+                readString(payload, "correlationId"),
+                readString(payload, "idempotencyKey"),
+                messagePayload
+        );
+    }
+
+    private AnalysisRequestMessage toAnalysisRequestMessage(OutboxMessageRecord record) {
+        Map<String, Object> payload = readJsonMap(record.getPayloadJson());
+        @SuppressWarnings("unchecked")
+        Map<String, Object> messagePayload = (Map<String, Object>) payload.get("payload");
+        return new AnalysisRequestMessage(
                 readString(payload, "messageId"),
                 readString(payload, "messageType"),
                 readString(payload, "schemaVersion"),
@@ -118,6 +187,12 @@ public class OutboxMessagePersistenceAdapter {
     public record RunExecuteOutboxMessage(
             UUID outboxMessageId,
             RunExecuteRequestMessage runExecuteRequestMessage
+    ) {
+    }
+
+    public record AnalysisRequestOutboxMessage(
+            UUID outboxMessageId,
+            AnalysisRequestMessage analysisRequestMessage
     ) {
     }
 }

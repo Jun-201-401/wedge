@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
 
-import { ensureAuthSession } from '../api/auth';
-import { LoginPage, SignupPage } from '../pages/auth';
-import { CreateAnalysisPage } from '../pages/create-analysis';
-import { LandingPage } from '../pages/landing';
-import { RunMonitorPage, RunReportPage } from '../pages';
+import { ensureAuthSession, getCurrentUser, logout } from '../api/auth';
+import { readCurrentUser } from '../api/authSession';
+import type { User } from '../entities';
+import { CreateAnalysisPage, LandingPage, LoginPage, RunMonitorPage, RunReportPage, RunsListPage, SignupPage } from '../pages';
+import { replaceAppPath } from '../shared/lib/navigation';
 import { resolveAppRoute } from './appRoute';
 
 function getCurrentPath() {
@@ -16,6 +16,7 @@ type AuthState = 'checking' | 'authenticated' | 'anonymous';
 export function App() {
   const [currentPath, setCurrentPath] = useState(getCurrentPath);
   const [authState, setAuthState] = useState<AuthState>('checking');
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
 
   useEffect(() => {
     const handlePopState = () => setCurrentPath(getCurrentPath());
@@ -27,9 +28,27 @@ export function App() {
   useEffect(() => {
     let isCancelled = false;
 
-    ensureAuthSession().then((isAuthenticated) => {
-      if (!isCancelled) {
-        setAuthState(isAuthenticated ? 'authenticated' : 'anonymous');
+    ensureAuthSession().then(async (isAuthenticated) => {
+      if (!isAuthenticated) {
+        if (!isCancelled) {
+          setCurrentUser(null);
+          setAuthState('anonymous');
+        }
+        return;
+      }
+
+      try {
+        const response = await getCurrentUser();
+        if (!isCancelled) {
+          setCurrentUser(response.data);
+          setAuthState('authenticated');
+        }
+      } catch {
+        const cachedUser = readCurrentUser();
+        if (!isCancelled) {
+          setCurrentUser(cachedUser);
+          setAuthState(cachedUser ? 'authenticated' : 'anonymous');
+        }
       }
     });
 
@@ -39,7 +58,18 @@ export function App() {
   }, []);
 
   const markAuthenticated = useCallback(() => {
+    setCurrentUser(readCurrentUser());
     setAuthState('authenticated');
+  }, []);
+
+  const handleLogout = useCallback(async () => {
+    try {
+      await logout();
+    } finally {
+      setCurrentUser(null);
+      setAuthState('anonymous');
+      replaceAppPath('/');
+    }
   }, []);
 
   const route = resolveAppRoute(currentPath);
@@ -66,5 +96,25 @@ export function App() {
     return <CreateAnalysisPage />;
   }
 
-  return <LandingPage isAuthenticated={isAuthenticated} isAuthChecking={isAuthChecking} />;
+  if (route.kind === 'runs-list') {
+    if (authState === 'anonymous') {
+      return (
+        <LandingPage
+          isAuthenticated={false}
+          isAuthChecking={false}
+          onLogout={handleLogout}
+        />
+      );
+    }
+
+    return <RunsListPage currentUser={currentUser} onLogout={handleLogout} />;
+  }
+
+  return (
+    <LandingPage
+      isAuthenticated={isAuthenticated}
+      isAuthChecking={isAuthChecking}
+      onLogout={handleLogout}
+    />
+  );
 }

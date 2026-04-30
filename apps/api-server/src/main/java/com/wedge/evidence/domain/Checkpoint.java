@@ -13,6 +13,7 @@ public class Checkpoint {
     private UUID id;
     private UUID runId;
     private UUID stepId;
+    private String stepKey;
     private String checkpointKey;
     private String stage;
     private String triggerJsonb;

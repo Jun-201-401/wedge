@@ -7,6 +7,7 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { createPlaywrightSessionFactory } from "../src/browser/playwright/index.ts";
 import { createCapturePipeline } from "../src/capture/index.ts";
+import { executeScenario } from "../src/scenario/executor/index.ts";
 import { executeScenarioStep } from "../src/scenario/executor/step-executor.ts";
 import { createArtifactStore } from "../src/storage/index.ts";
 import type { ScenarioPlan, ScenarioStep } from "../src/shared/contracts.ts";
@@ -429,6 +430,86 @@ test("real playwright mode wait_for rejects when no locator or url condition is 
   }
 });
 
+test("mvp landing-cta scenario executes goto, checkpoint, click, wait_for, checkpoint", async () => {
+  const fixtureRoot = await mkdtemp(join(tmpdir(), "wedge-runner-mvp-site-"));
+  const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-mvp-artifacts-"));
+
+  try {
+    const { homeUrl } = await createMvpFixtureSite(fixtureRoot);
+    const result = await executeRealScenarioPlan({
+      runId: "run-mvp-landing-cta",
+      plan: createMvpLandingCtaPlan(homeUrl),
+      artifactsRoot
+    });
+
+    assert.equal(result.execution.summary.completedStepCount, 5);
+    assert.equal(result.execution.summary.stopped, false);
+    assert.equal(result.execution.delivery.status, "DELIVERY_COMPLETE");
+    assert.ok(result.snapshot.finalUrl.includes("#signup-form"));
+    assert.deepEqual(result.checkpointStepKeys, [
+      "landing_001_goto",
+      "landing_002_first_view_checkpoint",
+      "landing_005_cta_destination_checkpoint"
+    ]);
+  } finally {
+    await rm(fixtureRoot, { recursive: true, force: true });
+    await rm(artifactsRoot, { recursive: true, force: true });
+  }
+});
+
+test("mvp signup-form scenario reaches form, fills synthetic fields, selects plan, then stops before submit", async () => {
+  const fixtureRoot = await mkdtemp(join(tmpdir(), "wedge-runner-mvp-site-"));
+  const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-mvp-artifacts-"));
+
+  try {
+    const { homeUrl } = await createMvpFixtureSite(fixtureRoot);
+    const result = await executeRealScenarioPlan({
+      runId: "run-mvp-signup-form",
+      plan: createMvpSignupFormPlan(homeUrl),
+      artifactsRoot
+    });
+
+    assert.equal(result.execution.summary.completedStepCount, 9);
+    assert.equal(result.execution.summary.stopped, true);
+    assert.equal(result.execution.delivery.status, "DELIVERY_COMPLETE");
+    assert.equal(result.snapshot.fields["Work email"], "test+wedge@example.com");
+    assert.equal(result.snapshot.fields.company, "Wedge Test Company");
+    assert.equal(result.snapshot.selectedOptions.Plan, "starter");
+    assert.ok(!result.domSnapshots.some((snapshot) => snapshot.includes('data-form-submitted="true"')));
+  } finally {
+    await rm(fixtureRoot, { recursive: true, force: true });
+    await rm(artifactsRoot, { recursive: true, force: true });
+  }
+});
+
+test("mvp pricing-checkout scenario reaches checkout entry and stops before payment commit", async () => {
+  const fixtureRoot = await mkdtemp(join(tmpdir(), "wedge-runner-mvp-site-"));
+  const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-mvp-artifacts-"));
+
+  try {
+    const { homeUrl } = await createMvpFixtureSite(fixtureRoot);
+    const result = await executeRealScenarioPlan({
+      runId: "run-mvp-pricing-checkout",
+      plan: createMvpPricingCheckoutPlan(homeUrl),
+      artifactsRoot
+    });
+
+    assert.equal(result.execution.summary.completedStepCount, 8);
+    assert.equal(result.execution.summary.stopped, true);
+    assert.equal(result.execution.delivery.status, "DELIVERY_COMPLETE");
+    assert.ok(result.snapshot.finalUrl.endsWith("/checkout.html"));
+    assert.deepEqual(result.checkpointStepKeys, [
+      "pricing_001_goto",
+      "pricing_004_pricing_checkpoint",
+      "pricing_007_checkout_entry_checkpoint"
+    ]);
+    assert.ok(!result.domSnapshots.some((snapshot) => snapshot.includes('data-payment-committed="true"')));
+  } finally {
+    await rm(fixtureRoot, { recursive: true, force: true });
+    await rm(artifactsRoot, { recursive: true, force: true });
+  }
+});
+
 test("real playwright settle none returns no_wait details without mutating page state", async () => {
   const fixtureRoot = await mkdtemp(join(tmpdir(), "wedge-runner-playwright-site-"));
   const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-playwright-artifacts-"));
@@ -836,6 +917,75 @@ test("executeScenarioStep pre-arms fast response settle watchers", async () => {
   }
 });
 
+test("executeScenarioStep handles pre-armed response timeout without unhandled rejection", async () => {
+  const fixtureServer = await createResponseFixtureServer();
+  const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-playwright-artifacts-"));
+  const unhandledRejections: unknown[] = [];
+  const recordUnhandledRejection = (reason: unknown) => {
+    unhandledRejections.push(reason);
+  };
+  let session: Awaited<ReturnType<ReturnType<typeof createPlaywrightSessionFactory>["createSession"]>> | undefined;
+
+  process.on("unhandledRejection", recordUnhandledRejection);
+
+  try {
+    const plan = createPlaywrightPlan(fixtureServer.formUrl);
+    const browserFactory = createPlaywrightBrowserFactory(artifactsRoot);
+
+    session = await browserFactory.createSession({
+      runId: "run-playwright-prearmed-response-timeout",
+      plan
+    });
+
+    await executeGotoStep(session, fixtureServer.formUrl, "step_open_response_timeout_form", "open response timeout fixture");
+
+    const result = await executeScenarioStep({
+      runId: "run-playwright-prearmed-response-timeout",
+      stepOrder: 1,
+      step: createStep({
+        step_id: "step_trigger_response_timeout",
+        stage: "CTA",
+        description: "trigger response that does not match expected status",
+        action: {
+          type: "click",
+          target: {
+            selector: "#response-trigger"
+          }
+        },
+        settle_strategy: {
+          type: "response",
+          timeout_ms: 1,
+          target: {
+            url: "/api/mock-response"
+          },
+          status: 204
+        }
+      }),
+      plan,
+      session,
+      callbackClient: createStubCallbackClient(),
+      capturePipeline: {
+        collectCheckpoint: async () => {
+          throw new Error("checkpoint collection should not be called");
+        }
+      },
+      artifactStore: {
+        persistArtifacts: async () => []
+      }
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    assert.equal(result.stopRequested, false);
+    assert.deepEqual(unhandledRejections, []);
+  } finally {
+    process.off("unhandledRejection", recordUnhandledRejection);
+    await session?.close();
+    await fixtureServer.close();
+    await rm(artifactsRoot, { recursive: true, force: true });
+  }
+});
+
 test("real playwright item_count_change waits for delayed list growth before returning", async () => {
   const fixtureRoot = await mkdtemp(join(tmpdir(), "wedge-runner-playwright-site-"));
   const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-playwright-artifacts-"));
@@ -1197,14 +1347,101 @@ async function createImmediateResponseFixtureServer(): Promise<{ formUrl: string
   };
 }
 
-function createPlaywrightConfig(artifactsRoot: string) {
+async function executeRealScenarioPlan({
+  runId,
+  plan,
+  artifactsRoot
+}: {
+  runId: string;
+  plan: ScenarioPlan;
+  artifactsRoot: string;
+}) {
+  const config = createPlaywrightConfig(artifactsRoot, { useVisualEnv: true });
+  const browserFactory = createPlaywrightSessionFactory(config);
+  const capturePipeline = createCapturePipeline();
+  const artifactStore = createArtifactStore(config);
+  const checkpointStepKeys: string[] = [];
+  const domSnapshotKeys: string[] = [];
+  const session = await browserFactory.createSession({ runId, plan });
+
+  try {
+    const execution = await executeScenario({
+      runId,
+      plan,
+      session,
+      callbackClient: createStubCallbackClient({
+        sendArtifacts: async (_callbackRunId, payload) => {
+          domSnapshotKeys.push(
+            ...payload.artifacts
+              .filter((artifact) => artifact.artifactType === "DOM_SNAPSHOT")
+              .map((artifact) => artifact.key)
+          );
+        },
+        sendCheckpoints: async (_callbackRunId, payload) => {
+          checkpointStepKeys.push(...payload.checkpoints.map((checkpoint) => checkpoint.stepKey));
+        }
+      }),
+      capturePipeline,
+      artifactStore
+    });
+    const snapshot = session.snapshot();
+    const domSnapshots = await Promise.all(
+      domSnapshotKeys.map((key) => readFile(join(artifactsRoot, ...key.split("/")), "utf8"))
+    );
+
+    return {
+      execution,
+      snapshot,
+      checkpointStepKeys,
+      domSnapshots
+    };
+  } finally {
+    await session.close();
+  }
+}
+
+function createPlaywrightConfig(artifactsRoot: string, options: { useVisualEnv?: boolean } = {}) {
+  const browserHeadless = options.useVisualEnv
+    ? resolveEnvBoolean(process.env.RUNNER_BROWSER_HEADLESS, true)
+    : true;
+  const playwrightSlowMoMs = options.useVisualEnv
+    ? resolveEnvNumber(process.env.RUNNER_PLAYWRIGHT_SLOW_MO_MS, 0)
+    : 0;
+
   return createRunnerTestConfig({
     browserMode: "playwright",
     artifactsRoot,
     callbackLogFile: join(artifactsRoot, "callbacks.jsonl"),
+    browserHeadless,
     browserLaunchTimeoutMs: 45_000,
-    browserNavigationTimeoutMs: 10_000
+    browserNavigationTimeoutMs: 10_000,
+    playwrightSlowMoMs
   });
+}
+
+function resolveEnvBoolean(value: string | undefined, fallback: boolean): boolean {
+  if (!value) {
+    return fallback;
+  }
+
+  if (value === "1" || value.toLowerCase() === "true" || value.toLowerCase() === "yes") {
+    return true;
+  }
+
+  if (value === "0" || value.toLowerCase() === "false" || value.toLowerCase() === "no") {
+    return false;
+  }
+
+  return fallback;
+}
+
+function resolveEnvNumber(value: string | undefined, fallback: number): number {
+  if (!value) {
+    return fallback;
+  }
+
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
 }
 
 function createPlaywrightBrowserFactory(artifactsRoot: string) {
@@ -1392,11 +1629,423 @@ async function createFixtureSite(root: string): Promise<{ formUrl: string; doneU
   };
 }
 
+async function createMvpFixtureSite(root: string): Promise<{ homeUrl: string; checkoutUrl: string }> {
+  const homeFile = join(root, "mvp-home.html");
+  const checkoutFile = join(root, "checkout.html");
+
+  await writeFile(
+    homeFile,
+    `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>MVP Runner Fixture</title>
+  </head>
+  <body>
+    <main>
+      <section id="hero">
+        <h1>MVP Runner Fixture</h1>
+        <p>Landing CTA, signup form, and pricing checkout coverage.</p>
+        <a id="hero-cta" href="#signup-form">Start free</a>
+      </section>
+
+      <section id="signup-form" style="margin-top: 960px;">
+        <h2>Start your trial</h2>
+        <form>
+          <label for="work-email">Work email</label>
+          <input id="work-email" name="email" type="email" placeholder="Work email" />
+
+          <label for="company">Company</label>
+          <input id="company" name="company" type="text" placeholder="Company" />
+
+          <label for="plan">Plan</label>
+          <select id="plan" name="plan" aria-label="Plan">
+            <option value="">Choose a plan</option>
+            <option value="starter">Starter</option>
+            <option value="pro">Pro</option>
+          </select>
+
+          <button id="submit-signup" type="button">Create account</button>
+        </form>
+      </section>
+
+      <section id="pricing" style="margin-top: 960px;">
+        <h2>Pricing</h2>
+        <article class="plan-card">
+          <h3>Starter</h3>
+          <p>$19 / month</p>
+          <a id="starter-plan" href="./checkout.html">Choose Starter</a>
+        </article>
+      </section>
+    </main>
+    <script>
+      const signupButton = document.getElementById("submit-signup");
+      signupButton?.addEventListener("click", () => {
+        document.body.dataset.formSubmitted = "true";
+      });
+    </script>
+  </body>
+</html>`,
+    "utf8"
+  );
+
+  await writeFile(
+    checkoutFile,
+    `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>MVP Checkout Entry</title>
+  </head>
+  <body>
+    <main>
+      <h1>Checkout entry</h1>
+      <form id="payment-method">
+        <label for="card-number">Card number</label>
+        <input id="card-number" name="card-number" placeholder="Card number" />
+        <button id="pay-now" type="button">Pay now</button>
+      </form>
+    </main>
+    <script>
+      const payNow = document.getElementById("pay-now");
+      payNow?.addEventListener("click", () => {
+        document.body.dataset.paymentCommitted = "true";
+      });
+    </script>
+  </body>
+</html>`,
+    "utf8"
+  );
+
+  return {
+    homeUrl: pathToFileURL(homeFile).toString(),
+    checkoutUrl: pathToFileURL(checkoutFile).toString()
+  };
+}
+
 function createPlaywrightPlan(startUrl: string): ScenarioPlan {
   return {
     ...createMinimalPlan(),
     start_url: startUrl
   };
+}
+
+function createMvpPlan(startUrl: string, templateKey: string, goal: string, steps: ScenarioStep[]): ScenarioPlan {
+  return {
+    ...createPlaywrightPlan(startUrl),
+    plan_id: `mvp_${templateKey}`,
+    scenario_type: "template",
+    template_key: templateKey,
+    goal,
+    safety: {
+      allow_external_navigation: false,
+      allow_payment_commit: false,
+      allow_destructive_action: false,
+      use_synthetic_inputs: true,
+      stop_before_real_payment: true
+    },
+    steps
+  };
+}
+
+function createMvpLandingCtaPlan(startUrl: string): ScenarioPlan {
+  return createMvpPlan(startUrl, "landing-cta", "첫 화면 CTA가 다음 행동으로 이어지는지 확인", [
+    createStep({
+      step_id: "landing_001_goto",
+      stage: "FIRST_VIEW",
+      description: "대상 URL 진입",
+      action: {
+        type: "goto",
+        target: {
+          url: startUrl
+        }
+      },
+      settle_strategy: {
+        type: "network_idle",
+        timeout_ms: 3_000
+      },
+      checkpoint: true
+    }),
+    createStep({
+      step_id: "landing_002_first_view_checkpoint",
+      stage: "FIRST_VIEW",
+      description: "첫 화면 checkpoint",
+      action: {
+        type: "checkpoint"
+      },
+      checkpoint: true
+    }),
+    createStep({
+      step_id: "landing_003_click_primary_cta",
+      stage: "CTA",
+      description: "primary CTA 클릭",
+      action: {
+        type: "click",
+        target: {
+          role: "link",
+          text_any: ["Start free", "Get started"]
+        }
+      },
+      settle_strategy: {
+        type: "url_change",
+        timeout_ms: 1_000,
+        target: {
+          url: "#signup-form"
+        }
+      }
+    }),
+    createStep({
+      step_id: "landing_004_wait_for_cta_destination",
+      stage: "CTA",
+      description: "CTA 도착 영역 대기",
+      action: {
+        type: "wait_for",
+        target: {
+          selector: "#signup-form"
+        },
+        options: {
+          state: "visible",
+          timeout_ms: 1_000
+        }
+      }
+    }),
+    createStep({
+      step_id: "landing_005_cta_destination_checkpoint",
+      stage: "CTA",
+      description: "CTA 클릭 후 도착 상태 checkpoint",
+      action: {
+        type: "checkpoint"
+      },
+      checkpoint: true
+    })
+  ]);
+}
+
+function createMvpSignupFormPlan(startUrl: string): ScenarioPlan {
+  return createMvpPlan(startUrl, "signup-form", "가입/문의 form 도달성과 synthetic input 입력 가능성 확인", [
+    createStep({
+      step_id: "signup_001_goto",
+      stage: "FIRST_VIEW",
+      description: "대상 URL 진입",
+      action: {
+        type: "goto",
+        target: {
+          url: startUrl
+        }
+      },
+      settle_strategy: {
+        type: "network_idle",
+        timeout_ms: 3_000
+      },
+      checkpoint: true
+    }),
+    createStep({
+      step_id: "signup_002_first_view_checkpoint",
+      stage: "FIRST_VIEW",
+      description: "첫 화면 checkpoint",
+      action: {
+        type: "checkpoint"
+      },
+      checkpoint: true
+    }),
+    createStep({
+      step_id: "signup_003_click_signup_cta",
+      stage: "CTA",
+      description: "가입 CTA 클릭",
+      action: {
+        type: "click",
+        target: {
+          href_contains: "#signup-form"
+        }
+      },
+      settle_strategy: {
+        type: "url_change",
+        timeout_ms: 1_000,
+        target: {
+          url: "#signup-form"
+        }
+      }
+    }),
+    createStep({
+      step_id: "signup_004_wait_for_form",
+      stage: "INPUT",
+      description: "form 노출 대기",
+      action: {
+        type: "wait_for",
+        target: {
+          selector: "#signup-form form"
+        },
+        options: {
+          state: "visible",
+          timeout_ms: 1_000
+        }
+      }
+    }),
+    createStep({
+      step_id: "signup_005_fill_email",
+      stage: "INPUT",
+      description: "synthetic email 입력",
+      action: {
+        type: "fill",
+        target: {
+          placeholder_any: ["Work email", "Email"]
+        },
+        value: "test+wedge@example.com"
+      }
+    }),
+    createStep({
+      step_id: "signup_006_fill_company",
+      stage: "INPUT",
+      description: "synthetic company 입력",
+      action: {
+        type: "fill",
+        target: {
+          name: "company"
+        },
+        value: "Wedge Test Company"
+      }
+    }),
+    createStep({
+      step_id: "signup_007_select_plan",
+      stage: "INPUT",
+      description: "plan dropdown 선택",
+      action: {
+        type: "select",
+        target: {
+          label: "Plan"
+        },
+        value: "starter"
+      }
+    }),
+    createStep({
+      step_id: "signup_008_submit_ready_checkpoint",
+      stage: "INPUT",
+      description: "submit 직전 checkpoint",
+      action: {
+        type: "checkpoint"
+      },
+      checkpoint: true
+    }),
+    createStep({
+      step_id: "signup_009_stop_before_submit",
+      stage: "COMMIT",
+      description: "실제 가입 제출 전 중지",
+      action: {
+        type: "stop_when"
+      },
+      stop_condition: {
+        url_includes: "#signup-form"
+      }
+    })
+  ]);
+}
+
+function createMvpPricingCheckoutPlan(startUrl: string): ScenarioPlan {
+  return createMvpPlan(startUrl, "pricing-checkout", "가격 영역과 checkout 진입 직전까지 확인", [
+    createStep({
+      step_id: "pricing_001_goto",
+      stage: "FIRST_VIEW",
+      description: "대상 URL 진입",
+      action: {
+        type: "goto",
+        target: {
+          url: startUrl
+        }
+      },
+      settle_strategy: {
+        type: "network_idle",
+        timeout_ms: 3_000
+      },
+      checkpoint: true
+    }),
+    createStep({
+      step_id: "pricing_002_scroll_to_pricing",
+      stage: "VALUE",
+      description: "pricing 영역으로 스크롤",
+      action: {
+        type: "scroll",
+        value: 2200
+      }
+    }),
+    createStep({
+      step_id: "pricing_003_wait_for_pricing",
+      stage: "VALUE",
+      description: "pricing card 노출 대기",
+      action: {
+        type: "wait_for",
+        target: {
+          selector: "#pricing .plan-card"
+        },
+        options: {
+          state: "visible",
+          timeout_ms: 1_000
+        }
+      }
+    }),
+    createStep({
+      step_id: "pricing_004_pricing_checkpoint",
+      stage: "VALUE",
+      description: "가격 영역 checkpoint",
+      action: {
+        type: "checkpoint"
+      },
+      checkpoint: true
+    }),
+    createStep({
+      step_id: "pricing_005_click_plan_cta",
+      stage: "CTA",
+      description: "plan CTA 클릭",
+      action: {
+        type: "click",
+        target: {
+          role: "link",
+          text: "Choose Starter"
+        }
+      },
+      settle_strategy: {
+        type: "url_change",
+        timeout_ms: 2_000,
+        target: {
+          url: "checkout.html"
+        }
+      }
+    }),
+    createStep({
+      step_id: "pricing_006_wait_for_checkout_entry",
+      stage: "COMMIT",
+      description: "checkout 진입 화면 대기",
+      action: {
+        type: "wait_for",
+        target: {
+          selector: "#payment-method"
+        },
+        options: {
+          state: "visible",
+          timeout_ms: 1_000
+        }
+      }
+    }),
+    createStep({
+      step_id: "pricing_007_checkout_entry_checkpoint",
+      stage: "COMMIT",
+      description: "결제 직전 checkpoint",
+      action: {
+        type: "checkpoint"
+      },
+      checkpoint: true
+    }),
+    createStep({
+      step_id: "pricing_008_stop_before_payment",
+      stage: "COMMIT",
+      description: "실제 결제 전 중지",
+      action: {
+        type: "stop_when"
+      },
+      stop_condition: {
+        url_includes: "checkout.html"
+      }
+    })
+  ]);
 }
 
 function createStep(overrides: Partial<ScenarioStep> & Pick<ScenarioStep, "step_id" | "stage" | "description" | "action">): ScenarioStep {

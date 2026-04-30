@@ -20,9 +20,9 @@ import com.wedge.common.error.BusinessException;
 import com.wedge.common.error.ErrorCode;
 import com.wedge.internal.analysis.dto.AnalyzerCompletedRequest;
 import com.wedge.internal.analysis.dto.AnalyzerFailedRequest;
-import com.wedge.report.domain.Report;
-import com.wedge.report.infrastructure.ReportMapper;
 import com.wedge.run.domain.AnalysisJobStatus;
+import com.wedge.run.domain.AnalysisStatus;
+import com.wedge.run.infrastructure.RunMapper;
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.LinkedHashMap;
@@ -54,7 +54,7 @@ class JudgeResultPersistenceServiceTest {
     private NudgeMapper nudgeMapper;
 
     @Mock
-    private ReportMapper reportMapper;
+    private RunMapper runMapper;
 
     @Captor
     private ArgumentCaptor<AnalysisJob> analysisJobCaptor;
@@ -68,9 +68,6 @@ class JudgeResultPersistenceServiceTest {
     @Captor
     private ArgumentCaptor<Nudge> nudgeCaptor;
 
-    @Captor
-    private ArgumentCaptor<Report> reportCaptor;
-
     private JudgeResultPersistenceService judgeResultPersistenceService;
 
     @BeforeEach
@@ -80,7 +77,7 @@ class JudgeResultPersistenceServiceTest {
                 ruleHitMapper,
                 analysisFindingMapper,
                 nudgeMapper,
-                reportMapper,
+                runMapper,
                 objectMapper
         );
     }
@@ -90,7 +87,6 @@ class JudgeResultPersistenceServiceTest {
         UUID analysisJobId = UUID.randomUUID();
         UUID runId = UUID.randomUUID();
         AnalyzerCompletedRequest request = completedRequest(analysisJobId, runId);
-        when(reportMapper.updateAnalysisProjection(org.mockito.ArgumentMatchers.any())).thenReturn(0);
 
         Map<String, Object> response = judgeResultPersistenceService.saveCompleted(request);
 
@@ -100,7 +96,7 @@ class JudgeResultPersistenceServiceTest {
         verifyCompletedJob(analysisJobId, runId);
         verifyIssueProjection(analysisJobId, runId);
         verifyNudgeProjection(analysisJobId);
-        verifyReportProjection(analysisJobId, runId);
+        verify(runMapper).updateCurrentAnalysisState(runId, AnalysisStatus.COMPLETED, analysisJobId, new BigDecimal("61.0"), null);
     }
 
     @Test
@@ -123,6 +119,7 @@ class JudgeResultPersistenceServiceTest {
         assertThat(analysisJob.getId()).isEqualTo(analysisJobId);
         assertThat(analysisJob.getRunId()).isEqualTo(runId);
         assertThat(analysisJob.getErrorCode()).isEqualTo("ANALYZER_TIMEOUT");
+        verify(runMapper).updateCurrentAnalysisState(runId, AnalysisStatus.FAILED, analysisJobId, null, null);
     }
 
     @Test
@@ -192,16 +189,6 @@ class JudgeResultPersistenceServiceTest {
         assertThat(nudge.getAnalysisJobId()).isEqualTo(analysisJobId);
         assertThat(nudge.getFindingId()).isEqualTo(findingCaptor.getValue().getId());
         assertThat(nudge.getRecommendation()).isEqualTo("검증 진행 상태를 입력 필드 근처에 표시합니다.");
-    }
-
-    private void verifyReportProjection(UUID analysisJobId, UUID runId) {
-        verify(reportMapper).updateAnalysisProjection(reportCaptor.capture());
-        verify(reportMapper).insert(reportCaptor.capture());
-        Report report = reportCaptor.getAllValues().get(0);
-        assertThat(report.getAnalysisJobId()).isEqualTo(analysisJobId);
-        assertThat(report.getRunId()).isEqualTo(runId);
-        assertThat(report.getSummaryJsonb()).contains("friction_score");
-        assertThat(report.getDecisionMapJsonb()).contains("INPUT");
     }
 
     private AnalyzerCompletedRequest completedRequest(UUID analysisJobId, UUID runId) {

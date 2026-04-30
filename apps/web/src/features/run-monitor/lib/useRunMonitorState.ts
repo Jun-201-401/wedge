@@ -49,7 +49,9 @@ export function useRunMonitorState(runId: string, mockData: MockRunMonitorData, 
       setHasRealRunSnapshot(false);
       setIsRealRunLoading(false);
       setApiLoadError('');
-      clearEvidenceState();
+      setEvidencePacket(null);
+      setIsEvidenceLoading(false);
+      setEvidenceLoadError('');
       return;
     }
 
@@ -106,7 +108,11 @@ export function useRunMonitorState(runId: string, mockData: MockRunMonitorData, 
           refreshTimerId = window.setTimeout(() => void loadRunState(false), RUN_MONITOR_REFRESH_INTERVAL_MS);
         }
 
-        await loadEvidencePacket();
+        if (liveResponse.data.status === 'COMPLETED') {
+          await loadEvidencePacket();
+        } else {
+          clearEvidenceState();
+        }
       } catch {
         if (!isActive) {
           return;

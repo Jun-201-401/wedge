@@ -1,5 +1,6 @@
 package com.wedge.run.infrastructure;
 
+import com.wedge.run.domain.AnalysisStatus;
 import com.wedge.run.domain.ResultCompleteness;
 import com.wedge.run.domain.RunStatus;
 import com.wedge.run.domain.StepStatus;
@@ -45,6 +46,21 @@ public interface RunMapper {
     int updateLatestArtifact(@Param("runId") UUID runId, @Param("artifactId") UUID artifactId);
 
     int updateLatestCheckpoint(@Param("runId") UUID runId, @Param("checkpointId") UUID checkpointId);
+
+    int updateLatestReport(@Param("runId") UUID runId, @Param("reportId") UUID reportId);
+
+    int markAnalysisQueued(
+            @Param("runId") UUID runId,
+            @Param("analysisJobId") UUID analysisJobId
+    );
+
+    int updateCurrentAnalysisState(
+            @Param("runId") UUID runId,
+            @Param("analysisStatus") AnalysisStatus analysisStatus,
+            @Param("analysisJobId") UUID analysisJobId,
+            @Param("frictionScore") java.math.BigDecimal frictionScore,
+            @Param("reportId") UUID reportId
+    );
 
     int updateStepState(
             @Param("stepId") UUID stepId,

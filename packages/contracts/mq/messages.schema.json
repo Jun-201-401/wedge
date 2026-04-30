@@ -172,6 +172,10 @@
         "evidencePacketId": {
           "type": "string",
           "format": "uuid"
+        },
+        "evidencePacket": {
+          "$ref": "../schemas/evidence-packet.schema.json",
+          "description": "Deprecated inline EvidencePacket payload. MVP Analyzer MQ consumers expect evidencePacketId and fetch the packet from Spring."
         }
       },
       "required": [

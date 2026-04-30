@@ -16,9 +16,10 @@ import './LandingPage.css';
 interface LandingPageProps {
   isAuthenticated?: boolean;
   isAuthChecking?: boolean;
+  onLogout?: () => void;
 }
 
-export function LandingPage({ isAuthenticated = false, isAuthChecking = false }: LandingPageProps) {
+export function LandingPage({ isAuthenticated = false, isAuthChecking = false, onLogout }: LandingPageProps) {
   const [index, setIndex] = useState(0);
   const [isNavHidden, setIsNavHidden] = useState(false);
   const [scrollProgress, setScrollProgress] = useState(0);
@@ -185,6 +186,7 @@ export function LandingPage({ isAuthenticated = false, isAuthChecking = false }:
           <a href="#vision">Vision</a>
           {!isAuthenticated && !isAuthChecking ? <a href={LOGIN_PATH}>Login</a> : null}
           <a href="/create-analysis">Start</a>
+          {isAuthenticated && onLogout ? <button type="button" onClick={onLogout}>Logout</button> : null}
         </div>
       </nav>
 

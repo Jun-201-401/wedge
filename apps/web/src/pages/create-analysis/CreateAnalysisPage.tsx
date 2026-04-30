@@ -2,7 +2,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 
 import { createRun, startRun } from '../../api/runs';
 import { FIRST_WORD_DELAY_MS, WORD_ROTATION_INTERVAL_MS } from '../../features/landing-vision';
-import { buildMockRunId, buildRunMonitorPath } from '../run-monitor/lib/runMonitorRoute';
+import { buildRunMonitorPath } from '../run-monitor/lib/runMonitorRoute';
 import {
   buildCreateAnalysisPath,
   parseCreateAnalysisRouteState,
@@ -700,14 +700,9 @@ export function CreateAnalysisPage() {
     setIsCreatingRun(true);
     setRunStartError('');
 
-    const fallbackPath = buildRunMonitorPath(buildMockRunId(selectedScenario.id), {
-      submittedUrl,
-      scenarioId: selectedScenario.id,
-      depthId: selectedDepthId,
-    });
     if (!createRunIds) {
-      setRunStartError('Run 생성에 필요한 project/scenario UUID가 없어 mock live trace로 이동합니다.');
-      window.location.assign(fallbackPath);
+      setRunStartError('Run 생성에 필요한 project/scenario UUID가 없습니다. create-analysis URL 또는 개발 환경 변수를 확인해주세요.');
+      setIsCreatingRun(false);
       return;
     }
 

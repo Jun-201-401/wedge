@@ -18,6 +18,8 @@ import com.wedge.report.api.dto.ReportDetailResponse;
 import com.wedge.report.api.dto.ReportSummaryResponse;
 import com.wedge.report.application.ReportDetailQueryService;
 import com.wedge.report.application.ReportSummaryQueryService;
+import com.wedge.report.application.ReportGenerationService;
+import com.wedge.report.application.ReportQueryService;
 import com.wedge.report.domain.ReportFormat;
 import com.wedge.run.domain.ReportStatus;
 import java.math.BigDecimal;
@@ -31,6 +33,9 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 class ReportControllerTest {
+    private final ReportQueryService reportQueryService = mock(ReportQueryService.class);
+    private final ReportGenerationService reportGenerationService = mock(ReportGenerationService.class);
+    private final MockMvc mockMvc = MockMvcBuilders.standaloneSetup(new ReportController(reportQueryService, reportGenerationService))
     private final ReportSummaryQueryService reportSummaryQueryService = mock(ReportSummaryQueryService.class);
     private final ReportDetailQueryService reportDetailQueryService = mock(ReportDetailQueryService.class);
     private final MockMvc mockMvc = MockMvcBuilders.standaloneSetup(

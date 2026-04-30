@@ -4,3 +4,4 @@ export const shared = {
   name: 'shared',
   description: 'Shared frontend utilities.',
 };
+export * from './lib/safeUrl';

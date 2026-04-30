@@ -59,6 +59,7 @@ export interface RunnerConfig {
   browserHeadless: boolean;
   browserLaunchTimeoutMs: number;
   browserNavigationTimeoutMs: number;
+  playwrightSlowMoMs: number;
   playwrightBrowsersPath?: string;
   simulatedDelayCapMs: number;
 }
@@ -163,6 +164,11 @@ export function loadRunnerConfig(overrides: Partial<RunnerConfig> = {}): RunnerC
     process.env.RUNNER_BROWSER_NAVIGATION_TIMEOUT_MS,
     DEFAULT_BROWSER_TIMEOUT_MS
   );
+  const playwrightSlowMoMs = parseNumber(
+    overrides.playwrightSlowMoMs,
+    process.env.RUNNER_PLAYWRIGHT_SLOW_MO_MS,
+    0
+  );
 
   return {
     serviceName,
@@ -221,6 +227,7 @@ export function loadRunnerConfig(overrides: Partial<RunnerConfig> = {}): RunnerC
     browserHeadless,
     browserLaunchTimeoutMs,
     browserNavigationTimeoutMs,
+    playwrightSlowMoMs,
     playwrightBrowsersPath: overrides.playwrightBrowsersPath ?? process.env.PLAYWRIGHT_BROWSERS_PATH ?? undefined,
     simulatedDelayCapMs: parseNumber(
       overrides.simulatedDelayCapMs,

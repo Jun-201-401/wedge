@@ -280,3 +280,14 @@
     scroll-behavior: auto !important;
   }
 }
+
+.site-nav__links button {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  letter-spacing: inherit;
+  padding: 0;
+  text-transform: inherit;
+}

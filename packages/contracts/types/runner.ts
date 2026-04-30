@@ -27,6 +27,11 @@ export interface TargetDescriptorMap {
   text_any?: string[];
   label?: string;
   label_any?: string[];
+  placeholder?: string;
+  placeholder_any?: string[];
+  name?: string;
+  name_any?: string[];
+  href_contains?: string;
   selector?: string;
   selector_any?: string[];
   url?: string;
@@ -116,6 +121,101 @@ export interface RunExecuteMessage {
     scenarioPlan: ScenarioPlan;
     artifactPolicy?: Record<string, unknown>;
   };
+}
+
+export type DiscoveryFlowType =
+  | "LANDING_CTA"
+  | "SIGNUP_LEAD_FORM"
+  | "PRICING"
+  | "PURCHASE_CHECKOUT"
+  | "CONTACT"
+  | "CONTENT_ONLY";
+
+export type DiscoveryEntrypointType =
+  | "cta"
+  | "form"
+  | "pricing"
+  | "checkout"
+  | "cart"
+  | "signup"
+  | "contact"
+  | "content";
+
+export type DiscoveryRecommendationLevel = "HIGH" | "MEDIUM" | "LOW" | "NOT_AVAILABLE";
+
+export interface DiscoveryExecutePayload {
+  discoveryId: string;
+  projectId: string;
+  triggerSource?: "WEB" | "MCP" | "INTERNAL_AGENT" | "API";
+  url: string;
+  devicePreset: "desktop" | "tablet" | "mobile";
+  viewport: {
+    width: number;
+    height: number;
+  };
+  maxDurationMs: number;
+  maxScrollCount: number;
+}
+
+export interface DiscoveryExecuteMessage {
+  messageId: string;
+  messageType: "discovery.execute.request";
+  schemaVersion: string;
+  createdAt: string;
+  producer: string;
+  correlationId?: string;
+  idempotencyKey?: string;
+  payload: DiscoveryExecutePayload;
+}
+
+export interface DiscoveryEntrypointCandidate {
+  entrypoint_type: DiscoveryEntrypointType;
+  label: string;
+  url?: string | null;
+  selector?: string | null;
+  confidence: number;
+  evidence_refs: string[];
+}
+
+export interface DiscoveryFlowCandidate {
+  flow_type: DiscoveryFlowType;
+  confidence: number;
+  evidence_refs: string[];
+  entrypoint_candidates: DiscoveryEntrypointCandidate[];
+  reason: string;
+}
+
+export interface DiscoveryScenarioRecommendation {
+  scenario_type: DiscoveryFlowType;
+  recommendation_level: DiscoveryRecommendationLevel;
+  confidence: number;
+  reason: string;
+  evidence_refs: string[];
+  suggested_start_url?: string | null;
+  suggested_target?: TargetDescriptorMap | null;
+}
+
+export interface SiteDiscoveryResult {
+  schema_version: string;
+  discovery_id: string;
+  input_url: string;
+  final_url: string;
+  environment: {
+    device: "desktop" | "mobile" | "tablet";
+    viewport: {
+      width: number;
+      height: number;
+    };
+    locale: string;
+    timezone: string;
+    [key: string]: unknown;
+  };
+  checkpoints: Record<string, unknown>[];
+  detected_flow_types: DiscoveryFlowType[];
+  missing_flow_types?: DiscoveryFlowType[];
+  flow_candidates?: DiscoveryFlowCandidate[];
+  scenario_recommendations: DiscoveryScenarioRecommendation[];
+  collection_notes?: string[];
 }
 
 export interface RunnerAcceptedPayload {

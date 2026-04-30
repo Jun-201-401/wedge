@@ -5,6 +5,7 @@
         <id property="id" column="id"/>
         <result property="runId" column="run_id"/>
         <result property="stepId" column="step_id"/>
+        <result property="stepKey" column="step_key"/>
         <result property="checkpointKey" column="checkpoint_key"/>
         <result property="stage" column="stage"/>
         <result property="triggerJsonb" column="trigger_jsonb"/>
@@ -18,30 +19,38 @@
     </resultMap>
 
     <sql id="CheckpointColumns">
-        id, run_id, step_id, checkpoint_key, stage, trigger_jsonb, settle_jsonb, state_jsonb,
-        delta_jsonb, artifact_refs_jsonb, captured_at, duration_ms, created_at
+        c.id, c.run_id, c.step_id, s.step_key, c.checkpoint_key, c.stage,
+        CAST(c.trigger_jsonb AS TEXT) AS trigger_jsonb,
+        CAST(c.settle_jsonb AS TEXT) AS settle_jsonb,
+        CAST(c.state_jsonb AS TEXT) AS state_jsonb,
+        CAST(c.delta_jsonb AS TEXT) AS delta_jsonb,
+        CAST(c.artifact_refs_jsonb AS TEXT) AS artifact_refs_jsonb,
+        c.captured_at, c.duration_ms, c.created_at
     </sql>
 
     <select id="findById" resultMap="CheckpointResultMap">
         SELECT <include refid="CheckpointColumns"/>
-        FROM checkpoint
-        WHERE id = #{id}
+        FROM checkpoint c
+        LEFT JOIN test_run_step s ON s.id = c.step_id
+        WHERE c.id = #{id}
     </select>
 
     <select id="findByRunIdAndCheckpointKey" resultMap="CheckpointResultMap">
         SELECT <include refid="CheckpointColumns"/>
-        FROM checkpoint
-        WHERE source_type = 'RUN'
-          AND run_id = #{runId}
-          AND checkpoint_key = #{checkpointKey}
+        FROM checkpoint c
+        LEFT JOIN test_run_step s ON s.id = c.step_id
+        WHERE c.source_type = 'RUN'
+          AND c.run_id = #{runId}
+          AND c.checkpoint_key = #{checkpointKey}
     </select>
 
     <select id="findByRunId" resultMap="CheckpointResultMap">
         SELECT <include refid="CheckpointColumns"/>
-        FROM checkpoint
-        WHERE source_type = 'RUN'
-          AND run_id = #{runId}
-        ORDER BY captured_at ASC, created_at ASC
+        FROM checkpoint c
+        LEFT JOIN test_run_step s ON s.id = c.step_id
+        WHERE c.source_type = 'RUN'
+          AND c.run_id = #{runId}
+        ORDER BY c.captured_at ASC, c.created_at ASC
     </select>
 
     <insert id="insert" parameterType="com.wedge.evidence.domain.Checkpoint">

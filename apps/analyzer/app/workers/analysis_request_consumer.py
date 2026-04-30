@@ -126,7 +126,7 @@ class AnalysisRequestConsumer:
             raise
 
     def _fetch_evidence_packet(self, request: AnalysisRequest) -> dict[str, Any]:
-        packet = self._evidence_client.fetch_by_run_id(request.run_id)
+        packet = self._evidence_client.fetch_by_packet_id(request.evidence_packet_id)
         return normalize_evidence_packet(packet, run_id=request.run_id)
 
     def start(self) -> None:

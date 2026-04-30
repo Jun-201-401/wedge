@@ -35,8 +35,8 @@ export function RunReportViewer({ report }: RunReportViewerProps) {
         </div>
 
         <div className="run-report-topbar__right">
-          <button type="button" className="run-report-topbar__ghost" disabled>Export PDF</button>
-          <button type="button" className="run-report-topbar__share" disabled>Share Report</button>
+          <button type="button" className="run-report-topbar__ghost" disabled title="PDF export API 연결 대기 중">Export PDF · 준비 중</button>
+          <button type="button" className="run-report-topbar__share" disabled title="Share report API 연결 대기 중">Share Report · 준비 중</button>
         </div>
       </header>
 

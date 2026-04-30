@@ -653,7 +653,7 @@ X-Signature: hmac-sha256=...
 RabbitMQ는 작업 분배용이다.  
 Canonical MQ contract는 `packages/contracts/mq/messages.schema.json`의 envelope다. `mq/*.request.schema.json` 개별 파일은 이 envelope의 payload `$defs`를 참조하는 얇은 작업별 entrypoint다.
 
-Run execution message는 Spring이 고정한 `scenarioTemplateVersionId`와 materialized `scenarioPlan`을 포함한다. Analyzer message는 full EvidencePacket blob 대신 Spring이 저장한 `evidencePacketId`를 포함한다.
+Run execution message는 Spring이 고정한 `scenarioTemplateVersionId`와 materialized `scenarioPlan`을 포함한다. MVP Analyzer message는 Spring이 저장한 EvidencePacket snapshot을 가리키는 `evidencePacketId`를 포함하고, Analyzer는 내부 API `/internal/analysis/evidence-packets/{evidencePacketId}`로 packet을 조회한다.
 
 MQ payload는 camelCase envelope를 사용한다.
 
@@ -674,7 +674,7 @@ Queues:
 run.execute.request        # payload: scenarioTemplateVersionId + scenarioPlan
 discovery.execute.request  # payload: discoveryId + url + devicePreset + viewport + maxDurationMs + maxScrollCount
 discovery.evaluate.request # payload: discoveryId + evidencePacketRef
-analysis.request           # payload: evidencePacketId + analysisType(PRIMARY/REPROCESS/COMPARE)
+analysis.request           # MVP payload: evidencePacketId + analysisType(PRIMARY/REPROCESS/COMPARE)
 report.export.request      # payload: format(PDF/MARKDOWN/HTML/JSON)
 run.execute.dlq
 analysis.dlq

@@ -45,6 +45,7 @@ public class EvidencePacketAssembler {
                 .toList());
         packet.put("aggregate_signals", createAggregateSignals(checkpoints, observations, artifacts));
         packet.put("scenario_fit", null);
+        packet.put("decisionStageSummary", createDecisionStageSummary(checkpoints, observations));
         packet.put("artifacts", artifacts.stream()
                 .map(this::toEvidenceArtifact)
                 .toList());
@@ -102,7 +103,7 @@ public class EvidencePacketAssembler {
     private Map<String, Object> toEvidenceCheckpoint(Checkpoint checkpoint, List<Observation> observations) {
         Map<String, Object> evidenceCheckpoint = new LinkedHashMap<>();
         evidenceCheckpoint.put("checkpoint_id", checkpoint.getCheckpointKey());
-        evidenceCheckpoint.put("step_id", null);
+        evidenceCheckpoint.put("step_id", resolveStepId(checkpoint));
         evidenceCheckpoint.put("primaryStage", checkpoint.getStage());
         evidenceCheckpoint.put("trigger", readJsonMap(checkpoint.getTriggerJsonb()));
         evidenceCheckpoint.put("settle", readJsonMap(checkpoint.getSettleJsonb()));
@@ -117,7 +118,7 @@ public class EvidencePacketAssembler {
 
     private Map<String, Object> toEvidenceObservation(Observation observation) {
         Map<String, Object> evidenceObservation = new LinkedHashMap<>();
-        evidenceObservation.put("observation_id", observation.getObservationKey());
+        evidenceObservation.put("observation_id", shortObservationId(observation.getObservationKey()));
         evidenceObservation.put("type", observation.getObservationType());
         evidenceObservation.put("stage", observation.getStage());
         evidenceObservation.put("source", readJsonList(observation.getSourcesJsonb()));
@@ -137,10 +138,86 @@ public class EvidencePacketAssembler {
         signals.put("checkpoint_count", checkpoints.size());
         signals.put("observation_count", observations.size());
         signals.put("artifact_count", artifacts.size());
+        signals.put("task_success", taskSuccess(checkpoints));
         signals.put("cta_candidate_count", countObservations(observations, "cta_candidate"));
-        signals.put("console_error_count", countObservations(observations, "console_error"));
+        signals.put("console_error_count", consoleErrorCount(checkpoints, observations));
+        signals.put("failed_request_count", failedRequestCount(checkpoints, observations));
         signals.put("network_failure_count", countObservations(observations, "network_failure"));
+        Map<String, Long> primaryCtaCountByStage = primaryCtaCountByStage(observations);
+        if (!primaryCtaCountByStage.isEmpty()) {
+            signals.put("primary_cta_count_by_stage", primaryCtaCountByStage);
+        }
         return signals;
+    }
+
+    private String resolveStepId(Checkpoint checkpoint) {
+        if (checkpoint.getStepKey() != null && !checkpoint.getStepKey().isBlank()) {
+            return checkpoint.getStepKey();
+        }
+        return checkpoint.getStepId() == null ? "unknown_step" : checkpoint.getStepId().toString();
+    }
+
+    private String shortObservationId(String observationKey) {
+        if (observationKey == null || observationKey.isBlank()) {
+            return observationKey;
+        }
+        int separatorIndex = observationKey.lastIndexOf('.');
+        return separatorIndex < 0 ? observationKey : observationKey.substring(separatorIndex + 1);
+    }
+
+    private String taskSuccess(List<Checkpoint> checkpoints) {
+        return checkpoints.isEmpty() ? "partial" : "success";
+    }
+
+    private long failedRequestCount(List<Checkpoint> checkpoints, List<Observation> observations) {
+        long fromState = checkpoints.stream()
+                .map(checkpoint -> readJsonMap(checkpoint.getStateJsonb()).get("network_summary"))
+                .filter(Map.class::isInstance)
+                .map(Map.class::cast)
+                .mapToLong(summary -> readLong(summary.get("failed_request_count")))
+                .sum();
+        return fromState + countObservations(observations, "network_failure");
+    }
+
+    private long consoleErrorCount(List<Checkpoint> checkpoints, List<Observation> observations) {
+        long fromState = checkpoints.stream()
+                .map(checkpoint -> readJsonMap(checkpoint.getStateJsonb()).get("console_summary"))
+                .filter(Map.class::isInstance)
+                .map(Map.class::cast)
+                .mapToLong(summary -> readLong(summary.get("error_count")))
+                .sum();
+        return fromState + countObservations(observations, "console_error");
+    }
+
+    private Map<String, Long> primaryCtaCountByStage(List<Observation> observations) {
+        Map<String, Long> counts = new LinkedHashMap<>();
+        observations.stream()
+                .filter(observation -> "cta_candidate".equals(observation.getObservationType()) || "cta_cluster".equals(observation.getObservationType()))
+                .forEach(observation -> counts.merge(observation.getStage(), 1L, Long::sum));
+        return counts;
+    }
+
+    private long readLong(Object value) {
+        return value instanceof Number number ? number.longValue() : 0L;
+    }
+
+    private Map<String, Object> createDecisionStageSummary(List<Checkpoint> checkpoints, List<Observation> observations) {
+        Map<String, Object> summary = new LinkedHashMap<>();
+        for (String stage : List.of("FIRST_VIEW", "VALUE", "CTA", "INPUT", "COMMIT")) {
+            List<String> checkpointIds = checkpoints.stream()
+                    .filter(checkpoint -> stage.equals(checkpoint.getStage()))
+                    .map(Checkpoint::getCheckpointKey)
+                    .toList();
+            long observationCount = observations.stream()
+                    .filter(observation -> stage.equals(observation.getStage()))
+                    .count();
+            summary.put(stage, Map.of(
+                    "status", checkpointIds.isEmpty() && observationCount == 0 ? "NOT_OBSERVED" : "OBSERVED",
+                    "checkpointIds", checkpointIds,
+                    "observationCount", observationCount
+            ));
+        }
+        return summary;
     }
 
     private long countObservations(List<Observation> observations, String observationType) {

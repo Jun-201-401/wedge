@@ -102,6 +102,11 @@ const ITEM_COUNT_POLL_INTERVAL_MS = 50;
 
 type SettleTimeoutDetails = Record<string, unknown> | ((error: unknown) => Record<string, unknown>);
 
+interface SettleAttempt {
+  attempt: () => Promise<Record<string, unknown>>;
+  timeoutDetails: SettleTimeoutDetails;
+}
+
 class SettleTimeoutError extends Error {
   readonly details: Record<string, unknown>;
 
@@ -275,6 +280,7 @@ class RealPlaywrightSession implements BrowserSession {
     const browserType = resolveBrowserType(config.browserName);
     const browser = await browserType.launch({
       headless: config.browserHeadless,
+      slowMo: config.playwrightSlowMoMs,
       timeout: config.browserLaunchTimeoutMs
     });
     const context = await browser.newContext({
@@ -401,47 +407,16 @@ class RealPlaywrightSession implements BrowserSession {
 
   async prepareSettle(strategy: SettleStrategy): Promise<PreparedBrowserSettle | null> {
     if (strategy.type === "response") {
-      return this.createPreparedSettle(
-        strategy,
-        () => this.waitForResponse(strategy),
-        {
-          mode: "response_wait",
-          urlIncludes: resolveSettleResponseUrlIncludes(strategy),
-          method: resolveSettleResponseMethod(strategy),
-          status: resolveSettleResponseStatus(strategy),
-          timeoutMs: strategy.timeout_ms
-        }
-      );
+      return this.createPreparedSettle(strategy, this.createResponseSettleAttempt(strategy));
     }
 
     if (strategy.type === "url_change") {
-      const baselineUrl = this.page.url();
-      return this.createPreparedSettle(
-        strategy,
-        () => this.waitForUrlChange(strategy, baselineUrl),
-        {
-          mode: "url_change"
-        }
-      );
+      return this.createPreparedSettle(strategy, this.createUrlChangeSettleAttempt(strategy, this.page.url()));
     }
 
     if (strategy.type === "item_count_change") {
       const preparedItemCount = await this.prepareItemCountChange(strategy);
-      return this.createPreparedSettle(
-        strategy,
-        () => this.waitForItemCountChange(strategy, preparedItemCount),
-        (error) =>
-          error instanceof SettleTimeoutError
-            ? error.details
-            : {
-                mode: "item_count_poll",
-                expectedCount: resolveSettleExpectedCount(strategy),
-                minCount: resolveSettleMinCount(strategy),
-                maxCount: resolveSettleMaxCount(strategy),
-                countDelta: resolveSettleCountDelta(strategy),
-                timeoutMs: strategy.timeout_ms
-              }
-      );
+      return this.createPreparedSettle(strategy, this.createItemCountSettleAttempt(strategy, preparedItemCount));
     }
 
     return null;
@@ -503,50 +478,35 @@ class RealPlaywrightSession implements BrowserSession {
     }
 
     if (strategy.type === "url_change") {
+      const { attempt, timeoutDetails } = this.createUrlChangeSettleAttempt(strategy);
       return this.settleWithAttempt(
         strategy.type,
         startedAt,
         targetSummary,
-        () => this.waitForUrlChange(strategy),
-        {
-          mode: "url_change"
-        }
+        attempt,
+        timeoutDetails
       );
     }
 
     if (strategy.type === "response") {
+      const { attempt, timeoutDetails } = this.createResponseSettleAttempt(strategy);
       return this.settleWithAttempt(
         strategy.type,
         startedAt,
         targetSummary,
-        () => this.waitForResponse(strategy),
-        {
-          mode: "response_wait",
-          urlIncludes: resolveSettleResponseUrlIncludes(strategy),
-          method: resolveSettleResponseMethod(strategy),
-          status: resolveSettleResponseStatus(strategy),
-          timeoutMs: strategy.timeout_ms
-        }
+        attempt,
+        timeoutDetails
       );
     }
 
     if (strategy.type === "item_count_change") {
+      const { attempt, timeoutDetails } = this.createItemCountSettleAttempt(strategy);
       return this.settleWithAttempt(
         strategy.type,
         startedAt,
         targetSummary,
-        () => this.waitForItemCountChange(strategy),
-        (error) =>
-          error instanceof SettleTimeoutError
-            ? error.details
-            : {
-                mode: "item_count_poll",
-                expectedCount: resolveSettleExpectedCount(strategy),
-                minCount: resolveSettleMinCount(strategy),
-                maxCount: resolveSettleMaxCount(strategy),
-                countDelta: resolveSettleCountDelta(strategy),
-                timeoutMs: strategy.timeout_ms
-              }
+        attempt,
+        timeoutDetails
       );
     }
 
@@ -918,18 +878,57 @@ class RealPlaywrightSession implements BrowserSession {
 
   private createPreparedSettle(
     strategy: SettleStrategy,
-    attempt: () => Promise<Record<string, unknown>>,
-    timeoutDetails: SettleTimeoutDetails
+    { attempt, timeoutDetails }: SettleAttempt
   ): PreparedBrowserSettle {
     const startedAt = Date.now();
     const targetSummary = describeTarget(strategy.target);
     const pendingResult = attempt();
+    void pendingResult.catch(() => {});
 
     return {
       settle: async () => this.settleWithAttempt(strategy.type, startedAt, targetSummary, () => pendingResult, timeoutDetails),
       cancel: async () => {
         void pendingResult.catch(() => {});
       }
+    };
+  }
+
+  private createUrlChangeSettleAttempt(strategy: SettleStrategy, baselineUrl?: string): SettleAttempt {
+    return {
+      attempt: () => this.waitForUrlChange(strategy, baselineUrl),
+      timeoutDetails: {
+        mode: "url_change"
+      }
+    };
+  }
+
+  private createResponseSettleAttempt(strategy: SettleStrategy): SettleAttempt {
+    return {
+      attempt: () => this.waitForResponse(strategy),
+      timeoutDetails: {
+        mode: "response_wait",
+        urlIncludes: resolveSettleResponseUrlIncludes(strategy),
+        method: resolveSettleResponseMethod(strategy),
+        status: resolveSettleResponseStatus(strategy),
+        timeoutMs: strategy.timeout_ms
+      }
+    };
+  }
+
+  private createItemCountSettleAttempt(strategy: SettleStrategy, prepared?: PreparedItemCountWait): SettleAttempt {
+    return {
+      attempt: () => this.waitForItemCountChange(strategy, prepared),
+      timeoutDetails: (error) =>
+        error instanceof SettleTimeoutError
+          ? error.details
+          : {
+              mode: "item_count_poll",
+              expectedCount: resolveSettleExpectedCount(strategy),
+              minCount: resolveSettleMinCount(strategy),
+              maxCount: resolveSettleMaxCount(strategy),
+              countDelta: resolveSettleCountDelta(strategy),
+              timeoutMs: strategy.timeout_ms
+            }
     };
   }
 }
@@ -1052,6 +1051,22 @@ function inferFieldKey(target: TargetDescriptor | undefined, fallback: string): 
       return target.label_any[0];
     }
 
+    if (typeof target.placeholder === "string" && target.placeholder.length > 0) {
+      return target.placeholder;
+    }
+
+    if (Array.isArray(target.placeholder_any) && target.placeholder_any.length > 0) {
+      return target.placeholder_any[0];
+    }
+
+    if (typeof target.name === "string" && target.name.length > 0) {
+      return target.name;
+    }
+
+    if (Array.isArray(target.name_any) && target.name_any.length > 0) {
+      return target.name_any[0];
+    }
+
     if (typeof target.selector === "string" && target.selector.length > 0) {
       return target.selector;
     }
@@ -1134,6 +1149,34 @@ function buildCandidateLocators(page: Page, target: TargetDescriptor | undefined
     }
   }
 
+  if (typeof target.placeholder === "string" && target.placeholder.length > 0) {
+    candidates.push(page.getByPlaceholder(target.placeholder));
+  }
+
+  if (Array.isArray(target.placeholder_any)) {
+    for (const placeholder of target.placeholder_any) {
+      if (typeof placeholder === "string" && placeholder.length > 0) {
+        candidates.push(page.getByPlaceholder(placeholder));
+      }
+    }
+  }
+
+  if (typeof target.name === "string" && target.name.length > 0) {
+    candidates.push(page.locator(`[name="${escapeCssString(target.name)}"]`));
+  }
+
+  if (Array.isArray(target.name_any)) {
+    for (const name of target.name_any) {
+      if (typeof name === "string" && name.length > 0) {
+        candidates.push(page.locator(`[name="${escapeCssString(name)}"]`));
+      }
+    }
+  }
+
+  if (typeof target.href_contains === "string" && target.href_contains.length > 0) {
+    candidates.push(page.locator(`[href*="${escapeCssString(target.href_contains)}"]`));
+  }
+
   if (typeof target.text === "string" && target.text.length > 0) {
     candidates.push(page.getByText(target.text));
   }
@@ -1147,6 +1190,10 @@ function buildCandidateLocators(page: Page, target: TargetDescriptor | undefined
   }
 
   return candidates;
+}
+
+function escapeCssString(value: string): string {
+  return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
 }
 
 async function tryCandidateLocators(
