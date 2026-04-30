@@ -27,6 +27,9 @@ test('run report page follows the report.html result-first layout', () => {
   assert.match(source, /function RunReportStatePage/);
   assert.match(source, /getRun\(runId\)/);
   assert.match(source, /getRunEvidencePacket\(runId\)/);
+  assert.match(source, /listRunArtifacts\(runId\)/);
+  assert.match(source, /hydrateEvidenceArtifacts/);
+  assert.match(source, /Artifact list is a preview\/download enhancement/);
   assert.match(source, /buildMockRunReportData/);
   assert.match(source, /buildRunReportFromEvidence/);
   assert.match(source, /if \(isMockRun\)/);
