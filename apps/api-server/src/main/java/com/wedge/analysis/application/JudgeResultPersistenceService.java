@@ -14,11 +14,9 @@ import com.wedge.common.error.BusinessException;
 import com.wedge.common.error.ErrorCode;
 import com.wedge.internal.analysis.dto.AnalyzerCompletedRequest;
 import com.wedge.internal.analysis.dto.AnalyzerFailedRequest;
-import com.wedge.report.domain.Report;
-import com.wedge.report.domain.ReportFormat;
-import com.wedge.report.infrastructure.ReportMapper;
 import com.wedge.run.domain.AnalysisJobStatus;
-import com.wedge.run.domain.ReportStatus;
+import com.wedge.run.domain.AnalysisStatus;
+import com.wedge.run.infrastructure.RunMapper;
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.LinkedHashMap;
@@ -26,6 +24,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class JudgeResultPersistenceService {
@@ -36,7 +35,7 @@ public class JudgeResultPersistenceService {
     private final RuleHitMapper ruleHitMapper;
     private final AnalysisFindingMapper analysisFindingMapper;
     private final NudgeMapper nudgeMapper;
-    private final ReportMapper reportMapper;
+    private final RunMapper runMapper;
     private final ObjectMapper objectMapper;
 
     public JudgeResultPersistenceService(
@@ -44,17 +43,18 @@ public class JudgeResultPersistenceService {
             RuleHitMapper ruleHitMapper,
             AnalysisFindingMapper analysisFindingMapper,
             NudgeMapper nudgeMapper,
-            ReportMapper reportMapper,
+            RunMapper runMapper,
             ObjectMapper objectMapper
     ) {
         this.analysisJobMapper = analysisJobMapper;
         this.ruleHitMapper = ruleHitMapper;
         this.analysisFindingMapper = analysisFindingMapper;
         this.nudgeMapper = nudgeMapper;
-        this.reportMapper = reportMapper;
+        this.runMapper = runMapper;
         this.objectMapper = objectMapper;
     }
 
+    @Transactional
     public Map<String, Object> saveCompleted(AnalyzerCompletedRequest request) {
         List<Map<String, Object>> issues = readList(request.judgeResult(), "issues");
         validateIssueStages(issues);
@@ -62,12 +62,14 @@ public class JudgeResultPersistenceService {
         clearProjectionRows(request.analysisJobId());
         Map<String, UUID> findingIdsByIssueId = persistIssues(request.analysisJobId(), request.runId(), issues);
         int nudgeCount = persistNudges(request, findingIdsByIssueId);
-        upsertReport(request);
+        runMapper.updateAnalysisState(request.runId(), AnalysisStatus.COMPLETED, request.analysisJobId(), readFrictionScore(request.judgeResult()), null);
         return completedResponse(request, issues.size(), nudgeCount);
     }
 
+    @Transactional
     public Map<String, Object> saveFailed(AnalyzerFailedRequest request) {
         analysisJobMapper.upsertFailed(toFailedAnalysisJob(request));
+        runMapper.updateAnalysisState(request.runId(), AnalysisStatus.FAILED, request.analysisJobId(), null, null);
         return Map.of(
                 "analysisJobId", request.analysisJobId(),
                 "runId", request.runId(),
@@ -195,21 +197,6 @@ public class JudgeResultPersistenceService {
         nudge.setExpectedEffect(readString(payload, "expected_effect", null));
         nudge.setValidationQuestion(readString(payload, "validation_question", null));
         return nudge;
-    }
-
-    private void upsertReport(AnalyzerCompletedRequest request) {
-        Report report = new Report();
-        report.setId(UUID.randomUUID());
-        report.setRunId(request.runId());
-        report.setAnalysisJobId(request.analysisJobId());
-        report.setTitle("JudgeResult analysis report");
-        report.setFormat(ReportFormat.JSON);
-        report.setStatus(ReportStatus.READY);
-        report.setSummaryJsonb(toJson(readMap(request.judgeResult(), "summary")));
-        report.setDecisionMapJsonb(toJson(readListValue(request.judgeResult(), "decision_map")));
-        if (reportMapper.updateAnalysisProjection(report) == 0) {
-            reportMapper.insert(report);
-        }
     }
 
     private Map<String, Object> completedResponse(AnalyzerCompletedRequest request, int issueCount, int nudgeCount) {

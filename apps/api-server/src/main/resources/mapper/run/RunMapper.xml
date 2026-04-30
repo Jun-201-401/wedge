@@ -220,6 +220,27 @@
           AND deleted_at IS NULL
     </update>
 
+    <update id="updateLatestReport">
+        UPDATE test_run
+        SET latest_report_id = #{reportId},
+            updated_at = NOW(),
+            version = version + 1
+        WHERE id = #{runId}
+          AND deleted_at IS NULL
+    </update>
+
+    <update id="updateAnalysisState">
+        UPDATE test_run
+        SET analysis_status = #{analysisStatus},
+            latest_analysis_job_id = COALESCE(#{analysisJobId,jdbcType=OTHER}, latest_analysis_job_id),
+            friction_score = COALESCE(#{frictionScore,jdbcType=NUMERIC}, friction_score),
+            latest_report_id = COALESCE(#{reportId,jdbcType=OTHER}, latest_report_id),
+            updated_at = NOW(),
+            version = version + 1
+        WHERE id = #{runId}
+          AND deleted_at IS NULL
+    </update>
+
     <update id="updateStepState">
         UPDATE test_run_step
         SET status = #{nextStatus},

@@ -18,9 +18,11 @@ import com.wedge.run.application.command.RunnerFailedCommand;
 import com.wedge.run.application.command.RunnerFinishedCommand;
 import com.wedge.run.application.command.RunnerStepEventCommand;
 import com.wedge.run.application.command.RunnerStepEventsCommand;
+import com.wedge.run.domain.AnalysisStatus;
 import com.wedge.run.domain.ResultCompleteness;
 import com.wedge.run.domain.RunStatus;
 import com.wedge.run.domain.StepStatus;
+import java.math.BigDecimal;
 import com.wedge.run.infrastructure.OutboxMessagePersistenceAdapter;
 import com.wedge.run.infrastructure.RunMapper;
 import com.wedge.run.infrastructure.RunPersistenceAdapter;
@@ -396,6 +398,28 @@ class RunnerCallbackLifecycleScenarioTest {
         @Override
         public int updateLatestCheckpoint(UUID runId, UUID checkpointId) {
             return runs.containsKey(runId) ? 1 : 0;
+        }
+
+        @Override
+        public int updateLatestReport(UUID runId, UUID reportId) {
+            return runs.containsKey(runId) ? 1 : 0;
+        }
+
+        @Override
+        public int updateAnalysisState(
+                UUID runId,
+                AnalysisStatus analysisStatus,
+                UUID analysisJobId,
+                BigDecimal frictionScore,
+                UUID reportId
+        ) {
+            RunRecord run = runs.get(runId);
+            if (run == null || run.getDeletedAt() != null) {
+                return 0;
+            }
+            run.setAnalysisStatus(analysisStatus);
+            run.setVersion(run.getVersion() + 1);
+            return 1;
         }
 
         @Override
