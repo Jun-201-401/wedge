@@ -172,6 +172,10 @@
         "evidencePacketId": {
           "type": "string",
           "format": "uuid"
+        },
+        "evidencePacket": {
+          "$ref": "../schemas/evidence-packet.schema.json",
+          "description": "MVP inline EvidencePacket payload. Long-term producers may switch back to evidencePacketId snapshot references."
         }
       },
       "required": [
@@ -179,7 +183,7 @@
         "runId",
         "analysisType",
         "forceRebuildEvidenceBundle",
-        "evidencePacketId"
+        "evidencePacket"
       ]
     },
     "ReportExportRequestPayload": {

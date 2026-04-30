@@ -135,13 +135,17 @@ ScenarioPlan
   → BrowserWorker action/settle
   → checkpoint + artifact callbacks
   → Spring evidence materializer
-  → EvidencePacket stored with evidencePacketId
-  → analysis.request(evidencePacketId)
+  → MVP analysis.request(full EvidencePacket inline)
   → StageResolver
   → StageContextBuilder
   → RuleEngine
   → JudgeResult
+  → Analyzer callback stores analysis projection
+  → Spring report API/service generates report row from completed analysis
 ```
+
+장기 구조에서는 EvidencePacket snapshot을 저장하고 `analysis.request(evidencePacketId)`만 보내는 방향을 다시 적용할 수 있다.
+현재 MVP 점검 범위에서는 Analyzer와 합의한 대로 Spring이 full EvidencePacket을 MQ payload에 포함한다.
 
 Top-level fields:
 
