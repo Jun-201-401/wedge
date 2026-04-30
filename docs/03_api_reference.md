@@ -275,6 +275,18 @@ GET  /api/reports/{reportId}/shares
 POST /api/reports/{reportId}/shares
 ```
 
+#### Report Summary / Detail 응답 구분 기준
+
+Report Summary API는 리포트 목록, 대시보드, 미리보기 카드에서 사용하는 가벼운 응답이다.
+상태, 마찰 점수, 요약 문장, decision map 요약, 중요도가 높은 finding 3개와 사용 가능한 preview image 정도만 포함한다.
+finding별 preview image는 같은 stage의 checkpoint screenshot을 우선 사용하고, 없으면 report artifact, 없으면 run의 최신 screenshot을 fallback으로 사용한다.
+
+Report Detail API는 리포트 상세 화면에서 사용하는 전체 응답이다.
+전체 finding 목록, finding별 nudge, evidence refs, 대표 screenshot artifact, visual evidence metadata를 포함할 수 있다.
+
+Summary 응답은 모든 finding, nudge, artifact를 매번 전부 조합하지 않는다.
+Detail 응답은 report, analysis_finding, nudge, artifact, evidence reference를 조합해 상세 화면 렌더링에 필요한 정보를 제공한다.
+
 Run result 또는 report response는 Decision Map을 포함한다.
 
 ```json

@@ -230,6 +230,27 @@
             "type": "string"
           }
         },
+        "placeholder": {
+          "type": "string"
+        },
+        "placeholder_any": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "name": {
+          "type": "string"
+        },
+        "name_any": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "href_contains": {
+          "type": "string"
+        },
         "selector": {
           "type": "string"
         },
