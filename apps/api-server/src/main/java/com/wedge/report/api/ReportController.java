@@ -39,13 +39,19 @@ public class ReportController {
     }
 
     @PostMapping("/report")
-    public ResponseEntity<ApiResponse<RunReportResponse>> generateRunReport(@PathVariable UUID runId) {
-        return ApiResponse.created(reportGenerationService.generateRunReport(runId));
+    public ResponseEntity<ApiResponse<RunReportResponse>> generateRunReport(
+            @PathVariable UUID runId,
+            Authentication authentication
+    ) {
+        return ApiResponse.created(reportGenerationService.generateRunReport(runId, principal(authentication).userId()));
     }
 
     @GetMapping("/report")
-    public ResponseEntity<ApiResponse<RunReportResponse>> getRunReport(@PathVariable UUID runId) {
-        return ApiResponse.ok(reportGenerationService.getRunReport(runId));
+    public ResponseEntity<ApiResponse<RunReportResponse>> getRunReport(
+            @PathVariable UUID runId,
+            Authentication authentication
+    ) {
+        return ApiResponse.ok(reportGenerationService.getRunReport(runId, principal(authentication).userId()));
     }
 
     private WedgePrincipal principal(Authentication authentication) {

@@ -513,6 +513,7 @@ CREATE INDEX idx_analysis_job_run_created ON analysis_job(run_id, created_at DES
 CREATE INDEX idx_rule_hit_run_priority ON rule_hit(run_id, priority_score DESC);
 CREATE INDEX idx_finding_run_rank ON analysis_finding(run_id, rank_order);
 CREATE INDEX idx_report_run_created ON report(run_id, created_at DESC) WHERE deleted_at IS NULL;
+CREATE UNIQUE INDEX ux_report_active_analysis_job ON report(analysis_job_id) WHERE deleted_at IS NULL;
 
 CREATE INDEX idx_mcp_invocation_started ON mcp_invocation_log(started_at DESC);
 CREATE INDEX idx_outbox_pending ON outbox_message(status, next_attempt_at);

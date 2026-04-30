@@ -2,6 +2,7 @@ package com.wedge.report.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -12,6 +13,7 @@ import com.wedge.analysis.infrastructure.AnalysisJobMapper;
 import com.wedge.analysis.infrastructure.NudgeMapper;
 import com.wedge.common.error.BusinessException;
 import com.wedge.common.error.ErrorCode;
+import com.wedge.project.application.ProjectAccessService;
 import com.wedge.report.api.dto.RunReportResponse;
 import com.wedge.report.domain.Report;
 import com.wedge.report.domain.ReportFormat;
@@ -60,6 +62,9 @@ class ReportGenerationServiceTest {
     @Mock
     private RunMapper runMapper;
 
+    @Mock
+    private ProjectAccessService projectAccessService;
+
     @Captor
     private ArgumentCaptor<Report> reportCaptor;
 
@@ -74,6 +79,7 @@ class ReportGenerationServiceTest {
                 nudgeMapper,
                 reportMapper,
                 runMapper,
+                projectAccessService,
                 objectMapper
         );
     }
@@ -81,16 +87,20 @@ class ReportGenerationServiceTest {
     @Test
     void generateRunReportCreatesReportFromLatestCompletedAnalysis() throws Exception {
         UUID runId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
         UUID analysisJobId = UUID.randomUUID();
         AnalysisJob analysisJob = completedAnalysisJob(runId, analysisJobId);
-        when(runService.getRun(runId)).thenReturn(sampleRun(runId));
-        when(analysisJobMapper.findLatestCompletedByRunId(runId)).thenReturn(Optional.of(analysisJob));
+        RunResponse run = sampleRun(runId);
+        when(runService.getRun(runId)).thenReturn(run);
+        when(analysisJobMapper.findLatestByRunId(runId)).thenReturn(Optional.of(analysisJob));
         when(reportMapper.findByRunId(runId)).thenReturn(List.of());
+        when(reportMapper.insert(any(Report.class))).thenReturn(1);
         when(analysisFindingMapper.findByAnalysisJobId(analysisJobId)).thenReturn(List.of());
         when(nudgeMapper.findByAnalysisJobId(analysisJobId)).thenReturn(List.of());
 
-        RunReportResponse response = reportGenerationService.generateRunReport(runId);
+        RunReportResponse response = reportGenerationService.generateRunReport(runId, userId);
 
+        verify(projectAccessService).ensureProjectAccessible(run.projectId(), userId);
         assertThat(response.runId()).isEqualTo(runId);
         assertThat(response.reportStatus()).isEqualTo("READY");
         assertThat(response.analysisStatus()).isEqualTo(AnalysisJobStatus.COMPLETED.name());
@@ -105,19 +115,44 @@ class ReportGenerationServiceTest {
         assertThat(report.getFormat()).isEqualTo(ReportFormat.JSON);
         assertThat(report.getStatus()).isEqualTo(ReportStatus.READY);
         assertThat(report.getSummaryJsonb()).contains("friction_score");
-        verify(runMapper).updateAnalysisState(runId, AnalysisStatus.COMPLETED, analysisJobId, new BigDecimal("61.0"), response.reportId());
+        verify(runMapper).updateCurrentAnalysisState(runId, AnalysisStatus.COMPLETED, analysisJobId, new BigDecimal("61.0"), response.reportId());
+    }
+
+    @Test
+    void generateRunReportReloadsExistingReportWhenConcurrentInsertAlreadyCreatedIt() throws Exception {
+        UUID runId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        UUID analysisJobId = UUID.randomUUID();
+        UUID existingReportId = UUID.randomUUID();
+        AnalysisJob analysisJob = completedAnalysisJob(runId, analysisJobId);
+        Report existingReport = report(runId, analysisJobId, existingReportId);
+        when(runService.getRun(runId)).thenReturn(sampleRun(runId));
+        when(analysisJobMapper.findLatestByRunId(runId)).thenReturn(Optional.of(analysisJob));
+        when(reportMapper.findByRunId(runId)).thenReturn(List.of());
+        when(reportMapper.insert(any(Report.class))).thenReturn(0);
+        when(reportMapper.findByAnalysisJobId(analysisJobId)).thenReturn(Optional.of(existingReport));
+        when(analysisFindingMapper.findByAnalysisJobId(analysisJobId)).thenReturn(List.of());
+        when(nudgeMapper.findByAnalysisJobId(analysisJobId)).thenReturn(List.of());
+
+        RunReportResponse response = reportGenerationService.generateRunReport(runId, userId);
+
+        assertThat(response.reportId()).isEqualTo(existingReportId);
+        verify(runMapper).updateCurrentAnalysisState(runId, AnalysisStatus.COMPLETED, analysisJobId, new BigDecimal("61.0"), existingReportId);
     }
 
     @Test
     void getRunReportReturnsGeneratableWhenCompletedAnalysisExistsWithoutReport() throws Exception {
         UUID runId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
         UUID analysisJobId = UUID.randomUUID();
-        when(runService.getRun(runId)).thenReturn(sampleRun(runId));
+        RunResponse run = sampleRun(runId);
+        when(runService.getRun(runId)).thenReturn(run);
         when(reportMapper.findByRunId(runId)).thenReturn(List.of());
         when(analysisJobMapper.findLatestByRunId(runId)).thenReturn(Optional.of(completedAnalysisJob(runId, analysisJobId)));
 
-        RunReportResponse response = reportGenerationService.getRunReport(runId);
+        RunReportResponse response = reportGenerationService.getRunReport(runId, userId);
 
+        verify(projectAccessService).ensureProjectAccessible(run.projectId(), userId);
         assertThat(response.reportStatus()).isEqualTo("GENERATABLE");
         assertThat(response.analysisStatus()).isEqualTo(AnalysisJobStatus.COMPLETED.name());
         assertThat(response.analysisJobId()).isEqualTo(analysisJobId);
@@ -127,13 +162,49 @@ class ReportGenerationServiceTest {
     @Test
     void generateRunReportRejectsMissingCompletedAnalysis() {
         UUID runId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
         when(runService.getRun(runId)).thenReturn(sampleRun(runId));
-        when(analysisJobMapper.findLatestCompletedByRunId(runId)).thenReturn(Optional.empty());
+        when(analysisJobMapper.findLatestByRunId(runId)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> reportGenerationService.generateRunReport(runId))
+        assertThatThrownBy(() -> reportGenerationService.generateRunReport(runId, userId))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.STATE_CONFLICT);
+    }
+
+    @Test
+    void generateRunReportRejectsWhenLatestAnalysisIsNotCompleted() {
+        UUID runId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        AnalysisJob latestQueuedJob = new AnalysisJob();
+        latestQueuedJob.setId(UUID.randomUUID());
+        latestQueuedJob.setRunId(runId);
+        latestQueuedJob.setStatus(AnalysisJobStatus.QUEUED);
+        when(runService.getRun(runId)).thenReturn(sampleRun(runId));
+        when(analysisJobMapper.findLatestByRunId(runId)).thenReturn(Optional.of(latestQueuedJob));
+
+        assertThatThrownBy(() -> reportGenerationService.generateRunReport(runId, userId))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.STATE_CONFLICT);
+    }
+
+    @Test
+    void getRunReportRejectsInaccessibleProjectBeforeReadingReportRows() {
+        UUID runId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        RunResponse run = sampleRun(runId);
+        when(runService.getRun(runId)).thenReturn(run);
+        org.mockito.Mockito.doThrow(new BusinessException(ErrorCode.FORBIDDEN))
+                .when(projectAccessService)
+                .ensureProjectAccessible(run.projectId(), userId);
+
+        assertThatThrownBy(() -> reportGenerationService.getRunReport(runId, userId))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.FORBIDDEN);
+
+        org.mockito.Mockito.verifyNoInteractions(reportMapper, analysisJobMapper, analysisFindingMapper, nudgeMapper);
     }
 
     private AnalysisJob completedAnalysisJob(UUID runId, UUID analysisJobId) throws Exception {
@@ -172,5 +243,18 @@ class ReportGenerationServiceTest {
                 null,
                 null
         );
+    }
+
+    private Report report(UUID runId, UUID analysisJobId, UUID reportId) {
+        Report report = new Report();
+        report.setId(reportId);
+        report.setRunId(runId);
+        report.setAnalysisJobId(analysisJobId);
+        report.setTitle("JudgeResult analysis report");
+        report.setFormat(ReportFormat.JSON);
+        report.setStatus(ReportStatus.READY);
+        report.setSummaryJsonb("{\"friction_score\":61.0}");
+        report.setDecisionMapJsonb("[]");
+        return report;
     }
 }

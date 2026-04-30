@@ -10,6 +10,7 @@ import com.wedge.analysis.infrastructure.AnalysisJobMapper;
 import com.wedge.analysis.infrastructure.NudgeMapper;
 import com.wedge.common.error.BusinessException;
 import com.wedge.common.error.ErrorCode;
+import com.wedge.project.application.ProjectAccessService;
 import com.wedge.report.api.dto.ReportFindingResponse;
 import com.wedge.report.api.dto.ReportNudgeResponse;
 import com.wedge.report.api.dto.RunReportResponse;
@@ -42,6 +43,7 @@ public class ReportGenerationService {
     private final NudgeMapper nudgeMapper;
     private final ReportMapper reportMapper;
     private final RunMapper runMapper;
+    private final ProjectAccessService projectAccessService;
     private final ObjectMapper objectMapper;
 
     public ReportGenerationService(
@@ -51,6 +53,7 @@ public class ReportGenerationService {
             NudgeMapper nudgeMapper,
             ReportMapper reportMapper,
             RunMapper runMapper,
+            ProjectAccessService projectAccessService,
             ObjectMapper objectMapper
     ) {
         this.runService = runService;
@@ -59,12 +62,14 @@ public class ReportGenerationService {
         this.nudgeMapper = nudgeMapper;
         this.reportMapper = reportMapper;
         this.runMapper = runMapper;
+        this.projectAccessService = projectAccessService;
         this.objectMapper = objectMapper;
     }
 
     @Transactional(readOnly = true)
-    public RunReportResponse getRunReport(UUID runId) {
+    public RunReportResponse getRunReport(UUID runId, UUID userId) {
         RunResponse run = runService.getRun(runId);
+        projectAccessService.ensureProjectAccessible(run.projectId(), userId);
         List<Report> reports = reportMapper.findByRunId(runId);
         return analysisJobMapper.findLatestByRunId(runId)
                 .map(job -> responseForLatestAnalysis(run, job, reports))
@@ -72,9 +77,11 @@ public class ReportGenerationService {
     }
 
     @Transactional
-    public RunReportResponse generateRunReport(UUID runId) {
-        runService.getRun(runId);
-        AnalysisJob analysisJob = analysisJobMapper.findLatestCompletedByRunId(runId)
+    public RunReportResponse generateRunReport(UUID runId, UUID userId) {
+        RunResponse run = runService.getRun(runId);
+        projectAccessService.ensureProjectAccessible(run.projectId(), userId);
+        AnalysisJob analysisJob = analysisJobMapper.findLatestByRunId(runId)
+                .filter(job -> job.getStatus() == AnalysisJobStatus.COMPLETED)
                 .orElseThrow(() -> new BusinessException(ErrorCode.STATE_CONFLICT, "Completed analysis result is required before report generation."));
 
         List<Report> existingReports = reportMapper.findByRunId(runId);
@@ -85,9 +92,18 @@ public class ReportGenerationService {
         }
 
         Report report = toReport(analysisJob);
-        reportMapper.insert(report);
-        runMapper.updateAnalysisState(runId, AnalysisStatus.COMPLETED, analysisJob.getId(), analysisJob.getFrictionScore(), report.getId());
-        return readyResponse(runId, report);
+        Report persistedReport = insertOrReloadReport(report);
+        runMapper.updateCurrentAnalysisState(runId, AnalysisStatus.COMPLETED, analysisJob.getId(), analysisJob.getFrictionScore(), persistedReport.getId());
+        return readyResponse(runId, persistedReport);
+    }
+
+    private Report insertOrReloadReport(Report report) {
+        int inserted = reportMapper.insert(report);
+        if (inserted > 0) {
+            return report;
+        }
+        return reportMapper.findByAnalysisJobId(report.getAnalysisJobId())
+                .orElseThrow(() -> new IllegalStateException("Report insert was skipped but existing report was not found"));
     }
 
     private RunReportResponse responseForLatestAnalysis(RunResponse run, AnalysisJob analysisJob, List<Report> reports) {

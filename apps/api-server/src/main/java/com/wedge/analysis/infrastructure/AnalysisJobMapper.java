@@ -12,8 +12,6 @@ public interface AnalysisJobMapper {
 
     Optional<AnalysisJob> findLatestByRunId(@Param("runId") UUID runId);
 
-    Optional<AnalysisJob> findLatestCompletedByRunId(@Param("runId") UUID runId);
-
     int insertQueued(AnalysisJob analysisJob);
 
     int upsertCompleted(AnalysisJob analysisJob);
