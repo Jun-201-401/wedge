@@ -7,4 +7,5 @@ dependencies = [
     "fastapi",
     "uvicorn",
     "pydantic",
+    "pika",
 ]
