@@ -15,6 +15,8 @@ public interface AnalysisFindingMapper {
             @Param("limit") int limit
     );
 
+    List<AnalysisFinding> findByAnalysisJobIdOrderByPriority(@Param("analysisJobId") UUID analysisJobId);
+
     int insert(AnalysisFinding analysisFinding);
 
     int deleteByAnalysisJobId(@Param("analysisJobId") UUID analysisJobId);

@@ -2,6 +2,8 @@ package com.wedge.analysis.application;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.wedge.analysis.api.internal.dto.AnalyzerCompletedRequest;
+import com.wedge.analysis.api.internal.dto.AnalyzerFailedRequest;
 import com.wedge.analysis.domain.AnalysisFinding;
 import com.wedge.analysis.domain.AnalysisJob;
 import com.wedge.analysis.domain.Nudge;
@@ -12,8 +14,6 @@ import com.wedge.analysis.infrastructure.NudgeMapper;
 import com.wedge.analysis.infrastructure.RuleHitMapper;
 import com.wedge.common.error.BusinessException;
 import com.wedge.common.error.ErrorCode;
-import com.wedge.internal.analysis.dto.AnalyzerCompletedRequest;
-import com.wedge.internal.analysis.dto.AnalyzerFailedRequest;
 import com.wedge.run.domain.AnalysisJobStatus;
 import com.wedge.run.domain.AnalysisStatus;
 import com.wedge.run.infrastructure.RunMapper;
@@ -28,6 +28,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class JudgeResultPersistenceService {
+    private static final int FIRST_RANK_ORDER = 1;
+    private static final int RANK_ORDER_INCREMENT = 1;
     private static final List<String> VALID_STAGES = List.of("FIRST_VIEW", "VALUE", "CTA", "INPUT", "COMMIT");
     private static final List<String> VALID_DIFFICULTIES = List.of("LOW", "MEDIUM", "HIGH");
 
@@ -125,23 +127,23 @@ public class JudgeResultPersistenceService {
 
     private Map<String, UUID> persistIssues(UUID analysisJobId, UUID runId, List<Map<String, Object>> issues) {
         Map<String, UUID> findingIdsByIssueId = new LinkedHashMap<>();
-        int rankOrder = 1;
+        int rankOrder = FIRST_RANK_ORDER;
         for (Map<String, Object> issue : issues) {
             ruleHitMapper.insert(toRuleHit(analysisJobId, runId, issue));
             AnalysisFinding finding = toAnalysisFinding(analysisJobId, runId, issue, rankOrder);
             analysisFindingMapper.insert(finding);
             putIssueId(findingIdsByIssueId, issue, finding.getId());
-            rankOrder += 1;
+            rankOrder += RANK_ORDER_INCREMENT;
         }
         return findingIdsByIssueId;
     }
 
     private int persistNudges(AnalyzerCompletedRequest request, Map<String, UUID> findingIdsByIssueId) {
         List<Map<String, Object>> nudges = readList(request.judgeResult(), "nudges");
-        int rankOrder = 1;
+        int rankOrder = FIRST_RANK_ORDER;
         for (Map<String, Object> nudgePayload : nudges) {
             nudgeMapper.insert(toNudge(request.analysisJobId(), nudgePayload, rankOrder, findingIdsByIssueId));
-            rankOrder += 1;
+            rankOrder += RANK_ORDER_INCREMENT;
         }
         return nudges.size();
     }

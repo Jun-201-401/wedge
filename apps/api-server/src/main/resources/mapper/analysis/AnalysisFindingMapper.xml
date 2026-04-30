@@ -41,6 +41,13 @@
         LIMIT #{limit}
     </select>
 
+    <select id="findByAnalysisJobIdOrderByPriority" resultMap="AnalysisFindingResultMap">
+        SELECT <include refid="AnalysisFindingColumns"/>
+        FROM analysis_finding
+        WHERE analysis_job_id = #{analysisJobId}
+        ORDER BY priority_score DESC NULLS LAST, rank_order ASC
+    </select>
+
     <insert id="insert" parameterType="com.wedge.analysis.domain.AnalysisFinding">
         INSERT INTO analysis_finding (
             id, analysis_job_id, run_id, rank_order, title, summary, category, stage, axis,

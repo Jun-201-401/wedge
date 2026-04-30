@@ -1,4 +1,4 @@
-package com.wedge.internal.analysis.dto;
+package com.wedge.analysis.api.internal.dto;
 
 import com.wedge.common.error.BusinessException;
 import com.wedge.common.error.ErrorCode;

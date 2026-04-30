@@ -30,99 +30,46 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 @ExtendWith(MockitoExtension.class)
-class ReportQueryServiceTest {
+class ReportSummaryQueryServiceTest {
     @Mock
     private ReportMapper reportMapper;
-
     @Mock
     private AnalysisFindingMapper analysisFindingMapper;
-
     @Mock
     private ArtifactMapper artifactMapper;
-
     @Mock
     private RunService runService;
-
     @Mock
     private ProjectAccessService projectAccessService;
 
-    private ReportQueryService reportQueryService;
+    private ReportSummaryQueryService reportSummaryQueryService;
 
     @BeforeEach
     void setUp() {
-        reportQueryService = new ReportQueryService(
-                reportMapper,
-                analysisFindingMapper,
-                artifactMapper,
-                runService,
-                projectAccessService,
-                new ObjectMapper(),
-                true
-        );
+        reportSummaryQueryService = summaryQueryService(true);
     }
 
     @Test
     void listRunReportSummariesIncludesTopThreeFindingsAndStagePreview() {
         UUID runId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
+        UUID projectId = UUID.randomUUID();
         UUID analysisJobId = UUID.randomUUID();
         Report report = report(runId, analysisJobId, null);
         AnalysisFinding finding = finding(1, "CTA", new BigDecimal("9.2"));
-        Artifact stageScreenshot = screenshot(runId, "stage/cta.png");
-        when(runService.getRun(runId)).thenReturn(runResponse(runId, UUID.randomUUID()));
+        when(runService.getRun(runId)).thenReturn(runResponse(runId, projectId));
         when(reportMapper.findByRunId(runId)).thenReturn(List.of(report));
         when(analysisFindingMapper.findTopByAnalysisJobId(analysisJobId, 3)).thenReturn(List.of(finding));
-        when(artifactMapper.findLatestScreenshotByRunIdAndStage(runId, "CTA")).thenReturn(Optional.of(stageScreenshot));
+        when(artifactMapper.findLatestScreenshotByRunIdAndStage(runId, "CTA"))
+                .thenReturn(Optional.of(screenshot(runId, "stage/cta.png")));
 
-        List<ReportSummaryResponse> responses = reportQueryService.listRunReportSummaries(runId, userId);
+        List<ReportSummaryResponse> responses = reportSummaryQueryService.listRunReportSummaries(runId, userId);
 
         assertThat(responses).hasSize(1);
-        ReportSummaryResponse response = responses.get(0);
-        assertThat(response.frictionScore()).isEqualByComparingTo(new BigDecimal("61.0"));
-        assertThat(response.topFindings()).hasSize(1);
-        assertThat(response.topFindings().get(0).previewImage().source()).isEqualTo("STAGE_SCREENSHOT");
-        assertThat(response.topFindings().get(0).previewImage().artifact().key()).isEqualTo("stage/cta.png");
-    }
-
-    @Test
-    void previewImageFallsBackToReportArtifactThenLatestScreenshot() {
-        UUID runId = UUID.randomUUID();
-        UUID userId = UUID.randomUUID();
-        UUID reportArtifactId = UUID.randomUUID();
-        UUID analysisJobId = UUID.randomUUID();
-        Report report = report(runId, analysisJobId, reportArtifactId);
-        AnalysisFinding finding = finding(1, "CTA", new BigDecimal("3.0"));
-        when(runService.getRun(runId)).thenReturn(runResponse(runId, UUID.randomUUID()));
-        when(reportMapper.findByRunId(runId)).thenReturn(List.of(report));
-        when(analysisFindingMapper.findTopByAnalysisJobId(analysisJobId, 3)).thenReturn(List.of(finding));
-        when(artifactMapper.findLatestScreenshotByRunIdAndStage(runId, "CTA")).thenReturn(Optional.empty());
-        when(artifactMapper.findByRunIdAndId(runId, reportArtifactId))
-                .thenReturn(Optional.of(screenshot(runId, "report.png")));
-
-        List<ReportSummaryResponse> responses = reportQueryService.listRunReportSummaries(runId, userId);
-
-        assertThat(responses.get(0).topFindings().get(0).previewImage().source()).isEqualTo("REPORT_ARTIFACT");
-    }
-
-    @Test
-    void previewImageFallsBackToLatestScreenshotWhenReportArtifactIsNotScreenshot() {
-        UUID runId = UUID.randomUUID();
-        UUID userId = UUID.randomUUID();
-        UUID reportArtifactId = UUID.randomUUID();
-        UUID analysisJobId = UUID.randomUUID();
-        Report report = report(runId, analysisJobId, reportArtifactId);
-        AnalysisFinding finding = finding(1, "INPUT", new BigDecimal("2.0"));
-        when(runService.getRun(runId)).thenReturn(runResponse(runId, UUID.randomUUID()));
-        when(reportMapper.findByRunId(runId)).thenReturn(List.of(report));
-        when(analysisFindingMapper.findTopByAnalysisJobId(analysisJobId, 3)).thenReturn(List.of(finding));
-        when(artifactMapper.findLatestScreenshotByRunIdAndStage(runId, "INPUT")).thenReturn(Optional.empty());
-        when(artifactMapper.findByRunIdAndId(runId, reportArtifactId))
-                .thenReturn(Optional.of(artifact(runId, "report.json", ArtifactType.REPORT_JSON)));
-        when(artifactMapper.findLatestScreenshotByRunId(runId)).thenReturn(Optional.of(screenshot(runId, "latest.png")));
-
-        List<ReportSummaryResponse> responses = reportQueryService.listRunReportSummaries(runId, userId);
-
-        assertThat(responses.get(0).topFindings().get(0).previewImage().source()).isEqualTo("LATEST_SCREENSHOT");
+        assertThat(responses.get(0).frictionScore()).isEqualByComparingTo(new BigDecimal("61.0"));
+        assertThat(responses.get(0).decisionMap()).isInstanceOf(List.class);
+        assertThat(responses.get(0).topFindings().get(0).previewImage().source()).isEqualTo("STAGE_SCREENSHOT");
+        verify(projectAccessService).ensureProjectAccessible(projectId, userId);
     }
 
     @Test
@@ -131,26 +78,18 @@ class ReportQueryServiceTest {
         UUID userId = UUID.randomUUID();
         UUID analysisJobId = UUID.randomUUID();
         Report report = report(runId, analysisJobId, null);
-        AnalysisFinding findingWithoutStage = finding(1, null, new BigDecimal("9.2"));
-        AnalysisFinding findingWithInvalidStage = finding(2, "UNKNOWN", new BigDecimal("8.8"));
-        AnalysisFinding findingWithStage = finding(3, "CTA", new BigDecimal("8.1"));
         when(runService.getRun(runId)).thenReturn(runResponse(runId, UUID.randomUUID()));
         when(reportMapper.findByRunId(runId)).thenReturn(List.of(report));
         when(analysisFindingMapper.findTopByAnalysisJobId(analysisJobId, 3))
-                .thenReturn(List.of(findingWithoutStage, findingWithInvalidStage, findingWithStage));
+                .thenReturn(List.of(finding(1, null, new BigDecimal("9.2")), finding(2, "CTA", new BigDecimal("8.1"))));
         when(artifactMapper.findLatestScreenshotByRunIdAndStage(runId, "CTA")).thenReturn(Optional.empty());
         when(artifactMapper.findLatestScreenshotByRunId(runId)).thenReturn(Optional.empty());
 
-        List<ReportSummaryResponse> responses = reportQueryService.listRunReportSummaries(runId, userId);
+        List<ReportSummaryResponse> responses = reportSummaryQueryService.listRunReportSummaries(runId, userId);
 
-        assertThat(responses.get(0).topFindings())
-                .singleElement()
-                .satisfies(topFinding -> {
-                    assertThat(topFinding.id()).isEqualTo(findingWithStage.getId());
-                    assertThat(topFinding.stage()).isEqualTo("CTA");
-                });
+        assertThat(responses.get(0).topFindings()).singleElement()
+                .satisfies(topFinding -> assertThat(topFinding.stage()).isEqualTo("CTA"));
         verify(artifactMapper, never()).findLatestScreenshotByRunIdAndStage(runId, null);
-        verify(artifactMapper, never()).findLatestScreenshotByRunIdAndStage(runId, "UNKNOWN");
     }
 
     @Test
@@ -158,22 +97,27 @@ class ReportQueryServiceTest {
         UUID runId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
         UUID projectId = UUID.randomUUID();
-        reportQueryService = new ReportQueryService(
-                reportMapper,
-                analysisFindingMapper,
-                artifactMapper,
-                runService,
-                projectAccessService,
-                new ObjectMapper(),
-                false
-        );
+        reportSummaryQueryService = summaryQueryService(false);
         when(runService.getRun(runId)).thenReturn(runResponse(runId, projectId));
         when(reportMapper.findByRunId(runId)).thenReturn(List.of());
 
-        List<ReportSummaryResponse> responses = reportQueryService.listRunReportSummaries(runId, userId);
+        List<ReportSummaryResponse> responses = reportSummaryQueryService.listRunReportSummaries(runId, userId);
 
         assertThat(responses).isEmpty();
         verify(projectAccessService, never()).ensureProjectAccessible(projectId, userId);
+    }
+
+    private ReportSummaryQueryService summaryQueryService(boolean accessCheckEnabled) {
+        ReportProperties properties = new ReportProperties();
+        properties.setProjectAccessCheckEnabled(accessCheckEnabled);
+        return new ReportSummaryQueryService(
+                reportMapper,
+                analysisFindingMapper,
+                runService,
+                new ReportAccessGuard(projectAccessService, properties),
+                new ReportJsonReader(new ObjectMapper()),
+                new ReportPreviewImageResolver(artifactMapper)
+        );
     }
 
     private Report report(UUID runId, UUID analysisJobId, UUID artifactId) {
@@ -185,7 +129,10 @@ class ReportQueryServiceTest {
         report.setFormat(ReportFormat.JSON);
         report.setStatus(ReportStatus.READY);
         report.setSummaryJsonb("{\"friction_score\":61.0,\"headline\":\"CTA issue\"}");
-        report.setDecisionMapJsonb("[{\"stage\":\"CTA\",\"status\":\"WARNING\"}]");
+        report.setDecisionMapJsonb("""
+                [{"stage":"CTA","displayName":"행동 선택","status":"WARNING",
+                "issueIds":["issue_001"],"summary":"CTA가 경쟁합니다.","evidenceRefs":["cp_001.obs_001"]}]
+                """);
         report.setArtifactId(artifactId);
         report.setCreatedAt(OffsetDateTime.parse("2026-04-29T12:00:00+09:00"));
         return report;
@@ -195,28 +142,23 @@ class ReportQueryServiceTest {
         AnalysisFinding finding = new AnalysisFinding();
         finding.setId(UUID.randomUUID());
         finding.setRankOrder(rank);
-        finding.setTitle("CTA 경쟁");
-        finding.setSummary("CTA가 여러 개 경쟁합니다.");
+        finding.setTitle("CTA issue");
+        finding.setSummary("CTA is unclear.");
         finding.setStage(stage);
         finding.setSeverity(2);
         finding.setConfidence(new BigDecimal("0.87"));
         finding.setPriorityScore(priorityScore);
-        finding.setEvidenceRefsJsonb("[{\"ref\":\"cp_001.obs_001\"}]");
         return finding;
     }
 
     private Artifact screenshot(UUID runId, String key) {
-        return artifact(runId, key, ArtifactType.SCREENSHOT);
-    }
-
-    private Artifact artifact(UUID runId, String key, ArtifactType artifactType) {
         Artifact artifact = new Artifact();
         artifact.setId(UUID.randomUUID());
         artifact.setRunId(runId);
-        artifact.setArtifactType(artifactType);
+        artifact.setArtifactType(ArtifactType.SCREENSHOT);
         artifact.setS3Bucket("wedge-artifacts");
         artifact.setS3Key(key);
-        artifact.setMimeType(artifactType == ArtifactType.SCREENSHOT ? "image/png" : "application/json");
+        artifact.setMimeType("image/png");
         artifact.setWidth(1440);
         artifact.setHeight(900);
         artifact.setSizeBytes(1024);

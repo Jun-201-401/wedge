@@ -1,4 +1,4 @@
-package com.wedge.internal.analysis.dto;
+package com.wedge.analysis.api.internal.dto;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;

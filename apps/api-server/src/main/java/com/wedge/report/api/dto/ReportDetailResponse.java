@@ -8,7 +8,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
-public record ReportSummaryResponse(
+public record ReportDetailResponse(
         UUID id,
         UUID runId,
         UUID analysisJobId,
@@ -18,7 +18,8 @@ public record ReportSummaryResponse(
         BigDecimal frictionScore,
         Map<String, Object> summary,
         List<DecisionMapItemResponse> decisionMap,
-        List<ReportTopFindingResponse> topFindings,
+        int initialDisplayCount,
+        List<ReportDetailFindingResponse> findings,
         OffsetDateTime createdAt
 ) {
 }

@@ -1,4 +1,4 @@
-package com.wedge.internal.analysis;
+package com.wedge.analysis.api.internal;
 
 import com.wedge.common.response.ApiResponse;
 import com.wedge.evidence.application.EvidenceService;

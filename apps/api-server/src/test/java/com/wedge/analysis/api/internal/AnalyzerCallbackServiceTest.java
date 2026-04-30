@@ -1,4 +1,4 @@
-package com.wedge.internal.analysis;
+package com.wedge.analysis.api.internal;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -6,11 +6,11 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.wedge.analysis.api.internal.dto.AnalyzerCallbackHeaders;
+import com.wedge.analysis.api.internal.dto.AnalyzerCompletedRequest;
 import com.wedge.analysis.application.JudgeResultPersistenceService;
 import com.wedge.common.error.BusinessException;
 import com.wedge.common.infrastructure.ProcessedMessagePersistenceAdapter;
-import com.wedge.internal.analysis.dto.AnalyzerCallbackHeaders;
-import com.wedge.internal.analysis.dto.AnalyzerCompletedRequest;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;

@@ -24,6 +24,9 @@ import org.springframework.stereotype.Service;
 @Service
 @RequiredArgsConstructor
 public class CheckpointPersistenceService {
+    private static final int FIRST_OBSERVATION_INDEX = 1;
+    private static final int OBSERVATION_INDEX_INCREMENT = 1;
+
     private final CheckpointMapper checkpointMapper;
     private final ObservationMapper observationMapper;
     private final RunMapper runMapper;
@@ -80,11 +83,11 @@ public class CheckpointPersistenceService {
     }
 
     private void persistObservations(UUID runId, Checkpoint checkpoint, List<Map<String, Object>> observations) {
-        int observationIndex = 1;
+        int observationIndex = FIRST_OBSERVATION_INDEX;
         for (Map<String, Object> observationPayload : observations) {
             Observation observation = toObservation(runId, checkpoint, observationPayload, observationIndex);
             observationMapper.insert(observation);
-            observationIndex += 1;
+            observationIndex += OBSERVATION_INDEX_INCREMENT;
         }
     }
 
