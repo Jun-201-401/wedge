@@ -1,28 +1,27 @@
-import { useMemo } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 
-import type { EvidencePacket, RunArtifact } from '../../entities/run';
+import { deleteRun, stopRun } from '../../api/runs';
+import type { EvidencePacket, RunEvidenceCounts } from '../../entities/run';
 import { RUN_STATUS_LABEL } from '../../entities/run';
 import {
   buildApiSnapshotLogs,
   buildApiSnapshotSteps,
   buildMockRunMonitorData,
   canOpenRunReport,
+  canRequestRunDelete,
+  canRequestRunStop,
   findEvidenceScreenshotArtifact,
   getApiCheckpoint,
   getApiProgressPercent,
-  getCheckpointArtifacts,
   getDepthLabel,
   getDevicePresetLabel,
-  getEvidenceArtifactLabel,
-  getEvidenceCheckpointTitle,
-  getEvidenceObservationSummary,
   getStatusTone,
   getStepStatusLabel,
   type RunStatusTone,
   type StepStatus,
   useRunMonitorState,
 } from '../../features/run-monitor';
-import { getSafeResourceUrl, getScenarioLabel } from '../../shared';
+import { getScenarioLabel } from '../../shared';
 import { RUNS_PATH } from '../../shared/lib/appPaths';
 import { buildRunReportPath } from '../run-report/lib/runReportRoute';
 import { isMockRunId } from './lib/runMonitorRoute';
@@ -64,52 +63,101 @@ function StepNode({ status }: { status: StepStatus }) {
   return <span className="run-monitor-step__dot" aria-hidden="true" />;
 }
 
-interface RunMonitorTopbarProps {
-  runId: string;
-  targetUrl?: string;
-  statusTone?: RunStatusTone;
-  statusLabel?: string;
-}
-
-function RunMonitorTopbar({ runId, targetUrl, statusTone, statusLabel }: RunMonitorTopbarProps) {
+function RunMonitorTopbar() {
   return (
-    <header className="run-monitor-topbar" aria-label="Wedge run monitor">
+    <header className="run-monitor-topbar" aria-label="Wedge navigation">
       <div className="run-monitor-topbar__left">
         <a href="/" className="run-monitor-brand" aria-label="Wedge home">
           <span>Wedge</span>
         </a>
-        <span className="run-monitor-topbar__divider" aria-hidden="true" />
-        {targetUrl && (
-          <div className="run-monitor-target-inline">
-            <span>대상</span>
-            <strong>{targetUrl}</strong>
-          </div>
-        )}
+      </div>
+
+      <nav className="run-monitor-topbar__right" aria-label="주요 이동">
+        <a href={RUNS_PATH} className="run-monitor-stop-link">실행 목록</a>
+        <a href="/create-analysis" className="run-monitor-stop-link">새 분석</a>
+      </nav>
+    </header>
+  );
+}
+
+interface RunContextBarProps {
+  runId: string;
+  targetUrl: string;
+  statusTone?: RunStatusTone;
+  statusLabel?: string;
+  deviceLabel: string;
+  actions?: ReactNode;
+}
+
+function RunContextBar({ runId, targetUrl, statusTone, statusLabel, deviceLabel, actions }: RunContextBarProps) {
+  return (
+    <section className="run-monitor-run-context" aria-label="현재 Run 정보">
+      <div className="run-monitor-run-context__meta">
+        <div className="run-monitor-target-inline run-monitor-target-inline--target">
+          <span>대상</span>
+          <strong>{targetUrl}</strong>
+        </div>
         <div className="run-monitor-target-inline run-monitor-target-inline--optional">
-          <span>Run</span>
+          <span>실행 ID</span>
           <strong>{runId}</strong>
+        </div>
+        <div className="run-monitor-target-inline run-monitor-target-inline--optional">
+          <span>디바이스</span>
+          <strong>{deviceLabel}</strong>
         </div>
       </div>
 
-      <div className="run-monitor-topbar__right">
+      <div className="run-monitor-run-context__actions">
         {statusTone && statusLabel && (
           <div className={`run-monitor-status run-monitor-status--${statusTone}`} aria-label={`실행 상태 ${statusLabel}`}>
             <span className="run-monitor-status__dot" aria-hidden="true" />
             <span>{statusLabel}</span>
           </div>
         )}
-        <a href={RUNS_PATH} className="run-monitor-stop-link">Runs</a>
-        <a href="/create-analysis" className="run-monitor-stop-link">새 분석</a>
+        {actions}
       </div>
-    </header>
+    </section>
   );
 }
 
-function RunMonitorStatePage({ runId, title, message }: { runId: string; title: string; message: string }) {
+function RunLifecycleActions({
+  canStop,
+  canDelete,
+  isPending,
+  onStop,
+  onDelete,
+}: {
+  canStop: boolean;
+  canDelete: boolean;
+  isPending: boolean;
+  onStop: () => void;
+  onDelete: () => void;
+}) {
+  if (!canStop && !canDelete) {
+    return null;
+  }
+
+  return (
+    <div className="run-monitor-lifecycle-actions" aria-label="Run 제어">
+      {canStop ? (
+        <button type="button" onClick={onStop} disabled={isPending}>
+          {isPending ? '요청 중' : '중지'}
+        </button>
+      ) : null}
+      {canDelete ? (
+        <button type="button" onClick={onDelete} disabled={isPending}>
+          {isPending ? '처리 중' : '삭제'}
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+function RunMonitorStatePage({ title, message }: { title: string; message: string }) {
   return (
     <div className="run-monitor-page">
       <div className="run-monitor-grid-bg" aria-hidden="true" />
-      <RunMonitorTopbar runId={runId} />
+      <RunMonitorTopbar />
 
       <main className="run-monitor-state-screen" aria-labelledby="run-monitor-state-title">
         <section className="run-monitor-state-card">
@@ -123,162 +171,70 @@ function RunMonitorStatePage({ runId, title, message }: { runId: string; title: 
   );
 }
 
-function EvidencePanel({
-  evidencePacket,
-  isEvidenceLoading,
-  evidenceLoadError,
-}: {
-  evidencePacket: EvidencePacket | null;
-  isEvidenceLoading: boolean;
-  evidenceLoadError: string;
-}) {
-  if (!evidencePacket) {
-    const statusMessage = isEvidenceLoading
-      ? 'Runner evidence를 불러오는 중입니다.'
-      : evidenceLoadError || 'Runner evidence가 도착하면 checkpoint, artifact, observation이 표시됩니다.';
+interface EvidenceSummaryStats {
+  checkpointCount: number;
+  observationCount: number;
+  artifactCount: number;
+}
 
-    return (
-      <section className="run-monitor-evidence" aria-labelledby="evidence-title">
-        <h2 id="evidence-title">Evidence Packet</h2>
-        <p className="run-monitor-evidence__status">{statusMessage}</p>
-      </section>
-    );
+function getEvidenceSummaryStats(
+  evidencePacket: EvidencePacket | null,
+  liveCounts: RunEvidenceCounts | null | undefined,
+): EvidenceSummaryStats | null {
+  if (evidencePacket) {
+    return {
+      checkpointCount: evidencePacket.checkpoints.length,
+      observationCount: evidencePacket.checkpoints.reduce((count, checkpoint) => count + checkpoint.observations.length, 0),
+      artifactCount: evidencePacket.artifacts.length,
+    };
+  }
+
+  if (liveCounts) {
+    return {
+      checkpointCount: liveCounts.checkpointCount,
+      observationCount: liveCounts.observationCount,
+      artifactCount: liveCounts.artifactCount,
+    };
+  }
+
+  return null;
+}
+
+function EvidenceCollectionSummary({
+  stats,
+  isLoading,
+  errorMessage,
+}: {
+  stats: EvidenceSummaryStats | null;
+  isLoading: boolean;
+  errorMessage: string;
+}) {
+  if (!stats && !isLoading && !errorMessage) {
+    return null;
   }
 
   return (
-    <section className="run-monitor-evidence" aria-labelledby="evidence-title">
-      <div className="run-monitor-evidence__heading">
-        <h2 id="evidence-title">Evidence Packet</h2>
-        <span>{evidencePacket.checkpoints.length} checkpoints</span>
-      </div>
-
-      <div className="run-monitor-evidence__cards">
-        {evidencePacket.checkpoints.map((checkpoint, index) => {
-          const checkpointArtifacts = getCheckpointArtifacts(checkpoint, evidencePacket.artifacts);
-
-          return (
-            <article key={checkpoint.checkpoint_id} className="run-monitor-evidence-card">
-              <div className="run-monitor-evidence-card__head">
-                <strong>{getEvidenceCheckpointTitle(checkpoint, index)}</strong>
-                <span>{checkpoint.primaryStage}</span>
-              </div>
-
-              <dl className="run-monitor-evidence-card__meta">
-                <div>
-                  <dt>Settle</dt>
-                  <dd>{String(checkpoint.settle.status ?? 'unknown')}</dd>
-                </div>
-                <div>
-                  <dt>Artifacts</dt>
-                  <dd>{checkpointArtifacts.length}</dd>
-                </div>
-              </dl>
-
-              {checkpointArtifacts.length > 0 && (
-                <div className="run-monitor-evidence-card__artifacts">
-                  <h3>Artifacts</h3>
-                  <ul>
-                    {checkpointArtifacts.map((artifact) => {
-                      const artifactLink = getSafeResourceUrl(artifact.uri);
-
-                      return (
-                        <li key={artifact.artifact_id}>
-                          {artifactLink ? (
-                            <a href={artifactLink} target="_blank" rel="noreferrer">
-                              {getEvidenceArtifactLabel(artifact)}
-                            </a>
-                          ) : (
-                            <span className="run-monitor-evidence-card__unsafe-artifact">{getEvidenceArtifactLabel(artifact)}</span>
-                          )}
-                          <span>{artifact.mime_type ?? artifact.type}</span>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                </div>
-              )}
-
-              <div className="run-monitor-evidence-card__observations">
-                <h3>Observations</h3>
-                {checkpoint.observations.length > 0 ? (
-                  <ul>
-                    {checkpoint.observations.map((observation) => (
-                      <li key={observation.observation_id}>
-                        <strong>{observation.type}</strong>
-                        <span>{getEvidenceObservationSummary(observation)}</span>
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p>Observation이 아직 없습니다.</p>
-                )}
-              </div>
-            </article>
-          );
-        })}
-      </div>
-    </section>
-  );
-}
-
-
-function getRunArtifactLink(artifact: RunArtifact) {
-  return getSafeResourceUrl(artifact.contentUrl) || getSafeResourceUrl(artifact.url);
-}
-
-function getRunArtifactLabel(artifact: RunArtifact) {
-  return artifact.stepKey ? `${artifact.artifactType} · ${artifact.stepKey}` : artifact.artifactType;
-}
-
-function ArtifactPanel({
-  artifacts,
-  isArtifactsLoading,
-  artifactsLoadError,
-}: {
-  artifacts: RunArtifact[];
-  isArtifactsLoading: boolean;
-  artifactsLoadError: string;
-}) {
-  if (artifacts.length === 0) {
-    const statusMessage = isArtifactsLoading
-      ? '저장된 artifact 목록을 불러오는 중입니다.'
-      : artifactsLoadError || 'Runner artifact callback이 저장되면 스크린샷과 DOM snapshot 링크가 표시됩니다.';
-
-    return (
-      <section className="run-monitor-artifacts" aria-labelledby="run-artifacts-title">
-        <h2 id="run-artifacts-title">Persisted Artifacts</h2>
-        <p className="run-monitor-artifacts__status">{statusMessage}</p>
-      </section>
-    );
-  }
-
-  return (
-    <section className="run-monitor-artifacts" aria-labelledby="run-artifacts-title">
-      <div className="run-monitor-artifacts__heading">
-        <h2 id="run-artifacts-title">Persisted Artifacts</h2>
-        <span>{artifacts.length} files</span>
-      </div>
-
-      <ul className="run-monitor-artifacts__list">
-        {artifacts.map((artifact) => {
-          const artifactLink = getRunArtifactLink(artifact);
-
-          return (
-            <li key={artifact.id}>
-              <div>
-                <strong>{getRunArtifactLabel(artifact)}</strong>
-                <span>{artifact.mimeType} · {Math.max(1, Math.round(artifact.sizeBytes / 1024))}KB</span>
-              </div>
-              {artifactLink ? (
-                <a href={artifactLink} target="_blank" rel="noreferrer">열기</a>
-              ) : (
-                <span className="run-monitor-artifacts__missing-link">링크 없음</span>
-              )}
-            </li>
-          );
-        })}
-      </ul>
-    </section>
+    <div className="run-monitor-evidence-summary" aria-label="수집 상태 요약">
+      <span>수집 상태</span>
+      {stats ? (
+        <dl>
+          <div>
+            <dt>체크포인트</dt>
+            <dd>{stats.checkpointCount}</dd>
+          </div>
+          <div>
+            <dt>관찰 신호</dt>
+            <dd>{stats.observationCount}</dd>
+          </div>
+          <div>
+            <dt>자료</dt>
+            <dd>{stats.artifactCount}</dd>
+          </div>
+        </dl>
+      ) : (
+        <p>{isLoading ? '수집 상태 확인 중' : errorMessage}</p>
+      )}
+    </div>
   );
 }
 
@@ -298,15 +254,15 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
     evidencePacket,
     isEvidenceLoading,
     evidenceLoadError,
-    artifacts,
-    isArtifactsLoading,
-    artifactsLoadError,
   } = useRunMonitorState(runId, mockData, isMockRun);
+  const [runActionState, setRunActionState] = useState<{ kind: 'idle' | 'pending' | 'success' | 'error'; message: string }>({
+    kind: 'idle',
+    message: '',
+  });
 
   if (isRealRunLoading) {
     return (
       <RunMonitorStatePage
-        runId={runId}
         title="Run 상태를 불러오는 중입니다"
         message="실제 실행 데이터와 최신 화면 캡처를 연결하고 있습니다."
       />
@@ -314,7 +270,7 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
   }
 
   if (apiLoadError && !isApiFallback && !hasRealRunSnapshot) {
-    return <RunMonitorStatePage runId={runId} title="실시간 상태를 표시할 수 없습니다" message={apiLoadError} />;
+    return <RunMonitorStatePage title="실시간 상태를 표시할 수 없습니다" message={apiLoadError} />;
   }
 
   const statusTone = getStatusTone(live.status);
@@ -334,101 +290,164 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
     : null;
   const visibleSteps = isApiFallback ? mockData.steps : buildApiSnapshotSteps(run, live);
   const visibleLogs = isApiFallback ? mockData.logs : buildApiSnapshotLogs(run, live);
+  const deviceLabel = getDevicePresetLabel(run.devicePreset);
+  const evidenceStats = getEvidenceSummaryStats(evidencePacket, live.evidenceCounts);
   const timelineNote = isApiFallback
     ? '모의 실행 화면 · 실제 step API 연동 시 교체됩니다.'
     : 'API 스냅샷 · 실제 step/log API 연동 전까지 run/live 상태만 표시합니다.';
+  const isRunActionPending = runActionState.kind === 'pending';
+  const canStopCurrentRun = !isMockRun && canRequestRunStop(live.status);
+  const canDeleteCurrentRun = !isMockRun && canRequestRunDelete(live.status);
+
+  const requestStopRun = () => {
+    if (!canStopCurrentRun || isRunActionPending) {
+      return;
+    }
+
+    setRunActionState({ kind: 'pending', message: 'Run 중지 요청을 보내는 중입니다.' });
+    void stopRun(run.id, { reason: 'user_requested_from_monitor' })
+      .then(() => {
+        setRunActionState({ kind: 'success', message: 'Run 중지 요청을 보냈습니다. 상태가 갱신될 때까지 잠시 기다려주세요.' });
+      })
+      .catch(() => {
+        setRunActionState({ kind: 'error', message: 'Run 중지 요청에 실패했습니다. 권한 또는 API 서버 상태를 확인해주세요.' });
+      });
+  };
+
+  const requestDeleteRun = () => {
+    if (!canDeleteCurrentRun || isRunActionPending) {
+      return;
+    }
+
+    if (!window.confirm('이 Run을 삭제할까요? 삭제 후 실행 목록으로 이동합니다.')) {
+      return;
+    }
+
+    setRunActionState({ kind: 'pending', message: 'Run 삭제 요청을 보내는 중입니다.' });
+    void deleteRun(run.id)
+      .then(() => {
+        window.location.assign(RUNS_PATH);
+      })
+      .catch(() => {
+        setRunActionState({ kind: 'error', message: 'Run 삭제에 실패했습니다. 권한 또는 API 서버 상태를 확인해주세요.' });
+      });
+  };
 
   return (
     <div className="run-monitor-page">
       <div className="run-monitor-grid-bg" aria-hidden="true" />
 
-      <RunMonitorTopbar runId={run.id} targetUrl={run.startUrl} statusTone={statusTone} statusLabel={statusLabel} />
+      <RunMonitorTopbar />
 
-      <main className="run-monitor-cockpit" aria-labelledby="run-monitor-title">
-        <section className="run-monitor-simulation" aria-labelledby="run-monitor-title">
-          <div className="run-monitor-simulation__header">
-            <div className="run-monitor-section-title">
-              <h1 id="run-monitor-title">실시간 시뮬레이션</h1>
-              <span aria-hidden="true" />
-              <p>{currentCheckpoint}</p>
-            </div>
-            <span className="run-monitor-viewport-label">1440px 뷰포트</span>
-          </div>
-
-          {apiLoadError && (
-            <p className="run-monitor-api-warning" role="status">
-              {apiLoadError}
-            </p>
+      <main className="run-monitor-workspace" aria-labelledby="run-monitor-title">
+        <RunContextBar
+          runId={run.id}
+          targetUrl={run.startUrl}
+          statusTone={statusTone}
+          statusLabel={statusLabel}
+          deviceLabel={deviceLabel}
+          actions={(
+            <RunLifecycleActions
+              canStop={canStopCurrentRun}
+              canDelete={canDeleteCurrentRun}
+              isPending={isRunActionPending}
+              onStop={requestStopRun}
+              onDelete={requestDeleteRun}
+            />
           )}
+        />
 
-          <div className="run-monitor-browser" aria-label="최근 화면 캡처">
-            <div className="run-monitor-browser__bar">
-              <div className="run-monitor-browser__dots" aria-hidden="true">
-                <span />
-                <span />
-                <span />
+        <div className="run-monitor-cockpit">
+          <section className="run-monitor-simulation" aria-labelledby="run-monitor-title">
+            {runActionState.message ? (
+              <p className={`run-monitor-action-message run-monitor-action-message--${runActionState.kind}`} role="status">
+                {runActionState.message}
+              </p>
+            ) : null}
+
+            <div className="run-monitor-simulation__header">
+              <div className="run-monitor-section-title">
+                <h1 id="run-monitor-title">실시간 시뮬레이션</h1>
+                <span aria-hidden="true" />
+                <p>{currentCheckpoint}</p>
               </div>
-              <div className="run-monitor-browser__address">{run.startUrl}</div>
-              <span className="run-monitor-browser__mode-pill">{isApiFallback ? '모의 프리뷰' : '실제 캡처'}</span>
+              <span className="run-monitor-viewport-label">1440px 뷰포트</span>
             </div>
 
-            <div className="run-monitor-browser__stage">
-              {snapshotUrl ? (
-                <img className="run-monitor-browser__image" src={snapshotUrl} alt="최근 캡처된 분석 화면" />
-              ) : isApiFallback ? (
-                <div className="run-monitor-browser__mock-content">
-                  <div className="run-monitor-agent-pointer" aria-hidden="true" />
-                  <div className="run-monitor-scan-line" aria-hidden="true" />
+            {apiLoadError && (
+              <p className="run-monitor-api-warning" role="status">
+                {apiLoadError}
+              </p>
+            )}
 
-                  <div className="run-monitor-mock-site">
-                    <div className="run-monitor-mock-site__nav">
-                      <div className="run-monitor-mock-site__logo" />
-                      <div className="run-monitor-mock-site__links">
-                        <span />
-                        <span />
-                        <strong />
-                      </div>
-                    </div>
+            <div className="run-monitor-browser" aria-label="최근 화면 캡처">
+              <div className="run-monitor-browser__bar">
+                <div className="run-monitor-browser__dots" aria-hidden="true">
+                  <span />
+                  <span />
+                  <span />
+                </div>
+                <div className="run-monitor-browser__address">{run.startUrl}</div>
+                <span className="run-monitor-browser__mode-pill">{isApiFallback ? '모의 프리뷰' : '실제 캡처'}</span>
+              </div>
 
-                    <div className="run-monitor-mock-site__hero">
-                      <p>{mockData.previewSubtitle}</p>
-                      <h2>{mockData.previewTitle}</h2>
-                      <span className="run-monitor-mock-site__copy" />
-                      <span className="run-monitor-mock-site__copy run-monitor-mock-site__copy--short" />
-                      <div className="run-monitor-detection-target">
-                        <span className="run-monitor-mock-cta">{mockData.previewCallToAction}</span>
-                        <div className="run-monitor-detection-box" aria-hidden="true">
-                          <span>분석 대상</span>
+              <div className="run-monitor-browser__stage">
+                {snapshotUrl ? (
+                  <img className="run-monitor-browser__image" src={snapshotUrl} alt="최근 캡처된 분석 화면" />
+                ) : isApiFallback ? (
+                  <div className="run-monitor-browser__mock-content">
+                    <div className="run-monitor-agent-pointer" aria-hidden="true" />
+                    <div className="run-monitor-scan-line" aria-hidden="true" />
+
+                    <div className="run-monitor-mock-site">
+                      <div className="run-monitor-mock-site__nav">
+                        <div className="run-monitor-mock-site__logo" />
+                        <div className="run-monitor-mock-site__links">
+                          <span />
+                          <span />
+                          <strong />
                         </div>
                       </div>
-                    </div>
 
-                    <div className="run-monitor-mock-site__cards" aria-hidden="true">
-                      <article>
-                        <span />
-                        <strong />
-                        <p />
-                        <p />
-                      </article>
-                      <article>
-                        <span />
-                        <strong />
-                        <p />
-                        <p />
-                      </article>
+                      <div className="run-monitor-mock-site__hero">
+                        <p>{mockData.previewSubtitle}</p>
+                        <h2>{mockData.previewTitle}</h2>
+                        <span className="run-monitor-mock-site__copy" />
+                        <span className="run-monitor-mock-site__copy run-monitor-mock-site__copy--short" />
+                        <div className="run-monitor-detection-target">
+                          <span className="run-monitor-mock-cta">{mockData.previewCallToAction}</span>
+                          <div className="run-monitor-detection-box" aria-hidden="true">
+                            <span>분석 대상</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="run-monitor-mock-site__cards" aria-hidden="true">
+                        <article>
+                          <span />
+                          <strong />
+                          <p />
+                          <p />
+                        </article>
+                        <article>
+                          <span />
+                          <strong />
+                          <p />
+                          <p />
+                        </article>
+                      </div>
                     </div>
                   </div>
-                </div>
-              ) : (
-                <div className="run-monitor-browser__empty-state">
-                  <span aria-hidden="true" />
-                  <strong>화면 캡처 대기 중</strong>
-                  <p>실제 run에서 latestFrame 또는 latestSnapshot이 도착하면 이 영역에 표시됩니다.</p>
-                </div>
-              )}
+                ) : (
+                  <div className="run-monitor-browser__empty-state">
+                    <span aria-hidden="true" />
+                    <strong>화면 캡처 대기 중</strong>
+                    <p>실제 run에서 latestFrame 또는 latestSnapshot이 도착하면 이 영역에 표시됩니다.</p>
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
-        </section>
+          </section>
 
         <aside className="run-monitor-analysis-panel" aria-label="실시간 분석 상태">
           <section className="run-monitor-progress-panel" aria-labelledby="run-progress-title">
@@ -457,7 +476,12 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
               <div className="run-monitor-live-insight__card run-monitor-live-insight__card--report run-monitor-report-cta">
                 <span>다음 화면</span>
                 <strong>분석 결과 리포트</strong>
-                <p>수집된 Evidence Packet을 바탕으로 발견된 근거와 개선안을 확인합니다.</p>
+                <p>수집된 근거를 바탕으로 발견된 신호와 개선안을 확인합니다.</p>
+                <EvidenceCollectionSummary
+                  stats={evidenceStats}
+                  isLoading={isEvidenceLoading}
+                  errorMessage={evidenceLoadError}
+                />
                 <a href={reportPath}>리포트 보기</a>
               </div>
             ) : (
@@ -466,26 +490,16 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
                 <p>
                   선택한 <span>{run.goal ?? run.name}</span> 흐름에서 화면 위계와 전환 마찰 근거를 수집하고 있습니다.
                 </p>
+                <EvidenceCollectionSummary
+                  stats={evidenceStats}
+                  isLoading={isEvidenceLoading}
+                  errorMessage={evidenceLoadError}
+                />
               </div>
             )}
           </section>
 
           <div className="run-monitor-panel-scroll">
-            {!isApiFallback && (
-              <>
-                <EvidencePanel
-                  evidencePacket={evidencePacket}
-                  isEvidenceLoading={isEvidenceLoading}
-                  evidenceLoadError={evidenceLoadError}
-                />
-                <ArtifactPanel
-                  artifacts={artifacts}
-                  isArtifactsLoading={isArtifactsLoading}
-                  artifactsLoadError={artifactsLoadError}
-                />
-              </>
-            )}
-
             <section className="run-monitor-context" aria-label="실행 정보">
               <h2>실행 정보</h2>
               <dl>
@@ -499,7 +513,7 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
                 </div>
                 <div>
                   <dt>디바이스</dt>
-                  <dd>{getDevicePresetLabel(run.devicePreset)}</dd>
+                  <dd>{deviceLabel}</dd>
                 </div>
                 <div>
                   <dt>실행 모드</dt>
@@ -542,7 +556,8 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
               </ul>
             </section>
           </div>
-        </aside>
+          </aside>
+        </div>
       </main>
     </div>
   );

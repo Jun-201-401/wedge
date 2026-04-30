@@ -5,6 +5,8 @@ export {
   buildApiSnapshotLogs,
   buildApiSnapshotSteps,
   canOpenRunReport,
+  canRequestRunDelete,
+  canRequestRunStop,
   findEvidenceScreenshotArtifact,
   formatRunStartedAt,
   getApiCheckpoint,

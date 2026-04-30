@@ -208,6 +208,14 @@ export function canOpenRunReport(isMockRun: boolean, run?: Run, evidencePacket?:
   return run?.status === 'COMPLETED' && (evidencePacket?.checkpoints.length ?? 0) > 0;
 }
 
+export function canRequestRunStop(status: RunStatus) {
+  return status === 'CREATED' || status === 'QUEUED' || status === 'STARTING' || status === 'RUNNING';
+}
+
+export function canRequestRunDelete(status: RunStatus) {
+  return status === 'COMPLETED' || status === 'FAILED' || status === 'STOPPED';
+}
+
 export function shouldRefreshRunLive(status: RunStatus) {
   return status === 'CREATED' || status === 'QUEUED' || status === 'STARTING' || status === 'RUNNING' || status === 'STOP_REQUESTED';
 }
