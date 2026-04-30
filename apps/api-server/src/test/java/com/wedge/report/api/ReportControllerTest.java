@@ -10,6 +10,7 @@ import com.wedge.common.error.GlobalExceptionHandler;
 import com.wedge.common.security.WedgePrincipal;
 import com.wedge.common.web.RequestIdFilter;
 import com.wedge.report.api.dto.ReportSummaryResponse;
+import com.wedge.report.application.ReportGenerationService;
 import com.wedge.report.application.ReportQueryService;
 import com.wedge.report.domain.ReportFormat;
 import com.wedge.run.domain.ReportStatus;
@@ -25,7 +26,8 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 class ReportControllerTest {
     private final ReportQueryService reportQueryService = mock(ReportQueryService.class);
-    private final MockMvc mockMvc = MockMvcBuilders.standaloneSetup(new ReportController(reportQueryService))
+    private final ReportGenerationService reportGenerationService = mock(ReportGenerationService.class);
+    private final MockMvc mockMvc = MockMvcBuilders.standaloneSetup(new ReportController(reportQueryService, reportGenerationService))
             .setControllerAdvice(new GlobalExceptionHandler())
             .addFilters(new RequestIdFilter())
             .build();

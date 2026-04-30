@@ -19,7 +19,9 @@
     </resultMap>
 
     <select id="findById" resultMap="ReportResultMap">
-        SELECT id, run_id, analysis_job_id, title, format, status, summary_jsonb, decision_map_jsonb,
+        SELECT id, run_id, analysis_job_id, title, format, status,
+               CAST(summary_jsonb AS TEXT) AS summary_jsonb,
+               CAST(decision_map_jsonb AS TEXT) AS decision_map_jsonb,
                artifact_id, created_by, created_at, updated_at, deleted_at, version
         FROM report
         WHERE id = #{id}
@@ -27,7 +29,9 @@
     </select>
 
     <select id="findByRunId" resultMap="ReportResultMap">
-        SELECT id, run_id, analysis_job_id, title, format, status, summary_jsonb, decision_map_jsonb,
+        SELECT id, run_id, analysis_job_id, title, format, status,
+               CAST(summary_jsonb AS TEXT) AS summary_jsonb,
+               CAST(decision_map_jsonb AS TEXT) AS decision_map_jsonb,
                artifact_id, created_by, created_at, updated_at, deleted_at, version
         FROM report
         WHERE run_id = #{runId}
