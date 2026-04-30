@@ -23,12 +23,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
-import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
-@RequiredArgsConstructor
 public class ReportQueryService {
     private static final int SUMMARY_TOP_FINDING_LIMIT = 3;
     private static final String STAGE_SCREENSHOT = "STAGE_SCREENSHOT";
@@ -41,14 +40,39 @@ public class ReportQueryService {
     private final RunService runService;
     private final ProjectAccessService projectAccessService;
     private final ObjectMapper objectMapper;
+    private final boolean projectAccessCheckEnabled;
+
+    public ReportQueryService(
+            ReportMapper reportMapper,
+            AnalysisFindingMapper analysisFindingMapper,
+            ArtifactMapper artifactMapper,
+            RunService runService,
+            ProjectAccessService projectAccessService,
+            ObjectMapper objectMapper,
+            @Value("${wedge.report.project-access-check-enabled:true}") boolean projectAccessCheckEnabled
+    ) {
+        this.reportMapper = reportMapper;
+        this.analysisFindingMapper = analysisFindingMapper;
+        this.artifactMapper = artifactMapper;
+        this.runService = runService;
+        this.projectAccessService = projectAccessService;
+        this.objectMapper = objectMapper;
+        this.projectAccessCheckEnabled = projectAccessCheckEnabled;
+    }
 
     @Transactional(readOnly = true)
     public List<ReportSummaryResponse> listRunReportSummaries(UUID runId, UUID userId) {
         RunResponse run = runService.getRun(runId);
-        projectAccessService.ensureProjectAccessible(run.projectId(), userId);
+        ensureProjectAccessible(run.projectId(), userId);
         return reportMapper.findByRunId(runId).stream()
                 .map(this::toSummaryResponse)
                 .toList();
+    }
+
+    private void ensureProjectAccessible(UUID projectId, UUID userId) {
+        if (projectAccessCheckEnabled) {
+            projectAccessService.ensureProjectAccessible(projectId, userId);
+        }
     }
 
     private ReportSummaryResponse toSummaryResponse(Report report) {

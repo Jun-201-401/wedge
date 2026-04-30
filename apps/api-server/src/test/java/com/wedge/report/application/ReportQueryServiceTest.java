@@ -1,6 +1,8 @@
 package com.wedge.report.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -54,7 +56,8 @@ class ReportQueryServiceTest {
                 artifactMapper,
                 runService,
                 projectAccessService,
-                new ObjectMapper()
+                new ObjectMapper(),
+                true
         );
     }
 
@@ -120,6 +123,29 @@ class ReportQueryServiceTest {
         List<ReportSummaryResponse> responses = reportQueryService.listRunReportSummaries(runId, userId);
 
         assertThat(responses.get(0).topFindings().get(0).previewImage().source()).isEqualTo("LATEST_SCREENSHOT");
+    }
+
+    @Test
+    void listRunReportSummariesCanSkipProjectAccessForMvpMode() {
+        UUID runId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        UUID projectId = UUID.randomUUID();
+        reportQueryService = new ReportQueryService(
+                reportMapper,
+                analysisFindingMapper,
+                artifactMapper,
+                runService,
+                projectAccessService,
+                new ObjectMapper(),
+                false
+        );
+        when(runService.getRun(runId)).thenReturn(runResponse(runId, projectId));
+        when(reportMapper.findByRunId(runId)).thenReturn(List.of());
+
+        List<ReportSummaryResponse> responses = reportQueryService.listRunReportSummaries(runId, userId);
+
+        assertThat(responses).isEmpty();
+        verify(projectAccessService, never()).ensureProjectAccessible(projectId, userId);
     }
 
     private Report report(UUID runId, UUID analysisJobId, UUID artifactId) {
