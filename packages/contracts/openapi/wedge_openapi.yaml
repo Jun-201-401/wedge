@@ -47,7 +47,6 @@ paths:
               description: >-
                 HttpOnly refresh token cookie (`wedge_refresh_token`); attributes: `Path=/api/auth`, `HttpOnly`,
                 `SameSite=Lax`, `Max-Age` set to refresh TTL, and `Secure` in production/HTTPS contexts.
-              description: "HttpOnly refresh token cookie (`wedge_refresh_token`); attributes: `Path=/api/auth`, `HttpOnly`, `SameSite=Lax`, `Max-Age` set to refresh TTL, and `Secure` in production/HTTPS contexts."
               schema:
                 type: string
           content:
@@ -79,7 +78,6 @@ paths:
               description: >-
                 HttpOnly refresh token cookie (`wedge_refresh_token`); attributes: `Path=/api/auth`, `HttpOnly`,
                 `SameSite=Lax`, `Max-Age` set to refresh TTL, and `Secure` in production/HTTPS contexts.
-              description: "HttpOnly refresh token cookie (`wedge_refresh_token`); attributes: `Path=/api/auth`, `HttpOnly`, `SameSite=Lax`, `Max-Age` set to refresh TTL, and `Secure` in production/HTTPS contexts."
               schema:
                 type: string
           content:
@@ -113,7 +111,6 @@ paths:
               description: >-
                 Rotated HttpOnly refresh token cookie (`wedge_refresh_token`); attributes: `Path=/api/auth`, `HttpOnly`,
                 `SameSite=Lax`, `Max-Age` set to refresh TTL, and `Secure` in production/HTTPS contexts.
-              description: "Rotated HttpOnly refresh token cookie (`wedge_refresh_token`); attributes: `Path=/api/auth`, `HttpOnly`, `SameSite=Lax`, `Max-Age` set to refresh TTL, and `Secure` in production/HTTPS contexts."
               schema:
                 type: string
           content:
@@ -124,7 +121,6 @@ paths:
           description: Refresh cookie missing, invalid, or expired. Also expires the browser refresh cookie.
           headers:
             Set-Cookie:
-              description: "Expired HttpOnly refresh token cookie (`wedge_refresh_token`); attributes: `Path=/api/auth`, `HttpOnly`, `SameSite=Lax`, `Max-Age=0`, and `Secure` in production/HTTPS contexts."
               description: >-
                 Expired HttpOnly refresh token cookie (`wedge_refresh_token`); attributes: `Path=/api/auth`, `HttpOnly`,
                 `SameSite=Lax`, `Max-Age=0`, and `Secure` in production/HTTPS contexts.
@@ -147,7 +143,6 @@ paths:
           description: Logged out
           headers:
             Set-Cookie:
-              description: "Expired HttpOnly refresh token cookie (`wedge_refresh_token`); attributes: `Path=/api/auth`, `HttpOnly`, `SameSite=Lax`, `Max-Age=0`, and `Secure` in production/HTTPS contexts."
               description: >-
                 Expired HttpOnly refresh token cookie (`wedge_refresh_token`); attributes: `Path=/api/auth`, `HttpOnly`,
                 `SameSite=Lax`, `Max-Age=0`, and `Secure` in production/HTTPS contexts.

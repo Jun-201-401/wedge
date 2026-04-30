@@ -1,12 +1,12 @@
-package com.wedge.internal.analysis;
+package com.wedge.analysis.api.internal;
 
+import com.wedge.analysis.api.internal.dto.AnalyzerCallbackHeaders;
+import com.wedge.analysis.api.internal.dto.AnalyzerCompletedRequest;
+import com.wedge.analysis.api.internal.dto.AnalyzerFailedRequest;
 import com.wedge.analysis.application.JudgeResultPersistenceService;
 import com.wedge.common.error.BusinessException;
 import com.wedge.common.error.ErrorCode;
 import com.wedge.common.infrastructure.ProcessedMessagePersistenceAdapter;
-import com.wedge.internal.analysis.dto.AnalyzerCallbackHeaders;
-import com.wedge.internal.analysis.dto.AnalyzerCompletedRequest;
-import com.wedge.internal.analysis.dto.AnalyzerFailedRequest;
 import java.util.Map;
 import java.util.UUID;
 import org.springframework.stereotype.Service;

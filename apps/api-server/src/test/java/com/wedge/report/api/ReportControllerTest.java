@@ -3,6 +3,7 @@ package com.wedge.report.api;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -16,10 +17,10 @@ import com.wedge.report.api.dto.ReportDetailFindingResponse;
 import com.wedge.report.api.dto.ReportDetailNudgeResponse;
 import com.wedge.report.api.dto.ReportDetailResponse;
 import com.wedge.report.api.dto.ReportSummaryResponse;
+import com.wedge.report.api.dto.RunReportResponse;
 import com.wedge.report.application.ReportDetailQueryService;
-import com.wedge.report.application.ReportSummaryQueryService;
 import com.wedge.report.application.ReportGenerationService;
-import com.wedge.report.application.ReportQueryService;
+import com.wedge.report.application.ReportSummaryQueryService;
 import com.wedge.report.domain.ReportFormat;
 import com.wedge.run.domain.ReportStatus;
 import java.math.BigDecimal;
@@ -33,13 +34,11 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 class ReportControllerTest {
-    private final ReportQueryService reportQueryService = mock(ReportQueryService.class);
-    private final ReportGenerationService reportGenerationService = mock(ReportGenerationService.class);
-    private final MockMvc mockMvc = MockMvcBuilders.standaloneSetup(new ReportController(reportQueryService, reportGenerationService))
     private final ReportSummaryQueryService reportSummaryQueryService = mock(ReportSummaryQueryService.class);
     private final ReportDetailQueryService reportDetailQueryService = mock(ReportDetailQueryService.class);
+    private final ReportGenerationService reportGenerationService = mock(ReportGenerationService.class);
     private final MockMvc mockMvc = MockMvcBuilders.standaloneSetup(
-                    new ReportController(reportSummaryQueryService, reportDetailQueryService)
+                    new ReportController(reportSummaryQueryService, reportDetailQueryService, reportGenerationService)
             )
             .setControllerAdvice(new GlobalExceptionHandler())
             .addFilters(new RequestIdFilter())
@@ -60,6 +59,38 @@ class ReportControllerTest {
                 .andExpect(jsonPath("$.data[0].frictionScore").value(61.0))
                 .andExpect(jsonPath("$.data[0].topFindings").isArray())
                 .andExpect(jsonPath("$.meta.requestId").value("req_report_summary"));
+    }
+
+    @Test
+    void generateRunReportReturnsCreatedEnvelope() throws Exception {
+        UUID runId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        UUID reportId = UUID.randomUUID();
+        when(reportGenerationService.generateRunReport(runId, userId)).thenReturn(runReport(runId, reportId));
+
+        mockMvc.perform(post("/api/runs/{runId}/report", runId)
+                        .principal(authentication(userId))
+                        .header("X-Request-Id", "req_report_generate"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.runId").value(runId.toString()))
+                .andExpect(jsonPath("$.data.reportId").value(reportId.toString()))
+                .andExpect(jsonPath("$.meta.requestId").value("req_report_generate"));
+    }
+
+    @Test
+    void getRunReportReturnsProjectionEnvelope() throws Exception {
+        UUID runId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        UUID reportId = UUID.randomUUID();
+        when(reportGenerationService.getRunReport(runId, userId)).thenReturn(runReport(runId, reportId));
+
+        mockMvc.perform(get("/api/runs/{runId}/report", runId)
+                        .principal(authentication(userId))
+                        .header("X-Request-Id", "req_run_report"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.reportStatus").value("READY"))
+                .andExpect(jsonPath("$.data.reportId").value(reportId.toString()))
+                .andExpect(jsonPath("$.meta.requestId").value("req_run_report"));
     }
 
     @Test
@@ -168,6 +199,27 @@ class ReportControllerTest {
                 "LOW",
                 "Users understand the next step faster.",
                 "Does the click-through rate improve?"
+        );
+    }
+
+    private RunReportResponse runReport(UUID runId, UUID reportId) {
+        return new RunReportResponse(
+                runId,
+                "READY",
+                "COMPLETED",
+                UUID.randomUUID(),
+                reportId,
+                "Landing CTA audit",
+                ReportFormat.JSON,
+                ReportStatus.READY,
+                null,
+                null,
+                List.of(),
+                List.of(),
+                null,
+                null,
+                OffsetDateTime.parse("2026-04-29T12:00:00+09:00"),
+                OffsetDateTime.parse("2026-04-29T12:00:00+09:00")
         );
     }
 
