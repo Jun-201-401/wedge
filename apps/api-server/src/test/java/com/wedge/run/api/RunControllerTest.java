@@ -102,7 +102,7 @@ class RunControllerTest {
                 "run_id", runId.toString(),
                 "checkpoints", List.of(Map.of(
                         "checkpoint_id", "cp_001",
-                        "observations", List.of(Map.of("observation_id", "cp_001.obs_001"))
+                        "observations", List.of(Map.of("observation_id", "obs_001"))
                 )),
                 "artifacts", List.of(Map.of("artifact_id", UUID.randomUUID().toString())),
                 "aggregate_signals", Map.of("checkpoint_count", 1, "observation_count", 1, "artifact_count", 1)
@@ -113,7 +113,7 @@ class RunControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.run_id").value(runId.toString()))
                 .andExpect(jsonPath("$.data.checkpoints[0].checkpoint_id").value("cp_001"))
-                .andExpect(jsonPath("$.data.checkpoints[0].observations[0].observation_id").value("cp_001.obs_001"))
+                .andExpect(jsonPath("$.data.checkpoints[0].observations[0].observation_id").value("obs_001"))
                 .andExpect(jsonPath("$.data.aggregate_signals.checkpoint_count").value(1))
                 .andExpect(jsonPath("$.meta.requestId").value("req_evidence_packet"));
     }

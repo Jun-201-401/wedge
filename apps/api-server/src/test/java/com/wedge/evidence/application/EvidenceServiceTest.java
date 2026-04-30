@@ -86,7 +86,10 @@ class EvidenceServiceTest {
         assertEvidenceObservation(packet);
         @SuppressWarnings("unchecked")
         Map<String, Object> aggregateSignals = (Map<String, Object>) packet.get("aggregate_signals");
-        assertThat(aggregateSignals).containsEntry("cta_candidate_count", 1L);
+        assertThat(aggregateSignals)
+                .containsEntry("cta_candidate_count", 1L)
+                .containsEntry("failed_request_count", 0L)
+                .containsEntry("console_error_count", 0L);
     }
 
     @Test
@@ -149,13 +152,18 @@ class EvidenceServiceTest {
     @SuppressWarnings("unchecked")
     private void assertEvidenceObservation(Map<String, Object> packet) {
         List<Map<String, Object>> checkpoints = (List<Map<String, Object>>) packet.get("checkpoints");
+        assertThat(checkpoints.get(0)).containsEntry("step_id", "step_001_goto");
         List<Map<String, Object>> observations = (List<Map<String, Object>>) checkpoints.get(0).get("observations");
         Map<String, Object> observation = observations.get(0);
-        assertThat(observation).containsEntry("observation_id", "cp_001.obs_001");
+        assertThat(observation).containsEntry("observation_id", "obs_001");
         assertThat(observation).containsEntry("type", "cta_candidate");
         assertThat(observation).containsEntry("stage", "CTA");
         assertThat((List<String>) observation.get("source")).containsExactly("dom");
         assertThat((Map<String, Object>) observation.get("data")).containsEntry("target", "text=Start free");
+
+        Map<String, Object> decisionStageSummary = (Map<String, Object>) packet.get("decisionStageSummary");
+        assertThat((Map<String, Object>) decisionStageSummary.get("FIRST_VIEW")).containsEntry("status", "OBSERVED");
+        assertThat((Map<String, Object>) decisionStageSummary.get("VALUE")).containsEntry("status", "NOT_OBSERVED");
     }
 
     private RunResponse sampleRun(UUID runId) {
@@ -201,6 +209,7 @@ class EvidenceServiceTest {
         Checkpoint checkpoint = new Checkpoint();
         checkpoint.setId(checkpointId);
         checkpoint.setRunId(runId);
+        checkpoint.setStepKey("step_001_goto");
         checkpoint.setCheckpointKey("cp_001");
         checkpoint.setStage("FIRST_VIEW");
         checkpoint.setTriggerJsonb("{\"actionType\":\"goto\"}");
