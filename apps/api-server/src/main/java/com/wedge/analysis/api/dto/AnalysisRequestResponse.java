@@ -7,6 +7,7 @@ public record AnalysisRequestResponse(
         UUID runId,
         String status,
         String analysisType,
+        UUID evidencePacketId,
         boolean evidencePacketIncluded,
         int checkpointCount,
         int artifactCount

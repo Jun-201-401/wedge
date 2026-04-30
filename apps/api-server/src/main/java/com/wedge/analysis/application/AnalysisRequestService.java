@@ -6,6 +6,7 @@ import com.wedge.analysis.infrastructure.AnalysisJobMapper;
 import com.wedge.common.error.BusinessException;
 import com.wedge.common.error.ErrorCode;
 import com.wedge.evidence.application.EvidenceService;
+import com.wedge.evidence.domain.EvidencePacketSnapshot;
 import com.wedge.project.application.ProjectAccessService;
 import com.wedge.run.api.dto.RunResponse;
 import com.wedge.run.application.RunService;
@@ -14,7 +15,6 @@ import com.wedge.run.domain.RunStatus;
 import com.wedge.run.infrastructure.OutboxMessagePersistenceAdapter;
 import com.wedge.run.infrastructure.RunMapper;
 import java.time.OffsetDateTime;
-import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.springframework.context.ApplicationEventPublisher;
@@ -62,13 +62,13 @@ public class AnalysisRequestService {
             throw new BusinessException(ErrorCode.STATE_CONFLICT, "Run must be COMPLETED before analysis can be requested.");
         }
 
-        Map<String, Object> evidencePacket = evidenceService.getRunEvidencePacket(runId);
+        EvidencePacketSnapshot evidencePacket = evidenceService.materializeRunEvidencePacketSnapshot(runId);
         UUID analysisJobId = UUID.randomUUID();
-        AnalysisJob analysisJob = queuedAnalysisJob(analysisJobId, runId);
+        AnalysisJob analysisJob = queuedAnalysisJob(analysisJobId, runId, evidencePacket.getId());
         analysisJobMapper.insertQueued(analysisJob);
         runMapper.markAnalysisQueued(runId, analysisJobId);
 
-        AnalysisRequestMessage message = createMessage(analysisJobId, runId, evidencePacket);
+        AnalysisRequestMessage message = createMessage(analysisJobId, runId, evidencePacket.getId());
         UUID outboxMessageId = outboxMessagePersistenceAdapter.appendAnalysisRequestMessage(message, analysisJobId);
         applicationEventPublisher.publishEvent(new AnalysisRequestOutboxEnqueuedEvent(outboxMessageId));
 
@@ -77,22 +77,24 @@ public class AnalysisRequestService {
                 runId,
                 AnalysisJobStatus.QUEUED.name(),
                 PRIMARY_ANALYSIS,
-                true,
-                sizeOfList(evidencePacket.get("checkpoints")),
-                sizeOfList(evidencePacket.get("artifacts"))
+                evidencePacket.getId(),
+                false,
+                evidencePacket.getCheckpointCount(),
+                evidencePacket.getArtifactCount()
         );
     }
 
-    private AnalysisJob queuedAnalysisJob(UUID analysisJobId, UUID runId) {
+    private AnalysisJob queuedAnalysisJob(UUID analysisJobId, UUID runId, UUID evidencePacketId) {
         AnalysisJob analysisJob = new AnalysisJob();
         analysisJob.setId(analysisJobId);
         analysisJob.setRunId(runId);
         analysisJob.setJobType(PRIMARY_ANALYSIS);
         analysisJob.setStatus(AnalysisJobStatus.QUEUED);
+        analysisJob.setEvidencePacketId(evidencePacketId);
         return analysisJob;
     }
 
-    private AnalysisRequestMessage createMessage(UUID analysisJobId, UUID runId, Map<String, Object> evidencePacket) {
+    private AnalysisRequestMessage createMessage(UUID analysisJobId, UUID runId, UUID evidencePacketId) {
         String messageId = UUID.randomUUID().toString();
         String createdAt = OffsetDateTime.now().toString();
         Map<String, Object> payload = Map.of(
@@ -100,7 +102,7 @@ public class AnalysisRequestService {
                 "runId", runId.toString(),
                 "analysisType", PRIMARY_ANALYSIS,
                 "forceRebuildEvidenceBundle", false,
-                "evidencePacket", evidencePacket
+                "evidencePacketId", evidencePacketId.toString()
         );
         return new AnalysisRequestMessage(
                 messageId,
@@ -112,10 +114,6 @@ public class AnalysisRequestService {
                 "analysis:" + analysisJobId,
                 payload
         );
-    }
-
-    private int sizeOfList(Object value) {
-        return value instanceof List<?> list ? list.size() : 0;
     }
 
 }

@@ -13,6 +13,7 @@ import com.wedge.analysis.infrastructure.AnalysisJobMapper;
 import com.wedge.common.error.BusinessException;
 import com.wedge.common.error.ErrorCode;
 import com.wedge.evidence.application.EvidenceService;
+import com.wedge.evidence.domain.EvidencePacketSnapshot;
 import com.wedge.project.application.ProjectAccessService;
 import com.wedge.run.api.dto.RunResponse;
 import com.wedge.run.application.RunService;
@@ -23,8 +24,6 @@ import com.wedge.run.domain.RunStatus;
 import com.wedge.run.infrastructure.OutboxMessagePersistenceAdapter;
 import com.wedge.run.infrastructure.RunMapper;
 import java.net.URI;
-import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -83,18 +82,14 @@ class AnalysisRequestServiceTest {
     }
 
     @Test
-    void requestPrimaryAnalysisPublishesFullEvidencePacketMessage() {
+    void requestPrimaryAnalysisPublishesEvidencePacketIdMessage() {
         UUID runId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
+        UUID evidencePacketId = UUID.randomUUID();
         RunResponse run = sampleRun(runId, RunStatus.COMPLETED);
-        Map<String, Object> evidencePacket = Map.of(
-                "schema_version", "0.5",
-                "run_id", runId.toString(),
-                "checkpoints", List.of(Map.of("checkpoint_id", "cp_001")),
-                "artifacts", List.of(Map.of("artifact_id", "artifact_001"))
-        );
+        EvidencePacketSnapshot evidencePacket = snapshot(evidencePacketId, runId, 1, 1);
         when(runService.getRun(runId)).thenReturn(run);
-        when(evidenceService.getRunEvidencePacket(runId)).thenReturn(evidencePacket);
+        when(evidenceService.materializeRunEvidencePacketSnapshot(runId)).thenReturn(evidencePacket);
         UUID outboxMessageId = UUID.randomUUID();
         when(outboxMessagePersistenceAdapter.appendAnalysisRequestMessage(any(AnalysisRequestMessage.class), any(UUID.class)))
                 .thenReturn(outboxMessageId);
@@ -105,7 +100,8 @@ class AnalysisRequestServiceTest {
         assertThat(response.runId()).isEqualTo(runId);
         assertThat(response.status()).isEqualTo(AnalysisJobStatus.QUEUED.name());
         assertThat(response.analysisType()).isEqualTo("PRIMARY");
-        assertThat(response.evidencePacketIncluded()).isTrue();
+        assertThat(response.evidencePacketId()).isEqualTo(evidencePacketId);
+        assertThat(response.evidencePacketIncluded()).isFalse();
         assertThat(response.checkpointCount()).isEqualTo(1);
         assertThat(response.artifactCount()).isEqualTo(1);
 
@@ -115,6 +111,7 @@ class AnalysisRequestServiceTest {
         assertThat(queuedJob.getRunId()).isEqualTo(runId);
         assertThat(queuedJob.getJobType()).isEqualTo("PRIMARY");
         assertThat(queuedJob.getStatus()).isEqualTo(AnalysisJobStatus.QUEUED);
+        assertThat(queuedJob.getEvidencePacketId()).isEqualTo(evidencePacketId);
 
         verify(runMapper).markAnalysisQueued(runId, response.analysisJobId());
         verify(outboxMessagePersistenceAdapter).appendAnalysisRequestMessage(messageCaptor.capture(), org.mockito.Mockito.eq(response.analysisJobId()));
@@ -126,8 +123,8 @@ class AnalysisRequestServiceTest {
                 .containsEntry("analysisJobId", response.analysisJobId().toString())
                 .containsEntry("runId", runId.toString())
                 .containsEntry("analysisType", "PRIMARY")
-                .containsEntry("evidencePacket", evidencePacket);
-        assertThat(message.payload()).doesNotContainKey("evidencePacketId");
+                .containsEntry("evidencePacketId", evidencePacketId.toString());
+        assertThat(message.payload()).doesNotContainKey("evidencePacket");
         verify(applicationEventPublisher).publishEvent(eventCaptor.capture());
         assertThat(eventCaptor.getValue().outboxMessageId()).isEqualTo(outboxMessageId);
     }
@@ -145,7 +142,7 @@ class AnalysisRequestServiceTest {
                 .isEqualTo(ErrorCode.STATE_CONFLICT);
 
         verify(projectAccessService).ensureProjectAccessible(run.projectId(), userId);
-        verify(evidenceService, never()).getRunEvidencePacket(runId);
+        verify(evidenceService, never()).materializeRunEvidencePacketSnapshot(runId);
         verify(analysisJobMapper, never()).insertQueued(any());
         verify(outboxMessagePersistenceAdapter, never()).appendAnalysisRequestMessage(any(), any());
         verify(applicationEventPublisher, never()).publishEvent(any());
@@ -166,10 +163,21 @@ class AnalysisRequestServiceTest {
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.FORBIDDEN);
 
-        verify(evidenceService, never()).getRunEvidencePacket(runId);
+        verify(evidenceService, never()).materializeRunEvidencePacketSnapshot(runId);
         verify(analysisJobMapper, never()).insertQueued(any());
         verify(outboxMessagePersistenceAdapter, never()).appendAnalysisRequestMessage(any(), any());
         verify(applicationEventPublisher, never()).publishEvent(any());
+    }
+
+    private EvidencePacketSnapshot snapshot(UUID evidencePacketId, UUID runId, int checkpointCount, int artifactCount) {
+        EvidencePacketSnapshot snapshot = new EvidencePacketSnapshot();
+        snapshot.setId(evidencePacketId);
+        snapshot.setExecutionType("RUN");
+        snapshot.setRunId(runId);
+        snapshot.setSchemaVersion("0.5");
+        snapshot.setCheckpointCount(checkpointCount);
+        snapshot.setArtifactCount(artifactCount);
+        return snapshot;
     }
 
     private RunResponse sampleRun(UUID runId, RunStatus status) {

@@ -1,6 +1,7 @@
 package com.wedge.evidence.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -10,9 +11,11 @@ import com.wedge.evidence.api.dto.RunEvidenceSummaryResponse;
 import com.wedge.evidence.domain.Artifact;
 import com.wedge.evidence.domain.ArtifactType;
 import com.wedge.evidence.domain.Checkpoint;
+import com.wedge.evidence.domain.EvidencePacketSnapshot;
 import com.wedge.evidence.domain.Observation;
 import com.wedge.evidence.infrastructure.ArtifactMapper;
 import com.wedge.evidence.infrastructure.CheckpointMapper;
+import com.wedge.evidence.infrastructure.EvidencePacketMapper;
 import com.wedge.evidence.infrastructure.ObservationMapper;
 import com.wedge.run.api.dto.RunResponse;
 import com.wedge.run.application.RunService;
@@ -45,6 +48,9 @@ class EvidenceServiceTest {
 
     @Mock
     private ObservationMapper observationMapper;
+
+    @Mock
+    private EvidencePacketMapper evidencePacketMapper;
 
     @Mock
     private ArtifactContentStore artifactContentStore;
@@ -90,6 +96,30 @@ class EvidenceServiceTest {
                 .containsEntry("cta_candidate_count", 1L)
                 .containsEntry("failed_request_count", 0L)
                 .containsEntry("console_error_count", 0L);
+    }
+
+    @Test
+    void materializeRunEvidencePacketSnapshotPersistsAssembledPacket() {
+        UUID runId = UUID.randomUUID();
+        UUID checkpointId = UUID.randomUUID();
+        UUID artifactId = UUID.randomUUID();
+        when(runService.getRun(runId)).thenReturn(sampleRun(runId));
+        when(artifactMapper.findByRunId(runId)).thenReturn(List.of(sampleArtifact(runId, artifactId)));
+        when(checkpointMapper.findByRunId(runId)).thenReturn(List.of(sampleCheckpoint(runId, checkpointId, artifactId)));
+        when(observationMapper.findByRunId(runId)).thenReturn(List.of(sampleObservation(runId, checkpointId)));
+        when(evidencePacketMapper.upsertRunSnapshot(any(EvidencePacketSnapshot.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        EvidenceService evidenceService = newService();
+
+        EvidencePacketSnapshot snapshot = evidenceService.materializeRunEvidencePacketSnapshot(runId);
+
+        assertThat(snapshot.getId()).isNotNull();
+        assertThat(snapshot.getRunId()).isEqualTo(runId);
+        assertThat(snapshot.getSchemaVersion()).isEqualTo("0.5");
+        assertThat(snapshot.getCheckpointCount()).isEqualTo(1);
+        assertThat(snapshot.getObservationCount()).isEqualTo(1);
+        assertThat(snapshot.getArtifactCount()).isEqualTo(1);
+        assertThat(snapshot.getPacketJsonb()).contains("\"run_id\":\"" + runId + "\"");
     }
 
     @Test
@@ -144,8 +174,10 @@ class EvidenceServiceTest {
                 artifactMapper,
                 checkpointMapper,
                 observationMapper,
+                evidencePacketMapper,
                 new EvidencePacketAssembler(new ObjectMapper()),
-                artifactContentStore
+                artifactContentStore,
+                new ObjectMapper()
         );
     }
 

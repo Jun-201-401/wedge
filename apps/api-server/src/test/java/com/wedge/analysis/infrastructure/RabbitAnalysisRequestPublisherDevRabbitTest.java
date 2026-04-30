@@ -9,7 +9,6 @@ import com.rabbitmq.client.AMQP;
 import com.rabbitmq.client.Channel;
 import com.wedge.analysis.application.AnalysisRequestMessage;
 import java.time.OffsetDateTime;
-import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.Tag;
@@ -27,7 +26,7 @@ class RabbitAnalysisRequestPublisherDevRabbitTest {
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Test
-    void publishSendsFullEvidencePacketToDevAnalysisQueue() throws Exception {
+    void publishSendsEvidencePacketIdToDevAnalysisQueue() throws Exception {
         String queueName = property("wedge.rabbit.queue", "analysis.request");
         String exchangeName = property("wedge.rabbit.exchange", "wedge.direct");
         CachingConnectionFactory connectionFactory = connectionFactory();
@@ -43,16 +42,15 @@ class RabbitAnalysisRequestPublisherDevRabbitTest {
             );
             UUID runId = UUID.randomUUID();
             UUID analysisJobId = UUID.randomUUID();
+            UUID evidencePacketId = UUID.randomUUID();
 
-            publisher.publish(message(runId, analysisJobId));
+            publisher.publish(message(runId, analysisJobId, evidencePacketId));
 
             Object rawMessage = rabbitTemplate.receiveAndConvert(queueName);
             assertThat(rawMessage).isInstanceOf(String.class);
             Map<String, Object> envelope = objectMapper.readValue((String) rawMessage, MAP_TYPE);
             @SuppressWarnings("unchecked")
             Map<String, Object> payload = (Map<String, Object>) envelope.get("payload");
-            @SuppressWarnings("unchecked")
-            Map<String, Object> evidencePacket = (Map<String, Object>) payload.get("evidencePacket");
 
             assertThat(envelope)
                     .containsEntry("messageType", "analysis.request")
@@ -61,12 +59,8 @@ class RabbitAnalysisRequestPublisherDevRabbitTest {
                     .containsEntry("analysisJobId", analysisJobId.toString())
                     .containsEntry("runId", runId.toString())
                     .containsEntry("analysisType", "PRIMARY")
-                    .doesNotContainKey("evidencePacketId");
-            assertThat(evidencePacket)
-                    .containsEntry("schema_version", "0.5")
-                    .containsEntry("execution_type", "RUN")
-                    .containsEntry("run_id", runId.toString());
-            assertThat((List<?>) evidencePacket.get("checkpoints")).hasSize(1);
+                    .containsEntry("evidencePacketId", evidencePacketId.toString())
+                    .doesNotContainKey("evidencePacket");
         } finally {
             connectionFactory.destroy();
         }
@@ -95,38 +89,7 @@ class RabbitAnalysisRequestPublisherDevRabbitTest {
         }
     }
 
-    private AnalysisRequestMessage message(UUID runId, UUID analysisJobId) {
-        Map<String, Object> evidencePacket = Map.of(
-                "schema_version", "0.5",
-                "execution_type", "RUN",
-                "run_id", runId.toString(),
-                "url", "https://example.com",
-                "scenario", Map.of(),
-                "environment", Map.of(),
-                "checkpoints", List.of(Map.of(
-                        "checkpoint_id", "cp_001",
-                        "step_id", "step_001_goto",
-                        "primaryStage", "FIRST_VIEW",
-                        "trigger", Map.of(),
-                        "settle", Map.of(),
-                        "state", Map.of(),
-                        "observations", List.of(Map.of(
-                                "observation_id", "obs_001",
-                                "type", "cta_candidate",
-                                "stage", "CTA",
-                                "source", List.of("dom"),
-                                "data", Map.of("target", "text=Start free")
-                        )),
-                        "deltas", List.of(),
-                        "artifact_refs", List.of()
-                )),
-                "aggregate_signals", Map.of(
-                        "checkpoint_count", 1,
-                        "observation_count", 1,
-                        "artifact_count", 0
-                ),
-                "artifacts", List.of()
-        );
+    private AnalysisRequestMessage message(UUID runId, UUID analysisJobId, UUID evidencePacketId) {
         return new AnalysisRequestMessage(
                 UUID.randomUUID().toString(),
                 "analysis.request",
@@ -140,7 +103,7 @@ class RabbitAnalysisRequestPublisherDevRabbitTest {
                         "runId", runId.toString(),
                         "analysisType", "PRIMARY",
                         "forceRebuildEvidenceBundle", false,
-                        "evidencePacket", evidencePacket
+                        "evidencePacketId", evidencePacketId.toString()
                 )
         );
     }

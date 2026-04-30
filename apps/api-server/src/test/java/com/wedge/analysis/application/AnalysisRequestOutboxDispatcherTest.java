@@ -142,7 +142,7 @@ class AnalysisRequestOutboxDispatcherTest {
                         "analysisJobId", analysisJobId.toString(),
                         "runId", runId.toString(),
                         "analysisType", "PRIMARY",
-                        "evidencePacket", Map.of("schema_version", "0.5")
+                        "evidencePacketId", UUID.randomUUID().toString()
                 )
         );
     }
