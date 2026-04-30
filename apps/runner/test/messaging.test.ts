@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
-import { parseRunExecuteMessage } from "../src/messaging/index.ts";
+import { parseDiscoveryExecuteMessage, parseRunExecuteMessage } from "../src/messaging/index.ts";
 import { cloneMessage, exampleMessageFile, loadExampleMessage } from "./support.ts";
 
 test("parseRunExecuteMessage validates run.execute.request envelope", async () => {
@@ -88,3 +88,46 @@ test("parseRunExecuteMessage rejects unsupported settle strategy types", async (
     /scenario step step_001_goto settle_strategy\.type is unsupported/
   );
 });
+
+test("parseDiscoveryExecuteMessage validates discovery.execute.request envelope", () => {
+  const message = parseDiscoveryExecuteMessage(JSON.stringify(createDiscoveryExecuteMessage()));
+
+  assert.equal(message.messageType, "discovery.execute.request");
+  assert.equal(message.payload.url, "https://example.com");
+  assert.equal(message.payload.maxScrollCount, 2);
+});
+
+test("parseDiscoveryExecuteMessage rejects invalid discovery payload bounds", () => {
+  const invalidMessage = createDiscoveryExecuteMessage();
+  invalidMessage.payload.maxDurationMs = 500;
+
+  assert.throws(
+    () => parseDiscoveryExecuteMessage(JSON.stringify(invalidMessage)),
+    /discovery payload\.maxDurationMs must be >= 1000/
+  );
+});
+
+function createDiscoveryExecuteMessage() {
+  return {
+    messageId: "20000000-0000-4000-8000-000000000001",
+    messageType: "discovery.execute.request",
+    schemaVersion: "0.5",
+    createdAt: "2026-04-30T00:00:00.000Z",
+    producer: "api-server",
+    correlationId: "20000000-0000-4000-8000-000000000002",
+    idempotencyKey: "discovery:20000000-0000-4000-8000-000000000001",
+    payload: {
+      discoveryId: "20000000-0000-4000-8000-000000000011",
+      projectId: "8f06dca8-9c4d-4f20-b1a8-1d5ee40a9923",
+      triggerSource: "WEB",
+      url: "https://example.com",
+      devicePreset: "desktop",
+      viewport: {
+        width: 1440,
+        height: 900
+      },
+      maxDurationMs: 5_000,
+      maxScrollCount: 2
+    }
+  };
+}
