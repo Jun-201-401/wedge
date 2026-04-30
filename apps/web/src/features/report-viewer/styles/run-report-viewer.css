@@ -803,3 +803,14 @@
     border-radius: 0;
   }
 }
+
+.run-report-state-card__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.6rem;
+}
+
+.run-report-state-card__actions a + a {
+  background: #0284c7;
+}

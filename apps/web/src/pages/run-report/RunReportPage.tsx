@@ -46,7 +46,10 @@ function RunReportStatePage({ runId, title, message }: { runId: string; title: s
           <span>Report</span>
           <h1 id="run-report-state-title">{title}</h1>
           <p>{message}</p>
-          <a href={`/runs/${encodeURIComponent(runId)}`}>실시간 상태로 돌아가기</a>
+          <div className="run-report-state-card__actions">
+            <a href={`/runs/${encodeURIComponent(runId)}`}>실시간 상태로 돌아가기</a>
+            <a href="/create-analysis">새 분석 만들기</a>
+          </div>
         </section>
       </main>
     </div>
