@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 
-import { getRun, getRunEvidencePacket, getRunLive } from '../../../api/runs';
-import type { EvidencePacket, Run, RunLive } from '../../../entities/run';
+import { getRun, getRunEvidencePacket, getRunLive, listRunArtifacts } from '../../../api/runs';
+import type { EvidencePacket, Run, RunArtifact, RunLive } from '../../../entities/run';
 import type { MockRunMonitorData } from './runMonitorMock';
 import { RUN_MONITOR_REFRESH_INTERVAL_MS, shouldRefreshRunLive } from './runMonitorViewModel';
 
 const EVIDENCE_LOAD_ERROR_MESSAGE = 'Evidence packet을 아직 불러오지 못했습니다. Runner callback 저장이 완료되면 표시됩니다.';
+const ARTIFACTS_LOAD_ERROR_MESSAGE = '저장된 artifact 목록을 아직 불러오지 못했습니다.';
 
 export interface RunMonitorState {
   run: Run;
@@ -17,6 +18,9 @@ export interface RunMonitorState {
   evidencePacket: EvidencePacket | null;
   isEvidenceLoading: boolean;
   evidenceLoadError: string;
+  artifacts: RunArtifact[];
+  isArtifactsLoading: boolean;
+  artifactsLoadError: string;
 }
 
 export function useRunMonitorState(runId: string, mockData: MockRunMonitorData, isMockRun: boolean): RunMonitorState {
@@ -29,6 +33,9 @@ export function useRunMonitorState(runId: string, mockData: MockRunMonitorData, 
   const [evidencePacket, setEvidencePacket] = useState<EvidencePacket | null>(null);
   const [isEvidenceLoading, setIsEvidenceLoading] = useState(false);
   const [evidenceLoadError, setEvidenceLoadError] = useState('');
+  const [artifacts, setArtifacts] = useState<RunArtifact[]>([]);
+  const [isArtifactsLoading, setIsArtifactsLoading] = useState(false);
+  const [artifactsLoadError, setArtifactsLoadError] = useState('');
   const liveStatusRef = useRef(live.status);
 
   useEffect(() => {
@@ -42,6 +49,12 @@ export function useRunMonitorState(runId: string, mockData: MockRunMonitorData, 
       setEvidenceLoadError('');
     }
 
+    function clearArtifactsState() {
+      setArtifacts([]);
+      setIsArtifactsLoading(false);
+      setArtifactsLoadError('');
+    }
+
     if (isMockRun) {
       setRun(mockData.run);
       setLive(mockData.live);
@@ -50,11 +63,38 @@ export function useRunMonitorState(runId: string, mockData: MockRunMonitorData, 
       setIsRealRunLoading(false);
       setApiLoadError('');
       clearEvidenceState();
+      clearArtifactsState();
       return;
     }
 
     let isActive = true;
     let refreshTimerId = 0;
+
+    async function loadArtifacts() {
+      setIsArtifactsLoading(true);
+
+      try {
+        const artifactsResponse = await listRunArtifacts(runId);
+
+        if (!isActive) {
+          return;
+        }
+
+        setArtifacts(artifactsResponse.data);
+        setArtifactsLoadError('');
+      } catch {
+        if (!isActive) {
+          return;
+        }
+
+        setArtifacts([]);
+        setArtifactsLoadError(ARTIFACTS_LOAD_ERROR_MESSAGE);
+      } finally {
+        if (isActive) {
+          setIsArtifactsLoading(false);
+        }
+      }
+    }
 
     async function loadEvidencePacket() {
       setIsEvidenceLoading(true);
@@ -106,7 +146,7 @@ export function useRunMonitorState(runId: string, mockData: MockRunMonitorData, 
           refreshTimerId = window.setTimeout(() => void loadRunState(false), RUN_MONITOR_REFRESH_INTERVAL_MS);
         }
 
-        await loadEvidencePacket();
+        await Promise.all([loadEvidencePacket(), loadArtifacts()]);
       } catch {
         if (!isActive) {
           return;
@@ -116,6 +156,7 @@ export function useRunMonitorState(runId: string, mockData: MockRunMonitorData, 
         setApiLoadError('Run 상태를 불러오지 못했습니다. URL 또는 접근 권한을 확인한 뒤 다시 시도해주세요.');
         setIsRealRunLoading(false);
         clearEvidenceState();
+        clearArtifactsState();
 
         if (!isInitialLoad && shouldRefreshRunLive(liveStatusRef.current)) {
           refreshTimerId = window.setTimeout(() => void loadRunState(false), RUN_MONITOR_REFRESH_INTERVAL_MS);
@@ -141,5 +182,8 @@ export function useRunMonitorState(runId: string, mockData: MockRunMonitorData, 
     evidencePacket,
     isEvidenceLoading,
     evidenceLoadError,
+    artifacts,
+    isArtifactsLoading,
+    artifactsLoadError,
   };
 }

@@ -1451,3 +1451,122 @@
     animation: none;
   }
 }
+
+.run-monitor-artifacts {
+  margin-bottom: 3rem;
+}
+
+.run-monitor-artifacts h2 {
+  margin-bottom: 1.25rem;
+}
+
+.run-monitor-artifacts__heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+}
+
+.run-monitor-artifacts__heading h2 {
+  margin-bottom: 0;
+}
+
+.run-monitor-artifacts__heading span,
+.run-monitor-artifacts__status {
+  color: #94a3b8;
+  font-size: 0.62rem;
+  font-weight: 800;
+  line-height: 1.5;
+}
+
+.run-monitor-artifacts__heading span {
+  flex: 0 0 auto;
+  border: 1px solid #f1f5f9;
+  border-radius: 999px;
+  background: #f8fafc;
+  padding: 0.28rem 0.58rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.run-monitor-artifacts__status {
+  margin: 0;
+  border: 1px dashed #e2e8f0;
+  border-radius: 1rem;
+  background: #f8fafc;
+  padding: 1rem;
+}
+
+.run-monitor-artifacts__list {
+  display: grid;
+  gap: 0.55rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.run-monitor-artifacts__list li {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  border: 1px solid #f1f5f9;
+  border-radius: 1rem;
+  background: #fff;
+  padding: 0.8rem;
+  box-shadow: 0 8px 22px rgba(148, 163, 184, 0.08);
+}
+
+.run-monitor-artifacts__list div {
+  display: grid;
+  min-width: 0;
+  gap: 0.25rem;
+}
+
+.run-monitor-artifacts__list strong,
+.run-monitor-artifacts__list span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.run-monitor-artifacts__list strong {
+  color: #020617;
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
+.run-monitor-artifacts__list span {
+  color: #94a3b8;
+  font-size: 0.6rem;
+  font-weight: 800;
+}
+
+.run-monitor-artifacts__list a,
+.run-monitor-artifacts__missing-link {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: rgba(240, 249, 255, 0.88);
+  padding: 0.45rem 0.65rem;
+  color: #0284c7;
+  font-size: 0.56rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-decoration: none;
+}
+
+.run-monitor-artifacts__missing-link {
+  background: #f8fafc;
+  color: #cbd5e1;
+}
+
+.run-monitor-evidence-card__unsafe-artifact {
+  overflow: hidden;
+  color: #94a3b8;
+  font-size: 0.66rem;
+  font-weight: 900;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

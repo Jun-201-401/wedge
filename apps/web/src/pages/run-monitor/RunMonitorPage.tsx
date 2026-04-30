@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 
-import type { EvidencePacket } from '../../entities/run';
+import type { EvidencePacket, RunArtifact } from '../../entities/run';
 import { RUN_STATUS_LABEL } from '../../entities/run';
 import {
   buildApiSnapshotLogs,
@@ -22,7 +22,8 @@ import {
   type StepStatus,
   useRunMonitorState,
 } from '../../features/run-monitor';
-import { getScenarioLabel } from '../../shared';
+import { getSafeResourceUrl, getScenarioLabel } from '../../shared';
+import { RUNS_PATH } from '../../shared/lib/appPaths';
 import { buildRunReportPath } from '../run-report/lib/runReportRoute';
 import { isMockRunId } from './lib/runMonitorRoute';
 import './RunMonitorPage.css';
@@ -97,6 +98,7 @@ function RunMonitorTopbar({ runId, targetUrl, statusTone, statusLabel }: RunMoni
             <span>{statusLabel}</span>
           </div>
         )}
+        <a href={RUNS_PATH} className="run-monitor-stop-link">Runs</a>
         <a href="/create-analysis" className="run-monitor-stop-link">새 분석</a>
       </div>
     </header>
@@ -176,14 +178,22 @@ function EvidencePanel({
                 <div className="run-monitor-evidence-card__artifacts">
                   <h3>Artifacts</h3>
                   <ul>
-                    {checkpointArtifacts.map((artifact) => (
-                      <li key={artifact.artifact_id}>
-                        <a href={artifact.uri} target="_blank" rel="noreferrer">
-                          {getEvidenceArtifactLabel(artifact)}
-                        </a>
-                        <span>{artifact.mime_type ?? artifact.type}</span>
-                      </li>
-                    ))}
+                    {checkpointArtifacts.map((artifact) => {
+                      const artifactLink = getSafeResourceUrl(artifact.uri);
+
+                      return (
+                        <li key={artifact.artifact_id}>
+                          {artifactLink ? (
+                            <a href={artifactLink} target="_blank" rel="noreferrer">
+                              {getEvidenceArtifactLabel(artifact)}
+                            </a>
+                          ) : (
+                            <span className="run-monitor-evidence-card__unsafe-artifact">{getEvidenceArtifactLabel(artifact)}</span>
+                          )}
+                          <span>{artifact.mime_type ?? artifact.type}</span>
+                        </li>
+                      );
+                    })}
                   </ul>
                 </div>
               )}
@@ -211,6 +221,67 @@ function EvidencePanel({
   );
 }
 
+
+function getRunArtifactLink(artifact: RunArtifact) {
+  return getSafeResourceUrl(artifact.contentUrl) || getSafeResourceUrl(artifact.url);
+}
+
+function getRunArtifactLabel(artifact: RunArtifact) {
+  return artifact.stepKey ? `${artifact.artifactType} · ${artifact.stepKey}` : artifact.artifactType;
+}
+
+function ArtifactPanel({
+  artifacts,
+  isArtifactsLoading,
+  artifactsLoadError,
+}: {
+  artifacts: RunArtifact[];
+  isArtifactsLoading: boolean;
+  artifactsLoadError: string;
+}) {
+  if (artifacts.length === 0) {
+    const statusMessage = isArtifactsLoading
+      ? '저장된 artifact 목록을 불러오는 중입니다.'
+      : artifactsLoadError || 'Runner artifact callback이 저장되면 스크린샷과 DOM snapshot 링크가 표시됩니다.';
+
+    return (
+      <section className="run-monitor-artifacts" aria-labelledby="run-artifacts-title">
+        <h2 id="run-artifacts-title">Persisted Artifacts</h2>
+        <p className="run-monitor-artifacts__status">{statusMessage}</p>
+      </section>
+    );
+  }
+
+  return (
+    <section className="run-monitor-artifacts" aria-labelledby="run-artifacts-title">
+      <div className="run-monitor-artifacts__heading">
+        <h2 id="run-artifacts-title">Persisted Artifacts</h2>
+        <span>{artifacts.length} files</span>
+      </div>
+
+      <ul className="run-monitor-artifacts__list">
+        {artifacts.map((artifact) => {
+          const artifactLink = getRunArtifactLink(artifact);
+
+          return (
+            <li key={artifact.id}>
+              <div>
+                <strong>{getRunArtifactLabel(artifact)}</strong>
+                <span>{artifact.mimeType} · {Math.max(1, Math.round(artifact.sizeBytes / 1024))}KB</span>
+              </div>
+              {artifactLink ? (
+                <a href={artifactLink} target="_blank" rel="noreferrer">열기</a>
+              ) : (
+                <span className="run-monitor-artifacts__missing-link">링크 없음</span>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  );
+}
+
 export function RunMonitorPage({ runId }: RunMonitorPageProps) {
   const fallbackUrl = getFallbackUrl();
   const scenarioLabel = getScenarioLabel(readQueryParam('scenario'));
@@ -227,6 +298,9 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
     evidencePacket,
     isEvidenceLoading,
     evidenceLoadError,
+    artifacts,
+    isArtifactsLoading,
+    artifactsLoadError,
   } = useRunMonitorState(runId, mockData, isMockRun);
 
   if (isRealRunLoading) {
@@ -398,11 +472,18 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
 
           <div className="run-monitor-panel-scroll">
             {!isApiFallback && (
-              <EvidencePanel
-                evidencePacket={evidencePacket}
-                isEvidenceLoading={isEvidenceLoading}
-                evidenceLoadError={evidenceLoadError}
-              />
+              <>
+                <EvidencePanel
+                  evidencePacket={evidencePacket}
+                  isEvidenceLoading={isEvidenceLoading}
+                  evidenceLoadError={evidenceLoadError}
+                />
+                <ArtifactPanel
+                  artifacts={artifacts}
+                  isArtifactsLoading={isArtifactsLoading}
+                  artifactsLoadError={artifactsLoadError}
+                />
+              </>
             )}
 
             <section className="run-monitor-context" aria-label="실행 정보">

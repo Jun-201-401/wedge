@@ -18,6 +18,8 @@ test('run monitor page exposes Sprint 2 live cockpit essentials with Korean-faci
 
   assert.match(source, /실시간 시뮬레이션/);
   assert.match(source, /대상/);
+  assert.match(source, /href=\{RUNS_PATH\}/);
+  assert.match(source, />Runs<\/a>/);
   assert.match(source, /Run/);
   assert.match(source, /시나리오 경로/);
   assert.match(source, /작업 로그/);
@@ -45,6 +47,7 @@ test('run monitor page exposes Sprint 2 live cockpit essentials with Korean-faci
   assert.match(source, /getEvidenceArtifactLabel/);
   assert.match(source, /getEvidenceObservationSummary/);
   assert.match(source, /findEvidenceScreenshotArtifact/);
+  assert.match(source, /getSafeResourceUrl/);
   assert.match(stateHook, /Run 상태를 불러오지 못했습니다/);
   assert.match(source, /RunMonitorStatePage/);
   assert.match(source, /role="progressbar"/);
