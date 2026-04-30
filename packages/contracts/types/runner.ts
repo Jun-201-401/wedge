@@ -27,6 +27,11 @@ export interface TargetDescriptorMap {
   text_any?: string[];
   label?: string;
   label_any?: string[];
+  placeholder?: string;
+  placeholder_any?: string[];
+  name?: string;
+  name_any?: string[];
+  href_contains?: string;
   selector?: string;
   selector_any?: string[];
   url?: string;

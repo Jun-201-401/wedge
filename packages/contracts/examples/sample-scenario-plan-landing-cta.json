@@ -1,0 +1,117 @@
+{
+  "schema_version": "0.5",
+  "plan_id": "mvp_landing_cta_001",
+  "scenario_type": "template",
+  "template_key": "landing-cta",
+  "goal": "랜딩 페이지의 핵심 가치 전달과 primary CTA 진입 가능 여부를 점검한다.",
+  "start_url": "https://example.com",
+  "environment": {
+    "device": "desktop",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "locale": "ko-KR",
+    "timezone": "Asia/Seoul",
+    "permissions": [],
+    "auth_state": "anonymous"
+  },
+  "safety": {
+    "allow_external_navigation": false,
+    "allow_payment_commit": false,
+    "allow_destructive_action": false,
+    "use_synthetic_inputs": true,
+    "stop_before_real_payment": true
+  },
+  "steps": [
+    {
+      "step_id": "landing_001_goto",
+      "stage": "FIRST_VIEW",
+      "description": "랜딩 페이지에 진입한다.",
+      "action": {
+        "type": "goto",
+        "target": "https://example.com"
+      },
+      "settle_strategy": {
+        "type": "network_idle",
+        "timeout_ms": 3000
+      },
+      "checkpoint": true
+    },
+    {
+      "step_id": "landing_002_first_view_checkpoint",
+      "stage": "FIRST_VIEW",
+      "description": "첫 화면의 hero, 가치 제안, primary CTA 노출 상태를 기록한다.",
+      "action": {
+        "type": "checkpoint"
+      },
+      "settle_strategy": {
+        "type": "none",
+        "timeout_ms": 0
+      },
+      "checkpoint": true
+    },
+    {
+      "step_id": "landing_003_click_primary_cta",
+      "stage": "CTA",
+      "description": "primary CTA를 클릭해 다음 의사결정 지점으로 이동한다.",
+      "action": {
+        "type": "click",
+        "target": {
+          "role": "link",
+          "text_any": [
+            "Start free",
+            "Get started",
+            "무료로 시작",
+            "시작하기",
+            "회원가입"
+          ],
+          "href_contains": "#signup-form"
+        }
+      },
+      "settle_strategy": {
+        "type": "url_change",
+        "timeout_ms": 1000,
+        "url_includes": "#signup-form"
+      },
+      "checkpoint": false
+    },
+    {
+      "step_id": "landing_004_wait_for_cta_destination",
+      "stage": "CTA",
+      "description": "CTA 클릭 후 signup/form 영역 또는 다음 주요 영역이 표시될 때까지 기다린다.",
+      "action": {
+        "type": "wait_for",
+        "target": {
+          "selector_any": [
+            "#signup-form",
+            "form",
+            "main"
+          ]
+        },
+        "options": {
+          "state": "visible",
+          "timeout_ms": 1000
+        }
+      },
+      "settle_strategy": {
+        "type": "none",
+        "timeout_ms": 0
+      },
+      "checkpoint": false
+    },
+    {
+      "step_id": "landing_005_cta_destination_checkpoint",
+      "stage": "CTA",
+      "description": "CTA 도착 지점의 문맥과 다음 행동 가능성을 기록한다.",
+      "action": {
+        "type": "checkpoint"
+      },
+      "settle_strategy": {
+        "type": "none",
+        "timeout_ms": 0
+      },
+      "checkpoint": true
+    }
+  ]
+}

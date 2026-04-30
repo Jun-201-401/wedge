@@ -23,7 +23,10 @@ Canonical machine-readable contracts belong here. Human-readable design rational
 - `schemas/rule-registry.schema.json`: rule registry contract for analyzer criteria
 - `schemas/judge-result.schema.json`: analyzer/judge output contract
 - `schemas/semantic-classification.schema.json`: label-only semantic normalization request/response contract for provider adapters
-- `examples/sample-scenario-plan-signup.json`: ScenarioPlan fixture
+- `examples/sample-scenario-plan-signup.json`: legacy signup ScenarioPlan fixture
+- `examples/sample-scenario-plan-landing-cta.json`: MVP landing CTA ScenarioPlan fixture
+- `examples/sample-scenario-plan-signup-form.json`: MVP signup form ScenarioPlan fixture
+- `examples/sample-scenario-plan-pricing-checkout.json`: MVP pricing checkout ScenarioPlan fixture
 - `examples/sample-site-discovery-result.json`: SiteDiscoveryResult fixture
 - `examples/sample-evidence-packet.json`: EvidencePacket fixture
 - `examples/sample-run-artifacts-response.json`: prototype REST fixture for `GET /api/runs/{runId}/artifacts`
