@@ -44,7 +44,9 @@ paths:
           description: Signed up
           headers:
             Set-Cookie:
-              description: HttpOnly refresh token cookie (`wedge_refresh_token`); attributes: `Path=/api/auth`, `HttpOnly`, `SameSite=Lax`, `Max-Age` set to refresh TTL, and `Secure` in production/HTTPS contexts.
+              description: >-
+                HttpOnly refresh token cookie (`wedge_refresh_token`); attributes: `Path=/api/auth`, `HttpOnly`,
+                `SameSite=Lax`, `Max-Age` set to refresh TTL, and `Secure` in production/HTTPS contexts.
               schema:
                 type: string
           content:
@@ -73,7 +75,9 @@ paths:
           description: Logged in
           headers:
             Set-Cookie:
-              description: HttpOnly refresh token cookie (`wedge_refresh_token`); attributes: `Path=/api/auth`, `HttpOnly`, `SameSite=Lax`, `Max-Age` set to refresh TTL, and `Secure` in production/HTTPS contexts.
+              description: >-
+                HttpOnly refresh token cookie (`wedge_refresh_token`); attributes: `Path=/api/auth`, `HttpOnly`,
+                `SameSite=Lax`, `Max-Age` set to refresh TTL, and `Secure` in production/HTTPS contexts.
               schema:
                 type: string
           content:
@@ -104,7 +108,9 @@ paths:
           description: Token refreshed
           headers:
             Set-Cookie:
-              description: Rotated HttpOnly refresh token cookie (`wedge_refresh_token`); attributes: `Path=/api/auth`, `HttpOnly`, `SameSite=Lax`, `Max-Age` set to refresh TTL, and `Secure` in production/HTTPS contexts.
+              description: >-
+                Rotated HttpOnly refresh token cookie (`wedge_refresh_token`); attributes: `Path=/api/auth`, `HttpOnly`,
+                `SameSite=Lax`, `Max-Age` set to refresh TTL, and `Secure` in production/HTTPS contexts.
               schema:
                 type: string
           content:
@@ -115,7 +121,9 @@ paths:
           description: Refresh cookie missing, invalid, or expired. Also expires the browser refresh cookie.
           headers:
             Set-Cookie:
-              description: Expired HttpOnly refresh token cookie (`wedge_refresh_token`); attributes: `Path=/api/auth`, `HttpOnly`, `SameSite=Lax`, `Max-Age=0`, and `Secure` in production/HTTPS contexts.
+              description: >-
+                Expired HttpOnly refresh token cookie (`wedge_refresh_token`); attributes: `Path=/api/auth`, `HttpOnly`,
+                `SameSite=Lax`, `Max-Age=0`, and `Secure` in production/HTTPS contexts.
               schema:
                 type: string
           content:
@@ -135,7 +143,9 @@ paths:
           description: Logged out
           headers:
             Set-Cookie:
-              description: Expired HttpOnly refresh token cookie (`wedge_refresh_token`); attributes: `Path=/api/auth`, `HttpOnly`, `SameSite=Lax`, `Max-Age=0`, and `Secure` in production/HTTPS contexts.
+              description: >-
+                Expired HttpOnly refresh token cookie (`wedge_refresh_token`); attributes: `Path=/api/auth`, `HttpOnly`,
+                `SameSite=Lax`, `Max-Age=0`, and `Secure` in production/HTTPS contexts.
               schema:
                 type: string
           content:
@@ -2965,6 +2975,7 @@ components:
             summary: 이 시나리오에는 입력 단계가 필요하지 않습니다.
             evidenceRefs: []
         scenarioMismatchReport:
+          type: object
           allOf:
           - $ref: '#/components/schemas/ScenarioMismatchReport'
           nullable: true
@@ -3058,6 +3069,7 @@ components:
           type: number
           nullable: true
         previewImage:
+          type: object
           allOf:
           - $ref: '#/components/schemas/ReportPreviewImage'
           nullable: true
@@ -3067,6 +3079,152 @@ components:
       - title
       - summary
       - stage
+    ReportDetail:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        runId:
+          type: string
+          format: uuid
+        analysisJobId:
+          type: string
+          format: uuid
+          nullable: true
+        title:
+          type: string
+        format:
+          type: string
+          enum:
+          - PDF
+          - MARKDOWN
+          - HTML
+          - JSON
+        status:
+          type: string
+          enum:
+          - GENERATING
+          - READY
+          - FAILED
+          - ARCHIVED
+        frictionScore:
+          type: number
+          nullable: true
+        summary:
+          type: object
+          additionalProperties: true
+          nullable: true
+        decisionMap:
+          type: array
+          items:
+            $ref: '#/components/schemas/DecisionMapItem'
+        initialDisplayCount:
+          type: integer
+          description: Number of high-priority findings the UI should show before the user expands more.
+          example: 3
+        findings:
+          type: array
+          items:
+            $ref: '#/components/schemas/ReportDetailFinding'
+        createdAt:
+          type: string
+          format: date-time
+      required:
+      - id
+      - runId
+      - title
+      - format
+      - status
+      - decisionMap
+      - initialDisplayCount
+      - findings
+      - createdAt
+    ReportDetailFinding:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        rank:
+          type: integer
+        title:
+          type: string
+        summary:
+          type: string
+        category:
+          type: string
+          nullable: true
+        stage:
+          type: string
+          nullable: true
+          description: Raw finding stage. Known values follow DecisionStage, but Detail preserves stored findings.
+        axis:
+          type: string
+          nullable: true
+        severity:
+          type: integer
+          nullable: true
+        confidence:
+          type: number
+          nullable: true
+        priorityScore:
+          type: number
+          nullable: true
+        impactHypothesis:
+          type: string
+          nullable: true
+        evidenceRefs:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        previewImage:
+          type: object
+          allOf:
+          - $ref: '#/components/schemas/ReportPreviewImage'
+          nullable: true
+        nudges:
+          type: array
+          items:
+            $ref: '#/components/schemas/ReportDetailNudge'
+      required:
+      - id
+      - rank
+      - title
+      - summary
+      - stage
+      - evidenceRefs
+      - nudges
+    ReportDetailNudge:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        rank:
+          type: integer
+          nullable: true
+        title:
+          type: string
+        rationale:
+          type: string
+          nullable: true
+        recommendation:
+          type: string
+          nullable: true
+        difficulty:
+          type: string
+          nullable: true
+        expectedEffect:
+          type: string
+          nullable: true
+        validationQuestion:
+          type: string
+          nullable: true
+      required:
+      - id
+      - title
     ReportPreviewImage:
       type: object
       properties:
@@ -3112,13 +3270,19 @@ components:
           type: string
           nullable: true
         latestFrame:
-          $ref: '#/components/schemas/LatestSnapshot'
+          type: object
+          allOf:
+          - $ref: '#/components/schemas/LatestSnapshot'
           nullable: true
         latestCheckpoint:
-          $ref: '#/components/schemas/LatestCheckpoint'
+          type: object
+          allOf:
+          - $ref: '#/components/schemas/LatestCheckpoint'
           nullable: true
         latestArtifact:
-          $ref: '#/components/schemas/Artifact'
+          type: object
+          allOf:
+          - $ref: '#/components/schemas/Artifact'
           nullable: true
         evidenceCounts:
           $ref: '#/components/schemas/RunEvidenceCounts'
@@ -3534,7 +3698,7 @@ components:
       type: object
       properties:
         data:
-          $ref: '#/components/schemas/Report'
+          $ref: '#/components/schemas/ReportDetail'
         meta:
           $ref: '#/components/schemas/Meta'
       required:
