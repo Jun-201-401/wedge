@@ -1,10 +1,18 @@
 package com.wedge.common.security;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.wedge.auth.domain.UserAccount;
 import com.wedge.auth.infrastructure.UserAccountMapper;
 import com.wedge.common.response.RequestMetadata;
 import jakarta.servlet.ServletException;
+import java.io.IOException;
+import java.util.Optional;
+import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -14,15 +22,6 @@ import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
-
-import java.io.IOException;
-import java.util.Optional;
-import java.util.UUID;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
 
 class JwtAuthenticationFilterTest {
     private final JwtTokenProvider jwtTokenProvider = new JwtTokenProvider();
@@ -64,7 +63,10 @@ class JwtAuthenticationFilterTest {
         UserAccount user = new UserAccount(userId, "local:user@example.com", "user@example.com", "User", "ACTIVE");
         when(userAccountMapper.findById(userId)).thenReturn(Optional.of(user));
         MockHttpServletRequest request = authMeRequest();
-        request.addHeader("Authorization", "Bearer " + jwtTokenProvider.createAccessToken(userId, user.getEmail(), user.getDisplayName()));
+        request.addHeader(
+                "Authorization",
+                "Bearer " + jwtTokenProvider.createAccessToken(userId, user.getEmail(), user.getDisplayName())
+        );
         MockHttpServletResponse response = new MockHttpServletResponse();
 
         assertThatThrownBy(() -> filter.doFilter(request, response, (servletRequest, servletResponse) -> {
@@ -73,9 +75,21 @@ class JwtAuthenticationFilterTest {
                 .hasMessage("downstream failure");
     }
 
+    @Test
+    void reportApiPathsRequireJwtFilter() throws ServletException {
+        assertThat(filter.shouldNotFilter(request("/api/reports"))).isFalse();
+        assertThat(filter.shouldNotFilter(request("/api/reports/018f4c1d-14c0-7f2b-8d76-97f2fa99aa01"))).isFalse();
+    }
+
     private MockHttpServletRequest authMeRequest() {
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/auth/me");
         RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(request));
+        return request;
+    }
+
+    private MockHttpServletRequest request(String path) {
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", path);
+        request.setRequestURI(path);
         return request;
     }
 }

@@ -60,7 +60,14 @@ public class SecurityConfig {
                                 "/swagger-ui.html",
                                 "/v3/api-docs/**"
                         ).permitAll()
-                        .requestMatchers("/api/auth/logout", "/api/auth/me", "/api/runs", "/api/runs/**").authenticated()
+                        .requestMatchers(
+                                "/api/auth/logout",
+                                "/api/auth/me",
+                                "/api/runs",
+                                "/api/runs/**",
+                                "/api/reports",
+                                "/api/reports/**"
+                        ).authenticated()
                         .requestMatchers("/internal/runner/**", "/internal/analysis/**").hasRole("INTERNAL_RUNNER")
                         .requestMatchers("/api/**", "/internal/**", "/mcp/**").denyAll()
                         .anyRequest().permitAll()
