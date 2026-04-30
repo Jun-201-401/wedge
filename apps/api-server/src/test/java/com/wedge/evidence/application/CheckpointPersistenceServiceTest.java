@@ -1,18 +1,22 @@
 package com.wedge.evidence.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.wedge.common.error.BusinessException;
 import com.wedge.evidence.application.command.SaveRunCheckpointCommand;
 import com.wedge.evidence.application.command.SaveRunCheckpointsCommand;
 import com.wedge.evidence.domain.Checkpoint;
 import com.wedge.evidence.domain.Observation;
 import com.wedge.evidence.infrastructure.CheckpointMapper;
 import com.wedge.evidence.infrastructure.ObservationMapper;
-import com.wedge.run.infrastructure.RunMapper;
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -33,9 +37,6 @@ class CheckpointPersistenceServiceTest {
     @Mock
     private ObservationMapper observationMapper;
 
-    @Mock
-    private RunMapper runMapper;
-
     @Captor
     private ArgumentCaptor<Checkpoint> checkpointCaptor;
 
@@ -49,7 +50,6 @@ class CheckpointPersistenceServiceTest {
         checkpointPersistenceService = new CheckpointPersistenceService(
                 checkpointMapper,
                 observationMapper,
-                runMapper,
                 new ObjectMapper()
         );
     }
@@ -69,13 +69,14 @@ class CheckpointPersistenceServiceTest {
                 List.of(),
                 List.of("artifact-response-screenshot")
         )));
-        when(checkpointMapper.findByRunIdAndCheckpointKey(runId, "checkpoint-response-1")).thenReturn(Optional.empty());
+        when(checkpointMapper.insert(any(Checkpoint.class))).thenReturn(1);
 
-        int savedCount = checkpointPersistenceService.saveRunCheckpoints(runId, command);
+        SaveRunCheckpointsResult result = checkpointPersistenceService.saveRunCheckpoints(runId, command);
 
-        assertThat(savedCount).isEqualTo(1);
+        assertThat(result.checkpointCount()).isEqualTo(1);
         verify(checkpointMapper).insert(checkpointCaptor.capture());
         Checkpoint checkpoint = checkpointCaptor.getValue();
+        assertThat(result.latestInsertedCheckpointId()).contains(checkpoint.getId());
         assertThat(checkpoint.getId()).isNotNull();
         assertThat(checkpoint.getRunId()).isEqualTo(runId);
         assertThat(checkpoint.getStepId()).isNull();
@@ -88,7 +89,6 @@ class CheckpointPersistenceServiceTest {
         assertThat(checkpoint.getArtifactRefsJsonb()).contains("artifact-response-screenshot");
         assertThat(checkpoint.getCapturedAt()).isNotNull();
         assertThat(checkpoint.getDurationMs()).isEqualTo(216);
-        verify(runMapper).updateLatestCheckpoint(runId, checkpoint.getId());
     }
 
     @Test
@@ -110,7 +110,7 @@ class CheckpointPersistenceServiceTest {
                 List.of(Map.of("type", "last_action", "action", "goto")),
                 List.of("artifact:" + UUID.randomUUID())
         )));
-        when(checkpointMapper.findByRunIdAndCheckpointKey(runId, "cp_001")).thenReturn(Optional.empty());
+        when(checkpointMapper.insert(any(Checkpoint.class))).thenReturn(1);
 
         checkpointPersistenceService.saveRunCheckpoints(runId, command);
 
@@ -125,24 +125,126 @@ class CheckpointPersistenceServiceTest {
         assertThat(observation.getStage()).isEqualTo("CTA");
         assertThat(observation.getSourcesJsonb()).contains("dom");
         assertThat(observation.getDataJsonb()).contains("Start free");
+        assertThat(observation.getConfidence()).isEqualByComparingTo("0.86");
     }
 
     @Test
-    void saveRunCheckpointsSkipsAlreadyStoredCheckpointKey() {
+    void saveRunCheckpointsSkipsAlreadyStoredCheckpointKeyWithoutLatestCandidate() {
         UUID runId = UUID.randomUUID();
         UUID checkpointId = UUID.randomUUID();
         Checkpoint existingCheckpoint = new Checkpoint();
         existingCheckpoint.setId(checkpointId);
         SaveRunCheckpointsCommand command = sampleCheckpointCommand();
+        when(checkpointMapper.insert(any(Checkpoint.class))).thenReturn(0);
         when(checkpointMapper.findByRunIdAndCheckpointKey(runId, "checkpoint-response-1"))
                 .thenReturn(Optional.of(existingCheckpoint));
 
-        int savedCount = checkpointPersistenceService.saveRunCheckpoints(runId, command);
+        SaveRunCheckpointsResult result = checkpointPersistenceService.saveRunCheckpoints(runId, command);
 
-        assertThat(savedCount).isEqualTo(1);
-        verify(checkpointMapper, never()).insert(org.mockito.ArgumentMatchers.any());
+        assertThat(result.checkpointCount()).isEqualTo(1);
+        assertThat(result.latestInsertedCheckpointId()).isEmpty();
         verify(observationMapper, never()).insert(org.mockito.ArgumentMatchers.any());
-        verify(runMapper).updateLatestCheckpoint(runId, checkpointId);
+    }
+
+    @Test
+    void saveRunCheckpointsKeepsNewestInsertedCheckpointWhenBatchEndsWithDuplicate() {
+        UUID runId = UUID.randomUUID();
+        UUID existingCheckpointId = UUID.randomUUID();
+        Checkpoint existingCheckpoint = new Checkpoint();
+        existingCheckpoint.setId(existingCheckpointId);
+        SaveRunCheckpointsCommand command = new SaveRunCheckpointsCommand(List.of(
+                checkpointCommand("cp_003", "step_003", "COMMIT", List.of()),
+                checkpointCommand("cp_001", "step_001", "FIRST_VIEW", List.of())
+        ));
+        when(checkpointMapper.insert(any(Checkpoint.class))).thenReturn(1, 0);
+        when(checkpointMapper.findByRunIdAndCheckpointKey(runId, "cp_001"))
+                .thenReturn(Optional.of(existingCheckpoint));
+
+        SaveRunCheckpointsResult result = checkpointPersistenceService.saveRunCheckpoints(runId, command);
+
+        assertThat(result.checkpointCount()).isEqualTo(2);
+        verify(checkpointMapper, org.mockito.Mockito.times(2)).insert(checkpointCaptor.capture());
+        Checkpoint insertedCheckpoint = checkpointCaptor.getAllValues().get(0);
+        assertThat(insertedCheckpoint.getCheckpointKey()).isEqualTo("cp_003");
+        assertThat(result.latestInsertedCheckpointId()).contains(insertedCheckpoint.getId());
+        assertThat(result.latestInsertedCheckpointId().orElseThrow()).isNotEqualTo(existingCheckpointId);
+        verifyNoInteractions(observationMapper);
+    }
+
+    @Test
+    void saveRunCheckpointsRejectsConfidenceBelowZero() {
+        SaveRunCheckpointsCommand command = new SaveRunCheckpointsCommand(List.of(
+                checkpointCommand("cp_invalid", "step_001", "CTA", List.of(Map.of(
+                        "type", "cta_candidate",
+                        "confidence", -0.01
+                )))
+        ));
+
+        assertThatThrownBy(() -> checkpointPersistenceService.saveRunCheckpoints(UUID.randomUUID(), command))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Runner checkpoint observation confidence must be between 0 and 1.");
+
+        verifyNoInteractions(checkpointMapper, observationMapper);
+    }
+
+    @Test
+    void saveRunCheckpointsRejectsConfidenceAboveOne() {
+        SaveRunCheckpointsCommand command = new SaveRunCheckpointsCommand(List.of(
+                checkpointCommand("cp_invalid", "step_001", "CTA", List.of(Map.of(
+                        "type", "cta_candidate",
+                        "confidence", "1.01"
+                )))
+        ));
+
+        assertThatThrownBy(() -> checkpointPersistenceService.saveRunCheckpoints(UUID.randomUUID(), command))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Runner checkpoint observation confidence must be between 0 and 1.");
+
+        verifyNoInteractions(checkpointMapper, observationMapper);
+    }
+
+    @Test
+    void saveRunCheckpointsRejectsNonNumericConfidenceString() {
+        SaveRunCheckpointsCommand command = new SaveRunCheckpointsCommand(List.of(
+                checkpointCommand("cp_invalid", "step_001", "CTA", List.of(Map.of(
+                        "type", "cta_candidate",
+                        "confidence", "high"
+                )))
+        ));
+
+        assertThatThrownBy(() -> checkpointPersistenceService.saveRunCheckpoints(UUID.randomUUID(), command))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Runner checkpoint observation confidence must be numeric.");
+
+        verifyNoInteractions(checkpointMapper, observationMapper);
+    }
+
+    @Test
+    void saveRunCheckpointsAcceptsConfidenceBounds() {
+        UUID runId = UUID.randomUUID();
+        SaveRunCheckpointsCommand command = new SaveRunCheckpointsCommand(List.of(new SaveRunCheckpointCommand(
+                "cp_bounds",
+                "step_001",
+                "CTA",
+                Map.of("actionType", "click"),
+                Map.of("strategy", "response", "durationMs", 216, "status", "settled"),
+                216,
+                Map.of("url", "https://example.com/signup"),
+                List.of(
+                        Map.of("type", "cta_candidate", "confidence", BigDecimal.ZERO),
+                        Map.of("type", "cta_candidate", "confidence", BigDecimal.ONE)
+                ),
+                List.of(),
+                List.of()
+        )));
+        when(checkpointMapper.insert(any(Checkpoint.class))).thenReturn(1);
+
+        checkpointPersistenceService.saveRunCheckpoints(runId, command);
+
+        verify(observationMapper, org.mockito.Mockito.times(2)).insert(observationCaptor.capture());
+        assertThat(observationCaptor.getAllValues())
+                .extracting(Observation::getConfidence)
+                .containsExactly(BigDecimal.ZERO, BigDecimal.ONE);
     }
 
     private SaveRunCheckpointsCommand sampleCheckpointCommand() {
@@ -158,5 +260,25 @@ class CheckpointPersistenceServiceTest {
                 List.of(),
                 List.of("artifact-response-screenshot")
         )));
+    }
+
+    private SaveRunCheckpointCommand checkpointCommand(
+            String checkpointKey,
+            String stepKey,
+            String stage,
+            List<Map<String, Object>> observations
+    ) {
+        return new SaveRunCheckpointCommand(
+                checkpointKey,
+                stepKey,
+                stage,
+                Map.of("actionType", "click"),
+                Map.of("strategy", "response", "durationMs", 216, "status", "settled"),
+                216,
+                Map.of("url", "https://example.com/signup"),
+                observations,
+                List.of(),
+                List.of()
+        );
     }
 }

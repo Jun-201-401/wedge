@@ -3,6 +3,7 @@ package com.wedge.run.application;
 import com.wedge.common.infrastructure.ProcessedMessagePersistenceAdapter;
 import com.wedge.evidence.application.ArtifactPersistenceService;
 import com.wedge.evidence.application.CheckpointPersistenceService;
+import com.wedge.evidence.application.SaveRunCheckpointsResult;
 import com.wedge.evidence.application.command.SaveRunArtifactCommand;
 import com.wedge.evidence.application.command.SaveRunArtifactsCommand;
 import com.wedge.evidence.application.command.SaveRunCheckpointCommand;
@@ -87,8 +88,10 @@ public class RunnerCallbackService {
         runService.getRun(runId);
         SaveRunCheckpointsCommand saveCommand = toSaveRunCheckpointsCommand(command);
         Map<String, UUID> stepIdsByKey = resolveCheckpointSteps(runId, saveCommand);
-        int checkpointCount = checkpointPersistenceService.saveRunCheckpoints(runId, saveCommand, stepIdsByKey);
-        return RunnerCallbackAckResponse.checkpoints(runId, checkpointCount);
+        SaveRunCheckpointsResult result = checkpointPersistenceService.saveRunCheckpoints(runId, saveCommand, stepIdsByKey);
+        result.latestInsertedCheckpointId()
+                .ifPresent(checkpointId -> runPersistenceAdapter.updateLatestCheckpoint(runId, checkpointId));
+        return RunnerCallbackAckResponse.checkpoints(runId, result.checkpointCount());
     }
 
     @Transactional

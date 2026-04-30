@@ -10,7 +10,6 @@ import com.wedge.evidence.domain.Checkpoint;
 import com.wedge.evidence.domain.Observation;
 import com.wedge.evidence.infrastructure.CheckpointMapper;
 import com.wedge.evidence.infrastructure.ObservationMapper;
-import com.wedge.run.infrastructure.RunMapper;
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.LinkedHashMap;
@@ -29,40 +28,44 @@ public class CheckpointPersistenceService {
 
     private final CheckpointMapper checkpointMapper;
     private final ObservationMapper observationMapper;
-    private final RunMapper runMapper;
     private final ObjectMapper objectMapper;
 
-    public int saveRunCheckpoints(UUID runId, SaveRunCheckpointsCommand command) {
+    private record StoredCheckpoint(UUID id, boolean inserted) {
+    }
+
+    public SaveRunCheckpointsResult saveRunCheckpoints(UUID runId, SaveRunCheckpointsCommand command) {
         return saveRunCheckpoints(runId, command, Map.of());
     }
 
-    public int saveRunCheckpoints(UUID runId, SaveRunCheckpointsCommand command, Map<String, UUID> stepIdsByKey) {
+    public SaveRunCheckpointsResult saveRunCheckpoints(UUID runId, SaveRunCheckpointsCommand command, Map<String, UUID> stepIdsByKey) {
+        validateCheckpoints(command);
         OffsetDateTime capturedAt = OffsetDateTime.now();
-        UUID latestCheckpointId = null;
+        Optional<UUID> latestInsertedCheckpointId = Optional.empty();
 
         for (SaveRunCheckpointCommand checkpoint : command.checkpoints()) {
-            latestCheckpointId = saveOrFindCheckpointId(runId, checkpoint, capturedAt, stepIdsByKey.get(checkpoint.stepKey()));
+            StoredCheckpoint storedCheckpoint = saveOrFindCheckpoint(runId, checkpoint, capturedAt, stepIdsByKey.get(checkpoint.stepKey()));
+            if (storedCheckpoint.inserted()) {
+                latestInsertedCheckpointId = Optional.of(storedCheckpoint.id());
+            }
         }
 
-        if (latestCheckpointId != null) {
-            runMapper.updateLatestCheckpoint(runId, latestCheckpointId);
-        }
-        return command.checkpoints().size();
+        return new SaveRunCheckpointsResult(command.checkpoints().size(), latestInsertedCheckpointId);
     }
 
-    private UUID saveOrFindCheckpointId(UUID runId, SaveRunCheckpointCommand request, OffsetDateTime capturedAt, UUID stepId) {
-        Optional<Checkpoint> existingCheckpoint = checkpointMapper.findByRunIdAndCheckpointKey(
-                runId,
-                request.checkpointKey()
-        );
-        if (existingCheckpoint.isPresent()) {
-            return existingCheckpoint.get().getId();
+    private StoredCheckpoint saveOrFindCheckpoint(UUID runId, SaveRunCheckpointCommand request, OffsetDateTime capturedAt, UUID stepId) {
+        Checkpoint checkpoint = toCheckpoint(runId, request, capturedAt, stepId);
+        if (checkpointMapper.insert(checkpoint) > 0) {
+            persistObservations(runId, checkpoint, request.observations());
+            return new StoredCheckpoint(checkpoint.getId(), true);
         }
 
-        Checkpoint checkpoint = toCheckpoint(runId, request, capturedAt, stepId);
-        checkpointMapper.insert(checkpoint);
-        persistObservations(runId, checkpoint, request.observations());
-        return checkpoint.getId();
+        UUID existingCheckpointId = checkpointMapper.findByRunIdAndCheckpointKey(runId, request.checkpointKey())
+                .map(Checkpoint::getId)
+                .orElseThrow(() -> new BusinessException(
+                        ErrorCode.STATE_CONFLICT,
+                        "Runner checkpoint insert conflicted but no existing checkpoint was found."
+                ));
+        return new StoredCheckpoint(existingCheckpointId, false);
     }
 
     private Checkpoint toCheckpoint(UUID runId, SaveRunCheckpointCommand request, OffsetDateTime capturedAt, UUID stepId) {
@@ -88,6 +91,18 @@ public class CheckpointPersistenceService {
             Observation observation = toObservation(runId, checkpoint, observationPayload, observationIndex);
             observationMapper.insert(observation);
             observationIndex += OBSERVATION_INDEX_INCREMENT;
+        }
+    }
+
+    private void validateCheckpoints(SaveRunCheckpointsCommand command) {
+        for (SaveRunCheckpointCommand checkpoint : command.checkpoints()) {
+            validateObservations(checkpoint.observations());
+        }
+    }
+
+    private void validateObservations(List<Map<String, Object>> observations) {
+        for (Map<String, Object> observation : observations) {
+            readConfidence(observation);
         }
     }
 
@@ -167,17 +182,33 @@ public class CheckpointPersistenceService {
 
     private BigDecimal readConfidence(Map<String, Object> payload) {
         Object value = payload.get("confidence");
-        if (value instanceof Number number) {
-            return BigDecimal.valueOf(number.doubleValue());
-        }
-        if (value instanceof String text && !text.isBlank()) {
+        BigDecimal confidence = null;
+        if (value instanceof BigDecimal decimal) {
+            confidence = decimal;
+        } else if (value instanceof Number number) {
+            confidence = BigDecimal.valueOf(number.doubleValue());
+        } else if (value instanceof String text && !text.isBlank()) {
             try {
-                return new BigDecimal(text);
+                confidence = new BigDecimal(text);
             } catch (NumberFormatException ignored) {
-                return null;
+                throw new BusinessException(
+                        ErrorCode.INVALID_REQUEST,
+                        "Runner checkpoint observation confidence must be numeric."
+                );
             }
         }
-        return null;
+
+        if (confidence == null) {
+            return null;
+        }
+
+        if (confidence.compareTo(BigDecimal.ZERO) < 0 || confidence.compareTo(BigDecimal.ONE) > 0) {
+            throw new BusinessException(
+                    ErrorCode.INVALID_REQUEST,
+                    "Runner checkpoint observation confidence must be between 0 and 1."
+            );
+        }
+        return confidence;
     }
 
     private String toJson(Object value) {

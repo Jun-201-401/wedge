@@ -65,5 +65,6 @@
             CAST(#{deltaJsonb} AS jsonb), CAST(#{artifactRefsJsonb} AS jsonb),
             #{capturedAt}, #{durationMs}
         )
+        ON CONFLICT (run_id, checkpoint_key) DO NOTHING
     </insert>
 </mapper>
