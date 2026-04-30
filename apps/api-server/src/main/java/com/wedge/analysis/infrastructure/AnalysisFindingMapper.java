@@ -10,6 +10,11 @@ import org.apache.ibatis.annotations.Param;
 public interface AnalysisFindingMapper {
     List<AnalysisFinding> findByAnalysisJobId(@Param("analysisJobId") UUID analysisJobId);
 
+    List<AnalysisFinding> findTopByAnalysisJobId(
+            @Param("analysisJobId") UUID analysisJobId,
+            @Param("limit") int limit
+    );
+
     int insert(AnalysisFinding analysisFinding);
 
     int deleteByAnalysisJobId(@Param("analysisJobId") UUID analysisJobId);
