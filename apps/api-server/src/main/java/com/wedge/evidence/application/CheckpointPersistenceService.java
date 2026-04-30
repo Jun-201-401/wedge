@@ -23,14 +23,16 @@ import org.springframework.stereotype.Service;
 @Service
 @RequiredArgsConstructor
 public class CheckpointPersistenceService {
-    private static final int FIRST_OBSERVATION_INDEX = 1;
-    private static final int OBSERVATION_INDEX_INCREMENT = 1;
+    private static final String CONFIDENCE_NOT_NUMERIC_MESSAGE = "Runner checkpoint observation confidence must be numeric.";
+    private static final String CONFIDENCE_OUT_OF_RANGE_MESSAGE = "Runner checkpoint observation confidence must be between 0 and 1.";
+    private static final String CHECKPOINT_CONFLICT_NOT_FOUND_MESSAGE =
+            "Runner checkpoint insert conflicted but no existing checkpoint was found.";
 
     private final CheckpointMapper checkpointMapper;
     private final ObservationMapper observationMapper;
     private final ObjectMapper objectMapper;
 
-    private record StoredCheckpoint(UUID id, boolean inserted) {
+    private record CheckpointInsertResult(UUID checkpointId, boolean inserted) {
     }
 
     public SaveRunCheckpointsResult saveRunCheckpoints(UUID runId, SaveRunCheckpointsCommand command) {
@@ -43,29 +45,39 @@ public class CheckpointPersistenceService {
         Optional<UUID> latestInsertedCheckpointId = Optional.empty();
 
         for (SaveRunCheckpointCommand checkpoint : command.checkpoints()) {
-            StoredCheckpoint storedCheckpoint = saveOrFindCheckpoint(runId, checkpoint, capturedAt, stepIdsByKey.get(checkpoint.stepKey()));
-            if (storedCheckpoint.inserted()) {
-                latestInsertedCheckpointId = Optional.of(storedCheckpoint.id());
+            CheckpointInsertResult insertResult = insertCheckpointIfAbsent(
+                    runId,
+                    checkpoint,
+                    capturedAt,
+                    stepIdsByKey.get(checkpoint.stepKey())
+            );
+            if (insertResult.inserted()) {
+                latestInsertedCheckpointId = Optional.of(insertResult.checkpointId());
             }
         }
 
         return new SaveRunCheckpointsResult(command.checkpoints().size(), latestInsertedCheckpointId);
     }
 
-    private StoredCheckpoint saveOrFindCheckpoint(UUID runId, SaveRunCheckpointCommand request, OffsetDateTime capturedAt, UUID stepId) {
+    private CheckpointInsertResult insertCheckpointIfAbsent(
+            UUID runId,
+            SaveRunCheckpointCommand request,
+            OffsetDateTime capturedAt,
+            UUID stepId
+    ) {
         Checkpoint checkpoint = toCheckpoint(runId, request, capturedAt, stepId);
         if (checkpointMapper.insert(checkpoint) > 0) {
             persistObservations(runId, checkpoint, request.observations());
-            return new StoredCheckpoint(checkpoint.getId(), true);
+            return new CheckpointInsertResult(checkpoint.getId(), true);
         }
 
-        UUID existingCheckpointId = checkpointMapper.findByRunIdAndCheckpointKey(runId, request.checkpointKey())
+        return new CheckpointInsertResult(findExistingCheckpointId(runId, request.checkpointKey()), false);
+    }
+
+    private UUID findExistingCheckpointId(UUID runId, String checkpointKey) {
+        return checkpointMapper.findByRunIdAndCheckpointKey(runId, checkpointKey)
                 .map(Checkpoint::getId)
-                .orElseThrow(() -> new BusinessException(
-                        ErrorCode.STATE_CONFLICT,
-                        "Runner checkpoint insert conflicted but no existing checkpoint was found."
-                ));
-        return new StoredCheckpoint(existingCheckpointId, false);
+                .orElseThrow(() -> new BusinessException(ErrorCode.STATE_CONFLICT, CHECKPOINT_CONFLICT_NOT_FOUND_MESSAGE));
     }
 
     private Checkpoint toCheckpoint(UUID runId, SaveRunCheckpointCommand request, OffsetDateTime capturedAt, UUID stepId) {
@@ -86,11 +98,9 @@ public class CheckpointPersistenceService {
     }
 
     private void persistObservations(UUID runId, Checkpoint checkpoint, List<Map<String, Object>> observations) {
-        int observationIndex = FIRST_OBSERVATION_INDEX;
-        for (Map<String, Object> observationPayload : observations) {
-            Observation observation = toObservation(runId, checkpoint, observationPayload, observationIndex);
+        for (int index = 0; index < observations.size(); index++) {
+            Observation observation = toObservation(runId, checkpoint, observations.get(index), index + 1);
             observationMapper.insert(observation);
-            observationIndex += OBSERVATION_INDEX_INCREMENT;
         }
     }
 
@@ -102,7 +112,7 @@ public class CheckpointPersistenceService {
 
     private void validateObservations(List<Map<String, Object>> observations) {
         for (Map<String, Object> observation : observations) {
-            readConfidence(observation);
+            parseConfidence(observation);
         }
     }
 
@@ -126,7 +136,7 @@ public class CheckpointPersistenceService {
         ));
         observation.setSourcesJsonb(toJson(readSources(payload, observation.getObservationType())));
         observation.setDataJsonb(toJson(extractObservationData(payload)));
-        observation.setConfidence(readConfidence(payload));
+        observation.setConfidence(parseConfidence(payload));
         return observation;
     }
 
@@ -180,7 +190,7 @@ public class CheckpointPersistenceService {
         return defaultValue;
     }
 
-    private BigDecimal readConfidence(Map<String, Object> payload) {
+    private BigDecimal parseConfidence(Map<String, Object> payload) {
         Object value = payload.get("confidence");
         BigDecimal confidence = null;
         if (value instanceof BigDecimal decimal) {
@@ -191,10 +201,7 @@ public class CheckpointPersistenceService {
             try {
                 confidence = new BigDecimal(text);
             } catch (NumberFormatException ignored) {
-                throw new BusinessException(
-                        ErrorCode.INVALID_REQUEST,
-                        "Runner checkpoint observation confidence must be numeric."
-                );
+                throw new BusinessException(ErrorCode.INVALID_REQUEST, CONFIDENCE_NOT_NUMERIC_MESSAGE);
             }
         }
 
@@ -203,10 +210,7 @@ public class CheckpointPersistenceService {
         }
 
         if (confidence.compareTo(BigDecimal.ZERO) < 0 || confidence.compareTo(BigDecimal.ONE) > 0) {
-            throw new BusinessException(
-                    ErrorCode.INVALID_REQUEST,
-                    "Runner checkpoint observation confidence must be between 0 and 1."
-            );
+            throw new BusinessException(ErrorCode.INVALID_REQUEST, CONFIDENCE_OUT_OF_RANGE_MESSAGE);
         }
         return confidence;
     }
