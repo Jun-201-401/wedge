@@ -50,10 +50,10 @@ class FakeCallbackClient:
 class FakeEvidenceClient:
     def __init__(self, packet: dict[str, Any]) -> None:
         self.packet = packet
-        self.run_ids: list[str] = []
+        self.packet_ids: list[str] = []
 
-    def fetch_by_run_id(self, run_id: str) -> dict[str, Any]:
-        self.run_ids.append(run_id)
+    def fetch_by_packet_id(self, evidence_packet_id: str) -> dict[str, Any]:
+        self.packet_ids.append(evidence_packet_id)
         return self.packet
 
 
@@ -95,7 +95,7 @@ class AnalysisRequestConsumerTest(unittest.TestCase):
         self.assertEqual(request.evidence_packet_id, "44444444-4444-4444-4444-444444444444")
         self.assertEqual(request.event_id, "33333333-3333-3333-3333-333333333333")
 
-    def test_process_message_fetches_packet_and_sends_completed_callback(self) -> None:
+    def test_process_message_fetches_snapshot_packet_and_sends_completed_callback(self) -> None:
         packet = load_sample_packet()
         callback_client = FakeCallbackClient()
         evidence_client = FakeEvidenceClient(packet)
@@ -118,7 +118,7 @@ class AnalysisRequestConsumerTest(unittest.TestCase):
         result = consumer.process_raw_message(raw_message)
 
         self.assertEqual(result["callbackStatusCode"], 200)
-        self.assertEqual(evidence_client.run_ids, ["11111111-1111-1111-1111-111111111111"])
+        self.assertEqual(evidence_client.packet_ids, ["44444444-4444-4444-4444-444444444444"])
         self.assertEqual(len(callback_client.completed), 1)
         payload = callback_client.completed[0]["payload"]
         self.assertEqual(payload["analysisJobId"], "22222222-2222-2222-2222-222222222222")

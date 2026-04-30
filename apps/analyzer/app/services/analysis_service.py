@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Any
 
+from app.clients import SpringCallbackClient
 from app.rule_engine import analyze_evidence_packet, load_default_registry
 
 
@@ -24,7 +25,7 @@ def analyze_packet_and_callback(
     analysis_job_id: str,
     run_id: str,
     evidence_packet: dict[str, Any],
-    callback_client: Any,
+    callback_client: SpringCallbackClient,
     event_id: str,
 ) -> dict[str, Any]:
     judge_result = analyze_packet(evidence_packet)
@@ -58,11 +59,17 @@ def build_completed_callback_payload(
     return {
         "analysisJobId": analysis_job_id,
         "runId": run_id,
-        "status": "COMPLETED",
-        "completedAt": _format_utc(completed_at),
-        "topFindings": _top_findings(judge_result),
-        "nudges": _nudges(judge_result),
+        "analyzerVersion": "analyzer-0.5.0",
+        "promptVersion": "rule-engine-v1",
+        "modelInfo": {
+            "llm": "none",
+            "attentionModel": "rule-engine-v1",
+            "ctrModel": "none",
+        },
+        "topFindings": [_to_top_finding(issue, rank) for rank, issue in enumerate(judge_result.get("issues") or [], start=1)][:3],
+        "nudges": [_to_nudge(nudge) for nudge in judge_result.get("nudges") or []],
         "judgeResult": judge_result,
+        "completedAt": _format_instant(completed_at),
     }
 
 
@@ -78,60 +85,55 @@ def build_failed_callback_payload(
     return {
         "analysisJobId": analysis_job_id,
         "runId": run_id,
-        "status": "FAILED",
-        "failedAt": _format_utc(failed_at),
+        "failedAt": _format_instant(failed_at),
         "errorCode": error_code,
         "errorMessage": error_message,
     }
 
 
-def _top_findings(judge_result: dict[str, Any]) -> list[dict[str, Any]]:
-    findings: list[dict[str, Any]] = []
-    for issue in judge_result.get("issues") or []:
-        if not isinstance(issue, dict):
-            continue
-        findings.append(
-            {
-                "category": str(issue.get("criterion_id") or issue.get("category") or "UNKNOWN"),
-                "impact": _impact_from_severity(issue.get("severity")),
-                "summary": str(issue.get("summary") or ""),
-            }
-        )
-    return findings
+def _to_top_finding(issue: dict[str, Any], rank: int) -> dict[str, Any]:
+    criterion_id = str(issue.get("criterion_id") or issue.get("issue_id") or "UNKNOWN")
+    return {
+        "rank": rank,
+        "category": criterion_id,
+        "title": str(issue.get("summary") or criterion_id),
+        "description": str(issue.get("impact_hypothesis") or issue.get("summary") or criterion_id),
+        "confidence": issue.get("confidence", 0),
+        "impact": _impact(issue.get("severity")),
+        "evidenceRefs": [{"type": "evidence", "id": ref} for ref in issue.get("evidence_refs") or []],
+    }
 
 
-def _nudges(judge_result: dict[str, Any]) -> list[dict[str, Any]]:
-    nudges: list[dict[str, Any]] = []
-    for nudge in judge_result.get("nudges") or []:
-        if not isinstance(nudge, dict):
-            continue
-        nudges.append(
-            {
-                "title": str(nudge.get("title") or ""),
-                "rationale": str(nudge.get("rationale") or ""),
-                "difficulty": str(nudge.get("difficulty") or ""),
-                "expectedEffect": str(nudge.get("expected_effect") or nudge.get("expectedEffect") or ""),
-                "followUpQuestion": str(
-                    nudge.get("validation_question") or nudge.get("followUpQuestion") or ""
-                ),
-            }
-        )
-    return nudges
+def _to_nudge(nudge: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "title": str(nudge.get("title") or "Review finding"),
+        "rationale": str(nudge.get("rationale") or ""),
+        "difficulty": str(nudge.get("difficulty") or "MEDIUM"),
+        "expectedEffect": str(nudge.get("expected_effect") or nudge.get("expectedEffect") or ""),
+        "priority": str(nudge.get("priority") or "P1"),
+        "followUpQuestion": str(nudge.get("validation_question") or nudge.get("followUpQuestion") or ""),
+    }
 
 
-def _impact_from_severity(severity: Any) -> str:
+def _impact(severity: Any) -> str:
+    if isinstance(severity, (int, float)):
+        if severity >= 3:
+            return "HIGH"
+        if severity >= 2:
+            return "MEDIUM"
+        return "LOW"
     try:
         severity_value = int(severity)
     except (TypeError, ValueError):
-        return "UNKNOWN"
+        return "MEDIUM"
     if severity_value >= 3:
         return "HIGH"
-    if severity_value == 2:
+    if severity_value >= 2:
         return "MEDIUM"
     return "LOW"
 
 
-def _format_utc(value: datetime) -> str:
+def _format_instant(value: datetime) -> str:
     if value.tzinfo is None:
         value = value.replace(tzinfo=UTC)
     return value.astimezone(UTC).isoformat().replace("+00:00", "Z")
