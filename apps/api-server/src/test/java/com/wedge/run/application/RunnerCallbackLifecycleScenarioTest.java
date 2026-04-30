@@ -406,7 +406,18 @@ class RunnerCallbackLifecycleScenarioTest {
         }
 
         @Override
-        public int updateAnalysisState(
+        public int markAnalysisQueued(UUID runId, UUID analysisJobId) {
+            RunRecord run = runs.get(runId);
+            if (run == null || run.getDeletedAt() != null) {
+                return 0;
+            }
+            run.setAnalysisStatus(AnalysisStatus.QUEUED);
+            run.setVersion(run.getVersion() + 1);
+            return 1;
+        }
+
+        @Override
+        public int updateCurrentAnalysisState(
                 UUID runId,
                 AnalysisStatus analysisStatus,
                 UUID analysisJobId,

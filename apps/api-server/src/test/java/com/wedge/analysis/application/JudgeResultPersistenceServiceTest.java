@@ -96,7 +96,7 @@ class JudgeResultPersistenceServiceTest {
         verifyCompletedJob(analysisJobId, runId);
         verifyIssueProjection(analysisJobId, runId);
         verifyNudgeProjection(analysisJobId);
-        verify(runMapper).updateAnalysisState(runId, AnalysisStatus.COMPLETED, analysisJobId, new BigDecimal("61.0"), null);
+        verify(runMapper).updateCurrentAnalysisState(runId, AnalysisStatus.COMPLETED, analysisJobId, new BigDecimal("61.0"), null);
     }
 
     @Test
@@ -119,7 +119,7 @@ class JudgeResultPersistenceServiceTest {
         assertThat(analysisJob.getId()).isEqualTo(analysisJobId);
         assertThat(analysisJob.getRunId()).isEqualTo(runId);
         assertThat(analysisJob.getErrorCode()).isEqualTo("ANALYZER_TIMEOUT");
-        verify(runMapper).updateAnalysisState(runId, AnalysisStatus.FAILED, analysisJobId, null, null);
+        verify(runMapper).updateCurrentAnalysisState(runId, AnalysisStatus.FAILED, analysisJobId, null, null);
     }
 
     @Test

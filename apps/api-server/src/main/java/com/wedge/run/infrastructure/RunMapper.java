@@ -49,7 +49,12 @@ public interface RunMapper {
 
     int updateLatestReport(@Param("runId") UUID runId, @Param("reportId") UUID reportId);
 
-    int updateAnalysisState(
+    int markAnalysisQueued(
+            @Param("runId") UUID runId,
+            @Param("analysisJobId") UUID analysisJobId
+    );
+
+    int updateCurrentAnalysisState(
             @Param("runId") UUID runId,
             @Param("analysisStatus") AnalysisStatus analysisStatus,
             @Param("analysisJobId") UUID analysisJobId,

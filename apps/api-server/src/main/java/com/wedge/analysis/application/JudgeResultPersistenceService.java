@@ -62,14 +62,14 @@ public class JudgeResultPersistenceService {
         clearProjectionRows(request.analysisJobId());
         Map<String, UUID> findingIdsByIssueId = persistIssues(request.analysisJobId(), request.runId(), issues);
         int nudgeCount = persistNudges(request, findingIdsByIssueId);
-        runMapper.updateAnalysisState(request.runId(), AnalysisStatus.COMPLETED, request.analysisJobId(), readFrictionScore(request.judgeResult()), null);
+        runMapper.updateCurrentAnalysisState(request.runId(), AnalysisStatus.COMPLETED, request.analysisJobId(), readFrictionScore(request.judgeResult()), null);
         return completedResponse(request, issues.size(), nudgeCount);
     }
 
     @Transactional
     public Map<String, Object> saveFailed(AnalyzerFailedRequest request) {
         analysisJobMapper.upsertFailed(toFailedAnalysisJob(request));
-        runMapper.updateAnalysisState(request.runId(), AnalysisStatus.FAILED, request.analysisJobId(), null, null);
+        runMapper.updateCurrentAnalysisState(request.runId(), AnalysisStatus.FAILED, request.analysisJobId(), null, null);
         return Map.of(
                 "analysisJobId", request.analysisJobId(),
                 "runId", request.runId(),

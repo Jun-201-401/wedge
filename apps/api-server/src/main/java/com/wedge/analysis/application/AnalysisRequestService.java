@@ -3,19 +3,21 @@ package com.wedge.analysis.application;
 import com.wedge.analysis.api.dto.AnalysisRequestResponse;
 import com.wedge.analysis.domain.AnalysisJob;
 import com.wedge.analysis.infrastructure.AnalysisJobMapper;
-import com.wedge.evidence.application.EvidenceService;
-import com.wedge.run.api.dto.RunResponse;
-import com.wedge.run.domain.AnalysisJobStatus;
-import com.wedge.run.domain.AnalysisStatus;
-import com.wedge.run.domain.RunStatus;
-import com.wedge.run.infrastructure.RunMapper;
-import com.wedge.run.application.RunService;
 import com.wedge.common.error.BusinessException;
 import com.wedge.common.error.ErrorCode;
+import com.wedge.evidence.application.EvidenceService;
+import com.wedge.project.application.ProjectAccessService;
+import com.wedge.run.api.dto.RunResponse;
+import com.wedge.run.application.RunService;
+import com.wedge.run.domain.AnalysisJobStatus;
+import com.wedge.run.domain.RunStatus;
+import com.wedge.run.infrastructure.OutboxMessagePersistenceAdapter;
+import com.wedge.run.infrastructure.RunMapper;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -27,28 +29,35 @@ public class AnalysisRequestService {
     private static final String PRIMARY_ANALYSIS = "PRIMARY";
 
     private final RunService runService;
+    private final ProjectAccessService projectAccessService;
     private final EvidenceService evidenceService;
     private final AnalysisJobMapper analysisJobMapper;
     private final RunMapper runMapper;
-    private final AnalysisRequestPublisher analysisRequestPublisher;
+    private final OutboxMessagePersistenceAdapter outboxMessagePersistenceAdapter;
+    private final ApplicationEventPublisher applicationEventPublisher;
 
     public AnalysisRequestService(
             RunService runService,
+            ProjectAccessService projectAccessService,
             EvidenceService evidenceService,
             AnalysisJobMapper analysisJobMapper,
             RunMapper runMapper,
-            AnalysisRequestPublisher analysisRequestPublisher
+            OutboxMessagePersistenceAdapter outboxMessagePersistenceAdapter,
+            ApplicationEventPublisher applicationEventPublisher
     ) {
         this.runService = runService;
+        this.projectAccessService = projectAccessService;
         this.evidenceService = evidenceService;
         this.analysisJobMapper = analysisJobMapper;
         this.runMapper = runMapper;
-        this.analysisRequestPublisher = analysisRequestPublisher;
+        this.outboxMessagePersistenceAdapter = outboxMessagePersistenceAdapter;
+        this.applicationEventPublisher = applicationEventPublisher;
     }
 
     @Transactional
-    public AnalysisRequestResponse requestPrimaryAnalysis(UUID runId) {
+    public AnalysisRequestResponse requestPrimaryAnalysis(UUID runId, UUID userId) {
         RunResponse run = runService.getRun(runId);
+        projectAccessService.ensureProjectAccessible(run.projectId(), userId);
         if (run.status() != RunStatus.COMPLETED) {
             throw new BusinessException(ErrorCode.STATE_CONFLICT, "Run must be COMPLETED before analysis can be requested.");
         }
@@ -57,10 +66,11 @@ public class AnalysisRequestService {
         UUID analysisJobId = UUID.randomUUID();
         AnalysisJob analysisJob = queuedAnalysisJob(analysisJobId, runId);
         analysisJobMapper.insertQueued(analysisJob);
-        runMapper.updateAnalysisState(runId, AnalysisStatus.QUEUED, analysisJobId, null, null);
+        runMapper.markAnalysisQueued(runId, analysisJobId);
 
         AnalysisRequestMessage message = createMessage(analysisJobId, runId, evidencePacket);
-        analysisRequestPublisher.publish(message);
+        UUID outboxMessageId = outboxMessagePersistenceAdapter.appendAnalysisRequestMessage(message, analysisJobId);
+        applicationEventPublisher.publishEvent(new AnalysisRequestOutboxEnqueuedEvent(outboxMessageId));
 
         return new AnalysisRequestResponse(
                 analysisJobId,
@@ -107,4 +117,5 @@ public class AnalysisRequestService {
     private int sizeOfList(Object value) {
         return value instanceof List<?> list ? list.size() : 0;
     }
+
 }

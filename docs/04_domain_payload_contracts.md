@@ -135,7 +135,8 @@ ScenarioPlan
   → BrowserWorker action/settle
   → checkpoint + artifact callbacks
   → Spring evidence materializer
-  → MVP analysis.request(full EvidencePacket inline)
+  → Spring outbox_message stores MVP analysis.request(full EvidencePacket inline)
+  → RabbitMQ analysis.request
   → StageResolver
   → StageContextBuilder
   → RuleEngine
@@ -231,7 +232,7 @@ RuleRegistry는 Judge criterion을 code-executable rule metadata로 표현한다
 
 ## 9. JudgeResult
 
-JudgeResult is the canonical analyzer output. Analyzer completed callback must include this payload, and Spring stores it on `analysis_job.output_jsonb` plus user-facing projections (`analysis_finding`, `nudge`, `report`).
+JudgeResult is the canonical analyzer output. Analyzer completed callback must include this payload, and Spring stores it on `analysis_job.output_jsonb` plus user-facing projections (`analysis_finding`, `nudge`). Report rows are generated later from the completed analysis projection by the Spring report API/service.
 
 포함 항목:
 

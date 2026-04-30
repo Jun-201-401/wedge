@@ -13,12 +13,14 @@ import com.wedge.analysis.infrastructure.AnalysisJobMapper;
 import com.wedge.common.error.BusinessException;
 import com.wedge.common.error.ErrorCode;
 import com.wedge.evidence.application.EvidenceService;
+import com.wedge.project.application.ProjectAccessService;
 import com.wedge.run.api.dto.RunResponse;
 import com.wedge.run.application.RunService;
 import com.wedge.run.domain.AnalysisJobStatus;
 import com.wedge.run.domain.AnalysisStatus;
 import com.wedge.run.domain.ResultCompleteness;
 import com.wedge.run.domain.RunStatus;
+import com.wedge.run.infrastructure.OutboxMessagePersistenceAdapter;
 import com.wedge.run.infrastructure.RunMapper;
 import java.net.URI;
 import java.util.List;
@@ -31,11 +33,15 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Captor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 
 @ExtendWith(MockitoExtension.class)
 class AnalysisRequestServiceTest {
     @Mock
     private RunService runService;
+
+    @Mock
+    private ProjectAccessService projectAccessService;
 
     @Mock
     private EvidenceService evidenceService;
@@ -47,7 +53,10 @@ class AnalysisRequestServiceTest {
     private RunMapper runMapper;
 
     @Mock
-    private AnalysisRequestPublisher analysisRequestPublisher;
+    private OutboxMessagePersistenceAdapter outboxMessagePersistenceAdapter;
+
+    @Mock
+    private ApplicationEventPublisher applicationEventPublisher;
 
     @Captor
     private ArgumentCaptor<AnalysisJob> analysisJobCaptor;
@@ -55,33 +64,44 @@ class AnalysisRequestServiceTest {
     @Captor
     private ArgumentCaptor<AnalysisRequestMessage> messageCaptor;
 
+    @Captor
+    private ArgumentCaptor<AnalysisRequestOutboxEnqueuedEvent> eventCaptor;
+
     private AnalysisRequestService analysisRequestService;
 
     @BeforeEach
     void setUp() {
         analysisRequestService = new AnalysisRequestService(
                 runService,
+                projectAccessService,
                 evidenceService,
                 analysisJobMapper,
                 runMapper,
-                analysisRequestPublisher
+                outboxMessagePersistenceAdapter,
+                applicationEventPublisher
         );
     }
 
     @Test
     void requestPrimaryAnalysisPublishesFullEvidencePacketMessage() {
         UUID runId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        RunResponse run = sampleRun(runId, RunStatus.COMPLETED);
         Map<String, Object> evidencePacket = Map.of(
                 "schema_version", "0.5",
                 "run_id", runId.toString(),
                 "checkpoints", List.of(Map.of("checkpoint_id", "cp_001")),
                 "artifacts", List.of(Map.of("artifact_id", "artifact_001"))
         );
-        when(runService.getRun(runId)).thenReturn(sampleRun(runId, RunStatus.COMPLETED));
+        when(runService.getRun(runId)).thenReturn(run);
         when(evidenceService.getRunEvidencePacket(runId)).thenReturn(evidencePacket);
+        UUID outboxMessageId = UUID.randomUUID();
+        when(outboxMessagePersistenceAdapter.appendAnalysisRequestMessage(any(AnalysisRequestMessage.class), any(UUID.class)))
+                .thenReturn(outboxMessageId);
 
-        AnalysisRequestResponse response = analysisRequestService.requestPrimaryAnalysis(runId);
+        AnalysisRequestResponse response = analysisRequestService.requestPrimaryAnalysis(runId, userId);
 
+        verify(projectAccessService).ensureProjectAccessible(run.projectId(), userId);
         assertThat(response.runId()).isEqualTo(runId);
         assertThat(response.status()).isEqualTo(AnalysisJobStatus.QUEUED.name());
         assertThat(response.analysisType()).isEqualTo("PRIMARY");
@@ -96,8 +116,8 @@ class AnalysisRequestServiceTest {
         assertThat(queuedJob.getJobType()).isEqualTo("PRIMARY");
         assertThat(queuedJob.getStatus()).isEqualTo(AnalysisJobStatus.QUEUED);
 
-        verify(runMapper).updateAnalysisState(runId, AnalysisStatus.QUEUED, response.analysisJobId(), null, null);
-        verify(analysisRequestPublisher).publish(messageCaptor.capture());
+        verify(runMapper).markAnalysisQueued(runId, response.analysisJobId());
+        verify(outboxMessagePersistenceAdapter).appendAnalysisRequestMessage(messageCaptor.capture(), org.mockito.Mockito.eq(response.analysisJobId()));
         AnalysisRequestMessage message = messageCaptor.getValue();
         assertThat(message.messageType()).isEqualTo("analysis.request");
         assertThat(message.schemaVersion()).isEqualTo("0.5");
@@ -108,21 +128,48 @@ class AnalysisRequestServiceTest {
                 .containsEntry("analysisType", "PRIMARY")
                 .containsEntry("evidencePacket", evidencePacket);
         assertThat(message.payload()).doesNotContainKey("evidencePacketId");
+        verify(applicationEventPublisher).publishEvent(eventCaptor.capture());
+        assertThat(eventCaptor.getValue().outboxMessageId()).isEqualTo(outboxMessageId);
     }
 
     @Test
     void requestPrimaryAnalysisRejectsRunBeforeCompletion() {
         UUID runId = UUID.randomUUID();
-        when(runService.getRun(runId)).thenReturn(sampleRun(runId, RunStatus.RUNNING));
+        UUID userId = UUID.randomUUID();
+        RunResponse run = sampleRun(runId, RunStatus.RUNNING);
+        when(runService.getRun(runId)).thenReturn(run);
 
-        assertThatThrownBy(() -> analysisRequestService.requestPrimaryAnalysis(runId))
+        assertThatThrownBy(() -> analysisRequestService.requestPrimaryAnalysis(runId, userId))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.STATE_CONFLICT);
 
+        verify(projectAccessService).ensureProjectAccessible(run.projectId(), userId);
         verify(evidenceService, never()).getRunEvidencePacket(runId);
         verify(analysisJobMapper, never()).insertQueued(any());
-        verify(analysisRequestPublisher, never()).publish(any());
+        verify(outboxMessagePersistenceAdapter, never()).appendAnalysisRequestMessage(any(), any());
+        verify(applicationEventPublisher, never()).publishEvent(any());
+    }
+
+    @Test
+    void requestPrimaryAnalysisRejectsInaccessibleProjectBeforePublishing() {
+        UUID runId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        RunResponse run = sampleRun(runId, RunStatus.COMPLETED);
+        when(runService.getRun(runId)).thenReturn(run);
+        org.mockito.Mockito.doThrow(new BusinessException(ErrorCode.FORBIDDEN))
+                .when(projectAccessService)
+                .ensureProjectAccessible(run.projectId(), userId);
+
+        assertThatThrownBy(() -> analysisRequestService.requestPrimaryAnalysis(runId, userId))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.FORBIDDEN);
+
+        verify(evidenceService, never()).getRunEvidencePacket(runId);
+        verify(analysisJobMapper, never()).insertQueued(any());
+        verify(outboxMessagePersistenceAdapter, never()).appendAnalysisRequestMessage(any(), any());
+        verify(applicationEventPublisher, never()).publishEvent(any());
     }
 
     private RunResponse sampleRun(UUID runId, RunStatus status) {
