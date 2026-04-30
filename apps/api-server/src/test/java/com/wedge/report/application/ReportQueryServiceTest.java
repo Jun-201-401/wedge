@@ -126,6 +126,34 @@ class ReportQueryServiceTest {
     }
 
     @Test
+    void topFindingsExcludeFindingWithoutValidStage() {
+        UUID runId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        UUID analysisJobId = UUID.randomUUID();
+        Report report = report(runId, analysisJobId, null);
+        AnalysisFinding findingWithoutStage = finding(1, null, new BigDecimal("9.2"));
+        AnalysisFinding findingWithInvalidStage = finding(2, "UNKNOWN", new BigDecimal("8.8"));
+        AnalysisFinding findingWithStage = finding(3, "CTA", new BigDecimal("8.1"));
+        when(runService.getRun(runId)).thenReturn(runResponse(runId, UUID.randomUUID()));
+        when(reportMapper.findByRunId(runId)).thenReturn(List.of(report));
+        when(analysisFindingMapper.findTopByAnalysisJobId(analysisJobId, 3))
+                .thenReturn(List.of(findingWithoutStage, findingWithInvalidStage, findingWithStage));
+        when(artifactMapper.findLatestScreenshotByRunIdAndStage(runId, "CTA")).thenReturn(Optional.empty());
+        when(artifactMapper.findLatestScreenshotByRunId(runId)).thenReturn(Optional.empty());
+
+        List<ReportSummaryResponse> responses = reportQueryService.listRunReportSummaries(runId, userId);
+
+        assertThat(responses.get(0).topFindings())
+                .singleElement()
+                .satisfies(topFinding -> {
+                    assertThat(topFinding.id()).isEqualTo(findingWithStage.getId());
+                    assertThat(topFinding.stage()).isEqualTo("CTA");
+                });
+        verify(artifactMapper, never()).findLatestScreenshotByRunIdAndStage(runId, null);
+        verify(artifactMapper, never()).findLatestScreenshotByRunIdAndStage(runId, "UNKNOWN");
+    }
+
+    @Test
     void listRunReportSummariesCanSkipProjectAccessForMvpMode() {
         UUID runId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();

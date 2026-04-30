@@ -22,6 +22,7 @@ import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -33,6 +34,7 @@ public class ReportQueryService {
     private static final String STAGE_SCREENSHOT = "STAGE_SCREENSHOT";
     private static final String REPORT_ARTIFACT = "REPORT_ARTIFACT";
     private static final String LATEST_SCREENSHOT = "LATEST_SCREENSHOT";
+    private static final Set<String> VALID_STAGES = Set.of("FIRST_VIEW", "VALUE", "CTA", "INPUT", "COMMIT");
 
     private final ReportMapper reportMapper;
     private final AnalysisFindingMapper analysisFindingMapper;
@@ -98,8 +100,13 @@ public class ReportQueryService {
             return List.of();
         }
         return analysisFindingMapper.findTopByAnalysisJobId(report.getAnalysisJobId(), SUMMARY_TOP_FINDING_LIMIT).stream()
+                .filter(this::hasStage)
                 .map(finding -> toTopFindingResponse(report, finding))
                 .toList();
+    }
+
+    private boolean hasStage(AnalysisFinding finding) {
+        return finding.getStage() != null && VALID_STAGES.contains(finding.getStage());
     }
 
     private ReportTopFindingResponse toTopFindingResponse(Report report, AnalysisFinding finding) {

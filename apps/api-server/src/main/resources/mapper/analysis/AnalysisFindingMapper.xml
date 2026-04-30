@@ -36,6 +36,7 @@
         SELECT <include refid="AnalysisFindingColumns"/>
         FROM analysis_finding
         WHERE analysis_job_id = #{analysisJobId}
+          AND stage IN ('FIRST_VIEW', 'VALUE', 'CTA', 'INPUT', 'COMMIT')
         ORDER BY priority_score DESC NULLS LAST, rank_order ASC
         LIMIT #{limit}
     </select>
