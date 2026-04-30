@@ -135,7 +135,7 @@ ScenarioPlan
   → BrowserWorker action/settle
   → checkpoint + artifact callbacks
   → Spring evidence materializer
-  → Spring outbox_message stores MVP analysis.request(full EvidencePacket inline)
+  → Spring stores EvidencePacket snapshot and outbox_message stores analysis.request(evidencePacketId)
   → RabbitMQ analysis.request
   → StageResolver
   → StageContextBuilder
@@ -145,8 +145,7 @@ ScenarioPlan
   → Spring report API/service generates report row from completed analysis
 ```
 
-장기 구조에서는 EvidencePacket snapshot을 저장하고 `analysis.request(evidencePacketId)`만 보내는 방향을 다시 적용할 수 있다.
-현재 MVP 점검 범위에서는 Analyzer와 합의한 대로 Spring이 full EvidencePacket을 MQ payload에 포함한다.
+현재 MVP 점검 범위에서는 Analyzer MQ consumer 구현에 맞춰 Spring이 EvidencePacket snapshot을 저장하고 `analysis.request`에는 `evidencePacketId`를 포함한다. Analyzer는 service token으로 `/internal/analysis/evidence-packets/{evidencePacketId}`를 호출해 packet을 가져간다.
 
 Top-level fields:
 

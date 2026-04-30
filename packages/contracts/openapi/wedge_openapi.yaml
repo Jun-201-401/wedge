@@ -970,7 +970,7 @@ paths:
       - Analysis
       operationId: requestRunAnalysis
       summary: Request primary analysis for completed run
-      description: MVP endpoint that materializes the run EvidencePacket and publishes analysis.request with the full packet inline.
+      description: MVP endpoint that materializes the run EvidencePacket snapshot and publishes analysis.request with evidencePacketId.
       security:
       - oauth2:
         - wedge.execute
@@ -1688,6 +1688,30 @@ paths:
           $ref: '#/components/responses/Conflict'
         '422':
           $ref: '#/components/responses/ValidationError'
+  /internal/analysis/evidence-packets/{evidencePacketId}:
+    get:
+      tags:
+      - InternalAnalyzer
+      operationId: getInternalEvidencePacketSnapshot
+      summary: Get EvidencePacket snapshot for Analyzer
+      description: Internal service-token endpoint for Analyzer workers to fetch the immutable EvidencePacket snapshot referenced by analysis.request.evidencePacketId.
+      security:
+      - InternalBearer: []
+      parameters:
+      - $ref: '#/components/parameters/EvidencePacketId'
+      responses:
+        '200':
+          description: EvidencePacket snapshot
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SingleEvidencePacketResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
   /api/runs/{runId}/evidence-packet:
     get:
       tags:
@@ -1894,6 +1918,13 @@ components:
         format: uuid
     AnalysisJobId:
       name: analysisJobId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    EvidencePacketId:
+      name: evidencePacketId
       in: path
       required: true
       schema:
@@ -3009,6 +3040,9 @@ components:
           type: string
           enum:
           - PRIMARY
+        evidencePacketId:
+          type: string
+          format: uuid
         evidencePacketIncluded:
           type: boolean
         checkpointCount:
@@ -3020,6 +3054,7 @@ components:
       - runId
       - status
       - analysisType
+      - evidencePacketId
       - evidencePacketIncluded
       - checkpointCount
       - artifactCount

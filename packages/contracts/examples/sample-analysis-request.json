@@ -11,23 +11,6 @@
     "runId": "11111111-1111-1111-1111-111111111111",
     "analysisType": "PRIMARY",
     "forceRebuildEvidenceBundle": false,
-    "evidencePacket": {
-      "schema_version": "0.5",
-      "execution_type": "RUN",
-      "run_id": "11111111-1111-1111-1111-111111111111",
-      "discovery_id": null,
-      "url": "https://example.com",
-      "final_url": "https://example.com/signup",
-      "scenario": {},
-      "environment": {},
-      "checkpoints": [],
-      "aggregate_signals": {
-        "checkpoint_count": 0,
-        "observation_count": 0,
-        "artifact_count": 0
-      },
-      "scenario_fit": null,
-      "artifacts": []
-    }
+    "evidencePacketId": "44444444-4444-4444-4444-444444444444"
   }
 }

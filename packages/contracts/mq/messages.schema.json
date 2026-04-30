@@ -175,7 +175,7 @@
         },
         "evidencePacket": {
           "$ref": "../schemas/evidence-packet.schema.json",
-          "description": "MVP inline EvidencePacket payload. Long-term producers may switch back to evidencePacketId snapshot references."
+          "description": "Deprecated inline EvidencePacket payload. MVP Analyzer MQ consumers expect evidencePacketId and fetch the packet from Spring."
         }
       },
       "required": [
@@ -183,7 +183,7 @@
         "runId",
         "analysisType",
         "forceRebuildEvidenceBundle",
-        "evidencePacket"
+        "evidencePacketId"
       ]
     },
     "ReportExportRequestPayload": {

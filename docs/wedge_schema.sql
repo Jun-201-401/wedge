@@ -308,6 +308,7 @@ CREATE TABLE evidence_packet (
     packet_jsonb        JSONB NOT NULL,
     checkpoint_count    INTEGER NOT NULL DEFAULT 0,
     observation_count   INTEGER NOT NULL DEFAULT 0,
+    artifact_count      INTEGER NOT NULL DEFAULT 0,
     created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     CHECK (
         (execution_type = 'RUN' AND run_id IS NOT NULL)
