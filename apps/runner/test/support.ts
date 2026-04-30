@@ -107,6 +107,7 @@ export function createRunnerTestConfig(overrides: Partial<RunnerConfig> = {}): R
     browserHeadless: true,
     browserLaunchTimeoutMs: 30_000,
     browserNavigationTimeoutMs: 30_000,
+    playwrightSlowMoMs: 0,
     playwrightBrowsersPath: undefined,
     simulatedDelayCapMs: 1,
     ...overrides

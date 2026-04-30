@@ -1,0 +1,227 @@
+{
+  "messageId": "10000000-0000-4000-8000-000000000201",
+  "messageType": "run.execute.request",
+  "schemaVersion": "0.5",
+  "createdAt": "2026-04-30T00:00:00.000Z",
+  "producer": "api-server",
+  "correlationId": "10000000-0000-4000-8000-000000000202",
+  "idempotencyKey": "run:10000000-0000-4000-8000-000000000201",
+  "payload": {
+    "runId": "10000000-0000-4000-8000-000000000211",
+    "projectId": "8f06dca8-9c4d-4f20-b1a8-1d5ee40a9923",
+    "triggerSource": "WEB",
+    "startUrl": "https://example.com",
+    "goal": "회원가입 폼 진입, 필수 입력, 플랜 선택 흐름이 실제 제출 직전까지 가능한지 점검한다.",
+    "devicePreset": "desktop",
+    "scenarioTemplateVersionId": "10000000-0000-4000-8000-000000000221",
+    "artifactPolicy": {
+      "captureScreenshot": true,
+      "captureDomSnapshot": true
+    },
+    "scenarioPlan": {
+      "schema_version": "0.5",
+      "plan_id": "mvp_signup_form_001",
+      "scenario_type": "template",
+      "template_key": "signup-form",
+      "goal": "회원가입 폼 진입, 필수 입력, 플랜 선택 흐름이 실제 제출 직전까지 가능한지 점검한다.",
+      "start_url": "https://example.com",
+      "environment": {
+        "device": "desktop",
+        "viewport": {
+          "width": 1440,
+          "height": 900
+        },
+        "locale": "ko-KR",
+        "timezone": "Asia/Seoul",
+        "permissions": [],
+        "auth_state": "anonymous"
+      },
+      "safety": {
+        "allow_external_navigation": false,
+        "allow_payment_commit": false,
+        "allow_destructive_action": false,
+        "use_synthetic_inputs": true,
+        "stop_before_real_payment": true
+      },
+      "steps": [
+        {
+          "step_id": "signup_001_goto",
+          "stage": "FIRST_VIEW",
+          "description": "랜딩 페이지에 진입한다.",
+          "action": {
+            "type": "goto",
+            "target": "https://example.com"
+          },
+          "settle_strategy": {
+            "type": "network_idle",
+            "timeout_ms": 3000
+          },
+          "checkpoint": true
+        },
+        {
+          "step_id": "signup_002_first_view_checkpoint",
+          "stage": "FIRST_VIEW",
+          "description": "회원가입 진입 CTA를 찾기 전에 첫 화면 맥락을 기록한다.",
+          "action": {
+            "type": "checkpoint"
+          },
+          "settle_strategy": {
+            "type": "none",
+            "timeout_ms": 0
+          },
+          "checkpoint": true
+        },
+        {
+          "step_id": "signup_003_click_signup_cta",
+          "stage": "CTA",
+          "description": "회원가입 또는 무료 시작 CTA를 클릭한다.",
+          "action": {
+            "type": "click",
+            "target": {
+              "role": "link",
+              "text_any": [
+                "Start free",
+                "Get started",
+                "무료로 시작",
+                "회원가입"
+              ],
+              "href_contains": "#signup-form"
+            }
+          },
+          "settle_strategy": {
+            "type": "url_change",
+            "timeout_ms": 1000,
+            "url_includes": "#signup-form"
+          },
+          "checkpoint": false
+        },
+        {
+          "step_id": "signup_004_wait_for_form",
+          "stage": "INPUT",
+          "description": "회원가입 폼과 이메일 입력 필드가 표시될 때까지 기다린다.",
+          "action": {
+            "type": "wait_for",
+            "target": {
+              "selector_any": [
+                "#signup-form form",
+                "form",
+                "input[type=email]"
+              ]
+            },
+            "options": {
+              "state": "visible",
+              "timeout_ms": 1000
+            }
+          },
+          "settle_strategy": {
+            "type": "none",
+            "timeout_ms": 0
+          },
+          "checkpoint": false
+        },
+        {
+          "step_id": "signup_005_fill_email",
+          "stage": "INPUT",
+          "description": "합성 이메일 값을 입력한다.",
+          "action": {
+            "type": "fill",
+            "target": {
+              "placeholder_any": [
+                "Work email",
+                "Email",
+                "이메일"
+              ],
+              "name_any": [
+                "email"
+              ]
+            },
+            "value": "test+wedge@example.com"
+          },
+          "settle_strategy": {
+            "type": "none",
+            "timeout_ms": 0
+          },
+          "checkpoint": false
+        },
+        {
+          "step_id": "signup_006_fill_company",
+          "stage": "INPUT",
+          "description": "합성 회사명을 입력한다.",
+          "action": {
+            "type": "fill",
+            "target": {
+              "placeholder_any": [
+                "Company",
+                "Organization",
+                "회사명"
+              ],
+              "name_any": [
+                "company",
+                "organization"
+              ]
+            },
+            "value": "Wedge Test Company"
+          },
+          "settle_strategy": {
+            "type": "none",
+            "timeout_ms": 0
+          },
+          "checkpoint": false
+        },
+        {
+          "step_id": "signup_007_select_plan",
+          "stage": "INPUT",
+          "description": "테스트 가능한 기본 플랜을 선택한다.",
+          "action": {
+            "type": "select",
+            "target": {
+              "label_any": [
+                "Plan",
+                "요금제"
+              ],
+              "name_any": [
+                "plan"
+              ]
+            },
+            "value": "starter"
+          },
+          "settle_strategy": {
+            "type": "none",
+            "timeout_ms": 0
+          },
+          "checkpoint": false
+        },
+        {
+          "step_id": "signup_008_form_checkpoint",
+          "stage": "INPUT",
+          "description": "제출 전 폼 상태, 오류 문구, 신뢰 정보를 기록한다.",
+          "action": {
+            "type": "checkpoint"
+          },
+          "settle_strategy": {
+            "type": "none",
+            "timeout_ms": 0
+          },
+          "checkpoint": true
+        },
+        {
+          "step_id": "signup_009_stop_before_submit",
+          "stage": "COMMIT",
+          "description": "실제 회원가입 제출 직전에 중단한다.",
+          "action": {
+            "type": "stop_when"
+          },
+          "settle_strategy": {
+            "type": "none",
+            "timeout_ms": 0
+          },
+          "checkpoint": false,
+          "stop_condition": {
+            "url_includes": "#signup-form",
+            "before_real_submit": true
+          }
+        }
+      ]
+    }
+  }
+}

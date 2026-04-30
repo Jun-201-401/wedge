@@ -1,0 +1,171 @@
+{
+  "schema_version": "0.5",
+  "plan_id": "mvp_pricing_checkout_001",
+  "scenario_type": "template",
+  "template_key": "pricing-checkout",
+  "goal": "가격표에서 플랜 선택 후 결제 진입까지 확인하되 실제 결제 커밋 전에는 중단한다.",
+  "start_url": "https://example.com",
+  "environment": {
+    "device": "desktop",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "locale": "ko-KR",
+    "timezone": "Asia/Seoul",
+    "permissions": [],
+    "auth_state": "anonymous"
+  },
+  "safety": {
+    "allow_external_navigation": false,
+    "allow_payment_commit": false,
+    "allow_destructive_action": false,
+    "use_synthetic_inputs": true,
+    "stop_before_real_payment": true
+  },
+  "steps": [
+    {
+      "step_id": "pricing_001_goto",
+      "stage": "FIRST_VIEW",
+      "description": "랜딩 또는 가격 페이지에 진입한다.",
+      "action": {
+        "type": "goto",
+        "target": "https://example.com"
+      },
+      "settle_strategy": {
+        "type": "network_idle",
+        "timeout_ms": 3000
+      },
+      "checkpoint": true
+    },
+    {
+      "step_id": "pricing_002_scroll_to_pricing",
+      "stage": "VALUE",
+      "description": "가격표 영역까지 스크롤한다.",
+      "action": {
+        "type": "scroll",
+        "value": 2200
+      },
+      "settle_strategy": {
+        "type": "fixed_short",
+        "timeout_ms": 300
+      },
+      "checkpoint": false
+    },
+    {
+      "step_id": "pricing_003_wait_for_pricing",
+      "stage": "VALUE",
+      "description": "가격표 카드가 표시될 때까지 기다린다.",
+      "action": {
+        "type": "wait_for",
+        "target": {
+          "selector_any": [
+            "#pricing .plan-card",
+            "#pricing",
+            "[data-testid=pricing]"
+          ]
+        },
+        "options": {
+          "state": "visible",
+          "timeout_ms": 1000
+        }
+      },
+      "settle_strategy": {
+        "type": "none",
+        "timeout_ms": 0
+      },
+      "checkpoint": false
+    },
+    {
+      "step_id": "pricing_004_pricing_checkpoint",
+      "stage": "VALUE",
+      "description": "플랜 구성, 가격, CTA 명확성을 기록한다.",
+      "action": {
+        "type": "checkpoint"
+      },
+      "settle_strategy": {
+        "type": "none",
+        "timeout_ms": 0
+      },
+      "checkpoint": true
+    },
+    {
+      "step_id": "pricing_005_click_plan_cta",
+      "stage": "CTA",
+      "description": "결제 또는 플랜 선택 CTA를 클릭한다.",
+      "action": {
+        "type": "click",
+        "target": {
+          "role": "link",
+          "text_any": [
+            "Choose Starter",
+            "Start",
+            "Select plan",
+            "플랜 선택"
+          ],
+          "href_contains": "checkout"
+        }
+      },
+      "settle_strategy": {
+        "type": "url_change",
+        "timeout_ms": 2000,
+        "url_includes": "checkout"
+      },
+      "checkpoint": false
+    },
+    {
+      "step_id": "pricing_006_wait_for_checkout",
+      "stage": "COMMIT",
+      "description": "결제 정보 입력 영역이 표시될 때까지 기다린다.",
+      "action": {
+        "type": "wait_for",
+        "target": {
+          "selector_any": [
+            "#payment-method",
+            "form",
+            "input[name=\"card-number\"]"
+          ]
+        },
+        "options": {
+          "state": "visible",
+          "timeout_ms": 1000
+        }
+      },
+      "settle_strategy": {
+        "type": "none",
+        "timeout_ms": 0
+      },
+      "checkpoint": false
+    },
+    {
+      "step_id": "pricing_007_checkout_checkpoint",
+      "stage": "COMMIT",
+      "description": "결제 커밋 직전의 비용, 신뢰, 취소 가능성 정보를 기록한다.",
+      "action": {
+        "type": "checkpoint"
+      },
+      "settle_strategy": {
+        "type": "none",
+        "timeout_ms": 0
+      },
+      "checkpoint": true
+    },
+    {
+      "step_id": "pricing_008_stop_before_payment",
+      "stage": "COMMIT",
+      "description": "실제 결제 커밋 전 안전하게 중단한다.",
+      "action": {
+        "type": "stop_when"
+      },
+      "settle_strategy": {
+        "type": "none",
+        "timeout_ms": 0
+      },
+      "checkpoint": false,
+      "stop_condition": {
+        "url_includes": "checkout",
+        "before_real_payment": true
+      }
+    }
+  ]
+}
