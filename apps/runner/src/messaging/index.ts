@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import {
   settleStrategyTypes,
   scenarioActionTypes,
+  type DiscoveryExecuteMessage,
   type RunExecuteMessage,
   type ScenarioPlan,
   type ScenarioStep
@@ -9,6 +10,7 @@ import {
 import { isRecord } from "../shared/utils.ts";
 
 const RUNNER_MESSAGE_TYPE = "run.execute.request";
+const DISCOVERY_MESSAGE_TYPE = "discovery.execute.request";
 const PAYLOAD_DEVICE_PRESETS = ["desktop", "tablet", "mobile"] as const;
 const SCENARIO_TYPES = ["template", "custom_compiled"] as const;
 const SCENARIO_STEP_STAGES = ["FIRST_VIEW", "VALUE", "CTA", "INPUT", "COMMIT"] as const;
@@ -27,6 +29,11 @@ export async function readRunExecuteMessage(messageFile: string): Promise<RunExe
   return parseRunExecuteMessage(rawMessage);
 }
 
+export async function readDiscoveryExecuteMessage(messageFile: string): Promise<DiscoveryExecuteMessage> {
+  const rawMessage = await readFile(messageFile, "utf8");
+  return parseDiscoveryExecuteMessage(rawMessage);
+}
+
 export function parseRunExecuteMessage(rawMessage: string): RunExecuteMessage {
   let parsed: unknown;
 
@@ -37,6 +44,19 @@ export function parseRunExecuteMessage(rawMessage: string): RunExecuteMessage {
   }
 
   assertRunExecuteMessage(parsed);
+  return parsed;
+}
+
+export function parseDiscoveryExecuteMessage(rawMessage: string): DiscoveryExecuteMessage {
+  let parsed: unknown;
+
+  try {
+    parsed = JSON.parse(rawMessage) as unknown;
+  } catch {
+    throw new RunnerMessageValidationError("discovery message must be valid JSON");
+  }
+
+  assertDiscoveryExecuteMessage(parsed);
   return parsed;
 }
 
@@ -52,6 +72,20 @@ function assertRunExecuteMessage(value: unknown): asserts value is RunExecuteMes
   assertNonEmptyString(value.createdAt, "runner createdAt");
   assertNonEmptyString(value.producer, "runner producer");
   assertRunExecutePayload(value.payload);
+}
+
+function assertDiscoveryExecuteMessage(value: unknown): asserts value is DiscoveryExecuteMessage {
+  if (!isRecord(value)) {
+    throw new RunnerMessageValidationError("discovery message must be a JSON object");
+  }
+
+  assertLiteralString(value.messageType, DISCOVERY_MESSAGE_TYPE, "discovery messageType");
+
+  assertNonEmptyString(value.messageId, "discovery messageId");
+  assertNonEmptyString(value.schemaVersion, "discovery schemaVersion");
+  assertNonEmptyString(value.createdAt, "discovery createdAt");
+  assertNonEmptyString(value.producer, "discovery producer");
+  assertDiscoveryExecutePayload(value.payload);
 }
 
 function assertRunExecutePayload(value: unknown): asserts value is RunExecuteMessage["payload"] {
@@ -74,6 +108,37 @@ function assertRunExecutePayload(value: unknown): asserts value is RunExecuteMes
     },
     value.scenarioPlan
   );
+}
+
+function assertDiscoveryExecutePayload(value: unknown): asserts value is DiscoveryExecuteMessage["payload"] {
+  if (!isRecord(value)) {
+    throw new RunnerMessageValidationError("discovery payload must be an object");
+  }
+
+  assertNonEmptyString(value.discoveryId, "discovery payload.discoveryId");
+  assertNonEmptyString(value.projectId, "discovery payload.projectId");
+  assertNonEmptyString(value.url, "discovery payload.url");
+  assertOneOf(value.devicePreset, PAYLOAD_DEVICE_PRESETS, "discovery payload.devicePreset");
+
+  if (!isRecord(value.viewport)) {
+    throw new RunnerMessageValidationError("discovery payload.viewport must be an object");
+  }
+
+  if (typeof value.viewport.width !== "number" || value.viewport.width < 1) {
+    throw new RunnerMessageValidationError("discovery payload.viewport.width must be >= 1");
+  }
+
+  if (typeof value.viewport.height !== "number" || value.viewport.height < 1) {
+    throw new RunnerMessageValidationError("discovery payload.viewport.height must be >= 1");
+  }
+
+  if (typeof value.maxDurationMs !== "number" || value.maxDurationMs < 1_000) {
+    throw new RunnerMessageValidationError("discovery payload.maxDurationMs must be >= 1000");
+  }
+
+  if (typeof value.maxScrollCount !== "number" || value.maxScrollCount < 0) {
+    throw new RunnerMessageValidationError("discovery payload.maxScrollCount must be >= 0");
+  }
 }
 
 function assertScenarioPlan(value: unknown): asserts value is ScenarioPlan {
