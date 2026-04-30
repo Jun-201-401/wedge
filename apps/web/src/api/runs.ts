@@ -6,6 +6,7 @@ import type {
   Run,
   RunActionRequest,
   RunCreateRequest,
+  RunArtifact,
   RunLive,
   RunStatus,
 } from '../entities/run';
@@ -79,6 +80,10 @@ export function getRunEvidencePacket(runId: string, options?: RequestOptions) {
   return requestJson<ApiResponse<EvidencePacket>>(`/runs/${runId}/evidence-packet`, options);
 }
 
+export function listRunArtifacts(runId: string, options?: RequestOptions) {
+  return requestJson<ApiResponse<RunArtifact[]>>(`/runs/${runId}/artifacts`, options);
+}
+
 export function listRunSteps(runId: string, options?: RequestOptions) {
   return requestJson<ApiResponse<unknown[]>>(`/runs/${runId}/steps`, options);
 }
@@ -92,5 +97,6 @@ export const runsApi = {
   stopRun,
   getRunLive,
   getRunEvidencePacket,
+  listRunArtifacts,
   listRunSteps,
 };

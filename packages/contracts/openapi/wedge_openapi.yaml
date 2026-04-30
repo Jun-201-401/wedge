@@ -42,6 +42,11 @@ paths:
       responses:
         '201':
           description: Signed up
+          headers:
+            Set-Cookie:
+              description: HttpOnly refresh token cookie (`wedge_refresh_token`); attributes: `Path=/api/auth`, `HttpOnly`, `SameSite=Lax`, `Max-Age` set to refresh TTL, and `Secure` in production/HTTPS contexts.
+              schema:
+                type: string
           content:
             application/json:
               schema:
@@ -66,6 +71,11 @@ paths:
       responses:
         '200':
           description: Logged in
+          headers:
+            Set-Cookie:
+              description: HttpOnly refresh token cookie (`wedge_refresh_token`); attributes: `Path=/api/auth`, `HttpOnly`, `SameSite=Lax`, `Max-Age` set to refresh TTL, and `Secure` in production/HTTPS contexts.
+              schema:
+                type: string
           content:
             application/json:
               schema:
@@ -79,25 +89,39 @@ paths:
       tags:
       - Auth
       operationId: refreshHumanToken
-      summary: Rotate refresh token and issue new tokens
+      summary: Rotate refresh cookie and issue a new access token
+      description: Reads the HttpOnly `wedge_refresh_token` cookie, rotates it, and returns a new access token response.
       security: []
-      requestBody:
+      parameters:
+      - name: wedge_refresh_token
+        in: cookie
         required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/RefreshRequest'
+        description: HttpOnly refresh token cookie issued by signup/login/refresh.
+        schema:
+          type: string
       responses:
         '200':
           description: Token refreshed
+          headers:
+            Set-Cookie:
+              description: Rotated HttpOnly refresh token cookie (`wedge_refresh_token`); attributes: `Path=/api/auth`, `HttpOnly`, `SameSite=Lax`, `Max-Age` set to refresh TTL, and `Secure` in production/HTTPS contexts.
+              schema:
+                type: string
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/SingleAuthTokenResponse'
         '401':
-          $ref: '#/components/responses/Unauthorized'
-        '422':
-          $ref: '#/components/responses/ValidationError'
+          description: Refresh cookie missing, invalid, or expired. Also expires the browser refresh cookie.
+          headers:
+            Set-Cookie:
+              description: Expired HttpOnly refresh token cookie (`wedge_refresh_token`); attributes: `Path=/api/auth`, `HttpOnly`, `SameSite=Lax`, `Max-Age=0`, and `Secure` in production/HTTPS contexts.
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /api/auth/logout:
     post:
       tags:
@@ -109,6 +133,11 @@ paths:
       responses:
         '200':
           description: Logged out
+          headers:
+            Set-Cookie:
+              description: Expired HttpOnly refresh token cookie (`wedge_refresh_token`); attributes: `Path=/api/auth`, `HttpOnly`, `SameSite=Lax`, `Max-Age=0`, and `Secure` in production/HTTPS contexts.
+              schema:
+                type: string
           content:
             application/json:
               schema:
@@ -2007,13 +2036,6 @@ components:
       required:
       - email
       - password
-    RefreshRequest:
-      type: object
-      properties:
-        refreshToken:
-          type: string
-      required:
-      - refreshToken
     User:
       type: object
       properties:
@@ -2040,8 +2062,6 @@ components:
       properties:
         accessToken:
           type: string
-        refreshToken:
-          type: string
         tokenType:
           type: string
           example: Bearer
@@ -2052,7 +2072,6 @@ components:
           $ref: '#/components/schemas/User'
       required:
       - accessToken
-      - refreshToken
       - tokenType
       - expiresIn
       - user
@@ -3094,9 +3113,61 @@ components:
           nullable: true
         latestFrame:
           $ref: '#/components/schemas/LatestSnapshot'
+          nullable: true
+        latestCheckpoint:
+          $ref: '#/components/schemas/LatestCheckpoint'
+          nullable: true
+        latestArtifact:
+          $ref: '#/components/schemas/Artifact'
+          nullable: true
+        evidenceCounts:
+          $ref: '#/components/schemas/RunEvidenceCounts'
       required:
       - runId
       - status
+    LatestCheckpoint:
+      type: object
+      properties:
+        checkpointId:
+          type: string
+        stepId:
+          type: string
+          format: uuid
+          nullable: true
+        stage:
+          type: string
+          nullable: true
+        url:
+          type: string
+          nullable: true
+        capturedAt:
+          type: string
+          format: date-time
+          nullable: true
+        durationMs:
+          type: integer
+          nullable: true
+        observationCount:
+          type: integer
+        artifactRefCount:
+          type: integer
+      required:
+      - checkpointId
+      - observationCount
+      - artifactRefCount
+    RunEvidenceCounts:
+      type: object
+      properties:
+        checkpointCount:
+          type: integer
+        observationCount:
+          type: integer
+        artifactCount:
+          type: integer
+      required:
+      - checkpointCount
+      - observationCount
+      - artifactCount
     RunnerAcceptedRequest:
       type: object
       properties:

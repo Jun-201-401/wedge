@@ -27,3 +27,7 @@ wedge:
       run-execute-queue: ${WEDGE_RUN_EXECUTE_QUEUE}
   internal:
     service-token: ${INTERNAL_SERVICE_TOKEN}
+
+  auth:
+    refresh-cookie:
+      secure: ${WEDGE_REFRESH_COOKIE_SECURE:false}

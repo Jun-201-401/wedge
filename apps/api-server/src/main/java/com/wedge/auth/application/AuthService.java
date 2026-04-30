@@ -47,7 +47,7 @@ public class AuthService {
     }
 
     @Transactional
-    public AuthTokenResponse signup(SignupRequest request) {
+    public AuthTokenIssue signup(SignupRequest request) {
         String normalizedEmail = normalizeEmail(request.email());
         UserAccount user = new UserAccount(
                 UUID.randomUUID(),
@@ -66,7 +66,7 @@ public class AuthService {
     }
 
     @Transactional
-    public AuthTokenResponse login(LoginRequest request) {
+    public AuthTokenIssue login(LoginRequest request) {
         UserAccount user = userAccountMapper.findByAuthSubject(localAuthSubject(normalizeEmail(request.email())))
                 .orElseThrow(() -> new UnauthorizedException(ErrorCode.INVALID_CREDENTIALS));
         ensureActive(user);
@@ -79,12 +79,12 @@ public class AuthService {
     }
 
     @Transactional
-    public AuthTokenResponse refresh(String refreshToken) {
+    public AuthTokenIssue refresh(String refreshToken) {
         if (!jwtTokenProvider.validateRefreshToken(refreshToken)) {
             throw new UnauthorizedException(ErrorCode.INVALID_TOKEN);
         }
         UUID userId = jwtTokenProvider.getUserIdFromRefreshToken(refreshToken);
-        UserAccount user = getUser(userId);
+        UserAccount user = getRefreshUser(userId);
         ensureActive(user);
         return issueTokens(user, refreshToken);
     }
@@ -101,7 +101,7 @@ public class AuthService {
         return UserResponse.from(user);
     }
 
-    private AuthTokenResponse issueTokens(UserAccount user, String previousRefreshToken) {
+    private AuthTokenIssue issueTokens(UserAccount user, String previousRefreshToken) {
         String accessToken = jwtTokenProvider.createAccessToken(user.getId(), user.getEmail(), user.getDisplayName());
         String refreshToken = jwtTokenProvider.createRefreshToken(user.getId(), user.getEmail());
         if (previousRefreshToken == null) {
@@ -114,18 +114,26 @@ public class AuthService {
         )) {
             throw new UnauthorizedException(ErrorCode.INVALID_TOKEN);
         }
-        return new AuthTokenResponse(
-                accessToken,
+        return new AuthTokenIssue(
+                new AuthTokenResponse(
+                        accessToken,
+                        TOKEN_TYPE,
+                        jwtTokenProvider.accessExpirationSeconds(),
+                        UserResponse.from(user)
+                ),
                 refreshToken,
-                TOKEN_TYPE,
-                jwtTokenProvider.accessExpirationSeconds(),
-                UserResponse.from(user)
+                jwtTokenProvider.refreshExpirationMillis() / 1000
         );
     }
 
     private UserAccount getUser(UUID userId) {
         return userAccountMapper.findById(userId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
+    }
+
+    private UserAccount getRefreshUser(UUID userId) {
+        return userAccountMapper.findById(userId)
+                .orElseThrow(() -> new UnauthorizedException(ErrorCode.INVALID_TOKEN));
     }
 
     private void ensureActive(UserAccount user) {

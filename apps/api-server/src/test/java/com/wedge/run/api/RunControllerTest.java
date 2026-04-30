@@ -1,0 +1,163 @@
+package com.wedge.run.api;
+
+import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+import com.wedge.common.error.GlobalExceptionHandler;
+import com.wedge.common.web.RequestIdFilter;
+import com.wedge.evidence.api.dto.ArtifactResponse;
+import com.wedge.evidence.api.dto.EvidenceCountsResponse;
+import com.wedge.evidence.api.dto.LatestCheckpointResponse;
+import com.wedge.evidence.api.dto.RunEvidenceSummaryResponse;
+import com.wedge.evidence.application.EvidenceService;
+import com.wedge.evidence.domain.ArtifactType;
+import com.wedge.run.api.dto.RunResponse;
+import com.wedge.run.application.RunService;
+import com.wedge.run.domain.AnalysisStatus;
+import com.wedge.run.domain.ResultCompleteness;
+import com.wedge.run.domain.RunStatus;
+import java.net.URI;
+import java.time.OffsetDateTime;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import org.junit.jupiter.api.Test;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+
+class RunControllerTest {
+    private final RunService runService = org.mockito.Mockito.mock(RunService.class);
+    private final EvidenceService evidenceService = org.mockito.Mockito.mock(EvidenceService.class);
+    private final MockMvc mockMvc = MockMvcBuilders.standaloneSetup(new RunController(runService, evidenceService))
+            .setControllerAdvice(new GlobalExceptionHandler())
+            .addFilters(new RequestIdFilter())
+            .build();
+
+    @Test
+    void liveReturnsLatestEvidenceSummary() throws Exception {
+        UUID runId = UUID.randomUUID();
+        UUID stepId = UUID.randomUUID();
+        UUID artifactId = UUID.randomUUID();
+        RunResponse run = sampleRun(runId);
+        ArtifactResponse screenshotArtifact = sampleArtifact(runId, stepId, artifactId, ArtifactType.SCREENSHOT);
+        when(runService.getRun(runId)).thenReturn(run);
+        when(evidenceService.getRunEvidenceSummary(run)).thenReturn(new RunEvidenceSummaryResponse(
+                new LatestCheckpointResponse(
+                        "cp_001",
+                        stepId,
+                        "CTA",
+                        "https://example.com/signup",
+                        OffsetDateTime.parse("2026-04-28T10:00:00+09:00"),
+                        340,
+                        1,
+                        1
+                ),
+                screenshotArtifact,
+                screenshotArtifact,
+                new EvidenceCountsResponse(1, 1, 1)
+        ));
+
+        mockMvc.perform(get("/api/runs/{runId}/live", runId)
+                        .header("X-Request-Id", "req_run_live"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.runId").value(runId.toString()))
+                .andExpect(jsonPath("$.data.status").value("RUNNING"))
+                .andExpect(jsonPath("$.data.currentStepOrder").value(1))
+                .andExpect(jsonPath("$.data.latestCheckpoint.checkpointId").value("cp_001"))
+                .andExpect(jsonPath("$.data.latestCheckpoint.stepId").value(stepId.toString()))
+                .andExpect(jsonPath("$.data.latestCheckpoint.stage").value("CTA"))
+                .andExpect(jsonPath("$.data.latestCheckpoint.observationCount").value(1))
+                .andExpect(jsonPath("$.data.latestArtifact.id").value(artifactId.toString()))
+                .andExpect(jsonPath("$.data.latestArtifact.contentUrl").value("/api/runs/" + runId + "/artifacts/" + artifactId + "/content"))
+                .andExpect(jsonPath("$.data.latestFrame.artifactId").value(artifactId.toString()))
+                .andExpect(jsonPath("$.data.evidenceCounts.checkpointCount").value(1))
+                .andExpect(jsonPath("$.data.evidenceCounts.observationCount").value(1))
+                .andExpect(jsonPath("$.data.evidenceCounts.artifactCount").value(1))
+                .andExpect(jsonPath("$.meta.requestId").value("req_run_live"));
+    }
+
+    @Test
+    void artifactsReturnsPersistedArtifactList() throws Exception {
+        UUID runId = UUID.randomUUID();
+        UUID artifactId = UUID.randomUUID();
+        when(evidenceService.listRunArtifacts(runId)).thenReturn(List.of(
+                sampleArtifact(runId, null, artifactId, ArtifactType.DOM_SNAPSHOT)
+        ));
+
+        mockMvc.perform(get("/api/runs/{runId}/artifacts", runId)
+                        .header("X-Request-Id", "req_run_artifacts"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].id").value(artifactId.toString()))
+                .andExpect(jsonPath("$.data[0].artifactType").value("DOM_SNAPSHOT"))
+                .andExpect(jsonPath("$.data[0].contentUrl").value("/api/runs/" + runId + "/artifacts/" + artifactId + "/content"))
+                .andExpect(jsonPath("$.meta.requestId").value("req_run_artifacts"));
+    }
+
+    @Test
+    void evidencePacketReturnsPersistedEvidencePacket() throws Exception {
+        UUID runId = UUID.randomUUID();
+        when(evidenceService.getRunEvidencePacket(runId)).thenReturn(Map.of(
+                "run_id", runId.toString(),
+                "checkpoints", List.of(Map.of(
+                        "checkpoint_id", "cp_001",
+                        "observations", List.of(Map.of("observation_id", "cp_001.obs_001"))
+                )),
+                "artifacts", List.of(Map.of("artifact_id", UUID.randomUUID().toString())),
+                "aggregate_signals", Map.of("checkpoint_count", 1, "observation_count", 1, "artifact_count", 1)
+        ));
+
+        mockMvc.perform(get("/api/runs/{runId}/evidence-packet", runId)
+                        .header("X-Request-Id", "req_evidence_packet"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.run_id").value(runId.toString()))
+                .andExpect(jsonPath("$.data.checkpoints[0].checkpoint_id").value("cp_001"))
+                .andExpect(jsonPath("$.data.checkpoints[0].observations[0].observation_id").value("cp_001.obs_001"))
+                .andExpect(jsonPath("$.data.aggregate_signals.checkpoint_count").value(1))
+                .andExpect(jsonPath("$.meta.requestId").value("req_evidence_packet"));
+    }
+
+    private ArtifactResponse sampleArtifact(UUID runId, UUID stepId, UUID artifactId, ArtifactType artifactType) {
+        return new ArtifactResponse(
+                artifactId,
+                runId,
+                stepId,
+                stepId == null ? null : "step_001_click_cta",
+                artifactType,
+                "wedge-dev-artifacts",
+                artifactType == ArtifactType.SCREENSHOT ? "runs/dev/cp_001.png" : "runs/dev/dom.html",
+                artifactType == ArtifactType.SCREENSHOT ? "image/png" : "text/html",
+                artifactType == ArtifactType.SCREENSHOT ? 1440 : null,
+                artifactType == ArtifactType.SCREENSHOT ? 900 : null,
+                artifactType == ArtifactType.SCREENSHOT ? 2048 : 512,
+                "sha256",
+                null,
+                "/api/runs/" + runId + "/artifacts/" + artifactId + "/content",
+                OffsetDateTime.parse("2026-04-28T10:00:01+09:00")
+        );
+    }
+
+    private RunResponse sampleRun(UUID runId) {
+        return new RunResponse(
+                runId,
+                "run",
+                UUID.randomUUID(),
+                "Landing CTA audit",
+                "WEB",
+                URI.create("https://example.com"),
+                "CTA flow",
+                "desktop",
+                UUID.randomUUID(),
+                RunStatus.RUNNING,
+                ResultCompleteness.NONE,
+                AnalysisStatus.NOT_STARTED,
+                1,
+                OffsetDateTime.parse("2026-04-28T09:59:00+09:00"),
+                null,
+                null,
+                null,
+                null
+        );
+    }
+}

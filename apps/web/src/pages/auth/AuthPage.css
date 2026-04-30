@@ -1,0 +1,195 @@
+.auth-page {
+  position: relative;
+  min-height: 100vh;
+  min-height: 100svh;
+  overflow-x: hidden;
+  color: var(--text-color);
+  background: #fff;
+  font-family: 'Pretendard Variable', Pretendard, 'Inter', sans-serif;
+  isolation: isolate;
+}
+
+.auth-page::before,
+.auth-page::after {
+  content: '';
+  position: fixed;
+  z-index: 0;
+  pointer-events: none;
+  border-radius: 999px;
+}
+
+.auth-page::before {
+  top: -12%;
+  left: -10%;
+  width: min(42vw, 42rem);
+  height: min(42vw, 42rem);
+  background: rgba(224, 242, 254, 0.34);
+  filter: blur(110px);
+}
+
+.auth-page::after {
+  right: -12%;
+  bottom: -12%;
+  width: min(52vw, 52rem);
+  height: min(52vw, 52rem);
+  background: rgba(186, 230, 253, 0.2);
+  filter: blur(130px);
+}
+
+.auth-page__grain {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  pointer-events: none;
+  opacity: 0.018;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+.auth-page__main {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  min-height: 100vh;
+  min-height: 100svh;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+}
+
+.auth-card {
+  width: min(100%, 30rem);
+  padding: 2.35rem 2.5rem 2.1rem;
+  border: 1px solid rgba(226, 232, 240, 0.66);
+  border-radius: 1.75rem;
+  color: #1e293b;
+  background: #ffffff;
+  box-shadow: 0 12px 40px -10px rgba(15, 23, 42, 0.08), 0 2px 8px rgba(15, 23, 42, 0.02);
+  animation: authFadeUp 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.auth-card__title {
+  margin: 0;
+  color: #7dd3fc;
+  font-size: clamp(2.15rem, 4.5vw, 2.65rem);
+  font-weight: 900;
+  line-height: 1;
+  text-align: center;
+  letter-spacing: -0.055em;
+}
+
+.auth-form {
+  display: grid;
+  gap: 0.9rem;
+  margin-top: 1.65rem;
+}
+
+.auth-field {
+  display: grid;
+  gap: 0.42rem;
+}
+
+.auth-field span {
+  color: #475569;
+  font-size: 0.74rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+
+.auth-field input {
+  width: 100%;
+  border: 1px solid rgba(226, 232, 240, 0.92);
+  border-radius: 1rem;
+  outline: none;
+  background: rgba(248, 250, 252, 0.76);
+  padding: 0.88rem 0.95rem;
+  color: #1e293b;
+  font-size: 0.98rem;
+  transition: border-color 0.22s ease, box-shadow 0.22s ease, background 0.22s ease;
+}
+
+.auth-field input:focus {
+  border-color: rgba(125, 211, 252, 0.84);
+  background: #fff;
+  box-shadow: 0 0 0 3px rgba(186, 230, 253, 0.36);
+}
+
+.auth-field input::placeholder {
+  color: #94a3b8;
+}
+
+.auth-card__error {
+  margin: 0.1rem 0 0;
+  border-radius: 1rem;
+  background: rgba(254, 242, 242, 0.82);
+  padding: 0.72rem 0.85rem;
+  color: #b91c1c;
+  font-size: 0.82rem;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
+.auth-card__submit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 3rem;
+  border: 0;
+  border-radius: 999px;
+  background: #334155;
+  box-shadow: 0 10px 22px rgba(51, 65, 85, 0.12);
+  color: #fff;
+  cursor: pointer;
+  font-weight: 800;
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+}
+
+.auth-card__submit:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 14px 28px rgba(51, 65, 85, 0.16);
+}
+
+.auth-card__submit:disabled {
+  cursor: not-allowed;
+}
+
+.auth-card__switch {
+  margin: 1.15rem 0 0;
+  color: #64748b;
+  font-size: 0.86rem;
+  text-align: center;
+}
+
+.auth-card__switch a {
+  color: #0284c7;
+  font-weight: 800;
+}
+
+@keyframes authFadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (max-width: 640px) {
+  .auth-page__main {
+    padding-inline: 1rem;
+  }
+
+  .auth-card {
+    padding: 1.85rem 1.35rem 1.5rem;
+    border-radius: 1.35rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .auth-card {
+    animation: none;
+  }
+}

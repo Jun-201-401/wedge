@@ -9,6 +9,7 @@ Thumbs.db
 # Env / local overrides
 .env
 .env.*
+env.prod
 !.env.example
 !.env.*.example
 
@@ -45,6 +46,7 @@ __pycache__/
 venv/
 
 # Test / tooling artifacts
+.playwright-mcp/
 playwright-report/
 test-results/
 tmp/

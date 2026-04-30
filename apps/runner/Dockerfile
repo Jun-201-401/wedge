@@ -22,4 +22,4 @@ COPY apps/runner ./apps/runner
 WORKDIR /app/apps/runner
 RUN mkdir -p .runner-artifacts
 
-CMD ["npm", "run", "start", "--", "--message-file", "examples/run-execute.request.json"]
+CMD ["npm", "run", "start", "--", "--consume-mq"]

@@ -53,10 +53,10 @@ class AuthServiceTest {
     void signupCreatesUserCredentialAndTokens() {
         var response = authService.signup(new SignupRequest("USER@Example.com", "password123", "User"));
 
-        assertThat(response.accessToken()).isNotBlank();
+        assertThat(response.response().accessToken()).isNotBlank();
         assertThat(response.refreshToken()).isNotBlank();
-        assertThat(response.tokenType()).isEqualTo("Bearer");
-        assertThat(response.user().email()).isEqualTo("user@example.com");
+        assertThat(response.response().tokenType()).isEqualTo("Bearer");
+        assertThat(response.response().user().email()).isEqualTo("user@example.com");
         verify(userAccountMapper).insert(any(UserAccount.class));
         verify(refreshTokenRepository).save(any(UUID.class), eq(response.refreshToken()), anyLong());
     }
@@ -94,6 +94,16 @@ class AuthServiceTest {
 
         assertThat(response.refreshToken()).isNotEqualTo(oldRefreshToken);
         verify(refreshTokenRepository).rotateIfMatch(eq(userId), eq(oldRefreshToken), eq(response.refreshToken()), anyLong());
+    }
+
+    @Test
+    void refreshRejectsTokenForMissingUser() {
+        UUID userId = UUID.randomUUID();
+        String oldRefreshToken = jwtTokenProvider.createRefreshToken(userId, "deleted@example.com");
+        when(userAccountMapper.findById(userId)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> authService.refresh(oldRefreshToken))
+                .isInstanceOf(UnauthorizedException.class);
     }
 
     @Test

@@ -10,6 +10,15 @@ wedge:
     storage: ${WEDGE_ARTIFACT_STORAGE:filesystem}
     bucket: ${WEDGE_ARTIFACT_BUCKET:}
     local-root: ${WEDGE_ARTIFACT_LOCAL_ROOT:../runner/.runner-artifacts}
+    s3:
+      endpoint: ${WEDGE_ARTIFACT_S3_ENDPOINT:}
+      region: ${WEDGE_ARTIFACT_S3_REGION:${AWS_REGION:ap-northeast-2}}
+      access-key-id: ${WEDGE_ARTIFACT_S3_ACCESS_KEY_ID:}
+      secret-access-key: ${WEDGE_ARTIFACT_S3_SECRET_ACCESS_KEY:}
+      force-path-style: ${WEDGE_ARTIFACT_S3_FORCE_PATH_STYLE:false}
+  auth:
+    refresh-cookie:
+      secure: true
 
 mybatis:
   mapper-locations: classpath*:mapper/**/*.xml

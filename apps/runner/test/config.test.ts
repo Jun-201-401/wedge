@@ -5,8 +5,14 @@ import { loadRunnerConfig } from "../src/config/index.ts";
 const ARTIFACT_ENV_KEYS = [
   "RUNNER_ARTIFACT_STORAGE",
   "RUNNER_ARTIFACT_BUCKET",
-  "RUNNER_ARTIFACT_PREFIX",
-  "AWS_REGION"
+  "RUNNER_ARTIFACT_S3_ENDPOINT",
+  "RUNNER_ARTIFACT_S3_REGION",
+  "RUNNER_ARTIFACT_S3_ACCESS_KEY_ID",
+  "RUNNER_ARTIFACT_S3_SECRET_ACCESS_KEY",
+  "RUNNER_ARTIFACT_S3_FORCE_PATH_STYLE",
+  "AWS_REGION",
+  "AWS_ACCESS_KEY_ID",
+  "AWS_SECRET_ACCESS_KEY"
 ] as const;
 
 type ArtifactEnvKey = typeof ARTIFACT_ENV_KEYS[number];
@@ -15,10 +21,13 @@ test("loadRunnerConfig defaults artifact storage to filesystem", () => {
   withArtifactEnv({}, () => {
     const config = loadRunnerConfig({ serviceName: "runner-test" });
 
-    assert.equal(config.artifactStorage, "filesystem");
+    assert.equal(config.artifactStoreMode, "filesystem");
     assert.equal(config.artifactBucket, "local-runner");
-    assert.equal(config.artifactPrefix, "");
-    assert.equal(config.awsRegion, undefined);
+    assert.equal(config.artifactS3Endpoint, undefined);
+    assert.equal(config.artifactS3Region, "us-east-1");
+    assert.equal(config.artifactS3AccessKeyId, undefined);
+    assert.equal(config.artifactS3SecretAccessKey, undefined);
+    assert.equal(config.artifactS3ForcePathStyle, false);
   });
 });
 
@@ -27,16 +36,45 @@ test("loadRunnerConfig reads S3 artifact storage environment", () => {
     {
       RUNNER_ARTIFACT_STORAGE: "s3",
       RUNNER_ARTIFACT_BUCKET: "wedge-artifacts-prod",
-      RUNNER_ARTIFACT_PREFIX: "runs",
-      AWS_REGION: "ap-northeast-2"
+      RUNNER_ARTIFACT_S3_ENDPOINT: "https://s3.ap-northeast-2.amazonaws.com",
+      RUNNER_ARTIFACT_S3_REGION: "ap-northeast-2",
+      RUNNER_ARTIFACT_S3_ACCESS_KEY_ID: "artifact-access-key",
+      RUNNER_ARTIFACT_S3_SECRET_ACCESS_KEY: "artifact-secret-key",
+      RUNNER_ARTIFACT_S3_FORCE_PATH_STYLE: "false"
     },
     () => {
       const config = loadRunnerConfig({ serviceName: "runner-test" });
 
-      assert.equal(config.artifactStorage, "s3");
+      assert.equal(config.artifactStoreMode, "s3");
       assert.equal(config.artifactBucket, "wedge-artifacts-prod");
-      assert.equal(config.artifactPrefix, "runs");
-      assert.equal(config.awsRegion, "ap-northeast-2");
+      assert.equal(config.artifactS3Endpoint, "https://s3.ap-northeast-2.amazonaws.com");
+      assert.equal(config.artifactS3Region, "ap-northeast-2");
+      assert.equal(config.artifactS3AccessKeyId, "artifact-access-key");
+      assert.equal(config.artifactS3SecretAccessKey, "artifact-secret-key");
+      assert.equal(config.artifactS3ForcePathStyle, false);
+    }
+  );
+});
+
+test("loadRunnerConfig uses AWS SDK environment variables for AWS S3", () => {
+  withArtifactEnv(
+    {
+      RUNNER_ARTIFACT_STORAGE: "s3",
+      RUNNER_ARTIFACT_BUCKET: "wedge-artifacts-prod",
+      AWS_REGION: "ap-northeast-2",
+      AWS_ACCESS_KEY_ID: "aws-access-key",
+      AWS_SECRET_ACCESS_KEY: "aws-secret-key"
+    },
+    () => {
+      const config = loadRunnerConfig({ serviceName: "runner-test" });
+
+      assert.equal(config.artifactStoreMode, "s3");
+      assert.equal(config.artifactBucket, "wedge-artifacts-prod");
+      assert.equal(config.artifactS3Endpoint, undefined);
+      assert.equal(config.artifactS3Region, "ap-northeast-2");
+      assert.equal(config.artifactS3AccessKeyId, "aws-access-key");
+      assert.equal(config.artifactS3SecretAccessKey, "aws-secret-key");
+      assert.equal(config.artifactS3ForcePathStyle, false);
     }
   );
 });
@@ -45,7 +83,7 @@ test("loadRunnerConfig falls back to filesystem for unsupported artifact storage
   withArtifactEnv({ RUNNER_ARTIFACT_STORAGE: "memory" }, () => {
     const config = loadRunnerConfig({ serviceName: "runner-test" });
 
-    assert.equal(config.artifactStorage, "filesystem");
+    assert.equal(config.artifactStoreMode, "filesystem");
   });
 });
 

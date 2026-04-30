@@ -11,6 +11,7 @@ const DEFAULT_POLL_INTERVAL_MS = 2_000;
 const DEFAULT_TARGET_URL = 'https://example.com/';
 const DEFAULT_SMOKE_EMAIL = 'e2e-smoke@wedge.local';
 const DEFAULT_SMOKE_PASSWORD = 'wedge-smoke-password';
+const DEFAULT_EXPECTED_STATUS = 'COMPLETED';
 
 export function normalizeBaseUrl(value) {
   return String(value).replace(/\/+$/, '');
@@ -106,6 +107,7 @@ export function readConfig(env = process.env) {
     timeoutMs: parsePositiveInt(env.WEDGE_SMOKE_TIMEOUT_MS, DEFAULT_TIMEOUT_MS),
     pollIntervalMs: parsePositiveInt(env.WEDGE_SMOKE_POLL_INTERVAL_MS, DEFAULT_POLL_INTERVAL_MS),
     requireEvidenceArtifacts: readBoolean(env.WEDGE_SMOKE_REQUIRE_ARTIFACTS, false),
+    expectedStatus: normalizeExpectedStatus(env.WEDGE_SMOKE_EXPECTED_STATUS ?? DEFAULT_EXPECTED_STATUS),
     healthPath: normalizePath(env.WEDGE_SMOKE_HEALTH_PATH ?? '/actuator/health'),
   };
 }
@@ -123,7 +125,10 @@ export async function runSmoke(config = readConfig()) {
   logStep('started', { runId });
 
   const run = await pollRunUntilTerminal(config, accessToken, runId);
-  const evidencePacket = await pollEvidencePacket(config, accessToken, runId);
+  validateTerminalDetails(run, config.expectedStatus);
+  const evidencePacket = run.status === 'COMPLETED'
+    ? await pollEvidencePacket(config, accessToken, runId)
+    : { checkpoints: [], artifacts: [] };
   const monitorUrl = `${config.webBaseUrl}/runs/${encodeURIComponent(runId)}?${new URLSearchParams({
     url: config.targetUrl,
     scenario: 'landing-cta',
@@ -134,6 +139,8 @@ export async function runSmoke(config = readConfig()) {
     runId,
     status: run.status,
     resultCompleteness: run.resultCompleteness,
+    failureCode: run.failureCode,
+    failureMessage: run.failureMessage,
     checkpointCount: evidencePacket.checkpoints.length,
     artifactCount: evidencePacket.artifacts.length,
     monitorUrl,
@@ -153,6 +160,10 @@ function validateConfig(config) {
     new URL(config.targetUrl);
   } catch {
     throw new Error('WEDGE_SMOKE_TARGET_URL must be an absolute http(s) URL.');
+  }
+
+  if (!TERMINAL_STATUSES.has(config.expectedStatus)) {
+    throw new Error('WEDGE_SMOKE_EXPECTED_STATUS must be one of COMPLETED, FAILED, STOPPED.');
   }
 }
 
@@ -231,12 +242,12 @@ async function pollRunUntilTerminal(config, accessToken, runId) {
     const run = response.data;
     logStep('poll.run', { runId, status: run.status, resultCompleteness: run.resultCompleteness });
 
-    if (run.status === 'COMPLETED') {
+    if (run.status === config.expectedStatus) {
       return run;
     }
 
     if (TERMINAL_STATUSES.has(run.status)) {
-      throw new Error(`Run reached non-success terminal status ${run.status}: ${run.failureCode ?? ''} ${run.failureMessage ?? ''}`.trim());
+      throw new Error(`Run reached terminal status ${run.status}, expected ${config.expectedStatus}: ${run.failureCode ?? ''} ${run.failureMessage ?? ''}`.trim());
     }
 
     if (!RUNNER_ACTIVE_STATUSES.has(run.status)) {
@@ -244,7 +255,7 @@ async function pollRunUntilTerminal(config, accessToken, runId) {
     }
 
     return null;
-  }, `run ${runId} to complete`);
+  }, `run ${runId} to reach ${config.expectedStatus}`);
 }
 
 async function pollEvidencePacket(config, accessToken, runId) {
@@ -291,11 +302,17 @@ async function pollUntil(config, probe, label) {
   throw new Error(`Timed out waiting for ${label}.${hint}`);
 }
 
-function isFatalPollError(error) {
+export function isFatalPollError(error) {
   return error instanceof Error && (
-    error.message.includes('non-success terminal status') ||
+    error.message.includes('terminal status') ||
     error.message.includes('unexpected status')
   );
+}
+
+export function validateTerminalDetails(run, expectedStatus) {
+  if (expectedStatus === 'FAILED' && (!run.failureCode || !run.failureMessage)) {
+    throw new Error(`Run reached FAILED without failureCode/failureMessage: ${run.id ?? run.runId ?? ''}`.trim());
+  }
 }
 
 async function requestJson(config, path, options = {}) {
@@ -356,6 +373,10 @@ function readBoolean(value, fallback) {
   }
 
   return fallback;
+}
+
+function normalizeExpectedStatus(value) {
+  return String(value ?? DEFAULT_EXPECTED_STATUS).trim().toUpperCase();
 }
 
 function sleep(durationMs) {
