@@ -107,6 +107,45 @@ services:
     volumes:
       - ./apps/runner/.runner-artifacts:/app/apps/runner/.runner-artifacts
 
+  analyzer-api:
+    build:
+      context: .
+      dockerfile: apps/analyzer/Dockerfile
+    ports:
+      - "127.0.0.1:8000:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3).read()"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    init: true
+    restart: unless-stopped
+
+  analyzer-worker:
+    build:
+      context: .
+      dockerfile: apps/analyzer/Dockerfile
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    command: ["python", "scripts/consume_analysis_requests.py"]
+    environment:
+      ANALYZER_WORKER_ID: analyzer-worker-dev
+      ANALYZER_MQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672/%2F
+      ANALYZER_MQ_QUEUE_ANALYSIS_REQUEST: analysis.request
+      ANALYZER_MQ_PREFETCH: 1
+      ANALYZER_MQ_REQUEUE_ON_FAILURE: "false"
+      ANALYZER_MQ_QUEUE_DEAD_LETTER_EXCHANGE: wedge.dlq
+      ANALYZER_MQ_QUEUE_DEAD_LETTER_ROUTING_KEY: analysis.dlq
+      ANALYZER_MQ_QUEUE_TYPE: ""
+      ANALYZER_CALLBACK_BASE_URL: ${ANALYZER_CALLBACK_BASE_URL:-http://host.docker.internal:8080}
+      ANALYZER_CALLBACK_AUTH_TOKEN: ${INTERNAL_SERVICE_TOKEN}
+      ANALYZER_CALLBACK_SIGNATURE_SECRET: ${ANALYZER_CALLBACK_SIGNATURE_SECRET:-local-secret}
+      ANALYZER_EVIDENCE_BASE_URL: ${ANALYZER_EVIDENCE_BASE_URL:-http://host.docker.internal:8080}
+      ANALYZER_EVIDENCE_AUTH_TOKEN: ${INTERNAL_SERVICE_TOKEN}
+    init: true
+    restart: unless-stopped
+
 volumes:
   postgres_data:
   redis_data:
