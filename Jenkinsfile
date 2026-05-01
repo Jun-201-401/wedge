@@ -245,8 +245,8 @@ EOF
 
                 try {
                     details = readFile(file: env.LOG_FILE).trim()
-                    if (details.length() > 4000) {
-                        details = details.substring(details.length() - 4000)
+                    if (details.length() > 8000) {
+                        details = details.substring(details.length() - 8000)
                     }
                 } catch (err) {
                     details = "Error log collection failed: ${err}"
@@ -265,7 +265,7 @@ EOF
             }
         }
 
-        always {
+        cleanup {
             deleteDir()
         }
     }
