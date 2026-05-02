@@ -1,0 +1,4 @@
+services:
+  nginx:
+    volumes:
+      - ./infra/nginx/jenkins.certbot.conf:/etc/nginx/conf.d/jenkins.conf:ro
