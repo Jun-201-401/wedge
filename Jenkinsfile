@@ -166,34 +166,27 @@ docker build -f apps/runner/Dockerfile -t "${RUNNER_IMAGE_NAME}:ci-${BUILD_NUMBE
                     credentialsId: 'ec2-ssh',
                     keyFileVariable: 'EC2_KEY',
                     usernameVariable: 'EC2_USER'
+                ), usernamePassword(
+                    credentialsId: 'gitlab-ec2-readonly',
+                    usernameVariable: 'GITLAB_RO_USER',
+                    passwordVariable: 'GITLAB_RO_TOKEN'
                 )]) {
                     script {
                         runLogged('''
 set -e
 
-tar \
-  --exclude=.git \
-  --exclude=.gradle \
-  --exclude=apps/api-server/build \
-  --exclude=apps/web/dist \
-  --exclude=apps/web/node_modules \
-  --exclude=apps/runner/node_modules \
-  --exclude=apps/runner/.runner-artifacts \
-  -czf /tmp/wedge-deploy.tar.gz .
+GIT_AUTH_HEADER="$(printf '%s:%s' "$GITLAB_RO_USER" "$GITLAB_RO_TOKEN" | base64 | tr -d '\n')"
 
-scp -i "$EC2_KEY" $SSH_OPTS /tmp/wedge-deploy.tar.gz "$EC2_USER@$DEPLOY_HOST:/tmp/wedge-deploy.tar.gz"
-
-ssh -i "$EC2_KEY" $SSH_OPTS "$EC2_USER@$DEPLOY_HOST" 'bash -s' << 'EOF'
+ssh -i "$EC2_KEY" $SSH_OPTS "$EC2_USER@$DEPLOY_HOST" "GIT_AUTH_HEADER='$GIT_AUTH_HEADER' GIT_URL='$GIT_URL' GIT_BRANCH='$GIT_BRANCH' bash -s" << 'EOF'
 set -e
 
 cd /srv/wedge
 
-test "$PWD" = "/srv/wedge"
-rm -rf apps/api-server apps/web apps/runner
-
-tar \
-  --exclude=.env.prod \
-  -xzf /tmp/wedge-deploy.tar.gz -C /srv/wedge
+git remote set-url origin "$GIT_URL"
+git remote set-url --push origin "$GIT_URL"
+git -c credential.helper= -c "http.extraHeader=Authorization: Basic ${GIT_AUTH_HEADER}" fetch --prune origin "$GIT_BRANCH"
+unset GIT_AUTH_HEADER
+git reset --hard "origin/$GIT_BRANCH"
 
 docker build -f apps/api-server/Dockerfile -t wedge-api-server:deploy-local apps/api-server
 docker build -f apps/web/Dockerfile -t wedge-web:deploy-local apps/web
