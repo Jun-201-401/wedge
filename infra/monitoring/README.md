@@ -20,6 +20,18 @@ Prometheus and Grafana without recreating application containers.
 - `Prometheus`: metrics scraping and short-term retention
 - `Grafana`: dashboards backed by Prometheus
 
+## Grafana Provisioning
+
+Grafana automatically loads the Prometheus data source from:
+
+```text
+infra/monitoring/grafana/provisioning/datasources/prometheus.yml
+```
+
+The data source uses `access: proxy`, so browsers do not connect to
+Prometheus directly. Grafana reaches Prometheus through the internal Compose
+network at `http://prometheus:9090`.
+
 ## Version Pinning
 
 Images are pinned to explicit versions instead of `latest`.
@@ -42,6 +54,34 @@ Prometheus and Grafana are bound to `127.0.0.1` by default.
 The exporters are not published to the host. Prometheus reaches them through
 the Compose network.
 
+## Environment
+
+Copy the example file and set a real Grafana admin password before starting
+the monitoring stack.
+
+```bash
+cp .env.monitoring.example .env.monitoring
+```
+
+Replace `GRAFANA_ADMIN_PASSWORD=change-me` with a private team password before
+running Grafana.
+
+Required variables:
+
+- `GRAFANA_ADMIN_USER`: Grafana administrator username
+- `GRAFANA_ADMIN_PASSWORD`: Grafana administrator password
+- `GRAFANA_PORT`: host port bound to `127.0.0.1`
+- `PROMETHEUS_PORT`: host port bound to `127.0.0.1`
+- `PROMETHEUS_RETENTION_TIME`: Prometheus local retention period
+
+Do not commit `.env.monitoring`. Only `.env.monitoring.example` is tracked.
+
+Start monitoring:
+
+```bash
+docker compose --env-file .env.monitoring -f compose.monitoring.yaml up -d
+```
+
 ## Retention
 
 Prometheus keeps local metrics for 7 days by default.
@@ -49,5 +89,5 @@ Prometheus keeps local metrics for 7 days by default.
 Override it when needed:
 
 ```bash
-PROMETHEUS_RETENTION_TIME=15d docker compose -f compose.monitoring.yaml up -d
+PROMETHEUS_RETENTION_TIME=15d docker compose --env-file .env.monitoring -f compose.monitoring.yaml up -d
 ```
