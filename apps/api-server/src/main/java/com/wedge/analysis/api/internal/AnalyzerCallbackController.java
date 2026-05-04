@@ -3,6 +3,7 @@ package com.wedge.analysis.api.internal;
 import com.wedge.analysis.api.internal.dto.AnalyzerCallbackHeaders;
 import com.wedge.analysis.api.internal.dto.AnalyzerCompletedRequest;
 import com.wedge.analysis.api.internal.dto.AnalyzerFailedRequest;
+import com.wedge.analysis.api.internal.dto.AnalyzerStartedRequest;
 import com.wedge.common.response.ApiResponse;
 import jakarta.validation.Valid;
 import java.util.Map;
@@ -22,6 +23,21 @@ public class AnalyzerCallbackController {
 
     public AnalyzerCallbackController(AnalyzerCallbackService analyzerCallbackService) {
         this.analyzerCallbackService = analyzerCallbackService;
+    }
+
+    @PostMapping("/started")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> handleAnalysisStarted(
+            @PathVariable UUID analysisJobId,
+            @Valid @RequestBody AnalyzerStartedRequest request,
+            @RequestHeader("X-Worker-Id") String workerId,
+            @RequestHeader("X-Event-Id") String eventId,
+            @RequestHeader("X-Signature") String signature
+    ) {
+        return ApiResponse.ok(analyzerCallbackService.handleStarted(
+                analysisJobId,
+                request,
+                callbackHeaders(workerId, eventId, signature)
+        ));
     }
 
     @PostMapping("/completed")

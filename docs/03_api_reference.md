@@ -563,6 +563,7 @@ POST /internal/runner/runs/{runId}/artifacts
 POST /internal/runner/runs/{runId}/finished
 POST /internal/runner/runs/{runId}/failed
 
+POST /internal/analysis/jobs/{analysisJobId}/started
 POST /internal/analysis/jobs/{analysisJobId}/completed
 POST /internal/analysis/jobs/{analysisJobId}/failed
 ```

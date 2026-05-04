@@ -3,6 +3,7 @@ package com.wedge.analysis.api.internal;
 import com.wedge.analysis.api.internal.dto.AnalyzerCallbackHeaders;
 import com.wedge.analysis.api.internal.dto.AnalyzerCompletedRequest;
 import com.wedge.analysis.api.internal.dto.AnalyzerFailedRequest;
+import com.wedge.analysis.api.internal.dto.AnalyzerStartedRequest;
 import com.wedge.analysis.application.JudgeResultPersistenceService;
 import com.wedge.common.error.BusinessException;
 import com.wedge.common.error.ErrorCode;
@@ -14,6 +15,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class AnalyzerCallbackService {
+    private static final String STARTED_CONSUMER = "analyzer.started";
     private static final String COMPLETED_CONSUMER = "analyzer.completed";
     private static final String FAILED_CONSUMER = "analyzer.failed";
 
@@ -26,6 +28,20 @@ public class AnalyzerCallbackService {
     ) {
         this.judgeResultPersistenceService = judgeResultPersistenceService;
         this.processedMessagePersistenceAdapter = processedMessagePersistenceAdapter;
+    }
+
+    @Transactional
+    public Map<String, Object> handleStarted(
+            UUID analysisJobId,
+            AnalyzerStartedRequest request,
+            AnalyzerCallbackHeaders headers
+    ) {
+        headers.validateRequired();
+        validateAnalysisJobId(analysisJobId, request.analysisJobId());
+        if (isDuplicate(STARTED_CONSUMER, headers.eventId())) {
+            return duplicateResponse(analysisJobId, request.runId(), "RUNNING");
+        }
+        return judgeResultPersistenceService.saveStarted(request);
     }
 
     @Transactional

@@ -20,6 +20,7 @@ import com.wedge.common.error.BusinessException;
 import com.wedge.common.error.ErrorCode;
 import com.wedge.analysis.api.internal.dto.AnalyzerCompletedRequest;
 import com.wedge.analysis.api.internal.dto.AnalyzerFailedRequest;
+import com.wedge.analysis.api.internal.dto.AnalyzerStartedRequest;
 import com.wedge.run.domain.AnalysisJobStatus;
 import com.wedge.run.domain.AnalysisStatus;
 import com.wedge.run.infrastructure.RunMapper;
@@ -28,6 +29,7 @@ import java.time.OffsetDateTime;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -80,6 +82,36 @@ class JudgeResultPersistenceServiceTest {
                 runMapper,
                 objectMapper
         );
+    }
+
+    @Test
+    void saveStartedMarksAnalysisJobRunning() {
+        UUID analysisJobId = UUID.randomUUID();
+        UUID runId = UUID.randomUUID();
+        AnalyzerStartedRequest request = startedRequest(analysisJobId, runId);
+        when(analysisJobMapper.markRunning(analysisJobId, runId, request.startedAt())).thenReturn(1);
+
+        Map<String, Object> response = judgeResultPersistenceService.saveStarted(request);
+
+        assertThat(response.get("status")).isEqualTo(AnalysisJobStatus.RUNNING);
+        verify(analysisJobMapper).markRunning(analysisJobId, runId, request.startedAt());
+        verify(runMapper).updateCurrentAnalysisState(runId, AnalysisStatus.RUNNING, analysisJobId, null, null);
+    }
+
+    @Test
+    void saveStartedDoesNotRegressCompletedJob() {
+        UUID analysisJobId = UUID.randomUUID();
+        UUID runId = UUID.randomUUID();
+        AnalyzerStartedRequest request = startedRequest(analysisJobId, runId);
+        AnalysisJob completedJob = analysisJob(analysisJobId, runId, AnalysisJobStatus.COMPLETED);
+        when(analysisJobMapper.markRunning(analysisJobId, runId, request.startedAt())).thenReturn(0);
+        when(analysisJobMapper.findById(analysisJobId)).thenReturn(Optional.of(completedJob));
+
+        Map<String, Object> response = judgeResultPersistenceService.saveStarted(request);
+
+        assertThat(response.get("status")).isEqualTo(AnalysisJobStatus.COMPLETED);
+        assertThat(response.get("ignored")).isEqualTo(true);
+        verify(runMapper, never()).updateCurrentAnalysisState(runId, AnalysisStatus.RUNNING, analysisJobId, null, null);
     }
 
     @Test
@@ -156,6 +188,22 @@ class JudgeResultPersistenceServiceTest {
         verify(analysisJobMapper, never()).upsertCompleted(org.mockito.ArgumentMatchers.any());
         verify(ruleHitMapper, never()).insert(org.mockito.ArgumentMatchers.any());
         verify(analysisFindingMapper, never()).insert(org.mockito.ArgumentMatchers.any());
+    }
+
+    private AnalyzerStartedRequest startedRequest(UUID analysisJobId, UUID runId) {
+        return new AnalyzerStartedRequest(
+                analysisJobId,
+                runId,
+                OffsetDateTime.parse("2026-04-28T10:59:00+09:00")
+        );
+    }
+
+    private AnalysisJob analysisJob(UUID analysisJobId, UUID runId, AnalysisJobStatus status) {
+        AnalysisJob analysisJob = new AnalysisJob();
+        analysisJob.setId(analysisJobId);
+        analysisJob.setRunId(runId);
+        analysisJob.setStatus(status);
+        return analysisJob;
     }
 
     private void verifyCompletedJob(UUID analysisJobId, UUID runId) throws Exception {

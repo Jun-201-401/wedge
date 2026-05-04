@@ -37,6 +37,19 @@ class SpringCallbackClient:
         self._signing_secret = signing_secret
         self._timeout_seconds = timeout_seconds
 
+    def send_started(
+        self,
+        *,
+        analysis_job_id: str,
+        payload: dict[str, Any],
+        event_id: str,
+    ) -> SpringCallbackResponse:
+        return self._post(
+            path=f"/internal/analysis/jobs/{analysis_job_id}/started",
+            payload=payload,
+            event_id=event_id,
+        )
+
     def send_completed(
         self,
         *,
