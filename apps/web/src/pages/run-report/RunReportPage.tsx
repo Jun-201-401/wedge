@@ -1,14 +1,32 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 
-import { getRun, getRunEvidencePacket, listRunArtifacts } from '../../api/runs';
+import { generateRunReport, getRunReport } from '../../api/reports';
+import { getRun, getRunEvidencePacket, listRunArtifacts, requestRunAnalysis } from '../../api/runs';
+import type { RunReportProjection } from '../../entities/report';
 import type { EvidencePacket, Run } from '../../entities/run';
-import { buildMockRunReportData, buildRunReportFromEvidence, hydrateEvidenceArtifacts, RunReportBrand, RunReportViewer } from '../../features/report-viewer';
+import { buildMockRunReportData, buildRunReportFromApi, buildRunReportFromEvidence, hydrateEvidenceArtifacts, RunReportBrand, RunReportViewer } from '../../features/report-viewer';
 import { isMockRunId } from '../run-monitor/lib/runMonitorRoute';
 import { resolveRunReportState } from './lib/runReportState';
 
 interface RunReportPageProps {
   runId: string;
 }
+
+type ReportActionState = {
+  kind: 'idle' | 'pending' | 'success' | 'error';
+  message: string;
+};
+
+const IDLE_REPORT_ACTION_STATE: ReportActionState = { kind: 'idle', message: '' };
+const REPORT_LOAD_FALLBACK_NOTICE = '서버 리포트 상태를 불러오지 못했습니다. Evidence Packet fallback을 시도합니다.';
+const EVIDENCE_LOAD_ERROR_MESSAGE = 'Evidence Packet을 불러오지 못했습니다. Runner callback 저장이 완료됐는지 확인해주세요.';
+const RUN_LOAD_ERROR_MESSAGE = 'Run 상태를 불러오지 못했습니다. URL 또는 접근 권한을 확인한 뒤 다시 시도해주세요.';
+const GENERATE_REPORT_PENDING_MESSAGE = '리포트 생성 요청 중입니다.';
+const GENERATE_REPORT_SUCCESS_MESSAGE = '리포트 생성 요청이 완료됐습니다.';
+const GENERATE_REPORT_ERROR_MESSAGE = '리포트 생성 요청에 실패했습니다. 잠시 후 다시 시도해주세요.';
+const REQUEST_ANALYSIS_PENDING_MESSAGE = '분석 요청 중입니다.';
+const REQUEST_ANALYSIS_SUCCESS_MESSAGE = '분석 요청이 접수됐습니다. 분석이 완료되면 리포트를 생성할 수 있습니다.';
+const REQUEST_ANALYSIS_ERROR_MESSAGE = '분석 요청에 실패했습니다. Run 상태 또는 접근 권한을 확인해주세요.';
 
 function readQueryParam(name: string) {
   if (typeof window === 'undefined') {
@@ -22,7 +40,17 @@ function getFallbackUrl() {
   return readQueryParam('url') ?? 'https://example.com/';
 }
 
-function RunReportStatePage({ runId, title, message }: { runId: string; title: string; message: string }) {
+function RunReportStatePage({
+  runId,
+  title,
+  message,
+  action,
+}: {
+  runId: string;
+  title: string;
+  message: string;
+  action?: ReactNode;
+}) {
   return (
     <div className="run-report-page run-report-page--state">
       <div className="run-report-grid-bg" aria-hidden="true" />
@@ -47,6 +75,7 @@ function RunReportStatePage({ runId, title, message }: { runId: string; title: s
           <h1 id="run-report-state-title">{title}</h1>
           <p>{message}</p>
           <div className="run-report-state-card__actions">
+            {action}
             <a href={`/runs/${encodeURIComponent(runId)}`}>실시간 상태로 돌아가기</a>
             <a href="/create-analysis">새 분석 만들기</a>
           </div>
@@ -66,17 +95,26 @@ export function RunReportPage({ runId }: RunReportPageProps) {
   const [evidencePacket, setEvidencePacket] = useState<EvidencePacket | null>(null);
   const [isEvidenceLoading, setIsEvidenceLoading] = useState(false);
   const [evidenceLoadError, setEvidenceLoadError] = useState('');
+  const [reportProjection, setReportProjection] = useState<RunReportProjection | null>(null);
+  const [isReportLoading, setIsReportLoading] = useState(false);
+  const [reportLoadError, setReportLoadError] = useState('');
+  const [reportActionState, setReportActionState] = useState<ReportActionState>(IDLE_REPORT_ACTION_STATE);
   const report = useMemo(() => {
     if (isMockRun) {
       return buildMockRunReportData(runId, targetUrl, scenarioId);
+    }
+
+    if (run && reportProjection?.reportStatus === 'READY') {
+      return buildRunReportFromApi({ run, report: reportProjection, scenarioId });
     }
 
     if (!run || !evidencePacket) {
       return null;
     }
 
-    return buildRunReportFromEvidence({ run, evidencePacket, scenarioId });
-  }, [evidencePacket, isMockRun, run, runId, scenarioId, targetUrl]);
+    const fallbackReport = buildRunReportFromEvidence({ run, evidencePacket, scenarioId });
+    return reportLoadError ? { ...fallbackReport, sourceNotice: reportLoadError } : fallbackReport;
+  }, [evidencePacket, isMockRun, reportLoadError, reportProjection, run, runId, scenarioId, targetUrl]);
 
   useEffect(() => {
     if (isMockRun) {
@@ -86,6 +124,10 @@ export function RunReportPage({ runId }: RunReportPageProps) {
       setIsEvidenceLoading(false);
       setRunLoadError('');
       setEvidenceLoadError('');
+      setReportProjection(null);
+      setIsReportLoading(false);
+      setReportLoadError('');
+      setReportActionState(IDLE_REPORT_ACTION_STATE);
       return;
     }
 
@@ -97,6 +139,10 @@ export function RunReportPage({ runId }: RunReportPageProps) {
       setRunLoadError('');
       setEvidenceLoadError('');
       setEvidencePacket(null);
+      setReportProjection(null);
+      setIsReportLoading(false);
+      setReportLoadError('');
+      setReportActionState(IDLE_REPORT_ACTION_STATE);
 
       try {
         const response = await getRun(runId);
@@ -113,36 +159,59 @@ export function RunReportPage({ runId }: RunReportPageProps) {
           return;
         }
 
-        setIsEvidenceLoading(true);
+        setIsReportLoading(true);
 
         try {
-          const evidenceResponse = await getRunEvidencePacket(runId);
+          const reportResponse = await getRunReport(runId);
 
           if (!isActive) {
             return;
           }
 
-          let nextEvidencePacket = evidenceResponse.data;
-
-          try {
-            const artifactsResponse = await listRunArtifacts(runId);
-            nextEvidencePacket = hydrateEvidenceArtifacts(nextEvidencePacket, artifactsResponse.data);
-          } catch {
-            // Artifact list is a preview/download enhancement; the EvidencePacket is sufficient for the report.
-          }
-
-          if (isActive) {
-            setEvidencePacket(nextEvidencePacket);
-          }
+          setReportProjection(reportResponse.data);
+          setReportLoadError('');
         } catch {
           if (!isActive) {
             return;
           }
 
-          setEvidenceLoadError('Evidence Packet을 불러오지 못했습니다. Runner callback 저장이 완료됐는지 확인해주세요.');
+          setReportLoadError(REPORT_LOAD_FALLBACK_NOTICE);
+          setIsEvidenceLoading(true);
+
+          try {
+            const evidenceResponse = await getRunEvidencePacket(runId);
+
+            if (!isActive) {
+              return;
+            }
+
+            let nextEvidencePacket = evidenceResponse.data;
+
+            try {
+              const artifactsResponse = await listRunArtifacts(runId);
+              nextEvidencePacket = hydrateEvidenceArtifacts(nextEvidencePacket, artifactsResponse.data);
+            } catch {
+              // Artifact list is a preview/download enhancement; the EvidencePacket is sufficient for fallback report rendering.
+            }
+
+            if (isActive) {
+              setEvidencePacket(nextEvidencePacket);
+              setEvidenceLoadError('');
+            }
+          } catch {
+            if (!isActive) {
+              return;
+            }
+
+            setEvidenceLoadError(EVIDENCE_LOAD_ERROR_MESSAGE);
+          } finally {
+            if (isActive) {
+              setIsEvidenceLoading(false);
+            }
+          }
         } finally {
           if (isActive) {
-            setIsEvidenceLoading(false);
+            setIsReportLoading(false);
           }
         }
       } catch {
@@ -150,7 +219,7 @@ export function RunReportPage({ runId }: RunReportPageProps) {
           return;
         }
 
-        setRunLoadError('Run 상태를 불러오지 못했습니다. URL 또는 접근 권한을 확인한 뒤 다시 시도해주세요.');
+        setRunLoadError(RUN_LOAD_ERROR_MESSAGE);
         setIsRunLoading(false);
       }
     }
@@ -170,10 +239,74 @@ export function RunReportPage({ runId }: RunReportPageProps) {
     isEvidenceLoading,
     evidenceLoadError,
     evidencePacket,
+    isReportLoading,
+    reportLoadError,
+    report: reportProjection,
   });
 
+  const refreshRunReport = async () => {
+    const reportResponse = await getRunReport(runId);
+    setReportProjection(reportResponse.data);
+    setReportLoadError('');
+  };
+
+  const handleGenerateReport = async () => {
+    if (reportActionState.kind === 'pending') {
+      return;
+    }
+
+    setReportActionState({ kind: 'pending', message: GENERATE_REPORT_PENDING_MESSAGE });
+
+    try {
+      const response = await generateRunReport(runId);
+      setReportProjection(response.data);
+      setReportActionState({ kind: 'success', message: GENERATE_REPORT_SUCCESS_MESSAGE });
+    } catch {
+      setReportActionState({ kind: 'error', message: GENERATE_REPORT_ERROR_MESSAGE });
+    }
+  };
+
+  const handleRequestAnalysis = async () => {
+    if (reportActionState.kind === 'pending') {
+      return;
+    }
+
+    setReportActionState({ kind: 'pending', message: REQUEST_ANALYSIS_PENDING_MESSAGE });
+
+    try {
+      await requestRunAnalysis(runId);
+      await refreshRunReport();
+      setReportActionState({ kind: 'success', message: REQUEST_ANALYSIS_SUCCESS_MESSAGE });
+    } catch {
+      setReportActionState({ kind: 'error', message: REQUEST_ANALYSIS_ERROR_MESSAGE });
+    }
+  };
+
+  const stateAction = (() => {
+    if (reportProjection?.reportStatus === 'GENERATABLE') {
+      return (
+        <button type="button" onClick={handleGenerateReport} disabled={reportActionState.kind === 'pending'}>
+          {reportActionState.kind === 'pending' ? '생성 중' : '리포트 생성'}
+        </button>
+      );
+    }
+
+    if (reportProjection?.reportStatus === 'NOT_READY' && reportProjection.analysisStatus === 'NOT_STARTED') {
+      return (
+        <button type="button" onClick={handleRequestAnalysis} disabled={reportActionState.kind === 'pending'}>
+          {reportActionState.kind === 'pending' ? '요청 중' : '분석 시작'}
+        </button>
+      );
+    }
+
+    return null;
+  })();
+
   if (reportState.kind !== 'ready') {
-    return <RunReportStatePage runId={runId} title={reportState.title} message={reportState.message} />;
+    const message = reportActionState.message
+      ? `${reportState.message} ${reportActionState.message}`
+      : reportState.message;
+    return <RunReportStatePage runId={runId} title={reportState.title} message={message} action={stateAction} />;
   }
 
   if (!report) {

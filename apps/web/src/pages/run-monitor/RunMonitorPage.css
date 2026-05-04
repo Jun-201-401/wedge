@@ -1192,7 +1192,8 @@
   line-height: 1.45;
 }
 
-.run-monitor-report-cta a {
+.run-monitor-report-cta a,
+.run-monitor-report-cta button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1204,6 +1205,28 @@
   font-size: 0.68rem;
   font-weight: 900;
   text-decoration: none;
+}
+
+.run-monitor-report-cta button {
+  cursor: pointer;
+}
+
+.run-monitor-report-cta button:disabled {
+  cursor: not-allowed;
+  opacity: 0.68;
+}
+
+.run-monitor-report-cta__status {
+  margin-top: -0.2rem;
+  font-weight: 800;
+}
+
+.run-monitor-report-cta__status--error {
+  color: #c2410c;
+}
+
+.run-monitor-report-cta__status--success {
+  color: #047857;
 }
 
 .run-monitor-sr-only {

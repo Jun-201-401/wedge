@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
+import type { RunReportProjection } from '../../src/entities/report';
 import type { EvidencePacket, Run, RunLive } from '../../src/entities/run';
 import {
   buildApiSnapshotLogs,
@@ -15,6 +16,8 @@ import {
   getEvidenceArtifactLabel,
   getEvidenceObservationSummary,
   getStatusTone,
+  resolveRunMonitorReportCtaState,
+  shouldRefreshRunReport,
   shouldRefreshRunLive,
 } from '../../src/features/run-monitor';
 
@@ -47,6 +50,25 @@ const baseLive: RunLive = {
   latestFrame: null,
 };
 
+const baseReport: RunReportProjection = {
+  runId: baseRun.id,
+  reportStatus: 'READY',
+  analysisStatus: 'COMPLETED',
+  analysisJobId: 'analysis-1',
+  reportId: '55555555-5555-4555-8555-555555555555',
+  title: '백엔드 리포트',
+  format: 'JSON',
+  status: 'READY',
+  summary: {},
+  decisionMap: [],
+  findings: [],
+  nudges: [],
+  errorCode: null,
+  errorMessage: null,
+  createdAt: '2026-04-27T01:05:00.000Z',
+  updatedAt: '2026-04-27T01:05:00.000Z',
+};
+
 test('run monitor view model refreshes only live statuses', () => {
   assert.equal(shouldRefreshRunLive('CREATED'), true);
   assert.equal(shouldRefreshRunLive('QUEUED'), true);
@@ -56,6 +78,15 @@ test('run monitor view model refreshes only live statuses', () => {
   assert.equal(shouldRefreshRunLive('STOPPED'), false);
   assert.equal(shouldRefreshRunLive('COMPLETED'), false);
   assert.equal(shouldRefreshRunLive('FAILED'), false);
+});
+
+test('run monitor report refreshes while backend analysis is active', () => {
+  assert.equal(shouldRefreshRunReport(null), false);
+  assert.equal(shouldRefreshRunReport(baseReport), false);
+  assert.equal(shouldRefreshRunReport({ ...baseReport, reportStatus: 'GENERATABLE', reportId: null, status: null }), false);
+  assert.equal(shouldRefreshRunReport({ ...baseReport, reportStatus: 'NOT_READY', analysisStatus: 'NOT_STARTED', reportId: null, status: null }), false);
+  assert.equal(shouldRefreshRunReport({ ...baseReport, reportStatus: 'NOT_READY', analysisStatus: 'QUEUED', reportId: null, status: null }), true);
+  assert.equal(shouldRefreshRunReport({ ...baseReport, reportStatus: 'NOT_READY', analysisStatus: 'RUNNING', reportId: null, status: null }), true);
 });
 
 test('run monitor view model exposes lifecycle command availability by status', () => {
@@ -187,4 +218,64 @@ test('run report CTA opens for mock runs or completed real runs with evidence ch
   assert.equal(canOpenRunReport(false), false);
   assert.equal(canOpenRunReport(false, baseRun, evidencePacket), false);
   assert.equal(canOpenRunReport(false, { ...baseRun, status: 'COMPLETED' }, evidencePacket), true);
+});
+
+test('run monitor report CTA state follows backend report readiness', () => {
+  assert.deepEqual(
+    resolveRunMonitorReportCtaState({
+      isMockRun: true,
+      report: null,
+      isLoading: false,
+      errorMessage: '',
+    }),
+    {
+      kind: 'open',
+      canOpenReport: true,
+      titleLabel: '리포트 준비 완료',
+      eyebrow: '다음 화면',
+      message: '수집된 근거를 바탕으로 발견된 신호와 개선안을 확인합니다.',
+    },
+  );
+
+  assert.equal(resolveRunMonitorReportCtaState({
+    isMockRun: false,
+    report: baseReport,
+    isLoading: false,
+    errorMessage: '',
+  }).kind, 'open');
+
+  assert.equal(resolveRunMonitorReportCtaState({
+    isMockRun: false,
+    report: { ...baseReport, reportStatus: 'GENERATABLE', reportId: null, status: null },
+    isLoading: false,
+    errorMessage: '',
+  }).kind, 'generate');
+
+  assert.equal(resolveRunMonitorReportCtaState({
+    isMockRun: false,
+    report: { ...baseReport, reportStatus: 'NOT_READY', analysisStatus: 'NOT_STARTED', reportId: null, status: null },
+    isLoading: false,
+    errorMessage: '',
+  }).kind, 'request-analysis');
+
+  assert.equal(resolveRunMonitorReportCtaState({
+    isMockRun: false,
+    report: { ...baseReport, reportStatus: 'NOT_READY', analysisStatus: 'RUNNING', reportId: null, status: null },
+    isLoading: false,
+    errorMessage: '',
+  }).kind, 'waiting');
+
+  assert.equal(resolveRunMonitorReportCtaState({
+    isMockRun: false,
+    report: { ...baseReport, reportStatus: 'FAILED', errorMessage: 'report failed' },
+    isLoading: false,
+    errorMessage: '',
+  }).message, 'report failed');
+
+  assert.equal(resolveRunMonitorReportCtaState({
+    isMockRun: false,
+    report: null,
+    isLoading: false,
+    errorMessage: '리포트 상태 오류',
+  }).kind, 'error');
 });

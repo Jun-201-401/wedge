@@ -8,9 +8,19 @@ import type {
   RunStatus,
 } from '../../../entities/run';
 import { RUN_STATUS_LABEL } from '../../../entities/run';
+import type { RunReportProjection } from '../../../entities/report';
 import type { RunActionLog, RunStepItem, StepStatus } from './runMonitorMock';
 
 export type RunStatusTone = 'complete' | 'failed' | 'queued' | 'running' | 'stopping';
+export type RunMonitorReportCtaKind = 'open' | 'generate' | 'request-analysis' | 'waiting' | 'failed' | 'loading' | 'error' | 'hidden';
+
+export interface RunMonitorReportCtaState {
+  kind: RunMonitorReportCtaKind;
+  canOpenReport: boolean;
+  titleLabel: '리포트 준비 완료' | '현재 체크포인트';
+  eyebrow: '다음 화면' | '리포트 상태';
+  message: string;
+}
 
 export const RUN_MONITOR_REFRESH_INTERVAL_MS = 5000;
 
@@ -208,6 +218,88 @@ export function canOpenRunReport(isMockRun: boolean, run?: Run, evidencePacket?:
   return run?.status === 'COMPLETED' && (evidencePacket?.checkpoints.length ?? 0) > 0;
 }
 
+export function resolveRunMonitorReportCtaState({
+  isMockRun,
+  report,
+  isLoading,
+  errorMessage,
+}: {
+  isMockRun: boolean;
+  report: RunReportProjection | null;
+  isLoading: boolean;
+  errorMessage: string;
+}): RunMonitorReportCtaState {
+  if (isMockRun || report?.reportStatus === 'READY') {
+    return {
+      kind: 'open',
+      canOpenReport: true,
+      titleLabel: '리포트 준비 완료',
+      eyebrow: '다음 화면',
+      message: '수집된 근거를 바탕으로 발견된 신호와 개선안을 확인합니다.',
+    };
+  }
+
+  if (errorMessage) {
+    return {
+      kind: 'error',
+      canOpenReport: false,
+      titleLabel: '현재 체크포인트',
+      eyebrow: '리포트 상태',
+      message: errorMessage,
+    };
+  }
+
+  if (isLoading) {
+    return {
+      kind: 'loading',
+      canOpenReport: false,
+      titleLabel: '현재 체크포인트',
+      eyebrow: '리포트 상태',
+      message: '리포트 상태 확인 중입니다.',
+    };
+  }
+
+  if (report?.reportStatus === 'GENERATABLE') {
+    return {
+      kind: 'generate',
+      canOpenReport: false,
+      titleLabel: '현재 체크포인트',
+      eyebrow: '리포트 상태',
+      message: '분석 결과가 준비되었습니다. 리포트를 생성해 발견 신호와 개선안을 확인하세요.',
+    };
+  }
+
+  if (report?.reportStatus === 'NOT_READY') {
+    return {
+      kind: report.analysisStatus === 'NOT_STARTED' ? 'request-analysis' : 'waiting',
+      canOpenReport: false,
+      titleLabel: '현재 체크포인트',
+      eyebrow: '리포트 상태',
+      message: report.analysisStatus === 'NOT_STARTED'
+        ? '아직 분석이 시작되지 않았습니다. 분석 요청 후 리포트를 생성할 수 있습니다.'
+        : '분석 결과를 기다리는 중입니다. 완료되면 리포트 생성이 가능합니다.',
+    };
+  }
+
+  if (report?.reportStatus === 'FAILED') {
+    return {
+      kind: 'failed',
+      canOpenReport: false,
+      titleLabel: '현재 체크포인트',
+      eyebrow: '리포트 상태',
+      message: report.errorMessage ?? '리포트 생성에 실패했습니다. 분석 상태를 확인해주세요.',
+    };
+  }
+
+  return {
+    kind: 'hidden',
+    canOpenReport: false,
+    titleLabel: '현재 체크포인트',
+    eyebrow: '리포트 상태',
+    message: '',
+  };
+}
+
 export function canRequestRunStop(status: RunStatus) {
   return status === 'CREATED' || status === 'QUEUED' || status === 'STARTING' || status === 'RUNNING';
 }
@@ -218,6 +310,10 @@ export function canRequestRunDelete(status: RunStatus) {
 
 export function shouldRefreshRunLive(status: RunStatus) {
   return status === 'CREATED' || status === 'QUEUED' || status === 'STARTING' || status === 'RUNNING' || status === 'STOP_REQUESTED';
+}
+
+export function shouldRefreshRunReport(report: RunReportProjection | null) {
+  return report?.reportStatus === 'NOT_READY' && report.analysisStatus !== 'NOT_STARTED';
 }
 
 export function findEvidenceScreenshotArtifact(evidencePacket: EvidencePacket | null): EvidenceArtifact | null {

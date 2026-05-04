@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
+import type { RunReportProjection } from '../../src/entities/report';
 import type { Run } from '../../src/entities/run';
 import { resolveRunReportState } from '../../src/pages/run-report/lib/runReportState';
 
@@ -23,6 +24,25 @@ const completedRun: Run = {
   failureCode: null,
   failureMessage: null,
   latestSnapshot: null,
+};
+
+const baseReport: RunReportProjection = {
+  runId: completedRun.id,
+  reportStatus: 'READY',
+  analysisStatus: 'COMPLETED',
+  analysisJobId: '44444444-4444-4444-8444-444444444444',
+  reportId: '55555555-5555-4555-8555-555555555555',
+  title: 'Wedge Report',
+  format: 'JSON',
+  status: 'READY',
+  summary: {},
+  decisionMap: [],
+  findings: [],
+  nudges: [],
+  errorCode: null,
+  errorMessage: null,
+  createdAt: '2026-04-27T01:02:00.000Z',
+  updatedAt: '2026-04-27T01:02:00.000Z',
 };
 
 test('resolveRunReportState renders mock reports without calling real API readiness states', () => {
@@ -90,4 +110,44 @@ test('resolveRunReportState blocks incomplete real runs and completed real runs 
     run: completedRun,
     evidencePacket: { checkpoints: [{ checkpoint_id: 'cp-1', primaryStage: 'CTA', trigger: {}, settle: {}, state: {}, observations: [], deltas: [], artifact_refs: [] }], artifacts: [] },
   }).kind, 'ready');
+});
+
+test('resolveRunReportState uses backend report readiness before evidence fallback', () => {
+  assert.equal(resolveRunReportState({
+    isMockRun: false,
+    isRunLoading: false,
+    runLoadError: '',
+    run: completedRun,
+    report: baseReport,
+  }).kind, 'ready');
+
+  const generatable = resolveRunReportState({
+    isMockRun: false,
+    isRunLoading: false,
+    runLoadError: '',
+    run: completedRun,
+    report: { ...baseReport, reportStatus: 'GENERATABLE', reportId: null, status: null },
+  });
+  assert.equal(generatable.kind, 'api-pending');
+  assert.match(generatable.message, /리포트 생성/);
+
+  const notReady = resolveRunReportState({
+    isMockRun: false,
+    isRunLoading: false,
+    runLoadError: '',
+    run: completedRun,
+    report: { ...baseReport, reportStatus: 'NOT_READY', analysisStatus: 'NOT_STARTED', reportId: null, status: null },
+  });
+  assert.equal(notReady.kind, 'api-pending');
+  assert.match(notReady.message, /분석 요청/);
+
+  const failed = resolveRunReportState({
+    isMockRun: false,
+    isRunLoading: false,
+    runLoadError: '',
+    run: completedRun,
+    report: { ...baseReport, reportStatus: 'FAILED', errorMessage: 'report failed' },
+  });
+  assert.equal(failed.kind, 'error');
+  assert.equal(failed.message, 'report failed');
 });
