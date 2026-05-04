@@ -10,7 +10,10 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import type { CallbackClient } from "../callback/index.ts";
 import type { RunnerBrowserName, RunnerConfig } from "../config/index.ts";
+import { createArtifactStore, type ArtifactStore } from "../storage/index.ts";
 import type {
+  Artifact,
+  ArtifactDraft,
   DiscoveryEntrypointCandidate,
   DiscoveryEntrypointType,
   DiscoveryCheckpointRequest,
@@ -39,6 +42,7 @@ interface ExecuteDiscoveryInput {
   message: DiscoveryExecuteMessage;
   config: RunnerConfig;
   callbackClient?: CallbackClient;
+  artifactStore?: ArtifactStore;
   locale?: string;
   timezone?: string;
 }
@@ -73,12 +77,21 @@ export interface DiscoveryExecutionResult {
   resultFile: string;
 }
 
-export async function executeDiscovery({
+interface DiscoveryCollectionResult {
+  result: SiteDiscoveryResult;
+  artifactDraftsByCheckpointId: Map<string, ArtifactDraft[]>;
+}
+
+export async function executeDiscovery(input: ExecuteDiscoveryInput): Promise<SiteDiscoveryResult> {
+  return (await executeDiscoveryForPersistence(input)).result;
+}
+
+async function executeDiscoveryForPersistence({
   message,
   config,
   locale = DEFAULT_DISCOVERY_LOCALE,
   timezone = DEFAULT_DISCOVERY_TIMEZONE
-}: ExecuteDiscoveryInput): Promise<SiteDiscoveryResult> {
+}: ExecuteDiscoveryInput): Promise<DiscoveryCollectionResult> {
   const { payload } = message;
   const browserType = resolveBrowserType(config.browserName);
   const browser = await browserType.launch({
@@ -131,46 +144,53 @@ export async function executeDiscovery({
       candidates.some((candidate) => candidate.flowType === flowType)
     );
     const missingFlowTypes = DISCOVERY_FLOW_ORDER.filter((flowType) => !detectedFlowTypes.includes(flowType));
+    const checkpointId = "cp_001";
+    const checkpointStepKey = `discovery_${checkpointId}`;
+    const artifactDrafts = await createDiscoveryArtifactDrafts(page, checkpointStepKey, payload.viewport);
 
     return {
-      schema_version: "0.5",
-      discovery_id: payload.discoveryId,
-      input_url: payload.url,
-      final_url: finalUrl,
-      environment: {
-        device: payload.devicePreset,
-        viewport: payload.viewport,
-        locale,
-        timezone
+      result: {
+        schema_version: "0.5",
+        discovery_id: payload.discoveryId,
+        input_url: payload.url,
+        final_url: finalUrl,
+        environment: {
+          device: payload.devicePreset,
+          viewport: payload.viewport,
+          locale,
+          timezone
+        },
+        checkpoints: [
+          {
+            checkpoint_id: checkpointId,
+            step_key: checkpointStepKey,
+            stage: "FIRST_VIEW",
+            state: {
+              page: {
+                title,
+                url: finalUrl,
+                ready_state: await readReadyState(page)
+              }
+            },
+            observations: observations.map((observation) => observation.payload),
+            artifact_refs: artifactDrafts.map((artifact) => artifact.artifactId)
+          }
+        ],
+        detected_flow_types: detectedFlowTypes,
+        missing_flow_types: missingFlowTypes,
+        flow_candidates: createFlowCandidates(candidates, evidenceRefByCandidate, missingFlowTypes),
+        scenario_recommendations: createScenarioRecommendations(
+          candidates,
+          evidenceRefByCandidate,
+          detectedFlowTypes,
+          missingFlowTypes,
+          finalUrl
+        ),
+        collection_notes: [
+          `Discovery collected ${candidates.length} candidate(s) after ${payload.maxScrollCount} limited scroll(s).`
+        ]
       },
-      checkpoints: [
-        {
-          checkpoint_id: "cp_001",
-          stage: "FIRST_VIEW",
-          state: {
-            page: {
-              title,
-              url: finalUrl,
-              ready_state: await readReadyState(page)
-            }
-          },
-          observations: observations.map((observation) => observation.payload),
-          artifact_refs: []
-        }
-      ],
-      detected_flow_types: detectedFlowTypes,
-      missing_flow_types: missingFlowTypes,
-      flow_candidates: createFlowCandidates(candidates, evidenceRefByCandidate, missingFlowTypes),
-      scenario_recommendations: createScenarioRecommendations(
-        candidates,
-        evidenceRefByCandidate,
-        detectedFlowTypes,
-        missingFlowTypes,
-        finalUrl
-      ),
-      collection_notes: [
-        `Discovery collected ${candidates.length} candidate(s) after ${payload.maxScrollCount} limited scroll(s).`
-      ]
+      artifactDraftsByCheckpointId: new Map([[checkpointId, artifactDrafts]])
     };
   } finally {
     await browser.close();
@@ -188,11 +208,21 @@ export async function executeDiscoveryAndPersist(input: ExecuteDiscoveryInput): 
       browserSessionId
     });
 
-    const result = await executeDiscovery(input);
-    const resultFile = createDiscoveryResultFilePath(input.config, result.discovery_id);
-    await writeDiscoveryResult(resultFile, result);
+    const collection = await executeDiscoveryForPersistence(input);
+    const artifactStore = input.artifactStore ?? createArtifactStore(input.config);
+    const storedArtifactsByCheckpointId = await persistDiscoveryArtifacts(
+      artifactStore,
+      collection.result.discovery_id,
+      collection.artifactDraftsByCheckpointId
+    );
+    const resultFile = createDiscoveryResultFilePath(input.config, collection.result.discovery_id);
+    await writeDiscoveryResult(resultFile, collection.result);
 
-    for (const checkpoint of createDiscoveryCheckpointRequests(result, input.config.workerId)) {
+    for (const checkpoint of createDiscoveryCheckpointRequests(
+      collection.result,
+      input.config.workerId,
+      storedArtifactsByCheckpointId
+    )) {
       await input.callbackClient?.sendDiscoveryCheckpoints?.(input.message.payload.discoveryId, checkpoint);
     }
 
@@ -200,13 +230,13 @@ export async function executeDiscoveryAndPersist(input: ExecuteDiscoveryInput): 
       eventId: randomUUID(),
       workerId: input.config.workerId,
       finishedAt: new Date().toISOString(),
-      finalUrl: result.final_url,
-      summary: createDiscoverySummaryPayload(result)
+      finalUrl: collection.result.final_url,
+      summary: createDiscoverySummaryPayload(collection.result)
     });
 
     return {
-      discoveryId: result.discovery_id,
-      result,
+      discoveryId: collection.result.discovery_id,
+      result: collection.result,
       resultFile
     };
   } catch (error) {
@@ -245,11 +275,14 @@ export function createDiscoverySummaryPayload(result: SiteDiscoveryResult): Disc
 
 export function createDiscoveryCheckpointRequests(
   result: SiteDiscoveryResult,
-  workerId: string
+  workerId: string,
+  storedArtifactsByCheckpointId: Map<string, Artifact[]> = new Map()
 ): DiscoveryCheckpointRequest[] {
   return result.checkpoints.map((checkpoint, index) => {
     const checkpointId = readString(checkpoint, "checkpoint_id", `cp_${String(index + 1).padStart(3, "0")}`);
     const durationMs = readNumber(checkpoint, "duration_ms") ?? readSettleDuration(checkpoint);
+    const storedArtifacts = storedArtifactsByCheckpointId.get(checkpointId) ?? [];
+    const callbackArtifacts = storedArtifacts.map(toDiscoveryCallbackArtifact);
 
     return {
       eventId: randomUUID(),
@@ -267,12 +300,87 @@ export function createDiscoveryCheckpointRequests(
         state: readRecord(checkpoint, "state", {}),
         observations: readRecordArray(checkpoint, "observations"),
         deltas: readRecordArray(checkpoint, "deltas"),
-        artifactRefs: readStringArray(checkpoint, "artifact_refs")
+        artifactRefs: callbackArtifacts.length > 0
+          ? callbackArtifacts.map((artifact) => String(artifact.artifactId))
+          : readStringArray(checkpoint, "artifact_refs")
       },
-      artifacts: readRecordArray(checkpoint, "artifacts"),
+      artifacts: callbackArtifacts.length > 0 ? callbackArtifacts : readRecordArray(checkpoint, "artifacts"),
       observations: []
     };
   });
+}
+
+function toDiscoveryCallbackArtifact(artifact: Artifact): Record<string, unknown> {
+  return {
+    artifactId: artifact.artifactId,
+    artifactType: artifact.artifactType,
+    bucket: artifact.bucket,
+    key: artifact.key,
+    mimeType: artifact.mimeType,
+    width: artifact.width,
+    height: artifact.height,
+    sizeBytes: artifact.sizeBytes,
+    sha256: artifact.sha256,
+    createdAt: artifact.createdAt,
+    stepKey: artifact.stepKey
+  };
+}
+
+async function persistDiscoveryArtifacts(
+  artifactStore: ArtifactStore,
+  discoveryId: string,
+  artifactDraftsByCheckpointId: Map<string, ArtifactDraft[]>
+): Promise<Map<string, Artifact[]>> {
+  const storedArtifactsByCheckpointId = new Map<string, Artifact[]>();
+
+  for (const [checkpointId, artifacts] of artifactDraftsByCheckpointId) {
+    if (artifacts.length === 0) {
+      continue;
+    }
+
+    storedArtifactsByCheckpointId.set(
+      checkpointId,
+      await artifactStore.persistArtifacts({
+        runId: discoveryId,
+        artifacts
+      })
+    );
+  }
+
+  return storedArtifactsByCheckpointId;
+}
+
+async function createDiscoveryArtifactDrafts(
+  page: Page,
+  stepKey: string,
+  viewport: { width: number; height: number }
+): Promise<ArtifactDraft[]> {
+  const [screenshotBuffer, domSnapshot] = await Promise.all([
+    page.screenshot({ type: "png" }),
+    page.content()
+  ]);
+
+  return [
+    {
+      artifactId: randomUUID(),
+      artifactType: "SCREENSHOT",
+      stepKey,
+      mimeType: "image/png",
+      fileExtension: "png",
+      content: screenshotBuffer.toString("base64"),
+      contentEncoding: "base64",
+      width: viewport.width,
+      height: viewport.height
+    },
+    {
+      artifactId: randomUUID(),
+      artifactType: "DOM_SNAPSHOT",
+      stepKey,
+      mimeType: "text/html",
+      fileExtension: "html",
+      content: domSnapshot
+    }
+  ];
 }
 
 export async function writeDiscoveryResult(resultFile: string, result: SiteDiscoveryResult): Promise<void> {

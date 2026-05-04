@@ -61,10 +61,12 @@ test("createRunnerApp processes discovery message files and writes SiteDiscovery
     assert.match(result.discovery.resultFile, /site-discovery-result\.json$/);
 
     const persisted = JSON.parse(await readFile(result.discovery.resultFile, "utf8")) as {
+      checkpoints?: Array<{ artifact_refs?: string[] }>;
       detected_flow_types?: string[];
       scenario_recommendations?: Array<{ scenario_type?: string; suggested_target?: Record<string, unknown> | null }>;
     };
 
+    assert.equal(persisted.checkpoints?.[0]?.artifact_refs?.length, 2);
     assert.ok(persisted.detected_flow_types?.includes("LANDING_CTA"));
     assert.ok(persisted.detected_flow_types?.includes("SIGNUP_LEAD_FORM"));
     assert.ok(persisted.detected_flow_types?.includes("PRICING"));
@@ -155,9 +157,20 @@ test("createRunnerApp sends discovery accepted, checkpoint, and finished callbac
     assert.equal((checkpointBody.checkpoint?.state?.page as { title?: string } | undefined)?.title, "Discovery Entrypoint Fixture");
     assert.ok(checkpointBody.checkpoint?.observations?.some((observation) => observation.type === "cta_candidate"));
     assert.deepEqual(checkpointBody.checkpoint?.deltas, []);
-    assert.deepEqual(checkpointBody.checkpoint?.artifactRefs, []);
-    assert.deepEqual(checkpointBody.artifacts, []);
+    assert.equal(checkpointBody.checkpoint?.artifactRefs?.length, 2);
+    assert.equal(checkpointBody.artifacts?.length, 2);
+    assert.deepEqual(
+      checkpointBody.checkpoint?.artifactRefs,
+      checkpointBody.artifacts?.map((artifact) => artifact.artifactId)
+    );
+    assert.deepEqual(checkpointBody.artifacts?.map((artifact) => artifact.artifactType), ["SCREENSHOT", "DOM_SNAPSHOT"]);
     assert.deepEqual(checkpointBody.observations, []);
+
+    const artifactFiles = await readdir(artifactsRoot, {
+      recursive: true
+    });
+    assert.ok(artifactFiles.some((path) => String(path).endsWith("-screenshot.png")));
+    assert.ok(artifactFiles.some((path) => String(path).endsWith("-dom_snapshot.html")));
   } finally {
     await callbackServer.close();
     await rm(artifactsRoot, {
