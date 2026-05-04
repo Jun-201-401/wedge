@@ -1,0 +1,256 @@
+{
+  "schema_version": "0.5",
+  "authoring_job_id": "authoring_job_001",
+  "project_id": "project_001",
+  "source_discovery_id": "disc_123",
+  "correlation_id": "corr_authoring_001",
+  "idempotency_key": "idem_authoring_001",
+  "status": "SUCCEEDED",
+  "input": {
+    "site_discovery_result": {
+      "schema_version": "0.5",
+      "discovery_id": "disc_123",
+      "input_url": "https://example.com",
+      "final_url": "https://example.com",
+      "environment": {
+        "device": "desktop",
+        "viewport": {
+          "width": 1440,
+          "height": 900
+        },
+        "locale": "ko-KR",
+        "timezone": "Asia/Seoul"
+      },
+      "checkpoints": [
+        {
+          "checkpoint_id": "cp_001",
+          "step_key": "discovery_cp_001",
+          "stage": "FIRST_VIEW"
+        }
+      ],
+      "detected_flow_types": [
+        "SIGNUP_LEAD_FORM"
+      ],
+      "scenario_recommendations": [
+        {
+          "scenario_type": "SIGNUP_LEAD_FORM",
+          "recommendation_level": "HIGH",
+          "confidence": 0.84,
+          "reason": "Signup CTA and form entrypoint were detected.",
+          "evidence_refs": [
+            "cp_001.obs_002"
+          ],
+          "suggested_start_url": "https://example.com",
+          "suggested_target": {
+            "selector": "#signup-form",
+            "text": "Start free"
+          }
+        }
+      ]
+    },
+    "requested_goal": "회원가입 CTA와 폼 입력 직전까지의 흐름을 점검한다.",
+    "preferred_scenario_type": "SIGNUP_LEAD_FORM",
+    "selected_recommendation": {
+      "scenario_type": "SIGNUP_LEAD_FORM",
+      "recommendation_level": "HIGH",
+      "confidence": 0.84,
+      "evidence_refs": [
+        "cp_001.obs_002"
+      ],
+      "suggested_start_url": "https://example.com",
+      "suggested_target": {
+        "selector": "#signup-form",
+        "text": "Start free"
+      }
+    },
+    "constraints": {
+      "do_not_submit_real_forms": true
+    },
+    "environment": {
+      "device": "desktop",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "locale": "ko-KR",
+      "timezone": "Asia/Seoul",
+      "auth_state": "anonymous"
+    },
+    "safety": {
+      "allow_external_navigation": false,
+      "allow_payment_commit": false,
+      "allow_destructive_action": false,
+      "use_synthetic_inputs": true,
+      "stop_before_real_payment": true
+    }
+  },
+  "provider_policy": {
+    "allowed_provider_types": [
+      "CODEX",
+      "CLAUDE_CODE",
+      "INTERNAL_LLM",
+      "RULE_BASED"
+    ],
+    "provider_order": [
+      "CODEX",
+      "CLAUDE_CODE",
+      "INTERNAL_LLM",
+      "RULE_BASED"
+    ],
+    "timeout_ms": 60000,
+    "fallback_allowed": true,
+    "approval_required": true,
+    "max_attempts": 2
+  },
+  "provider_trace": [
+    {
+      "provider_type": "CODEX",
+      "provider_name": "codex_mcp_scenario_author",
+      "provider_version": "scenario-authoring-v1",
+      "model_or_agent": "codex",
+      "status": "SUCCEEDED",
+      "confidence": 0.82,
+      "fallback_reason": null,
+      "started_at": "2026-05-04T08:10:05Z",
+      "finished_at": "2026-05-04T08:10:26Z"
+    }
+  ],
+  "candidates": [
+    {
+      "candidate_id": "candidate_signup_001",
+      "scenario_plan": {
+        "schema_version": "0.5",
+        "plan_id": "custom_signup_from_discovery_001",
+        "scenario_type": "custom_compiled",
+        "template_key": "signup-form",
+        "goal": "회원가입 CTA와 폼 입력 직전까지의 흐름을 점검한다.",
+        "start_url": "https://example.com",
+        "source_discovery_id": "disc_123",
+        "environment": {
+          "device": "desktop",
+          "viewport": {
+            "width": 1440,
+            "height": 900
+          },
+          "locale": "ko-KR",
+          "timezone": "Asia/Seoul",
+          "permissions": [],
+          "auth_state": "anonymous"
+        },
+        "safety": {
+          "allow_external_navigation": false,
+          "allow_payment_commit": false,
+          "allow_destructive_action": false,
+          "use_synthetic_inputs": true,
+          "stop_before_real_payment": true
+        },
+        "fit_requirements": {
+          "required_flow_type": "SIGNUP_LEAD_FORM",
+          "required_entrypoint_types": [
+            "cta",
+            "form"
+          ],
+          "fallback_allowed": true,
+          "minimum_confidence": 0.6,
+          "required_evidence_refs": [
+            "cp_001.obs_002"
+          ]
+        },
+        "steps": [
+          {
+            "step_id": "authoring_001_goto",
+            "stage": "FIRST_VIEW",
+            "description": "Discovery에서 확인한 시작 URL에 진입한다.",
+            "action": {
+              "type": "goto",
+              "target": "https://example.com"
+            },
+            "settle_strategy": {
+              "type": "network_idle",
+              "timeout_ms": 3000
+            },
+            "checkpoint": true
+          },
+          {
+            "step_id": "authoring_002_click_signup_cta",
+            "stage": "CTA",
+            "description": "추천된 회원가입 CTA를 클릭한다.",
+            "action": {
+              "type": "click",
+              "target": {
+                "selector": "#signup-form",
+                "text": "Start free"
+              }
+            },
+            "settle_strategy": {
+              "type": "locator_visible",
+              "target": {
+                "selector_any": [
+                  "#signup-form form",
+                  "form",
+                  "input[type=email]"
+                ]
+              },
+              "timeout_ms": 2000
+            },
+            "checkpoint": true
+          },
+          {
+            "step_id": "authoring_003_stop_before_submit",
+            "stage": "COMMIT",
+            "description": "실제 제출 전에 중단 가능한 상태를 기록한다.",
+            "action": {
+              "type": "stop_when"
+            },
+            "settle_strategy": {
+              "type": "none",
+              "timeout_ms": 0
+            },
+            "checkpoint": false,
+            "stop_condition": {
+              "before_real_submit": true
+            }
+          }
+        ]
+      },
+      "confidence": 0.82,
+      "rationale": "Discovery evidence shows a signup CTA and form entrypoint; the candidate stops before real submit.",
+      "evidence_refs": [
+        "cp_001.obs_002"
+      ],
+      "source_recommendation_refs": [
+        "disc_123.recommendation.SIGNUP_LEAD_FORM"
+      ],
+      "validation": {
+        "schema_valid": true,
+        "safety_valid": true,
+        "fit_requirements_valid": true,
+        "errors": [],
+        "warnings": []
+      }
+    }
+  ],
+  "validation": {
+    "schema_valid": true,
+    "safety_valid": true,
+    "fit_requirements_valid": true,
+    "errors": [],
+    "warnings": []
+  },
+  "provenance": {
+    "source_discovery_id": "disc_123",
+    "source_recommendation_refs": [
+      "disc_123.recommendation.SIGNUP_LEAD_FORM"
+    ],
+    "source_evidence_refs": [
+      "cp_001.obs_002"
+    ],
+    "prompt_version": "scenario-authoring-v1",
+    "input_summary": "Signup CTA and form entrypoint detected during discovery.",
+    "generated_at": "2026-05-04T08:10:26Z"
+  },
+  "failure": null,
+  "created_at": "2026-05-04T08:10:00Z",
+  "updated_at": "2026-05-04T08:10:26Z",
+  "expires_at": "2026-05-04T08:20:00Z"
+}

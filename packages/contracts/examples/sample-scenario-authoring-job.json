@@ -1,0 +1,165 @@
+{
+  "schema_version": "0.5",
+  "authoring_job_id": "authoring_job_001",
+  "project_id": "project_001",
+  "source_discovery_id": "disc_123",
+  "correlation_id": "corr_authoring_001",
+  "idempotency_key": "idem_authoring_001",
+  "status": "QUEUED",
+  "input": {
+    "site_discovery_result": {
+      "schema_version": "0.5",
+      "discovery_id": "disc_123",
+      "input_url": "https://example.com",
+      "final_url": "https://example.com",
+      "environment": {
+        "device": "desktop",
+        "viewport": {
+          "width": 1440,
+          "height": 900
+        },
+        "locale": "ko-KR",
+        "timezone": "Asia/Seoul"
+      },
+      "checkpoints": [
+        {
+          "checkpoint_id": "cp_001",
+          "step_key": "discovery_cp_001",
+          "stage": "FIRST_VIEW"
+        }
+      ],
+      "detected_flow_types": [
+        "LANDING_CTA",
+        "SIGNUP_LEAD_FORM"
+      ],
+      "missing_flow_types": [
+        "PURCHASE_CHECKOUT"
+      ],
+      "flow_candidates": [
+        {
+          "flow_type": "SIGNUP_LEAD_FORM",
+          "confidence": 0.84,
+          "evidence_refs": [
+            "cp_001.obs_002"
+          ],
+          "entrypoint_candidates": [
+            {
+              "entrypoint_type": "form",
+              "label": "Start free",
+              "url": "https://example.com/#signup-form",
+              "selector": "#signup-form",
+              "confidence": 0.84,
+              "evidence_refs": [
+                "cp_001.obs_002"
+              ]
+            }
+          ],
+          "reason": "Signup CTA and form entrypoint were detected."
+        }
+      ],
+      "scenario_recommendations": [
+        {
+          "scenario_type": "SIGNUP_LEAD_FORM",
+          "recommendation_level": "HIGH",
+          "confidence": 0.84,
+          "reason": "Signup CTA and form entrypoint were detected.",
+          "evidence_refs": [
+            "cp_001.obs_002"
+          ],
+          "suggested_start_url": "https://example.com",
+          "suggested_target": {
+            "selector": "#signup-form",
+            "text": "Start free"
+          }
+        }
+      ],
+      "collection_notes": [
+        "Sample authoring input keeps discovery payload compact."
+      ]
+    },
+    "requested_goal": "회원가입 CTA와 폼 입력 직전까지의 흐름을 점검한다.",
+    "preferred_scenario_type": "SIGNUP_LEAD_FORM",
+    "selected_recommendation": {
+      "scenario_type": "SIGNUP_LEAD_FORM",
+      "recommendation_level": "HIGH",
+      "confidence": 0.84,
+      "evidence_refs": [
+        "cp_001.obs_002"
+      ],
+      "suggested_start_url": "https://example.com",
+      "suggested_target": {
+        "selector": "#signup-form",
+        "text": "Start free"
+      }
+    },
+    "constraints": {
+      "do_not_submit_real_forms": true
+    },
+    "environment": {
+      "device": "desktop",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "locale": "ko-KR",
+      "timezone": "Asia/Seoul",
+      "auth_state": "anonymous"
+    },
+    "safety": {
+      "allow_external_navigation": false,
+      "allow_payment_commit": false,
+      "allow_destructive_action": false,
+      "use_synthetic_inputs": true,
+      "stop_before_real_payment": true
+    }
+  },
+  "provider_policy": {
+    "allowed_provider_types": [
+      "CODEX",
+      "CLAUDE_CODE",
+      "INTERNAL_LLM",
+      "RULE_BASED"
+    ],
+    "provider_order": [
+      "CODEX",
+      "CLAUDE_CODE",
+      "INTERNAL_LLM",
+      "RULE_BASED"
+    ],
+    "timeout_ms": 60000,
+    "fallback_allowed": true,
+    "approval_required": true,
+    "max_attempts": 2
+  },
+  "provider_trace": [],
+  "candidates": [],
+  "validation": {
+    "schema_valid": false,
+    "safety_valid": false,
+    "fit_requirements_valid": false,
+    "errors": [],
+    "warnings": [
+      {
+        "code": "authoring_pending",
+        "message": "No provider has submitted a compiled ScenarioPlan candidate yet.",
+        "path": "$.candidates"
+      }
+    ]
+  },
+  "provenance": {
+    "source_discovery_id": "disc_123",
+    "source_recommendation_refs": [
+      "disc_123.recommendation.SIGNUP_LEAD_FORM"
+    ],
+    "source_evidence_refs": [
+      "cp_001.obs_002"
+    ],
+    "prompt_version": null,
+    "input_summary": "Signup CTA and form entrypoint detected during discovery.",
+    "generated_at": "2026-05-04T08:10:00Z"
+  },
+  "failure": null,
+  "created_at": "2026-05-04T08:10:00Z",
+  "updated_at": "2026-05-04T08:10:00Z",
+  "expires_at": "2026-05-04T08:20:00Z"
+}

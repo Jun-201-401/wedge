@@ -1,0 +1,493 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wedge.example.com/contracts/schemas/scenario-authoring.schema.json",
+  "title": "Wedge ScenarioAuthoring",
+  "description": "Contract for asynchronous ScenarioAuthoring jobs that transform Discovery output and user intent into validated ScenarioPlan candidates. ScenarioPlan remains the only executable browser step DSL.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "authoring_job_id",
+    "project_id",
+    "source_discovery_id",
+    "status",
+    "input",
+    "provider_policy",
+    "validation",
+    "provenance",
+    "created_at",
+    "updated_at"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "0.5"
+    },
+    "authoring_job_id": {
+      "type": "string",
+      "description": "Stable ScenarioAuthoring job identifier. UUID is preferred, but test fixtures may use stable string IDs."
+    },
+    "project_id": {
+      "type": "string"
+    },
+    "source_discovery_id": {
+      "type": "string",
+      "description": "Discovery/Preflight execution that produced the SiteDiscoveryResult used by this authoring job."
+    },
+    "correlation_id": {
+      "type": "string"
+    },
+    "idempotency_key": {
+      "type": ["string", "null"]
+    },
+    "status": {
+      "$ref": "#/$defs/authoring_status"
+    },
+    "input": {
+      "$ref": "#/$defs/authoring_input"
+    },
+    "provider_policy": {
+      "$ref": "#/$defs/provider_policy"
+    },
+    "provider_trace": {
+      "type": "array",
+      "description": "Ordered provider attempts. Include fallback attempts and failure reasons without exposing raw prompts or secrets.",
+      "items": {
+        "$ref": "#/$defs/provider_trace_entry"
+      },
+      "default": []
+    },
+    "candidates": {
+      "type": "array",
+      "description": "Compiled ScenarioPlan candidates. This field must not introduce another executable DSL.",
+      "items": {
+        "$ref": "#/$defs/authoring_candidate"
+      },
+      "default": []
+    },
+    "validation": {
+      "$ref": "#/$defs/authoring_validation"
+    },
+    "provenance": {
+      "$ref": "#/$defs/authoring_provenance"
+    },
+    "failure": {
+      "$ref": "#/$defs/authoring_failure"
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "expires_at": {
+      "type": ["string", "null"],
+      "format": "date-time"
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "authoring_status": {
+      "type": "string",
+      "enum": [
+        "CREATED",
+        "QUEUED",
+        "RUNNING",
+        "SUCCEEDED",
+        "FAILED",
+        "CANCELED",
+        "EXPIRED"
+      ]
+    },
+    "provider_type": {
+      "type": "string",
+      "enum": [
+        "CODEX",
+        "CLAUDE_CODE",
+        "INTERNAL_LLM",
+        "RULE_BASED",
+        "SERVICE_ACCOUNT",
+        "OTHER"
+      ]
+    },
+    "flow_type": {
+      "enum": [
+        "LANDING_CTA",
+        "SIGNUP_LEAD_FORM",
+        "PRICING",
+        "PURCHASE_CHECKOUT",
+        "CONTACT",
+        "CONTENT_ONLY"
+      ]
+    },
+    "entrypoint_type": {
+      "enum": [
+        "cta",
+        "form",
+        "pricing",
+        "checkout",
+        "cart",
+        "signup",
+        "contact",
+        "content"
+      ]
+    },
+    "authoring_input": {
+      "type": "object",
+      "required": [
+        "site_discovery_result",
+        "requested_goal",
+        "environment",
+        "safety"
+      ],
+      "properties": {
+        "site_discovery_result": {
+          "$ref": "site-discovery-result.schema.json"
+        },
+        "requested_goal": {
+          "type": "string",
+          "minLength": 1
+        },
+        "preferred_scenario_type": {
+          "$ref": "#/$defs/flow_type"
+        },
+        "selected_recommendation": {
+          "$ref": "#/$defs/selected_recommendation"
+        },
+        "constraints": {
+          "type": "object",
+          "description": "User or product constraints for authoring. This is not executable browser action input.",
+          "additionalProperties": true
+        },
+        "environment": {
+          "$ref": "#/$defs/scenario_environment_hint"
+        },
+        "safety": {
+          "$ref": "#/$defs/scenario_safety_hint"
+        }
+      },
+      "additionalProperties": false
+    },
+    "selected_recommendation": {
+      "type": ["object", "null"],
+      "required": [
+        "scenario_type",
+        "recommendation_level",
+        "confidence",
+        "evidence_refs"
+      ],
+      "properties": {
+        "scenario_type": {
+          "$ref": "#/$defs/flow_type"
+        },
+        "recommendation_level": {
+          "enum": ["HIGH", "MEDIUM", "LOW", "NOT_AVAILABLE"]
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "evidence_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "suggested_start_url": {
+          "type": ["string", "null"],
+          "format": "uri"
+        },
+        "suggested_target": {
+          "type": ["object", "null"]
+        }
+      },
+      "additionalProperties": false
+    },
+    "scenario_environment_hint": {
+      "type": "object",
+      "required": ["device", "viewport", "locale", "timezone", "auth_state"],
+      "properties": {
+        "device": {
+          "enum": ["desktop", "mobile", "tablet"]
+        },
+        "viewport": {
+          "type": "object",
+          "required": ["width", "height"],
+          "properties": {
+            "width": {
+              "type": "integer",
+              "minimum": 320
+            },
+            "height": {
+              "type": "integer",
+              "minimum": 480
+            }
+          },
+          "additionalProperties": false
+        },
+        "locale": {
+          "type": "string"
+        },
+        "timezone": {
+          "type": "string"
+        },
+        "auth_state": {
+          "enum": ["anonymous", "test_account", "stored_state"]
+        }
+      },
+      "additionalProperties": true
+    },
+    "scenario_safety_hint": {
+      "type": "object",
+      "required": [
+        "allow_external_navigation",
+        "allow_payment_commit",
+        "allow_destructive_action",
+        "use_synthetic_inputs"
+      ],
+      "properties": {
+        "allow_external_navigation": {
+          "type": "boolean"
+        },
+        "allow_payment_commit": {
+          "type": "boolean"
+        },
+        "allow_destructive_action": {
+          "type": "boolean"
+        },
+        "use_synthetic_inputs": {
+          "type": "boolean"
+        },
+        "stop_before_real_payment": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "provider_policy": {
+      "type": "object",
+      "required": [
+        "allowed_provider_types",
+        "provider_order",
+        "timeout_ms",
+        "fallback_allowed",
+        "approval_required"
+      ],
+      "properties": {
+        "allowed_provider_types": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/provider_type"
+          }
+        },
+        "provider_order": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/provider_type"
+          }
+        },
+        "timeout_ms": {
+          "type": "integer",
+          "minimum": 1000
+        },
+        "fallback_allowed": {
+          "type": "boolean"
+        },
+        "approval_required": {
+          "type": "boolean",
+          "description": "Whether a human or trusted service must confirm a candidate before Run materialization."
+        },
+        "max_attempts": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "provider_trace_entry": {
+      "type": "object",
+      "required": ["provider_type", "provider_name", "status", "started_at"],
+      "properties": {
+        "provider_type": {
+          "$ref": "#/$defs/provider_type"
+        },
+        "provider_name": {
+          "type": "string"
+        },
+        "provider_version": {
+          "type": ["string", "null"]
+        },
+        "model_or_agent": {
+          "type": ["string", "null"]
+        },
+        "status": {
+          "enum": ["STARTED", "SUCCEEDED", "FAILED", "TIMED_OUT", "SKIPPED"]
+        },
+        "confidence": {
+          "type": ["number", "null"],
+          "minimum": 0,
+          "maximum": 1
+        },
+        "fallback_reason": {
+          "type": ["string", "null"]
+        },
+        "started_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "finished_at": {
+          "type": ["string", "null"],
+          "format": "date-time"
+        }
+      },
+      "additionalProperties": false
+    },
+    "authoring_candidate": {
+      "type": "object",
+      "required": [
+        "candidate_id",
+        "scenario_plan",
+        "confidence",
+        "rationale",
+        "evidence_refs",
+        "validation"
+      ],
+      "properties": {
+        "candidate_id": {
+          "type": "string"
+        },
+        "scenario_plan": {
+          "$ref": "scenario-plan.schema.json"
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "rationale": {
+          "type": "string"
+        },
+        "evidence_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "source_recommendation_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        },
+        "validation": {
+          "$ref": "#/$defs/authoring_validation"
+        }
+      },
+      "additionalProperties": false
+    },
+    "authoring_validation": {
+      "type": "object",
+      "required": ["schema_valid", "safety_valid", "fit_requirements_valid", "errors", "warnings"],
+      "properties": {
+        "schema_valid": {
+          "type": "boolean"
+        },
+        "safety_valid": {
+          "type": "boolean"
+        },
+        "fit_requirements_valid": {
+          "type": "boolean"
+        },
+        "errors": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/validation_issue"
+          }
+        },
+        "warnings": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/validation_issue"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "validation_issue": {
+      "type": "object",
+      "required": ["code", "message"],
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "path": {
+          "type": ["string", "null"]
+        },
+        "evidence_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        }
+      },
+      "additionalProperties": false
+    },
+    "authoring_provenance": {
+      "type": "object",
+      "required": ["source_evidence_refs", "generated_at"],
+      "properties": {
+        "source_discovery_id": {
+          "type": "string"
+        },
+        "source_recommendation_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        },
+        "source_evidence_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "prompt_version": {
+          "type": ["string", "null"]
+        },
+        "input_summary": {
+          "type": "string"
+        },
+        "generated_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "additionalProperties": false
+    },
+    "authoring_failure": {
+      "type": ["object", "null"],
+      "required": ["failure_code", "failure_message"],
+      "properties": {
+        "failure_code": {
+          "type": "string"
+        },
+        "failure_message": {
+          "type": "string"
+        },
+        "provider_type": {
+          "$ref": "#/$defs/provider_type"
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

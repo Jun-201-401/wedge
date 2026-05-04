@@ -5,7 +5,7 @@ Canonical machine-readable contracts belong here. Human-readable design rational
 ## Directory roles
 
 - `openapi/`: REST API contract for public `/api` endpoints and internal callback surfaces.
-- `schemas/`: JSON Schema contracts for domain payloads such as ScenarioPlan, SiteDiscoveryResult, EvidencePacket, RuleRegistry, JudgeResult, and SemanticClassification.
+- `schemas/`: JSON Schema contracts for domain payloads such as ScenarioPlan, SiteDiscoveryResult, ScenarioAuthoring, EvidencePacket, RuleRegistry, JudgeResult, and SemanticClassification.
 - `examples/`: sample payloads that should conform to schemas and can be reused as fixtures/mock data.
 - `mq/`: RabbitMQ canonical message envelope plus thin task-specific payload entrypoints.
 - `websocket/`: live event envelope and event variant schemas.
@@ -19,6 +19,7 @@ Canonical machine-readable contracts belong here. Human-readable design rational
 - `openapi/wedge_openapi.yaml`: public REST and internal callback OpenAPI draft
 - `schemas/scenario-plan.schema.json`: executable browser scenario plan contract
 - `schemas/site-discovery-result.schema.json`: Site Discovery / Preflight result and recommendation contract
+- `schemas/scenario-authoring.schema.json`: asynchronous ScenarioAuthoring job/result contract for producing validated ScenarioPlan candidates from Discovery evidence
 - `schemas/evidence-packet.schema.json`: checkpoint-centered evidence packet contract
 - `schemas/rule-registry.schema.json`: rule registry contract for analyzer criteria
 - `schemas/judge-result.schema.json`: analyzer/judge output contract
@@ -28,6 +29,8 @@ Canonical machine-readable contracts belong here. Human-readable design rational
 - `examples/sample-scenario-plan-signup-form.json`: MVP signup form ScenarioPlan fixture
 - `examples/sample-scenario-plan-pricing-checkout.json`: MVP pricing checkout ScenarioPlan fixture
 - `examples/sample-site-discovery-result.json`: SiteDiscoveryResult fixture
+- `examples/sample-scenario-authoring-job.json`: queued ScenarioAuthoring job fixture
+- `examples/sample-scenario-authoring-result.json`: completed ScenarioAuthoring result fixture with a `custom_compiled` ScenarioPlan candidate
 - `examples/sample-evidence-packet.json`: EvidencePacket fixture
 - `examples/sample-run-artifacts-response.json`: prototype REST fixture for `GET /api/runs/{runId}/artifacts`
 - `examples/sample-run-evidence-packet-response.json`: prototype REST fixture for `GET /api/runs/{runId}/evidence-packet`
@@ -43,7 +46,7 @@ Canonical machine-readable contracts belong here. Human-readable design rational
 - `websocket/events.schema.json`: live event envelope and event variants
 - `internal/runner-callback.schema.json`: runner callback payload definitions
 - `internal/analyzer-callback.schema.json`: analyzer callback payload definitions
-- `mcp/tools.schema.json`: MCP tool metadata contract
+- `mcp/tools.schema.json`: MCP tool metadata contract, including asynchronous ScenarioAuthoring job/result tools
 - `enums/run-status.json`: shared lifecycle enums
 - `types/runner.ts`: TypeScript mirror for ScenarioPlan, MQ run request, and runner callback payloads
 

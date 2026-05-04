@@ -78,6 +78,7 @@ export interface ScenarioPlan {
   template_key?: string;
   goal: string;
   start_url: string;
+  source_discovery_id?: string | null;
   environment: {
     device: "desktop" | "mobile" | "tablet";
     viewport: {
@@ -98,6 +99,13 @@ export interface ScenarioPlan {
     use_synthetic_inputs: boolean;
     stop_before_real_payment?: boolean;
   };
+  fit_requirements?: {
+    required_flow_type: DiscoveryFlowType;
+    required_entrypoint_types: DiscoveryEntrypointType[];
+    fallback_allowed: boolean;
+    minimum_confidence?: number;
+    required_evidence_refs?: string[];
+  } | null;
   steps: ScenarioStep[];
 }
 
@@ -216,6 +224,123 @@ export interface SiteDiscoveryResult {
   flow_candidates?: DiscoveryFlowCandidate[];
   scenario_recommendations: DiscoveryScenarioRecommendation[];
   collection_notes?: string[];
+}
+
+export type ScenarioAuthoringStatus =
+  | "CREATED"
+  | "QUEUED"
+  | "RUNNING"
+  | "SUCCEEDED"
+  | "FAILED"
+  | "CANCELED"
+  | "EXPIRED";
+
+export type ScenarioAuthoringProviderType =
+  | "CODEX"
+  | "CLAUDE_CODE"
+  | "INTERNAL_LLM"
+  | "RULE_BASED"
+  | "SERVICE_ACCOUNT"
+  | "OTHER";
+
+export interface ScenarioAuthoringSelectedRecommendation {
+  scenario_type: DiscoveryFlowType;
+  recommendation_level: DiscoveryRecommendationLevel;
+  confidence: number;
+  evidence_refs: string[];
+  suggested_start_url?: string | null;
+  suggested_target?: TargetDescriptorMap | null;
+}
+
+export interface ScenarioAuthoringInput {
+  site_discovery_result: SiteDiscoveryResult;
+  requested_goal: string;
+  preferred_scenario_type?: DiscoveryFlowType;
+  selected_recommendation?: ScenarioAuthoringSelectedRecommendation | null;
+  constraints?: Record<string, unknown>;
+  environment: ScenarioPlan["environment"];
+  safety: ScenarioPlan["safety"];
+}
+
+export interface ScenarioAuthoringProviderPolicy {
+  allowed_provider_types: ScenarioAuthoringProviderType[];
+  provider_order: ScenarioAuthoringProviderType[];
+  timeout_ms: number;
+  fallback_allowed: boolean;
+  approval_required: boolean;
+  max_attempts?: number;
+}
+
+export interface ScenarioAuthoringProviderTraceEntry {
+  provider_type: ScenarioAuthoringProviderType;
+  provider_name: string;
+  provider_version?: string | null;
+  model_or_agent?: string | null;
+  status: "STARTED" | "SUCCEEDED" | "FAILED" | "TIMED_OUT" | "SKIPPED";
+  confidence?: number | null;
+  fallback_reason?: string | null;
+  started_at: string;
+  finished_at?: string | null;
+}
+
+export interface ScenarioAuthoringValidationIssue {
+  code: string;
+  message: string;
+  path?: string | null;
+  evidence_refs?: string[];
+}
+
+export interface ScenarioAuthoringValidation {
+  schema_valid: boolean;
+  safety_valid: boolean;
+  fit_requirements_valid: boolean;
+  errors: ScenarioAuthoringValidationIssue[];
+  warnings: ScenarioAuthoringValidationIssue[];
+}
+
+export interface ScenarioAuthoringCandidate {
+  candidate_id: string;
+  scenario_plan: ScenarioPlan;
+  confidence: number;
+  rationale: string;
+  evidence_refs: string[];
+  source_recommendation_refs?: string[];
+  validation: ScenarioAuthoringValidation;
+}
+
+export interface ScenarioAuthoringProvenance {
+  source_discovery_id?: string;
+  source_recommendation_refs?: string[];
+  source_evidence_refs: string[];
+  prompt_version?: string | null;
+  input_summary?: string;
+  generated_at: string;
+}
+
+export interface ScenarioAuthoringFailure {
+  failure_code: string;
+  failure_message: string;
+  provider_type?: ScenarioAuthoringProviderType;
+}
+
+export interface ScenarioAuthoringJob {
+  schema_version: "0.5";
+  authoring_job_id: string;
+  project_id: string;
+  source_discovery_id: string;
+  correlation_id?: string;
+  idempotency_key?: string | null;
+  status: ScenarioAuthoringStatus;
+  input: ScenarioAuthoringInput;
+  provider_policy: ScenarioAuthoringProviderPolicy;
+  provider_trace?: ScenarioAuthoringProviderTraceEntry[];
+  candidates?: ScenarioAuthoringCandidate[];
+  validation: ScenarioAuthoringValidation;
+  provenance: ScenarioAuthoringProvenance;
+  failure?: ScenarioAuthoringFailure | null;
+  created_at: string;
+  updated_at: string;
+  expires_at?: string | null;
 }
 
 

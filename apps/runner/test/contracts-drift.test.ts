@@ -52,6 +52,24 @@ test("[계약 동기화] runner TS mirror의 scenario/MQ literal이 packages/con
   assertPropertyPrimitiveMatchesSchema(runnerTypesSource, "count_delta", scenarioSchema.$defs.settle_strategy.properties.count_delta);
 });
 
+test("[계약 동기화] ScenarioAuthoring TS mirror가 packages/contracts authoring schema와 어긋나지 않는다", async () => {
+  const runnerTypesSource = await readRunnerTypesSource();
+  const authoringSchema = await readJson(resolve(repoRoot, "packages/contracts/schemas/scenario-authoring.schema.json"));
+
+  assertTypeAliasMatchesSchemaEnum(
+    runnerTypesSource,
+    "ScenarioAuthoringStatus",
+    authoringSchema,
+    authoringSchema.$defs.authoring_status
+  );
+  assertTypeAliasMatchesSchemaEnum(
+    runnerTypesSource,
+    "ScenarioAuthoringProviderType",
+    authoringSchema,
+    authoringSchema.$defs.provider_type
+  );
+});
+
 test("[계약 동기화] runner callback literal이 packages/contracts callback schema와 어긋나지 않는다", async () => {
   const runnerTypesSource = await readRunnerTypesSource();
   const callbackSchema = await readJson(resolve(repoRoot, "packages/contracts/internal/runner-callback.schema.json"));

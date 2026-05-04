@@ -29,6 +29,9 @@
             "start_run",
             "stop_run",
             "get_discovery_result",
+            "list_scenario_authoring_jobs",
+            "get_scenario_authoring_job",
+            "submit_scenario_authoring_result",
             "get_run_status",
             "get_run_summary",
             "list_run_events",
@@ -88,6 +91,8 @@
               "name": {
                 "enum": [
                   "get_discovery_result",
+                  "list_scenario_authoring_jobs",
+                  "get_scenario_authoring_job",
                   "get_run_status",
                   "get_run_summary",
                   "list_run_events",
@@ -126,6 +131,7 @@
               "name": {
                 "enum": [
                   "discover_site",
+                  "submit_scenario_authoring_result",
                   "create_run_from_discovery",
                   "create_run",
                   "start_run",
