@@ -1,3 +1,5 @@
-"""LLM analysis service scaffold."""
+"""LLM analysis service boundaries."""
 
-llm_analysis_service = {"status": "scaffold"}
+from app.services.llm_analysis.gms_explainer import GMSReportExplainer
+
+__all__ = ["GMSReportExplainer"]
