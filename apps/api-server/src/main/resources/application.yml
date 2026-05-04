@@ -31,6 +31,15 @@ mybatis:
 server:
   port: 8080
 
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+    url: /openapi/wedge_openapi.yaml
+    disable-swagger-default-url: true
+    tags-sorter: alpha
+    operations-sorter: alpha
+    display-request-duration: true
+
 management:
   endpoints:
     web:
