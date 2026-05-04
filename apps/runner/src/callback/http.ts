@@ -82,7 +82,7 @@ function createRunnerCallbackSignature(body: string, secret: string | undefined)
     return "unsigned";
   }
 
-  return createHmac("sha256", secret).update(body).digest("hex");
+  return `hmac-sha256=${createHmac("sha256", secret).update(body).digest("hex")}`;
 }
 
 function buildRunnerCallbackUrl(baseUrl: string, resourceId: string, callbackType: CallbackType): string {

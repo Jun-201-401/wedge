@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHmac } from "node:crypto";
 import { createServer } from "node:http";
 import { access, mkdtemp, readFile, rm } from "node:fs/promises";
 import test from "node:test";
@@ -117,7 +118,10 @@ test("[콜백:http] runner callback을 HTTP로 보내고 worker/event/signature 
     assert.equal(received[0]?.headers["x-worker-id"], "runner-test-worker");
     assert.equal(received[0]?.headers.authorization, "Bearer internal-token");
     assert.ok(typeof received[0]?.headers["x-event-id"] === "string");
-    assert.ok(typeof received[0]?.headers["x-signature"] === "string");
+    assert.equal(
+      received[0]?.headers["x-signature"],
+      `hmac-sha256=${createHmac("sha256", "secret-key").update(received[0]?.body ?? "").digest("hex")}`
+    );
     assert.match(received[0]?.body ?? "", /"browserSessionId":"session-1"/);
   } finally {
     await new Promise<void>((resolve, reject) => {
