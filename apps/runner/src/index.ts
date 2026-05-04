@@ -1,6 +1,10 @@
 import { access } from "node:fs/promises";
 import { resolve } from "node:path";
 import { createRunnerApp } from "./app.ts";
+import {
+  RUNNER_MQ_ARTIFACT_OUTBOX_WORKER_ENABLED_ENV,
+  RUNNER_MQ_CALLBACK_OUTBOX_WORKER_ENABLED_ENV
+} from "./config/index.ts";
 
 interface CliOptions {
   messageFile?: string;
@@ -92,8 +96,8 @@ try {
         )
       );
     } else if (cliOptions.consumeMq || app.config.mqConsumerEnabled) {
-      const consumer = await app.startMqConsumer();
-      registerShutdownHooks(consumer.close);
+      const runtime = await app.startMqRuntime();
+      registerShutdownHooks(runtime.close);
 
       console.log(
         JSON.stringify(
@@ -103,7 +107,22 @@ try {
             mode: "mq-consumer",
             mqUrl: app.config.mqUrl,
             queues: [app.config.mqQueueRunExecute, app.config.mqQueueDiscoveryExecute],
-            prefetch: app.config.mqPrefetch
+            prefetch: app.config.mqPrefetch,
+            recoveryWorkers: {
+              enabled: runtime.enabledWorkers,
+              callbackOutbox: createOutboxRecoveryWorkerStatus(
+                Boolean(runtime.callbackOutboxWorker),
+                app.config.callbackOutboxFile,
+                app.config.callbackOutboxLockFile,
+                app.config.callbackOutboxReplayIntervalMs
+              ),
+              artifactOutbox: createOutboxRecoveryWorkerStatus(
+                Boolean(runtime.artifactOutboxWorker),
+                app.config.artifactOutboxFile,
+                app.config.artifactOutboxLockFile,
+                app.config.artifactOutboxReplayIntervalMs
+              )
+            }
           },
           null,
           2
@@ -224,7 +243,28 @@ The --message-file input supports:
   run.execute.request
   discovery.execute.request
 
-If --consume-mq is provided, the runner starts RabbitMQ consumers for run.execute.request and discovery.execute.request instead of file input.`);
+If --consume-mq is provided, the runner starts RabbitMQ consumers for run.execute.request and discovery.execute.request instead of file input.
+MQ consumer mode also starts callback and artifact outbox replay workers by default.
+Set ${RUNNER_MQ_CALLBACK_OUTBOX_WORKER_ENABLED_ENV}=false or ${RUNNER_MQ_ARTIFACT_OUTBOX_WORKER_ENABLED_ENV}=false to disable either recovery worker.`);
+}
+
+function createOutboxRecoveryWorkerStatus(
+  enabled: boolean,
+  outboxFile: string,
+  lockFile: string,
+  replayIntervalMs: number
+): {
+  enabled: boolean;
+  outboxFile: string;
+  lockFile: string;
+  replayIntervalMs: number;
+} {
+  return {
+    enabled,
+    outboxFile,
+    lockFile,
+    replayIntervalMs
+  };
 }
 
 function registerShutdownHooks(close: () => Promise<void>): void {

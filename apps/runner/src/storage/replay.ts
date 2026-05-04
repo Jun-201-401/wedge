@@ -1,6 +1,6 @@
 import type { RunnerConfig } from "../config/index.ts";
 import { errorMessage, logOperationalEvent } from "../shared/utils.ts";
-import { createFilesystemArtifactStore, type ArtifactStore } from "./index.ts";
+import { createArtifactTransportStore, type ArtifactStore } from "./index.ts";
 import {
   acquireArtifactOutboxLock,
   createRetainedArtifactOutboxRecord,
@@ -24,7 +24,13 @@ export async function replayArtifactOutbox(
   config: Pick<
     RunnerConfig,
     | "artifactsRoot"
+    | "artifactStoreMode"
     | "artifactBucket"
+    | "artifactS3Endpoint"
+    | "artifactS3Region"
+    | "artifactS3AccessKeyId"
+    | "artifactS3SecretAccessKey"
+    | "artifactS3ForcePathStyle"
     | "artifactOutboxFile"
     | "artifactOutboxLockFile"
     | "artifactOutboxLockStaleMs"
@@ -34,7 +40,7 @@ export async function replayArtifactOutbox(
     | "artifactRetryDelaysMs"
     | "workerId"
   >,
-  transportStore: ArtifactStore = createFilesystemArtifactStore(config)
+  transportStore: ArtifactStore = createArtifactTransportStore(config)
 ): Promise<ArtifactOutboxReplaySummary> {
   const lockHandle = await acquireArtifactOutboxLock(config);
   if (!lockHandle) {
@@ -109,7 +115,13 @@ export function startArtifactOutboxReplayWorker(
   config: Pick<
     RunnerConfig,
     | "artifactsRoot"
+    | "artifactStoreMode"
     | "artifactBucket"
+    | "artifactS3Endpoint"
+    | "artifactS3Region"
+    | "artifactS3AccessKeyId"
+    | "artifactS3SecretAccessKey"
+    | "artifactS3ForcePathStyle"
     | "artifactOutboxFile"
     | "artifactOutboxLockFile"
     | "artifactOutboxLockStaleMs"
@@ -120,7 +132,7 @@ export function startArtifactOutboxReplayWorker(
     | "artifactOutboxHeartbeatIntervalMs"
     | "workerId"
   >,
-  transportStore: ArtifactStore = createFilesystemArtifactStore(config)
+  transportStore: ArtifactStore = createArtifactTransportStore(config)
 ): ArtifactOutboxReplayWorker {
   let closed = false;
   let replaying = false;

@@ -27,7 +27,7 @@ export interface S3PutObjectInput {
 
 export function createArtifactStore(
   config: RunnerConfig,
-  transportStore: ArtifactStore = createConfiguredArtifactStore(config)
+  transportStore: ArtifactStore = createArtifactTransportStore(config)
 ): ArtifactStore {
   return {
     async persistArtifacts({ runId, artifacts }) {
@@ -113,7 +113,19 @@ export function createArtifactStore(
   };
 }
 
-function createConfiguredArtifactStore(config: RunnerConfig): ArtifactStore {
+export function createArtifactTransportStore(
+  config: Pick<
+    RunnerConfig,
+    | "artifactsRoot"
+    | "artifactStoreMode"
+    | "artifactBucket"
+    | "artifactS3Endpoint"
+    | "artifactS3Region"
+    | "artifactS3AccessKeyId"
+    | "artifactS3SecretAccessKey"
+    | "artifactS3ForcePathStyle"
+  >
+): ArtifactStore {
   if (config.artifactStoreMode === "s3") {
     return createS3ArtifactStore(config);
   }

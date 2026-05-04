@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { loadRunnerConfig } from "../src/config/index.ts";
+import {
+  loadRunnerConfig,
+  RUNNER_MQ_ARTIFACT_OUTBOX_WORKER_ENABLED_ENV,
+  RUNNER_MQ_CALLBACK_OUTBOX_WORKER_ENABLED_ENV
+} from "../src/config/index.ts";
 
 const ARTIFACT_ENV_KEYS = [
   "RUNNER_ARTIFACT_STORAGE",
@@ -15,7 +19,14 @@ const ARTIFACT_ENV_KEYS = [
   "AWS_SECRET_ACCESS_KEY"
 ] as const;
 
+const MQ_RUNTIME_ENV_KEYS = [
+  RUNNER_MQ_CALLBACK_OUTBOX_WORKER_ENABLED_ENV,
+  RUNNER_MQ_ARTIFACT_OUTBOX_WORKER_ENABLED_ENV
+] as const;
+
 type ArtifactEnvKey = typeof ARTIFACT_ENV_KEYS[number];
+type MqRuntimeEnvKey = typeof MQ_RUNTIME_ENV_KEYS[number];
+type EnvSnapshot<K extends string> = Partial<Record<K, string>>;
 
 test("[설정] artifact storage 기본값은 로컬 filesystem이다", () => {
   withArtifactEnv({}, () => {
@@ -87,28 +98,64 @@ test("[설정] 지원하지 않는 artifact storage 값은 filesystem으로 안�
   });
 });
 
+test("[설정] MQ consumer 모드는 callback/artifact outbox replay worker를 기본 활성화한다", () => {
+  withMqRuntimeEnv({}, () => {
+    const config = loadRunnerConfig({ serviceName: "runner-test" });
+
+    assert.equal(config.mqCallbackOutboxWorkerEnabled, true);
+    assert.equal(config.mqArtifactOutboxWorkerEnabled, true);
+  });
+});
+
+test("[설정] MQ consumer outbox replay worker는 환경변수로 끌 수 있다", () => {
+  withMqRuntimeEnv(
+    {
+      RUNNER_MQ_CALLBACK_OUTBOX_WORKER_ENABLED: "false",
+      RUNNER_MQ_ARTIFACT_OUTBOX_WORKER_ENABLED: "0"
+    },
+    () => {
+      const config = loadRunnerConfig({ serviceName: "runner-test" });
+
+      assert.equal(config.mqCallbackOutboxWorkerEnabled, false);
+      assert.equal(config.mqArtifactOutboxWorkerEnabled, false);
+    }
+  );
+});
+
 function withArtifactEnv(values: Partial<Record<ArtifactEnvKey, string>>, run: () => void): void {
-  const previous = snapshotArtifactEnv();
+  withEnv(ARTIFACT_ENV_KEYS, values, run);
+}
+
+function withMqRuntimeEnv(values: Partial<Record<MqRuntimeEnvKey, string>>, run: () => void): void {
+  withEnv(MQ_RUNTIME_ENV_KEYS, values, run);
+}
+
+function withEnv<K extends string>(
+  keys: readonly K[],
+  values: Partial<Record<K, string>>,
+  run: () => void
+): void {
+  const previous = snapshotEnv(keys);
 
   try {
-    for (const key of ARTIFACT_ENV_KEYS) {
+    for (const key of keys) {
       delete process.env[key];
     }
 
-    for (const [key, value] of Object.entries(values) as Array<[ArtifactEnvKey, string]>) {
+    for (const [key, value] of Object.entries(values) as Array<[K, string]>) {
       process.env[key] = value;
     }
 
     run();
   } finally {
-    restoreArtifactEnv(previous);
+    restoreEnv(keys, previous);
   }
 }
 
-function snapshotArtifactEnv(): Partial<Record<ArtifactEnvKey, string>> {
-  const snapshot: Partial<Record<ArtifactEnvKey, string>> = {};
+function snapshotEnv<K extends string>(keys: readonly K[]): EnvSnapshot<K> {
+  const snapshot: EnvSnapshot<K> = {};
 
-  for (const key of ARTIFACT_ENV_KEYS) {
+  for (const key of keys) {
     if (process.env[key] !== undefined) {
       snapshot[key] = process.env[key];
     }
@@ -117,12 +164,12 @@ function snapshotArtifactEnv(): Partial<Record<ArtifactEnvKey, string>> {
   return snapshot;
 }
 
-function restoreArtifactEnv(snapshot: Partial<Record<ArtifactEnvKey, string>>): void {
-  for (const key of ARTIFACT_ENV_KEYS) {
+function restoreEnv<K extends string>(keys: readonly K[], snapshot: EnvSnapshot<K>): void {
+  for (const key of keys) {
     delete process.env[key];
   }
 
-  for (const [key, value] of Object.entries(snapshot) as Array<[ArtifactEnvKey, string]>) {
+  for (const [key, value] of Object.entries(snapshot) as Array<[K, string]>) {
     process.env[key] = value;
   }
 }

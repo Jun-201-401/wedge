@@ -103,6 +103,8 @@ export function createRunnerTestConfig(overrides: Partial<RunnerConfig> = {}): R
     mqQueueDiscoveryExecute: "discovery.execute.request",
     mqPrefetch: 1,
     mqRequeueOnFailure: false,
+    mqCallbackOutboxWorkerEnabled: true,
+    mqArtifactOutboxWorkerEnabled: true,
     browserMode: "simulated",
     browserName: "chromium",
     browserHeadless: true,
