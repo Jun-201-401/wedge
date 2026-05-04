@@ -17,7 +17,7 @@ const ARTIFACT_ENV_KEYS = [
 
 type ArtifactEnvKey = typeof ARTIFACT_ENV_KEYS[number];
 
-test("loadRunnerConfig defaults artifact storage to filesystem", () => {
+test("[설정] artifact storage 기본값은 로컬 filesystem이다", () => {
   withArtifactEnv({}, () => {
     const config = loadRunnerConfig({ serviceName: "runner-test" });
 
@@ -31,7 +31,7 @@ test("loadRunnerConfig defaults artifact storage to filesystem", () => {
   });
 });
 
-test("loadRunnerConfig reads S3 artifact storage environment", () => {
+test("[설정] S3 artifact storage 환경변수를 RunnerConfig로 읽는다", () => {
   withArtifactEnv(
     {
       RUNNER_ARTIFACT_STORAGE: "s3",
@@ -56,7 +56,7 @@ test("loadRunnerConfig reads S3 artifact storage environment", () => {
   );
 });
 
-test("loadRunnerConfig uses AWS SDK environment variables for AWS S3", () => {
+test("[설정] AWS S3 모드에서는 AWS SDK 표준 credential 환경변수를 사용할 수 있다", () => {
   withArtifactEnv(
     {
       RUNNER_ARTIFACT_STORAGE: "s3",
@@ -79,7 +79,7 @@ test("loadRunnerConfig uses AWS SDK environment variables for AWS S3", () => {
   );
 });
 
-test("loadRunnerConfig falls back to filesystem for unsupported artifact storage values", () => {
+test("[설정] 지원하지 않는 artifact storage 값은 filesystem으로 안전하게 fallback한다", () => {
   withArtifactEnv({ RUNNER_ARTIFACT_STORAGE: "memory" }, () => {
     const config = loadRunnerConfig({ serviceName: "runner-test" });
 

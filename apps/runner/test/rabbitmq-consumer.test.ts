@@ -4,7 +4,7 @@ import type { ConsumeMessage } from "amqplib";
 import { RunnerMessageValidationError } from "../src/messaging/index.ts";
 import { handleRunExecuteMessage, startRunExecuteQueueConsumer } from "../src/messaging/rabbitmq/index.ts";
 
-test("handleRunExecuteMessage acknowledges processed messages", async () => {
+test("[RabbitMQ consumer] run.execute 메시지 처리 성공 시 ack 한다", async () => {
   const calls: string[] = [];
   const message = createMessage('{"messageType":"run.execute.request"}');
 
@@ -27,7 +27,7 @@ test("handleRunExecuteMessage acknowledges processed messages", async () => {
   assert.deepEqual(calls, ["process", "ack"]);
 });
 
-test("handleRunExecuteMessage rejects validation errors without requeue", async () => {
+test("[RabbitMQ consumer] 계약 검증 실패 메시지는 requeue 없이 reject 한다", async () => {
   const calls: Array<string | [string, boolean]> = [];
   const message = createMessage("invalid");
 
@@ -50,7 +50,7 @@ test("handleRunExecuteMessage rejects validation errors without requeue", async 
   assert.deepEqual(calls, [["nack", false]]);
 });
 
-test("handleRunExecuteMessage requeues execution failures only when configured", async () => {
+test("[RabbitMQ consumer] 실행 실패는 설정된 경우에만 requeue 한다", async () => {
   const noRequeueCalls: Array<[string, boolean]> = [];
   const requeueCalls: Array<[string, boolean]> = [];
   const message = createMessage("valid");
@@ -87,7 +87,7 @@ test("handleRunExecuteMessage requeues execution failures only when configured",
   assert.deepEqual(requeueCalls, [["nack", true]]);
 });
 
-test("startRunExecuteQueueConsumer configures queue consumption and closes resources", async () => {
+test("[RabbitMQ consumer] queue consume을 설정하고 종료 시 연결 자원을 닫는다", async () => {
   const events: string[] = [];
   let consumeHandler: ((message: ConsumeMessage | null) => void | Promise<void>) | undefined;
 
@@ -155,7 +155,7 @@ test("startRunExecuteQueueConsumer configures queue consumption and closes resou
   assert.ok(events.includes("connection:close"));
 });
 
-test("startRunExecuteQueueConsumer ignores null deliveries", async () => {
+test("[RabbitMQ consumer] null delivery는 ack/reject 없이 무시한다", async () => {
   const events: string[] = [];
   let consumeHandler: ((message: ConsumeMessage | null) => void | Promise<void>) | undefined;
 

@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { createCallbackClient } from "../src/callback/index.ts";
 import { createRunnerTestConfig } from "./support.ts";
 
-test("createCallbackClient keeps file callback mode behavior", async () => {
+test("[콜백:file] callback base URL이 없으면 기존 JSONL 파일 callback 모드를 유지한다", async () => {
   const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-callback-file-"));
   const callbackLogFile = join(artifactsRoot, "callbacks.jsonl");
 
@@ -33,7 +33,7 @@ test("createCallbackClient keeps file callback mode behavior", async () => {
   }
 });
 
-test("createCallbackClient routes failed callbacks in file mode", async () => {
+test("[콜백:file] 실패 결과도 JSONL 파일 callback으로 기록한다", async () => {
   const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-callback-file-failed-"));
   const callbackLogFile = join(artifactsRoot, "callbacks.jsonl");
 
@@ -61,7 +61,7 @@ test("createCallbackClient routes failed callbacks in file mode", async () => {
   }
 });
 
-test("createCallbackClient sends runner callbacks over HTTP with expected headers", async () => {
+test("[콜백:http] runner callback을 HTTP로 보내고 worker/event/signature 헤더를 포함한다", async () => {
   const received: Array<{ method: string; url: string; headers: Record<string, string | string[] | undefined>; body: string }> = [];
   const server = createServer((request, response) => {
     let body = "";
@@ -133,7 +133,7 @@ test("createCallbackClient sends runner callbacks over HTTP with expected header
   }
 });
 
-test("HTTP callback mode throws on non-2xx responses", async () => {
+test("[콜백:http] 비정상 HTTP 응답은 callback 실패로 처리하고 outbox에 남긴다", async () => {
   const server = createServer((_request, response) => {
     response.writeHead(409, {
       "content-type": "application/json"
@@ -195,7 +195,7 @@ test("HTTP callback mode throws on non-2xx responses", async () => {
   }
 });
 
-test("HTTP callback mode retries before succeeding and does not write outbox", async () => {
+test("[콜백:http] 일시 실패 후 재시도에 성공하면 outbox를 남기지 않는다", async () => {
   let requestCount = 0;
   const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-callback-http-retry-"));
   const callbackOutboxFile = join(artifactsRoot, "callback-outbox.jsonl");
@@ -261,7 +261,7 @@ test("HTTP callback mode retries before succeeding and does not write outbox", a
   }
 });
 
-test("HTTP callback mode emits aggregated retry logs instead of per-attempt logs", async () => {
+test("[콜백:http] 재시도 로그는 attempt마다가 아니라 집계 이벤트로 남긴다", async () => {
   let requestCount = 0;
   const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-callback-http-logs-"));
   const callbackOutboxFile = join(artifactsRoot, "callback-outbox.jsonl");

@@ -14,7 +14,7 @@ interface ReceivedCallbackRequest {
   body: string;
 }
 
-test("createRunnerApp executes example scenario and writes callback log", async () => {
+test("[앱 실행] 예제 run.execute 메시지를 처리하고 accepted/checkpoints/finished callback 로그를 남긴다", async () => {
   const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-artifacts-"));
   const callbackLogFile = join(artifactsRoot, "callbacks.jsonl");
   const app = createRunnerApp({
@@ -34,7 +34,7 @@ test("createRunnerApp executes example scenario and writes callback log", async 
   assert.match(callbackLog, /"callbackType":"checkpoints"/);
 });
 
-test("createRunnerApp sends prototype evidence callbacks to API when callback base URL is configured", async () => {
+test("[앱 실행] HTTP callback 설정 시 API로 artifact/checkpoint/finished evidence callback을 전송한다", async () => {
   const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-api-callbacks-"));
   const callbackServer = await createCallbackCaptureServer();
 
@@ -142,7 +142,7 @@ function closeServer(server: Server): Promise<void> {
   });
 }
 
-test("createRunnerApp stops after stop_when step requests stop", async () => {
+test("[안전 중단] stop_when 조건이 맞으면 이후 step을 실행하지 않고 중단 상태로 종료한다", async () => {
   const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-stop-artifacts-"));
   const callbackLogFile = join(artifactsRoot, "callbacks.jsonl");
   const app = createRunnerApp({
@@ -197,7 +197,7 @@ test("createRunnerApp stops after stop_when step requests stop", async () => {
   assert.doesNotMatch(callbackLog, /step_002_fill_email/);
 });
 
-test("createRunnerApp rejects fill actions when synthetic inputs are disabled", async () => {
+test("[안전 정책] synthetic input이 금지되면 fill 액션을 실패 처리하고 failed callback을 남긴다", async () => {
   const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-safety-artifacts-"));
   const callbackLogFile = join(artifactsRoot, "callbacks.jsonl");
   const app = createRunnerApp({

@@ -10,7 +10,7 @@ import { readArtifactOutboxRecords } from "../src/storage/outbox.ts";
 import { sleep } from "../src/shared/utils.ts";
 import { createRunnerTestConfig } from "./support.ts";
 
-test("createArtifactStore writes artifact outbox after retry exhaustion", async () => {
+test("[아티팩트 outbox] 저장 재시도 소진 후 artifact record를 outbox에 남긴다", async () => {
   const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-artifact-outbox-"));
   const artifactOutboxFile = join(artifactsRoot, "artifact-outbox.jsonl");
   let attempts = 0;
@@ -57,7 +57,7 @@ test("createArtifactStore writes artifact outbox after retry exhaustion", async 
   }
 });
 
-test("replayArtifactOutbox persists pending artifact records and clears outbox", async () => {
+test("[아티팩트 재전송] pending artifact record를 저장한 뒤 성공 record를 제거한다", async () => {
   const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-artifact-replay-success-"));
   const artifactOutboxFile = join(artifactsRoot, "artifact-outbox.jsonl");
   const stored: string[] = [];
@@ -121,7 +121,7 @@ test("replayArtifactOutbox persists pending artifact records and clears outbox",
   }
 });
 
-test("replayArtifactOutbox retains failing records and updates attempts", async () => {
+test("[아티팩트 재전송] 저장 실패 record는 보존하고 attempts를 증가시킨다", async () => {
   const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-artifact-replay-fail-"));
   const artifactOutboxFile = join(artifactsRoot, "artifact-outbox.jsonl");
 
@@ -181,7 +181,7 @@ test("replayArtifactOutbox retains failing records and updates attempts", async 
   }
 });
 
-test("replayArtifactOutbox skips when active lock exists", async () => {
+test("[아티팩트 재전송] 활성 lock이 있으면 중복 replay를 실행하지 않는다", async () => {
   const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-artifact-replay-lock-skip-"));
   const artifactOutboxFile = join(artifactsRoot, "artifact-outbox.jsonl");
   const artifactOutboxLockFile = join(artifactsRoot, "artifact-outbox.lock");
@@ -253,7 +253,7 @@ test("replayArtifactOutbox skips when active lock exists", async () => {
   }
 });
 
-test("replayArtifactOutbox recovers stale lock and proceeds", async () => {
+test("[아티팩트 재전송] 오래된 lock은 회수하고 replay를 계속한다", async () => {
   const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-artifact-replay-lock-stale-"));
   const artifactOutboxFile = join(artifactsRoot, "artifact-outbox.jsonl");
   const artifactOutboxLockFile = join(artifactsRoot, "artifact-outbox.lock");
@@ -328,7 +328,7 @@ test("replayArtifactOutbox recovers stale lock and proceeds", async () => {
   }
 });
 
-test("replayArtifactOutbox refreshes lock heartbeat during long replay", async () => {
+test("[아티팩트 재전송] 긴 replay 중 lock heartbeat를 갱신한다", async () => {
   const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-artifact-replay-heartbeat-"));
   const artifactOutboxFile = join(artifactsRoot, "artifact-outbox.jsonl");
   const artifactOutboxLockFile = join(artifactsRoot, "artifact-outbox.lock");
@@ -401,7 +401,7 @@ test("replayArtifactOutbox refreshes lock heartbeat during long replay", async (
   }
 });
 
-test("artifact outbox prunes expired and excess records", async () => {
+test("[아티팩트 outbox] 만료되었거나 최대 개수를 넘은 record를 정리한다", async () => {
   const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-artifact-prune-"));
   const artifactOutboxFile = join(artifactsRoot, "artifact-outbox.jsonl");
 
@@ -459,7 +459,7 @@ test("artifact outbox prunes expired and excess records", async () => {
   }
 });
 
-test("artifact outbox replay worker drains pending records on interval", async () => {
+test("[아티팩트 worker] 주기적으로 pending artifact outbox를 비운다", async () => {
   const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-artifact-replay-worker-"));
   const artifactOutboxFile = join(artifactsRoot, "artifact-outbox.jsonl");
   const stored: string[] = [];
@@ -519,7 +519,7 @@ test("artifact outbox replay worker drains pending records on interval", async (
   }
 });
 
-test("artifact replay emits structured operational logs", async () => {
+test("[아티팩트 관측성] replay 처리 결과를 구조화된 운영 로그로 남긴다", async () => {
   const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-artifact-log-"));
   const artifactOutboxFile = join(artifactsRoot, "artifact-outbox.jsonl");
   const captured: string[] = [];
@@ -562,7 +562,7 @@ test("artifact replay emits structured operational logs", async () => {
   }
 });
 
-test("artifact storage emits aggregated retry logs instead of per-attempt logs", async () => {
+test("[아티팩트 관측성] 저장 재시도 로그는 attempt마다가 아니라 집계 이벤트로 남긴다", async () => {
   const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-artifact-log-aggregate-"));
   const captured: string[] = [];
   const originalLog = console.log;
@@ -623,7 +623,7 @@ test("artifact storage emits aggregated retry logs instead of per-attempt logs",
   }
 });
 
-test("artifact outbox worker emits low-frequency idle heartbeat logs", async () => {
+test("[아티팩트 관측성] idle 상태에서는 낮은 빈도의 heartbeat 로그만 남긴다", async () => {
   const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-artifact-heartbeat-"));
   const artifactOutboxFile = join(artifactsRoot, "artifact-outbox.jsonl");
   const captured: string[] = [];

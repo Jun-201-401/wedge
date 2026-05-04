@@ -4,7 +4,7 @@ import test from "node:test";
 import { parseDiscoveryExecuteMessage, parseRunExecuteMessage } from "../src/messaging/index.ts";
 import { cloneMessage, exampleMessageFile, loadExampleMessage } from "./support.ts";
 
-test("parseRunExecuteMessage validates run.execute.request envelope", async () => {
+test("[MQ 계약] 정상 run.execute.request envelope를 파싱한다", async () => {
   const rawMessage = await readFile(exampleMessageFile, "utf8");
   const message = parseRunExecuteMessage(rawMessage);
 
@@ -12,7 +12,7 @@ test("parseRunExecuteMessage validates run.execute.request envelope", async () =
   assert.equal(message.payload.scenarioPlan.steps.length, 4);
 });
 
-test("parseRunExecuteMessage rejects ScenarioPlan missing required fields", async () => {
+test("[MQ 계약] ScenarioPlan 필수 필드가 빠지면 run.execute.request를 거부한다", async () => {
   const invalidMessage = cloneMessage(await loadExampleMessage()) as unknown as {
     payload: {
       scenarioPlan: Record<string, unknown>;
@@ -27,7 +27,7 @@ test("parseRunExecuteMessage rejects ScenarioPlan missing required fields", asyn
   );
 });
 
-test("parseRunExecuteMessage rejects startUrl mismatch between envelope and scenarioPlan", async () => {
+test("[MQ 계약] envelope startUrl과 scenarioPlan start_url이 다르면 거부한다", async () => {
   const invalidMessage = cloneMessage(await loadExampleMessage());
   invalidMessage.payload.startUrl = "https://example.com/pricing";
 
@@ -37,7 +37,7 @@ test("parseRunExecuteMessage rejects startUrl mismatch between envelope and scen
   );
 });
 
-test("parseRunExecuteMessage rejects goal mismatch between envelope and scenarioPlan", async () => {
+test("[MQ 계약] envelope goal과 scenarioPlan goal이 다르면 거부한다", async () => {
   const invalidMessage = cloneMessage(await loadExampleMessage());
   invalidMessage.payload.goal = "다른 목표";
 
@@ -47,7 +47,7 @@ test("parseRunExecuteMessage rejects goal mismatch between envelope and scenario
   );
 });
 
-test("parseRunExecuteMessage rejects devicePreset mismatch between envelope and scenarioPlan", async () => {
+test("[MQ 계약] envelope devicePreset과 scenarioPlan environment.device가 다르면 거부한다", async () => {
   const invalidMessage = cloneMessage(await loadExampleMessage());
   invalidMessage.payload.devicePreset = "mobile";
 
@@ -57,7 +57,7 @@ test("parseRunExecuteMessage rejects devicePreset mismatch between envelope and 
   );
 });
 
-test("parseRunExecuteMessage requires scenarioTemplateVersionId", async () => {
+test("[MQ 계약] scenarioTemplateVersionId가 없으면 run.execute.request를 거부한다", async () => {
   const invalidMessage = cloneMessage(await loadExampleMessage()) as unknown as {
     payload: Record<string, unknown>;
   };
@@ -69,7 +69,7 @@ test("parseRunExecuteMessage requires scenarioTemplateVersionId", async () => {
   );
 });
 
-test("parseRunExecuteMessage rejects unsupported action types", async () => {
+test("[MQ 계약] runner가 지원하지 않는 action type은 거부한다", async () => {
   const invalidMessage = cloneMessage(await loadExampleMessage());
   invalidMessage.payload.scenarioPlan.steps[0]!.action.type = "drag" as never;
 
@@ -79,7 +79,7 @@ test("parseRunExecuteMessage rejects unsupported action types", async () => {
   );
 });
 
-test("parseRunExecuteMessage rejects unsupported settle strategy types", async () => {
+test("[MQ 계약] runner가 지원하지 않는 settle strategy는 거부한다", async () => {
   const invalidMessage = cloneMessage(await loadExampleMessage());
   invalidMessage.payload.scenarioPlan.steps[0]!.settle_strategy.type = "long_poll" as never;
 
@@ -89,7 +89,7 @@ test("parseRunExecuteMessage rejects unsupported settle strategy types", async (
   );
 });
 
-test("parseDiscoveryExecuteMessage validates discovery.execute.request envelope", () => {
+test("[MQ 계약] 정상 discovery.execute.request envelope를 파싱한다", () => {
   const message = parseDiscoveryExecuteMessage(JSON.stringify(createDiscoveryExecuteMessage()));
 
   assert.equal(message.messageType, "discovery.execute.request");
@@ -97,7 +97,7 @@ test("parseDiscoveryExecuteMessage validates discovery.execute.request envelope"
   assert.equal(message.payload.maxScrollCount, 2);
 });
 
-test("parseDiscoveryExecuteMessage rejects invalid discovery payload bounds", () => {
+test("[MQ 계약] discovery payload 범위 값이 유효하지 않으면 거부한다", () => {
   const invalidMessage = createDiscoveryExecuteMessage();
   invalidMessage.payload.maxDurationMs = 500;
 

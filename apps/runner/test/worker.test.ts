@@ -13,7 +13,7 @@ import {
 } from "./support.ts";
 import type { RunnerFailedPayload } from "../src/shared/contracts.ts";
 
-test("registerWorker closes session and emits failed callback when accepted callback fails", async () => {
+test("[Worker lifecycle] accepted callback 실패 시 session을 닫고 failed callback을 보낸다", async () => {
   const message = await loadExampleMessage();
   let closed = false;
   let failedPayload: RunnerFailedPayload | null = null;
@@ -65,7 +65,7 @@ test("registerWorker closes session and emits failed callback when accepted call
   assert.equal(capturedFailedPayload.resultCompleteness, "NONE");
 });
 
-test("registerWorker keeps execution success when finished callback fails", async () => {
+test("[Worker lifecycle] 실행 자체가 성공했다면 finished callback 실패만으로 실행 실패로 바꾸지 않는다", async () => {
   const message = await loadExampleMessage();
   message.payload.scenarioPlan.steps = [
     {

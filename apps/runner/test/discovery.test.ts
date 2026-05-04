@@ -8,7 +8,7 @@ import { executeDiscovery } from "../src/discovery/index.ts";
 import type { DiscoveryExecuteMessage, DiscoveryFlowType } from "../src/shared/contracts.ts";
 import { createRunnerTestConfig } from "./support.ts";
 
-test("executeDiscovery collects CTA, signup form, pricing, and checkout recommendations", async () => {
+test("[Discovery] 페이지에서 CTA/가입폼/가격/결제 후보 추천을 수집한다", async () => {
   const fixtureRoot = join(tmpdir(), `wedge-runner-discovery-${process.pid}-${Date.now()}`);
   await mkdir(fixtureRoot, { recursive: true });
 

@@ -10,7 +10,7 @@ import { createRunnerApp } from "../src/app.ts";
 import { sleep } from "../src/shared/utils.ts";
 import { createRunnerTestConfig } from "./support.ts";
 
-test("replayCallbackOutbox delivers pending records and clears outbox", async () => {
+test("[콜백 재전송] pending outbox callback을 전송한 뒤 성공한 record를 제거한다", async () => {
   const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-replay-success-"));
   const callbackOutboxFile = join(artifactsRoot, "callback-outbox.jsonl");
   let requestCount = 0;
@@ -74,7 +74,7 @@ test("replayCallbackOutbox delivers pending records and clears outbox", async ()
   }
 });
 
-test("replayCallbackOutbox retains failing records and updates attempts", async () => {
+test("[콜백 재전송] 재전송 실패 record는 보존하고 attempts를 증가시킨다", async () => {
   const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-replay-fail-"));
   const callbackOutboxFile = join(artifactsRoot, "callback-outbox.jsonl");
   const server = createServer((_request, response) => {
@@ -140,7 +140,7 @@ test("replayCallbackOutbox retains failing records and updates attempts", async 
   }
 });
 
-test("replayCallbackOutbox skips when active lock exists", async () => {
+test("[콜백 재전송] 활성 lock이 있으면 중복 replay를 실행하지 않는다", async () => {
   const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-replay-lock-skip-"));
   const callbackOutboxFile = join(artifactsRoot, "callback-outbox.jsonl");
   const callbackOutboxLockFile = join(artifactsRoot, "callback-outbox.lock");
@@ -215,7 +215,7 @@ test("replayCallbackOutbox skips when active lock exists", async () => {
   }
 });
 
-test("replayCallbackOutbox recovers stale lock and proceeds", async () => {
+test("[콜백 재전송] 오래된 lock은 회수하고 replay를 계속한다", async () => {
   const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-replay-lock-stale-"));
   const callbackOutboxFile = join(artifactsRoot, "callback-outbox.jsonl");
   const callbackOutboxLockFile = join(artifactsRoot, "callback-outbox.lock");
@@ -290,7 +290,7 @@ test("replayCallbackOutbox recovers stale lock and proceeds", async () => {
   }
 });
 
-test("replayCallbackOutbox refreshes lock heartbeat during long replay", async () => {
+test("[콜백 재전송] 긴 replay 중 lock heartbeat를 갱신한다", async () => {
   const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-replay-heartbeat-"));
   const callbackOutboxFile = join(artifactsRoot, "callback-outbox.jsonl");
   const callbackOutboxLockFile = join(artifactsRoot, "callback-outbox.lock");
@@ -360,7 +360,7 @@ test("replayCallbackOutbox refreshes lock heartbeat during long replay", async (
   }
 });
 
-test("callback outbox prunes expired and excess records", async () => {
+test("[콜백 outbox] 만료되었거나 최대 개수를 넘은 record를 정리한다", async () => {
   const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-callback-prune-"));
   const callbackOutboxFile = join(artifactsRoot, "callback-outbox.jsonl");
 
@@ -422,7 +422,7 @@ test("callback outbox prunes expired and excess records", async () => {
   }
 });
 
-test("callback outbox replay worker drains pending records on interval", async () => {
+test("[콜백 worker] 주기적으로 pending callback outbox를 비운다", async () => {
   const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-replay-worker-"));
   const callbackOutboxFile = join(artifactsRoot, "callback-outbox.jsonl");
   let requestCount = 0;
@@ -485,7 +485,7 @@ test("callback outbox replay worker drains pending records on interval", async (
   }
 });
 
-test("callback replay emits structured operational logs", async () => {
+test("[콜백 관측성] replay 처리 결과를 구조화된 운영 로그로 남긴다", async () => {
   const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-callback-log-"));
   const callbackOutboxFile = join(artifactsRoot, "callback-outbox.jsonl");
   const captured: string[] = [];
@@ -526,7 +526,7 @@ test("callback replay emits structured operational logs", async () => {
   }
 });
 
-test("callback outbox worker emits low-frequency idle heartbeat logs", async () => {
+test("[콜백 관측성] idle 상태에서는 낮은 빈도의 heartbeat 로그만 남긴다", async () => {
   const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-callback-heartbeat-"));
   const callbackOutboxFile = join(artifactsRoot, "callback-outbox.jsonl");
   const captured: string[] = [];
