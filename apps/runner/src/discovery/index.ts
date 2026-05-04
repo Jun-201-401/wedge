@@ -13,10 +13,12 @@ import type { RunnerBrowserName, RunnerConfig } from "../config/index.ts";
 import type {
   DiscoveryEntrypointCandidate,
   DiscoveryEntrypointType,
+  DiscoveryCheckpointRequest,
   DiscoveryExecuteMessage,
   DiscoveryFlowCandidate,
   DiscoveryFlowType,
   DiscoveryScenarioRecommendation,
+  ScenarioStage,
   SiteDiscoveryResult,
   TargetDescriptorMap,
   DiscoverySummaryPayload
@@ -190,6 +192,10 @@ export async function executeDiscoveryAndPersist(input: ExecuteDiscoveryInput): 
     const resultFile = createDiscoveryResultFilePath(input.config, result.discovery_id);
     await writeDiscoveryResult(resultFile, result);
 
+    for (const checkpoint of createDiscoveryCheckpointRequests(result, input.config.workerId)) {
+      await input.callbackClient?.sendDiscoveryCheckpoints?.(input.message.payload.discoveryId, checkpoint);
+    }
+
     await input.callbackClient?.sendDiscoveryFinished?.(input.message.payload.discoveryId, {
       eventId: randomUUID(),
       workerId: input.config.workerId,
@@ -235,6 +241,38 @@ export function createDiscoverySummaryPayload(result: SiteDiscoveryResult): Disc
     checkoutEntrypointCount: countRecommendations(result, "PURCHASE_CHECKOUT"),
     scenarioRecommendations: recommendations
   };
+}
+
+export function createDiscoveryCheckpointRequests(
+  result: SiteDiscoveryResult,
+  workerId: string
+): DiscoveryCheckpointRequest[] {
+  return result.checkpoints.map((checkpoint, index) => {
+    const checkpointId = readString(checkpoint, "checkpoint_id", `cp_${String(index + 1).padStart(3, "0")}`);
+    const durationMs = readNumber(checkpoint, "duration_ms") ?? readSettleDuration(checkpoint);
+
+    return {
+      eventId: randomUUID(),
+      workerId,
+      checkpoint: {
+        checkpointId,
+        stepKey: readString(checkpoint, "step_key", `discovery_${checkpointId}`),
+        stage: readScenarioStage(checkpoint, "stage", "FIRST_VIEW"),
+        trigger: readRecord(checkpoint, "trigger", {
+          type: "discovery",
+          source: "site_discovery",
+          inputUrl: result.input_url
+        }),
+        settle: readSettle(checkpoint, durationMs),
+        state: readRecord(checkpoint, "state", {}),
+        observations: readRecordArray(checkpoint, "observations"),
+        deltas: readRecordArray(checkpoint, "deltas"),
+        artifactRefs: readStringArray(checkpoint, "artifact_refs")
+      },
+      artifacts: readRecordArray(checkpoint, "artifacts"),
+      observations: []
+    };
+  });
 }
 
 export async function writeDiscoveryResult(resultFile: string, result: SiteDiscoveryResult): Promise<void> {
@@ -737,4 +775,67 @@ function countRecommendations(result: SiteDiscoveryResult, flowType: DiscoveryFl
   return result.flow_candidates
     ?.find((candidate) => candidate.flow_type === flowType)
     ?.entrypoint_candidates.length ?? 0;
+}
+
+function readString(payload: Record<string, unknown>, key: string, fallback: string): string {
+  const value = payload[key];
+  return typeof value === "string" && value.length > 0 ? value : fallback;
+}
+
+function readNumber(payload: Record<string, unknown>, key: string): number | undefined {
+  const value = payload[key];
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function readScenarioStage(payload: Record<string, unknown>, key: string, fallback: ScenarioStage): ScenarioStage {
+  const value = payload[key];
+  if (value === "FIRST_VIEW" || value === "VALUE" || value === "CTA" || value === "INPUT" || value === "COMMIT") {
+    return value;
+  }
+  return fallback;
+}
+
+function readRecord(
+  payload: Record<string, unknown>,
+  key: string,
+  fallback: Record<string, unknown>
+): Record<string, unknown> {
+  const value = payload[key];
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+  return fallback;
+}
+
+function readRecordArray(payload: Record<string, unknown>, key: string): Record<string, unknown>[] {
+  const value = payload[key];
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.filter((item): item is Record<string, unknown> =>
+    Boolean(item) && typeof item === "object" && !Array.isArray(item)
+  );
+}
+
+function readStringArray(payload: Record<string, unknown>, key: string): string[] {
+  const value = payload[key];
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.filter((item): item is string => typeof item === "string");
+}
+
+function readSettle(payload: Record<string, unknown>, durationMs: number): DiscoveryCheckpointRequest["checkpoint"]["settle"] {
+  const settle = readRecord(payload, "settle", {});
+  return {
+    ...settle,
+    strategy: typeof settle.strategy === "string" ? settle.strategy : "domcontentloaded",
+    durationMs,
+    status: settle.status === "timeout" || settle.status === "failed" ? settle.status : "settled"
+  };
+}
+
+function readSettleDuration(payload: Record<string, unknown>): number {
+  const settle = readRecord(payload, "settle", {});
+  return typeof settle.durationMs === "number" && Number.isFinite(settle.durationMs) ? settle.durationMs : 0;
 }
