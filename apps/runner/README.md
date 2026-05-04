@@ -44,6 +44,7 @@ Set `RUNNER_CALLBACK_BASE_URL` to send callbacks to the API instead of the local
 cd apps/runner
 RUNNER_CALLBACK_BASE_URL=http://localhost:8080 \
 RUNNER_CALLBACK_AUTH_TOKEN=<INTERNAL_SERVICE_TOKEN> \
+RUNNER_CALLBACK_SIGNATURE_SECRET=<INTERNAL_RUNNER_CALLBACK_SIGNATURE_SECRET> \
 RUNNER_ARTIFACTS_ROOT=.runner-artifacts \
 npm run start -- --message-file examples/run-execute.request.json
 ```
@@ -65,6 +66,7 @@ Artifacts are written under `.runner-artifacts/{runId}/{stepKey}/...`; callback 
 
 - `RUNNER_CALLBACK_BASE_URL` defaults to `http://host.docker.internal:8080` so the runner container can call the API server running on the host.
 - `RUNNER_CALLBACK_AUTH_TOKEN` reuses `INTERNAL_SERVICE_TOKEN`; it must match `wedge.internal.service-token` in the API server.
+- `RUNNER_CALLBACK_SIGNATURE_SECRET` must match `wedge.internal.runner-callback-signature-secret`; the runner sends `X-Signature: hmac-sha256=<digest>` over the raw JSON callback body.
 - `RUNNER_ARTIFACTS_ROOT` points at the mounted `.runner-artifacts` volume so API artifact content URLs can resolve local files.
 
 Run `node infra/scripts/seed-real-run-smoke.mjs` once to create the local smoke project/scenario rows, then run `node infra/scripts/real-run-e2e-smoke.mjs` from the repository root after the API and runner are both up to verify create/start/MQ/callback/evidence packet behavior.
