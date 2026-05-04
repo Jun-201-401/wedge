@@ -260,6 +260,14 @@ export interface DiscoveryFailedPayload {
   failureMessage: string;
 }
 
+export interface DiscoveryCheckpointRequest {
+  eventId: string;
+  workerId: string;
+  checkpoint: Checkpoint;
+  artifacts: Record<string, unknown>[];
+  observations: Record<string, unknown>[];
+}
+
 export interface RunnerAcceptedPayload {
   workerId: string;
   acceptedAt: string;

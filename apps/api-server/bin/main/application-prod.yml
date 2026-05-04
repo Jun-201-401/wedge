@@ -17,3 +17,4 @@ jwt:
 wedge:
   internal:
     service-token: ${INTERNAL_SERVICE_TOKEN}
+    runner-callback-signature-secret: ${INTERNAL_RUNNER_CALLBACK_SIGNATURE_SECRET:${RUNNER_CALLBACK_SIGNATURE_SECRET}}

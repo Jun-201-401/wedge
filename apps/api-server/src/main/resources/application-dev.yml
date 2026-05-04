@@ -28,9 +28,12 @@ wedge:
       discovery-execute-queue: ${WEDGE_DISCOVERY_EXECUTE_QUEUE:discovery.execute.request}
   internal:
     service-token: ${INTERNAL_SERVICE_TOKEN}
+    runner-callback-signature-secret: ${INTERNAL_RUNNER_CALLBACK_SIGNATURE_SECRET:${RUNNER_CALLBACK_SIGNATURE_SECRET}}
 
   auth:
     refresh-cookie:
       secure: ${WEDGE_REFRESH_COOKIE_SECURE:false}
   report:
     project-access-check-enabled: ${WEDGE_REPORT_PROJECT_ACCESS_CHECK_ENABLED:false}
+  analysis:
+    project-access-check-enabled: ${WEDGE_ANALYSIS_PROJECT_ACCESS_CHECK_ENABLED:false}

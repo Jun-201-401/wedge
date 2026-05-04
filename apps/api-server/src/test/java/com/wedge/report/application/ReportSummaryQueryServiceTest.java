@@ -28,6 +28,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.mock.env.MockEnvironment;
 
 @ExtendWith(MockitoExtension.class)
 class ReportSummaryQueryServiceTest {
@@ -107,14 +108,35 @@ class ReportSummaryQueryServiceTest {
         verify(projectAccessService, never()).ensureProjectAccessible(projectId, userId);
     }
 
+    @Test
+    void listRunReportSummariesDoesNotSkipProjectAccessOutsideDevProfile() {
+        UUID runId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        UUID projectId = UUID.randomUUID();
+        reportSummaryQueryService = summaryQueryService(false, "prod");
+        when(runService.getRun(runId)).thenReturn(runResponse(runId, projectId));
+        when(reportMapper.findByRunId(runId)).thenReturn(List.of());
+
+        List<ReportSummaryResponse> responses = reportSummaryQueryService.listRunReportSummaries(runId, userId);
+
+        assertThat(responses).isEmpty();
+        verify(projectAccessService).ensureProjectAccessible(projectId, userId);
+    }
+
     private ReportSummaryQueryService summaryQueryService(boolean accessCheckEnabled) {
+        return summaryQueryService(accessCheckEnabled, accessCheckEnabled ? new String[0] : new String[]{"dev"});
+    }
+
+    private ReportSummaryQueryService summaryQueryService(boolean accessCheckEnabled, String... activeProfiles) {
         ReportProperties properties = new ReportProperties();
         properties.setProjectAccessCheckEnabled(accessCheckEnabled);
+        MockEnvironment environment = new MockEnvironment();
+        environment.setActiveProfiles(activeProfiles);
         return new ReportSummaryQueryService(
                 reportMapper,
                 analysisFindingMapper,
                 runService,
-                new ReportAccessGuard(projectAccessService, properties),
+                new ReportAccessGuard(projectAccessService, properties, environment),
                 new ReportJsonReader(new ObjectMapper()),
                 new ReportPreviewImageResolver(artifactMapper)
         );

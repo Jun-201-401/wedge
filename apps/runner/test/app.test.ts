@@ -61,10 +61,12 @@ test("createRunnerApp processes discovery message files and writes SiteDiscovery
     assert.match(result.discovery.resultFile, /site-discovery-result\.json$/);
 
     const persisted = JSON.parse(await readFile(result.discovery.resultFile, "utf8")) as {
+      checkpoints?: Array<{ artifact_refs?: string[] }>;
       detected_flow_types?: string[];
       scenario_recommendations?: Array<{ scenario_type?: string; suggested_target?: Record<string, unknown> | null }>;
     };
 
+    assert.equal(persisted.checkpoints?.[0]?.artifact_refs?.length, 2);
     assert.ok(persisted.detected_flow_types?.includes("LANDING_CTA"));
     assert.ok(persisted.detected_flow_types?.includes("SIGNUP_LEAD_FORM"));
     assert.ok(persisted.detected_flow_types?.includes("PRICING"));
@@ -75,6 +77,102 @@ test("createRunnerApp processes discovery message files and writes SiteDiscovery
       )
     );
   } finally {
+    await rm(artifactsRoot, {
+      recursive: true,
+      force: true
+    });
+    await rm(fixtureRoot, {
+      recursive: true,
+      force: true
+    });
+  }
+});
+
+test("createRunnerApp sends discovery accepted, checkpoint, and finished callbacks in order", async () => {
+  const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-discovery-callback-artifacts-"));
+  const fixtureRoot = await mkdtemp(join(tmpdir(), "wedge-runner-discovery-callback-site-"));
+  const callbackServer = await createCallbackCaptureServer();
+
+  try {
+    const fixturePath = join(fixtureRoot, "index.html");
+    const fixtureUrl = pathToFileURL(fixturePath).toString();
+    await writeFile(fixturePath, createDiscoveryFixtureHtml(), "utf8");
+
+    const messageFile = join(fixtureRoot, "discovery-execute.request.json");
+    await writeFile(messageFile, JSON.stringify(createDiscoveryExecuteMessage(fixtureUrl)), "utf8");
+
+    const app = createRunnerApp({
+      workerId: "runner-test-worker",
+      artifactsRoot,
+      callbackBaseUrl: callbackServer.baseUrl,
+      browserHeadless: true,
+      browserLaunchTimeoutMs: 30_000,
+      browserNavigationTimeoutMs: 30_000
+    });
+
+    const result = await app.processInputMessageFile(messageFile);
+
+    assert.equal(result.kind, "discovery");
+    assert.deepEqual(callbackServer.received.map((request) => request.url), [
+      "/internal/runner/discoveries/30000000-0000-4000-8000-000000000011/accepted",
+      "/internal/runner/discoveries/30000000-0000-4000-8000-000000000011/checkpoints",
+      "/internal/runner/discoveries/30000000-0000-4000-8000-000000000011/finished"
+    ]);
+
+    const checkpointCallback = callbackServer.received[1];
+    assert.equal(checkpointCallback?.method, "POST");
+    assert.equal(checkpointCallback?.headers["x-worker-id"], "runner-test-worker");
+
+    const checkpointBody = JSON.parse(checkpointCallback?.body ?? "{}") as {
+      eventId?: string;
+      workerId?: string;
+      checkpoint?: {
+        checkpointId?: string;
+        stepKey?: string;
+        stage?: string;
+        trigger?: Record<string, unknown>;
+        settle?: Record<string, unknown>;
+        state?: Record<string, unknown>;
+        observations?: Array<Record<string, unknown>>;
+        deltas?: Array<Record<string, unknown>>;
+        artifactRefs?: string[];
+      };
+      artifacts?: Array<Record<string, unknown>>;
+      observations?: Array<Record<string, unknown>>;
+    };
+
+    assert.equal(typeof checkpointBody.eventId, "string");
+    assert.equal(checkpointBody.workerId, "runner-test-worker");
+    assert.equal(checkpointBody.checkpoint?.checkpointId, "cp_001");
+    assert.equal(checkpointBody.checkpoint?.stepKey, "discovery_cp_001");
+    assert.equal(checkpointBody.checkpoint?.stage, "FIRST_VIEW");
+    assert.deepEqual(checkpointBody.checkpoint?.trigger, {
+      type: "discovery",
+      source: "site_discovery",
+      inputUrl: fixtureUrl
+    });
+    assert.equal(checkpointBody.checkpoint?.settle?.strategy, "domcontentloaded");
+    assert.equal(checkpointBody.checkpoint?.settle?.durationMs, 0);
+    assert.equal(checkpointBody.checkpoint?.settle?.status, "settled");
+    assert.equal((checkpointBody.checkpoint?.state?.page as { title?: string } | undefined)?.title, "Discovery Entrypoint Fixture");
+    assert.ok(checkpointBody.checkpoint?.observations?.some((observation) => observation.type === "cta_candidate"));
+    assert.deepEqual(checkpointBody.checkpoint?.deltas, []);
+    assert.equal(checkpointBody.checkpoint?.artifactRefs?.length, 2);
+    assert.equal(checkpointBody.artifacts?.length, 2);
+    assert.deepEqual(
+      checkpointBody.checkpoint?.artifactRefs,
+      checkpointBody.artifacts?.map((artifact) => artifact.artifactId)
+    );
+    assert.deepEqual(checkpointBody.artifacts?.map((artifact) => artifact.artifactType), ["SCREENSHOT", "DOM_SNAPSHOT"]);
+    assert.deepEqual(checkpointBody.observations, []);
+
+    const artifactFiles = await readdir(artifactsRoot, {
+      recursive: true
+    });
+    assert.ok(artifactFiles.some((path) => String(path).endsWith("-screenshot.png")));
+    assert.ok(artifactFiles.some((path) => String(path).endsWith("-dom_snapshot.html")));
+  } finally {
+    await callbackServer.close();
     await rm(artifactsRoot, {
       recursive: true,
       force: true

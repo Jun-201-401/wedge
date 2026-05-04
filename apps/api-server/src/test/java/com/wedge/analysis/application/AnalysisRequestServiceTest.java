@@ -33,6 +33,7 @@ import org.mockito.Captor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.mock.env.MockEnvironment;
 
 @ExtendWith(MockitoExtension.class)
 class AnalysisRequestServiceTest {
@@ -70,15 +71,7 @@ class AnalysisRequestServiceTest {
 
     @BeforeEach
     void setUp() {
-        analysisRequestService = new AnalysisRequestService(
-                runService,
-                projectAccessService,
-                evidenceService,
-                analysisJobMapper,
-                runMapper,
-                outboxMessagePersistenceAdapter,
-                applicationEventPublisher
-        );
+        analysisRequestService = analysisRequestService(true);
     }
 
     @Test
@@ -130,6 +123,50 @@ class AnalysisRequestServiceTest {
     }
 
     @Test
+    void requestPrimaryAnalysisCanSkipProjectAccessForMvpMode() {
+        UUID runId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        UUID evidencePacketId = UUID.randomUUID();
+        RunResponse run = sampleRun(runId, RunStatus.COMPLETED);
+        EvidencePacketSnapshot evidencePacket = snapshot(evidencePacketId, runId, 1, 1);
+        analysisRequestService = analysisRequestService(false, "dev");
+        when(runService.getRun(runId)).thenReturn(run);
+        when(evidenceService.materializeRunEvidencePacketSnapshot(runId)).thenReturn(evidencePacket);
+        UUID outboxMessageId = UUID.randomUUID();
+        when(outboxMessagePersistenceAdapter.appendAnalysisRequestMessage(any(AnalysisRequestMessage.class), any(UUID.class)))
+                .thenReturn(outboxMessageId);
+
+        AnalysisRequestResponse response = analysisRequestService.requestPrimaryAnalysis(runId, userId);
+
+        assertThat(response.runId()).isEqualTo(runId);
+        assertThat(response.status()).isEqualTo(AnalysisJobStatus.QUEUED.name());
+        verify(projectAccessService, never()).ensureProjectAccessible(run.projectId(), userId);
+        verify(analysisJobMapper).insertQueued(any(AnalysisJob.class));
+        verify(runMapper).markAnalysisQueued(runId, response.analysisJobId());
+        verify(applicationEventPublisher).publishEvent(any(AnalysisRequestOutboxEnqueuedEvent.class));
+    }
+
+    @Test
+    void requestPrimaryAnalysisDoesNotSkipProjectAccessOutsideDevProfile() {
+        UUID runId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        RunResponse run = sampleRun(runId, RunStatus.COMPLETED);
+        analysisRequestService = analysisRequestService(false, "prod");
+        when(runService.getRun(runId)).thenReturn(run);
+
+        org.mockito.Mockito.doThrow(new BusinessException(ErrorCode.FORBIDDEN))
+                .when(projectAccessService)
+                .ensureProjectAccessible(run.projectId(), userId);
+
+        assertThatThrownBy(() -> analysisRequestService.requestPrimaryAnalysis(runId, userId))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.FORBIDDEN);
+
+        verify(evidenceService, never()).materializeRunEvidencePacketSnapshot(runId);
+    }
+
+    @Test
     void requestPrimaryAnalysisRejectsRunBeforeCompletion() {
         UUID runId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
@@ -178,6 +215,26 @@ class AnalysisRequestServiceTest {
         snapshot.setCheckpointCount(checkpointCount);
         snapshot.setArtifactCount(artifactCount);
         return snapshot;
+    }
+
+    private AnalysisRequestService analysisRequestService(boolean accessCheckEnabled, String... activeProfiles) {
+        AnalysisProperties properties = new AnalysisProperties();
+        properties.setProjectAccessCheckEnabled(accessCheckEnabled);
+        return new AnalysisRequestService(
+                runService,
+                new AnalysisAccessGuard(projectAccessService, properties, environment(activeProfiles)),
+                evidenceService,
+                analysisJobMapper,
+                runMapper,
+                outboxMessagePersistenceAdapter,
+                applicationEventPublisher
+        );
+    }
+
+    private MockEnvironment environment(String... activeProfiles) {
+        MockEnvironment environment = new MockEnvironment();
+        environment.setActiveProfiles(activeProfiles);
+        return environment;
     }
 
     private RunResponse sampleRun(UUID runId, RunStatus status) {

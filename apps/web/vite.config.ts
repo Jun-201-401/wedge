@@ -15,7 +15,7 @@ function isWslRuntime() {
 }
 
 const runsInWsl = isWslRuntime();
-const defaultApiProxyTarget = runsInWsl ? 'http://host.docker.internal:8080' : 'http://localhost:8080';
+const defaultApiProxyTarget = 'http://localhost:8080';
 const apiProxyTarget = process.env.VITE_API_PROXY_TARGET ?? defaultApiProxyTarget;
 
 const logger = createLogger();

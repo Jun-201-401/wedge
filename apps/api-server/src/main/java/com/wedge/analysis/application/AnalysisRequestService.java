@@ -7,7 +7,6 @@ import com.wedge.common.error.BusinessException;
 import com.wedge.common.error.ErrorCode;
 import com.wedge.evidence.application.EvidenceService;
 import com.wedge.evidence.domain.EvidencePacketSnapshot;
-import com.wedge.project.application.ProjectAccessService;
 import com.wedge.run.api.dto.RunResponse;
 import com.wedge.run.application.RunService;
 import com.wedge.run.domain.AnalysisJobStatus;
@@ -29,7 +28,7 @@ public class AnalysisRequestService {
     private static final String PRIMARY_ANALYSIS = "PRIMARY";
 
     private final RunService runService;
-    private final ProjectAccessService projectAccessService;
+    private final AnalysisAccessGuard analysisAccessGuard;
     private final EvidenceService evidenceService;
     private final AnalysisJobMapper analysisJobMapper;
     private final RunMapper runMapper;
@@ -38,7 +37,7 @@ public class AnalysisRequestService {
 
     public AnalysisRequestService(
             RunService runService,
-            ProjectAccessService projectAccessService,
+            AnalysisAccessGuard analysisAccessGuard,
             EvidenceService evidenceService,
             AnalysisJobMapper analysisJobMapper,
             RunMapper runMapper,
@@ -46,7 +45,7 @@ public class AnalysisRequestService {
             ApplicationEventPublisher applicationEventPublisher
     ) {
         this.runService = runService;
-        this.projectAccessService = projectAccessService;
+        this.analysisAccessGuard = analysisAccessGuard;
         this.evidenceService = evidenceService;
         this.analysisJobMapper = analysisJobMapper;
         this.runMapper = runMapper;
@@ -57,7 +56,7 @@ public class AnalysisRequestService {
     @Transactional
     public AnalysisRequestResponse requestPrimaryAnalysis(UUID runId, UUID userId) {
         RunResponse run = runService.getRun(runId);
-        projectAccessService.ensureProjectAccessible(run.projectId(), userId);
+        analysisAccessGuard.ensureProjectAccessible(run.projectId(), userId);
         if (run.status() != RunStatus.COMPLETED) {
             throw new BusinessException(ErrorCode.STATE_CONFLICT, "Run must be COMPLETED before analysis can be requested.");
         }

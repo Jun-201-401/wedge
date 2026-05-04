@@ -12,6 +12,7 @@ export type {
   DiscoveryEntrypointType,
   DiscoveryExecuteMessage,
   DiscoveryAcceptedPayload,
+  DiscoveryCheckpointRequest,
   DiscoveryFinishedPayload,
   DiscoveryFailedPayload,
   DiscoverySummaryPayload,

@@ -1,4 +1,4 @@
-package com.wedge.report.application;
+package com.wedge.analysis.application;
 
 import com.wedge.project.application.ProjectAccessService;
 import java.util.Arrays;
@@ -9,13 +9,13 @@ import org.springframework.stereotype.Component;
 
 @Component
 @RequiredArgsConstructor
-public class ReportAccessGuard {
+public class AnalysisAccessGuard {
     private final ProjectAccessService projectAccessService;
-    private final ReportProperties reportProperties;
+    private final AnalysisProperties analysisProperties;
     private final Environment environment;
 
     public void ensureProjectAccessible(UUID projectId, UUID userId) {
-        if (reportProperties.isProjectAccessCheckEnabled() || !isDevProfileActive()) {
+        if (analysisProperties.isProjectAccessCheckEnabled() || !isDevProfileActive()) {
             projectAccessService.ensureProjectAccessible(projectId, userId);
         }
     }
