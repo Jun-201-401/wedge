@@ -23,7 +23,7 @@ test('auth api mirrors cookie-backed Spring auth endpoints and stores no refresh
   assert.doesNotMatch(model, /refreshToken:\s*string/);
   assert.doesNotMatch(session, /setItem\([^\n]*AUTH_REFRESH_TOKEN_STORAGE_KEY/);
   assert.match(session, /removeStorageItem\(storage, AUTH_REFRESH_TOKEN_STORAGE_KEY\)/);
-  assert.match(contract, /summary: Rotate refresh cookie and issue a new access token/);
+  assert.match(contract, /summary: 액세스 토큰 재발급/);
   assert.match(contract, /name: wedge_refresh_token/);
   assert.match(contract, /in: cookie/);
   assert.match(contract, /Path=\/api\/auth/);

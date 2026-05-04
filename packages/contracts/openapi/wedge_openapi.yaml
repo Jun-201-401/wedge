@@ -2,36 +2,53 @@ openapi: 3.0.3
 info:
   title: Wedge API
   version: 1.0.0-draft
-  description: Wedge public REST API (/api), internal callback API (/internal), and canonical transport schemas. This draft includes
-    report shares, checkpoint callback, and evidence packet retrieval.
+  description: Wedge public REST API (/api), internal callback API (/internal), and canonical transport schemas. This draft
+    includes report shares, checkpoint callback, and evidence packet retrieval.
 servers:
+- url: http://localhost:8080
+  description: local API server for Swagger MVP testing
 - url: https://api.wedge.example.com
   description: production placeholder
 - url: https://staging-api.wedge.example.com
   description: staging placeholder
 security:
-- oauth2: []
+- HumanBearer: []
 tags:
 - name: Auth
+  description: 회원가입, 로그인, 토큰 재발급, 현재 사용자 확인 API입니다. Swagger에서는 signup/login 후 accessToken을 Authorize에 넣어 후속 API를 테스트합니다.
 - name: Projects
+  description: 분석 대상 프로젝트를 관리하는 계약 API입니다. MVP 실행 테스트에서는 seed projectId 확인 용도로 사용합니다.
 - name: ScenarioTemplates
+  description: Run 생성에 필요한 시나리오 템플릿과 버전 정보를 조회하는 계약 API입니다.
 - name: Discoveries
+  description: URL 사전 탐색과 추천 시나리오 확인을 위한 계약 API입니다.
 - name: Runs
+  description: 실행 생성, 조회, 시작, 중지, live 상태 확인을 담당하는 MVP 핵심 API입니다.
 - name: Steps
+  description: 실행 단계 단위 상태를 확인하는 API입니다. 현재 MVP에서는 일부 구현이 제한적일 수 있습니다.
 - name: Events
+  description: Runner 이벤트 타임라인을 확인하는 API입니다.
 - name: Artifacts
+  description: 실행 중 수집된 스크린샷, HTML, trace 등 아티팩트를 조회/다운로드하는 API입니다.
 - name: Signals
+  description: 분석 결과에서 사용자에게 보여줄 이슈 시그널을 조회하는 API입니다.
 - name: Analysis
+  description: EvidencePacket 기반 분석 요청과 분석 작업 상태를 다루는 API입니다.
 - name: Reports
+  description: 분석 결과 리포트 생성, 조회, 공유를 담당하는 API입니다.
 - name: InternalRunner
+  description: Runner 서비스가 API 서버로 실행 상태와 evidence를 전달하는 내부 callback API입니다.
 - name: InternalAnalyzer
+  description: Analyzer 서비스가 분석 결과를 API 서버로 전달하거나 EvidencePacket을 조회하는 내부 API입니다.
 paths:
   /api/auth/signup:
     post:
       tags:
       - Auth
       operationId: signup
-      summary: Sign up a human web user
+      summary: 회원가입
+      description: 새 테스트 사용자를 생성하고 accessToken과 refresh cookie 발급을 확인한다. Swagger에서는 예시 값을 그대로 실행한 뒤 응답의 data.accessToken을
+        Authorize에 넣어 후속 인증 API를 테스트한다.
       security: []
       requestBody:
         required: true
@@ -39,14 +56,20 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/SignupRequest'
+            examples:
+              mvpSignup:
+                summary: MVP 테스트 사용자 회원가입
+                value:
+                  email: mvp.tester@example.com
+                  password: wedge-test-1234
+                  displayName: MVP 테스터
       responses:
         '201':
           description: Signed up
           headers:
             Set-Cookie:
-              description: >-
-                HttpOnly refresh token cookie (`wedge_refresh_token`); attributes: `Path=/api/auth`, `HttpOnly`,
-                `SameSite=Lax`, `Max-Age` set to refresh TTL, and `Secure` in production/HTTPS contexts.
+              description: 'HttpOnly refresh token cookie (`wedge_refresh_token`); attributes: `Path=/api/auth`, `HttpOnly`,
+                `SameSite=Lax`, `Max-Age` set to refresh TTL, and `Secure` in production/HTTPS contexts.'
               schema:
                 type: string
           content:
@@ -62,7 +85,8 @@ paths:
       tags:
       - Auth
       operationId: login
-      summary: Log in a human web user
+      summary: 로그인
+      description: 기존 사용자 이메일/비밀번호로 accessToken 발급을 확인한다. 회원가입 후 같은 계정으로 호출하고, 응답 토큰으로 인증이 필요한 API를 이어서 테스트한다.
       security: []
       requestBody:
         required: true
@@ -70,14 +94,19 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/LoginRequest'
+            examples:
+              mvpLogin:
+                summary: MVP 테스트 사용자 로그인
+                value:
+                  email: mvp.tester@example.com
+                  password: wedge-test-1234
       responses:
         '200':
           description: Logged in
           headers:
             Set-Cookie:
-              description: >-
-                HttpOnly refresh token cookie (`wedge_refresh_token`); attributes: `Path=/api/auth`, `HttpOnly`,
-                `SameSite=Lax`, `Max-Age` set to refresh TTL, and `Secure` in production/HTTPS contexts.
+              description: 'HttpOnly refresh token cookie (`wedge_refresh_token`); attributes: `Path=/api/auth`, `HttpOnly`,
+                `SameSite=Lax`, `Max-Age` set to refresh TTL, and `Secure` in production/HTTPS contexts.'
               schema:
                 type: string
           content:
@@ -93,8 +122,9 @@ paths:
       tags:
       - Auth
       operationId: refreshHumanToken
-      summary: Rotate refresh cookie and issue a new access token
-      description: Reads the HttpOnly `wedge_refresh_token` cookie, rotates it, and returns a new access token response.
+      summary: 액세스 토큰 재발급
+      description: 브라우저에 저장된 wedge_refresh_token HttpOnly cookie로 새 accessToken을 발급받는지 확인한다. Swagger 단독보다는 같은 브라우저에서 signup/login
+        후 cookie가 유지된 상태로 테스트한다.
       security: []
       parameters:
       - name: wedge_refresh_token
@@ -108,9 +138,8 @@ paths:
           description: Token refreshed
           headers:
             Set-Cookie:
-              description: >-
-                Rotated HttpOnly refresh token cookie (`wedge_refresh_token`); attributes: `Path=/api/auth`, `HttpOnly`,
-                `SameSite=Lax`, `Max-Age` set to refresh TTL, and `Secure` in production/HTTPS contexts.
+              description: 'Rotated HttpOnly refresh token cookie (`wedge_refresh_token`); attributes: `Path=/api/auth`, `HttpOnly`,
+                `SameSite=Lax`, `Max-Age` set to refresh TTL, and `Secure` in production/HTTPS contexts.'
               schema:
                 type: string
           content:
@@ -121,9 +150,8 @@ paths:
           description: Refresh cookie missing, invalid, or expired. Also expires the browser refresh cookie.
           headers:
             Set-Cookie:
-              description: >-
-                Expired HttpOnly refresh token cookie (`wedge_refresh_token`); attributes: `Path=/api/auth`, `HttpOnly`,
-                `SameSite=Lax`, `Max-Age=0`, and `Secure` in production/HTTPS contexts.
+              description: 'Expired HttpOnly refresh token cookie (`wedge_refresh_token`); attributes: `Path=/api/auth`, `HttpOnly`,
+                `SameSite=Lax`, `Max-Age=0`, and `Secure` in production/HTTPS contexts.'
               schema:
                 type: string
           content:
@@ -135,7 +163,8 @@ paths:
       tags:
       - Auth
       operationId: logout
-      summary: Log out current human web user
+      summary: 로그아웃
+      description: 현재 사용자 세션을 종료하고 refresh cookie 만료 헤더가 내려오는지 확인한다. Bearer 토큰 인증 후 호출한다.
       security:
       - HumanBearer: []
       responses:
@@ -143,9 +172,8 @@ paths:
           description: Logged out
           headers:
             Set-Cookie:
-              description: >-
-                Expired HttpOnly refresh token cookie (`wedge_refresh_token`); attributes: `Path=/api/auth`, `HttpOnly`,
-                `SameSite=Lax`, `Max-Age=0`, and `Secure` in production/HTTPS contexts.
+              description: 'Expired HttpOnly refresh token cookie (`wedge_refresh_token`); attributes: `Path=/api/auth`, `HttpOnly`,
+                `SameSite=Lax`, `Max-Age=0`, and `Secure` in production/HTTPS contexts.'
               schema:
                 type: string
           content:
@@ -159,7 +187,8 @@ paths:
       tags:
       - Auth
       operationId: getCurrentUser
-      summary: Get current human web user
+      summary: 내 사용자 정보 조회
+      description: Authorize에 넣은 Bearer 토큰이 유효한지 확인하고 현재 사용자 id, email, displayName, status를 조회한다.
       security:
       - HumanBearer: []
       responses:
@@ -176,10 +205,10 @@ paths:
       tags:
       - Projects
       operationId: listProjects
-      summary: List projects
+      summary: 프로젝트 목록 조회
+      description: 사용자가 접근 가능한 프로젝트 목록과 paging meta를 확인한다. 현재 MVP 런타임에서는 구현 여부를 먼저 확인해야 하는 계약 API다.
       security:
-      - oauth2:
-        - wedge.read
+      - HumanBearer: []
       parameters:
       - $ref: '#/components/parameters/Cursor'
       - $ref: '#/components/parameters/Limit'
@@ -209,10 +238,10 @@ paths:
       tags:
       - Projects
       operationId: createProject
-      summary: Create project
+      summary: 프로젝트 생성
+      description: 분석 대상 사이트를 묶는 프로젝트를 생성하는 계약 API다. 현재 MVP 런타임에서는 구현 여부를 먼저 확인해야 한다.
       security:
-      - oauth2:
-        - wedge.execute
+      - HumanBearer: []
       requestBody:
         required: true
         content:
@@ -241,10 +270,10 @@ paths:
       tags:
       - Projects
       operationId: getProject
-      summary: Get project
+      summary: 프로젝트 상세 조회
+      description: projectId로 프로젝트 상세 정보를 조회하는 계약 API다. Run 생성에 필요한 projectId 확인 용도로 사용한다.
       security:
-      - oauth2:
-        - wedge.read
+      - HumanBearer: []
       parameters:
       - $ref: '#/components/parameters/ProjectId'
       responses:
@@ -268,10 +297,10 @@ paths:
       tags:
       - Projects
       operationId: patchProject
-      summary: Patch project
+      summary: 프로젝트 수정
+      description: 프로젝트 이름/설정 같은 일부 필드를 수정하는 계약 API다. MVP 테스트에서는 핵심 실행 플로우 전 필수 단계는 아니다.
       security:
-      - oauth2:
-        - wedge.execute
+      - HumanBearer: []
       parameters:
       - $ref: '#/components/parameters/ProjectId'
       requestBody:
@@ -302,10 +331,10 @@ paths:
       tags:
       - ScenarioTemplates
       operationId: listScenarioTemplates
-      summary: List scenario templates
+      summary: 시나리오 템플릿 목록 조회
+      description: Run 생성에 사용할 scenarioTemplateVersionId 후보를 확인하는 계약 API다. 현재는 seed/DB 값으로 대체해 테스트할 수 있다.
       security:
-      - oauth2:
-        - wedge.read
+      - HumanBearer: []
       parameters:
       - $ref: '#/components/parameters/Cursor'
       - $ref: '#/components/parameters/Limit'
@@ -335,10 +364,10 @@ paths:
       tags:
       - ScenarioTemplates
       operationId: getScenarioTemplate
-      summary: Get scenario template
+      summary: 시나리오 템플릿 상세 조회
+      description: templateId 기준으로 템플릿 메타데이터와 버전 정보를 확인한다. Run 생성 예시 값 검증에 사용한다.
       security:
-      - oauth2:
-        - wedge.read
+      - HumanBearer: []
       parameters:
       - $ref: '#/components/parameters/TemplateId'
       responses:
@@ -371,10 +400,10 @@ paths:
       tags:
       - ScenarioTemplates
       operationId: getScenarioTemplateVersion
-      summary: Get scenario template version
+      summary: 시나리오 템플릿 버전 조회
+      description: 특정 템플릿 버전의 payload 구조를 확인한다. Run 생성 시 scenarioTemplateVersionId와 scenarioPlan을 맞출 때 사용한다.
       security:
-      - oauth2:
-        - wedge.read
+      - HumanBearer: []
       parameters:
       - $ref: '#/components/parameters/TemplateId'
       - $ref: '#/components/parameters/VersionId'
@@ -408,11 +437,10 @@ paths:
       tags:
       - Discoveries
       operationId: createDiscovery
-      summary: Start lightweight Site Discovery / Preflight
-      description: Performs a short URL-first discovery pass to recommend applicable scenarios before creating a full run.
+      summary: 사이트 사전 탐색 시작
+      description: 전체 실행 전에 URL을 가볍게 탐색해 추천 시나리오를 만들기 위한 계약 API다. MVP 핵심 수동 테스트에서는 Run 생성 예시로 대체 가능하다.
       security:
-      - oauth2:
-        - wedge.execute
+      - HumanBearer: []
       parameters:
       - name: Idempotency-Key
         in: header
@@ -457,10 +485,10 @@ paths:
       tags:
       - Discoveries
       operationId: getDiscovery
-      summary: Get Site Discovery / Preflight result
+      summary: 사이트 사전 탐색 결과 조회
+      description: discoveryId로 사전 탐색 결과와 추천 시나리오를 확인한다. Discovery 기반 Run 생성 전 확인용이다.
       security:
-      - oauth2:
-        - wedge.read
+      - HumanBearer: []
       parameters:
       - $ref: '#/components/parameters/DiscoveryId'
       responses:
@@ -517,10 +545,10 @@ paths:
       tags:
       - Runs
       operationId: listRuns
-      summary: List runs
+      summary: 실행 목록 조회
+      description: 생성된 Run 목록과 상태 필터링을 확인한다. signup/login 후 Bearer 토큰으로 호출해 생성된 Run이 목록에 보이는지 테스트한다.
       security:
-      - oauth2:
-        - wedge.read
+      - HumanBearer: []
       parameters:
       - $ref: '#/components/parameters/Cursor'
       - $ref: '#/components/parameters/Limit'
@@ -568,10 +596,11 @@ paths:
       tags:
       - Runs
       operationId: createRun
-      summary: Create run
+      summary: 실행 생성
+      description: 분석 실행 단위를 생성한다. Swagger 예시는 회원가입 CTA 점검용 scenarioPlan을 포함하며, projectId와 scenarioTemplateVersionId는 로컬 DB/seed
+        값으로 교체해야 실제 테스트가 가능하다.
       security:
-      - oauth2:
-        - wedge.execute
+      - HumanBearer: []
       parameters:
       - name: Idempotency-Key
         in: header
@@ -584,6 +613,68 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/RunCreateRequest'
+            examples:
+              signupBasicMvp:
+                summary: Runner smoke 실행 생성
+                description: infra/scripts/seed-real-run-smoke.mjs가 생성하는 projectId/scenarioTemplateVersionId를 사용하는 최소 Runner
+                  연동 테스트 예시다. target URL을 바꾸면 startUrl과 scenarioPlan.start_url을 같은 값으로 맞춘다.
+                value:
+                  projectId: 8f06dca8-9c4d-4f20-b1a8-1d5ee40a9923
+                  name: Runner smoke 실행
+                  startUrl: https://example.com/
+                  goal: Runner가 URL을 열고 checkpoint/artifact/evidence callback을 API 서버로 보내는지 확인한다.
+                  devicePreset: desktop
+                  scenarioTemplateVersionId: 5c5f4c77-0c32-4ab3-9841-2b6f6cc07a40
+                  scenarioOverrides:
+                    source: swagger-runner-smoke
+                  scenarioPlan:
+                    schema_version: '0.5'
+                    plan_id: smoke_landing_cta_hero_only
+                    scenario_type: custom_compiled
+                    template_key: landing-cta
+                    goal: 'Runner smoke: URL open, checkpoint, evidence callback, API evidence packet.'
+                    start_url: https://example.com/
+                    environment:
+                      device: desktop
+                      viewport:
+                        width: 1440
+                        height: 900
+                      locale: ko-KR
+                      timezone: Asia/Seoul
+                      permissions: []
+                      auth_state: anonymous
+                      depth_id: hero-only
+                    safety:
+                      allow_external_navigation: false
+                      allow_payment_commit: false
+                      allow_destructive_action: false
+                      use_synthetic_inputs: true
+                      stop_before_real_payment: true
+                    steps:
+                    - step_id: step_001_goto_start_url
+                      stage: FIRST_VIEW
+                      description: Smoke 대상 URL 첫 화면 열기
+                      action:
+                        type: goto
+                        target:
+                          url: https://example.com/
+                      settle_strategy:
+                        type: network_idle
+                        timeout_ms: 5000
+                      checkpoint: true
+                    - step_id: step_002_checkpoint_landing_cta
+                      stage: CTA
+                      description: Landing CTA evidence checkpoint
+                      action:
+                        type: checkpoint
+                        target:
+                          scenario_id: landing-cta
+                          depth_id: hero-only
+                          text: hero section, primary button, nav CTA
+                      settle_strategy:
+                        type: fixed_short
+                        timeout_ms: 500
+                      checkpoint: true
       responses:
         '201':
           description: Run created
@@ -606,10 +697,10 @@ paths:
       tags:
       - Runs
       operationId: getRun
-      summary: Get run
+      summary: 실행 상세 조회
+      description: runId로 현재 실행 상태, 시작/종료 시각, 분석 상태를 확인한다. createRun 또는 listRuns에서 받은 id로 테스트한다.
       security:
-      - oauth2:
-        - wedge.read
+      - HumanBearer: []
       parameters:
       - $ref: '#/components/parameters/RunId'
       responses:
@@ -633,10 +724,10 @@ paths:
       tags:
       - Runs
       operationId: deleteRun
-      summary: Delete run
+      summary: 실행 삭제
+      description: runId의 실행을 삭제 처리한다. MVP 확인 중 데이터 보존이 필요하면 호출하지 않는다.
       security:
-      - oauth2:
-        - wedge.admin
+      - HumanBearer: []
       parameters:
       - $ref: '#/components/parameters/RunId'
       responses:
@@ -657,10 +748,10 @@ paths:
       tags:
       - Runs
       operationId: startRun
-      summary: Start run
+      summary: 실행 시작
+      description: CREATED 상태의 Run을 QUEUED로 전환하고 Runner 실행 요청 outbox 발행을 확인한다. createRun 응답의 data.id로 호출한다.
       security:
-      - oauth2:
-        - wedge.execute
+      - HumanBearer: []
       parameters:
       - $ref: '#/components/parameters/RunId'
       - name: Idempotency-Key
@@ -690,10 +781,10 @@ paths:
       tags:
       - Runs
       operationId: stopRun
-      summary: Stop run
+      summary: 실행 중지 요청
+      description: 진행 중인 Run에 중지 요청을 보낸다. 실행 상태 전이 검증이나 수동 중단 테스트에 사용한다.
       security:
-      - oauth2:
-        - wedge.execute
+      - HumanBearer: []
       parameters:
       - $ref: '#/components/parameters/RunId'
       - name: Idempotency-Key
@@ -729,10 +820,10 @@ paths:
       tags:
       - Runs
       operationId: getRunLive
-      summary: Get live run state
+      summary: 실시간 실행 상태 조회
+      description: Run 모니터 화면에서 쓰는 현재 step, 최신 checkpoint/artifact, evidence count를 조회한다. startRun 후 상태 변화 확인에 사용한다.
       security:
-      - oauth2:
-        - wedge.read
+      - HumanBearer: []
       parameters:
       - $ref: '#/components/parameters/RunId'
       responses:
@@ -757,10 +848,10 @@ paths:
       tags:
       - Steps
       operationId: listRunSteps
-      summary: List run steps
+      summary: 실행 단계 목록 조회
+      description: Run의 시나리오 step 목록을 조회하는 API다. 현재 구현은 MVP에서 제한적/placeholder일 수 있어 live/evidence-packet과 함께 확인한다.
       security:
-      - oauth2:
-        - wedge.read
+      - HumanBearer: []
       parameters:
       - $ref: '#/components/parameters/RunId'
       - $ref: '#/components/parameters/Cursor'
@@ -787,10 +878,10 @@ paths:
       tags:
       - Steps
       operationId: getRunStep
-      summary: Get run step
+      summary: 실행 단계 상세 조회
+      description: 특정 stepId의 상태를 조회하는 계약 API다. stepId는 단계 목록 또는 DB 저장값을 기준으로 테스트한다.
       security:
-      - oauth2:
-        - wedge.read
+      - HumanBearer: []
       parameters:
       - $ref: '#/components/parameters/RunId'
       - $ref: '#/components/parameters/StepId'
@@ -816,10 +907,10 @@ paths:
       tags:
       - Events
       operationId: listRunEvents
-      summary: List run events
+      summary: 실행 이벤트 목록 조회
+      description: Runner가 기록한 실행 이벤트 타임라인을 조회하는 API다. 현재 구현은 MVP에서 제한적/placeholder일 수 있다.
       security:
-      - oauth2:
-        - wedge.read
+      - HumanBearer: []
       parameters:
       - $ref: '#/components/parameters/RunId'
       - $ref: '#/components/parameters/Cursor'
@@ -855,10 +946,10 @@ paths:
       tags:
       - Artifacts
       operationId: listRunArtifacts
-      summary: List run artifacts
+      summary: 실행 아티팩트 목록 조회
+      description: 스크린샷/HTML/trace 같은 저장 아티팩트 목록과 content URL을 확인한다. Runner callback 이후 결과 확인에 사용한다.
       security:
-      - oauth2:
-        - wedge.read
+      - HumanBearer: []
       parameters:
       - $ref: '#/components/parameters/RunId'
       - $ref: '#/components/parameters/Cursor'
@@ -894,11 +985,10 @@ paths:
       tags:
       - Artifacts
       operationId: getRunArtifactContent
-      summary: Get run artifact binary content
-      description: Prototype-friendly content endpoint for locally stored runner artifacts such as screenshots and DOM snapshots. Production deployments may redirect to signed object-storage URLs.
+      summary: 실행 아티팩트 파일 다운로드
+      description: artifactId의 실제 파일 바이너리를 내려받는 API다. listRunArtifacts 응답의 artifactId로 이미지/HTML 파일 접근을 확인한다.
       security:
-      - oauth2:
-        - wedge.read
+      - HumanBearer: []
       parameters:
       - $ref: '#/components/parameters/RunId'
       - $ref: '#/components/parameters/ArtifactId'
@@ -936,10 +1026,10 @@ paths:
       tags:
       - Signals
       operationId: listRunSignals
-      summary: List run issue signals
+      summary: 이슈 시그널 목록 조회
+      description: 분석 결과에서 사용자에게 보여줄 이슈 신호를 조회하는 계약 API다. 현재 MVP에서는 report API가 우선 검증 대상이다.
       security:
-      - oauth2:
-        - wedge.read
+      - HumanBearer: []
       parameters:
       - $ref: '#/components/parameters/RunId'
       - $ref: '#/components/parameters/Cursor'
@@ -979,11 +1069,10 @@ paths:
       tags:
       - Analysis
       operationId: requestRunAnalysis
-      summary: Request primary analysis for completed run
-      description: MVP endpoint that materializes the run EvidencePacket snapshot and publishes analysis.request with evidencePacketId.
+      summary: 분석 요청
+      description: 완료된 Run의 EvidencePacket snapshot을 만들고 Analyzer 분석 요청을 큐에 넣는다. Runner 완료 후 report 생성 전 단계로 테스트한다.
       security:
-      - oauth2:
-        - wedge.execute
+      - HumanBearer: []
       parameters:
       - $ref: '#/components/parameters/RunId'
       responses:
@@ -1008,10 +1097,10 @@ paths:
       tags:
       - Analysis
       operationId: listRunAnalysisJobs
-      summary: List analysis jobs for run
+      summary: 분석 작업 목록 조회
+      description: Run에 연결된 분석 작업 이력을 조회하는 계약 API다. 현재 MVP 런타임에서는 구현 여부를 확인해야 한다.
       security:
-      - oauth2:
-        - wedge.read
+      - HumanBearer: []
       parameters:
       - $ref: '#/components/parameters/RunId'
       - $ref: '#/components/parameters/Cursor'
@@ -1037,10 +1126,10 @@ paths:
       tags:
       - Analysis
       operationId: createAnalysisJob
-      summary: Create analysis job
+      summary: 분석 작업 생성
+      description: 분석 작업을 명시적으로 생성하는 계약 API다. 현재 MVP에서는 POST /api/runs/{runId}/analysis가 기본 테스트 경로다.
       security:
-      - oauth2:
-        - wedge.execute
+      - HumanBearer: []
       parameters:
       - $ref: '#/components/parameters/RunId'
       - name: Idempotency-Key
@@ -1076,10 +1165,10 @@ paths:
       tags:
       - Analysis
       operationId: getAnalysisJob
-      summary: Get analysis job
+      summary: 분석 작업 상세 조회
+      description: analysisJobId로 분석 상태와 결과 연결 정보를 확인하는 계약 API다. callback 처리 확인 시 사용한다.
       security:
-      - oauth2:
-        - wedge.read
+      - HumanBearer: []
       parameters:
       - $ref: '#/components/parameters/AnalysisJobId'
       responses:
@@ -1104,10 +1193,10 @@ paths:
       tags:
       - Reports
       operationId: getRunReportProjection
-      summary: Get generated or generatable run report projection
+      summary: 실행 리포트 조회
+      description: Run 기준으로 생성된 리포트 projection을 조회한다. 분석 완료 후 리포트 화면이 표시할 데이터를 확인한다.
       security:
-      - oauth2:
-        - wedge.read
+      - HumanBearer: []
       parameters:
       - $ref: '#/components/parameters/RunId'
       responses:
@@ -1131,10 +1220,10 @@ paths:
       tags:
       - Reports
       operationId: generateRunReportProjection
-      summary: Generate run report projection from completed analysis
+      summary: 실행 리포트 생성
+      description: 완료된 분석 결과를 바탕으로 리포트 projection을 생성한다. requestRunAnalysis와 Analyzer callback 이후 호출한다.
       security:
-      - oauth2:
-        - wedge.execute
+      - HumanBearer: []
       parameters:
       - $ref: '#/components/parameters/RunId'
       responses:
@@ -1159,10 +1248,10 @@ paths:
       tags:
       - Reports
       operationId: listRunReports
-      summary: List reports for run
+      summary: 실행 리포트 목록 조회
+      description: Run에 생성된 리포트 요약 목록을 조회한다. 리포트가 여러 개 생성되는 흐름을 확인할 때 사용한다.
       security:
-      - oauth2:
-        - wedge.read
+      - HumanBearer: []
       parameters:
       - $ref: '#/components/parameters/RunId'
       responses:
@@ -1186,10 +1275,10 @@ paths:
       tags:
       - Reports
       operationId: createReport
-      summary: Create report export job
+      summary: 리포트 내보내기 작업 생성
+      description: PDF/공유 등 export 작업 생성을 위한 계약 API다. 현재 MVP 핵심 화면 테스트에서는 필수는 아니다.
       security:
-      - oauth2:
-        - wedge.export
+      - HumanBearer: []
       parameters:
       - $ref: '#/components/parameters/RunId'
       - name: Idempotency-Key
@@ -1225,10 +1314,11 @@ paths:
       tags:
       - Reports
       operationId: getReport
-      summary: Get report
+      summary: 리포트 상세 조회
+      description: reportId 기준으로 findings, nudges, decisionMap 등 상세 리포트 데이터를 확인한다. listRunReports 또는 getRunReport 응답의 id로
+        테스트한다.
       security:
-      - oauth2:
-        - wedge.read
+      - HumanBearer: []
       parameters:
       - $ref: '#/components/parameters/ReportId'
       responses:
@@ -1253,7 +1343,8 @@ paths:
       tags:
       - InternalRunner
       operationId: runnerAccepted
-      summary: Runner accepted run
+      summary: Runner 실행 수락 callback
+      description: Runner가 실행 요청을 수락했음을 API 서버에 알리는 내부 callback이다. INTERNAL 토큰과 X-Event-Id/X-Worker-Id 헤더로 중복 처리까지 테스트한다.
       security:
       - InternalBearer: []
       parameters:
@@ -1301,7 +1392,8 @@ paths:
       tags:
       - InternalRunner
       operationId: runnerStepEvents
-      summary: Runner pushed step events
+      summary: Runner 단계 이벤트 callback
+      description: Runner가 step 시작/완료 같은 이벤트를 밀어 넣는 내부 callback이다. Run timeline/evidence 저장 흐름 검증에 사용한다.
       security:
       - InternalBearer: []
       parameters:
@@ -1349,7 +1441,8 @@ paths:
       tags:
       - InternalRunner
       operationId: runnerArtifacts
-      summary: Runner pushed artifacts
+      summary: Runner 아티팩트 callback
+      description: Runner가 캡처한 파일/스크린샷 메타데이터를 저장하는 내부 callback이다. 이후 artifacts API에서 조회되는지 테스트한다.
       security:
       - InternalBearer: []
       parameters:
@@ -1397,7 +1490,8 @@ paths:
       tags:
       - InternalRunner
       operationId: runnerFinished
-      summary: Runner finished run
+      summary: Runner 완료 callback
+      description: Runner가 Run 완료를 알리고 상태를 COMPLETED로 전환하는 내부 callback이다. 분석 요청 전 완료 상태 만들기에 사용한다.
       security:
       - InternalBearer: []
       parameters:
@@ -1445,7 +1539,8 @@ paths:
       tags:
       - InternalRunner
       operationId: runnerFailed
-      summary: Runner failed run
+      summary: Runner 실패 callback
+      description: Runner 실패 사유를 저장하고 Run 상태를 FAILED로 전환하는 내부 callback이다. 실패 처리/에러 메시지 검증에 사용한다.
       security:
       - InternalBearer: []
       parameters:
@@ -1493,7 +1588,8 @@ paths:
       tags:
       - InternalAnalyzer
       operationId: analysisCompleted
-      summary: Analyzer completed analysis job
+      summary: Analyzer 완료 callback
+      description: Analyzer가 judge/report 원천 결과를 제출하는 내부 callback이다. 완료 후 report 생성/조회 API 테스트가 가능해진다.
       security:
       - InternalBearer: []
       parameters:
@@ -1529,52 +1625,52 @@ paths:
                 attentionModel: rule-engine-v1
                 ctrModel: ctr-baseline-v1
               topFindings:
-                - rank: 1
-                  category: INPUT_FRICTION
-                  title: 이메일 검증이 서버 응답에 의존함
-                  description: 입력 직후 validation response를 기다리는 흐름이 확인되어 사용자가 입력 반영 여부를 즉시 확신하지 못할 수 있다.
-                  confidence: 0.72
-                  impact: MEDIUM
-                  evidenceRefs:
-                    - type: step
-                      id: step_003_fill_email
-                - rank: 2
-                  category: VALUE_FRICTION
-                  title: 혜택 목록 확장 뒤 정보량이 급격히 증가함
-                  description: 혜택 목록이 1개에서 3개로 늘어나 핵심 가치 탐색 비용이 증가할 수 있다.
-                  confidence: 0.74
-                  impact: MEDIUM
-                  evidenceRefs:
-                    - type: step
-                      id: step_004_expand_benefits
-                - rank: 3
-                  category: INPUT_TIMEOUT
-                  title: 이메일 validation response timeout 발생
-                  description: 입력 검증 response가 timeout으로 끝나 사용자가 다음 진행 가능 여부를 신뢰하기 어려울 수 있다.
-                  confidence: 0.76
-                  impact: HIGH
-                  evidenceRefs:
-                    - type: step
-                      id: step_005_fill_email_retry
+              - rank: 1
+                category: INPUT_FRICTION
+                title: 이메일 검증이 서버 응답에 의존함
+                description: 입력 직후 validation response를 기다리는 흐름이 확인되어 사용자가 입력 반영 여부를 즉시 확신하지 못할 수 있다.
+                confidence: 0.72
+                impact: MEDIUM
+                evidenceRefs:
+                - type: step
+                  id: step_003_fill_email
+              - rank: 2
+                category: VALUE_FRICTION
+                title: 혜택 목록 확장 뒤 정보량이 급격히 증가함
+                description: 혜택 목록이 1개에서 3개로 늘어나 핵심 가치 탐색 비용이 증가할 수 있다.
+                confidence: 0.74
+                impact: MEDIUM
+                evidenceRefs:
+                - type: step
+                  id: step_004_expand_benefits
+              - rank: 3
+                category: INPUT_TIMEOUT
+                title: 이메일 validation response timeout 발생
+                description: 입력 검증 response가 timeout으로 끝나 사용자가 다음 진행 가능 여부를 신뢰하기 어려울 수 있다.
+                confidence: 0.76
+                impact: HIGH
+                evidenceRefs:
+                - type: step
+                  id: step_005_fill_email_retry
               nudges:
-                - title: 이메일 검증 진행 상태를 즉시 노출
-                  rationale: settle_response evidence 상 입력 직후 validation response를 기다리는 흐름이 존재한다.
-                  difficulty: LOW
-                  expectedEffect: 입력 반영 여부에 대한 불확실성을 줄여 이탈 가능성을 낮춘다.
-                  priority: P1
-                  followUpQuestion: 사용자는 이메일 입력 후 검증 진행 상태를 즉시 인지하는가?
-                - title: 확장된 혜택 목록의 우선순위 강조
-                  rationale: settle_item_count_change evidence 상 interaction 뒤 목록 길이가 증가한다.
-                  difficulty: MEDIUM
-                  expectedEffect: 핵심 가치 인지 시간을 줄여 다음 CTA 이동을 더 빠르게 만든다.
-                  priority: P2
-                  followUpQuestion: 확장 후 사용자는 가장 중요한 혜택을 빠르게 식별하는가?
-                - title: validation timeout fallback을 명확히 제공
-                  rationale: settle_response timeout evidence가 존재하면 사용자는 검증 완료 여부를 신뢰하기 어렵다.
-                  difficulty: MEDIUM
-                  expectedEffect: timeout 상황에서도 사용자가 재시도나 다음 진행을 이해하고 선택할 수 있다.
-                  priority: P1
-                  followUpQuestion: validation timeout이 발생해도 사용자는 다음 행동을 이해할 수 있는가?
+              - title: 이메일 검증 진행 상태를 즉시 노출
+                rationale: settle_response evidence 상 입력 직후 validation response를 기다리는 흐름이 존재한다.
+                difficulty: LOW
+                expectedEffect: 입력 반영 여부에 대한 불확실성을 줄여 이탈 가능성을 낮춘다.
+                priority: P1
+                followUpQuestion: 사용자는 이메일 입력 후 검증 진행 상태를 즉시 인지하는가?
+              - title: 확장된 혜택 목록의 우선순위 강조
+                rationale: settle_item_count_change evidence 상 interaction 뒤 목록 길이가 증가한다.
+                difficulty: MEDIUM
+                expectedEffect: 핵심 가치 인지 시간을 줄여 다음 CTA 이동을 더 빠르게 만든다.
+                priority: P2
+                followUpQuestion: 확장 후 사용자는 가장 중요한 혜택을 빠르게 식별하는가?
+              - title: validation timeout fallback을 명확히 제공
+                rationale: settle_response timeout evidence가 존재하면 사용자는 검증 완료 여부를 신뢰하기 어렵다.
+                difficulty: MEDIUM
+                expectedEffect: timeout 상황에서도 사용자가 재시도나 다음 진행을 이해하고 선택할 수 있다.
+                priority: P1
+                followUpQuestion: validation timeout이 발생해도 사용자는 다음 행동을 이해할 수 있는가?
               judgeResult:
                 schema_version: '0.5'
                 run_id: run_001
@@ -1586,52 +1682,52 @@ paths:
                   top_issues_count: 3
                   task_success: partial
                 issues:
-                  - issue_id: issue_002
-                    criterion_id: INPUT-ASYNC-001
-                    stage: INPUT
-                    axis: Clarity
-                    severity: 1
-                    confidence: 0.72
-                    priority_score: 1.44
-                    evidence_refs:
-                      - cp_002.obs_004
-                    summary: 이메일 입력 단계가 서버 validation response에 의존해 입력 완료감이 지연될 수 있습니다.
-                    recommendations:
-                      - validation 진행 중 로딩/성공 상태를 입력 필드 근처에 즉시 노출하기
-                  - issue_id: issue_003
-                    criterion_id: VALUE-LIST-001
-                    stage: VALUE
-                    axis: Path
-                    severity: 1
-                    confidence: 0.74
-                    priority_score: 1.51
-                    evidence_refs:
-                      - cp_003.obs_006
-                    summary: 혜택 목록 확장 후 항목 수가 급격히 늘어나 사용자의 읽기 부담이 커질 수 있습니다.
-                    recommendations:
-                      - 새로 추가되는 혜택 중 핵심 1~2개를 상단에 고정해 우선순위를 보여주기
-                  - issue_id: issue_004
-                    criterion_id: INPUT-ASYNC-002
-                    stage: INPUT
-                    axis: Trust
-                    severity: 2
-                    confidence: 0.76
-                    priority_score: 1.88
-                    evidence_refs:
-                      - cp_004.obs_008
-                    summary: 입력 검증 response가 timeout되면 사용자가 다음 진행 가능 여부를 신뢰하기 어려울 수 있습니다.
-                    recommendations:
-                      - validation timeout 시 재시도 버튼과 fallback 안내 메시지를 노출하기
+                - issue_id: issue_002
+                  criterion_id: INPUT-ASYNC-001
+                  stage: INPUT
+                  axis: Clarity
+                  severity: 1
+                  confidence: 0.72
+                  priority_score: 1.44
+                  evidence_refs:
+                  - cp_002.obs_004
+                  summary: 이메일 입력 단계가 서버 validation response에 의존해 입력 완료감이 지연될 수 있습니다.
+                  recommendations:
+                  - validation 진행 중 로딩/성공 상태를 입력 필드 근처에 즉시 노출하기
+                - issue_id: issue_003
+                  criterion_id: VALUE-LIST-001
+                  stage: VALUE
+                  axis: Path
+                  severity: 1
+                  confidence: 0.74
+                  priority_score: 1.51
+                  evidence_refs:
+                  - cp_003.obs_006
+                  summary: 혜택 목록 확장 후 항목 수가 급격히 늘어나 사용자의 읽기 부담이 커질 수 있습니다.
+                  recommendations:
+                  - 새로 추가되는 혜택 중 핵심 1~2개를 상단에 고정해 우선순위를 보여주기
+                - issue_id: issue_004
+                  criterion_id: INPUT-ASYNC-002
+                  stage: INPUT
+                  axis: Trust
+                  severity: 2
+                  confidence: 0.76
+                  priority_score: 1.88
+                  evidence_refs:
+                  - cp_004.obs_008
+                  summary: 입력 검증 response가 timeout되면 사용자가 다음 진행 가능 여부를 신뢰하기 어려울 수 있습니다.
+                  recommendations:
+                  - validation timeout 시 재시도 버튼과 fallback 안내 메시지를 노출하기
                 decision_map:
-                  - stage: INPUT
-                    status: warning
-                    issue_ids:
-                      - issue_002
-                      - issue_004
-                  - stage: VALUE
-                    status: warning
-                    issue_ids:
-                      - issue_003
+                - stage: INPUT
+                  status: warning
+                  issue_ids:
+                  - issue_002
+                  - issue_004
+                - stage: VALUE
+                  status: warning
+                  issue_ids:
+                  - issue_003
               completedAt: '2026-04-21T08:15:00.000Z'
       responses:
         '200':
@@ -1655,7 +1751,8 @@ paths:
       tags:
       - InternalAnalyzer
       operationId: analysisFailed
-      summary: Analyzer failed analysis job
+      summary: Analyzer 실패 callback
+      description: Analyzer 작업 실패를 API 서버에 기록하는 내부 callback이다. 분석 실패 상태와 에러 처리 검증에 사용한다.
       security:
       - InternalBearer: []
       parameters:
@@ -1703,8 +1800,8 @@ paths:
       tags:
       - InternalAnalyzer
       operationId: getInternalEvidencePacketSnapshot
-      summary: Get EvidencePacket snapshot for Analyzer
-      description: Internal service-token endpoint for Analyzer workers to fetch the immutable EvidencePacket snapshot referenced by analysis.request.evidencePacketId.
+      summary: Analyzer용 EvidencePacket 조회
+      description: Analyzer가 분석할 evidence packet snapshot을 내부 토큰으로 가져가는 API다. 분석 파이프라인 연동 확인에 사용한다.
       security:
       - InternalBearer: []
       parameters:
@@ -1727,10 +1824,10 @@ paths:
       tags:
       - Runs
       operationId: getRunEvidencePacket
-      summary: Get EvidencePacket for run
+      summary: 실행 EvidencePacket 조회
+      description: Run에서 수집된 checkpoint/observation/artifact 기반 EvidencePacket을 조회한다. 분석 요청 전후 evidence shape 확인에 사용한다.
       security:
-      - oauth2:
-        - wedge.read
+      - HumanBearer: []
       parameters:
       - $ref: '#/components/parameters/RunId'
       responses:
@@ -1751,10 +1848,10 @@ paths:
       tags:
       - Reports
       operationId: listReportShares
-      summary: List report shares
+      summary: 리포트 공유 링크 목록 조회
+      description: reportId에 연결된 공유 링크 목록을 조회하는 계약 API다. 현재 MVP 핵심 테스트에서는 선택 사항이다.
       security:
-      - oauth2:
-        - wedge.read
+      - HumanBearer: []
       parameters:
       - $ref: '#/components/parameters/ReportId'
       responses:
@@ -1774,10 +1871,10 @@ paths:
       tags:
       - Reports
       operationId: createReportShare
-      summary: Create report share link
+      summary: 리포트 공유 링크 생성
+      description: 외부 공유용 링크를 생성하는 계약 API다. 권한/만료 정책 확정 후 테스트한다.
       security:
-      - oauth2:
-        - wedge.export
+      - HumanBearer: []
       parameters:
       - $ref: '#/components/parameters/ReportId'
       requestBody:
@@ -1806,7 +1903,8 @@ paths:
       tags:
       - InternalRunner
       operationId: runnerCheckpoints
-      summary: Runner checkpoint batch callback
+      summary: Runner 체크포인트 callback
+      description: Runner가 checkpoint와 observation batch를 저장하는 핵심 내부 callback이다. evidence-packet과 report 입력 데이터가 생성되는지 확인한다.
       security:
       - InternalBearer: []
       parameters:
@@ -1980,37 +2078,31 @@ components:
         type: string
   responses:
     Unauthorized:
-      description: Unauthorized
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
     Forbidden:
-      description: Forbidden
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
     NotFound:
-      description: Not found
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
     ValidationError:
-      description: Validation error
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
     Conflict:
-      description: State conflict
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
     AcceptedAck:
-      description: Accepted for asynchronous processing
       content:
         application/json:
           schema:
@@ -2018,7 +2110,6 @@ components:
   schemas:
     DecisionStage:
       type: string
-      description: Operational decision moment label assigned by ScenarioPlan, Checkpoint, Observation, and Rule Engine. LLM does not infer or mutate it in V1.
       enum:
       - FIRST_VIEW
       - VALUE
@@ -2027,7 +2118,6 @@ components:
       - COMMIT
     StageStatus:
       type: string
-      description: Decision Map status for a stage. This is distinct from run lifecycle and scenarioFitStatus.
       enum:
       - OBSERVED
       - PASS
@@ -2064,7 +2154,6 @@ components:
       - evidenceRefs
     JudgeIssue:
       type: object
-      description: User-facing Judge issue produced by Rule Engine. Stage is assigned from StageContext; LLM cannot create or move it.
       properties:
         issueId:
           type: string
@@ -2107,7 +2196,6 @@ components:
       - recommendations
     ScenarioMismatchReport:
       type: object
-      description: Scenario applicability outcome, separate from JudgeIssue and DecisionMap stage issues.
       properties:
         scenarioType:
           type: string
@@ -2693,6 +2781,7 @@ components:
       - startUrl
       - devicePreset
       - scenarioTemplateVersionId
+      - scenarioPlan
     RunActionRequest:
       type: object
       properties:
@@ -2859,7 +2948,8 @@ components:
           nullable: true
         contentUrl:
           type: string
-          description: API-relative URL for retrieving artifact bytes through Wedge. Useful for local prototype storage where no public object URL exists.
+          description: API-relative URL for retrieving artifact bytes through Wedge. Useful for local prototype storage where
+            no public object URL exists.
           nullable: true
         createdAt:
           type: string
@@ -4155,7 +4245,6 @@ components:
       additionalProperties: true
     EvidencePacket:
       type: object
-      description: Domain EvidencePacket. Full validation uses packages/contracts/schemas/evidence-packet.schema.json.
       additionalProperties: true
       properties:
         schema_version:
@@ -4228,7 +4317,8 @@ components:
           allOf:
           - $ref: '#/components/schemas/DecisionStage'
           deprecated: true
-          description: Deprecated alias retained for older runner callback producers. New runner callbacks should emit stage; EvidencePacket uses primaryStage.
+          description: Deprecated alias retained for older runner callback producers. New runner callbacks should emit stage;
+            EvidencePacket uses primaryStage.
         trigger:
           type: object
           additionalProperties: true
