@@ -12,7 +12,7 @@ Operational transport:
   → camelCase 중심
 
 Domain payload:
-  ScenarioPlan / EvidencePacket / RuleRegistry / JudgeResult
+  SiteDiscoveryResult / ScenarioAuthoring / ScenarioPlan / EvidencePacket / RuleRegistry / JudgeResult
   → schema_version 포함, snake_case 허용
 ```
 
@@ -22,6 +22,7 @@ Domain payload:
 |---|---|
 | ScenarioPlan | `packages/contracts/schemas/scenario-plan.schema.json` |
 | SiteDiscoveryResult | `packages/contracts/schemas/site-discovery-result.schema.json` |
+| ScenarioAuthoring | `packages/contracts/schemas/scenario-authoring.schema.json` |
 | EvidencePacket | `packages/contracts/schemas/evidence-packet.schema.json` |
 | RuleRegistry | `packages/contracts/schemas/rule-registry.schema.json` |
 | JudgeResult | `packages/contracts/schemas/judge-result.schema.json` |
@@ -62,12 +63,39 @@ Domain payload:
 - `suggested_start_url`
 - `suggested_target`
 
-## 4. ScenarioPlan
 
-ScenarioPlan은 사용자의 시나리오 선택 또는 자연어 요청을 실행 가능한 step plan으로 변환한 결과다.
+## 4. ScenarioAuthoring
+
+`ScenarioAuthoring`은 Discovery recommendation과 Run materialization 사이의 domain payload 계약이다. 추천 결과를 즉시 Run으로 변환하지 않고, provider가 검증 가능한 `ScenarioPlan` 후보를 제출하고 provenance/validation/fallback 정보를 남기는 job/result로 고정한다.
+
+필수 필드:
+
+- `schema_version`
+- `authoring_job_id`
+- `project_id`
+- `source_discovery_id`
+- `status`: CREATED, QUEUED, RUNNING, SUCCEEDED, FAILED, CANCELED, EXPIRED
+- `input`: SiteDiscoveryResult, requested goal, selected recommendation, environment, safety
+- `provider_policy`: allowed providers, fallback order, timeout, approval requirement
+- `provider_trace`: provider attempts and fallback reasons
+- `candidates`: validated ScenarioPlan candidates
+- `validation`: schema/safety/fit validation result
+- `provenance`: source evidence/recommendation refs, prompt version, generated_at
+
+경계:
+
+- `ScenarioAuthoringResult`는 별도 실행 DSL이 아니다. Candidate는 반드시 기존 `ScenarioPlan` schema를 만족해야 한다.
+- `ScenarioPlan`은 materialization 이후 fixed executable plan이다. Runner는 이 fixed `ScenarioPlan`만 실행한다.
+- Runner는 authoring job/result를 생성, 수정, 해석하지 않는다.
+- MCP tool이나 UI가 authoring job/result를 다룰 수는 있지만, 이는 Wedge API/tool 호출이며 browser-control이 아니다.
+- Codex/Claude Code/Internal LLM/Rule-based provider는 final Judge stage, severity, scoring truth를 생성하지 않는다.
+
+## 5. ScenarioPlan
+
+ScenarioPlan은 확정된 템플릿 선택, 자연어 요청, 또는 ScenarioAuthoring candidate를 실행 가능한 step plan으로 materialize한 결과다.
 
 V1에서는 완전한 natural-language planner를 구현하지 않는다.
-템플릿 기반 ScenarioPlan을 우선 사용한다.
+템플릿 기반 ScenarioPlan을 우선 사용하고, ScenarioAuthoring provider/runtime 구현은 후속 작업으로 둔다.
 
 Stage는 `ScenarioPlan`, `EvidencePacket`, `RuleRegistry`, `JudgeResult`를 연결하는 code-level enum이다.
 
@@ -123,14 +151,15 @@ stop_when
 
 Domain payloads use `step_id` as a stable scenario key. Operational transport uses camelCase `stepKey` for the same value when Runner sends callbacks. Spring resolves `stepKey` to the DB UUID `test_run_step.id`; public REST paths such as `/api/runs/{runId}/steps/{stepId}` use the DB UUID.
 
-## 5. EvidencePacket
+## 6. EvidencePacket
 
 EvidencePacket은 Spring이 Runner checkpoint/artifact callback을 기준으로 materialize하는 normalized evidence snapshot이다. Runner는 checkpoint와 artifact metadata를 전송하고, full EvidencePacket blob은 finished/failed callback에 싣지 않는다.
 
 Pipeline:
 
 ```text
-ScenarioPlan
+ScenarioAuthoring candidate(optional)
+  → ScenarioPlan
   → ScenarioValidator
   → BrowserWorker action/settle
   → checkpoint + artifact callbacks
@@ -163,7 +192,7 @@ Top-level fields:
 
 `decisionStageSummary`는 pre-Judge coverage summary다. EvidencePacket은 Rule Engine 이전 산출물이므로 `PASS` 또는 `WARNING` 같은 issue-derived status를 포함하지 않는다. Issue 유무가 반영된 stage 상태는 JudgeResult의 Decision Map에서만 계산한다.
 
-## 6. Checkpoint
+## 7. Checkpoint
 
 Checkpoint는 의미 있는 상태 전이 이후 생성된다.
 
@@ -183,7 +212,7 @@ Checkpoint는 의미 있는 상태 전이 이후 생성된다.
 
 Checkpoint 안의 모든 observation이 반드시 같은 stage일 필요는 없다. 예를 들어 `FIRST_VIEW` checkpoint 안에서 `heading_structure.stage = FIRST_VIEW`, `first_view_message.stage = VALUE`, `cta_cluster.stage = CTA`가 동시에 존재할 수 있다.
 
-## 7. Observation
+## 8. Observation
 
 Observation은 raw data에서 추출한 구조화된 fact다.
 
@@ -208,7 +237,7 @@ Observation은 raw data에서 추출한 구조화된 fact다.
 | `performance_metric` | LCP/INP/CLS/long task |
 | `scroll_delta` | newly loaded or changed content |
 
-## 8. RuleRegistry
+## 9. RuleRegistry
 
 RuleRegistry는 Judge criterion을 code-executable rule metadata로 표현한다.
 
@@ -229,7 +258,7 @@ RuleRegistry는 Judge criterion을 code-executable rule metadata로 표현한다
 
 `Rule.applicableStages`는 rule이 실행되는 `StageContext` 목록이다. Rule Engine은 전체 page를 임의로 평가하지 않고, `applicableStages`에 해당하는 context에서만 criterion을 실행한다. Rule output은 stage, axis, criterion, severity, confidence, priority, `evidence_refs`를 포함해야 한다.
 
-## 9. JudgeResult
+## 10. JudgeResult
 
 JudgeResult is the canonical analyzer output. Analyzer completed callback must include this payload, and Spring stores it on `analysis_job.output_jsonb` plus user-facing projections (`analysis_finding`, `nudge`). Report rows are generated later from the completed analysis projection by the Spring report API/service.
 
@@ -286,7 +315,7 @@ LLM 제약:
 - LLM은 Rule Engine의 `rule_hit`, `issue`, `evidence_refs`를 설명하고 Nudge/validation question을 생성한다.
 - `evidence_refs` 없는 claim이나 criterion에 없는 문제명은 제거한다.
 
-## 10. Evidence Reference Format
+## 11. Evidence Reference Format
 
 권장 형식:
 
@@ -302,7 +331,7 @@ aggregate.primary_cta_count_by_stage.CTA
 - LLM output must not introduce unsupported claims.
 - If evidence is weak, confidence must be low.
 
-## 11. ScenarioMismatchReport
+## 12. ScenarioMismatchReport
 
 `ScenarioMismatchReport`는 JudgeResult와 별개로 선택한 시나리오가 URL에 맞지 않을 때 반환하는 product outcome payload다.
 
@@ -322,7 +351,7 @@ aggregate.primary_cta_count_by_stage.CTA
 - 사용자가 “구매 흐름”을 명시했는데 해당 진입점이 없는 경우, 사이트의 UX 문제로 단정하지 않는다.
 - 단, 사용자의 goal이 “랜딩에서 구매 진입점이 있어야 한다”라면 PATH issue로 승격될 수 있다.
 
-## 12. Versioning
+## 13. Versioning
 
 Domain contracts use explicit schema versions.
 

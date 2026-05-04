@@ -11,7 +11,7 @@ Wedge DB는 두 가지를 동시에 지원해야 한다.
 
 ```text
 User / Workspace / Project
-Scenario / SiteDiscovery / ScenarioRecommendation / Run / Step
+Scenario / SiteDiscovery / ScenarioRecommendation / ScenarioAuthoringJob / Run / Step
 Checkpoint / Observation / Artifact / EvidencePacket
 AnalysisJob / RuleHit / Finding / Nudge / Report / Share
 Agent / MCP / Outbox / ProcessedMessage / Worker
@@ -60,6 +60,7 @@ status=COMPLETED, result_completeness=PARTIAL, analysis_status=COMPLETED, scenar
 | `rule_registry` | Rule set version |
 | `site_discovery` | URL-first lightweight discovery 실행 1회 |
 | `scenario_recommendation` | Discovery 기반 추천 시나리오 후보 |
+| `scenario_authoring_job` | Discovery 추천과 Run materialization 사이의 ScenarioPlan 후보 생성 job/result; V1 DDL은 후속 작업 |
 | `test_run` | 테스트 실행 1회; `source_discovery_id`와 scenario fit 결과를 저장 |
 | `test_run_step` | 실행 step 상태 |
 | `test_run_event` | UI/운영용 run event log |
@@ -111,11 +112,39 @@ Discovery 결과에서 생성한 추천 시나리오 카드다.
 - `suggested_start_url`
 - `suggested_target_jsonb`
 
+
+### scenario_authoring_job
+
+`scenario_authoring_job`은 Discovery recommendation을 곧바로 Run으로 materialize하지 않기 위한 계약 경계다. V1에서는 `packages/contracts/schemas/scenario-authoring.schema.json`이 canonical shape를 정의하며, 실제 DDL/API 구현은 후속 작업으로 미룬다.
+
+주요 필드 후보:
+
+- `id`
+- `source_discovery_id`
+- `correlation_id`, `idempotency_key`
+- `status`: CREATED, QUEUED, RUNNING, SUCCEEDED, FAILED, CANCELED, EXPIRED
+- `input_jsonb`: SiteDiscoveryResult, requested goal, selected recommendation, environment, safety
+- `provider_policy_jsonb`: allowed providers, fallback order, timeout, approval requirement
+- `provider_trace_jsonb`: provider attempts and fallback reasons
+- `candidates_jsonb`: validated ScenarioPlan candidates, confidence, rationale, evidence refs
+- `validation_jsonb`: schema/safety/fit validation result
+- `provenance_jsonb`: source recommendation/evidence refs, prompt version, generated_at
+- `failure_code`, `failure_message`
+- `created_by`, `confirmed_candidate_id`, `materialized_run_id` nullable
+- `created_at`, `updated_at`, `deleted_at`, `version`
+
+경계:
+
+- Authoring job/result는 별도 실행 DSL이 아니다. 후보는 기존 `ScenarioPlan` schema를 만족해야 한다.
+- Runner는 이 authoring job/result를 읽지 않는다. Runner는 `test_run`에 고정된 ScenarioPlan만 실행한다.
+- Authoring job/result는 browser-control state를 저장하지 않는다. 브라우저 evidence는 Discovery/Run checkpoint 계층에만 저장한다.
+
 ### test_run Discovery linkage
 
-`test_run`은 Discovery에서 생성될 수 있으므로 다음 필드를 가진다.
+`test_run`은 Discovery 또는 확정된 ScenarioAuthoring candidate에서 생성될 수 있으므로 다음 필드를 가진다.
 
 - `source_discovery_id` nullable
+- `source_authoring_job_id` nullable; V1 DDL 구현은 후속 작업
 - `scenario_fit_status`
 - `scenario_fit_reason` nullable
 - `scenario_fit_summary_jsonb` nullable

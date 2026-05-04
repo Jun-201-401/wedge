@@ -216,6 +216,18 @@ GET    /api/discoveries/{discoveryId}
 
 Discovery는 URL-first Preflight를 시작하고 추천 시나리오를 조회하는 공개 API다. Discovery 결과의 최종 source of truth는 Spring DB다.
 
+### Scenario Authoring
+
+```text
+POST   /api/scenario-authoring-jobs
+GET    /api/scenario-authoring-jobs/{authoringJobId}
+POST   /api/scenario-authoring-jobs/{authoringJobId}/confirm
+```
+
+ScenarioAuthoring은 Discovery recommendation과 Run 생성 사이의 계약 단계다. API shape는 V1 계약 방향을 고정하기 위한 문서 기준이며, OpenAPI/앱 구현은 후속 작업에서 `packages/contracts`를 먼저 갱신한 뒤 진행한다.
+
+Authoring job/result는 별도 실행 DSL이 아니다. Provider는 기존 `ScenarioPlan` schema를 만족하는 candidate만 제출하며, Spring은 confirmed candidate를 입력으로 `POST /api/runs` 또는 내부 materializer에서 ScenarioPlan + fit requirements를 고정한다. Runner는 authoring job/result를 받지 않고, 고정된 ScenarioPlan만 실행한다.
+
 ### Runs
 
 ```text
@@ -234,7 +246,7 @@ GET    /api/runs/{runId}/signals
 GET    /api/runs/{runId}/evidence-packet
 ```
 
-`POST /api/runs` request는 `sourceDiscoveryId`를 선택적으로 받을 수 있다. Run response는 `sourceDiscoveryId`, `scenarioFitStatus`, `scenarioFitReason`, `scenarioFitSummary`를 포함한다.
+`POST /api/runs` request는 `sourceDiscoveryId`를 선택적으로 받을 수 있고, ScenarioAuthoring 구현 후에는 `sourceAuthoringJobId`와 confirmed `candidateId`를 선택적으로 받을 수 있다. Run response는 `sourceDiscoveryId`, `sourceAuthoringJobId`, `scenarioFitStatus`, `scenarioFitReason`, `scenarioFitSummary`를 포함한다. `sourceAuthoringJobId`의 OpenAPI/서버 구현은 후속 계약 작업으로 미룬다.
 
 `/api/runs/{runId}/signals`는 `rule_hit` raw table이 아니라 user-facing issue signal projection이다. 저장 기준은 `analysis_finding`/`nudge`와 EvidencePacket references다.
 
@@ -404,6 +416,59 @@ Response:
 }
 ```
 
+
+### ScenarioAuthoring job 생성
+
+```http
+POST /api/scenario-authoring-jobs
+Idempotency-Key: idem_create_authoring_job_001
+```
+
+```json
+{
+  "projectId": "uuid",
+  "sourceDiscoveryId": "uuid",
+  "requestedGoal": "무료 체험 CTA까지의 흐름 점검",
+  "preferredScenarioType": "LANDING_CTA",
+  "selectedRecommendation": {
+    "scenarioType": "LANDING_CTA",
+    "evidenceRefs": ["cp_001.obs_002"]
+  },
+  "providerPolicy": {
+    "providerOrder": ["CODEX", "CLAUDE_CODE", "INTERNAL_LLM", "RULE_BASED"],
+    "timeoutMs": 60000,
+    "fallbackAllowed": true,
+    "approvalRequired": true
+  }
+}
+```
+
+Response:
+
+```json
+{
+  "data": {
+    "authoringJobId": "uuid",
+    "status": "QUEUED",
+    "sourceDiscoveryId": "uuid",
+    "candidateCount": 0,
+    "providerOrder": ["CODEX", "CLAUDE_CODE", "INTERNAL_LLM", "RULE_BASED"]
+  },
+  "meta": {
+    "requestId": "req_..."
+  }
+}
+```
+
+### ScenarioAuthoring candidate 확정
+
+```http
+POST /api/scenario-authoring-jobs/{authoringJobId}/confirm
+Idempotency-Key: idem_confirm_authoring_candidate_001
+```
+
+Request는 confirmed `candidateId`를 지정한다. Confirmed candidate의 embedded `ScenarioPlan`은 Run materialization 입력으로만 사용된다. 브라우저 조작, Runner action 실행, raw DOM 수집을 직접 트리거하지 않는다.
+
 ### Run 생성
 
 ```http
@@ -415,6 +480,8 @@ Idempotency-Key: idem_create_run_001
 {
   "projectId": "uuid",
   "sourceDiscoveryId": "uuid",
+  "sourceAuthoringJobId": "uuid",
+  "sourceAuthoringCandidateId": "uuid",
   "name": "Landing CTA audit",
   "startUrl": "https://example.com",
   "scenarioTemplateVersionId": "uuid",
@@ -723,7 +790,7 @@ run_failed
 ## 11. MCP
 
 MCP는 Wedge 기능 호출기다.  
-브라우저 원격 조종기는 아니다.
+브라우저 원격 조종기는 아니다. MCP는 Discovery, ScenarioAuthoring, Run, Report 같은 Wedge API 경계를 호출할 수 있지만 Playwright page를 직접 조작하거나 브라우저 세션을 원격 제어하지 않는다.
 
 허용 tool:
 
@@ -736,15 +803,18 @@ list_run_events
 get_latest_snapshot
 get_step_evidence
 get_evidence_packet
+get_discovery_result
+list_scenario_authoring_jobs
+get_scenario_authoring_job
 get_report
 list_reports
 ```
 
-V1 선택 execute/export tool. client policy와 OAuth scope가 허용할 때만 활성화한다.
+V1 선택 execute/export tool. client policy와 OAuth scope가 허용할 때만 활성화한다. ScenarioAuthoring provider는 async job/result tool을 사용하며 browser session을 직접 조작하지 않는다.
 
 ```text
 discover_site
-get_discovery_result
+submit_scenario_authoring_result
 create_run_from_discovery
 create_run
 start_run
