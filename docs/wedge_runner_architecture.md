@@ -228,9 +228,9 @@ action/settle 이후 page snapshot
 현재 구현:
 
 ```text
-messaging  -> local JSON file input
-callback   -> local JSONL append
-storage    -> local filesystem artifact persist
+messaging  -> local JSON file input + RabbitMQ consumer
+callback   -> local JSONL append + Spring internal HTTP callback + callback outbox replay
+storage    -> local filesystem artifact persist + S3-compatible artifact store + artifact outbox replay
 ```
 
 규칙:
@@ -272,40 +272,44 @@ storage    -> local filesystem artifact persist
 - adapter replacement가 예상되는 경계는 interface 기반 test seam을 남긴다.
 - real Playwright test는 얇고 목적이 분명해야 한다.
 
-# 4. 보류한 기술 선택
+# 4. 운영 adapter와 보류한 기술 선택
 
-다음 항목은 의도적으로 아직 production integration까지 완료하지 않았다.
+다음 항목은 현재 구현된 adapter와 아직 production hardening이 남은 영역을 구분한다.
 
 ## 4.1 RabbitMQ consumer
 
-향후 기본 선택: canonical `run.execute.request` MQ consume.
+기본 운영 선택: canonical `run.execute.request` / `discovery.execute.request` MQ consume.
 
-현재는 local file input으로 orchestration을 검증한다.
-consumer를 붙일 때는 다음을 함께 정리한다.
+현재 `--consume-mq` 또는 `RUNNER_MQ_CONSUMER_ENABLED=true`로 consumer를 실행할 수 있다. MQ consumer mode는 callback/artifact outbox replay worker를 기본으로 함께 띄우며, 별도 replay process가 있을 때만 다음 env로 끈다.
 
-- ack / nack / retry 정책
+```text
+RUNNER_MQ_CALLBACK_OUTBOX_WORKER_ENABLED=false
+RUNNER_MQ_ARTIFACT_OUTBOX_WORKER_ENABLED=false
+```
+
+남은 hardening:
+
 - idempotency key 처리
 - poison message 처리
 - worker concurrency 정책
 
 ## 4.2 Spring internal callback HTTP client
 
-향후 기본 선택: `/internal/runner/runs/{runId}/*` HTTP callback client.
+기본 운영 선택: `/internal/runner/runs/{runId}/*`와 `/internal/runner/discoveries/{discoveryId}/*` HTTP callback client.
 
-현재는 JSONL 기록으로 payload shape와 순서를 검증한다.
-HTTP 전환 시 함께 정리할 항목:
+현재 `RUNNER_CALLBACK_BASE_URL`이 있으면 HTTP callback mode로 전환되며, `X-Event-Id`, `X-Worker-Id`, bearer token, optional HMAC signature, timeout/retry, callback outbox persistence가 연결되어 있다. JSONL 기록은 local fallback으로 유지한다.
 
-- `X-Event-Id`
-- `X-Worker-Id`
-- timeout / retry
+남은 hardening:
+
 - duplicate delivery tolerance
 
 ## 4.3 S3 artifact storage
 
-향후 기본 선택: artifact binary는 S3, DB에는 metadata/key만 저장.
+기본 운영 선택: artifact binary는 S3-compatible storage, DB에는 metadata/key만 저장.
 
-현재는 local filesystem 저장으로 artifact pipeline을 검증한다.
-전환 시 규칙:
+현재 `RUNNER_ARTIFACT_STORAGE=s3`로 S3/MinIO-compatible upload를 사용할 수 있고, local filesystem은 fallback으로 유지한다.
+
+규칙:
 - artifact key는 POSIX `/` 의미를 유지한다.
 - bucket/key abstraction은 `ArtifactStore` 뒤에 숨긴다.
 - content hash, sizeBytes, mimeType은 persist 시점에 확정한다.
@@ -361,9 +365,8 @@ npm run start -- --message-file examples/run-execute.request.json
 
 # 6. 현재 follow-up
 
-- RabbitMQ consumer를 붙여 local file input을 transport adapter 뒤로 숨긴다.
-- Spring internal callback HTTP client를 붙여 JSONL logger를 대체한다.
-- S3 artifact storage를 붙여 local filesystem fallback을 분리한다.
+- MQ consumer 운영 모드에서 callback/artifact outbox replay worker 동시 실행 정책을 유지하고 smoke/e2e로 검증한다.
+- duplicate callback/message idempotency와 poison message 처리를 고정한다.
 - settle strategy와 collector coverage를 확장한다.
-- failure/retry/idempotency/recovery 정책을 문서와 테스트로 고정한다.
+- failure/retry/idempotency/recovery 정책을 운영 runbook과 테스트로 고정한다.
 - callback/artifact/checkpoint shape 중 shared contract로 승격할 범위를 계속 정리한다.

@@ -15,6 +15,8 @@ const DEFAULT_OUTBOX_MAX_RECORDS = 1_000;
 const DEFAULT_CALLBACK_TIMEOUT_MS = 5_000;
 const DEFAULT_BROWSER_TIMEOUT_MS = 30_000;
 const DEFAULT_SIMULATED_DELAY_CAP_MS = 25;
+export const RUNNER_MQ_CALLBACK_OUTBOX_WORKER_ENABLED_ENV = "RUNNER_MQ_CALLBACK_OUTBOX_WORKER_ENABLED";
+export const RUNNER_MQ_ARTIFACT_OUTBOX_WORKER_ENABLED_ENV = "RUNNER_MQ_ARTIFACT_OUTBOX_WORKER_ENABLED";
 
 export interface RunnerConfig {
   serviceName: string;
@@ -55,6 +57,8 @@ export interface RunnerConfig {
   mqQueueDiscoveryExecute: string;
   mqPrefetch: number;
   mqRequeueOnFailure: boolean;
+  mqCallbackOutboxWorkerEnabled: boolean;
+  mqArtifactOutboxWorkerEnabled: boolean;
   browserMode: RunnerBrowserMode;
   browserName: RunnerBrowserName;
   browserHeadless: boolean;
@@ -154,6 +158,16 @@ export function loadRunnerConfig(overrides: Partial<RunnerConfig> = {}): RunnerC
     process.env.RUNNER_MQ_REQUEUE_ON_FAILURE,
     false
   );
+  const mqCallbackOutboxWorkerEnabled = parseBoolean(
+    overrides.mqCallbackOutboxWorkerEnabled,
+    process.env[RUNNER_MQ_CALLBACK_OUTBOX_WORKER_ENABLED_ENV],
+    true
+  );
+  const mqArtifactOutboxWorkerEnabled = parseBoolean(
+    overrides.mqArtifactOutboxWorkerEnabled,
+    process.env[RUNNER_MQ_ARTIFACT_OUTBOX_WORKER_ENABLED_ENV],
+    true
+  );
   const browserMode = parseBrowserMode(overrides.browserMode ?? process.env.RUNNER_BROWSER_MODE);
   const browserName = parseBrowserName(overrides.browserName ?? process.env.RUNNER_BROWSER_NAME);
   const browserHeadless = parseBoolean(overrides.browserHeadless, process.env.RUNNER_BROWSER_HEADLESS, true);
@@ -226,6 +240,8 @@ export function loadRunnerConfig(overrides: Partial<RunnerConfig> = {}): RunnerC
     mqQueueDiscoveryExecute,
     mqPrefetch,
     mqRequeueOnFailure,
+    mqCallbackOutboxWorkerEnabled,
+    mqArtifactOutboxWorkerEnabled,
     browserMode,
     browserName,
     browserHeadless,

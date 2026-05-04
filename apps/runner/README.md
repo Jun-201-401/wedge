@@ -26,6 +26,14 @@ MVP `run-execute.mvp-*.request.json` files are contract-shaped runner message sa
 
 Discovery can also run from RabbitMQ when `--consume-mq` is enabled. The runner consumes both `run.execute.request` and `discovery.execute.request`; set `RUNNER_MQ_QUEUE_DISCOVERY_EXECUTE` to override the discovery queue name. When `RUNNER_CALLBACK_BASE_URL` is configured, discovery accepted/finished/failed callbacks are sent to `/internal/runner/discoveries/{discoveryId}/...`.
 
+MQ consumer mode starts the callback outbox replay worker and artifact outbox replay worker by default so transient callback/storage failures can recover while new queue messages are consumed. Disable either worker only when a separate replay process owns that outbox:
+
+```bash
+RUNNER_MQ_CALLBACK_OUTBOX_WORKER_ENABLED=false \
+RUNNER_MQ_ARTIFACT_OUTBOX_WORKER_ENABLED=false \
+npm run start -- --consume-mq
+```
+
 For a reproducible discovery smoke against a real URL, run from the repo root:
 
 ```bash
@@ -62,7 +70,7 @@ Artifacts are written under `.runner-artifacts/{runId}/{stepKey}/...`; callback 
 
 ## Dev E2E smoke wiring
 
-`compose.dev.yaml` runs the runner as an MQ consumer and now passes the callback settings needed for real run smoke checks:
+`compose.dev.yaml` runs the runner as an MQ consumer and now passes the callback settings needed for real run smoke checks. In this mode the runner also starts the callback/artifact outbox replay workers by default and shuts them down with the MQ consumer:
 
 - `RUNNER_CALLBACK_BASE_URL` defaults to `http://host.docker.internal:8080` so the runner container can call the API server running on the host.
 - `RUNNER_CALLBACK_AUTH_TOKEN` reuses `INTERNAL_SERVICE_TOKEN`; it must match `wedge.internal.service-token` in the API server.

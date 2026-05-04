@@ -17,6 +17,7 @@ import {
 } from "./messaging/index.ts";
 import { executeDiscoveryAndPersist, type DiscoveryExecutionResult } from "./discovery/index.ts";
 import { startRunnerQueueConsumers, type RunnerQueueConsumer } from "./messaging/rabbitmq/index.ts";
+import { startRunnerMqRuntime, type RunnerMqRuntime } from "./runtime/index.ts";
 import {
   replayArtifactOutbox,
   startArtifactOutboxReplayWorker,
@@ -52,6 +53,7 @@ export interface RunnerApp {
   replayArtifactOutbox: () => Promise<ArtifactOutboxReplaySummary>;
   startArtifactOutboxReplayWorker: () => Promise<ArtifactOutboxReplayWorker>;
   startMqConsumer: () => Promise<RunnerQueueConsumer>;
+  startMqRuntime: () => Promise<RunnerMqRuntime>;
 }
 
 export function createRunnerApp(overrides: Partial<RunnerConfig> = {}): RunnerApp {
@@ -67,6 +69,21 @@ export function createRunnerApp(overrides: Partial<RunnerConfig> = {}): RunnerAp
     capturePipeline,
     artifactStore
   });
+  const startMqConsumer = async () =>
+    startRunnerQueueConsumers({
+      config,
+      processRawRunMessage: async (rawMessage) => {
+        await worker.handleMessage(parseRunExecuteMessage(rawMessage));
+      },
+      processRawDiscoveryMessage: async (rawMessage) => {
+        await executeDiscoveryAndPersist({
+          message: parseDiscoveryExecuteMessage(rawMessage),
+          config,
+          callbackClient,
+          artifactStore
+        });
+      }
+    });
 
   return {
     service: config.serviceName,
@@ -112,20 +129,13 @@ export function createRunnerApp(overrides: Partial<RunnerConfig> = {}): RunnerAp
     startCallbackOutboxReplayWorker: async () => startCallbackOutboxReplayWorker(config),
     replayArtifactOutbox: async () => replayArtifactOutbox(config),
     startArtifactOutboxReplayWorker: async () => startArtifactOutboxReplayWorker(config),
-    startMqConsumer: async () =>
-      startRunnerQueueConsumers({
+    startMqConsumer,
+    startMqRuntime: async () =>
+      startRunnerMqRuntime({
         config,
-        processRawRunMessage: async (rawMessage) => {
-          await worker.handleMessage(parseRunExecuteMessage(rawMessage));
-        },
-        processRawDiscoveryMessage: async (rawMessage) => {
-          await executeDiscoveryAndPersist({
-            message: parseDiscoveryExecuteMessage(rawMessage),
-            config,
-            callbackClient,
-            artifactStore
-          });
-        }
+        startMqConsumer,
+        startCallbackOutboxReplayWorker: async () => startCallbackOutboxReplayWorker(config),
+        startArtifactOutboxReplayWorker: async () => startArtifactOutboxReplayWorker(config)
       })
   };
 }
