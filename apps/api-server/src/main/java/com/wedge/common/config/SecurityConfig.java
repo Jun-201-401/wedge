@@ -67,7 +67,9 @@ public class SecurityConfig {
                                 "/api/runs",
                                 "/api/runs/**",
                                 "/api/reports",
-                                "/api/reports/**"
+                                "/api/reports/**",
+                                "/api/discoveries",
+                                "/api/discoveries/**"
                         ).authenticated()
                         .requestMatchers("/internal/runner/**", "/internal/analysis/**").hasRole("INTERNAL_RUNNER")
                         .requestMatchers("/api/**", "/internal/**", "/mcp/**").denyAll()

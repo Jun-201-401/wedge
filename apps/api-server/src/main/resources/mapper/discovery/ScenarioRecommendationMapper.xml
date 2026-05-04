@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.wedge.discovery.infrastructure.ScenarioRecommendationMapper">
+    <resultMap id="ScenarioRecommendationResultMap" type="com.wedge.discovery.domain.ScenarioRecommendation">
+        <id property="id" column="id"/>
+        <result property="discoveryId" column="discovery_id"/>
+        <result property="scenarioType" column="scenario_type"/>
+        <result property="recommendationLevel" column="recommendation_level"/>
+        <result property="confidence" column="confidence"/>
+        <result property="reason" column="reason"/>
+        <result property="evidenceRefsJsonb" column="evidence_refs_jsonb"/>
+        <result property="suggestedStartUrl" column="suggested_start_url"/>
+        <result property="suggestedTargetJsonb" column="suggested_target_jsonb"/>
+        <result property="createdAt" column="created_at"/>
+    </resultMap>
+
+    <select id="findByDiscoveryId" resultMap="ScenarioRecommendationResultMap">
+        SELECT id, discovery_id, scenario_type, recommendation_level, confidence, reason,
+               CAST(evidence_refs_jsonb AS TEXT) AS evidence_refs_jsonb,
+               suggested_start_url,
+               CAST(suggested_target_jsonb AS TEXT) AS suggested_target_jsonb,
+               created_at
+        FROM scenario_recommendation
+        WHERE discovery_id = #{discoveryId}
+        ORDER BY confidence DESC, created_at ASC
+    </select>
+
+    <delete id="deleteByDiscoveryId">
+        DELETE FROM scenario_recommendation
+        WHERE discovery_id = #{discoveryId}
+    </delete>
+
+    <insert id="insert" parameterType="com.wedge.discovery.domain.ScenarioRecommendation">
+        INSERT INTO scenario_recommendation (
+            id, discovery_id, scenario_type, recommendation_level, confidence, reason,
+            evidence_refs_jsonb, suggested_start_url, suggested_target_jsonb
+        ) VALUES (
+            #{id}, #{discoveryId}, #{scenarioType}, #{recommendationLevel}, #{confidence}, #{reason},
+            CAST(#{evidenceRefsJsonb} AS jsonb), #{suggestedStartUrl}, CAST(#{suggestedTargetJsonb} AS jsonb)
+        )
+    </insert>
+</mapper>

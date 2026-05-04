@@ -1,4 +1,4 @@
-import amqp, { type Channel, type ChannelModel, type ConsumeMessage } from "amqplib";
+import amqp, { type ChannelModel, type ConsumeMessage } from "amqplib";
 import type { RunnerConfig } from "../../config/index.ts";
 import { RunnerMessageValidationError } from "../index.ts";
 
@@ -6,9 +6,24 @@ export interface RunExecuteQueueConsumer {
   close: () => Promise<void>;
 }
 
+export type RunnerQueueConsumer = RunExecuteQueueConsumer;
+
 export interface RunExecuteConsumerInput {
   config: Pick<RunnerConfig, "mqUrl" | "mqQueueRunExecute" | "mqPrefetch" | "mqRequeueOnFailure">;
   processRawMessage: (rawMessage: string) => Promise<void>;
+  client?: RabbitMqClient;
+}
+
+export interface DiscoveryExecuteConsumerInput {
+  config: Pick<RunnerConfig, "mqUrl" | "mqQueueDiscoveryExecute" | "mqPrefetch" | "mqRequeueOnFailure">;
+  processRawMessage: (rawMessage: string) => Promise<void>;
+  client?: RabbitMqClient;
+}
+
+export interface RunnerQueuesConsumerInput {
+  config: Pick<RunnerConfig, "mqUrl" | "mqQueueRunExecute" | "mqQueueDiscoveryExecute" | "mqPrefetch" | "mqRequeueOnFailure">;
+  processRawRunMessage: (rawMessage: string) => Promise<void>;
+  processRawDiscoveryMessage: (rawMessage: string) => Promise<void>;
   client?: RabbitMqClient;
 }
 
@@ -39,12 +54,83 @@ export async function startRunExecuteQueueConsumer({
   processRawMessage,
   client = defaultRabbitMqClient
 }: RunExecuteConsumerInput): Promise<RunExecuteQueueConsumer> {
+  return startSingleQueueConsumer({
+    mqUrl: config.mqUrl,
+    queue: config.mqQueueRunExecute,
+    prefetch: config.mqPrefetch,
+    requeueOnFailure: config.mqRequeueOnFailure,
+    processRawMessage,
+    client
+  });
+}
+
+export async function startDiscoveryExecuteQueueConsumer({
+  config,
+  processRawMessage,
+  client = defaultRabbitMqClient
+}: DiscoveryExecuteConsumerInput): Promise<RunExecuteQueueConsumer> {
+  return startSingleQueueConsumer({
+    mqUrl: config.mqUrl,
+    queue: config.mqQueueDiscoveryExecute,
+    prefetch: config.mqPrefetch,
+    requeueOnFailure: config.mqRequeueOnFailure,
+    processRawMessage,
+    client
+  });
+}
+
+export async function startRunnerQueueConsumers({
+  config,
+  processRawRunMessage,
+  processRawDiscoveryMessage,
+  client = defaultRabbitMqClient
+}: RunnerQueuesConsumerInput): Promise<RunnerQueueConsumer> {
   const connection = await client.connect(config.mqUrl);
   const channel = await connection.createChannel();
 
   await channel.prefetch(config.mqPrefetch);
   await channel.checkQueue(config.mqQueueRunExecute);
-  await channel.consume(config.mqQueueRunExecute, createRunExecuteConsumerHandler(channel, processRawMessage, config.mqRequeueOnFailure), {
+  await channel.checkQueue(config.mqQueueDiscoveryExecute);
+  await channel.consume(
+    config.mqQueueRunExecute,
+    createQueueConsumerHandler(channel, processRawRunMessage, config.mqRequeueOnFailure),
+    { noAck: false }
+  );
+  await channel.consume(
+    config.mqQueueDiscoveryExecute,
+    createQueueConsumerHandler(channel, processRawDiscoveryMessage, config.mqRequeueOnFailure),
+    { noAck: false }
+  );
+
+  return {
+    close: async () => {
+      await channel.close();
+      await connection.close();
+    }
+  };
+}
+
+async function startSingleQueueConsumer({
+  mqUrl,
+  queue,
+  prefetch,
+  requeueOnFailure,
+  processRawMessage,
+  client
+}: {
+  mqUrl: string;
+  queue: string;
+  prefetch: number;
+  requeueOnFailure: boolean;
+  processRawMessage: (rawMessage: string) => Promise<void>;
+  client: RabbitMqClient;
+}): Promise<RunExecuteQueueConsumer> {
+  const connection = await client.connect(mqUrl);
+  const channel = await connection.createChannel();
+
+  await channel.prefetch(prefetch);
+  await channel.checkQueue(queue);
+  await channel.consume(queue, createQueueConsumerHandler(channel, processRawMessage, requeueOnFailure), {
     noAck: false
   });
 
@@ -56,7 +142,7 @@ export async function startRunExecuteQueueConsumer({
   };
 }
 
-function createRunExecuteConsumerHandler(
+function createQueueConsumerHandler(
   channel: Pick<RabbitMqChannel, "ack" | "nack">,
   processRawMessage: (rawMessage: string) => Promise<void>,
   requeueOnFailure: boolean
@@ -66,7 +152,7 @@ function createRunExecuteConsumerHandler(
       return;
     }
 
-    await handleRunExecuteMessage({
+    await handleQueueMessage({
       channel,
       message,
       processRawMessage,
@@ -75,7 +161,16 @@ function createRunExecuteConsumerHandler(
   };
 }
 
-export async function handleRunExecuteMessage({
+export async function handleRunExecuteMessage(input: {
+  channel: Pick<RabbitMqChannel, "ack" | "nack">;
+  message: ConsumeMessage;
+  processRawMessage: (rawMessage: string) => Promise<void>;
+  requeueOnFailure: boolean;
+}): Promise<void> {
+  return handleQueueMessage(input);
+}
+
+export async function handleQueueMessage({
   channel,
   message,
   processRawMessage,

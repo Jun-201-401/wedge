@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8" ?>
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
-<mapper namespace="com.wedge.run.infrastructure.OutboxMessageMapper">
-    <resultMap id="OutboxMessageResultMap" type="com.wedge.run.infrastructure.OutboxMessageRecord">
+<mapper namespace="com.wedge.common.infrastructure.outbox.OutboxMessageMapper">
+    <resultMap id="OutboxMessageResultMap" type="com.wedge.common.infrastructure.outbox.OutboxMessageRecord">
         <id property="id" column="id"/>
         <result property="aggregateType" column="aggregate_type"/>
         <result property="aggregateId" column="aggregate_id"/>
@@ -9,7 +9,7 @@
         <result property="payloadJson" column="payload_jsonb"/>
     </resultMap>
 
-    <insert id="insert" parameterType="com.wedge.run.infrastructure.OutboxMessageRecord">
+    <insert id="insert" parameterType="com.wedge.common.infrastructure.outbox.OutboxMessageRecord">
         INSERT INTO outbox_message (
             id,
             aggregate_type,

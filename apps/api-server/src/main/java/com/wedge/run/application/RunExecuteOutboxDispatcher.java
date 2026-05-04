@@ -1,6 +1,6 @@
 package com.wedge.run.application;
 
-import com.wedge.run.infrastructure.OutboxMessagePersistenceAdapter;
+import com.wedge.common.infrastructure.outbox.OutboxMessagePersistenceAdapter;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

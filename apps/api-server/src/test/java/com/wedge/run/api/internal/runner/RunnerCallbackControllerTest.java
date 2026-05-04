@@ -20,7 +20,7 @@ import com.wedge.run.application.RunnerCallbackAckResponse;
 import com.wedge.run.application.RunnerCallbackService;
 import com.wedge.run.application.command.RunnerAcceptedCommand;
 import com.wedge.run.application.command.RunnerArtifactsCommand;
-import com.wedge.run.application.command.RunnerCallbackContext;
+import com.wedge.common.internal.InternalCallbackContext;
 import com.wedge.run.application.command.RunnerCheckpointsCommand;
 import com.wedge.run.application.command.RunnerFailedCommand;
 import com.wedge.run.application.command.RunnerFinishedCommand;
@@ -63,12 +63,12 @@ class RunnerCallbackControllerTest {
                 .andExpect(jsonPath("$.meta.requestId").value("req_runner_accepted"));
 
         ArgumentCaptor<RunnerAcceptedCommand> commandCaptor = ArgumentCaptor.forClass(RunnerAcceptedCommand.class);
-        ArgumentCaptor<RunnerCallbackContext> contextCaptor = ArgumentCaptor.forClass(RunnerCallbackContext.class);
+        ArgumentCaptor<InternalCallbackContext> contextCaptor = ArgumentCaptor.forClass(InternalCallbackContext.class);
         verify(runnerCallbackService).handleAccepted(eq(runId), commandCaptor.capture(), contextCaptor.capture());
         assertThat(commandCaptor.getValue().workerId()).isEqualTo("runner_001");
         assertThat(commandCaptor.getValue().acceptedAt().toString()).isEqualTo("2026-04-21T01:00Z");
         assertThat(commandCaptor.getValue().browserSessionId()).isEqualTo("browser-1");
-        assertThat(contextCaptor.getValue()).isEqualTo(new RunnerCallbackContext("runner_001", "evt_accepted_001", "hmac-sha256=sig"));
+        assertThat(contextCaptor.getValue()).isEqualTo(new InternalCallbackContext("runner_001", "evt_accepted_001", "hmac-sha256=sig"));
     }
 
     @Test

@@ -85,7 +85,12 @@ function createRunnerCallbackSignature(body: string, secret: string | undefined)
   return createHmac("sha256", secret).update(body).digest("hex");
 }
 
-function buildRunnerCallbackUrl(baseUrl: string, runId: string, callbackType: CallbackType): string {
+function buildRunnerCallbackUrl(baseUrl: string, resourceId: string, callbackType: CallbackType): string {
   const normalizedBaseUrl = baseUrl.endsWith("/") ? baseUrl.slice(0, -1) : baseUrl;
-  return `${normalizedBaseUrl}/internal/runner/runs/${runId}/${callbackType}`;
+  if (callbackType.startsWith("discovery-")) {
+    const discoveryCallbackType = callbackType.replace("discovery-", "");
+    return `${normalizedBaseUrl}/internal/runner/discoveries/${resourceId}/${discoveryCallbackType}`;
+  }
+
+  return `${normalizedBaseUrl}/internal/runner/runs/${resourceId}/${callbackType}`;
 }

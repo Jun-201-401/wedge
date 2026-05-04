@@ -25,6 +25,7 @@ wedge:
     mq:
       exchange: ${WEDGE_RUNNER_MQ_EXCHANGE}
       run-execute-queue: ${WEDGE_RUN_EXECUTE_QUEUE}
+      discovery-execute-queue: ${WEDGE_DISCOVERY_EXECUTE_QUEUE:discovery.execute.request}
   internal:
     service-token: ${INTERNAL_SERVICE_TOKEN}
 

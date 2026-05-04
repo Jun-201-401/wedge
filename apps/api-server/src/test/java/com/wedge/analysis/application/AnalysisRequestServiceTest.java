@@ -21,7 +21,7 @@ import com.wedge.run.domain.AnalysisJobStatus;
 import com.wedge.run.domain.AnalysisStatus;
 import com.wedge.run.domain.ResultCompleteness;
 import com.wedge.run.domain.RunStatus;
-import com.wedge.run.infrastructure.OutboxMessagePersistenceAdapter;
+import com.wedge.common.infrastructure.outbox.OutboxMessagePersistenceAdapter;
 import com.wedge.run.infrastructure.RunMapper;
 import java.net.URI;
 import java.util.UUID;

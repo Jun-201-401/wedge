@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.wedge.discovery.infrastructure.SiteDiscoveryMapper">
+    <resultMap id="SiteDiscoveryResultMap" type="com.wedge.discovery.domain.SiteDiscovery">
+        <id property="id" column="id"/>
+        <result property="projectId" column="project_id"/>
+        <result property="inputUrl" column="input_url"/>
+        <result property="finalUrl" column="final_url"/>
+        <result property="devicePreset" column="device_preset"/>
+        <result property="viewportJsonb" column="viewport_jsonb"/>
+        <result property="status" column="status"/>
+        <result property="summaryJsonb" column="summary_jsonb"/>
+        <result property="createdBy" column="created_by"/>
+        <result property="idempotencyKey" column="idempotency_key"/>
+        <result property="startedAt" column="started_at"/>
+        <result property="finishedAt" column="finished_at"/>
+        <result property="failureCode" column="failure_code"/>
+        <result property="failureMessage" column="failure_message"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+        <result property="deletedAt" column="deleted_at"/>
+        <result property="version" column="version"/>
+    </resultMap>
+
+    <sql id="SiteDiscoveryColumns">
+        id, project_id, input_url, final_url, device_preset,
+        CAST(viewport_jsonb AS TEXT) AS viewport_jsonb,
+        status,
+        CAST(summary_jsonb AS TEXT) AS summary_jsonb,
+        created_by, idempotency_key, started_at, finished_at, failure_code, failure_message,
+        created_at, updated_at, deleted_at, version
+    </sql>
+
+    <select id="findById" resultMap="SiteDiscoveryResultMap">
+        SELECT <include refid="SiteDiscoveryColumns"/>
+        FROM site_discovery
+        WHERE id = #{id}
+          AND deleted_at IS NULL
+    </select>
+
+    <select id="findByIdempotencyKey" resultMap="SiteDiscoveryResultMap">
+        SELECT <include refid="SiteDiscoveryColumns"/>
+        FROM site_discovery
+        WHERE project_id = #{projectId}
+          AND created_by = #{createdBy}
+          AND idempotency_key = #{idempotencyKey}
+          AND deleted_at IS NULL
+    </select>
+
+    <insert id="insert" parameterType="com.wedge.discovery.domain.SiteDiscovery">
+        INSERT INTO site_discovery (
+            id, project_id, input_url, device_preset, viewport_jsonb, status, summary_jsonb, created_by, idempotency_key
+        ) VALUES (
+            #{id}, #{projectId}, #{inputUrl}, #{devicePreset}, CAST(#{viewportJsonb} AS jsonb), #{status}, CAST(#{summaryJsonb} AS jsonb), #{createdBy,jdbcType=OTHER}, #{idempotencyKey}
+        )
+    </insert>
+
+    <update id="markRunning">
+        UPDATE site_discovery
+        SET status = 'RUNNING',
+            started_at = COALESCE(started_at, #{startedAt}),
+            updated_at = NOW(),
+            version = version + 1
+        WHERE id = #{id}
+          AND status = 'QUEUED'
+          AND deleted_at IS NULL
+    </update>
+
+    <update id="markCompleted">
+        UPDATE site_discovery
+        SET status = 'COMPLETED',
+            final_url = #{finalUrl},
+            summary_jsonb = CAST(#{summaryJsonb} AS jsonb),
+            finished_at = #{finishedAt},
+            updated_at = NOW(),
+            version = version + 1
+        WHERE id = #{id}
+          AND status IN ('QUEUED', 'RUNNING')
+          AND deleted_at IS NULL
+    </update>
+
+    <update id="markFailed">
+        UPDATE site_discovery
+        SET status = 'FAILED',
+            failure_code = #{failureCode},
+            failure_message = #{failureMessage},
+            finished_at = #{finishedAt},
+            updated_at = NOW(),
+            version = version + 1
+        WHERE id = #{id}
+          AND status IN ('QUEUED', 'RUNNING')
+          AND deleted_at IS NULL
+    </update>
+</mapper>

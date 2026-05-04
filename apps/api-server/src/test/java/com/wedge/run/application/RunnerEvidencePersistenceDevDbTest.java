@@ -5,7 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.wedge.evidence.application.EvidenceService;
 import com.wedge.run.application.command.RunnerArtifactCommand;
 import com.wedge.run.application.command.RunnerArtifactsCommand;
-import com.wedge.run.application.command.RunnerCallbackContext;
+import com.wedge.common.internal.InternalCallbackContext;
 import com.wedge.run.application.command.RunnerCheckpointCommand;
 import com.wedge.run.application.command.RunnerCheckpointsCommand;
 import com.wedge.run.application.command.RunnerStepEventCommand;
@@ -267,8 +267,8 @@ class RunnerEvidencePersistenceDevDbTest {
         )));
     }
 
-    private RunnerCallbackContext context(String eventId) {
-        return new RunnerCallbackContext("worker-dev-db", eventId, "signature-dev-db");
+    private InternalCallbackContext context(String eventId) {
+        return new InternalCallbackContext("worker-dev-db", eventId, "signature-dev-db");
     }
 
     private void seedRunData() {

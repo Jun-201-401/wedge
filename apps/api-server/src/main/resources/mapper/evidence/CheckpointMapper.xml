@@ -4,6 +4,7 @@
     <resultMap id="CheckpointResultMap" type="com.wedge.evidence.domain.Checkpoint">
         <id property="id" column="id"/>
         <result property="runId" column="run_id"/>
+        <result property="discoveryId" column="discovery_id"/>
         <result property="stepId" column="step_id"/>
         <result property="stepKey" column="step_key"/>
         <result property="checkpointKey" column="checkpoint_key"/>
@@ -19,7 +20,7 @@
     </resultMap>
 
     <sql id="CheckpointColumns">
-        c.id, c.run_id, c.step_id, s.step_key, c.checkpoint_key, c.stage,
+        c.id, c.run_id, c.discovery_id, c.step_id, s.step_key, c.checkpoint_key, c.stage,
         CAST(c.trigger_jsonb AS TEXT) AS trigger_jsonb,
         CAST(c.settle_jsonb AS TEXT) AS settle_jsonb,
         CAST(c.state_jsonb AS TEXT) AS state_jsonb,
@@ -44,12 +45,30 @@
           AND c.checkpoint_key = #{checkpointKey}
     </select>
 
+    <select id="findByDiscoveryIdAndCheckpointKey" resultMap="CheckpointResultMap">
+        SELECT <include refid="CheckpointColumns"/>
+        FROM checkpoint c
+        LEFT JOIN test_run_step s ON s.id = c.step_id
+        WHERE c.source_type = 'DISCOVERY'
+          AND c.discovery_id = #{discoveryId}
+          AND c.checkpoint_key = #{checkpointKey}
+    </select>
+
     <select id="findByRunId" resultMap="CheckpointResultMap">
         SELECT <include refid="CheckpointColumns"/>
         FROM checkpoint c
         LEFT JOIN test_run_step s ON s.id = c.step_id
         WHERE c.source_type = 'RUN'
           AND c.run_id = #{runId}
+        ORDER BY c.captured_at ASC, c.created_at ASC
+    </select>
+
+    <select id="findByDiscoveryId" resultMap="CheckpointResultMap">
+        SELECT <include refid="CheckpointColumns"/>
+        FROM checkpoint c
+        LEFT JOIN test_run_step s ON s.id = c.step_id
+        WHERE c.source_type = 'DISCOVERY'
+          AND c.discovery_id = #{discoveryId}
         ORDER BY c.captured_at ASC, c.created_at ASC
     </select>
 
@@ -66,5 +85,19 @@
             #{capturedAt}, #{durationMs}
         )
         ON CONFLICT (run_id, checkpoint_key) DO NOTHING
+    </insert>
+
+    <insert id="insertDiscovery" parameterType="com.wedge.evidence.domain.Checkpoint">
+        INSERT INTO checkpoint (
+            id, source_type, discovery_id, checkpoint_key, stage,
+            trigger_jsonb, settle_jsonb, state_jsonb, delta_jsonb, artifact_refs_jsonb,
+            captured_at, duration_ms
+        )
+        VALUES (
+            #{id}, 'DISCOVERY', #{discoveryId}, #{checkpointKey}, #{stage},
+            CAST(#{triggerJsonb} AS jsonb), CAST(#{settleJsonb} AS jsonb), CAST(#{stateJsonb} AS jsonb),
+            CAST(#{deltaJsonb} AS jsonb), CAST(#{artifactRefsJsonb} AS jsonb),
+            #{capturedAt}, #{durationMs}
+        )
     </insert>
 </mapper>

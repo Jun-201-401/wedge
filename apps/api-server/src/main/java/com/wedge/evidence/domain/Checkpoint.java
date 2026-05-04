@@ -12,6 +12,7 @@ import lombok.Setter;
 public class Checkpoint {
     private UUID id;
     private UUID runId;
+    private UUID discoveryId;
     private UUID stepId;
     private String stepKey;
     private String checkpointKey;

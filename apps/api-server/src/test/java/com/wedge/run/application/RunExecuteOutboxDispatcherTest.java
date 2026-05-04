@@ -7,7 +7,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
-import com.wedge.run.infrastructure.OutboxMessagePersistenceAdapter;
+import com.wedge.common.infrastructure.outbox.OutboxMessagePersistenceAdapter;
 import java.lang.reflect.Method;
 import java.util.List;
 import java.util.Map;

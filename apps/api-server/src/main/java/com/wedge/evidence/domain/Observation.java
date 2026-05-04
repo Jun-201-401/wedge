@@ -15,6 +15,7 @@ public class Observation {
     private UUID id;
     private UUID checkpointId;
     private UUID runId;
+    private UUID discoveryId;
     private String observationKey;
     private String observationType;
     private String stage;

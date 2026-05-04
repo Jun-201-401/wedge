@@ -12,7 +12,7 @@ import com.wedge.run.application.RunnerCallbackService;
 import com.wedge.run.application.command.RunnerAcceptedCommand;
 import com.wedge.run.application.command.RunnerArtifactCommand;
 import com.wedge.run.application.command.RunnerArtifactsCommand;
-import com.wedge.run.application.command.RunnerCallbackContext;
+import com.wedge.common.internal.InternalCallbackContext;
 import com.wedge.run.application.command.RunnerCheckpointCommand;
 import com.wedge.run.application.command.RunnerCheckpointsCommand;
 import com.wedge.run.application.command.RunnerFailedCommand;
@@ -179,7 +179,7 @@ public class RunnerCallbackController {
         );
     }
 
-    private RunnerCallbackContext callbackContext(String workerId, String eventId, String signature) {
-        return new RunnerCallbackContext(workerId, eventId, signature);
+    private InternalCallbackContext callbackContext(String workerId, String eventId, String signature) {
+        return new InternalCallbackContext(workerId, eventId, signature);
     }
 }

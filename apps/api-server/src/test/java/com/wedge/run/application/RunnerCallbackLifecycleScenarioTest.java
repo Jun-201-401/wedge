@@ -13,7 +13,7 @@ import com.wedge.evidence.application.CheckpointPersistenceService;
 import com.wedge.run.api.dto.RunCreateRequest;
 import com.wedge.run.api.dto.RunResponse;
 import com.wedge.run.application.command.RunnerAcceptedCommand;
-import com.wedge.run.application.command.RunnerCallbackContext;
+import com.wedge.common.internal.InternalCallbackContext;
 import com.wedge.run.application.command.RunnerFailedCommand;
 import com.wedge.run.application.command.RunnerFinishedCommand;
 import com.wedge.run.application.command.RunnerStepEventCommand;
@@ -23,7 +23,7 @@ import com.wedge.run.domain.ResultCompleteness;
 import com.wedge.run.domain.RunStatus;
 import com.wedge.run.domain.StepStatus;
 import java.math.BigDecimal;
-import com.wedge.run.infrastructure.OutboxMessagePersistenceAdapter;
+import com.wedge.common.infrastructure.outbox.OutboxMessagePersistenceAdapter;
 import com.wedge.run.infrastructure.RunMapper;
 import com.wedge.run.infrastructure.RunPersistenceAdapter;
 import com.wedge.run.infrastructure.RunRecord;
@@ -284,8 +284,8 @@ class RunnerCallbackLifecycleScenarioTest {
         );
     }
 
-    private RunnerCallbackContext context(String eventId) {
-        return new RunnerCallbackContext(WORKER_ID, eventId, SIGNATURE);
+    private InternalCallbackContext context(String eventId) {
+        return new InternalCallbackContext(WORKER_ID, eventId, SIGNATURE);
     }
 
     private OffsetDateTime at(String value) {

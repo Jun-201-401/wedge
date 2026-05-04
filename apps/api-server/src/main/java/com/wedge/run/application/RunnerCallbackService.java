@@ -13,7 +13,7 @@ import com.wedge.run.api.dto.RunResponse;
 import com.wedge.run.application.command.RunnerAcceptedCommand;
 import com.wedge.run.application.command.RunnerArtifactCommand;
 import com.wedge.run.application.command.RunnerArtifactsCommand;
-import com.wedge.run.application.command.RunnerCallbackContext;
+import com.wedge.common.internal.InternalCallbackContext;
 import com.wedge.run.application.command.RunnerCheckpointCommand;
 import com.wedge.run.application.command.RunnerCheckpointsCommand;
 import com.wedge.run.application.command.RunnerFailedCommand;
@@ -47,7 +47,7 @@ public class RunnerCallbackService {
     private final CheckpointPersistenceService checkpointPersistenceService;
 
     @Transactional
-    public RunnerCallbackAckResponse handleAccepted(UUID runId, RunnerAcceptedCommand command, RunnerCallbackContext context) {
+    public RunnerCallbackAckResponse handleAccepted(UUID runId, RunnerAcceptedCommand command, InternalCallbackContext context) {
         context.validateRequired();
         context.validateWorkerMatches(command.workerId());
 
@@ -61,7 +61,7 @@ public class RunnerCallbackService {
     }
 
     @Transactional
-    public RunnerCallbackAckResponse handleStepEvents(UUID runId, RunnerStepEventsCommand command, RunnerCallbackContext context) {
+    public RunnerCallbackAckResponse handleStepEvents(UUID runId, RunnerStepEventsCommand command, InternalCallbackContext context) {
         context.validateRequired();
 
         RunnerCallbackAckResponse duplicateResponse = duplicateStatusResponse(STEP_EVENTS_CONSUMER, context.eventId(), runId);
@@ -77,7 +77,7 @@ public class RunnerCallbackService {
     }
 
     @Transactional
-    public RunnerCallbackAckResponse handleCheckpoints(UUID runId, RunnerCheckpointsCommand command, RunnerCallbackContext context) {
+    public RunnerCallbackAckResponse handleCheckpoints(UUID runId, RunnerCheckpointsCommand command, InternalCallbackContext context) {
         context.validateRequired();
 
         if (isDuplicate(CHECKPOINTS_CONSUMER, context.eventId())) {
@@ -95,7 +95,7 @@ public class RunnerCallbackService {
     }
 
     @Transactional
-    public RunnerCallbackAckResponse handleArtifacts(UUID runId, RunnerArtifactsCommand command, RunnerCallbackContext context) {
+    public RunnerCallbackAckResponse handleArtifacts(UUID runId, RunnerArtifactsCommand command, InternalCallbackContext context) {
         context.validateRequired();
 
         if (isDuplicate(ARTIFACTS_CONSUMER, context.eventId())) {
@@ -115,7 +115,7 @@ public class RunnerCallbackService {
     }
 
     @Transactional
-    public RunnerCallbackAckResponse handleFinished(UUID runId, RunnerFinishedCommand command, RunnerCallbackContext context) {
+    public RunnerCallbackAckResponse handleFinished(UUID runId, RunnerFinishedCommand command, InternalCallbackContext context) {
         context.validateRequired();
         context.validateWorkerMatches(command.workerId());
 
@@ -129,7 +129,7 @@ public class RunnerCallbackService {
     }
 
     @Transactional
-    public RunnerCallbackAckResponse handleFailed(UUID runId, RunnerFailedCommand command, RunnerCallbackContext context) {
+    public RunnerCallbackAckResponse handleFailed(UUID runId, RunnerFailedCommand command, InternalCallbackContext context) {
         context.validateRequired();
         context.validateWorkerMatches(command.workerId());
 

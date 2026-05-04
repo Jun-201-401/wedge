@@ -133,6 +133,74 @@ test("[콜백:http] runner callback을 HTTP로 보내고 worker/event/signature 
   }
 });
 
+test("createCallbackClient sends discovery callbacks to discovery endpoint", async () => {
+  const received: Array<{ url: string; body: string }> = [];
+  const server = createServer((request, response) => {
+    let body = "";
+    request.setEncoding("utf8");
+    request.on("data", (chunk) => {
+      body += chunk;
+    });
+    request.on("end", () => {
+      received.push({ url: request.url ?? "", body });
+      response.writeHead(200, {
+        "content-type": "application/json"
+      });
+      response.end(JSON.stringify({ accepted: true }));
+    });
+  });
+
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      server.off("error", reject);
+      resolve();
+    });
+  });
+
+  try {
+    const address = server.address();
+    assert.ok(address && typeof address !== "string");
+
+    const callbackClient = createCallbackClient(
+      createRunnerTestConfig({
+        callbackMode: "http",
+        callbackBaseUrl: `http://127.0.0.1:${address.port}`
+      })
+    );
+
+    await callbackClient.sendDiscoveryFinished!("discovery-1", {
+      eventId: "event-1",
+      workerId: "worker-1",
+      finishedAt: "2026-04-21T00:00:00.000Z",
+      finalUrl: "https://example.com",
+      summary: {
+        detectedFlowTypes: ["LANDING_CTA"],
+        missingFlowTypes: ["PRICING"],
+        primaryCtaCount: 1,
+        formCandidateCount: 0,
+        pricingEntrypointCount: 0,
+        checkoutEntrypointCount: 0,
+        scenarioRecommendations: []
+      }
+    });
+
+    assert.equal(received.length, 1);
+    assert.equal(received[0]?.url, "/internal/runner/discoveries/discovery-1/finished");
+    assert.match(received[0]?.body ?? "", /"finalUrl":"https:\/\/example.com"/);
+  } finally {
+    await new Promise<void>((resolve, reject) => {
+      server.close((error) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+        resolve();
+      });
+    });
+  }
+});
+
 test("[콜백:http] 비정상 HTTP 응답은 callback 실패로 처리하고 outbox에 남긴다", async () => {
   const server = createServer((_request, response) => {
     response.writeHead(409, {

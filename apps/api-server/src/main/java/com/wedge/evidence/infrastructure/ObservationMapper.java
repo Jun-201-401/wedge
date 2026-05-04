@@ -11,6 +11,8 @@ import java.util.UUID;
 public interface ObservationMapper {
     List<Observation> findByRunId(@Param("runId") UUID runId);
 
+    List<Observation> findByDiscoveryId(@Param("discoveryId") UUID discoveryId);
+
     List<Observation> findByCheckpointId(@Param("checkpointId") UUID checkpointId);
 
     int insert(Observation observation);

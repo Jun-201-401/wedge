@@ -1,4 +1,4 @@
-package com.wedge.run.infrastructure;
+package com.wedge.common.infrastructure;
 
 import org.springframework.amqp.core.Binding;
 import org.springframework.amqp.core.BindingBuilder;
@@ -10,7 +10,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 @Configuration
-public class RunMqConfig {
+public class RunnerMqConfig {
     @Bean
     public DirectExchange wedgeDirectExchange(
             @Value("${wedge.runner.mq.exchange:wedge.direct}") String exchangeName
@@ -45,6 +45,25 @@ public class RunMqConfig {
     }
 
     @Bean
+    public Queue discoveryExecuteQueue(
+            @Value("${wedge.runner.mq.discovery-execute-queue:discovery.execute.request}") String queueName,
+            @Value("${wedge.runner.mq.dead-letter-exchange:wedge.dlq}") String deadLetterExchange,
+            @Value("${wedge.runner.mq.discovery-execute-dead-letter-routing-key:discovery.execute.dlq}") String deadLetterRoutingKey
+    ) {
+        return QueueBuilder.durable(queueName)
+                .deadLetterExchange(deadLetterExchange)
+                .deadLetterRoutingKey(deadLetterRoutingKey)
+                .build();
+    }
+
+    @Bean
+    public Queue discoveryExecuteDeadLetterQueue(
+            @Value("${wedge.runner.mq.discovery-execute-dead-letter-queue:discovery.execute.dlq}") String queueName
+    ) {
+        return QueueBuilder.durable(queueName).build();
+    }
+
+    @Bean
     public Binding runExecuteBinding(DirectExchange wedgeDirectExchange, Queue runExecuteQueue) {
         return BindingBuilder.bind(runExecuteQueue).to(wedgeDirectExchange).with(runExecuteQueue.getName());
     }
@@ -52,5 +71,15 @@ public class RunMqConfig {
     @Bean
     public Binding runExecuteDeadLetterBinding(DirectExchange wedgeDeadLetterExchange, Queue runExecuteDeadLetterQueue) {
         return BindingBuilder.bind(runExecuteDeadLetterQueue).to(wedgeDeadLetterExchange).with(runExecuteDeadLetterQueue.getName());
+    }
+
+    @Bean
+    public Binding discoveryExecuteBinding(DirectExchange wedgeDirectExchange, Queue discoveryExecuteQueue) {
+        return BindingBuilder.bind(discoveryExecuteQueue).to(wedgeDirectExchange).with(discoveryExecuteQueue.getName());
+    }
+
+    @Bean
+    public Binding discoveryExecuteDeadLetterBinding(DirectExchange wedgeDeadLetterExchange, Queue discoveryExecuteDeadLetterQueue) {
+        return BindingBuilder.bind(discoveryExecuteDeadLetterQueue).to(wedgeDeadLetterExchange).with(discoveryExecuteDeadLetterQueue.getName());
     }
 }
