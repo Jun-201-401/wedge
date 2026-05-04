@@ -100,6 +100,7 @@ export function createRunnerTestConfig(overrides: Partial<RunnerConfig> = {}): R
     mqConsumerEnabled: false,
     mqUrl: "amqp://localhost",
     mqQueueRunExecute: "run.execute.request",
+    mqQueueDiscoveryExecute: "discovery.execute.request",
     mqPrefetch: 1,
     mqRequeueOnFailure: false,
     browserMode: "simulated",

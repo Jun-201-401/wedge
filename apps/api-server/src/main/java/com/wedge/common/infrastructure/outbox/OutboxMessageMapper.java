@@ -1,4 +1,4 @@
-package com.wedge.run.infrastructure;
+package com.wedge.common.infrastructure.outbox;
 
 import java.time.OffsetDateTime;
 import java.util.List;

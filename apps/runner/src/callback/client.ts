@@ -1,5 +1,8 @@
 import type {
   ArtifactBatch,
+  DiscoveryAcceptedPayload,
+  DiscoveryFailedPayload,
+  DiscoveryFinishedPayload,
   RunnerAcceptedPayload,
   RunnerCheckpointsRequest,
   RunnerFailedPayload,
@@ -14,6 +17,9 @@ export type CallbackPayloadMap = {
   checkpoints: RunnerCheckpointsRequest;
   finished: RunnerFinishedPayload;
   failed: RunnerFailedPayload;
+  "discovery-accepted": DiscoveryAcceptedPayload;
+  "discovery-finished": DiscoveryFinishedPayload;
+  "discovery-failed": DiscoveryFailedPayload;
 };
 
 export type CallbackType = keyof CallbackPayloadMap;
@@ -25,6 +31,9 @@ export interface CallbackClient {
   sendCheckpoints: (runId: string, payload: RunnerCheckpointsRequest) => Promise<void>;
   sendFinished: (runId: string, payload: RunnerFinishedPayload) => Promise<void>;
   sendFailed: (runId: string, payload: RunnerFailedPayload) => Promise<void>;
+  sendDiscoveryAccepted?: (discoveryId: string, payload: DiscoveryAcceptedPayload) => Promise<void>;
+  sendDiscoveryFinished?: (discoveryId: string, payload: DiscoveryFinishedPayload) => Promise<void>;
+  sendDiscoveryFailed?: (discoveryId: string, payload: DiscoveryFailedPayload) => Promise<void>;
 }
 
 const CALLBACK_METHOD_NAMES = {
@@ -33,7 +42,10 @@ const CALLBACK_METHOD_NAMES = {
   artifacts: "sendArtifacts",
   checkpoints: "sendCheckpoints",
   finished: "sendFinished",
-  failed: "sendFailed"
+  failed: "sendFailed",
+  "discovery-accepted": "sendDiscoveryAccepted",
+  "discovery-finished": "sendDiscoveryFinished",
+  "discovery-failed": "sendDiscoveryFailed"
 } as const satisfies Record<CallbackType, keyof CallbackClient>;
 
 export function createCallbackClientFromHandler(
@@ -45,7 +57,10 @@ export function createCallbackClientFromHandler(
     sendArtifacts: (runId, payload) => handler("artifacts", runId, payload),
     sendCheckpoints: (runId, payload) => handler("checkpoints", runId, payload),
     sendFinished: (runId, payload) => handler("finished", runId, payload),
-    sendFailed: (runId, payload) => handler("failed", runId, payload)
+    sendFailed: (runId, payload) => handler("failed", runId, payload),
+    sendDiscoveryAccepted: (discoveryId, payload) => handler("discovery-accepted", discoveryId, payload),
+    sendDiscoveryFinished: (discoveryId, payload) => handler("discovery-finished", discoveryId, payload),
+    sendDiscoveryFailed: (discoveryId, payload) => handler("discovery-failed", discoveryId, payload)
   };
 }
 
@@ -56,6 +71,9 @@ export async function dispatchCallback(
   payload: unknown
 ): Promise<void> {
   const methodName = CALLBACK_METHOD_NAMES[callbackType];
-  const method = callbackClient[methodName] as (runId: string, payload: unknown) => Promise<void>;
+  const method = callbackClient[methodName] as ((runId: string, payload: unknown) => Promise<void>) | undefined;
+  if (!method) {
+    throw new Error(`runner callback ${callbackType} is not supported by this client`);
+  }
   await method(runId, payload);
 }

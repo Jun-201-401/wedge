@@ -126,6 +126,7 @@ CREATE TABLE site_discovery (
                             CHECK (status IN ('CREATED','QUEUED','RUNNING','COMPLETED','FAILED','CANCELED')),
     summary_jsonb       JSONB NOT NULL DEFAULT '{}'::jsonb,
     created_by          UUID REFERENCES user_account(id),
+    idempotency_key     VARCHAR(160),
     started_at          TIMESTAMPTZ,
     finished_at         TIMESTAMPTZ,
     failure_code        VARCHAR(80),
@@ -494,6 +495,7 @@ CREATE INDEX idx_project_member_user ON project_member(user_id);
 
 CREATE INDEX idx_site_discovery_project_created ON site_discovery(project_id, created_at DESC) WHERE deleted_at IS NULL;
 CREATE INDEX idx_site_discovery_status ON site_discovery(status, updated_at DESC) WHERE deleted_at IS NULL;
+CREATE UNIQUE INDEX ux_site_discovery_project_creator_idempotency ON site_discovery(project_id, created_by, idempotency_key) WHERE idempotency_key IS NOT NULL AND deleted_at IS NULL;
 CREATE INDEX idx_scenario_recommendation_discovery_level ON scenario_recommendation(discovery_id, recommendation_level);
 CREATE INDEX idx_test_run_source_discovery ON test_run(source_discovery_id) WHERE source_discovery_id IS NOT NULL;
 CREATE INDEX idx_test_run_scenario_fit ON test_run(scenario_fit_status, updated_at DESC) WHERE deleted_at IS NULL;

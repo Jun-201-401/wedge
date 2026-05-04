@@ -12,7 +12,7 @@ import com.wedge.run.api.dto.RunResponse;
 import com.wedge.run.application.RunService;
 import com.wedge.run.domain.AnalysisJobStatus;
 import com.wedge.run.domain.RunStatus;
-import com.wedge.run.infrastructure.OutboxMessagePersistenceAdapter;
+import com.wedge.common.infrastructure.outbox.OutboxMessagePersistenceAdapter;
 import com.wedge.run.infrastructure.RunMapper;
 import java.time.OffsetDateTime;
 import java.util.Map;

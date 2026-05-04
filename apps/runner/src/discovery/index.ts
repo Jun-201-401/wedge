@@ -5,6 +5,10 @@ import {
   type BrowserType,
   type Page
 } from "playwright";
+import { randomUUID } from "node:crypto";
+import { mkdir, writeFile } from "node:fs/promises";
+import { dirname, resolve } from "node:path";
+import type { CallbackClient } from "../callback/index.ts";
 import type { RunnerBrowserName, RunnerConfig } from "../config/index.ts";
 import type {
   DiscoveryEntrypointCandidate,
@@ -14,7 +18,8 @@ import type {
   DiscoveryFlowType,
   DiscoveryScenarioRecommendation,
   SiteDiscoveryResult,
-  TargetDescriptorMap
+  TargetDescriptorMap,
+  DiscoverySummaryPayload
 } from "../shared/contracts.ts";
 
 const DEFAULT_DISCOVERY_LOCALE = "ko-KR";
@@ -31,6 +36,7 @@ const DISCOVERY_FLOW_ORDER: DiscoveryFlowType[] = [
 interface ExecuteDiscoveryInput {
   message: DiscoveryExecuteMessage;
   config: RunnerConfig;
+  callbackClient?: CallbackClient;
   locale?: string;
   timezone?: string;
 }
@@ -57,6 +63,12 @@ interface DiscoveryCandidate {
   target: TargetDescriptorMap;
   observationType: string;
   observationData: Record<string, unknown>;
+}
+
+export interface DiscoveryExecutionResult {
+  discoveryId: string;
+  result: SiteDiscoveryResult;
+  resultFile: string;
 }
 
 export async function executeDiscovery({
@@ -161,6 +173,79 @@ export async function executeDiscovery({
   } finally {
     await browser.close();
   }
+}
+
+export async function executeDiscoveryAndPersist(input: ExecuteDiscoveryInput): Promise<DiscoveryExecutionResult> {
+  const browserSessionId = randomUUID();
+
+  try {
+    await input.callbackClient?.sendDiscoveryAccepted?.(input.message.payload.discoveryId, {
+      eventId: randomUUID(),
+      workerId: input.config.workerId,
+      acceptedAt: new Date().toISOString(),
+      browserSessionId
+    });
+
+    const result = await executeDiscovery(input);
+    const resultFile = createDiscoveryResultFilePath(input.config, result.discovery_id);
+    await writeDiscoveryResult(resultFile, result);
+
+    await input.callbackClient?.sendDiscoveryFinished?.(input.message.payload.discoveryId, {
+      eventId: randomUUID(),
+      workerId: input.config.workerId,
+      finishedAt: new Date().toISOString(),
+      finalUrl: result.final_url,
+      summary: createDiscoverySummaryPayload(result)
+    });
+
+    return {
+      discoveryId: result.discovery_id,
+      result,
+      resultFile
+    };
+  } catch (error) {
+    await input.callbackClient?.sendDiscoveryFailed?.(input.message.payload.discoveryId, {
+      eventId: randomUUID(),
+      workerId: input.config.workerId,
+      failedAt: new Date().toISOString(),
+      failureCode: "DISCOVERY_EXECUTION_FAILED",
+      failureMessage: error instanceof Error ? error.message : String(error)
+    });
+    throw error;
+  }
+}
+
+export function createDiscoverySummaryPayload(result: SiteDiscoveryResult): DiscoverySummaryPayload {
+  const recommendations = result.scenario_recommendations.map((recommendation) => ({
+    scenarioType: recommendation.scenario_type,
+    recommendationLevel: recommendation.recommendation_level,
+    confidence: recommendation.confidence,
+    reason: recommendation.reason,
+    evidenceRefs: recommendation.evidence_refs,
+    suggestedStartUrl: recommendation.suggested_start_url ?? null,
+    suggestedTarget: recommendation.suggested_target ?? null
+  }));
+
+  return {
+    detectedFlowTypes: result.detected_flow_types,
+    missingFlowTypes: result.missing_flow_types ?? [],
+    primaryCtaCount: countRecommendations(result, "LANDING_CTA"),
+    formCandidateCount: countRecommendations(result, "SIGNUP_LEAD_FORM"),
+    pricingEntrypointCount: countRecommendations(result, "PRICING"),
+    checkoutEntrypointCount: countRecommendations(result, "PURCHASE_CHECKOUT"),
+    scenarioRecommendations: recommendations
+  };
+}
+
+export async function writeDiscoveryResult(resultFile: string, result: SiteDiscoveryResult): Promise<void> {
+  await mkdir(dirname(resultFile), {
+    recursive: true
+  });
+  await writeFile(resultFile, `${JSON.stringify(result, null, 2)}\n`, "utf8");
+}
+
+export function createDiscoveryResultFilePath(config: RunnerConfig, discoveryId: string): string {
+  return resolve(config.artifactsRoot, "discoveries", sanitizePathSegment(discoveryId), "site-discovery-result.json");
 }
 
 async function collectCandidatesFromPage(page: Page): Promise<DiscoveryCandidate[]> {
@@ -613,6 +698,10 @@ function normalizeText(value: string): string {
   return value.replace(/\s+/g, " ").trim();
 }
 
+function sanitizePathSegment(value: string): string {
+  return value.replace(/[^a-zA-Z0-9._-]/g, "_");
+}
+
 function isString(value: unknown): value is string {
   return typeof value === "string" && value.length > 0;
 }
@@ -642,4 +731,10 @@ function resolveBrowserType(browserName: RunnerBrowserName): BrowserType {
   }
 
   return chromium;
+}
+
+function countRecommendations(result: SiteDiscoveryResult, flowType: DiscoveryFlowType): number {
+  return result.flow_candidates
+    ?.find((candidate) => candidate.flow_type === flowType)
+    ?.entrypoint_candidates.length ?? 0;
 }

@@ -1,4 +1,4 @@
-package com.wedge.run.infrastructure;
+package com.wedge.common.infrastructure.outbox;
 
 import java.util.UUID;
 import lombok.AllArgsConstructor;

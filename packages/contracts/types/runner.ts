@@ -218,6 +218,48 @@ export interface SiteDiscoveryResult {
   collection_notes?: string[];
 }
 
+
+export interface DiscoverySummaryPayload {
+  detectedFlowTypes: DiscoveryFlowType[];
+  missingFlowTypes: DiscoveryFlowType[];
+  primaryCtaCount: number;
+  formCandidateCount: number;
+  pricingEntrypointCount: number;
+  checkoutEntrypointCount: number;
+  scenarioRecommendations: Array<{
+    scenarioType: DiscoveryFlowType;
+    recommendationLevel: DiscoveryRecommendationLevel;
+    confidence: number;
+    reason: string;
+    evidenceRefs: string[];
+    suggestedStartUrl?: string | null;
+    suggestedTarget?: TargetDescriptorMap | null;
+  }>;
+}
+
+export interface DiscoveryAcceptedPayload {
+  eventId: string;
+  workerId: string;
+  acceptedAt: string;
+  browserSessionId: string;
+}
+
+export interface DiscoveryFinishedPayload {
+  eventId: string;
+  workerId: string;
+  finishedAt: string;
+  finalUrl: string;
+  summary: DiscoverySummaryPayload;
+}
+
+export interface DiscoveryFailedPayload {
+  eventId: string;
+  workerId: string;
+  failedAt: string;
+  failureCode: string;
+  failureMessage: string;
+}
+
 export interface RunnerAcceptedPayload {
   workerId: string;
   acceptedAt: string;

@@ -22,7 +22,7 @@ import com.wedge.run.api.dto.RunResponse;
 import com.wedge.run.application.command.RunnerAcceptedCommand;
 import com.wedge.run.application.command.RunnerArtifactCommand;
 import com.wedge.run.application.command.RunnerArtifactsCommand;
-import com.wedge.run.application.command.RunnerCallbackContext;
+import com.wedge.common.internal.InternalCallbackContext;
 import com.wedge.run.application.command.RunnerCheckpointCommand;
 import com.wedge.run.application.command.RunnerCheckpointsCommand;
 import com.wedge.run.application.command.RunnerFailedCommand;
@@ -178,7 +178,7 @@ class RunnerCallbackServiceTest {
                 headers("evt_failed_001")
         ))
                 .isInstanceOf(BusinessException.class)
-                .hasMessage("Runner worker id header does not match payload.");
+                .hasMessage("Worker id header does not match payload.");
     }
 
     @Test
@@ -211,10 +211,10 @@ class RunnerCallbackServiceTest {
         assertThatThrownBy(() -> runnerCallbackService.handleArtifacts(
                 runId,
                 new RunnerArtifactsCommand(List.of()),
-                new RunnerCallbackContext(WORKER_ID, "", SIGNATURE)
+                new InternalCallbackContext(WORKER_ID, "", SIGNATURE)
         ))
                 .isInstanceOf(BusinessException.class)
-                .hasMessage("Runner callback headers are required.");
+                .hasMessage("Internal callback headers are required.");
     }
 
     @Test
@@ -391,8 +391,8 @@ class RunnerCallbackServiceTest {
         );
     }
 
-    private RunnerCallbackContext headers(String eventId) {
-        return new RunnerCallbackContext(WORKER_ID, eventId, SIGNATURE);
+    private InternalCallbackContext headers(String eventId) {
+        return new InternalCallbackContext(WORKER_ID, eventId, SIGNATURE);
     }
 
     private RunnerArtifactsCommand sampleArtifactCommand() {
