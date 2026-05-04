@@ -74,12 +74,13 @@ export function createRunnerApp(overrides: Partial<RunnerConfig> = {}): RunnerAp
     processMessage: (message) => worker.handleMessage(message),
     processRawMessage: (rawMessage) => worker.handleMessage(parseRunExecuteMessage(rawMessage)),
     processMessageFile: async (messageFile) => worker.handleMessage(await readRunExecuteMessage(messageFile)),
-    processDiscoveryMessage: (message) => executeDiscoveryAndPersist({ message, config, callbackClient }),
+    processDiscoveryMessage: (message) => executeDiscoveryAndPersist({ message, config, callbackClient, artifactStore }),
     processDiscoveryMessageFile: async (messageFile) =>
       executeDiscoveryAndPersist({
         message: await readDiscoveryExecuteMessage(messageFile),
         config,
-        callbackClient
+        callbackClient,
+        artifactStore
       }),
     processRawInputMessage: async (rawMessage) => {
       const messageType = readInputMessageType(rawMessage);
@@ -89,7 +90,8 @@ export function createRunnerApp(overrides: Partial<RunnerConfig> = {}): RunnerAp
           discovery: await executeDiscoveryAndPersist({
             message: parseDiscoveryExecuteMessage(rawMessage),
             config,
-            callbackClient
+            callbackClient,
+            artifactStore
           })
         };
       }
@@ -103,7 +105,7 @@ export function createRunnerApp(overrides: Partial<RunnerConfig> = {}): RunnerAp
       const rawMessage = await readFile(messageFile, "utf8");
       return dispatchInputMessage(rawMessage, {
         processRun: async (message) => worker.handleMessage(message),
-        processDiscovery: async (message) => executeDiscoveryAndPersist({ message, config, callbackClient })
+        processDiscovery: async (message) => executeDiscoveryAndPersist({ message, config, callbackClient, artifactStore })
       });
     },
     replayCallbackOutbox: async () => replayCallbackOutbox(config),
@@ -120,7 +122,8 @@ export function createRunnerApp(overrides: Partial<RunnerConfig> = {}): RunnerAp
           await executeDiscoveryAndPersist({
             message: parseDiscoveryExecuteMessage(rawMessage),
             config,
-            callbackClient
+            callbackClient,
+            artifactStore
           });
         }
       })
