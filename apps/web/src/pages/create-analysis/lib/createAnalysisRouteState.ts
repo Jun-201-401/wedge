@@ -23,6 +23,11 @@ export interface CreateRunContext {
   scenarioTemplateVersionId: string;
 }
 
+export const MVP_SMOKE_CREATE_RUN_CONTEXT: CreateRunContext = {
+  projectId: '8f06dca8-9c4d-4f20-b1a8-1d5ee40a9923',
+  scenarioTemplateVersionId: '5c5f4c77-0c32-4ab3-9841-2b6f6cc07a40',
+};
+
 const DEFAULT_BASE_PATH = '/create-analysis';
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 

@@ -5,6 +5,7 @@ import { FIRST_WORD_DELAY_MS, WORD_ROTATION_INTERVAL_MS } from '../../features/l
 import { buildRunMonitorPath } from '../run-monitor/lib/runMonitorRoute';
 import {
   buildCreateAnalysisPath,
+  MVP_SMOKE_CREATE_RUN_CONTEXT,
   parseCreateAnalysisRouteState,
   readCreateRunContextFromEnv,
   type CreateAnalysisRouteOptions,
@@ -136,7 +137,10 @@ const CREATE_ANALYSIS_ROUTE_OPTIONS: CreateAnalysisRouteOptions<ScenarioId, Scen
   validDepthIds: SCENARIO_DEPTH_IDS,
   validScenarioIds: SCENARIO_IDS,
 };
-const DEV_CREATE_RUN_CONTEXT = readCreateRunContextFromEnv(import.meta.env);
+const DEV_CREATE_RUN_CONTEXT = {
+  ...MVP_SMOKE_CREATE_RUN_CONTEXT,
+  ...readCreateRunContextFromEnv(import.meta.env),
+};
 
 interface CreateRunIds {
   projectId: string;
@@ -701,7 +705,7 @@ export function CreateAnalysisPage() {
     setRunStartError('');
 
     if (!createRunIds) {
-      setRunStartError('Run 생성에 필요한 project/scenario UUID가 없습니다. create-analysis URL 또는 개발 환경 변수를 확인해주세요.');
+      setRunStartError('Run 생성에 필요한 project/scenario UUID가 없습니다. MVP 기본 설정 또는 create-analysis URL을 확인해주세요.');
       setIsCreatingRun(false);
       return;
     }
