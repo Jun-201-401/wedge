@@ -19,9 +19,9 @@ npm install
 npm run dev
 ```
 
-Then open `http://localhost:5173/`. Vite is configured with `strictPort: true`, so if port 5173 is already occupied it fails instead of silently moving to 5174. When Vite runs on Windows, `/api` proxies to `http://localhost:8080`.
+Then open `http://localhost:5173/`. Vite is configured with `strictPort: true`, so if port 5173 is already occupied it fails instead of silently moving to 5174. By default, `/api` proxies to `http://localhost:8080`.
 
-If you intentionally run Vite from WSL while the API server runs in Windows IntelliJ, `/api` proxies to `http://host.docker.internal:8080`; however, browser access to WSL-hosted dev servers depends on local WSL networking, so the Windows PowerShell flow above is the recommended default.
+If you intentionally run Vite from WSL while the API server runs in Windows IntelliJ, start Vite with `VITE_API_PROXY_TARGET=http://host.docker.internal:8080 npm run dev`. The default assumes the Spring API server is reachable from the same environment at `localhost:8080`.
 
 ## Architecture
 
