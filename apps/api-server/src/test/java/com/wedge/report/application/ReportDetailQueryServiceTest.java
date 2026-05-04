@@ -29,6 +29,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.mock.env.MockEnvironment;
 
 @ExtendWith(MockitoExtension.class)
 class ReportDetailQueryServiceTest {
@@ -55,7 +56,7 @@ class ReportDetailQueryServiceTest {
                 analysisFindingMapper,
                 nudgeMapper,
                 runService,
-                new ReportAccessGuard(projectAccessService, properties),
+                new ReportAccessGuard(projectAccessService, properties, new MockEnvironment()),
                 new ReportJsonReader(new ObjectMapper()),
                 new ReportPreviewImageResolver(artifactMapper)
         );
