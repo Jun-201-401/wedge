@@ -2,6 +2,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 
 import { createRun, startRun } from '../../api/runs';
 import { FIRST_WORD_DELAY_MS, WORD_ROTATION_INTERVAL_MS } from '../../features/landing-vision';
+import { pushAppPath } from '../../shared/lib/navigation';
 import { buildRunMonitorPath } from '../run-monitor/lib/runMonitorRoute';
 import {
   buildCreateAnalysisPath,
@@ -738,7 +739,7 @@ export function CreateAnalysisPage() {
     } catch {
       setRunStartError('Run은 생성됐지만 시작 요청에 실패했습니다. 실시간 Trace에서 현재 상태를 확인합니다.');
     } finally {
-      window.location.assign(buildRunMonitorPath(createdRunId, {
+      pushAppPath(buildRunMonitorPath(createdRunId, {
         submittedUrl,
         scenarioId: selectedScenario.id,
         depthId: selectedDepthId,

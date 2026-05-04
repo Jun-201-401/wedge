@@ -69,6 +69,7 @@ test('run monitor page exposes Sprint 2 live cockpit essentials with Korean-faci
   assert.match(source, /getRunReport\(run\.id\)/);
   assert.match(source, /generateRunReport\(requestedRunId\)/);
   assert.match(source, /requestRunAnalysis\(requestedRunId\)/);
+  assert.match(source, /replaceAppPath\(RUNS_PATH\)/);
   assert.match(source, /resolveRunMonitorReportCtaState/);
   assert.match(source, /shouldRefreshRunReport\(reportProjection\)/);
   assert.match(source, /RUN_MONITOR_REFRESH_INTERVAL_MS/);

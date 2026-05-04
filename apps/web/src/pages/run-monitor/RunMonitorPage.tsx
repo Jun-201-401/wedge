@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 
 import { generateRunReport, getRunReport } from '../../api/reports';
+import { replaceAppPath } from '../../shared/lib/navigation';
 import { deleteRun, requestRunAnalysis, stopRun } from '../../api/runs';
 import type { RunReportProjection } from '../../entities/report';
 import type { EvidencePacket, RunEvidenceCounts } from '../../entities/run';
@@ -451,7 +452,7 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
     setRunActionState({ kind: 'pending', message: 'Run 삭제 요청을 보내는 중입니다.' });
     void deleteRun(run.id)
       .then(() => {
-        window.location.assign(RUNS_PATH);
+        replaceAppPath(RUNS_PATH);
       })
       .catch(() => {
         setRunActionState({ kind: 'error', message: 'Run 삭제에 실패했습니다. 권한 또는 API 서버 상태를 확인해주세요.' });

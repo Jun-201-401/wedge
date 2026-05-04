@@ -161,8 +161,8 @@ test('create analysis ready run controls remain wired', () => {
   assert.match(source, /createdRunId = response\.data\.id/);
   assert.match(source, /await startRun\(createdRunId\)/);
   assert.match(source, /Run은 생성됐지만 시작 요청에 실패했습니다/);
-  assert.match(source, /window\.location\.assign\(buildRunMonitorPath\(createdRunId/);
-  assert.doesNotMatch(source, /window\.location\.assign\(fallbackPath\)/);
+  assert.match(source, /pushAppPath\(buildRunMonitorPath\(createdRunId/);
+  assert.doesNotMatch(source, /window\.location\.assign/);
   assert.match(source, /실시간 Trace 화면에서 진행률/);
   assert.match(source, /onEditScope=\{editScope\}/);
   assert.match(source, /onStartRun=\{startAnalysisRun\}/);
