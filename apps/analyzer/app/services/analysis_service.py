@@ -5,6 +5,7 @@ from typing import Any
 
 from app.clients import SpringCallbackClient
 from app.rule_engine import analyze_evidence_packet, load_default_registry
+from app.services.llm_analysis import GMSReportExplainer
 
 
 def analyzer_health() -> dict[str, str]:
@@ -17,7 +18,8 @@ def analyzer_health() -> dict[str, str]:
 
 
 def analyze_packet(evidence_packet: dict[str, Any]) -> dict[str, Any]:
-    return analyze_evidence_packet(evidence_packet)
+    judge_result = analyze_evidence_packet(evidence_packet)
+    return GMSReportExplainer.from_env().explain(judge_result)
 
 
 def analyze_packet_and_callback(
@@ -62,7 +64,7 @@ def build_completed_callback_payload(
         "analyzerVersion": "analyzer-0.5.0",
         "promptVersion": "rule-engine-v1",
         "modelInfo": {
-            "llm": "none",
+            "llm": str(judge_result.get("llm_model") or "none"),
             "attentionModel": "rule-engine-v1",
             "ctrModel": "none",
         },

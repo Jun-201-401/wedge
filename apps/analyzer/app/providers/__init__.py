@@ -20,6 +20,7 @@ from app.providers.semantic import (
     sanitize_semantic_label_result,
     should_fallback_to_semantic_provider,
 )
+from app.providers.gms import GMSClient, GMSClientError, GMSConfig, extract_openai_response_text, extract_openai_response_text_from_body
 
 __all__ = [
     "ACTION_SPECIFICITY_LABELS",
@@ -38,6 +39,11 @@ __all__ = [
     "SemanticProviderChain",
     "SemanticProviderPort",
     "UnsafeSemanticClassifier",
+    "GMSClient",
+    "GMSClientError",
+    "GMSConfig",
+    "extract_openai_response_text",
+    "extract_openai_response_text_from_body",
     "sanitize_semantic_label_result",
     "should_fallback_to_semantic_provider",
 ]
