@@ -152,6 +152,7 @@ test('create analysis ready run controls remain wired', () => {
   assert.match(source, /getCreateRunIds/);
   assert.match(source, /const createRunIds = useMemo/);
   assert.match(source, /MVP_SMOKE_CREATE_RUN_CONTEXT/);
+  assert.match(source, /const DEV_CREATE_RUN_CONTEXT = import\.meta\.env\.DEV/);
   assert.match(source, /readCreateRunContextFromEnv\(import\.meta\.env\)/);
   assert.match(source, /withCreateRunContextFallback/);
   assert.match(source, /projectId: createRunIds\.projectId/);

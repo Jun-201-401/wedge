@@ -138,10 +138,12 @@ const CREATE_ANALYSIS_ROUTE_OPTIONS: CreateAnalysisRouteOptions<ScenarioId, Scen
   validDepthIds: SCENARIO_DEPTH_IDS,
   validScenarioIds: SCENARIO_IDS,
 };
-const DEV_CREATE_RUN_CONTEXT = {
-  ...MVP_SMOKE_CREATE_RUN_CONTEXT,
-  ...readCreateRunContextFromEnv(import.meta.env),
-};
+const DEV_CREATE_RUN_CONTEXT = import.meta.env.DEV
+  ? {
+      ...MVP_SMOKE_CREATE_RUN_CONTEXT,
+      ...readCreateRunContextFromEnv(import.meta.env),
+    }
+  : readCreateRunContextFromEnv(import.meta.env);
 
 interface CreateRunIds {
   projectId: string;

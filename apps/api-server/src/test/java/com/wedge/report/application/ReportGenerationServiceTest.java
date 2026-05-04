@@ -13,7 +13,6 @@ import com.wedge.analysis.infrastructure.AnalysisJobMapper;
 import com.wedge.analysis.infrastructure.NudgeMapper;
 import com.wedge.common.error.BusinessException;
 import com.wedge.common.error.ErrorCode;
-import com.wedge.project.application.ProjectAccessService;
 import com.wedge.report.api.dto.RunReportResponse;
 import com.wedge.report.domain.Report;
 import com.wedge.report.domain.ReportFormat;
@@ -63,7 +62,7 @@ class ReportGenerationServiceTest {
     private RunMapper runMapper;
 
     @Mock
-    private ProjectAccessService projectAccessService;
+    private ReportAccessGuard reportAccessGuard;
 
     @Captor
     private ArgumentCaptor<Report> reportCaptor;
@@ -79,7 +78,7 @@ class ReportGenerationServiceTest {
                 nudgeMapper,
                 reportMapper,
                 runMapper,
-                projectAccessService,
+                reportAccessGuard,
                 objectMapper
         );
     }
@@ -100,7 +99,7 @@ class ReportGenerationServiceTest {
 
         RunReportResponse response = reportGenerationService.generateRunReport(runId, userId);
 
-        verify(projectAccessService).ensureProjectAccessible(run.projectId(), userId);
+        verify(reportAccessGuard).ensureProjectAccessible(run.projectId(), userId);
         assertThat(response.runId()).isEqualTo(runId);
         assertThat(response.reportStatus()).isEqualTo("READY");
         assertThat(response.analysisStatus()).isEqualTo(AnalysisJobStatus.COMPLETED.name());
@@ -152,7 +151,7 @@ class ReportGenerationServiceTest {
 
         RunReportResponse response = reportGenerationService.getRunReport(runId, userId);
 
-        verify(projectAccessService).ensureProjectAccessible(run.projectId(), userId);
+        verify(reportAccessGuard).ensureProjectAccessible(run.projectId(), userId);
         assertThat(response.reportStatus()).isEqualTo("GENERATABLE");
         assertThat(response.analysisStatus()).isEqualTo(AnalysisJobStatus.COMPLETED.name());
         assertThat(response.analysisJobId()).isEqualTo(analysisJobId);
@@ -196,7 +195,7 @@ class ReportGenerationServiceTest {
         RunResponse run = sampleRun(runId);
         when(runService.getRun(runId)).thenReturn(run);
         org.mockito.Mockito.doThrow(new BusinessException(ErrorCode.FORBIDDEN))
-                .when(projectAccessService)
+                .when(reportAccessGuard)
                 .ensureProjectAccessible(run.projectId(), userId);
 
         assertThatThrownBy(() -> reportGenerationService.getRunReport(runId, userId))

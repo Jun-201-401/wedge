@@ -18,7 +18,7 @@ wedge:
       force-path-style: ${WEDGE_ARTIFACT_S3_FORCE_PATH_STYLE:false}
   auth:
     refresh-cookie:
-      secure: true
+      secure: ${WEDGE_REFRESH_COOKIE_SECURE:true}
   report:
     project-access-check-enabled: ${WEDGE_REPORT_PROJECT_ACCESS_CHECK_ENABLED:true}
 

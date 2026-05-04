@@ -39,6 +39,7 @@ test('run report page follows the report.html result-first layout', () => {
   assert.match(source, /reportProjection\?\.reportStatus === 'READY'/);
   assert.match(source, /\[evidencePacket, isMockRun, reportLoadError, reportProjection, run, runId, scenarioId, targetUrl\]/);
   assert.match(source, /sourceNotice: reportLoadError/);
+  assert.match(source, /useAuthenticatedResourceUrl\(report\.evidencePreviewUrl\)/);
   assert.match(source, /role="status"/);
   assert.match(source, /if \(isMockRun\)/);
   assert.match(source, /리포트 준비 중입니다/);
@@ -107,6 +108,19 @@ test('run report css keeps result-first content in the live simulation cockpit t
   assert.doesNotMatch(css, /run-report-side-column/);
   assert.match(css, /@media \(max-width: 1080px\)/);
   assert.match(css, /@media \(max-width: 760px\)/);
+});
+
+test('authenticated resource hook avoids raw api image urls and cleans blob urls', () => {
+  const source = fs.readFileSync(
+    new URL('../../src/shared/lib/authenticatedResourceUrl.ts', import.meta.url),
+    'utf8',
+  );
+
+  assert.match(source, /useState<string \\| null>\(null\)/);
+  assert.doesNotMatch(source, /useState<string \\| null>\(resourceUrl \?\? null\)/);
+  assert.match(source, /URL\.createObjectURL\(blob\)/);
+  assert.match(source, /URL\.revokeObjectURL\(objectUrl\)/);
+  assert.match(source, /\.catch\(\(\) => \{[\s\S]*?setResolvedUrl\(null\)/);
 });
 
 test('run monitor exposes a report CTA into /runs/:runId/report', () => {

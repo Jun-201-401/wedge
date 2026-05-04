@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 
 import { generateRunReport, getRunReport } from '../../api/reports';
 import { replaceAppPath } from '../../shared/lib/navigation';
+import { useAuthenticatedResourceUrl } from '../../shared/lib/authenticatedResourceUrl';
 import { deleteRun, requestRunAnalysis, stopRun } from '../../api/runs';
 import type { RunReportProjection } from '../../entities/report';
 import type { EvidencePacket, RunEvidenceCounts } from '../../entities/run';
@@ -378,6 +379,10 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
     };
   }, [canApplyReportResponse, isMockRun, reportProjection, run.id, run.status, runId]);
 
+  const evidenceScreenshotUrl = findEvidenceScreenshotArtifact(evidencePacket)?.uri ?? null;
+  const snapshotUrl = live.latestFrame?.url ?? run.latestSnapshot?.url ?? evidenceScreenshotUrl;
+  const authenticatedSnapshotUrl = useAuthenticatedResourceUrl(snapshotUrl);
+
   if (isRealRunLoading) {
     return (
       <RunMonitorStatePage
@@ -395,8 +400,6 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
   const statusLabel = RUN_STATUS_LABEL[live.status];
   const progressPercent = isApiFallback ? mockData.progressPercent : getApiProgressPercent(live);
   const currentCheckpoint = isApiFallback ? (live.currentAction ?? mockData.currentCheckpoint) : getApiCheckpoint(live);
-  const evidenceScreenshotUrl = findEvidenceScreenshotArtifact(evidencePacket)?.uri ?? null;
-  const snapshotUrl = live.latestFrame?.url ?? run.latestSnapshot?.url ?? evidenceScreenshotUrl;
   const traceModeLabel = isApiFallback ? '모의 실행' : 'API 상태 스냅샷';
   const reportCtaState = resolveRunMonitorReportCtaState({
     isMockRun,
@@ -579,8 +582,8 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
               </div>
 
               <div className="run-monitor-browser__stage">
-                {snapshotUrl ? (
-                  <img className="run-monitor-browser__image" src={snapshotUrl} alt="최근 캡처된 분석 화면" />
+                {authenticatedSnapshotUrl ? (
+                  <img className="run-monitor-browser__image" src={authenticatedSnapshotUrl} alt="최근 캡처된 분석 화면" />
                 ) : isApiFallback ? (
                   <div className="run-monitor-browser__mock-content">
                     <div className="run-monitor-agent-pointer" aria-hidden="true" />

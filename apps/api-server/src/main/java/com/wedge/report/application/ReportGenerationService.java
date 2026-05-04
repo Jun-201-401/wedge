@@ -10,7 +10,6 @@ import com.wedge.analysis.infrastructure.AnalysisJobMapper;
 import com.wedge.analysis.infrastructure.NudgeMapper;
 import com.wedge.common.error.BusinessException;
 import com.wedge.common.error.ErrorCode;
-import com.wedge.project.application.ProjectAccessService;
 import com.wedge.report.api.dto.ReportFindingResponse;
 import com.wedge.report.api.dto.ReportNudgeResponse;
 import com.wedge.report.api.dto.RunReportResponse;
@@ -43,7 +42,7 @@ public class ReportGenerationService {
     private final NudgeMapper nudgeMapper;
     private final ReportMapper reportMapper;
     private final RunMapper runMapper;
-    private final ProjectAccessService projectAccessService;
+    private final ReportAccessGuard reportAccessGuard;
     private final ObjectMapper objectMapper;
 
     public ReportGenerationService(
@@ -53,7 +52,7 @@ public class ReportGenerationService {
             NudgeMapper nudgeMapper,
             ReportMapper reportMapper,
             RunMapper runMapper,
-            ProjectAccessService projectAccessService,
+            ReportAccessGuard reportAccessGuard,
             ObjectMapper objectMapper
     ) {
         this.runService = runService;
@@ -62,14 +61,14 @@ public class ReportGenerationService {
         this.nudgeMapper = nudgeMapper;
         this.reportMapper = reportMapper;
         this.runMapper = runMapper;
-        this.projectAccessService = projectAccessService;
+        this.reportAccessGuard = reportAccessGuard;
         this.objectMapper = objectMapper;
     }
 
     @Transactional(readOnly = true)
     public RunReportResponse getRunReport(UUID runId, UUID userId) {
         RunResponse run = runService.getRun(runId);
-        projectAccessService.ensureProjectAccessible(run.projectId(), userId);
+        reportAccessGuard.ensureProjectAccessible(run.projectId(), userId);
         List<Report> reports = reportMapper.findByRunId(runId);
         return analysisJobMapper.findLatestByRunId(runId)
                 .map(job -> responseForLatestAnalysis(run, job, reports))
@@ -79,7 +78,7 @@ public class ReportGenerationService {
     @Transactional
     public RunReportResponse generateRunReport(UUID runId, UUID userId) {
         RunResponse run = runService.getRun(runId);
-        projectAccessService.ensureProjectAccessible(run.projectId(), userId);
+        reportAccessGuard.ensureProjectAccessible(run.projectId(), userId);
         AnalysisJob analysisJob = analysisJobMapper.findLatestByRunId(runId)
                 .filter(job -> job.getStatus() == AnalysisJobStatus.COMPLETED)
                 .orElseThrow(() -> new BusinessException(ErrorCode.STATE_CONFLICT, "Completed analysis result is required before report generation."));

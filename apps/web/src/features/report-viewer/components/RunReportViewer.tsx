@@ -1,3 +1,4 @@
+import { useAuthenticatedResourceUrl } from '../../../shared/lib/authenticatedResourceUrl';
 import type { RunReportViewModel } from '../lib/runReportViewModel';
 import '../styles/run-report-viewer.css';
 
@@ -19,6 +20,7 @@ export function RunReportBrand() {
 
 export function RunReportViewer({ report }: RunReportViewerProps) {
   const primaryFinding = report.findings[0] ?? null;
+  const evidencePreviewUrl = useAuthenticatedResourceUrl(report.evidencePreviewUrl);
 
   return (
     <div className="run-report-page">
@@ -145,8 +147,8 @@ export function RunReportViewer({ report }: RunReportViewerProps) {
                 </div>
 
                 <div className="run-report-evidence-preview" aria-label="분석 근거 화면 축약 미리보기">
-                  {report.evidencePreviewUrl ? (
-                    <img className="run-report-evidence-preview__image" src={report.evidencePreviewUrl} alt="실제 실행에서 수집된 evidence 화면" />
+                  {evidencePreviewUrl ? (
+                    <img className="run-report-evidence-preview__image" src={evidencePreviewUrl} alt="실제 실행에서 수집된 evidence 화면" />
                   ) : (
                     <div className="run-report-evidence-preview__site">
                       <div className="run-report-evidence-preview__nav" aria-hidden="true">

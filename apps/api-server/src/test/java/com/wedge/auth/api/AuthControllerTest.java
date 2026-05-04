@@ -23,6 +23,7 @@ import java.util.UUID;
 
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.not;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -63,6 +64,7 @@ class AuthControllerTest {
                 .andExpect(header().string(HttpHeaders.SET_COOKIE, containsString("SameSite=Lax")))
                 .andExpect(header().string(HttpHeaders.SET_COOKIE, containsString("Path=/api/auth")))
                 .andExpect(header().string(HttpHeaders.SET_COOKIE, containsString("Max-Age=604800")))
+                .andExpect(header().string(HttpHeaders.SET_COOKIE, not(containsString("Secure"))))
                 .andExpect(jsonPath("$.data.accessToken").value("access-token"))
                 .andExpect(jsonPath("$.data.refreshToken").doesNotExist())
                 .andExpect(jsonPath("$.data.tokenType").value("Bearer"))
@@ -122,6 +124,13 @@ class AuthControllerTest {
                 .andExpect(header().string(HttpHeaders.SET_COOKIE, containsString("wedge_refresh_token=")))
                 .andExpect(header().string(HttpHeaders.SET_COOKIE, containsString("Max-Age=0")))
                 .andExpect(jsonPath("$.error.code").value("invalid_token"));
+    }
+
+    @Test
+    void refreshCookiePropertiesDefaultToSecureCookies() {
+        RefreshCookieProperties properties = new RefreshCookieProperties();
+
+        assertTrue(properties.secure());
     }
 
     @Test
