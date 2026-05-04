@@ -10,10 +10,10 @@ services:
       - --collector.filesystem.mount-points-exclude=^/(dev|proc|sys|var/lib/docker/.+|var/lib/containers/storage/.+)($|/)
       - --collector.filesystem.fs-types-exclude=^(autofs|binfmt_misc|bpf|cgroup2?|configfs|debugfs|devpts|devtmpfs|fusectl|hugetlbfs|iso9660|mqueue|nsfs|overlay|proc|procfs|pstore|rpc_pipefs|securityfs|selinuxfs|squashfs|sysfs|tracefs)$
     volumes:
-      - /:/host:ro,rslave
+      - /:/host:ro
 
   cadvisor:
-    image: ghcr.io/google/cadvisor:v0.56.2
+    image: ghcr.io/google/cadvisor:0.56.2
     restart: unless-stopped
     privileged: true
     devices:

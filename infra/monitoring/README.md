@@ -37,7 +37,7 @@ network at `http://prometheus:9090`.
 Images are pinned to explicit versions instead of `latest`.
 
 - `prom/node-exporter:v1.11.1`
-- `ghcr.io/google/cadvisor:v0.56.2`
+- `ghcr.io/google/cadvisor:0.56.2`
 - `prom/prometheus:v3.5.1`
 - `grafana/grafana:13.0.1`
 
@@ -53,6 +53,17 @@ Prometheus and Grafana are bound to `127.0.0.1` by default.
 
 The exporters are not published to the host. Prometheus reaches them through
 the Compose network.
+
+## Local and Production Notes
+
+The monitoring stack is written as a common baseline for local Docker Desktop
+and Linux EC2. Because Docker Desktop does not expose the host exactly like a
+native Linux server, local host metrics can represent the Docker Desktop Linux
+VM rather than the full Windows host.
+
+For production EC2, the same stack observes the Linux host and Docker
+containers directly. If stricter Linux-only mount propagation is needed later,
+add a production override instead of making the common file Linux-only.
 
 ## Environment
 
