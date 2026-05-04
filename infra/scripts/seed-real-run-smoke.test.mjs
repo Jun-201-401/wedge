@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  DEFAULT_SMOKE_EMAIL,
   SMOKE_PROJECT_ID,
   SMOKE_SCENARIO_TEMPLATE_VERSION_ID,
   buildEnvLines,
@@ -25,6 +26,9 @@ test('seed script builds idempotent workspace/project/scenario SQL', () => {
   assert.match(sql, /INSERT INTO project/);
   assert.match(sql, /INSERT INTO scenario_template/);
   assert.match(sql, /INSERT INTO scenario_template_version/);
+  assert.match(sql, /INSERT INTO workspace_member/);
+  assert.match(sql, /INSERT INTO project_member/);
+  assert.match(sql, new RegExp(DEFAULT_SMOKE_EMAIL));
   assert.match(sql, /ON CONFLICT \(id\) DO UPDATE/);
   assert.match(sql, new RegExp(SMOKE_PROJECT_ID));
   assert.match(sql, new RegExp(SMOKE_SCENARIO_TEMPLATE_VERSION_ID));
@@ -37,12 +41,14 @@ test('seed script reads docker postgres settings from dev env names', () => {
     POSTGRES_USER: 'dev-user',
     POSTGRES_DB: 'dev-db',
     WEDGE_SMOKE_TARGET_URL: 'https://wedge.example/',
+    WEDGE_SMOKE_EMAIL: 'custom-smoke@wedge.local',
   });
 
   assert.equal(config.dbContainer, 'custom-postgres');
   assert.equal(config.dbUser, 'dev-user');
   assert.equal(config.dbName, 'dev-db');
   assert.equal(config.targetUrl, 'https://wedge.example/');
+  assert.equal(config.smokeUserEmail, 'custom-smoke@wedge.local');
 });
 
 test('seed script falls back when .env contains blank docker settings', () => {
@@ -51,10 +57,12 @@ test('seed script falls back when .env contains blank docker settings', () => {
     POSTGRES_USER: '',
     POSTGRES_DB: '',
     WEDGE_SMOKE_TARGET_URL: '',
+    WEDGE_SMOKE_EMAIL: '',
   });
 
   assert.equal(config.dbContainer, 'wedge-postgres-dev');
   assert.equal(config.dbUser, 'ssafy');
   assert.equal(config.dbName, 'wedge_dev');
   assert.equal(config.targetUrl, 'https://example.com/');
+  assert.equal(config.smokeUserEmail, DEFAULT_SMOKE_EMAIL);
 });

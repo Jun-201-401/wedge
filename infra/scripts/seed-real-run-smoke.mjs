@@ -8,6 +8,8 @@ export const SMOKE_WORKSPACE_ID = '3f3ddc0e-97a9-4dfb-9ec3-064fd5c164b9';
 export const SMOKE_PROJECT_ID = '8f06dca8-9c4d-4f20-b1a8-1d5ee40a9923';
 export const SMOKE_SCENARIO_TEMPLATE_ID = 'ee2283a4-130f-4f6e-8c2d-d9926bb1c6ad';
 export const SMOKE_SCENARIO_TEMPLATE_VERSION_ID = '5c5f4c77-0c32-4ab3-9841-2b6f6cc07a40';
+export const DEFAULT_SMOKE_EMAIL = 'e2e-smoke@wedge.local';
+
 
 const DEFAULT_DB_CONTAINER = 'wedge-postgres-dev';
 const DEFAULT_DB_USER = 'ssafy';
@@ -19,8 +21,10 @@ export function buildSeedSql({
   scenarioTemplateId = SMOKE_SCENARIO_TEMPLATE_ID,
   scenarioTemplateVersionId = SMOKE_SCENARIO_TEMPLATE_VERSION_ID,
   targetUrl = 'https://example.com/',
+  smokeUserEmail = DEFAULT_SMOKE_EMAIL,
 } = {}) {
   const escapedTargetUrl = sqlString(targetUrl);
+  const escapedSmokeUserEmail = sqlString(smokeUserEmail);
 
   return `
 INSERT INTO workspace (id, name, slug)
@@ -90,9 +94,42 @@ ON CONFLICT (id) DO UPDATE SET
   definition_jsonb = EXCLUDED.definition_jsonb,
   is_default = EXCLUDED.is_default;
 
+WITH smoke_user AS (
+  SELECT id
+  FROM user_account
+  WHERE email = ${escapedSmokeUserEmail}
+)
+INSERT INTO workspace_member (workspace_id, user_id, role, status)
+SELECT '${workspaceId}', id, 'OWNER', 'ACTIVE'
+FROM smoke_user
+ON CONFLICT (workspace_id, user_id) DO UPDATE SET
+  role = EXCLUDED.role,
+  status = EXCLUDED.status,
+  updated_at = NOW();
+
+WITH smoke_user AS (
+  SELECT id
+  FROM user_account
+  WHERE email = ${escapedSmokeUserEmail}
+)
+INSERT INTO project_member (project_id, user_id, role)
+SELECT '${projectId}', id, 'OWNER'
+FROM smoke_user
+ON CONFLICT (project_id, user_id) DO UPDATE SET
+  role = EXCLUDED.role,
+  updated_at = NOW();
+
 SELECT
   '${projectId}' AS wedge_smoke_project_id,
-  '${scenarioTemplateVersionId}' AS wedge_smoke_scenario_template_version_id;
+  '${scenarioTemplateVersionId}' AS wedge_smoke_scenario_template_version_id,
+  (SELECT COUNT(*) FROM user_account WHERE email = ${escapedSmokeUserEmail}) AS wedge_smoke_user_count,
+  (
+    SELECT COUNT(*)
+    FROM project_member pm
+    JOIN user_account ua ON ua.id = pm.user_id
+    WHERE pm.project_id = '${projectId}'
+      AND ua.email = ${escapedSmokeUserEmail}
+  ) AS wedge_smoke_project_member_count;
 `.trimStart();
 }
 
@@ -102,6 +139,7 @@ export function readConfig(env = process.env) {
     dbUser: firstNonEmpty(env.WEDGE_SMOKE_DB_USER, env.POSTGRES_USER, DEFAULT_DB_USER),
     dbName: firstNonEmpty(env.WEDGE_SMOKE_DB_NAME, env.POSTGRES_DB, DEFAULT_DB_NAME),
     targetUrl: firstNonEmpty(env.WEDGE_SMOKE_TARGET_URL, 'https://example.com/'),
+    smokeUserEmail: firstNonEmpty(env.WEDGE_SMOKE_EMAIL, DEFAULT_SMOKE_EMAIL),
   };
 }
 
@@ -186,7 +224,7 @@ function loadDotEnv(dotEnvPath = resolve(process.cwd(), '.env')) {
 function main() {
   loadDotEnv();
   const config = readConfig();
-  const sql = buildSeedSql({ targetUrl: config.targetUrl });
+  const sql = buildSeedSql({ targetUrl: config.targetUrl, smokeUserEmail: config.smokeUserEmail });
   const output = runPsql(config, sql);
 
   console.log(output.trim());
