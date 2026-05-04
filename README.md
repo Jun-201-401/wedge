@@ -121,6 +121,17 @@ docker compose --env-file .env -f compose.dev.yaml --profile api up -d
 
 이 모드는 Runner/Analyzer 컨테이너가 `http://api-server:8080`으로 callback을 보낼 수 있게 API 서버를 같은 Compose 네트워크에 올린다. IntelliJ로 API 서버를 실행하는 경우에는 기존처럼 `RUNNER_CALLBACK_BASE_URL=http://host.docker.internal:8080` 경로를 사용한다.
 
+웹까지 포함해 전체를 Docker Compose 안에서 확인하려면 `web` profile을 함께 켠다.
+
+```bash
+RUNNER_CALLBACK_BASE_URL=http://api-server:8080 \
+ANALYZER_CALLBACK_BASE_URL=http://api-server:8080 \
+ANALYZER_EVIDENCE_BASE_URL=http://api-server:8080 \
+docker compose --env-file .env -f compose.dev.yaml --profile api --profile web up -d
+```
+
+이 모드에서는 `http://localhost:5173`으로 Web 컨테이너에 접속한다. Web 컨테이너의 dev Nginx 설정은 `/api/*` 요청을 같은 Compose 네트워크의 `api-server:8080`으로 프록시한다.
+
 5. 전체 Run smoke를 실행한다.
 
 ```bash
