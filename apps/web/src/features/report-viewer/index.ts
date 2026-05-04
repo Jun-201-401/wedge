@@ -1,6 +1,7 @@
 export { RunReportBrand, RunReportViewer } from './components/RunReportViewer';
 export { hydrateEvidenceArtifacts, normalizeRunArtifactType } from './lib/evidenceArtifactHydration';
 export { buildMockRunReportData } from './lib/runReportMock';
+export { buildRunReportFromApi } from './lib/runReportFromApi';
 export { buildRunReportFromEvidence } from './lib/runReportFromEvidence';
 export type {
   DecisionNodeTone,

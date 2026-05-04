@@ -57,6 +57,7 @@ export interface RunReportViewModel {
   heroTitle: string;
   heroSubtitle: string;
   heroCallToAction: string;
+  sourceNotice?: string;
   evidencePreviewUrl?: string | null;
   findings: ReportFinding[];
   recommendations: ReportRecommendation[];

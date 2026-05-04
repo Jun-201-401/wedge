@@ -52,6 +52,7 @@ export function RunReportViewer({ report }: RunReportViewerProps) {
               <span aria-hidden="true">•</span>
               시나리오: {report.scenarioLabel}
             </p>
+            {report.sourceNotice ? <p className="run-report-hero__notice" role="status">{report.sourceNotice}</p> : null}
           </div>
 
           <dl className="run-report-hero-stats" aria-label="리포트 요약 지표">
