@@ -1,12 +1,12 @@
-package com.wedge.run.infrastructure;
+package com.wedge.common.infrastructure;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.amqp.core.Queue;
 
-class RunMqConfigTest {
-    private final RunMqConfig config = new RunMqConfig();
+class RunnerMqConfigTest {
+    private final RunnerMqConfig config = new RunnerMqConfig();
 
     @Test
     void runExecuteQueueKeepsDeadLetterArgumentsAlignedWithDevTopology() {

@@ -1,13 +1,16 @@
-import { useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 
-import { deleteRun, stopRun } from '../../api/runs';
+import { generateRunReport, getRunReport } from '../../api/reports';
+import { replaceAppPath } from '../../shared/lib/navigation';
+import { useAuthenticatedResourceUrl } from '../../shared/lib/authenticatedResourceUrl';
+import { deleteRun, requestRunAnalysis, stopRun } from '../../api/runs';
+import type { RunReportProjection } from '../../entities/report';
 import type { EvidencePacket, RunEvidenceCounts } from '../../entities/run';
 import { RUN_STATUS_LABEL } from '../../entities/run';
 import {
   buildApiSnapshotLogs,
   buildApiSnapshotSteps,
   buildMockRunMonitorData,
-  canOpenRunReport,
   canRequestRunDelete,
   canRequestRunStop,
   findEvidenceScreenshotArtifact,
@@ -17,6 +20,9 @@ import {
   getDevicePresetLabel,
   getStatusTone,
   getStepStatusLabel,
+  RUN_MONITOR_REFRESH_INTERVAL_MS,
+  resolveRunMonitorReportCtaState,
+  shouldRefreshRunReport,
   type RunStatusTone,
   type StepStatus,
   useRunMonitorState,
@@ -30,6 +36,20 @@ import './RunMonitorPage.css';
 interface RunMonitorPageProps {
   runId: string;
 }
+
+type MonitorActionState = {
+  kind: 'idle' | 'pending' | 'success' | 'error';
+  message: string;
+};
+
+const IDLE_MONITOR_ACTION_STATE: MonitorActionState = { kind: 'idle', message: '' };
+const REPORT_STATUS_LOAD_ERROR_MESSAGE = '리포트 상태를 불러오지 못했습니다. 잠시 후 다시 시도해주세요.';
+const GENERATE_REPORT_PENDING_MESSAGE = '리포트 생성 요청 중입니다.';
+const GENERATE_REPORT_SUCCESS_MESSAGE = '리포트 생성 요청이 완료됐습니다.';
+const GENERATE_REPORT_ERROR_MESSAGE = '리포트 생성 요청에 실패했습니다. 잠시 후 다시 시도해주세요.';
+const REQUEST_ANALYSIS_PENDING_MESSAGE = '분석 요청 중입니다.';
+const REQUEST_ANALYSIS_SUCCESS_MESSAGE = '분석 요청이 접수됐습니다. 분석이 완료되면 리포트를 생성할 수 있습니다.';
+const REQUEST_ANALYSIS_ERROR_MESSAGE = '분석 요청에 실패했습니다. Run 상태 또는 접근 권한을 확인해주세요.';
 
 function readQueryParam(name: string) {
   if (typeof window === 'undefined') {
@@ -259,6 +279,109 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
     kind: 'idle',
     message: '',
   });
+  const [reportProjection, setReportProjection] = useState<RunReportProjection | null>(null);
+  const [isReportStatusLoading, setIsReportStatusLoading] = useState(false);
+  const [reportStatusError, setReportStatusError] = useState('');
+  const [reportActionState, setReportActionState] = useState<MonitorActionState>(IDLE_MONITOR_ACTION_STATE);
+  const activeRouteRunIdRef = useRef(runId);
+  const isMonitorMountedRef = useRef(false);
+
+  useEffect(() => {
+    isMonitorMountedRef.current = true;
+
+    return () => {
+      isMonitorMountedRef.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    activeRouteRunIdRef.current = runId;
+  }, [runId]);
+
+  const canApplyReportResponse = useCallback((responseRunId: string) => {
+    return isMonitorMountedRef.current && activeRouteRunIdRef.current === responseRunId;
+  }, []);
+
+  useEffect(() => {
+    if (isMockRun || run.status !== 'COMPLETED' || run.id !== runId) {
+      setReportProjection(null);
+      setIsReportStatusLoading(false);
+      setReportStatusError('');
+      setReportActionState(IDLE_MONITOR_ACTION_STATE);
+      return;
+    }
+
+    let isActive = true;
+
+    async function loadReportStatus() {
+      setIsReportStatusLoading(true);
+      setReportStatusError('');
+      setReportActionState(IDLE_MONITOR_ACTION_STATE);
+
+      try {
+        const response = await getRunReport(run.id);
+
+        if (!isActive || !canApplyReportResponse(run.id)) {
+          return;
+        }
+
+        setReportProjection(response.data);
+        setReportStatusError('');
+      } catch {
+        if (!isActive || !canApplyReportResponse(run.id)) {
+          return;
+        }
+
+        setReportProjection(null);
+        setReportStatusError(REPORT_STATUS_LOAD_ERROR_MESSAGE);
+      } finally {
+        if (isActive && canApplyReportResponse(run.id)) {
+          setIsReportStatusLoading(false);
+        }
+      }
+    }
+
+    void loadReportStatus();
+
+    return () => {
+      isActive = false;
+    };
+  }, [canApplyReportResponse, isMockRun, run.id, run.status, runId]);
+
+  useEffect(() => {
+    if (isMockRun || run.status !== 'COMPLETED' || run.id !== runId || !shouldRefreshRunReport(reportProjection)) {
+      return;
+    }
+
+    let isActive = true;
+    const refreshTimerId = window.setTimeout(() => {
+      void getRunReport(run.id)
+        .then((response) => {
+          if (!isActive || !canApplyReportResponse(run.id)) {
+            return;
+          }
+
+          setReportProjection(response.data);
+          setReportStatusError('');
+        })
+        .catch(() => {
+          if (!isActive || !canApplyReportResponse(run.id)) {
+            return;
+          }
+
+          setReportStatusError(REPORT_STATUS_LOAD_ERROR_MESSAGE);
+        });
+    }, RUN_MONITOR_REFRESH_INTERVAL_MS);
+
+    return () => {
+      isActive = false;
+      window.clearTimeout(refreshTimerId);
+    };
+  }, [canApplyReportResponse, isMockRun, reportProjection, run.id, run.status, runId]);
+
+  const evidenceScreenshotUrl = findEvidenceScreenshotArtifact(evidencePacket)?.uri ?? null;
+  const snapshotUrl = live.latestFrame?.url ?? run.latestSnapshot?.url ?? evidenceScreenshotUrl;
+  const authenticatedSnapshotUrl = useAuthenticatedResourceUrl(snapshotUrl);
 
   if (isRealRunLoading) {
     return (
@@ -277,11 +400,14 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
   const statusLabel = RUN_STATUS_LABEL[live.status];
   const progressPercent = isApiFallback ? mockData.progressPercent : getApiProgressPercent(live);
   const currentCheckpoint = isApiFallback ? (live.currentAction ?? mockData.currentCheckpoint) : getApiCheckpoint(live);
-  const evidenceScreenshotUrl = findEvidenceScreenshotArtifact(evidencePacket)?.uri ?? null;
-  const snapshotUrl = live.latestFrame?.url ?? run.latestSnapshot?.url ?? evidenceScreenshotUrl;
   const traceModeLabel = isApiFallback ? '모의 실행' : 'API 상태 스냅샷';
-  const canOpenReport = canOpenRunReport(isMockRun, run, evidencePacket);
-  const reportPath = canOpenReport
+  const reportCtaState = resolveRunMonitorReportCtaState({
+    isMockRun,
+    report: reportProjection,
+    isLoading: isReportStatusLoading,
+    errorMessage: reportStatusError,
+  });
+  const reportPath = reportCtaState.canOpenReport
     ? buildRunReportPath(run.id, {
         submittedUrl: run.startUrl,
         scenarioId: readQueryParam('scenario') ?? 'landing-cta',
@@ -298,6 +424,9 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
   const isRunActionPending = runActionState.kind === 'pending';
   const canStopCurrentRun = !isMockRun && canRequestRunStop(live.status);
   const canDeleteCurrentRun = !isMockRun && canRequestRunDelete(live.status);
+  const isReportActionPending = reportActionState.kind === 'pending';
+  const canGenerateReport = !isMockRun && reportCtaState.kind === 'generate';
+  const canRequestAnalysis = !isMockRun && reportCtaState.kind === 'request-analysis';
 
   const requestStopRun = () => {
     if (!canStopCurrentRun || isRunActionPending) {
@@ -326,12 +455,73 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
     setRunActionState({ kind: 'pending', message: 'Run 삭제 요청을 보내는 중입니다.' });
     void deleteRun(run.id)
       .then(() => {
-        window.location.assign(RUNS_PATH);
+        replaceAppPath(RUNS_PATH);
       })
       .catch(() => {
         setRunActionState({ kind: 'error', message: 'Run 삭제에 실패했습니다. 권한 또는 API 서버 상태를 확인해주세요.' });
       });
   };
+
+  const requestGenerateReport = () => {
+    if (!canGenerateReport || isReportActionPending) {
+      return;
+    }
+
+    const requestedRunId = run.id;
+
+    setReportActionState({ kind: 'pending', message: GENERATE_REPORT_PENDING_MESSAGE });
+    void generateRunReport(requestedRunId)
+      .then((response) => {
+        if (!canApplyReportResponse(requestedRunId)) {
+          return;
+        }
+
+        setReportProjection(response.data);
+        setReportStatusError('');
+        setReportActionState({ kind: 'success', message: GENERATE_REPORT_SUCCESS_MESSAGE });
+      })
+      .catch(() => {
+        if (!canApplyReportResponse(requestedRunId)) {
+          return;
+        }
+
+        setReportActionState({ kind: 'error', message: GENERATE_REPORT_ERROR_MESSAGE });
+      });
+  };
+
+  const requestAnalysisForReport = () => {
+    if (!canRequestAnalysis || isReportActionPending) {
+      return;
+    }
+
+    const requestedRunId = run.id;
+
+    setReportActionState({ kind: 'pending', message: REQUEST_ANALYSIS_PENDING_MESSAGE });
+    void requestRunAnalysis(requestedRunId)
+      .then(() => getRunReport(requestedRunId))
+      .then((response) => {
+        if (!canApplyReportResponse(requestedRunId)) {
+          return;
+        }
+
+        setReportProjection(response.data);
+        setReportStatusError('');
+        setReportActionState({ kind: 'success', message: REQUEST_ANALYSIS_SUCCESS_MESSAGE });
+      })
+      .catch(() => {
+        if (!canApplyReportResponse(requestedRunId)) {
+          return;
+        }
+
+        setReportActionState({ kind: 'error', message: REQUEST_ANALYSIS_ERROR_MESSAGE });
+      });
+  };
+
+  const reportActionMessage = reportActionState.message ? (
+    <p className={`run-monitor-report-cta__status run-monitor-report-cta__status--${reportActionState.kind}`} role="status">
+      {reportActionState.message}
+    </p>
+  ) : null;
 
   return (
     <div className="run-monitor-page">
@@ -392,8 +582,8 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
               </div>
 
               <div className="run-monitor-browser__stage">
-                {snapshotUrl ? (
-                  <img className="run-monitor-browser__image" src={snapshotUrl} alt="최근 캡처된 분석 화면" />
+                {authenticatedSnapshotUrl ? (
+                  <img className="run-monitor-browser__image" src={authenticatedSnapshotUrl} alt="최근 캡처된 분석 화면" />
                 ) : isApiFallback ? (
                   <div className="run-monitor-browser__mock-content">
                     <div className="run-monitor-agent-pointer" aria-hidden="true" />
@@ -470,19 +660,30 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
           <section className="run-monitor-live-insight" aria-labelledby="live-insight-title">
             <div className="run-monitor-live-insight__label">
               <span aria-hidden="true" />
-              <h2 id="live-insight-title">{canOpenReport ? '리포트 준비 완료' : '현재 체크포인트'}</h2>
+              <h2 id="live-insight-title">{reportCtaState.titleLabel}</h2>
             </div>
-            {reportPath ? (
+            {reportCtaState.kind !== 'hidden' ? (
               <div className="run-monitor-live-insight__card run-monitor-live-insight__card--report run-monitor-report-cta">
-                <span>다음 화면</span>
+                <span>{reportCtaState.eyebrow}</span>
                 <strong>분석 결과 리포트</strong>
-                <p>수집된 근거를 바탕으로 발견된 신호와 개선안을 확인합니다.</p>
+                <p>{reportCtaState.message}</p>
                 <EvidenceCollectionSummary
                   stats={evidenceStats}
                   isLoading={isEvidenceLoading}
                   errorMessage={evidenceLoadError}
                 />
-                <a href={reportPath}>리포트 보기</a>
+                {reportActionMessage}
+                {reportPath ? <a href={reportPath}>리포트 보기</a> : null}
+                {canGenerateReport ? (
+                  <button type="button" onClick={requestGenerateReport} disabled={isReportActionPending}>
+                    {isReportActionPending ? '생성 중' : '리포트 생성'}
+                  </button>
+                ) : null}
+                {canRequestAnalysis ? (
+                  <button type="button" onClick={requestAnalysisForReport} disabled={isReportActionPending}>
+                    {isReportActionPending ? '요청 중' : '분석 시작'}
+                  </button>
+                ) : null}
               </div>
             ) : (
               <div className="run-monitor-live-insight__card">

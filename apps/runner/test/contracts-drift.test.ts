@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 const currentDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(currentDir, "../../..");
 
-test("runner TypeScript mirror stays aligned with canonical scenario and MQ contract literals", async () => {
+test("[계약 동기화] runner TS mirror의 scenario/MQ literal이 packages/contracts와 어긋나지 않는다", async () => {
   const runnerTypesSource = await readRunnerTypesSource();
   const scenarioSchema = await readJson(resolve(repoRoot, "packages/contracts/schemas/scenario-plan.schema.json"));
   const mqSchema = await readJson(resolve(repoRoot, "packages/contracts/mq/messages.schema.json"));
@@ -52,7 +52,7 @@ test("runner TypeScript mirror stays aligned with canonical scenario and MQ cont
   assertPropertyPrimitiveMatchesSchema(runnerTypesSource, "count_delta", scenarioSchema.$defs.settle_strategy.properties.count_delta);
 });
 
-test("runner TypeScript mirror stays aligned with canonical runner callback literals", async () => {
+test("[계약 동기화] runner callback literal이 packages/contracts callback schema와 어긋나지 않는다", async () => {
   const runnerTypesSource = await readRunnerTypesSource();
   const callbackSchema = await readJson(resolve(repoRoot, "packages/contracts/internal/runner-callback.schema.json"));
 

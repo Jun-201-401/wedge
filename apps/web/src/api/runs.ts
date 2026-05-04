@@ -2,6 +2,7 @@ import type { AckResponse, ApiResponse, RequestOptions } from './http';
 import { requestJson } from './http';
 import type {
   AnalysisStatus,
+  AnalysisRequestResponse,
   EvidencePacket,
   Run,
   RunActionRequest,
@@ -88,6 +89,13 @@ export function listRunSteps(runId: string, options?: RequestOptions) {
   return requestJson<ApiResponse<unknown[]>>(`/runs/${runId}/steps`, options);
 }
 
+export function requestRunAnalysis(runId: string, options?: RequestOptions) {
+  return requestJson<ApiResponse<AnalysisRequestResponse>>(`/runs/${runId}/analysis`, {
+    ...options,
+    method: 'POST',
+  });
+}
+
 export const runsApi = {
   listRuns,
   createRun,
@@ -99,4 +107,5 @@ export const runsApi = {
   getRunEvidencePacket,
   listRunArtifacts,
   listRunSteps,
+  requestRunAnalysis,
 };

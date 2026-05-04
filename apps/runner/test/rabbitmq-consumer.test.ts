@@ -2,9 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { ConsumeMessage } from "amqplib";
 import { RunnerMessageValidationError } from "../src/messaging/index.ts";
-import { handleRunExecuteMessage, startRunExecuteQueueConsumer } from "../src/messaging/rabbitmq/index.ts";
+import { handleRunExecuteMessage, startRunExecuteQueueConsumer, startRunnerQueueConsumers } from "../src/messaging/rabbitmq/index.ts";
 
-test("handleRunExecuteMessage acknowledges processed messages", async () => {
+test("[RabbitMQ consumer] run.execute 메시지 처리 성공 시 ack 한다", async () => {
   const calls: string[] = [];
   const message = createMessage('{"messageType":"run.execute.request"}');
 
@@ -27,7 +27,7 @@ test("handleRunExecuteMessage acknowledges processed messages", async () => {
   assert.deepEqual(calls, ["process", "ack"]);
 });
 
-test("handleRunExecuteMessage rejects validation errors without requeue", async () => {
+test("[RabbitMQ consumer] 계약 검증 실패 메시지는 requeue 없이 reject 한다", async () => {
   const calls: Array<string | [string, boolean]> = [];
   const message = createMessage("invalid");
 
@@ -50,7 +50,7 @@ test("handleRunExecuteMessage rejects validation errors without requeue", async 
   assert.deepEqual(calls, [["nack", false]]);
 });
 
-test("handleRunExecuteMessage requeues execution failures only when configured", async () => {
+test("[RabbitMQ consumer] 실행 실패는 설정된 경우에만 requeue 한다", async () => {
   const noRequeueCalls: Array<[string, boolean]> = [];
   const requeueCalls: Array<[string, boolean]> = [];
   const message = createMessage("valid");
@@ -87,7 +87,7 @@ test("handleRunExecuteMessage requeues execution failures only when configured",
   assert.deepEqual(requeueCalls, [["nack", true]]);
 });
 
-test("startRunExecuteQueueConsumer configures queue consumption and closes resources", async () => {
+test("[RabbitMQ consumer] queue consume을 설정하고 종료 시 연결 자원을 닫는다", async () => {
   const events: string[] = [];
   let consumeHandler: ((message: ConsumeMessage | null) => void | Promise<void>) | undefined;
 
@@ -155,7 +155,71 @@ test("startRunExecuteQueueConsumer configures queue consumption and closes resou
   assert.ok(events.includes("connection:close"));
 });
 
-test("startRunExecuteQueueConsumer ignores null deliveries", async () => {
+test("startRunnerQueueConsumers consumes run and discovery queues", async () => {
+  const events: string[] = [];
+  const handlers = new Map<string, (message: ConsumeMessage | null) => void | Promise<void>>();
+
+  const consumer = await startRunnerQueueConsumers({
+    config: {
+      mqUrl: "amqp://localhost",
+      mqQueueRunExecute: "run.execute.request",
+      mqQueueDiscoveryExecute: "discovery.execute.request",
+      mqPrefetch: 2,
+      mqRequeueOnFailure: false
+    },
+    processRawRunMessage: async (rawMessage) => {
+      events.push(`run:${rawMessage}`);
+    },
+    processRawDiscoveryMessage: async (rawMessage) => {
+      events.push(`discovery:${rawMessage}`);
+    },
+    client: {
+      connect: async (url) => {
+        events.push(`connect:${url}`);
+        return {
+          createChannel: async () => ({
+            prefetch: async (count) => {
+              events.push(`prefetch:${count}`);
+            },
+            checkQueue: async (queue) => {
+              events.push(`checkQueue:${queue}`);
+            },
+            consume: async (queue, onMessage) => {
+              events.push(`consume:${queue}`);
+              handlers.set(queue, onMessage);
+              return { consumerTag: `${queue}-consumer` };
+            },
+            ack: () => {
+              events.push("ack");
+            },
+            nack: () => {
+              events.push("nack");
+            },
+            close: async () => {
+              events.push("channel:close");
+            }
+          }),
+          close: async () => {
+            events.push("connection:close");
+          }
+        };
+      }
+    }
+  });
+
+  await handlers.get("run.execute.request")?.(createMessage('{"messageType":"run.execute.request"}'));
+  await handlers.get("discovery.execute.request")?.(createMessage('{"messageType":"discovery.execute.request"}'));
+
+  assert.ok(events.includes('run:{"messageType":"run.execute.request"}'));
+  assert.ok(events.includes('discovery:{"messageType":"discovery.execute.request"}'));
+  assert.equal(events.filter((event) => event === "ack").length, 2);
+
+  await consumer.close();
+  assert.ok(events.includes("channel:close"));
+  assert.ok(events.includes("connection:close"));
+});
+
+test("[RabbitMQ consumer] null delivery는 ack/reject 없이 무시한다", async () => {
   const events: string[] = [];
   let consumeHandler: ((message: ConsumeMessage | null) => void | Promise<void>) | undefined;
 

@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
 import { createServer, type Server } from "node:http";
-import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import test from "node:test";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import { createRunnerApp } from "../src/app.ts";
 import { loadExampleMessage } from "./support.ts";
 
@@ -14,7 +15,7 @@ interface ReceivedCallbackRequest {
   body: string;
 }
 
-test("createRunnerApp executes example scenario and writes callback log", async () => {
+test("[앱 실행] 예제 run.execute 메시지를 처리하고 accepted/checkpoints/finished callback 로그를 남긴다", async () => {
   const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-artifacts-"));
   const callbackLogFile = join(artifactsRoot, "callbacks.jsonl");
   const app = createRunnerApp({
@@ -32,6 +33,57 @@ test("createRunnerApp executes example scenario and writes callback log", async 
   assert.match(callbackLog, /"callbackType":"accepted"/);
   assert.match(callbackLog, /"callbackType":"finished"/);
   assert.match(callbackLog, /"callbackType":"checkpoints"/);
+});
+
+test("createRunnerApp processes discovery message files and writes SiteDiscoveryResult", async () => {
+  const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-discovery-entrypoint-artifacts-"));
+  const fixtureRoot = await mkdtemp(join(tmpdir(), "wedge-runner-discovery-entrypoint-site-"));
+
+  try {
+    const fixturePath = join(fixtureRoot, "index.html");
+    await writeFile(fixturePath, createDiscoveryFixtureHtml(), "utf8");
+
+    const messageFile = join(fixtureRoot, "discovery-execute.request.json");
+    await writeFile(messageFile, JSON.stringify(createDiscoveryExecuteMessage(pathToFileURL(fixturePath).toString())), "utf8");
+
+    const app = createRunnerApp({
+      workerId: "runner-test-worker",
+      artifactsRoot,
+      browserHeadless: true,
+      browserLaunchTimeoutMs: 30_000,
+      browserNavigationTimeoutMs: 30_000
+    });
+
+    const result = await app.processInputMessageFile(messageFile);
+
+    assert.equal(result.kind, "discovery");
+    assert.equal(result.discovery.discoveryId, "30000000-0000-4000-8000-000000000011");
+    assert.match(result.discovery.resultFile, /site-discovery-result\.json$/);
+
+    const persisted = JSON.parse(await readFile(result.discovery.resultFile, "utf8")) as {
+      detected_flow_types?: string[];
+      scenario_recommendations?: Array<{ scenario_type?: string; suggested_target?: Record<string, unknown> | null }>;
+    };
+
+    assert.ok(persisted.detected_flow_types?.includes("LANDING_CTA"));
+    assert.ok(persisted.detected_flow_types?.includes("SIGNUP_LEAD_FORM"));
+    assert.ok(persisted.detected_flow_types?.includes("PRICING"));
+    assert.ok(persisted.detected_flow_types?.includes("PURCHASE_CHECKOUT"));
+    assert.ok(
+      persisted.scenario_recommendations?.some(
+        (recommendation) => recommendation.scenario_type === "LANDING_CTA" && recommendation.suggested_target
+      )
+    );
+  } finally {
+    await rm(artifactsRoot, {
+      recursive: true,
+      force: true
+    });
+    await rm(fixtureRoot, {
+      recursive: true,
+      force: true
+    });
+  }
 });
 
 test("createRunnerApp sends prototype evidence callbacks to API when callback base URL is configured", async () => {
@@ -142,6 +194,54 @@ function closeServer(server: Server): Promise<void> {
   });
 }
 
+function createDiscoveryExecuteMessage(url: string) {
+  return {
+    messageId: "30000000-0000-4000-8000-000000000001",
+    messageType: "discovery.execute.request",
+    schemaVersion: "0.5",
+    createdAt: "2026-04-30T00:00:00.000Z",
+    producer: "api-server",
+    correlationId: "30000000-0000-4000-8000-000000000002",
+    idempotencyKey: "discovery:30000000-0000-4000-8000-000000000001",
+    payload: {
+      discoveryId: "30000000-0000-4000-8000-000000000011",
+      projectId: "8f06dca8-9c4d-4f20-b1a8-1d5ee40a9923",
+      triggerSource: "WEB",
+      url,
+      devicePreset: "desktop",
+      viewport: {
+        width: 1440,
+        height: 900
+      },
+      maxDurationMs: 5_000,
+      maxScrollCount: 1
+    }
+  };
+}
+
+function createDiscoveryFixtureHtml(): string {
+  return `<!doctype html>
+<html lang="en">
+  <head><title>Discovery Entrypoint Fixture</title></head>
+  <body>
+    <header>
+      <a class="primary-cta" href="/signup">Start free</a>
+    </header>
+    <main>
+      <section id="signup-form">
+        <form>
+          <input type="email" name="email" placeholder="Work email" />
+        </form>
+      </section>
+      <section id="pricing" class="pricing-plans">
+        <h2>Pricing plans</h2>
+        <a class="plan-cta" href="checkout.html">Choose Starter</a>
+      </section>
+    </main>
+  </body>
+</html>`;
+}
+
 test("createRunnerApp stops after stop_when step requests stop", async () => {
   const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-stop-artifacts-"));
   const callbackLogFile = join(artifactsRoot, "callbacks.jsonl");
@@ -197,7 +297,7 @@ test("createRunnerApp stops after stop_when step requests stop", async () => {
   assert.doesNotMatch(callbackLog, /step_002_fill_email/);
 });
 
-test("createRunnerApp rejects fill actions when synthetic inputs are disabled", async () => {
+test("[안전 정책] synthetic input이 금지되면 fill 액션을 실패 처리하고 failed callback을 남긴다", async () => {
   const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-safety-artifacts-"));
   const callbackLogFile = join(artifactsRoot, "callbacks.jsonl");
   const app = createRunnerApp({

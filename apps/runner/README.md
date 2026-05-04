@@ -17,9 +17,24 @@ Working commands:
 - `npm run start -- --message-file examples/run-execute.mvp-landing-cta.request.json`
 - `npm run start -- --message-file examples/run-execute.mvp-signup-form.request.json`
 - `npm run start -- --message-file examples/run-execute.mvp-pricing-checkout.request.json`
+- `npm run start -- --message-file examples/discovery-execute.request.json`
 - `npm test`
 
 MVP `run-execute.mvp-*.request.json` files are contract-shaped runner message samples for the three MVP scenario templates. They use `https://example.com` as a placeholder `startUrl`; replace `payload.startUrl`, `payload.scenarioPlan.start_url`, and any URL-specific targets before running them against a real product site.
+
+`discovery-execute.request.json` runs the lightweight Runner Discovery collector and writes its `SiteDiscoveryResult` to `.runner-artifacts/discoveries/{discoveryId}/site-discovery-result.json`.
+
+Discovery can also run from RabbitMQ when `--consume-mq` is enabled. The runner consumes both `run.execute.request` and `discovery.execute.request`; set `RUNNER_MQ_QUEUE_DISCOVERY_EXECUTE` to override the discovery queue name. When `RUNNER_CALLBACK_BASE_URL` is configured, discovery accepted/finished/failed callbacks are sent to `/internal/runner/discoveries/{discoveryId}/...`.
+
+For a reproducible discovery smoke against a real URL, run from the repo root:
+
+```bash
+WEDGE_DISCOVERY_SMOKE_TARGET_URL=https://example.com \
+WEDGE_DISCOVERY_SMOKE_EXPECTED_FLOWS=LANDING_CTA \
+node infra/scripts/real-discovery-smoke.mjs
+```
+
+If `WEDGE_DISCOVERY_SMOKE_TARGET_URL` is omitted, the script starts a local fixture site and expects the four MVP flow types.
 
 ## Prototype API callback mode
 

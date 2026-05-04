@@ -2,9 +2,11 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 
 import { createRun, startRun } from '../../api/runs';
 import { FIRST_WORD_DELAY_MS, WORD_ROTATION_INTERVAL_MS } from '../../features/landing-vision';
+import { pushAppPath } from '../../shared/lib/navigation';
 import { buildRunMonitorPath } from '../run-monitor/lib/runMonitorRoute';
 import {
   buildCreateAnalysisPath,
+  MVP_SMOKE_CREATE_RUN_CONTEXT,
   parseCreateAnalysisRouteState,
   readCreateRunContextFromEnv,
   type CreateAnalysisRouteOptions,
@@ -136,7 +138,12 @@ const CREATE_ANALYSIS_ROUTE_OPTIONS: CreateAnalysisRouteOptions<ScenarioId, Scen
   validDepthIds: SCENARIO_DEPTH_IDS,
   validScenarioIds: SCENARIO_IDS,
 };
-const DEV_CREATE_RUN_CONTEXT = readCreateRunContextFromEnv(import.meta.env);
+const DEV_CREATE_RUN_CONTEXT = import.meta.env.DEV
+  ? {
+      ...MVP_SMOKE_CREATE_RUN_CONTEXT,
+      ...readCreateRunContextFromEnv(import.meta.env),
+    }
+  : readCreateRunContextFromEnv(import.meta.env);
 
 interface CreateRunIds {
   projectId: string;
@@ -701,7 +708,7 @@ export function CreateAnalysisPage() {
     setRunStartError('');
 
     if (!createRunIds) {
-      setRunStartError('Run 생성에 필요한 project/scenario UUID가 없습니다. create-analysis URL 또는 개발 환경 변수를 확인해주세요.');
+      setRunStartError('Run 생성에 필요한 project/scenario UUID가 없습니다. MVP 기본 설정 또는 create-analysis URL을 확인해주세요.');
       setIsCreatingRun(false);
       return;
     }
@@ -734,7 +741,7 @@ export function CreateAnalysisPage() {
     } catch {
       setRunStartError('Run은 생성됐지만 시작 요청에 실패했습니다. 실시간 Trace에서 현재 상태를 확인합니다.');
     } finally {
-      window.location.assign(buildRunMonitorPath(createdRunId, {
+      pushAppPath(buildRunMonitorPath(createdRunId, {
         submittedUrl,
         scenarioId: selectedScenario.id,
         depthId: selectedDepthId,

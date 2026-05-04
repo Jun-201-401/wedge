@@ -59,6 +59,15 @@ public class CheckpointPersistenceService {
         return new SaveRunCheckpointsResult(command.checkpoints().size(), latestInsertedCheckpointId);
     }
 
+    public int saveDiscoveryCheckpoints(UUID discoveryId, SaveRunCheckpointsCommand command) {
+        validateCheckpoints(command);
+        OffsetDateTime capturedAt = OffsetDateTime.now();
+        for (SaveRunCheckpointCommand checkpoint : command.checkpoints()) {
+            insertDiscoveryCheckpointIfAbsent(discoveryId, checkpoint, capturedAt);
+        }
+        return command.checkpoints().size();
+    }
+
     private CheckpointInsertResult insertCheckpointIfAbsent(
             UUID runId,
             SaveRunCheckpointCommand request,
@@ -67,15 +76,35 @@ public class CheckpointPersistenceService {
     ) {
         Checkpoint checkpoint = toCheckpoint(runId, request, capturedAt, stepId);
         if (checkpointMapper.insert(checkpoint) > 0) {
-            persistObservations(runId, checkpoint, request.observations());
+            persistObservations(runId, null, checkpoint, request.observations());
             return new CheckpointInsertResult(checkpoint.getId(), true);
         }
 
         return new CheckpointInsertResult(findExistingCheckpointId(runId, request.checkpointKey()), false);
     }
 
+    private CheckpointInsertResult insertDiscoveryCheckpointIfAbsent(
+            UUID discoveryId,
+            SaveRunCheckpointCommand request,
+            OffsetDateTime capturedAt
+    ) {
+        Checkpoint checkpoint = toDiscoveryCheckpoint(discoveryId, request, capturedAt);
+        if (checkpointMapper.insertDiscovery(checkpoint) > 0) {
+            persistObservations(null, discoveryId, checkpoint, request.observations());
+            return new CheckpointInsertResult(checkpoint.getId(), true);
+        }
+
+        return new CheckpointInsertResult(findExistingDiscoveryCheckpointId(discoveryId, request.checkpointKey()), false);
+    }
+
     private UUID findExistingCheckpointId(UUID runId, String checkpointKey) {
         return checkpointMapper.findByRunIdAndCheckpointKey(runId, checkpointKey)
+                .map(Checkpoint::getId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.STATE_CONFLICT, CHECKPOINT_CONFLICT_NOT_FOUND_MESSAGE));
+    }
+
+    private UUID findExistingDiscoveryCheckpointId(UUID discoveryId, String checkpointKey) {
+        return checkpointMapper.findByDiscoveryIdAndCheckpointKey(discoveryId, checkpointKey)
                 .map(Checkpoint::getId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.STATE_CONFLICT, CHECKPOINT_CONFLICT_NOT_FOUND_MESSAGE));
     }
@@ -97,9 +126,25 @@ public class CheckpointPersistenceService {
         return checkpoint;
     }
 
-    private void persistObservations(UUID runId, Checkpoint checkpoint, List<Map<String, Object>> observations) {
+    private Checkpoint toDiscoveryCheckpoint(UUID discoveryId, SaveRunCheckpointCommand request, OffsetDateTime capturedAt) {
+        Checkpoint checkpoint = new Checkpoint();
+        checkpoint.setId(UUID.randomUUID());
+        checkpoint.setDiscoveryId(discoveryId);
+        checkpoint.setCheckpointKey(request.checkpointKey());
+        checkpoint.setStage(request.stage());
+        checkpoint.setTriggerJsonb(toJson(request.trigger()));
+        checkpoint.setSettleJsonb(toJson(request.settle()));
+        checkpoint.setStateJsonb(toJson(request.state()));
+        checkpoint.setDeltaJsonb(toJson(request.deltas()));
+        checkpoint.setArtifactRefsJsonb(toJson(request.artifactRefs()));
+        checkpoint.setCapturedAt(capturedAt);
+        checkpoint.setDurationMs(request.durationMs());
+        return checkpoint;
+    }
+
+    private void persistObservations(UUID runId, UUID discoveryId, Checkpoint checkpoint, List<Map<String, Object>> observations) {
         for (int index = 0; index < observations.size(); index++) {
-            Observation observation = toObservation(runId, checkpoint, observations.get(index), index + 1);
+            Observation observation = toObservation(runId, discoveryId, checkpoint, observations.get(index), index + 1);
             observationMapper.insert(observation);
         }
     }
@@ -118,6 +163,7 @@ public class CheckpointPersistenceService {
 
     private Observation toObservation(
             UUID runId,
+            UUID discoveryId,
             Checkpoint checkpoint,
             Map<String, Object> payload,
             int observationIndex
@@ -126,6 +172,7 @@ public class CheckpointPersistenceService {
         observation.setId(UUID.randomUUID());
         observation.setCheckpointId(checkpoint.getId());
         observation.setRunId(runId);
+        observation.setDiscoveryId(discoveryId);
         observation.setObservationKey(readString(payload, "observation_id",
                 checkpoint.getCheckpointKey() + ".obs_" + String.format("%03d", observationIndex)));
         observation.setObservationType(readString(payload, "type", "other"));

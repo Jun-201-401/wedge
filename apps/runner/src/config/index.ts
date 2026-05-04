@@ -52,6 +52,7 @@ export interface RunnerConfig {
   mqConsumerEnabled: boolean;
   mqUrl: string;
   mqQueueRunExecute: string;
+  mqQueueDiscoveryExecute: string;
   mqPrefetch: number;
   mqRequeueOnFailure: boolean;
   browserMode: RunnerBrowserMode;
@@ -145,6 +146,8 @@ export function loadRunnerConfig(overrides: Partial<RunnerConfig> = {}): RunnerC
   const mqUrl = overrides.mqUrl ?? process.env.RUNNER_MQ_URL ?? "amqp://localhost";
   const mqQueueRunExecute =
     overrides.mqQueueRunExecute ?? process.env.RUNNER_MQ_QUEUE_RUN_EXECUTE ?? "run.execute.request";
+  const mqQueueDiscoveryExecute =
+    overrides.mqQueueDiscoveryExecute ?? process.env.RUNNER_MQ_QUEUE_DISCOVERY_EXECUTE ?? "discovery.execute.request";
   const mqPrefetch = parseNumber(overrides.mqPrefetch, process.env.RUNNER_MQ_PREFETCH, 1);
   const mqRequeueOnFailure = parseBoolean(
     overrides.mqRequeueOnFailure,
@@ -220,6 +223,7 @@ export function loadRunnerConfig(overrides: Partial<RunnerConfig> = {}): RunnerC
     mqConsumerEnabled,
     mqUrl,
     mqQueueRunExecute,
+    mqQueueDiscoveryExecute,
     mqPrefetch,
     mqRequeueOnFailure,
     browserMode,

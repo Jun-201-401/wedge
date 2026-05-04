@@ -13,7 +13,7 @@ import { createArtifactStore } from "../src/storage/index.ts";
 import type { ScenarioPlan, ScenarioStep } from "../src/shared/contracts.ts";
 import { createMinimalPlan, createRunnerTestConfig, createStubCallbackClient } from "./support.ts";
 
-test("real playwright mode executes goto/fill/select and captures real screenshot and DOM snapshot", async () => {
+test("[Playwright 실제 실행] goto/fill/select를 수행하고 실제 screenshot과 DOM snapshot을 캡처한다", async () => {
   const fixtureRoot = await mkdtemp(join(tmpdir(), "wedge-runner-playwright-site-"));
   const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-playwright-artifacts-"));
   let session: Awaited<ReturnType<ReturnType<typeof createPlaywrightSessionFactory>["createSession"]>> | undefined;
@@ -99,7 +99,7 @@ test("real playwright mode executes goto/fill/select and captures real screensho
   }
 });
 
-test("real playwright mode select falls back to matching an option label", async () => {
+test("[Playwright 실제 실행] select value가 없으면 option label 매칭으로 선택한다", async () => {
   const fixtureRoot = await mkdtemp(join(tmpdir(), "wedge-runner-playwright-site-"));
   const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-playwright-artifacts-"));
   let session: Awaited<ReturnType<ReturnType<typeof createPlaywrightSessionFactory>["createSession"]>> | undefined;
@@ -146,7 +146,7 @@ test("real playwright mode select falls back to matching an option label", async
   }
 });
 
-test("real playwright mode scroll updates snapshot scroll position", async () => {
+test("[Playwright 실제 실행] scroll 액션 후 snapshot에 scroll position을 반영한다", async () => {
   const fixtureRoot = await mkdtemp(join(tmpdir(), "wedge-runner-playwright-site-"));
   const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-playwright-artifacts-"));
   let session: Awaited<ReturnType<ReturnType<typeof createPlaywrightSessionFactory>["createSession"]>> | undefined;
@@ -189,7 +189,7 @@ test("real playwright mode scroll updates snapshot scroll position", async () =>
   }
 });
 
-test("real playwright mode click target navigates to the linked page", async () => {
+test("[Playwright 실제 실행] click target이 링크일 때 목적지 페이지로 이동한다", async () => {
   const fixtureRoot = await mkdtemp(join(tmpdir(), "wedge-runner-playwright-site-"));
   const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-playwright-artifacts-"));
   let session: Awaited<ReturnType<ReturnType<typeof createPlaywrightSessionFactory>["createSession"]>> | undefined;
@@ -244,7 +244,7 @@ test("real playwright mode click target navigates to the linked page", async () 
   }
 });
 
-test("real playwright mode blocks destructive click targets before locator click executes", async () => {
+test("[안전 정책] destructive click target은 locator click 전에 차단한다", async () => {
   const fixtureRoot = await mkdtemp(join(tmpdir(), "wedge-runner-playwright-site-"));
   const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-playwright-artifacts-"));
   let session: Awaited<ReturnType<ReturnType<typeof createPlaywrightSessionFactory>["createSession"]>> | undefined;
@@ -297,7 +297,7 @@ test("real playwright mode blocks destructive click targets before locator click
   }
 });
 
-test("real playwright mode hover triggers DOM changes and wait_for observes delayed visibility", async () => {
+test("[Playwright 실제 실행] hover로 생긴 DOM 변화를 wait_for가 관찰한다", async () => {
   const fixtureRoot = await mkdtemp(join(tmpdir(), "wedge-runner-playwright-site-"));
   const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-playwright-artifacts-"));
   let session: Awaited<ReturnType<ReturnType<typeof createPlaywrightSessionFactory>["createSession"]>> | undefined;
@@ -376,7 +376,7 @@ test("real playwright mode hover triggers DOM changes and wait_for observes dela
   }
 });
 
-test("real playwright mode wait_for rejects when no locator or url condition is satisfied", async () => {
+test("[Playwright 실제 실행] locator/url 조건 없는 wait_for는 실행 전에 거부한다", async () => {
   const fixtureRoot = await mkdtemp(join(tmpdir(), "wedge-runner-playwright-site-"));
   const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-playwright-artifacts-"));
   let session: Awaited<ReturnType<ReturnType<typeof createPlaywrightSessionFactory>["createSession"]>> | undefined;
@@ -430,7 +430,7 @@ test("real playwright mode wait_for rejects when no locator or url condition is 
   }
 });
 
-test("mvp landing-cta scenario executes goto, checkpoint, click, wait_for, checkpoint", async () => {
+test("[MVP 랜딩 CTA] 첫 화면 checkpoint 후 CTA 클릭과 도착 화면 checkpoint까지 실행한다", async () => {
   const fixtureRoot = await mkdtemp(join(tmpdir(), "wedge-runner-mvp-site-"));
   const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-mvp-artifacts-"));
 
@@ -457,7 +457,7 @@ test("mvp landing-cta scenario executes goto, checkpoint, click, wait_for, check
   }
 });
 
-test("mvp signup-form scenario reaches form, fills synthetic fields, selects plan, then stops before submit", async () => {
+test("[MVP 가입폼] 폼까지 이동해 synthetic 입력/플랜 선택을 수행하고 제출 전 중단한다", async () => {
   const fixtureRoot = await mkdtemp(join(tmpdir(), "wedge-runner-mvp-site-"));
   const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-mvp-artifacts-"));
 
@@ -482,7 +482,7 @@ test("mvp signup-form scenario reaches form, fills synthetic fields, selects pla
   }
 });
 
-test("mvp pricing-checkout scenario reaches checkout entry and stops before payment commit", async () => {
+test("[MVP 가격/결제] checkout 진입점까지 이동하되 실제 결제 commit 전 중단한다", async () => {
   const fixtureRoot = await mkdtemp(join(tmpdir(), "wedge-runner-mvp-site-"));
   const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-mvp-artifacts-"));
 
@@ -510,7 +510,7 @@ test("mvp pricing-checkout scenario reaches checkout entry and stops before paym
   }
 });
 
-test("real playwright settle none returns no_wait details without mutating page state", async () => {
+test("[Settle] none 전략은 page 상태를 바꾸지 않고 no_wait 결과를 반환한다", async () => {
   const fixtureRoot = await mkdtemp(join(tmpdir(), "wedge-runner-playwright-site-"));
   const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-playwright-artifacts-"));
   let session: Awaited<ReturnType<ReturnType<typeof createPlaywrightSessionFactory>["createSession"]>> | undefined;
@@ -544,7 +544,7 @@ test("real playwright settle none returns no_wait details without mutating page 
   }
 });
 
-test("real playwright settle supports locator_visible and spinner_hidden for delayed DOM transitions", async () => {
+test("[Settle] locator_visible/spinner_hidden 전략은 지연 DOM 전환을 기다린다", async () => {
   const fixtureRoot = await mkdtemp(join(tmpdir(), "wedge-runner-playwright-site-"));
   const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-playwright-artifacts-"));
   let session: Awaited<ReturnType<ReturnType<typeof createPlaywrightSessionFactory>["createSession"]>> | undefined;
@@ -631,7 +631,7 @@ test("real playwright settle supports locator_visible and spinner_hidden for del
   }
 });
 
-test("real playwright settle supports url_change and reports timeout when locator never appears", async () => {
+test("[Settle] url_change를 감지하고 locator 미출현은 timeout으로 보고한다", async () => {
   const fixtureRoot = await mkdtemp(join(tmpdir(), "wedge-runner-playwright-site-"));
   const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-playwright-artifacts-"));
   let session: Awaited<ReturnType<ReturnType<typeof createPlaywrightSessionFactory>["createSession"]>> | undefined;
@@ -697,7 +697,7 @@ test("real playwright settle supports url_change and reports timeout when locato
   }
 });
 
-test("executeScenarioStep pre-arms fast url_change and item_count_change settle watchers", async () => {
+test("[Settle] 빠른 url_change/item_count_change를 놓치지 않도록 watcher를 action 전에 준비한다", async () => {
   const fixtureRoot = await mkdtemp(join(tmpdir(), "wedge-runner-playwright-site-"));
   const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-playwright-artifacts-"));
   let session: Awaited<ReturnType<ReturnType<typeof createPlaywrightSessionFactory>["createSession"]>> | undefined;
@@ -792,7 +792,7 @@ test("executeScenarioStep pre-arms fast url_change and item_count_change settle 
   }
 });
 
-test("real playwright response settle waits for matching HTTP response before returning", async () => {
+test("[Settle] response 전략은 조건에 맞는 HTTP 응답을 기다린다", async () => {
   const fixtureServer = await createResponseFixtureServer();
   const fixtureRoot = await mkdtemp(join(tmpdir(), "wedge-runner-playwright-site-"));
   const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-playwright-artifacts-"));
@@ -856,7 +856,7 @@ test("real playwright response settle waits for matching HTTP response before re
   }
 });
 
-test("executeScenarioStep pre-arms fast response settle watchers", async () => {
+test("[Settle] 빠른 HTTP response를 놓치지 않도록 watcher를 action 전에 준비한다", async () => {
   const fixtureServer = await createImmediateResponseFixtureServer();
   const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-playwright-artifacts-"));
   let session: Awaited<ReturnType<ReturnType<typeof createPlaywrightSessionFactory>["createSession"]>> | undefined;
@@ -917,7 +917,7 @@ test("executeScenarioStep pre-arms fast response settle watchers", async () => {
   }
 });
 
-test("executeScenarioStep handles pre-armed response timeout without unhandled rejection", async () => {
+test("[Settle] pre-armed response timeout이 unhandled rejection을 만들지 않는다", async () => {
   const fixtureServer = await createResponseFixtureServer();
   const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-playwright-artifacts-"));
   const unhandledRejections: unknown[] = [];
@@ -986,7 +986,7 @@ test("executeScenarioStep handles pre-armed response timeout without unhandled r
   }
 });
 
-test("real playwright item_count_change waits for delayed list growth before returning", async () => {
+test("[Settle] item_count_change 전략은 지연된 목록 증가를 기다린다", async () => {
   const fixtureRoot = await mkdtemp(join(tmpdir(), "wedge-runner-playwright-site-"));
   const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-playwright-artifacts-"));
   let session: Awaited<ReturnType<ReturnType<typeof createPlaywrightSessionFactory>["createSession"]>> | undefined;
@@ -1047,7 +1047,7 @@ test("real playwright item_count_change waits for delayed list growth before ret
   }
 });
 
-test("real playwright response and item_count_change report timeout when settle conditions are not met", async () => {
+test("[Settle] response/item_count_change 조건 불만족은 timeout 결과로 보고한다", async () => {
   const fixtureServer = await createResponseFixtureServer();
   const fixtureRoot = await mkdtemp(join(tmpdir(), "wedge-runner-playwright-site-"));
   const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-playwright-artifacts-"));
@@ -1154,7 +1154,7 @@ test("real playwright response and item_count_change report timeout when settle 
   }
 });
 
-test("real playwright artifacts persist with png/html metadata and filesystem content", async () => {
+test("[아티팩트 저장] 실제 Playwright screenshot/DOM artifact를 png/html metadata와 파일 내용으로 저장한다", async () => {
   const fixtureRoot = await mkdtemp(join(tmpdir(), "wedge-runner-playwright-site-"));
   const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-playwright-artifacts-"));
   let session: Awaited<ReturnType<ReturnType<typeof createPlaywrightSessionFactory>["createSession"]>> | undefined;

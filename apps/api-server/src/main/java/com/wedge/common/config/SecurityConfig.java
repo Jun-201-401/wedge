@@ -56,6 +56,7 @@ public class SecurityConfig {
                                 "/health",
                                 "/actuator/health",
                                 "/error",
+                                "/openapi/**",
                                 "/swagger-ui/**",
                                 "/swagger-ui.html",
                                 "/v3/api-docs/**"
@@ -66,7 +67,9 @@ public class SecurityConfig {
                                 "/api/runs",
                                 "/api/runs/**",
                                 "/api/reports",
-                                "/api/reports/**"
+                                "/api/reports/**",
+                                "/api/discoveries",
+                                "/api/discoveries/**"
                         ).authenticated()
                         .requestMatchers("/internal/runner/**", "/internal/analysis/**").hasRole("INTERNAL_RUNNER")
                         .requestMatchers("/api/**", "/internal/**", "/mcp/**").denyAll()

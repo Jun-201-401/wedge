@@ -16,7 +16,16 @@ public interface CheckpointMapper {
             @Param("checkpointKey") String checkpointKey
     );
 
+    Optional<Checkpoint> findByDiscoveryIdAndCheckpointKey(
+            @Param("discoveryId") UUID discoveryId,
+            @Param("checkpointKey") String checkpointKey
+    );
+
     List<Checkpoint> findByRunId(@Param("runId") UUID runId);
 
+    List<Checkpoint> findByDiscoveryId(@Param("discoveryId") UUID discoveryId);
+
     int insert(Checkpoint checkpoint);
+
+    int insertDiscovery(Checkpoint checkpoint);
 }

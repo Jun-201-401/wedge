@@ -75,6 +75,18 @@ export function App() {
   const route = resolveAppRoute(currentPath);
   const isAuthenticated = authState === 'authenticated';
   const isAuthChecking = authState === 'checking';
+  const isRealRunRoute = (route.kind === 'run-report' || route.kind === 'run-monitor') && !route.runId.startsWith('mock-');
+  const isProtectedRoute = isRealRunRoute || route.kind === 'runs-list';
+
+  if (isProtectedRoute && !isAuthenticated) {
+    return (
+      <LandingPage
+        isAuthenticated={false}
+        isAuthChecking={isAuthChecking}
+        onLogout={handleLogout}
+      />
+    );
+  }
 
   if (route.kind === 'run-report') {
     return <RunReportPage runId={route.runId} />;
@@ -97,16 +109,6 @@ export function App() {
   }
 
   if (route.kind === 'runs-list') {
-    if (authState === 'anonymous') {
-      return (
-        <LandingPage
-          isAuthenticated={false}
-          isAuthChecking={false}
-          onLogout={handleLogout}
-        />
-      );
-    }
-
     return <RunsListPage currentUser={currentUser} onLogout={handleLogout} />;
   }
 

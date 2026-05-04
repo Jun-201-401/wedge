@@ -6,7 +6,7 @@ import com.wedge.run.api.dto.RunCreateRequest;
 import com.wedge.run.api.dto.RunResponse;
 import com.wedge.run.domain.ResultCompleteness;
 import com.wedge.run.domain.RunStatus;
-import com.wedge.run.infrastructure.OutboxMessagePersistenceAdapter;
+import com.wedge.common.infrastructure.outbox.OutboxMessagePersistenceAdapter;
 import com.wedge.run.infrastructure.RunPersistenceAdapter;
 import java.util.List;
 import java.util.UUID;

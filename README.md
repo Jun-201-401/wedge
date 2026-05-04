@@ -75,6 +75,49 @@ Wedge는 현재 제품 설계, 핵심 계약, 서비스 기반 구조, 그리고
 
 앞으로는 브라우저 실행, evidence 수집, Judge/Analyzer, 리포트 화면을 단계적으로 연결해 실제 URL 진단이 가능한 형태로 발전시킬 예정입니다.
 
+
+## 로컬 MVP smoke 점검
+
+Runner/Analyzer까지 연결된 최소 MVP 플로우를 확인할 때는 Swagger에서 internal callback payload를 직접 입력하지 말고, public Run API가 MQ를 발행하고 Runner/Analyzer가 callback을 보내는 경로를 사용한다.
+
+1. 개발 인프라 실행
+
+```bash
+docker compose -f compose.dev.yaml up -d postgres rabbitmq redis minio runner analyzer-worker
+```
+
+2. 기존 dev DB가 오래된 상태라면 checked-in migration을 먼저 적용한다.
+
+```bash
+node infra/scripts/apply-dev-db-migrations.mjs
+```
+
+기본 DB 컨테이너 이름은 `wedge-postgres-dev`다. 다른 컨테이너를 쓰는 경우 예를 들어:
+
+```bash
+WEDGE_DEV_DB_CONTAINER=wedge-dev-postgres-alt node infra/scripts/apply-dev-db-migrations.mjs
+```
+
+3. smoke project/scenario seed를 넣는다. 이 스크립트는 `e2e-smoke@wedge.local` 사용자가 이미 존재하면 `workspace_member`와 `project_member`도 함께 보정한다.
+
+```bash
+node infra/scripts/seed-real-run-smoke.mjs
+```
+
+4. API 서버를 실행한다.
+
+```bash
+cd apps/api-server && gradle bootRun
+```
+
+5. 전체 Run smoke를 실행한다.
+
+```bash
+node infra/scripts/real-run-e2e-smoke.mjs
+```
+
+성공 기준은 Run `COMPLETED`, EvidencePacket checkpoint/artifact 생성, 필요 시 `/api/runs/{runId}/analysis` 이후 `analysisStatus=COMPLETED`, `/api/runs/{runId}/report`의 `status=READY`다.
+
 ## 핵심 용어
 
 - **Site Discovery**: URL을 가볍게 탐색해 가능한 시나리오를 추천하는 사전 단계입니다.

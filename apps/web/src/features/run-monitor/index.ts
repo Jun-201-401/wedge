@@ -19,9 +19,11 @@ export {
   getEvidenceObservationSummary,
   getStatusTone,
   getStepStatusLabel,
+  resolveRunMonitorReportCtaState,
+  shouldRefreshRunReport,
   shouldRefreshRunLive,
 } from './lib/runMonitorViewModel';
-export type { RunStatusTone } from './lib/runMonitorViewModel';
+export type { RunMonitorReportCtaKind, RunMonitorReportCtaState, RunStatusTone } from './lib/runMonitorViewModel';
 export { useRunMonitorState } from './lib/useRunMonitorState';
 
 export const runMonitorFeature = {

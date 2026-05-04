@@ -7,7 +7,7 @@ import { createPlaywrightSessionFactory } from "../src/browser/playwright/index.
 import { createArtifactStore } from "../src/storage/index.ts";
 import { createRunnerTestConfig, loadExampleMessage } from "./support.ts";
 
-test("simulated playwright goto uses object target url when provided", async () => {
+test("[브라우저 어댑터] simulated goto는 target.url 객체 값을 실제 이동 URL로 사용한다", async () => {
   const message = await loadExampleMessage();
   const browserFactory = createPlaywrightSessionFactory(
     createRunnerTestConfig({
@@ -49,7 +49,7 @@ test("simulated playwright goto uses object target url when provided", async () 
   await session.close();
 });
 
-test("createArtifactStore uses forward slash keys for artifact metadata", async () => {
+test("[아티팩트 저장] 파일시스템 artifact key는 OS와 무관하게 forward slash 경로로 기록된다", async () => {
   const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-storage-"));
   const artifactStore = createArtifactStore(
     createRunnerTestConfig({
@@ -72,11 +72,11 @@ test("createArtifactStore uses forward slash keys for artifact metadata", async 
     ]
   });
 
-  assert.equal(artifact.key, "run-1/step-key-with-spaces/artifact-1-screenshot.txt");
+  assert.equal(artifact.key, "runs/run-1/step-key-with-spaces/artifact-1-screenshot.txt");
   assert.equal(artifact.key.includes("\\"), false);
 });
 
-test("simulated playwright stop_when does not stop without matching condition", async () => {
+test("[안전 중단] stop_when 조건이 맞지 않으면 simulated session은 중단하지 않는다", async () => {
   const message = await loadExampleMessage();
   const browserFactory = createPlaywrightSessionFactory(
     createRunnerTestConfig({

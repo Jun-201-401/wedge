@@ -18,6 +18,9 @@ test('app bootstraps memory auth from refresh cookie and shares auth state with 
   assert.match(app, /<LoginPage isAuthenticated=\{isAuthenticated\} onAuthenticated=\{markAuthenticated\}/);
   assert.match(app, /<SignupPage isAuthenticated=\{isAuthenticated\} onAuthenticated=\{markAuthenticated\}/);
   assert.match(app, /const isAuthChecking = authState === 'checking'/);
+  assert.match(app, /const isRealRunRoute = \(route\.kind === 'run-report' \|\| route\.kind === 'run-monitor'\) && !route\.runId\.startsWith\('mock-'\)/);
+  assert.match(app, /const isProtectedRoute = isRealRunRoute \|\| route\.kind === 'runs-list'/);
+  assert.match(app, /if \(isProtectedRoute && !isAuthenticated\)/);
   assert.match(app, /onLogout=\{handleLogout\}/);
   assert.match(app, /<RunsListPage currentUser=\{currentUser\} onLogout=\{handleLogout\} \/>/);
 

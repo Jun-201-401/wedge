@@ -74,6 +74,25 @@ function refreshAccessTokenOnce() {
   return refreshAccessTokenPromise;
 }
 
+async function requestWithRefresh(
+  path: string,
+  request: RequestInit,
+  headers: HeadersInit | undefined,
+  body: BodyInit | null | undefined,
+  idempotencyKey?: string,
+) {
+  let response = await fetch(`${DEFAULT_API_BASE_URL}${path}`, request);
+
+  if (response.status === 401 && shouldRefreshAfterUnauthorized(path) && await refreshAccessTokenOnce()) {
+    response = await fetch(`${DEFAULT_API_BASE_URL}${path}`, {
+      ...request,
+      headers: createRequestHeaders(headers, body, idempotencyKey),
+    });
+  }
+
+  return response;
+}
+
 async function parseJsonResponse<T>(response: Response): Promise<T> {
   if (!response.ok) {
     throw new Error(`Wedge API request failed: ${response.status} ${response.statusText}`);
@@ -95,14 +114,25 @@ export async function requestJson<T>(path: string, options: RequestOptions = {})
     headers: createRequestHeaders(headers, body, idempotencyKey),
   } satisfies RequestInit;
 
-  let response = await fetch(`${DEFAULT_API_BASE_URL}${path}`, request);
-
-  if (response.status === 401 && shouldRefreshAfterUnauthorized(path) && await refreshAccessTokenOnce()) {
-    response = await fetch(`${DEFAULT_API_BASE_URL}${path}`, {
-      ...request,
-      headers: createRequestHeaders(headers, body, idempotencyKey),
-    });
-  }
+  const response = await requestWithRefresh(path, request, headers, body, idempotencyKey);
 
   return parseJsonResponse<T>(response);
+}
+
+export async function requestBlob(path: string, options: RequestOptions = {}): Promise<Blob> {
+  const { idempotencyKey, headers, ...requestOptions } = options;
+  const body = requestOptions.body ?? null;
+  const request = {
+    ...requestOptions,
+    credentials: requestOptions.credentials ?? 'include',
+    headers: createRequestHeaders(headers, body, idempotencyKey),
+  } satisfies RequestInit;
+
+  const response = await requestWithRefresh(path, request, headers, body, idempotencyKey);
+
+  if (!response.ok) {
+    throw new Error(`Wedge API request failed: ${response.status} ${response.statusText}`);
+  }
+
+  return response.blob();
 }

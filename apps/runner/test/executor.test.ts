@@ -15,7 +15,7 @@ import {
 } from "./support.ts";
 import type { Artifact, ArtifactDraft, Checkpoint, ScenarioStep } from "../src/shared/contracts.ts";
 
-test("executeScenarioStep emits artifacts before checkpoints for checkpoint steps", async () => {
+test("[증거 전달] checkpoint step은 artifact 저장/콜백을 먼저 보낸 뒤 checkpoint callback을 보낸다", async () => {
   const events: string[] = [];
   const plan = createMinimalPlan();
   const step: ScenarioStep = {
@@ -140,7 +140,7 @@ test("executeScenarioStep emits artifacts before checkpoints for checkpoint step
   ]);
 });
 
-test("executeScenarioStep treats step-event delivery failures as best-effort", async () => {
+test("[증거 전달] step-event callback 실패는 실행 실패로 보지 않고 best-effort 이슈로 기록한다", async () => {
   const plan = createMinimalPlan();
   const step: ScenarioStep = {
     step_id: "step_001_fill_email",
@@ -194,7 +194,7 @@ test("executeScenarioStep treats step-event delivery failures as best-effort", a
   assert.ok(result.deliveryIssues.every((issue) => issue.scope === "step-events"));
 });
 
-test("executeScenario degrades delivery when artifact storage and checkpoint callbacks fail", async () => {
+test("[증거 전달] artifact 저장과 checkpoint callback이 실패해도 실행 요약은 degraded 상태로 끝낸다", async () => {
   const plan = createMinimalPlan();
   plan.steps = [
     {
@@ -276,7 +276,7 @@ test("executeScenario degrades delivery when artifact storage and checkpoint cal
   ]);
 });
 
-test("checkpoint payload helpers preserve artifact payloads and artifactRefs", () => {
+test("[증거 payload] checkpoint callback payload는 artifact 원본 metadata와 artifactRefs를 보존한다", () => {
   const artifacts: Artifact[] = [
     {
       artifactId: "artifact-1",
@@ -322,7 +322,7 @@ test("checkpoint payload helpers preserve artifact payloads and artifactRefs", (
   });
 });
 
-test("capture pipeline records structured response and item-count settle observations", async () => {
+test("[수집 pipeline] response/item_count settle 결과를 observation으로 구조화한다", async () => {
   const capturePipeline = createCapturePipeline();
   const plan = createMinimalPlan();
   const pageSnapshot: BrowserPageSnapshot = createSimulatedPageSnapshot(plan, {
@@ -522,7 +522,7 @@ test("capture pipeline records structured response and item-count settle observa
   );
 });
 
-test("capture pipeline creates fallback artifacts and console log artifact from page snapshot", async () => {
+test("[수집 pipeline] page snapshot만 있어도 fallback screenshot/DOM/console artifact를 만든다", async () => {
   const capturePipeline = createCapturePipeline();
   const plan = createMinimalPlan();
   const pageSnapshot: BrowserPageSnapshot = createSimulatedPageSnapshot(plan, {
@@ -593,7 +593,7 @@ test("capture pipeline creates fallback artifacts and console log artifact from 
   );
 });
 
-test("delivery helpers merge optional groups and mark finished callback failures as fatal", () => {
+test("[전달 정책] optional delivery 이슈를 병합하고 finished callback 실패는 fatal로 분류한다", () => {
   const merged = mergeDeliveryIssues(
     [
       {

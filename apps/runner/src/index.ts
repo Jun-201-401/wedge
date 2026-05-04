@@ -102,7 +102,7 @@ try {
             workerId: app.config.workerId,
             mode: "mq-consumer",
             mqUrl: app.config.mqUrl,
-            queue: app.config.mqQueueRunExecute,
+            queues: [app.config.mqQueueRunExecute, app.config.mqQueueDiscoveryExecute],
             prefetch: app.config.mqPrefetch
           },
           null,
@@ -113,24 +113,47 @@ try {
       const messageFile = cliOptions.messageFile ?? process.env.RUNNER_MESSAGE_FILE ?? defaultMessageFile;
       await access(messageFile);
 
-      const result = await app.processMessageFile(messageFile);
+      const result = await app.processInputMessageFile(messageFile);
 
-      console.log(
-        JSON.stringify(
-          {
-            service: app.service,
-            runId: result.runId,
-            workerId: result.workerId,
-            browserSessionId: result.browserSessionId,
-            summary: result.summary,
-            delivery: result.delivery,
-            artifactsRoot: app.config.artifactsRoot,
-            callbackLogFile: app.config.callbackLogFile
-          },
-          null,
-          2
-        )
-      );
+      if (result.kind === "discovery") {
+        console.log(
+          JSON.stringify(
+            {
+              service: app.service,
+              discoveryId: result.discovery.discoveryId,
+              workerId: app.config.workerId,
+              mode: "discovery-file",
+              resultFile: result.discovery.resultFile,
+              artifactsRoot: app.config.artifactsRoot,
+              summary: {
+                detectedFlowTypes: result.discovery.result.detected_flow_types,
+                missingFlowTypes: result.discovery.result.missing_flow_types ?? [],
+                recommendationCount: result.discovery.result.scenario_recommendations.length
+              }
+            },
+            null,
+            2
+          )
+        );
+      } else {
+        const execution = result.execution;
+        console.log(
+          JSON.stringify(
+            {
+              service: app.service,
+              runId: execution.runId,
+              workerId: execution.workerId,
+              browserSessionId: execution.browserSessionId,
+              summary: execution.summary,
+              delivery: execution.delivery,
+              artifactsRoot: app.config.artifactsRoot,
+              callbackLogFile: app.config.callbackLogFile
+            },
+            null,
+            2
+          )
+        );
+      }
     }
   }
 } catch (error) {
@@ -192,12 +215,16 @@ function parseCliOptions(argv: string[]): CliOptions {
 }
 
 function printHelp(): void {
-  console.log(`Usage: npm run start -- [--message-file <path-to-run-execute-request.json>] [--consume-mq] [--replay-outbox] [--watch-outbox] [--replay-artifact-outbox] [--watch-artifact-outbox]
+  console.log(`Usage: npm run start -- [--message-file <path-to-run-or-discovery-request.json>] [--consume-mq] [--replay-outbox] [--watch-outbox] [--replay-artifact-outbox] [--watch-artifact-outbox]
 
 If --message-file is omitted, the runner uses:
   examples/run-execute.request.json
 
-If --consume-mq is provided, the runner starts a RabbitMQ consumer instead of file input.`);
+The --message-file input supports:
+  run.execute.request
+  discovery.execute.request
+
+If --consume-mq is provided, the runner starts RabbitMQ consumers for run.execute.request and discovery.execute.request instead of file input.`);
 }
 
 function registerShutdownHooks(close: () => Promise<void>): void {

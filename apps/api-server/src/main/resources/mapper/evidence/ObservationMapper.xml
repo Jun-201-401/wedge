@@ -5,6 +5,7 @@
         <id property="id" column="id"/>
         <result property="checkpointId" column="checkpoint_id"/>
         <result property="runId" column="run_id"/>
+        <result property="discoveryId" column="discovery_id"/>
         <result property="observationKey" column="observation_key"/>
         <result property="observationType" column="observation_type"/>
         <result property="stage" column="stage"/>
@@ -15,7 +16,7 @@
     </resultMap>
 
     <sql id="ObservationColumns">
-        id, checkpoint_id, run_id, observation_key, observation_type, stage,
+        id, checkpoint_id, run_id, discovery_id, observation_key, observation_type, stage,
         CAST(sources_jsonb AS TEXT) AS sources_jsonb,
         CAST(data_jsonb AS TEXT) AS data_jsonb,
         confidence, created_at
@@ -28,6 +29,13 @@
         ORDER BY created_at ASC, observation_key ASC
     </select>
 
+    <select id="findByDiscoveryId" resultMap="ObservationResultMap">
+        SELECT <include refid="ObservationColumns"/>
+        FROM observation
+        WHERE discovery_id = #{discoveryId}
+        ORDER BY created_at ASC, observation_key ASC
+    </select>
+
     <select id="findByCheckpointId" resultMap="ObservationResultMap">
         SELECT <include refid="ObservationColumns"/>
         FROM observation
@@ -37,11 +45,11 @@
 
     <insert id="insert" parameterType="com.wedge.evidence.domain.Observation">
         INSERT INTO observation (
-            id, checkpoint_id, run_id, observation_key, observation_type, stage,
+            id, checkpoint_id, run_id, discovery_id, observation_key, observation_type, stage,
             sources_jsonb, data_jsonb, confidence
         )
         VALUES (
-            #{id}, #{checkpointId}, #{runId}, #{observationKey}, #{observationType}, #{stage},
+            #{id}, #{checkpointId}, #{runId}, #{discoveryId}, #{observationKey}, #{observationType}, #{stage},
             CAST(#{sourcesJsonb} AS jsonb), CAST(#{dataJsonb} AS jsonb), #{confidence}
         )
     </insert>

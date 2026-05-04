@@ -4,7 +4,7 @@ import test from "node:test";
 import { createS3ArtifactStore } from "../src/storage/index.ts";
 import { createRunnerTestConfig } from "./support.ts";
 
-test("createS3ArtifactStore uploads artifacts through S3-compatible putObject and returns metadata", async () => {
+test("[S3 저장] S3-compatible putObject로 artifact를 업로드하고 metadata를 반환한다", async () => {
   const uploads: Array<{ bucket: string; key: string; body: Buffer; contentType: string }> = [];
   const store = createS3ArtifactStore(
     createRunnerTestConfig({
@@ -51,7 +51,7 @@ test("createS3ArtifactStore uploads artifacts through S3-compatible putObject an
   assert.equal(artifact.sha256, createHash("sha256").update("image-body").digest("hex"));
 });
 
-test("createS3ArtifactStore rejects partial explicit S3 credentials", () => {
+test("[S3 설정] 명시 credential이 일부만 있으면 S3 artifact store 생성을 거부한다", () => {
   assert.throws(
     () => createS3ArtifactStore(createRunnerTestConfig({
       artifactBucket: "wedge-artifacts",

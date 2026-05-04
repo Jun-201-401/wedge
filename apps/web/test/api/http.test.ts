@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
-import { requestJson, type ApiResponse } from '../../src/api/http';
+import { requestBlob, requestJson, type ApiResponse } from '../../src/api/http';
 import { clearAuthToken, readAccessToken, saveAuthToken } from '../../src/api/authSession';
 import type { AuthToken } from '../../src/entities/auth';
 
@@ -42,6 +42,7 @@ test('web api client forwards memory bearer token and includes credentials for r
   assert.match(source, /const AUTH_REFRESH_PATH = '\/auth\/refresh'/);
   assert.match(source, /refreshAccessTokenPromise \?\?= refreshAccessToken\(\)\.finally/);
   assert.match(source, /saveAuthToken\(refreshed\.data\)/);
+  assert.match(source, /export async function requestBlob/);
 });
 
 test('requestJson refreshes once and retries a protected request after 401', async () => {
@@ -152,5 +153,73 @@ test('requestJson clears memory token when refresh fails and does not refresh pu
     assert.deepEqual(publicCalls, ['/api/auth/login']);
   } finally {
     globalThis.fetch = originalFetch;
+  }
+});
+
+
+test('requestBlob forwards bearer token for protected artifact content', async () => {
+  const originalFetch = globalThis.fetch;
+  const calls: Array<{ url: string; init?: RequestInit }> = [];
+
+  clearAuthToken();
+  saveAuthToken(authToken);
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    calls.push({ url: String(input), init });
+    return new Response('image-bytes', {
+      status: 200,
+      headers: { 'Content-Type': 'image/png' },
+    });
+  }) as typeof fetch;
+
+  try {
+    const blob = await requestBlob('/runs/run-1/artifacts/artifact-1/content');
+
+    assert.equal(blob.type, 'image/png');
+    assert.equal(calls[0].url, '/api/runs/run-1/artifacts/artifact-1/content');
+    assert.equal(new Headers(calls[0].init?.headers).get('Authorization'), 'Bearer access-token');
+    assert.equal(calls[0].init?.credentials, 'include');
+  } finally {
+    globalThis.fetch = originalFetch;
+    clearAuthToken();
+  }
+});
+
+test('requestBlob refreshes once and retries protected artifact content after 401', async () => {
+  const originalFetch = globalThis.fetch;
+  const calls: Array<{ url: string; init?: RequestInit }> = [];
+  let artifactCalls = 0;
+
+  clearAuthToken();
+  saveAuthToken(authToken);
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    calls.push({ url, init });
+
+    if (url === '/api/auth/refresh') {
+      return apiResponse(refreshedToken);
+    }
+
+    artifactCalls += 1;
+    return artifactCalls === 1
+      ? apiResponse(null, 401)
+      : new Response('image-bytes', {
+          status: 200,
+          headers: { 'Content-Type': 'image/png' },
+        });
+  }) as typeof fetch;
+
+  try {
+    const blob = await requestBlob('/runs/run-1/artifacts/artifact-1/content');
+
+    assert.equal(blob.type, 'image/png');
+    assert.equal(calls.length, 3);
+    assert.equal(calls[0].url, '/api/runs/run-1/artifacts/artifact-1/content');
+    assert.equal(new Headers(calls[0].init?.headers).get('Authorization'), 'Bearer access-token');
+    assert.equal(calls[1].url, '/api/auth/refresh');
+    assert.equal(calls[2].url, '/api/runs/run-1/artifacts/artifact-1/content');
+    assert.equal(new Headers(calls[2].init?.headers).get('Authorization'), 'Bearer fresh-access-token');
+  } finally {
+    globalThis.fetch = originalFetch;
+    clearAuthToken();
   }
 });

@@ -17,7 +17,7 @@ const minioE2eConfigured =
   Boolean(minioBucket);
 
 test(
-  "createS3ArtifactStore uploads to MinIO and the object can be read back",
+  "[MinIO 통합] S3 artifact store가 MinIO에 업로드한 객체를 다시 읽을 수 있다",
   { skip: !minioE2eConfigured },
   async () => {
     const body = `runner-minio-e2e-${Date.now()}`;
