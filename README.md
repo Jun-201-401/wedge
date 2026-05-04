@@ -104,11 +104,22 @@ WEDGE_DEV_DB_CONTAINER=wedge-dev-postgres-alt node infra/scripts/apply-dev-db-mi
 node infra/scripts/seed-real-run-smoke.mjs
 ```
 
-4. API 서버를 실행한다.
+4. API 서버를 실행한다. 기본 개발 모드는 IntelliJ 또는 로컬 Gradle 실행이다.
 
 ```bash
 cd apps/api-server && gradle bootRun
 ```
+
+WSL/Codex에서 전체 컨테이너 기반 검증이 필요하면 API 서버도 Docker Compose profile로 실행할 수 있다.
+
+```bash
+RUNNER_CALLBACK_BASE_URL=http://api-server:8080 \
+ANALYZER_CALLBACK_BASE_URL=http://api-server:8080 \
+ANALYZER_EVIDENCE_BASE_URL=http://api-server:8080 \
+docker compose --env-file .env -f compose.dev.yaml --profile api up -d
+```
+
+이 모드는 Runner/Analyzer 컨테이너가 `http://api-server:8080`으로 callback을 보낼 수 있게 API 서버를 같은 Compose 네트워크에 올린다. IntelliJ로 API 서버를 실행하는 경우에는 기존처럼 `RUNNER_CALLBACK_BASE_URL=http://host.docker.internal:8080` 경로를 사용한다.
 
 5. 전체 Run smoke를 실행한다.
 

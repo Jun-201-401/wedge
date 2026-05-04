@@ -73,6 +73,52 @@ services:
       exit 0;
       "
 
+  api-server:
+    profiles:
+      - api
+    build:
+      context: apps/api-server
+      dockerfile: Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      minio:
+        condition: service_started
+    environment:
+      SPRING_PROFILES_ACTIVE: dev
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB}
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD}
+      REDIS_HOST: redis
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_USER: ${RABBITMQ_USER}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD}
+      WEDGE_RUNNER_MQ_EXCHANGE: ${WEDGE_RUNNER_MQ_EXCHANGE}
+      WEDGE_RUN_EXECUTE_QUEUE: ${WEDGE_RUN_EXECUTE_QUEUE}
+      WEDGE_DISCOVERY_EXECUTE_QUEUE: ${WEDGE_DISCOVERY_EXECUTE_QUEUE:-discovery.execute.request}
+      WEDGE_ARTIFACT_STORAGE: ${WEDGE_ARTIFACT_STORAGE:-filesystem}
+      WEDGE_ARTIFACT_BUCKET: ${WEDGE_ARTIFACT_BUCKET:-local-runner}
+      WEDGE_ARTIFACT_LOCAL_ROOT: /app/apps/runner/.runner-artifacts
+      WEDGE_ARTIFACT_S3_ENDPOINT: ${WEDGE_ARTIFACT_S3_ENDPOINT:-http://minio:9000}
+      WEDGE_ARTIFACT_S3_REGION: ${WEDGE_ARTIFACT_S3_REGION:-us-east-1}
+      WEDGE_ARTIFACT_S3_ACCESS_KEY_ID: ${WEDGE_ARTIFACT_S3_ACCESS_KEY_ID:-${MINIO_ROOT_USER}}
+      WEDGE_ARTIFACT_S3_SECRET_ACCESS_KEY: ${WEDGE_ARTIFACT_S3_SECRET_ACCESS_KEY:-${MINIO_ROOT_PASSWORD}}
+      WEDGE_ARTIFACT_S3_FORCE_PATH_STYLE: ${WEDGE_ARTIFACT_S3_FORCE_PATH_STYLE:-true}
+      JWT_SECRET: ${JWT_SECRET}
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN}
+      WEDGE_REFRESH_COOKIE_SECURE: ${WEDGE_REFRESH_COOKIE_SECURE:-false}
+      WEDGE_REPORT_PROJECT_ACCESS_CHECK_ENABLED: ${WEDGE_REPORT_PROJECT_ACCESS_CHECK_ENABLED:-false}
+    ports:
+      - "127.0.0.1:${API_SERVER_PORT:-8080}:8080"
+    init: true
+    restart: unless-stopped
+    volumes:
+      - ./apps/runner/.runner-artifacts:/app/apps/runner/.runner-artifacts
+
   runner:
     build:
       context: .
