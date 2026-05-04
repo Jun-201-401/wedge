@@ -498,7 +498,8 @@
         "artifacts": {
           "type": "array",
           "items": {
-            "$ref": "#/$defs/Artifact"
+            "type": "object",
+            "additionalProperties": true
           }
         },
         "observations": {

@@ -1,6 +1,7 @@
 import type {
   ArtifactBatch,
   DiscoveryAcceptedPayload,
+  DiscoveryCheckpointRequest,
   DiscoveryFailedPayload,
   DiscoveryFinishedPayload,
   RunnerAcceptedPayload,
@@ -18,6 +19,7 @@ export type CallbackPayloadMap = {
   finished: RunnerFinishedPayload;
   failed: RunnerFailedPayload;
   "discovery-accepted": DiscoveryAcceptedPayload;
+  "discovery-checkpoints": DiscoveryCheckpointRequest;
   "discovery-finished": DiscoveryFinishedPayload;
   "discovery-failed": DiscoveryFailedPayload;
 };
@@ -32,6 +34,7 @@ export interface CallbackClient {
   sendFinished: (runId: string, payload: RunnerFinishedPayload) => Promise<void>;
   sendFailed: (runId: string, payload: RunnerFailedPayload) => Promise<void>;
   sendDiscoveryAccepted?: (discoveryId: string, payload: DiscoveryAcceptedPayload) => Promise<void>;
+  sendDiscoveryCheckpoints?: (discoveryId: string, payload: DiscoveryCheckpointRequest) => Promise<void>;
   sendDiscoveryFinished?: (discoveryId: string, payload: DiscoveryFinishedPayload) => Promise<void>;
   sendDiscoveryFailed?: (discoveryId: string, payload: DiscoveryFailedPayload) => Promise<void>;
 }
@@ -44,6 +47,7 @@ const CALLBACK_METHOD_NAMES = {
   finished: "sendFinished",
   failed: "sendFailed",
   "discovery-accepted": "sendDiscoveryAccepted",
+  "discovery-checkpoints": "sendDiscoveryCheckpoints",
   "discovery-finished": "sendDiscoveryFinished",
   "discovery-failed": "sendDiscoveryFailed"
 } as const satisfies Record<CallbackType, keyof CallbackClient>;
@@ -59,6 +63,7 @@ export function createCallbackClientFromHandler(
     sendFinished: (runId, payload) => handler("finished", runId, payload),
     sendFailed: (runId, payload) => handler("failed", runId, payload),
     sendDiscoveryAccepted: (discoveryId, payload) => handler("discovery-accepted", discoveryId, payload),
+    sendDiscoveryCheckpoints: (discoveryId, payload) => handler("discovery-checkpoints", discoveryId, payload),
     sendDiscoveryFinished: (discoveryId, payload) => handler("discovery-finished", discoveryId, payload),
     sendDiscoveryFailed: (discoveryId, payload) => handler("discovery-failed", discoveryId, payload)
   };
