@@ -148,6 +148,17 @@ export interface EvidencePacket {
   collection_notes?: string[];
 }
 
+export interface AnalysisRequestResponse {
+  analysisJobId: string;
+  runId: string;
+  status: 'QUEUED';
+  analysisType: 'PRIMARY';
+  evidencePacketId: string;
+  evidencePacketIncluded: boolean;
+  checkpointCount: number;
+  artifactCount: number;
+}
+
 export const RUN_STATUS_LABEL: Record<RunStatus, string> = {
   CREATED: '생성됨',
   QUEUED: '대기 중',
