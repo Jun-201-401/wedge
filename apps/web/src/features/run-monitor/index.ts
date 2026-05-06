@@ -2,6 +2,8 @@ export { buildMockRunMonitorData } from './lib/runMonitorMock';
 export type { MockRunMonitorData, RunActionLog, RunStepItem, StepStatus } from './lib/runMonitorMock';
 export {
   RUN_MONITOR_REFRESH_INTERVAL_MS,
+  buildApiEventLogs,
+  buildApiEventTimeline,
   buildApiStepTimeline,
   buildApiSnapshotLogs,
   buildApiSnapshotSteps,

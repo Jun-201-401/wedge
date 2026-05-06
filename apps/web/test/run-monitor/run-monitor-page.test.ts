@@ -32,6 +32,7 @@ test('run monitor page exposes Sprint 2 live cockpit essentials with Korean-faci
   assert.match(stateHook, /getRun\(runId\)/);
   assert.match(stateHook, /getRunLive\(runId\)/);
   assert.match(stateHook, /listRunSteps\(runId\)/);
+  assert.match(stateHook, /listRunEvents\(runId, \{ limit: 50 \}\)/);
   assert.match(stateHook, /getRunEvidencePacket\(runId\)/);
   assert.match(stateHook, /evidencePacket/);
   assert.match(stateHook, /isEvidenceLoading/);
@@ -40,9 +41,11 @@ test('run monitor page exposes Sprint 2 live cockpit essentials with Korean-faci
   assert.match(source, /visibleSteps\.map/);
   assert.match(source, /visibleLogs\.map/);
   assert.match(source, /API 상태 스냅샷/);
+  assert.match(source, /buildApiEventTimeline/);
+  assert.match(source, /buildApiEventLogs/);
   assert.match(source, /buildApiStepTimeline/);
   assert.match(source, /buildApiSnapshotLogs/);
-  assert.match(source, /API step timeline/);
+  assert.match(source, /API event timeline/);
   assert.match(source, /화면 캡처 대기 중/);
   assert.match(source, /수집 상태/);
   assert.match(source, /RunContextBar/);

@@ -4,6 +4,7 @@ import type {
   EvidenceObservation,
   EvidencePacket,
   Run,
+  RunEvent,
   RunLive,
   RunStep,
   RunStatus,
@@ -30,6 +31,91 @@ const EVIDENCE_ARTIFACT_LABELS: Record<string, string> = {
   dom_snapshot: 'DOM 스냅샷',
   screenshot: '스크린샷',
 };
+
+const RUN_EVENT_LABELS: Record<string, string> = {
+  STEP_STARTED: 'Step 시작',
+  ACTION_EXECUTED: 'Action 실행',
+  STEP_COMPLETED: 'Step 완료',
+  STEP_FAILED: 'Step 실패',
+  CONSOLE_ERROR: '콘솔 오류',
+  NETWORK_ERROR: '네트워크 오류',
+  ISSUE_SIGNAL_DETECTED: '이슈 신호 감지',
+};
+
+function getRunEventLabel(eventType: string) {
+  return RUN_EVENT_LABELS[eventType] ?? eventType;
+}
+
+function getRunEventStatus(eventType: string): StepStatus {
+  if (eventType === 'STEP_FAILED' || eventType === 'CONSOLE_ERROR' || eventType === 'NETWORK_ERROR') {
+    return 'failed';
+  }
+
+  if (eventType === 'STEP_STARTED' || eventType === 'STEP_COMPLETED' || eventType === 'ACTION_EXECUTED' || eventType === 'ISSUE_SIGNAL_DETECTED') {
+    return 'complete';
+  }
+
+  return 'pending';
+}
+
+function getRunEventLogTone(eventType: string): RunActionLog['tone'] {
+  const status = getRunEventStatus(eventType);
+  return status === 'failed' ? 'warning' : status === 'complete' ? 'success' : 'info';
+}
+
+function readPayloadString(payload: Record<string, unknown>, key: string) {
+  const value = payload[key];
+  if (typeof value !== 'string') {
+    return null;
+  }
+
+  const text = value.trim();
+  return text || null;
+}
+
+function getRunEventSubject(event: RunEvent) {
+  return event.stepKey ?? event.stepId ?? 'run';
+}
+
+function getRunEventDetail(event: RunEvent) {
+  const failureCode = readPayloadString(event.payload, 'failureCode');
+  const failureMessage = readPayloadString(event.payload, 'failureMessage') ?? readPayloadString(event.payload, 'errorMessage');
+  const message = readPayloadString(event.payload, 'message') ?? readPayloadString(event.payload, 'description');
+  const actionType = readPayloadString(event.payload, 'actionType');
+  const stage = readPayloadString(event.payload, 'stage');
+
+  if (failureCode || failureMessage) {
+    const failureLabel = getFailureCodeLabel(failureCode);
+    return failureMessage ? `${failureLabel}: ${failureMessage}` : `${failureLabel}가 감지되었습니다.`;
+  }
+
+  if (message) {
+    return message;
+  }
+
+  if (actionType) {
+    return `${actionType} action이 실행되었습니다.`;
+  }
+
+  if (stage) {
+    return `${stage} 단계 이벤트입니다.`;
+  }
+
+  return `${getRunEventSubject(event)}에서 ${getRunEventLabel(event.eventType)} 이벤트가 발생했습니다.`;
+}
+
+function getRunEventTimestamp(event: RunEvent) {
+  return formatRunStartedAt(event.occurredAt);
+}
+
+function sortRunEvents(events: RunEvent[]) {
+  return events
+    .slice()
+    .sort((left, right) => {
+      const occurredAtDiff = new Date(left.occurredAt).getTime() - new Date(right.occurredAt).getTime();
+      return occurredAtDiff !== 0 ? occurredAtDiff : left.id.localeCompare(right.id);
+    });
+}
 
 export function getDepthLabel(depth: string | null) {
   if (depth === 'next-screen') {
@@ -266,6 +352,33 @@ export function buildApiStepTimeline(run: Run, live: RunLive, steps: RunStep[]):
       status: getRunStepStatus(step.status),
       timestamp: getRunStepTimestamp(step),
     }));
+}
+
+export function buildApiEventTimeline(run: Run, live: RunLive, events: RunEvent[], steps: RunStep[]): RunStepItem[] {
+  if (events.length === 0) {
+    return buildApiStepTimeline(run, live, steps);
+  }
+
+  return sortRunEvents(events).map((event) => ({
+    id: event.id,
+    label: `${getRunEventSubject(event)} · ${getRunEventLabel(event.eventType)}`,
+    detail: getRunEventDetail(event),
+    status: getRunEventStatus(event.eventType),
+    timestamp: getRunEventTimestamp(event),
+  }));
+}
+
+export function buildApiEventLogs(run: Run, live: RunLive, events: RunEvent[]): RunActionLog[] {
+  if (events.length === 0) {
+    return buildApiSnapshotLogs(run, live);
+  }
+
+  return sortRunEvents(events).map((event) => ({
+    id: `event-log-${event.id}`,
+    time: getRunEventTimestamp(event),
+    message: `${getRunEventSubject(event)} · ${getRunEventLabel(event.eventType)} — ${getRunEventDetail(event)}`,
+    tone: getRunEventLogTone(event.eventType),
+  }));
 }
 
 export function buildApiSnapshotLogs(run: Run, live: RunLive): RunActionLog[] {
