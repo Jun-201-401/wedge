@@ -2,6 +2,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 're
 
 import { createDiscovery, getDiscovery } from '../../api/discoveries';
 import { createRun, startRun } from '../../api/runs';
+import { confirmScenarioAuthoringCandidate, createScenarioAuthoringJob } from '../../api/scenario-authoring';
 import { FIRST_WORD_DELAY_MS, WORD_ROTATION_INTERVAL_MS } from '../../features/landing-vision';
 import { pushAppPath } from '../../shared/lib/navigation';
 import { buildRunMonitorPath } from '../run-monitor/lib/runMonitorRoute';
@@ -23,6 +24,7 @@ import {
 } from './lib/discoveryRecommendations';
 import { createDiscoveryIdempotencyKey, isDiscoveryBusy } from './lib/discoveryPreflight';
 import { buildPrototypeScenarioPlan } from './lib/prototypeScenarioPlan';
+import { createScenarioAuthoringIdempotencyKey, isScenarioAuthoringSupportedType, readScenarioPlanString, requireConfirmedScenarioPlanStartUrl, selectScenarioAuthoringCandidate } from './lib/scenarioAuthoring';
 import './CreateAnalysisPage.css';
 
 type DiscoveryStepStatus = 'complete' | 'active' | 'pending';
@@ -891,23 +893,80 @@ export function CreateAnalysisPage() {
     let createdRunId = '';
 
     try {
+      let scenarioPlan: Record<string, unknown> = buildPrototypeScenarioPlan({ submittedUrl, selectedScenario, selectedDepth });
+      let runStartUrl = submittedUrl;
+      let runGoal = selectedScenario.summary;
+      const scenarioOverrides: Record<string, unknown> = {
+        depthId: selectedDepthId,
+        source: 'create-analysis-ready',
+        sourceDiscoveryId: selectedScenario.sourceDiscoveryId ?? null,
+        scenarioType: selectedScenario.scenarioType,
+        evidenceRefs: selectedScenario.evidenceRefs,
+        suggestedStartUrl: selectedScenario.suggestedStartUrl ?? null,
+        suggestedTarget: selectedScenario.suggestedTarget ?? null,
+      };
+
+      if (selectedScenario.isRunnable && selectedScenario.sourceDiscoveryId && isScenarioAuthoringSupportedType(selectedScenario.scenarioType)) {
+        const authoring = await createScenarioAuthoringJob({
+          projectId: createRunIds.projectId,
+          sourceDiscoveryId: selectedScenario.sourceDiscoveryId,
+          requestedGoal: selectedScenario.summary,
+          preferredScenarioType: selectedScenario.scenarioType,
+          selectedRecommendation: {
+            scenarioType: selectedScenario.scenarioType,
+            recommendationLevel: selectedScenario.level,
+            confidence: selectedScenario.confidence,
+            evidenceRefs: selectedScenario.evidenceRefs,
+            suggestedStartUrl: selectedScenario.suggestedStartUrl ?? null,
+            suggestedTarget: selectedScenario.suggestedTarget ?? null,
+          },
+          constraints: {
+            depthId: selectedDepthId,
+            depthTitle: selectedDepth.title,
+            depthDetail: selectedDepth.detail,
+          },
+          providerPolicy: {
+            providerOrder: ['RULE_BASED'],
+            timeoutMs: 10000,
+            fallbackAllowed: true,
+            approvalRequired: true,
+          },
+        }, {
+          idempotencyKey: createScenarioAuthoringIdempotencyKey(
+            createRunIds.projectId,
+            selectedScenario.sourceDiscoveryId,
+            selectedScenario.scenarioType,
+            selectedDepthId,
+          ),
+        });
+
+        const candidate = selectScenarioAuthoringCandidate(authoring.data);
+        if (!candidate || authoring.data.status !== 'SUCCEEDED') {
+          throw new Error('ScenarioAuthoring did not produce a valid ScenarioPlan candidate.');
+        }
+
+        const confirmed = await confirmScenarioAuthoringCandidate(authoring.data.authoringJobId, {
+          candidateId: candidate.candidate_id,
+        });
+        scenarioPlan = confirmed.data.confirmedCandidate.scenario_plan;
+        runStartUrl = requireConfirmedScenarioPlanStartUrl(scenarioPlan);
+        runGoal = readScenarioPlanString(scenarioPlan, 'goal') ?? selectedScenario.summary;
+        scenarioOverrides.source = 'scenario-authoring-confirm';
+        scenarioOverrides.sourceAuthoringJobId = confirmed.data.authoringJob.authoringJobId;
+        scenarioOverrides.sourceAuthoringCandidateId = confirmed.data.confirmedCandidate.candidate_id;
+        scenarioOverrides.providerOrder = confirmed.data.authoringJob.providerOrder;
+        scenarioOverrides.authoringValidation = confirmed.data.confirmedCandidate.validation;
+      }
+
       const response = await createRun({
         projectId: createRunIds.projectId,
         name: selectedScenario.title,
-        startUrl: submittedUrl,
-        goal: selectedScenario.summary,
+        startUrl: runStartUrl,
+        goal: runGoal,
         devicePreset: 'desktop',
         scenarioTemplateVersionId: createRunIds.scenarioTemplateVersionId,
-        scenarioOverrides: {
-          depthId: selectedDepthId,
-          source: 'create-analysis-ready',
-          sourceDiscoveryId: selectedScenario.sourceDiscoveryId ?? null,
-          scenarioType: selectedScenario.scenarioType,
-          evidenceRefs: selectedScenario.evidenceRefs,
-          suggestedStartUrl: selectedScenario.suggestedStartUrl ?? null,
-          suggestedTarget: selectedScenario.suggestedTarget ?? null,
-        },
-        scenarioPlan: buildPrototypeScenarioPlan({ submittedUrl, selectedScenario, selectedDepth }),
+        scenarioOverrides,
+        scenarioPlan,
       });
       createdRunId = response.data.id;
     } catch {

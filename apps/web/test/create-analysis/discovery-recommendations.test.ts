@@ -22,6 +22,7 @@ test('discovery recommendation mapper exposes canonical levels and CONTACT copy'
   assert.equal(card.tone, 'recommended');
   assert.equal(card.title, '문의 / 상담 신청 흐름 점검');
   assert.match(card.summary, /B2B 전환 흐름/);
+  assert.equal(card.confidence, 0.86);
   assert.equal(card.confidenceLabel, '86%');
   assert.equal(card.evidence, 'cp_001.obs_003');
   assert.equal(card.isRunnable, true);

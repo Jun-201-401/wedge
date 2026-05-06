@@ -13,6 +13,7 @@ export interface ScenarioRecommendationViewModel {
   evidence: string;
   actionLabel: string;
   confidenceLabel: string;
+  confidence: number;
   isRunnable: boolean;
   sourceDiscoveryId?: string;
   evidenceRefs: string[];
@@ -125,6 +126,7 @@ export function toScenarioRecommendationViewModel(recommendation: ApiScenarioRec
     evidence: evidenceLabel(recommendation),
     actionLabel: isRunnable ? '이 흐름으로 진단' : '직접 설정하기',
     confidenceLabel: confidenceLabel(recommendation.confidence),
+    confidence: recommendation.confidence,
     isRunnable,
     sourceDiscoveryId,
     evidenceRefs: recommendation.evidenceRefs ?? [],
