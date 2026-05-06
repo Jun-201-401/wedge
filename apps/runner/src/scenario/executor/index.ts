@@ -4,7 +4,7 @@ import type { CapturePipeline } from "../../capture/index.ts";
 import { createDeliverySummary, mergeDeliveryIssues, type DeliveryIssue, type DeliverySummary } from "../../delivery/index.ts";
 import type { ArtifactStore } from "../../storage/index.ts";
 import type { ScenarioPlan } from "../../shared/contracts.ts";
-import { errorMessage } from "../../shared/utils.ts";
+import { classifyRunnerFailure, errorMessage, logOperationalEvent, type RunnerFailureCode } from "../../shared/utils.ts";
 import { executeScenarioStep } from "./step-executor.ts";
 import { emitStepEventBestEffort } from "./step-events.ts";
 
@@ -24,6 +24,7 @@ export class ScenarioExecutionError extends Error {
   readonly delivery: DeliverySummary;
   readonly failedStepKey: string;
   readonly failedStepOrder: number;
+  readonly failureCode: RunnerFailureCode;
   readonly cause: unknown;
 
   constructor(input: {
@@ -32,6 +33,7 @@ export class ScenarioExecutionError extends Error {
     delivery: DeliverySummary;
     failedStepKey: string;
     failedStepOrder: number;
+    failureCode: RunnerFailureCode;
   }) {
     super(errorMessage(input.cause));
     this.name = "ScenarioExecutionError";
@@ -39,6 +41,7 @@ export class ScenarioExecutionError extends Error {
     this.delivery = input.delivery;
     this.failedStepKey = input.failedStepKey;
     this.failedStepOrder = input.failedStepOrder;
+    this.failureCode = input.failureCode;
     this.cause = input.cause;
   }
 }
@@ -79,13 +82,32 @@ export async function executeScenario({
         artifactStore
       });
     } catch (error) {
+      const failureCode = classifyRunnerFailure(error);
+      const failureMessage = errorMessage(error);
+
+      logOperationalEvent(
+        "scenario-executor",
+        "step_failed",
+        {
+          runId,
+          stepOrder,
+          stepKey: step.step_id,
+          stage: step.stage,
+          actionType: step.action.type,
+          failureCode,
+          failureMessage
+        },
+        "error"
+      );
+
       deliveryIssues.push(
         ...(
           await emitStepEventBestEffort(callbackClient, runId, stepOrder, step.step_id, "STEP_FAILED", {
             description: step.description,
             stage: step.stage,
             actionType: step.action.type,
-            failureMessage: errorMessage(error)
+            failureCode,
+            failureMessage
           })
         )
       );
@@ -100,7 +122,8 @@ export async function executeScenario({
         summary,
         delivery: createDeliverySummary(mergeDeliveryIssues(deliveryIssues)),
         failedStepKey: step.step_id,
-        failedStepOrder: stepOrder
+        failedStepOrder: stepOrder,
+        failureCode
       });
     }
 

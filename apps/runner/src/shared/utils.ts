@@ -49,6 +49,23 @@ export function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+export type RunnerFailureCode = "RUNNER_EXECUTION_FAILED" | "RUNNER_TIMEOUT";
+
+export function classifyRunnerFailure(error: unknown): RunnerFailureCode {
+  const name = error instanceof Error ? error.name.toLowerCase() : "";
+  const message = errorMessage(error).toLowerCase();
+
+  if (
+    name.includes("timeout") ||
+    message.includes("timeout") ||
+    message.includes("timed out")
+  ) {
+    return "RUNNER_TIMEOUT";
+  }
+
+  return "RUNNER_EXECUTION_FAILED";
+}
+
 export type OperationalLogLevel = "info" | "warn" | "error";
 
 export function logOperationalEvent(
