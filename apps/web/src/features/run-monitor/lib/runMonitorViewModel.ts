@@ -5,6 +5,7 @@ import type {
   EvidencePacket,
   Run,
   RunLive,
+  RunStep,
   RunStatus,
 } from '../../../entities/run';
 import { RUN_STATUS_LABEL } from '../../../entities/run';
@@ -154,6 +155,63 @@ function getApiCheckpointStatus(status: RunStatus): StepStatus {
   return 'active';
 }
 
+export function getFailureCodeLabel(failureCode?: string | null) {
+  if (failureCode === 'RUNNER_TIMEOUT') {
+    return '시간 초과';
+  }
+
+  if (failureCode === 'RUNNER_EXECUTION_FAILED') {
+    return '실행 실패';
+  }
+
+  return failureCode ?? '실패';
+}
+
+function getRunStepStatus(status: RunStep['status']): StepStatus {
+  if (status === 'PASSED') {
+    return 'complete';
+  }
+
+  if (status === 'RUNNING') {
+    return 'active';
+  }
+
+  if (status === 'FAILED' || status === 'BLOCKED' || status === 'STOPPED') {
+    return 'failed';
+  }
+
+  return 'pending';
+}
+
+function getRunStepTimestamp(step: RunStep) {
+  if (step.finishedAt) {
+    return formatRunStartedAt(step.finishedAt);
+  }
+
+  if (step.startedAt) {
+    return formatRunStartedAt(step.startedAt);
+  }
+
+  return '대기 중';
+}
+
+function getRunStepDetail(step: RunStep) {
+  if (step.status === 'FAILED') {
+    const failureLabel = getFailureCodeLabel(step.errorCode);
+    return step.errorMessage ? `${failureLabel}: ${step.errorMessage}` : `${failureLabel}로 step이 실패했습니다.`;
+  }
+
+  if (step.status === 'RUNNING') {
+    return `${step.stepType} 실행 중입니다.`;
+  }
+
+  if (step.status === 'PASSED') {
+    return `${step.stepType} 실행이 완료되었습니다.`;
+  }
+
+  return `${step.stepType} 실행 대기 중입니다.`;
+}
+
 export function formatRunStartedAt(startedAt?: string | null) {
   if (!startedAt) {
     return '방금 전';
@@ -193,8 +251,25 @@ export function buildApiSnapshotSteps(run: Run, live: RunLive): RunStepItem[] {
   ];
 }
 
+export function buildApiStepTimeline(run: Run, live: RunLive, steps: RunStep[]): RunStepItem[] {
+  if (steps.length === 0) {
+    return buildApiSnapshotSteps(run, live);
+  }
+
+  return steps
+    .slice()
+    .sort((left, right) => left.stepOrder - right.stepOrder)
+    .map((step) => ({
+      id: step.id,
+      label: `${step.stepOrder}. ${step.stepName}`,
+      detail: getRunStepDetail(step),
+      status: getRunStepStatus(step.status),
+      timestamp: getRunStepTimestamp(step),
+    }));
+}
+
 export function buildApiSnapshotLogs(run: Run, live: RunLive): RunActionLog[] {
-  return [
+  const logs: RunActionLog[] = [
     {
       id: 'api-log-run',
       time: formatRunStartedAt(run.startedAt),
@@ -208,6 +283,19 @@ export function buildApiSnapshotLogs(run: Run, live: RunLive): RunActionLog[] {
       tone: live.status === 'FAILED' || live.status === 'STOP_REQUESTED' ? 'warning' : 'info',
     },
   ];
+
+  if (run.status === 'FAILED') {
+    logs.push({
+      id: 'api-log-run-failure',
+      time: run.finishedAt ? formatRunStartedAt(run.finishedAt) : '현재',
+      message: run.failureMessage
+        ? `${getFailureCodeLabel(run.failureCode)}: ${run.failureMessage}`
+        : `${getFailureCodeLabel(run.failureCode)}로 Run이 실패했습니다.`,
+      tone: 'warning',
+    });
+  }
+
+  return logs;
 }
 
 export function canOpenRunReport(isMockRun: boolean, run?: Run, evidencePacket?: EvidencePacket | null) {

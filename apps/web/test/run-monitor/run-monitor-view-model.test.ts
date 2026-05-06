@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import type { RunReportProjection } from '../../src/entities/report';
 import type { EvidencePacket, Run, RunLive } from '../../src/entities/run';
 import {
+  buildApiStepTimeline,
   buildApiSnapshotLogs,
   buildApiSnapshotSteps,
   canOpenRunReport,
@@ -15,6 +16,7 @@ import {
   getCheckpointArtifacts,
   getEvidenceArtifactLabel,
   getEvidenceObservationSummary,
+  getFailureCodeLabel,
   getStatusTone,
   resolveRunMonitorReportCtaState,
   shouldRefreshRunReport,
@@ -120,6 +122,57 @@ test('run monitor view model handles stop requested without falling back to fres
   assert.equal(steps[1].status, 'active');
   assert.equal(steps[1].detail, '중지 요청을 처리 중입니다');
   assert.equal(logs[1].tone, 'warning');
+});
+
+test('run monitor view model maps API run steps into a real timeline with failure details', () => {
+  const steps = buildApiStepTimeline({ ...baseRun, status: 'FAILED', failureCode: 'RUNNER_TIMEOUT', failureMessage: 'navigation timed out' }, {
+    ...baseLive,
+    status: 'FAILED',
+    currentStepOrder: 2,
+  }, [
+    {
+      id: 'step-2',
+      runId: baseRun.id,
+      stepOrder: 2,
+      stepKey: 'step_002_submit',
+      stepName: 'CTA 제출',
+      stepType: 'CLICK',
+      status: 'FAILED',
+      startedAt: '2026-04-27T01:01:00.000Z',
+      finishedAt: '2026-04-27T01:01:03.000Z',
+      errorCode: 'RUNNER_TIMEOUT',
+      errorMessage: 'locator click timed out',
+    },
+    {
+      id: 'step-1',
+      runId: baseRun.id,
+      stepOrder: 1,
+      stepKey: 'step_001_goto',
+      stepName: '첫 화면 로드',
+      stepType: 'GOTO',
+      status: 'PASSED',
+      startedAt: '2026-04-27T01:00:00.000Z',
+      finishedAt: '2026-04-27T01:00:02.000Z',
+      errorCode: null,
+      errorMessage: null,
+    },
+  ]);
+
+  assert.deepEqual(steps.map((step) => step.id), ['step-1', 'step-2']);
+  assert.equal(steps[0].status, 'complete');
+  assert.equal(steps[1].status, 'failed');
+  assert.equal(steps[1].label, '2. CTA 제출');
+  assert.equal(steps[1].detail, '시간 초과: locator click timed out');
+  assert.equal(getFailureCodeLabel('RUNNER_TIMEOUT'), '시간 초과');
+});
+
+test('run monitor view model falls back to snapshot steps when API steps are not available', () => {
+  const steps = buildApiStepTimeline(baseRun, baseLive, []);
+
+  assert.deepEqual(
+    steps.map((step) => step.id),
+    buildApiSnapshotSteps(baseRun, baseLive).map((step) => step.id),
+  );
 });
 
 const evidencePacket: EvidencePacket = {
