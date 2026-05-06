@@ -680,6 +680,84 @@ test("[수집 pipeline] page snapshot만 있어도 fallback screenshot/DOM/conso
   );
 });
 
+test("[수집 pipeline] CTA 분석용 interactive_components observation을 checkpoint에 포함한다", async () => {
+  const capturePipeline = createCapturePipeline();
+  const plan = createMinimalPlan();
+  const pageSnapshot: BrowserPageSnapshot = createSimulatedPageSnapshot(plan, {
+    interactiveComponents: [
+      {
+        text: "무료로 시작하기",
+        selector: "a.hero-start",
+        role: "link",
+        tag: "a",
+        clickable: true,
+        clicked_in_scenario: true,
+        is_cta_candidate: true,
+        is_primary_like: true,
+        bounds: {
+          x: 520,
+          y: 360,
+          width: 220,
+          height: 56,
+          unit: "css_px"
+        }
+      }
+    ]
+  });
+
+  const collection = await capturePipeline.collectCheckpoint({
+    step: {
+      step_id: "step_capture_interactive_components",
+      stage: "CTA",
+      description: "capture CTA interactive components",
+      action: {
+        type: "checkpoint"
+      },
+      settle_strategy: {
+        type: "none",
+        timeout_ms: 0
+      },
+      checkpoint: true
+    },
+    stepOrder: 4,
+    plan,
+    pageSnapshot,
+    settleResult: createSettledResult()
+  });
+
+  const observation = collection.checkpoint.observations.find(
+    (candidate) => candidate.type === "interactive_components"
+  );
+
+  assert.deepEqual(observation, {
+    observation_id: "step_capture_interactive_components.obs_interactive_components",
+    type: "interactive_components",
+    stage: "CTA",
+    source: ["dom", "layout", "screenshot"],
+    confidence: 0.82,
+    primary_like_component_count: 1,
+    components: [
+      {
+        text: "무료로 시작하기",
+        selector: "a.hero-start",
+        role: "link",
+        tag: "a",
+        clickable: true,
+        clicked_in_scenario: true,
+        is_cta_candidate: true,
+        is_primary_like: true,
+        bounds: {
+          x: 520,
+          y: 360,
+          width: 220,
+          height: 56,
+          unit: "css_px"
+        }
+      }
+    ]
+  });
+});
+
 test("[전달 정책] optional delivery 이슈를 병합하고 finished callback 실패는 fatal로 분류한다", () => {
   const merged = mergeDeliveryIssues(
     [
