@@ -316,6 +316,17 @@ class RunnerCallbackLifecycleScenarioTest {
         }
 
         @Override
+        public List<RunStepRecord> findStepsByRunId(UUID runId) {
+            return stepsForRun(runId);
+        }
+
+        @Override
+        public Optional<RunStepRecord> findStepByRunIdAndId(UUID runId, UUID stepId) {
+            return Optional.ofNullable(steps.get(stepId))
+                    .filter(step -> runId.equals(step.getRunId()));
+        }
+
+        @Override
         public Optional<RunStepRecord> findStepByRunIdAndStepKey(UUID runId, String stepKey) {
             return steps.values().stream()
                     .filter(step -> runId.equals(step.getRunId()))

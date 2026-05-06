@@ -149,8 +149,19 @@ public class RunnerCallbackService {
 
         StepStatus nextStatus = mapStepStatus(event.eventType());
         if (nextStatus != null) {
-            runPersistenceAdapter.updateStepState(step.id(), nextStatus, event.occurredAt());
+            runPersistenceAdapter.updateStepState(
+                    step.id(),
+                    nextStatus,
+                    event.occurredAt(),
+                    nextStatus == StepStatus.FAILED ? stringPayloadValue(event.payload(), "failureCode") : null,
+                    nextStatus == StepStatus.FAILED ? stringPayloadValue(event.payload(), "failureMessage") : null
+            );
         }
+    }
+
+    private String stringPayloadValue(Map<String, Object> payload, String key) {
+        Object value = payload == null ? null : payload.get(key);
+        return value instanceof String text && !text.isBlank() ? text : null;
     }
 
     private SaveRunCheckpointsCommand toSaveRunCheckpointsCommand(RunnerCheckpointsCommand command) {

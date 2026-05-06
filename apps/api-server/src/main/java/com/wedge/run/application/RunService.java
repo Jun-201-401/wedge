@@ -4,6 +4,7 @@ import com.wedge.common.error.BusinessException;
 import com.wedge.common.error.ErrorCode;
 import com.wedge.run.api.dto.RunCreateRequest;
 import com.wedge.run.api.dto.RunResponse;
+import com.wedge.run.api.dto.RunStepResponse;
 import com.wedge.run.domain.ResultCompleteness;
 import com.wedge.run.domain.RunStatus;
 import com.wedge.common.infrastructure.outbox.OutboxMessagePersistenceAdapter;
@@ -39,6 +40,19 @@ public class RunService {
     public RunResponse getRun(UUID runId) {
         return runPersistenceAdapter.findRun(runId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.RUN_NOT_FOUND));
+    }
+
+    @Transactional(readOnly = true)
+    public List<RunStepResponse> listRunSteps(UUID runId) {
+        getRun(runId);
+        return runPersistenceAdapter.listRunSteps(runId);
+    }
+
+    @Transactional(readOnly = true)
+    public RunStepResponse getRunStep(UUID runId, UUID stepId) {
+        getRun(runId);
+        return runPersistenceAdapter.findRunStep(runId, stepId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_REQUEST, "Run step was not found for the run."));
     }
 
     @Transactional

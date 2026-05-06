@@ -7,6 +7,7 @@ import com.wedge.common.error.BusinessException;
 import com.wedge.common.error.ErrorCode;
 import com.wedge.run.api.dto.RunCreateRequest;
 import com.wedge.run.api.dto.RunResponse;
+import com.wedge.run.api.dto.RunStepResponse;
 import com.wedge.run.application.RunExecutionRequestSource;
 import com.wedge.run.domain.ResultCompleteness;
 import com.wedge.run.domain.RunStatus;
@@ -39,6 +40,17 @@ public class RunPersistenceAdapter {
 
     public Optional<RunResponse> findRun(UUID runId) {
         return runMapper.findById(runId).map(this::toResponse);
+    }
+
+    public List<RunStepResponse> listRunSteps(UUID runId) {
+        return runMapper.findStepsByRunId(runId).stream()
+                .map(this::toStepResponse)
+                .toList();
+    }
+
+    public Optional<RunStepResponse> findRunStep(UUID runId, UUID stepId) {
+        return runMapper.findStepByRunIdAndId(runId, stepId)
+                .map(this::toStepResponse);
     }
 
     public Optional<RunExecutionRequestSource> findExecutionRequestSource(UUID runId) {
@@ -121,12 +133,22 @@ public class RunPersistenceAdapter {
     }
 
     public void updateStepState(UUID stepId, StepStatus nextStatus, OffsetDateTime occurredAt) {
+        updateStepState(stepId, nextStatus, occurredAt, null, null);
+    }
+
+    public void updateStepState(
+            UUID stepId,
+            StepStatus nextStatus,
+            OffsetDateTime occurredAt,
+            String errorCode,
+            String errorMessage
+    ) {
         OffsetDateTime startedAt = nextStatus == StepStatus.RUNNING ? occurredAt : null;
         OffsetDateTime finishedAt = switch (nextStatus) {
             case PASSED, FAILED, SKIPPED, BLOCKED, STOPPED -> occurredAt;
             default -> null;
         };
-        runMapper.updateStepState(stepId, nextStatus, startedAt, finishedAt, null, null);
+        runMapper.updateStepState(stepId, nextStatus, startedAt, finishedAt, errorCode, errorMessage);
     }
 
     public void appendRunEvent(UUID runId, UUID stepId, String eventType, Map<String, Object> payload, OffsetDateTime occurredAt) {
@@ -217,6 +239,22 @@ public class RunPersistenceAdapter {
                 record.getFailureCode(),
                 record.getFailureMessage(),
                 null
+        );
+    }
+
+    private RunStepResponse toStepResponse(RunStepRecord record) {
+        return new RunStepResponse(
+                record.getId(),
+                record.getRunId(),
+                record.getStepOrder(),
+                record.getStepKey(),
+                record.getStepName(),
+                record.getStepType(),
+                record.getStatus(),
+                record.getStartedAt(),
+                record.getFinishedAt(),
+                record.getErrorCode(),
+                record.getErrorMessage()
         );
     }
 

@@ -118,15 +118,13 @@ public class RunController {
     }
 
     @GetMapping("/{runId}/steps")
-    public ResponseEntity<ApiResponse<List<Object>>> listRunSteps(@PathVariable UUID runId) {
-        runService.getRun(runId);
-        return ApiResponse.ok(List.of());
+    public ResponseEntity<ApiResponse<List<RunStepResponse>>> listRunSteps(@PathVariable UUID runId) {
+        return ApiResponse.ok(runService.listRunSteps(runId));
     }
 
     @GetMapping("/{runId}/steps/{stepId}")
     public ResponseEntity<ApiResponse<RunStepResponse>> getRunStep(@PathVariable UUID runId, @PathVariable UUID stepId) {
-        runService.getRun(runId);
-        return ApiResponse.ok(new RunStepResponse(runId, stepId));
+        return ApiResponse.ok(runService.getRunStep(runId, stepId));
     }
 
     @GetMapping("/{runId}/events")
