@@ -190,7 +190,15 @@ function startOutboxLockHeartbeat(
 ): () => Promise<void> {
   let inFlightHeartbeat: Promise<unknown> | null = null;
   const timer = setInterval(() => {
-    inFlightHeartbeat = lockHandle.heartbeat().catch(() => {});
+    if (inFlightHeartbeat) {
+      return;
+    }
+
+    inFlightHeartbeat = lockHandle.heartbeat()
+      .catch(() => {})
+      .finally(() => {
+        inFlightHeartbeat = null;
+      });
   }, intervalMs);
 
   return async () => {

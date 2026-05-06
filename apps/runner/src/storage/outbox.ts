@@ -1,4 +1,5 @@
-import { appendFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { appendFile, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import type { RunnerConfig } from "../config/index.ts";
 import type { ArtifactDraft } from "../shared/contracts.ts";
@@ -156,15 +157,44 @@ async function tryWriteArtifactLockFile(path: string, record: ArtifactOutboxLock
 async function readArtifactOutboxLockRecord(
   config: Pick<RunnerConfig, "artifactOutboxLockFile">
 ): Promise<ArtifactOutboxLockRecord | null> {
+  return readArtifactOutboxLockRecordFromPath(config.artifactOutboxLockFile);
+}
+
+async function readArtifactOutboxLockRecordFromPath(path: string): Promise<ArtifactOutboxLockRecord | null> {
   try {
-    const raw = await readFile(config.artifactOutboxLockFile, "utf8");
-    return JSON.parse(raw.trim()) as ArtifactOutboxLockRecord;
+    const raw = await readFile(path, "utf8");
+    return parseArtifactOutboxLockRecord(raw);
   } catch (error) {
     if (errorMessage(error).includes("ENOENT")) {
       return null;
     }
 
     throw error;
+  }
+}
+
+function parseArtifactOutboxLockRecord(raw: string): ArtifactOutboxLockRecord | null {
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(trimmed) as Partial<ArtifactOutboxLockRecord>;
+    if (
+      typeof parsed.workerId !== "string" ||
+      typeof parsed.acquiredAt !== "string" ||
+      (parsed.heartbeatAt !== undefined && typeof parsed.heartbeatAt !== "string")
+    ) {
+      return null;
+    }
+    return {
+      workerId: parsed.workerId,
+      acquiredAt: parsed.acquiredAt,
+      heartbeatAt: parsed.heartbeatAt ?? parsed.acquiredAt
+    };
+  } catch {
+    return null;
   }
 }
 
@@ -183,10 +213,9 @@ function createArtifactLockHandle(path: string, lockRecord: ArtifactOutboxLockRe
       const nextHeartbeatAt = toIsoTimestamp();
 
       try {
-        const raw = await readFile(path, "utf8");
-        const currentLock = JSON.parse(raw.trim()) as ArtifactOutboxLockRecord;
+        const currentLock = await readArtifactOutboxLockRecordFromPath(path);
 
-        if (currentLock.workerId !== lockRecord.workerId || currentLock.acquiredAt !== lockRecord.acquiredAt) {
+        if (!currentLock || currentLock.workerId !== lockRecord.workerId || currentLock.acquiredAt !== lockRecord.acquiredAt) {
           return false;
         }
 
@@ -194,7 +223,7 @@ function createArtifactLockHandle(path: string, lockRecord: ArtifactOutboxLockRe
           ...currentLock,
           heartbeatAt: nextHeartbeatAt
         };
-        await writeFile(path, `${JSON.stringify(nextLock)}\n`, "utf8");
+        await replaceArtifactLockFile(path, nextLock);
         lockRecord.heartbeatAt = nextHeartbeatAt;
         return true;
       } catch (error) {
@@ -207,10 +236,9 @@ function createArtifactLockHandle(path: string, lockRecord: ArtifactOutboxLockRe
     },
     release: async () => {
       try {
-        const raw = await readFile(path, "utf8");
-        const currentLock = JSON.parse(raw.trim()) as ArtifactOutboxLockRecord;
+        const currentLock = await readArtifactOutboxLockRecordFromPath(path);
 
-        if (currentLock.workerId !== lockRecord.workerId || currentLock.acquiredAt !== lockRecord.acquiredAt) {
+        if (!currentLock || currentLock.workerId !== lockRecord.workerId || currentLock.acquiredAt !== lockRecord.acquiredAt) {
           return;
         }
       } catch (error) {
@@ -224,6 +252,17 @@ function createArtifactLockHandle(path: string, lockRecord: ArtifactOutboxLockRe
       await rm(path, { force: true });
     }
   };
+}
+
+async function replaceArtifactLockFile(path: string, record: ArtifactOutboxLockRecord): Promise<void> {
+  const tempPath = `${path}.${process.pid}.${randomUUID()}.tmp`;
+  try {
+    await writeFile(tempPath, `${JSON.stringify(record)}\n`, { encoding: "utf8", flag: "wx" });
+    await rename(tempPath, path);
+  } catch (error) {
+    await rm(tempPath, { force: true });
+    throw error;
+  }
 }
 
 async function readArtifactOutboxRecordsRaw(
