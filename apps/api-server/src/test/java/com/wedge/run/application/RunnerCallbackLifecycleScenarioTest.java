@@ -321,6 +321,15 @@ class RunnerCallbackLifecycleScenarioTest {
         }
 
         @Override
+        public List<com.wedge.run.infrastructure.RunEventRecord> findEventsByRunId(UUID runId) {
+            return runEvents.stream()
+                    .filter(event -> runId.equals(event.runId()))
+                    .sorted(Comparator.comparing(RunEventRecord::occurredAt))
+                    .map(this::toRunEventRecord)
+                    .toList();
+        }
+
+        @Override
         public Optional<RunStepRecord> findStepByRunIdAndId(UUID runId, UUID stepId) {
             return Optional.ofNullable(steps.get(stepId))
                     .filter(step -> runId.equals(step.getRunId()));
@@ -507,6 +516,25 @@ class RunnerCallbackLifecycleScenarioTest {
 
         private RunStepRecord step(UUID runId, String stepKey) {
             return findStepByRunIdAndStepKey(runId, stepKey).orElseThrow();
+        }
+
+        private com.wedge.run.infrastructure.RunEventRecord toRunEventRecord(RunEventRecord event) {
+            com.wedge.run.infrastructure.RunEventRecord record = new com.wedge.run.infrastructure.RunEventRecord();
+            record.setId(event.id());
+            record.setRunId(event.runId());
+            record.setStepId(event.stepId());
+            record.setStepKey(stepKeyFor(event.stepId()));
+            record.setEventType(event.eventType());
+            record.setSource(event.source());
+            record.setPayloadJson(event.payloadJson());
+            record.setOccurredAt(event.occurredAt());
+            return record;
+        }
+
+        private String stepKeyFor(UUID stepId) {
+            return Optional.ofNullable(steps.get(stepId))
+                    .map(RunStepRecord::getStepKey)
+                    .orElse(null);
         }
     }
 

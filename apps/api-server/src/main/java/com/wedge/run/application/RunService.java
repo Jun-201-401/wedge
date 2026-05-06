@@ -3,6 +3,7 @@ package com.wedge.run.application;
 import com.wedge.common.error.BusinessException;
 import com.wedge.common.error.ErrorCode;
 import com.wedge.run.api.dto.RunCreateRequest;
+import com.wedge.run.api.dto.RunEventResponse;
 import com.wedge.run.api.dto.RunResponse;
 import com.wedge.run.api.dto.RunStepResponse;
 import com.wedge.run.domain.ResultCompleteness;
@@ -53,6 +54,12 @@ public class RunService {
         getRun(runId);
         return runPersistenceAdapter.findRunStep(runId, stepId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_REQUEST, "Run step was not found for the run."));
+    }
+
+    @Transactional(readOnly = true)
+    public List<RunEventResponse> listRunEvents(UUID runId) {
+        getRun(runId);
+        return runPersistenceAdapter.listRunEvents(runId);
     }
 
     @Transactional

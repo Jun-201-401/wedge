@@ -43,6 +43,17 @@
         <result property="errorMessage" column="error_message"/>
     </resultMap>
 
+    <resultMap id="RunEventRecordResultMap" type="com.wedge.run.infrastructure.RunEventRecord">
+        <id property="id" column="id"/>
+        <result property="runId" column="run_id"/>
+        <result property="stepId" column="step_id"/>
+        <result property="stepKey" column="step_key"/>
+        <result property="eventType" column="event_type"/>
+        <result property="source" column="source"/>
+        <result property="payloadJson" column="payload_jsonb"/>
+        <result property="occurredAt" column="occurred_at"/>
+    </resultMap>
+
     <sql id="RunColumns">
         id,
         project_id,
@@ -112,6 +123,21 @@
         FROM test_run_step
         WHERE run_id = #{runId}
           AND step_key = #{stepKey}
+    </select>
+
+    <select id="findEventsByRunId" resultMap="RunEventRecordResultMap">
+        SELECT e.id,
+               e.run_id,
+               e.step_id,
+               s.step_key,
+               e.event_type,
+               e.source,
+               CAST(e.payload_jsonb AS TEXT) AS payload_jsonb,
+               e.occurred_at
+        FROM test_run_event e
+        LEFT JOIN test_run_step s ON s.id = e.step_id
+        WHERE e.run_id = #{runId}
+        ORDER BY e.occurred_at ASC, e.id ASC
     </select>
 
     <insert id="insert" parameterType="com.wedge.run.infrastructure.RunRecord">

@@ -5,6 +5,8 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
 import com.wedge.common.error.GlobalExceptionHandler;
 import com.wedge.common.web.RequestIdFilter;
 import com.wedge.evidence.api.dto.ArtifactResponse;
@@ -13,6 +15,7 @@ import com.wedge.evidence.api.dto.LatestCheckpointResponse;
 import com.wedge.evidence.api.dto.RunEvidenceSummaryResponse;
 import com.wedge.evidence.application.EvidenceService;
 import com.wedge.evidence.domain.ArtifactType;
+import com.wedge.run.api.dto.RunEventResponse;
 import com.wedge.run.api.dto.RunResponse;
 import com.wedge.run.api.dto.RunStepResponse;
 import com.wedge.run.application.RunService;
@@ -26,14 +29,22 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 class RunControllerTest {
+    private static final MappingJackson2HttpMessageConverter JSON_CONVERTER = new MappingJackson2HttpMessageConverter(
+            new ObjectMapper()
+                    .findAndRegisterModules()
+                    .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
+    );
+
     private final RunService runService = org.mockito.Mockito.mock(RunService.class);
     private final EvidenceService evidenceService = org.mockito.Mockito.mock(EvidenceService.class);
     private final MockMvc mockMvc = MockMvcBuilders.standaloneSetup(new RunController(runService, evidenceService))
             .setControllerAdvice(new GlobalExceptionHandler())
+            .setMessageConverters(JSON_CONVERTER)
             .addFilters(new RequestIdFilter())
             .build();
 
@@ -138,6 +149,40 @@ class RunControllerTest {
                 .andExpect(jsonPath("$.data.stepKey").value("step_001_goto"))
                 .andExpect(jsonPath("$.data.status").value("PASSED"))
                 .andExpect(jsonPath("$.meta.requestId").value("req_run_step_detail"));
+    }
+
+    @Test
+    void eventsReturnsPersistedRunEventList() throws Exception {
+        UUID runId = UUID.randomUUID();
+        UUID stepId = UUID.randomUUID();
+        UUID eventId = UUID.randomUUID();
+        when(runService.listRunEvents(runId)).thenReturn(List.of(new RunEventResponse(
+                eventId,
+                runId,
+                stepId,
+                "step_002_submit",
+                "STEP_FAILED",
+                "RUNNER",
+                Map.of(
+                        "message", "locator click timed out",
+                        "failureCode", "RUNNER_TIMEOUT"
+                ),
+                OffsetDateTime.parse("2026-04-28T10:00:03+09:00")
+        )));
+
+        mockMvc.perform(get("/api/runs/{runId}/events", runId)
+                        .header("X-Request-Id", "req_run_events"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].id").value(eventId.toString()))
+                .andExpect(jsonPath("$.data[0].runId").value(runId.toString()))
+                .andExpect(jsonPath("$.data[0].stepId").value(stepId.toString()))
+                .andExpect(jsonPath("$.data[0].stepKey").value("step_002_submit"))
+                .andExpect(jsonPath("$.data[0].eventType").value("STEP_FAILED"))
+                .andExpect(jsonPath("$.data[0].eventSource").value("RUNNER"))
+                .andExpect(jsonPath("$.data[0].payload.message").value("locator click timed out"))
+                .andExpect(jsonPath("$.data[0].payload.failureCode").value("RUNNER_TIMEOUT"))
+                .andExpect(jsonPath("$.data[0].occurredAt").value("2026-04-28T10:00:03+09:00"))
+                .andExpect(jsonPath("$.meta.requestId").value("req_run_events"));
     }
 
     @Test

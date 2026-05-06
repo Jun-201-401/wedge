@@ -11,6 +11,7 @@ import static org.mockito.Mockito.when;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.wedge.common.error.BusinessException;
 import com.wedge.run.api.dto.RunCreateRequest;
+import com.wedge.run.api.dto.RunEventResponse;
 import com.wedge.run.api.dto.RunResponse;
 import com.wedge.run.application.RunExecutionRequestSource;
 import com.wedge.run.domain.AnalysisStatus;
@@ -131,6 +132,36 @@ class RunPersistenceAdapterTest {
         assertThat(response).isPresent();
         assertThat(response.orElseThrow().stepKey()).isEqualTo("step_001_goto");
         assertThat(response.orElseThrow().status()).isEqualTo(StepStatus.PASSED);
+    }
+
+    @Test
+    void listRunEventsMapsStoredEventRowsToApiResponses() {
+        UUID runId = UUID.randomUUID();
+        UUID stepId = UUID.randomUUID();
+        RunEventRecord event = new RunEventRecord();
+        event.setId(UUID.randomUUID());
+        event.setRunId(runId);
+        event.setStepId(stepId);
+        event.setStepKey("step_002_submit");
+        event.setEventType("STEP_FAILED");
+        event.setSource("RUNNER");
+        event.setPayloadJson("{\"message\":\"locator click timed out\",\"failureCode\":\"RUNNER_TIMEOUT\"}");
+        event.setOccurredAt(OffsetDateTime.parse("2026-04-28T10:00:03+09:00"));
+        when(runMapper.findEventsByRunId(runId)).thenReturn(List.of(event));
+
+        List<RunEventResponse> events = adapter().listRunEvents(runId);
+
+        assertThat(events).hasSize(1);
+        assertThat(events.get(0).id()).isEqualTo(event.getId());
+        assertThat(events.get(0).runId()).isEqualTo(runId);
+        assertThat(events.get(0).stepId()).isEqualTo(stepId);
+        assertThat(events.get(0).stepKey()).isEqualTo("step_002_submit");
+        assertThat(events.get(0).eventType()).isEqualTo("STEP_FAILED");
+        assertThat(events.get(0).eventSource()).isEqualTo("RUNNER");
+        assertThat(events.get(0).payload())
+                .containsEntry("message", "locator click timed out")
+                .containsEntry("failureCode", "RUNNER_TIMEOUT");
+        assertThat(events.get(0).occurredAt()).isEqualTo(event.getOccurredAt());
     }
 
     @Test

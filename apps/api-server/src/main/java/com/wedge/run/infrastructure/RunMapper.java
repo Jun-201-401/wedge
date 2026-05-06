@@ -23,6 +23,8 @@ public interface RunMapper {
 
     Optional<RunStepRecord> findStepByRunIdAndStepKey(@Param("runId") UUID runId, @Param("stepKey") String stepKey);
 
+    List<RunEventRecord> findEventsByRunId(@Param("runId") UUID runId);
+
     int insert(RunRecord run);
 
     int insertStep(RunStepRecord step);
