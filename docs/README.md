@@ -23,5 +23,6 @@
 - `wedge_frontend_architecture.md` — `apps/web` 프론트엔드 스택과 경계
 - `wedge_runner_architecture.md` — `apps/runner` 실행 구조와 경계
 - `wedge_api_spec.md` — 최종 human-readable API 명세서
+- `runner_agent_runtime_implementation_plan.md` — Runner Agent Runtime 후속 구현 계획과 contract-first 작업 순서
 - `wedge_schema.sql` — 현재 PostgreSQL DDL 기준
 - `git_conventions.md` — commit/PR 규칙

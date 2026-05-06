@@ -136,8 +136,9 @@ Discovery 결과에서 생성한 추천 시나리오 카드다.
 경계:
 
 - Authoring job/result는 별도 실행 DSL이 아니다. 후보는 기존 `ScenarioPlan` schema를 만족해야 한다.
-- Runner는 이 authoring job/result를 읽지 않는다. Runner는 `test_run`에 고정된 ScenarioPlan만 실행한다.
+- Runner는 이 authoring job/result를 읽지 않는다. ScenarioAuthoring 기반 Run 경로에서 Runner는 `test_run`에 고정된 ScenarioPlan만 실행한다.
 - Authoring job/result는 browser-control state를 저장하지 않는다. 브라우저 evidence는 Discovery/Run checkpoint 계층에만 저장한다.
+- Runner Agent Runtime은 이 authoring DB 경계를 재사용하지 않는다. Agent 실행은 별도 `AgentTask` 입력과 `AgentTrace` 결과를 기준으로 설계하며, 필요한 DB/trace 저장 방식은 `docs/runner_agent_runtime_implementation_plan.md`에 따라 contract-first로 추가한다.
 
 ### test_run Discovery linkage
 
