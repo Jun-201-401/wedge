@@ -1,4 +1,5 @@
-import { appendFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { appendFile, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import type { RunnerConfig } from "../config/index.ts";
 import { errorMessage, logOperationalEvent, toIsoTimestamp } from "../shared/utils.ts";
@@ -163,15 +164,44 @@ async function tryWriteLockFile(path: string, record: CallbackOutboxLockRecord):
 async function readCallbackOutboxLockRecord(
   config: Pick<RunnerConfig, "callbackOutboxLockFile">
 ): Promise<CallbackOutboxLockRecord | null> {
+  return readCallbackOutboxLockRecordFromPath(config.callbackOutboxLockFile);
+}
+
+async function readCallbackOutboxLockRecordFromPath(path: string): Promise<CallbackOutboxLockRecord | null> {
   try {
-    const raw = await readFile(config.callbackOutboxLockFile, "utf8");
-    return JSON.parse(raw.trim()) as CallbackOutboxLockRecord;
+    const raw = await readFile(path, "utf8");
+    return parseCallbackOutboxLockRecord(raw);
   } catch (error) {
     if (errorMessage(error).includes("ENOENT")) {
       return null;
     }
 
     throw error;
+  }
+}
+
+function parseCallbackOutboxLockRecord(raw: string): CallbackOutboxLockRecord | null {
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(trimmed) as Partial<CallbackOutboxLockRecord>;
+    if (
+      typeof parsed.workerId !== "string" ||
+      typeof parsed.acquiredAt !== "string" ||
+      (parsed.heartbeatAt !== undefined && typeof parsed.heartbeatAt !== "string")
+    ) {
+      return null;
+    }
+    return {
+      workerId: parsed.workerId,
+      acquiredAt: parsed.acquiredAt,
+      heartbeatAt: parsed.heartbeatAt ?? parsed.acquiredAt
+    };
+  } catch {
+    return null;
   }
 }
 
@@ -190,10 +220,9 @@ function createLockHandle(path: string, lockRecord: CallbackOutboxLockRecord): C
       const nextHeartbeatAt = toIsoTimestamp();
 
       try {
-        const raw = await readFile(path, "utf8");
-        const currentLock = JSON.parse(raw.trim()) as CallbackOutboxLockRecord;
+        const currentLock = await readCallbackOutboxLockRecordFromPath(path);
 
-        if (currentLock.workerId !== lockRecord.workerId || currentLock.acquiredAt !== lockRecord.acquiredAt) {
+        if (!currentLock || currentLock.workerId !== lockRecord.workerId || currentLock.acquiredAt !== lockRecord.acquiredAt) {
           return false;
         }
 
@@ -201,7 +230,7 @@ function createLockHandle(path: string, lockRecord: CallbackOutboxLockRecord): C
           ...currentLock,
           heartbeatAt: nextHeartbeatAt
         };
-        await writeFile(path, `${JSON.stringify(nextLock)}\n`, "utf8");
+        await replaceCallbackLockFile(path, nextLock);
         lockRecord.heartbeatAt = nextHeartbeatAt;
         return true;
       } catch (error) {
@@ -214,10 +243,9 @@ function createLockHandle(path: string, lockRecord: CallbackOutboxLockRecord): C
     },
     release: async () => {
       try {
-        const raw = await readFile(path, "utf8");
-        const currentLock = JSON.parse(raw.trim()) as CallbackOutboxLockRecord;
+        const currentLock = await readCallbackOutboxLockRecordFromPath(path);
 
-        if (currentLock.workerId !== lockRecord.workerId || currentLock.acquiredAt !== lockRecord.acquiredAt) {
+        if (!currentLock || currentLock.workerId !== lockRecord.workerId || currentLock.acquiredAt !== lockRecord.acquiredAt) {
           return;
         }
       } catch (error) {
@@ -231,6 +259,17 @@ function createLockHandle(path: string, lockRecord: CallbackOutboxLockRecord): C
       await rm(path, { force: true });
     }
   };
+}
+
+async function replaceCallbackLockFile(path: string, record: CallbackOutboxLockRecord): Promise<void> {
+  const tempPath = `${path}.${process.pid}.${randomUUID()}.tmp`;
+  try {
+    await writeFile(tempPath, `${JSON.stringify(record)}\n`, { encoding: "utf8", flag: "wx" });
+    await rename(tempPath, path);
+  } catch (error) {
+    await rm(tempPath, { force: true });
+    throw error;
+  }
 }
 
 async function readCallbackOutboxRecordsRaw(
