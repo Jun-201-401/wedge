@@ -3,7 +3,7 @@ import type { CallbackClient } from "../callback/index.ts";
 import type { RunnerConfig } from "../config/index.ts";
 import type { CapturePipeline } from "../capture/index.ts";
 import { createDeliverySummary, mergeDeliveryIssues, type DeliverySummary } from "../delivery/index.ts";
-import { executeScenario, type ScenarioExecutionSummary } from "../scenario/executor/index.ts";
+import { executeScenario, ScenarioExecutionError, type ScenarioExecutionSummary } from "../scenario/executor/index.ts";
 import type { ArtifactStore } from "../storage/index.ts";
 import type { RunExecuteMessage } from "../shared/contracts.ts";
 import { emitAcceptedCallback, emitFailedCallback, emitFinishedCallback } from "./callback-policy.ts";
@@ -89,7 +89,8 @@ export function registerWorker({
           workerId: config.workerId,
           error,
           accepted,
-          hasSession: session !== undefined
+          hasSession: session !== undefined,
+          summary: error instanceof ScenarioExecutionError ? error.summary : undefined
         });
 
         throw error;

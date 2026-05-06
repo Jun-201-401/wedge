@@ -60,6 +60,7 @@
             "STEP_STARTED",
             "ACTION_EXECUTED",
             "STEP_COMPLETED",
+            "STEP_FAILED",
             "CONSOLE_ERROR",
             "NETWORK_ERROR",
             "ISSUE_SIGNAL_DETECTED"
@@ -245,6 +246,9 @@
             "PARTIAL",
             "FINAL"
           ]
+        },
+        "summary": {
+          "$ref": "#/$defs/Finished/properties/summary"
         }
       },
       "required": [

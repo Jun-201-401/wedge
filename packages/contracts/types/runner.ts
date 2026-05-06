@@ -406,6 +406,7 @@ export interface StepEvent {
     | "STEP_STARTED"
     | "ACTION_EXECUTED"
     | "STEP_COMPLETED"
+    | "STEP_FAILED"
     | "CONSOLE_ERROR"
     | "NETWORK_ERROR"
     | "ISSUE_SIGNAL_DETECTED";
@@ -485,4 +486,9 @@ export interface RunnerFailedPayload {
   failureCode: string;
   failureMessage: string;
   resultCompleteness: "NONE" | "PARTIAL" | "FINAL";
+  summary?: {
+    completedStepCount: number;
+    failedStepCount: number;
+    stopped: boolean;
+  };
 }
