@@ -125,7 +125,7 @@
           AND step_key = #{stepKey}
     </select>
 
-    <select id="findEventsByRunId" resultMap="RunEventRecordResultMap">
+    <select id="findEvents" resultMap="RunEventRecordResultMap">
         SELECT e.id,
                e.run_id,
                e.step_id,
@@ -137,7 +137,22 @@
         FROM test_run_event e
         LEFT JOIN test_run_step s ON s.id = e.step_id
         WHERE e.run_id = #{runId}
+        <if test="stepId != null">
+            AND e.step_id = #{stepId}
+        </if>
+        <if test="eventType != null">
+            AND e.event_type = #{eventType}
+        </if>
+        <if test="cursorEventId != null">
+            AND (e.occurred_at, e.id) &gt; (
+                SELECT cursor_event.occurred_at, cursor_event.id
+                FROM test_run_event cursor_event
+                WHERE cursor_event.run_id = #{runId}
+                  AND cursor_event.id = #{cursorEventId}
+            )
+        </if>
         ORDER BY e.occurred_at ASC, e.id ASC
+        LIMIT #{limit}
     </select>
 
     <insert id="insert" parameterType="com.wedge.run.infrastructure.RunRecord">

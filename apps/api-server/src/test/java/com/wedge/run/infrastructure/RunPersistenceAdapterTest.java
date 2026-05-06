@@ -147,9 +147,10 @@ class RunPersistenceAdapterTest {
         event.setSource("RUNNER");
         event.setPayloadJson("{\"message\":\"locator click timed out\",\"failureCode\":\"RUNNER_TIMEOUT\"}");
         event.setOccurredAt(OffsetDateTime.parse("2026-04-28T10:00:03+09:00"));
-        when(runMapper.findEventsByRunId(runId)).thenReturn(List.of(event));
+        UUID cursorEventId = UUID.randomUUID();
+        when(runMapper.findEvents(runId, stepId, "STEP_FAILED", cursorEventId, 21)).thenReturn(List.of(event));
 
-        List<RunEventResponse> events = adapter().listRunEvents(runId);
+        List<RunEventResponse> events = adapter().listRunEvents(runId, stepId, "STEP_FAILED", cursorEventId, 21);
 
         assertThat(events).hasSize(1);
         assertThat(events.get(0).id()).isEqualTo(event.getId());
@@ -162,6 +163,7 @@ class RunPersistenceAdapterTest {
                 .containsEntry("message", "locator click timed out")
                 .containsEntry("failureCode", "RUNNER_TIMEOUT");
         assertThat(events.get(0).occurredAt()).isEqualTo(event.getOccurredAt());
+        verify(runMapper).findEvents(runId, stepId, "STEP_FAILED", cursorEventId, 21);
     }
 
     @Test
