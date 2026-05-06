@@ -274,6 +274,7 @@ export type ScenarioAuthoringProviderType =
   | "OTHER";
 
 export interface ScenarioAuthoringSelectedRecommendation {
+  recommendation_id?: string | null;
   scenario_type: DiscoveryFlowType;
   recommendation_level: DiscoveryRecommendationLevel;
   confidence: number;
@@ -382,6 +383,7 @@ export interface DiscoverySummaryPayload {
   pricingEntrypointCount: number;
   checkoutEntrypointCount: number;
   scenarioRecommendations: Array<{
+    recommendationId?: string | null;
     scenarioType: DiscoveryFlowType;
     recommendationLevel: DiscoveryRecommendationLevel;
     confidence: number;

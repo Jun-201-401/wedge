@@ -226,6 +226,32 @@ class ScenarioAuthoringJobServiceTest {
     }
 
     @Test
+    void createJobRejectsUnavailableRecommendationBeforeCandidateIsCreated() {
+        when(discoveryService.findDiscovery(DISCOVERY_ID)).thenReturn(discovery());
+        ScenarioRecommendation unavailable = recommendation();
+        unavailable.setRecommendationLevel("NOT_AVAILABLE");
+        unavailable.setConfidence(BigDecimal.ZERO);
+        unavailable.setEvidenceRefsJsonb("[]");
+        when(scenarioRecommendationMapper.findByDiscoveryId(DISCOVERY_ID)).thenReturn(List.of(unavailable));
+
+        assertThatThrownBy(() -> service.createJob(createRequest(), USER_ID, null))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("HIGH or MEDIUM");
+    }
+
+    @Test
+    void createJobRejectsRecommendationWithoutEvidence() {
+        when(discoveryService.findDiscovery(DISCOVERY_ID)).thenReturn(discovery());
+        ScenarioRecommendation recommendation = recommendation();
+        recommendation.setEvidenceRefsJsonb("[]");
+        when(scenarioRecommendationMapper.findByDiscoveryId(DISCOVERY_ID)).thenReturn(List.of(recommendation));
+
+        assertThatThrownBy(() -> service.createJob(createRequest(), USER_ID, null))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("evidence");
+    }
+
+    @Test
     void createJobFailsValidationInsteadOfUsingHardCodedUrlWhenDiscoveryUrlIsMissing() {
         SiteDiscovery discovery = discovery();
         discovery.setInputUrl("");
@@ -258,9 +284,9 @@ class ScenarioAuthoringJobServiceTest {
         job.setCandidatesJsonb(objectMapper.writeValueAsString(List.of(Map.of(
                 "candidate_id", "rule_based_landing_cta_001",
                 "scenario_plan", Map.of("plan_id", "plan_001"),
-                "validation", Map.of("schema_valid", true)
+                "validation", validValidation()
         ))));
-        job.setValidationJsonb("{\"schema_valid\":true}");
+        job.setValidationJsonb(objectMapper.writeValueAsString(validValidation()));
         job.setProvenanceJsonb("{}");
         job.setFailureJsonb("{}");
         job.setCreatedAt(OffsetDateTime.now());
@@ -276,6 +302,29 @@ class ScenarioAuthoringJobServiceTest {
         assertThat(response.confirmedCandidate().get("candidate_id")).isEqualTo("rule_based_landing_cta_001");
         verify(scenarioAuthoringJobMapper).confirmCandidate(jobId, "rule_based_landing_cta_001", USER_ID);
         verify(projectAccessService).isProjectMember(PROJECT_ID, USER_ID);
+    }
+
+    @Test
+    void confirmCandidateRejectsCandidateThatFailedValidation() throws Exception {
+        UUID jobId = UUID.randomUUID();
+        ScenarioAuthoringJob job = confirmedJob(jobId, null);
+        job.setCandidatesJsonb(objectMapper.writeValueAsString(List.of(Map.of(
+                "candidate_id", "rule_based_landing_cta_001",
+                "scenario_plan", Map.of("plan_id", "plan_001"),
+                "validation", Map.of(
+                        "schema_valid", true,
+                        "safety_valid", false,
+                        "fit_requirements_valid", true,
+                        "errors", List.of(Map.of("code", "unsafe_candidate", "message", "unsafe")),
+                        "warnings", List.of()
+                )
+        ))));
+        when(scenarioAuthoringJobMapper.findById(jobId)).thenReturn(Optional.of(job));
+        when(projectAccessService.isProjectMember(PROJECT_ID, USER_ID)).thenReturn(true);
+
+        assertThatThrownBy(() -> service.confirmCandidate(jobId, new ScenarioAuthoringConfirmRequest("rule_based_landing_cta_001"), USER_ID))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("failed validation");
     }
 
     @Test
@@ -334,9 +383,9 @@ class ScenarioAuthoringJobServiceTest {
         job.setCandidatesJsonb(objectMapper.writeValueAsString(List.of(Map.of(
                 "candidate_id", "rule_based_landing_cta_001",
                 "scenario_plan", Map.of("plan_id", "plan_001"),
-                "validation", Map.of("schema_valid", true)
+                "validation", validValidation()
         ))));
-        job.setValidationJsonb("{\"schema_valid\":true}");
+        job.setValidationJsonb(objectMapper.writeValueAsString(validValidation()));
         job.setProvenanceJsonb("{}");
         job.setFailureJsonb("{}");
         job.setConfirmedCandidateId(confirmedCandidateId);
@@ -344,6 +393,16 @@ class ScenarioAuthoringJobServiceTest {
         job.setUpdatedAt(OffsetDateTime.now());
         job.setExpiresAt(OffsetDateTime.now().plusMinutes(10));
         return job;
+    }
+
+    private Map<String, Object> validValidation() {
+        return Map.of(
+                "schema_valid", true,
+                "safety_valid", true,
+                "fit_requirements_valid", true,
+                "errors", List.of(),
+                "warnings", List.of()
+        );
     }
 
     private ScenarioRecommendation recommendation() {

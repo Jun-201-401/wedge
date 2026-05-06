@@ -2686,6 +2686,10 @@ components:
     ScenarioRecommendation:
       type: object
       properties:
+        recommendationId:
+          type: string
+          format: uuid
+          nullable: true
         scenarioType:
           $ref: '#/components/schemas/ScenarioType'
         recommendationLevel:

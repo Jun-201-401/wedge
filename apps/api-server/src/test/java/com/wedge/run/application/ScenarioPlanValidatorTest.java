@@ -61,6 +61,25 @@ class ScenarioPlanValidatorTest {
                 .hasMessageContaining("required_flow_type");
     }
 
+    @Test
+    void validateScenarioPlanAcceptsStopWhenWithTopLevelStopCondition() {
+        Map<String, Object> plan = validPlan();
+        plan.put("steps", List.of(firstStep(plan), stopStep(true)));
+
+        assertThatCode(() -> validator.validateScenarioPlan(plan, URI.create("https://example.com"), "desktop"))
+                .doesNotThrowAnyException();
+    }
+
+    @Test
+    void validateScenarioPlanRejectsStopWhenWithoutTopLevelStopCondition() {
+        Map<String, Object> plan = validPlan();
+        plan.put("steps", List.of(firstStep(plan), stopStep(false)));
+
+        assertThatThrownBy(() -> validator.validateScenarioPlan(plan, URI.create("https://example.com"), "desktop"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("stop_condition");
+    }
+
     private Map<String, Object> validPlan() {
         return new LinkedHashMap<>(Map.of(
                 "schema_version", "0.5",
@@ -95,6 +114,21 @@ class ScenarioPlanValidatorTest {
                         "checkpoint", true
                 )))
         ));
+    }
+
+    private Map<String, Object> stopStep(boolean includeStopCondition) {
+        Map<String, Object> step = new LinkedHashMap<>(Map.of(
+                "step_id", "step_002_stop_before_submit",
+                "stage", "COMMIT",
+                "description", "제출 직전에 중단",
+                "action", Map.of("type", "stop_when"),
+                "settle_strategy", Map.of("type", "none", "timeout_ms", 0),
+                "checkpoint", false
+        ));
+        if (includeStopCondition) {
+            step.put("stop_condition", Map.of("condition", "before_real_submit"));
+        }
+        return step;
     }
 
     @SuppressWarnings("unchecked")

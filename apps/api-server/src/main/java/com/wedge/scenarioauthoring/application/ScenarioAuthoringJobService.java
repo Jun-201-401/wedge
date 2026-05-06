@@ -18,7 +18,9 @@ import com.wedge.scenarioauthoring.api.dto.ScenarioAuthoringProviderPolicyReques
 import com.wedge.scenarioauthoring.domain.ScenarioAuthoringJob;
 import com.wedge.scenarioauthoring.domain.ScenarioAuthoringStatus;
 import com.wedge.scenarioauthoring.infrastructure.ScenarioAuthoringJobMapper;
+import java.math.BigDecimal;
 import java.time.OffsetDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -33,6 +35,8 @@ import org.springframework.transaction.annotation.Transactional;
 public class ScenarioAuthoringJobService {
     private static final List<String> DEFAULT_PROVIDER_ORDER = List.of("RULE_BASED");
     private static final Set<String> AUTHORABLE_SCENARIO_TYPES = Set.of("LANDING_CTA", "SIGNUP_LEAD_FORM", "PRICING", "PURCHASE_CHECKOUT", "CONTACT", "CONTENT_ONLY");
+    private static final Set<String> AUTHORABLE_RECOMMENDATION_LEVELS = Set.of("HIGH", "MEDIUM");
+    private static final BigDecimal MIN_AUTHORING_RECOMMENDATION_CONFIDENCE = new BigDecimal("0.55");
     private static final int DEFAULT_TIMEOUT_MS = 10_000;
     private static final int MAX_IDEMPOTENCY_KEY_LENGTH = 160;
 
@@ -89,6 +93,7 @@ public class ScenarioAuthoringJobService {
                 .filter(item -> request.candidateId().equals(String.valueOf(item.get("candidate_id"))))
                 .findFirst()
                 .orElseThrow(() -> new BusinessException(ErrorCode.VALIDATION_FAILED, "ScenarioAuthoring candidate was not found."));
+        requireCandidateValidationPassed(candidate);
         if (job.getConfirmedCandidateId() != null && job.getConfirmedCandidateId().equals(request.candidateId())) {
             return new ScenarioAuthoringConfirmResponse(toResponse(job), candidate);
         }
@@ -147,7 +152,7 @@ public class ScenarioAuthoringJobService {
         job.setSourceDiscoveryId(discovery.getId());
         job.setCorrelationId(UUID.randomUUID().toString());
         job.setIdempotencyKey(idempotencyKey);
-        job.setStatus((boolean) validation.get("schema_valid") ? ScenarioAuthoringStatus.SUCCEEDED : ScenarioAuthoringStatus.FAILED);
+        job.setStatus(hasValidCandidate(candidates) ? ScenarioAuthoringStatus.SUCCEEDED : ScenarioAuthoringStatus.FAILED);
         job.setInputJsonb(toJson(input));
         job.setProviderPolicyJsonb(toJson(providerPolicy));
         job.setProviderTraceJsonb(toJson(trace));
@@ -225,16 +230,30 @@ public class ScenarioAuthoringJobService {
         if (suggestedStartUrl == null || suggestedStartUrl.isBlank()) {
             suggestedStartUrl = discovery.getInputUrl();
         }
+        List<String> evidenceRefs = readStringList(recommendation.getEvidenceRefsJsonb());
+        requireAuthorableRecommendation(recommendation, evidenceRefs);
         return Map.of(
                 "recommendation_id", recommendation.getId().toString(),
                 "scenario_type", recommendation.getScenarioType(),
                 "recommendation_level", recommendation.getRecommendationLevel(),
                 "confidence", recommendation.getConfidence(),
                 "reason", recommendation.getReason(),
-                "evidence_refs", readStringList(recommendation.getEvidenceRefsJsonb()),
+                "evidence_refs", evidenceRefs,
                 "suggested_start_url", suggestedStartUrl,
                 "suggested_target", readMap(recommendation.getSuggestedTargetJsonb())
         );
+    }
+
+    private void requireAuthorableRecommendation(ScenarioRecommendation recommendation, List<String> evidenceRefs) {
+        if (!AUTHORABLE_RECOMMENDATION_LEVELS.contains(recommendation.getRecommendationLevel())) {
+            throw new BusinessException(ErrorCode.VALIDATION_FAILED, "ScenarioAuthoring requires a HIGH or MEDIUM Discovery recommendation.");
+        }
+        if (recommendation.getConfidence() == null || recommendation.getConfidence().compareTo(MIN_AUTHORING_RECOMMENDATION_CONFIDENCE) < 0) {
+            throw new BusinessException(ErrorCode.VALIDATION_FAILED, "ScenarioAuthoring requires a Discovery recommendation above the minimum confidence threshold.");
+        }
+        if (evidenceRefs.isEmpty()) {
+            throw new BusinessException(ErrorCode.VALIDATION_FAILED, "ScenarioAuthoring requires Discovery recommendation evidence.");
+        }
     }
 
     private String requestedScenarioType(ScenarioAuthoringJobCreateRequest request) {
@@ -294,9 +313,55 @@ public class ScenarioAuthoringJobService {
         if (candidates.isEmpty()) {
             return Map.of("schema_valid", false, "safety_valid", false, "fit_requirements_valid", false, "errors", List.of(), "warnings", List.of(Map.of("code", "no_candidates", "message", "No ScenarioPlan candidates were produced.")));
         }
-        @SuppressWarnings("unchecked")
-        Map<String, Object> validation = (Map<String, Object>) candidates.get(0).get("validation");
-        return validation;
+        List<Map<String, Object>> validations = candidates.stream()
+                .map(this::candidateValidation)
+                .toList();
+        List<Object> errors = new ArrayList<>();
+        List<Object> warnings = new ArrayList<>();
+        validations.forEach(validation -> {
+            errors.addAll(readObjectList(validation.get("errors")));
+            warnings.addAll(readObjectList(validation.get("warnings")));
+        });
+        boolean validCandidateExists = hasValidCandidate(candidates);
+        return Map.of(
+                "schema_valid", validCandidateExists,
+                "safety_valid", validCandidateExists,
+                "fit_requirements_valid", validCandidateExists,
+                "errors", errors,
+                "warnings", warnings
+        );
+    }
+
+    private boolean hasValidCandidate(List<Map<String, Object>> candidates) {
+        return candidates.stream().anyMatch(this::candidateValidationPassed);
+    }
+
+    private void requireCandidateValidationPassed(Map<String, Object> candidate) {
+        if (!candidateValidationPassed(candidate)) {
+            throw new BusinessException(ErrorCode.VALIDATION_FAILED, "ScenarioAuthoring candidate failed validation.");
+        }
+    }
+
+    private boolean candidateValidationPassed(Map<String, Object> candidate) {
+        Map<String, Object> validation = candidateValidation(candidate);
+        return booleanValue(validation.get("schema_valid"))
+                && booleanValue(validation.get("safety_valid"))
+                && booleanValue(validation.get("fit_requirements_valid"))
+                && readObjectList(validation.get("errors")).isEmpty();
+    }
+
+    private Map<String, Object> candidateValidation(Map<String, Object> candidate) {
+        Object validation = candidate.get("validation");
+        if (validation instanceof Map<?, ?> rawMap) {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> validationMap = (Map<String, Object>) rawMap;
+            return validationMap;
+        }
+        return Map.of("schema_valid", false, "safety_valid", false, "fit_requirements_valid", false, "errors", List.of(Map.of("code", "candidate_validation_missing", "message", "ScenarioAuthoring candidate validation is missing.")), "warnings", List.of());
+    }
+
+    private boolean booleanValue(Object value) {
+        return value instanceof Boolean booleanValue && booleanValue;
     }
 
     private Map<String, Object> provenance(SiteDiscovery discovery, ScenarioAuthoringJobCreateRequest request, Map<String, Object> selectedRecommendation) {
@@ -403,6 +468,13 @@ public class ScenarioAuthoringJobService {
         }
         if (value instanceof List<?> list) {
             return list.stream().map(String::valueOf).toList();
+        }
+        return List.of();
+    }
+
+    private List<Object> readObjectList(Object value) {
+        if (value instanceof List<?> list) {
+            return List.copyOf(list);
         }
         return List.of();
     }

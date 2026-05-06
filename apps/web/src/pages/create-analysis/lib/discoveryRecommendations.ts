@@ -16,6 +16,7 @@ export interface ScenarioRecommendationViewModel {
   confidence: number;
   isRunnable: boolean;
   sourceDiscoveryId?: string;
+  recommendationId?: string | null;
   evidenceRefs: string[];
   suggestedStartUrl?: string | null;
   suggestedTarget?: Record<string, unknown> | null;
@@ -89,12 +90,25 @@ function toneFor(level: ScenarioRecommendationLevel): ScenarioTone {
   return 'unavailable';
 }
 
-function confidenceLabel(confidence: number) {
+function detectionSignalLabel(confidence: number) {
   if (!Number.isFinite(confidence)) {
-    return '0%';
+    return '없음';
   }
 
-  return `${Math.round(Math.max(0, Math.min(1, confidence)) * 100)}%`;
+  const normalized = Math.max(0, Math.min(1, confidence));
+  if (normalized >= 0.75) {
+    return '높음';
+  }
+
+  if (normalized >= 0.55) {
+    return '보통';
+  }
+
+  if (normalized > 0) {
+    return '낮음';
+  }
+
+  return '없음';
 }
 
 function evidenceLabel(recommendation: ApiScenarioRecommendation) {
@@ -112,7 +126,7 @@ function evidenceLabel(recommendation: ApiScenarioRecommendation) {
 
 export function toScenarioRecommendationViewModel(recommendation: ApiScenarioRecommendation, sourceDiscoveryId?: string): ScenarioRecommendationViewModel {
   const copy = SCENARIO_COPY[recommendation.scenarioType] ?? SCENARIO_COPY.CUSTOM_GUIDED;
-  const isRunnable = recommendation.recommendationLevel !== 'NOT_AVAILABLE';
+  const isRunnable = recommendation.recommendationLevel === 'HIGH' || recommendation.recommendationLevel === 'MEDIUM';
   const summaryPrefix = isRunnable ? copy.availableSummary : copy.unavailableSummary;
   const reason = recommendation.reason?.trim();
 
@@ -124,11 +138,12 @@ export function toScenarioRecommendationViewModel(recommendation: ApiScenarioRec
     title: copy.title,
     summary: reason ? `${summaryPrefix} ${reason}` : summaryPrefix,
     evidence: evidenceLabel(recommendation),
-    actionLabel: isRunnable ? '이 흐름으로 진단' : '직접 설정하기',
-    confidenceLabel: confidenceLabel(recommendation.confidence),
+    actionLabel: isRunnable ? '이 흐름으로 진단' : '직접 설정 필요',
+    confidenceLabel: detectionSignalLabel(recommendation.confidence),
     confidence: recommendation.confidence,
     isRunnable,
     sourceDiscoveryId,
+    recommendationId: recommendation.recommendationId ?? null,
     evidenceRefs: recommendation.evidenceRefs ?? [],
     suggestedStartUrl: recommendation.suggestedStartUrl ?? null,
     suggestedTarget: recommendation.suggestedTarget ?? null,

@@ -49,12 +49,14 @@ test('create analysis recommendations use a wider agent-style results card', () 
   assert.match(source, /function RecommendationAgent/);
   assert.match(source, /className="create-analysis-panel create-analysis-panel--recommendations"/);
   assert.match(source, /className="recommendation-agent"/);
-  assert.match(source, /Scenario match complete/);
+  assert.match(source, /Discovery signals ready/);
+  assert.match(source, /DOM 기반 사전 탐색 결과/);
   assert.match(source, /scenario-card__confidence/);
   assert.match(source, /recommendation-agent__empty/);
   assert.match(source, /className="recommendation-agent__count"/);
   assert.match(source, /onChooseScenario=\{chooseScenario\}/);
   assert.match(source, /onClick=\{\(\) => onChooseScenario\(scenario\)\}/);
+  assert.match(source, /disabled=\{!scenario\.isRunnable\}/);
 
   assert.match(css, /\.create-analysis-panel--recommendations\s*\{[\s\S]*?width: min\(100%, 66rem\)/);
   assert.match(css, /\.preflight-agent,\s*\n\.recommendation-agent,\s*\n\.scenario-setup-agent,\s*\n\.ready-agent\s*\{[\s\S]*?font-family: 'Pretendard Variable', Pretendard, 'Inter', sans-serif/);

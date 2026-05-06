@@ -380,6 +380,8 @@ function PreflightAgent({ submittedUrl, discoveryState, onRetry, onEditUrl }: Pr
 }
 
 function RecommendationAgent({ submittedUrl, scenarios, emptyMessage, onChooseScenario }: RecommendationAgentProps) {
+  const authorableScenarioCount = scenarios.filter((scenario) => scenario.isRunnable).length;
+
   return (
     <section className="create-analysis-panel create-analysis-panel--recommendations" aria-labelledby="recommendations-title">
       <div className="recommendation-agent">
@@ -398,18 +400,21 @@ function RecommendationAgent({ submittedUrl, scenarios, emptyMessage, onChooseSc
               <h2 id="recommendations-title">이 사이트에서 가능한 진단 흐름을 찾았어요</h2>
               <div className="recommendation-agent__header-status">
                 <span className="recommendation-agent__header-status-dot" aria-hidden="true" />
-                <span>Scenario match complete</span>
+                <span>Discovery signals ready</span>
               </div>
             </div>
           </div>
 
-          <div className="recommendation-agent__count" aria-label={`추천 흐름 ${scenarios.length}개`}>
-            <span className="recommendation-agent__count-value">{scenarios.length}</span>
+          <div className="recommendation-agent__count" aria-label={`실행 가능한 추천 흐름 ${authorableScenarioCount}개`}>
+            <span className="recommendation-agent__count-value">{authorableScenarioCount}</span>
             <span className="recommendation-agent__count-label">found</span>
           </div>
         </div>
 
         <p className="recommendation-agent__url">{submittedUrl}</p>
+        <p className="recommendation-agent__limitation">
+          DOM 기반 사전 탐색 결과입니다. 이미지 안 텍스트, 숨겨진 메뉴, 로그인 뒤 흐름은 놓칠 수 있어요.
+        </p>
         <div className="recommendation-agent__divider" aria-hidden="true" />
 
         {scenarios.length === 0 ? (
@@ -424,9 +429,14 @@ function RecommendationAgent({ submittedUrl, scenarios, emptyMessage, onChooseSc
                 <span className="scenario-card__level">{scenario.level}</span>
                 <h3>{scenario.title}</h3>
                 <p>{scenario.summary}</p>
-                <p className="scenario-card__confidence">신뢰도: {scenario.confidenceLabel}</p>
+                <p className="scenario-card__confidence">탐지 신호: {scenario.confidenceLabel}</p>
                 <p className="scenario-card__evidence">근거: {scenario.evidence}</p>
-                <button type="button" aria-label={`${scenario.title} 흐름으로 진단`} onClick={() => onChooseScenario(scenario)}>
+                <button
+                  type="button"
+                  aria-label={`${scenario.title} 흐름으로 진단`}
+                  disabled={!scenario.isRunnable}
+                  onClick={() => onChooseScenario(scenario)}
+                >
                   {scenario.actionLabel}
                 </button>
               </article>
@@ -818,7 +828,7 @@ export function CreateAnalysisPage() {
   };
 
   const chooseScenario = (scenario: ScenarioRecommendation) => {
-    if (!submittedUrl) {
+    if (!submittedUrl || !scenario.isRunnable) {
       return;
     }
 
@@ -900,6 +910,7 @@ export function CreateAnalysisPage() {
         depthId: selectedDepthId,
         source: 'create-analysis-ready',
         sourceDiscoveryId: selectedScenario.sourceDiscoveryId ?? null,
+        recommendationId: selectedScenario.recommendationId ?? null,
         scenarioType: selectedScenario.scenarioType,
         evidenceRefs: selectedScenario.evidenceRefs,
         suggestedStartUrl: selectedScenario.suggestedStartUrl ?? null,
@@ -910,9 +921,11 @@ export function CreateAnalysisPage() {
         const authoring = await createScenarioAuthoringJob({
           projectId: createRunIds.projectId,
           sourceDiscoveryId: selectedScenario.sourceDiscoveryId,
+          selectedRecommendationId: selectedScenario.recommendationId ?? null,
           requestedGoal: selectedScenario.summary,
           preferredScenarioType: selectedScenario.scenarioType,
           selectedRecommendation: {
+            recommendationId: selectedScenario.recommendationId ?? null,
             scenarioType: selectedScenario.scenarioType,
             recommendationLevel: selectedScenario.level,
             confidence: selectedScenario.confidence,

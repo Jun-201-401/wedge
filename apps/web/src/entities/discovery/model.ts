@@ -36,6 +36,7 @@ export interface DiscoverySummary {
 }
 
 export interface ScenarioRecommendation {
+  recommendationId?: string | null;
   scenarioType: DiscoveryScenarioType;
   recommendationLevel: ScenarioRecommendationLevel;
   confidence: number;

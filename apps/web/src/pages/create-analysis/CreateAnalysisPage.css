@@ -284,6 +284,12 @@
   transform: translateY(-1px);
 }
 
+.scenario-card button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+  transform: none;
+}
+
 .create-analysis-search__send:disabled {
   cursor: not-allowed;
   opacity: 0;
@@ -743,6 +749,14 @@
 .recommendation-agent .scenario-card button {
   background: #334155;
   box-shadow: 0 10px 22px rgba(51, 65, 85, 0.12);
+}
+
+.recommendation-agent__limitation {
+  margin: 0.65rem 0 0;
+  color: #64748b;
+  font-size: 0.82rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
 }
 
 .scenario-setup-agent__selected-flow {

@@ -80,6 +80,7 @@
     "requested_goal": "회원가입 CTA와 폼 입력 직전까지의 흐름을 점검한다.",
     "preferred_scenario_type": "SIGNUP_LEAD_FORM",
     "selected_recommendation": {
+      "recommendation_id": "30000000-0000-4000-8000-000000000011",
       "scenario_type": "SIGNUP_LEAD_FORM",
       "recommendation_level": "HIGH",
       "confidence": 0.84,

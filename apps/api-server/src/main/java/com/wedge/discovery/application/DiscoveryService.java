@@ -108,6 +108,7 @@ public class DiscoveryService {
 
     private ScenarioRecommendationResponse toRecommendationResponse(ScenarioRecommendation recommendation) {
         return new ScenarioRecommendationResponse(
+                recommendation.getId(),
                 recommendation.getScenarioType(),
                 recommendation.getRecommendationLevel(),
                 recommendation.getConfidence(),

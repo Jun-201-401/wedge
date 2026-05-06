@@ -134,3 +134,65 @@ test("[안전 중단] stop_when 조건이 맞지 않으면 simulated session은 
   assert.equal(nonMatchingConditionResult.stopRequested, false);
   await session.close();
 });
+
+test("[안전 중단] stop_when 제출/결제 직전 조건은 URL 매칭 없이 simulated session을 중단한다", async () => {
+  const message = await loadExampleMessage();
+  const browserFactory = createPlaywrightSessionFactory(
+    createRunnerTestConfig({
+      artifactsRoot: join(tmpdir(), "runner-test-artifacts"),
+      callbackLogFile: join(tmpdir(), "runner-test-callbacks.jsonl")
+    })
+  );
+  const session = await browserFactory.createSession({
+    runId: message.payload.runId,
+    plan: message.payload.scenarioPlan
+  });
+
+  const beforeSubmitResult = await session.execute(
+    {
+      type: "stop_when"
+    },
+    {
+      step_id: "step_stop_before_submit",
+      stage: "COMMIT",
+      description: "stop before real submit",
+      action: {
+        type: "stop_when"
+      },
+      settle_strategy: {
+        type: "none",
+        timeout_ms: 0
+      },
+      checkpoint: false,
+      stop_condition: {
+        condition: "before_real_submit"
+      }
+    }
+  );
+
+  const beforePaymentResult = await session.execute(
+    {
+      type: "stop_when"
+    },
+    {
+      step_id: "step_stop_before_payment",
+      stage: "COMMIT",
+      description: "stop before payment commit",
+      action: {
+        type: "stop_when"
+      },
+      settle_strategy: {
+        type: "none",
+        timeout_ms: 0
+      },
+      checkpoint: false,
+      stop_condition: {
+        condition: "before_payment_commit"
+      }
+    }
+  );
+
+  assert.equal(beforeSubmitResult.stopRequested, true);
+  assert.equal(beforePaymentResult.stopRequested, true);
+  await session.close();
+});

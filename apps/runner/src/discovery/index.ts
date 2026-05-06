@@ -61,6 +61,11 @@ interface RawDiscoveryElement {
   inputType: string | null;
   name: string | null;
   placeholder: string | null;
+  ariaLabel: string | null;
+  ariaLabelledByText: string | null;
+  title: string | null;
+  alt: string | null;
+  labelText: string | null;
 }
 
 interface DiscoveryCandidate {
@@ -426,34 +431,77 @@ async function collectCandidatesFromPage(page: Page): Promise<DiscoveryCandidate
       placeholder?: string;
       className?: unknown;
       getAttribute: (name: string) => string | null;
+      closest?: (selector: string) => BrowserElement | null;
     };
     const scope = globalThis as typeof globalThis & {
       document: {
         querySelectorAll: (selector: string) => Iterable<BrowserElement>;
+        getElementById?: (id: string) => BrowserElement | null;
       };
       CSS?: {
         escape?: (nextValue: string) => string;
       };
     };
     const elements = [
-      ...scope.document.querySelectorAll("a, button, [role='button'], [role='link'], form, input, select, textarea, section, [id], [class]")
+      ...scope.document.querySelectorAll("a, button, [role='button'], [role='link'], form, input, select, textarea, section, img, label, [aria-label], [aria-labelledby], [title], [id], [class]")
     ].slice(0, 250);
 
     return elements.map((element): RawDiscoveryElement => {
+      const linkedElement = element.closest?.("a");
       return {
         tagName: element.tagName.toLowerCase(),
         role: element.getAttribute("role"),
         text: normalizeBrowserText(element.innerText || element.textContent || element.value || ""),
-        href: element.href || element.getAttribute("href"),
+        href: element.href || element.getAttribute("href") || linkedElement?.href || linkedElement?.getAttribute("href") || null,
         selector: buildSelector(element),
         inputType: element.type || null,
         name: element.name || element.getAttribute("name"),
-        placeholder: element.placeholder || element.getAttribute("placeholder")
+        placeholder: element.placeholder || element.getAttribute("placeholder"),
+        ariaLabel: normalizeNullableText(element.getAttribute("aria-label")),
+        ariaLabelledByText: readAriaLabelledByText(element),
+        title: normalizeNullableText(element.getAttribute("title")),
+        alt: normalizeNullableText(element.getAttribute("alt")),
+        labelText: readAssociatedLabelText(element)
       };
     });
 
     function normalizeBrowserText(value: string): string {
       return value.replace(/\s+/g, " ").trim().slice(0, 160);
+    }
+
+    function normalizeNullableText(value: string | null | undefined): string | null {
+      const normalized = normalizeBrowserText(value ?? "");
+      return normalized || null;
+    }
+
+    function readAriaLabelledByText(element: BrowserElement): string | null {
+      const ids = (element.getAttribute("aria-labelledby") ?? "").split(/\s+/).filter(Boolean);
+      const text = ids
+        .map((id) => scope.document.getElementById?.(id)?.textContent ?? "")
+        .join(" ");
+      return normalizeNullableText(text);
+    }
+
+    function readAssociatedLabelText(element: BrowserElement): string | null {
+      const tagName = element.tagName.toLowerCase();
+      if (tagName === "label") {
+        return normalizeNullableText(element.innerText || element.textContent || "");
+      }
+
+      const wrappingLabel = element.closest?.("label");
+      if (wrappingLabel) {
+        return normalizeNullableText(wrappingLabel.innerText || wrappingLabel.textContent || "");
+      }
+
+      const id = element.getAttribute("id");
+      if (!id) {
+        return null;
+      }
+
+      const text = [...scope.document.querySelectorAll(`label[for="${cssStringEscape(id)}"]`)]
+        .map((label) => label.innerText || label.textContent || "")
+        .join(" ");
+      return normalizeNullableText(text);
     }
 
     function buildSelector(element: BrowserElement): string | null {
@@ -707,12 +755,35 @@ function markCandidateShallowVerified(candidate: DiscoveryCandidate, verifiedUrl
 }
 
 function toDiscoveryCandidates(raw: RawDiscoveryElement): DiscoveryCandidate[] {
-  const label = normalizeText(raw.text || raw.placeholder || raw.name || raw.href || raw.selector || raw.tagName);
+  const label = normalizeText(
+    raw.text
+      || raw.ariaLabel
+      || raw.ariaLabelledByText
+      || raw.labelText
+      || raw.alt
+      || raw.title
+      || raw.placeholder
+      || raw.name
+      || raw.href
+      || raw.selector
+      || raw.tagName
+  );
   if (!label) {
     return [];
   }
 
-  const searchable = normalizeSearchText([label, raw.href, raw.selector, raw.name, raw.placeholder].filter(isString).join(" "));
+  const searchable = normalizeSearchText([
+    label,
+    raw.href,
+    raw.selector,
+    raw.name,
+    raw.placeholder,
+    raw.ariaLabel,
+    raw.ariaLabelledByText,
+    raw.labelText,
+    raw.alt,
+    raw.title
+  ].filter(isString).join(" "));
   const candidates: DiscoveryCandidate[] = [];
 
   if (isLandingCta(raw, searchable)) {
@@ -823,7 +894,12 @@ function createCandidate(
       role,
       name: raw.name,
       placeholder: raw.placeholder,
-      input_type: raw.inputType
+      input_type: raw.inputType,
+      aria_label: raw.ariaLabel,
+      aria_labelled_by_text: raw.ariaLabelledByText,
+      label_text: raw.labelText,
+      alt: raw.alt,
+      title: raw.title
     }
   };
 }
@@ -1042,7 +1118,7 @@ function candidateElementKey(candidate: DiscoveryCandidate): string {
 }
 
 function isInteractive(raw: RawDiscoveryElement): boolean {
-  return raw.tagName === "a" || raw.tagName === "button" || raw.role === "button" || raw.role === "link";
+  return raw.tagName === "a" || raw.tagName === "button" || raw.role === "button" || raw.role === "link" || Boolean(raw.href);
 }
 
 function isSignupLike(searchable: string): boolean {
@@ -1065,6 +1141,10 @@ function resolveTargetRole(raw: RawDiscoveryElement, entrypointType: DiscoveryEn
   }
 
   if (raw.tagName === "a") {
+    return "link";
+  }
+
+  if (raw.href) {
     return "link";
   }
 

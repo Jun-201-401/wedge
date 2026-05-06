@@ -23,7 +23,7 @@ test('discovery recommendation mapper exposes canonical levels and CONTACT copy'
   assert.equal(card.title, '문의 / 상담 신청 흐름 점검');
   assert.match(card.summary, /B2B 전환 흐름/);
   assert.equal(card.confidence, 0.86);
-  assert.equal(card.confidenceLabel, '86%');
+  assert.equal(card.confidenceLabel, '높음');
   assert.equal(card.evidence, 'cp_001.obs_003');
   assert.equal(card.isRunnable, true);
   assert.equal(card.sourceDiscoveryId, undefined);
@@ -31,7 +31,7 @@ test('discovery recommendation mapper exposes canonical levels and CONTACT copy'
   assert.deepEqual(card.suggestedTarget, { text: 'Book a demo' });
 });
 
-test('discovery recommendation mapper preserves NOT_AVAILABLE as a direct setup card', () => {
+test('discovery recommendation mapper keeps NOT_AVAILABLE non-runnable without a percentage confidence', () => {
   const card = toScenarioRecommendationViewModel({
     ...contactRecommendation,
     recommendationLevel: 'NOT_AVAILABLE',
@@ -41,8 +41,22 @@ test('discovery recommendation mapper preserves NOT_AVAILABLE as a direct setup 
 
   assert.equal(card.level, 'NOT_AVAILABLE');
   assert.equal(card.tone, 'unavailable');
-  assert.equal(card.actionLabel, '직접 설정하기');
-  assert.equal(card.confidenceLabel, '0%');
+  assert.equal(card.actionLabel, '직접 설정 필요');
+  assert.equal(card.confidenceLabel, '없음');
+  assert.equal(card.isRunnable, false);
+});
+
+test('discovery recommendation mapper keeps LOW as a visible but non-runnable weak signal', () => {
+  const card = toScenarioRecommendationViewModel({
+    ...contactRecommendation,
+    recommendationLevel: 'LOW',
+    confidence: 0.42,
+  });
+
+  assert.equal(card.level, 'LOW');
+  assert.equal(card.tone, 'low');
+  assert.equal(card.confidenceLabel, '낮음');
+  assert.equal(card.isRunnable, false);
 });
 
 test('discovery recommendation mapper converts completed discovery payloads', () => {

@@ -78,20 +78,24 @@ public class ScenarioPlanValidator {
         requireNonBlankString(step, "step_id");
         requireEnum(step, "stage", STAGES);
         requireNonBlankString(step, "description");
-        validateAction(requireMap(step, "action"));
+        String actionType = validateAction(requireMap(step, "action"));
+        if ("stop_when".equals(actionType)) {
+            requireMap(step, "stop_condition");
+        }
         validateSettleStrategy(requireMap(step, "settle_strategy"));
         if (!(step.get("checkpoint") instanceof Boolean)) {
             throw new BusinessException(ErrorCode.INVALID_REQUEST, "scenarioPlan.steps[].checkpoint must be a boolean.");
         }
     }
 
-    private void validateAction(Map<String, Object> action) {
-        requireEnum(action, "type", ACTION_TYPES);
+    private String validateAction(Map<String, Object> action) {
+        String actionType = requireEnum(action, "type", ACTION_TYPES);
         for (String key : action.keySet()) {
             if (!ACTION_KEYS.contains(key)) {
                 throw new BusinessException(ErrorCode.INVALID_REQUEST, "scenarioPlan.steps[].action contains unsupported field: " + key);
             }
         }
+        return actionType;
     }
 
     private void validateSettleStrategy(Map<String, Object> settleStrategy) {

@@ -1,6 +1,7 @@
 package com.wedge.scenarioauthoring.application;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -81,30 +82,44 @@ public class RuleBasedScenarioPlanProvider {
 
         Object suggestedTarget = selectedRecommendation.getOrDefault("suggestedTarget", selectedRecommendation.get("suggested_target"));
         if (suggestedTarget instanceof Map<?, ?> target && !target.isEmpty() && !scenarioType.equals("CONTENT_ONLY")) {
-            steps.add(step("step_003_probe_recommended_target", stageFor(scenarioType), "추천된 진입점을 클릭해 다음 의사결정 지점으로 이동한다.", Map.of("type", "click", "target", target), "network_idle", false));
-            steps.add(step("step_004_destination_checkpoint", stageFor(scenarioType), "이동 후 도착 지점의 문맥을 기록한다.", Map.of("type", "checkpoint"), "none", true));
+            if (allowsRuleBasedClick(scenarioType)) {
+                steps.add(step("step_003_probe_recommended_target", stageFor(scenarioType), "추천된 진입점을 클릭해 다음 의사결정 지점으로 이동한다.", Map.of("type", "click", "target", target), "network_idle", false));
+                steps.add(step("step_004_destination_checkpoint", stageFor(scenarioType), "이동 후 도착 지점의 문맥을 기록한다.", Map.of("type", "checkpoint"), "none", true));
+            } else {
+                steps.add(step("step_003_recommended_target_checkpoint", stageFor(scenarioType), "추천된 민감 진입점은 자동 클릭하지 않고 대상 근거만 기록한다.", Map.of("type", "checkpoint", "target", target), "none", true));
+            }
         } else {
             steps.add(step("step_003_context_checkpoint", stageFor(scenarioType), "추천 흐름을 실행하기 전 현재 문맥을 기록한다.", Map.of("type", "checkpoint"), "none", true));
         }
 
         if (scenarioType.equals("PURCHASE_CHECKOUT")) {
-            steps.add(step("step_005_stop_before_payment", "COMMIT", "실제 결제/구매 commit 전에 중단한다.", Map.of("type", "stop_when", "options", Map.of("condition", "before_payment_commit")), "none", false));
+            steps.add(stopStep("step_005_stop_before_payment", "실제 결제/구매 commit 전에 중단한다.", "before_payment_commit"));
         }
         if (scenarioType.equals("SIGNUP_LEAD_FORM") || scenarioType.equals("CONTACT")) {
-            steps.add(step("step_005_stop_before_submit", "COMMIT", "실제 form 제출 전에 중단한다.", Map.of("type", "stop_when", "options", Map.of("condition", "before_real_submit")), "none", false));
+            steps.add(stopStep("step_005_stop_before_submit", "실제 form 제출 전에 중단한다.", "before_real_submit"));
         }
         return steps;
     }
 
     private Map<String, Object> step(String id, String stage, String description, Map<String, Object> action, String settleType, boolean checkpoint) {
-        return Map.of(
-                "step_id", id,
-                "stage", stage,
-                "description", description,
-                "action", action,
-                "settle_strategy", Map.of("type", settleType, "timeout_ms", settleType.equals("none") ? 0 : 3000),
-                "checkpoint", checkpoint
-        );
+        Map<String, Object> step = new LinkedHashMap<>();
+        step.put("step_id", id);
+        step.put("stage", stage);
+        step.put("description", description);
+        step.put("action", action);
+        step.put("settle_strategy", Map.of("type", settleType, "timeout_ms", settleType.equals("none") ? 0 : 3000));
+        step.put("checkpoint", checkpoint);
+        return step;
+    }
+
+    private Map<String, Object> stopStep(String id, String description, String condition) {
+        Map<String, Object> step = new LinkedHashMap<>(step(id, "COMMIT", description, Map.of("type", "stop_when"), "none", false));
+        step.put("stop_condition", Map.of("condition", condition));
+        return step;
+    }
+
+    private boolean allowsRuleBasedClick(String scenarioType) {
+        return scenarioType.equals("LANDING_CTA") || scenarioType.equals("PRICING");
     }
 
     private String stageFor(String scenarioType) {

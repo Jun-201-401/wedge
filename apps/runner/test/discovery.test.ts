@@ -209,7 +209,7 @@ function createDiscoveryFixtureHtml(): string {
   <head><title>Discovery MVP Fixture</title></head>
   <body>
     <header>
-      <a class="primary-cta" href="/signup">Start free</a>
+      <a class="primary-cta" href="/signup"><img alt="Start free" src="cta.png" /></a>
     </header>
     <main>
       <section id="signup-form" aria-label="Signup form">
@@ -218,7 +218,7 @@ function createDiscoveryFixtureHtml(): string {
           <input type="text" name="company" placeholder="Company" />
         </form>
       </section>
-      <a class="sales-cta" href="demo.html">Book a demo</a>
+      <a class="sales-cta" href="demo.html" aria-label="Book a demo"></a>
       <section id="pricing" class="pricing-plans">
         <h2>Pricing plans</h2>
         <a class="pricing-link" href="pricing.html">See pricing</a>
