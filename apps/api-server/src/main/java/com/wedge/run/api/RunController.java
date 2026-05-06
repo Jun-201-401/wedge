@@ -1,6 +1,8 @@
 package com.wedge.run.api;
 
+import com.wedge.common.response.ApiMeta;
 import com.wedge.common.response.ApiResponse;
+import com.wedge.common.response.RequestMetadata;
 import com.wedge.evidence.api.dto.ArtifactResponse;
 import com.wedge.evidence.api.dto.RunEvidenceSummaryResponse;
 import com.wedge.evidence.application.EvidenceService;
@@ -12,6 +14,7 @@ import com.wedge.run.api.dto.RunEventResponse;
 import com.wedge.run.api.dto.RunLiveResponse;
 import com.wedge.run.api.dto.RunResponse;
 import com.wedge.run.api.dto.RunStepResponse;
+import com.wedge.run.application.RunEventListResult;
 import com.wedge.run.application.RunService;
 import com.wedge.run.domain.AnalysisStatus;
 import com.wedge.run.domain.RunStatus;
@@ -129,8 +132,19 @@ public class RunController {
     }
 
     @GetMapping("/{runId}/events")
-    public ResponseEntity<ApiResponse<List<RunEventResponse>>> listRunEvents(@PathVariable UUID runId) {
-        return ApiResponse.ok(runService.listRunEvents(runId));
+    public ResponseEntity<ApiResponse<List<RunEventResponse>>> listRunEvents(
+            @PathVariable UUID runId,
+            @RequestParam(required = false) String cursor,
+            @RequestParam(required = false) Integer limit,
+            @RequestParam(required = false) UUID stepId,
+            @RequestParam(required = false) String eventType
+    ) {
+        RunEventListResult result = runService.listRunEvents(runId, stepId, eventType, cursor, limit);
+        ApiMeta currentMeta = RequestMetadata.current();
+        return ResponseEntity.ok(new ApiResponse<>(
+                result.events(),
+                ApiMeta.page(currentMeta.requestId(), currentMeta.correlationId(), result.nextCursor(), result.hasMore())
+        ));
     }
 
     @GetMapping("/{runId}/artifacts")

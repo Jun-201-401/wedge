@@ -1,5 +1,6 @@
 package com.wedge.run.api;
 
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -18,6 +19,7 @@ import com.wedge.evidence.domain.ArtifactType;
 import com.wedge.run.api.dto.RunEventResponse;
 import com.wedge.run.api.dto.RunResponse;
 import com.wedge.run.api.dto.RunStepResponse;
+import com.wedge.run.application.RunEventListResult;
 import com.wedge.run.application.RunService;
 import com.wedge.run.domain.AnalysisStatus;
 import com.wedge.run.domain.ResultCompleteness;
@@ -156,7 +158,7 @@ class RunControllerTest {
         UUID runId = UUID.randomUUID();
         UUID stepId = UUID.randomUUID();
         UUID eventId = UUID.randomUUID();
-        when(runService.listRunEvents(runId)).thenReturn(List.of(new RunEventResponse(
+        when(runService.listRunEvents(runId, null, null, null, null)).thenReturn(new RunEventListResult(List.of(new RunEventResponse(
                 eventId,
                 runId,
                 stepId,
@@ -168,7 +170,7 @@ class RunControllerTest {
                         "failureCode", "RUNNER_TIMEOUT"
                 ),
                 OffsetDateTime.parse("2026-04-28T10:00:03+09:00")
-        )));
+        )), null, false));
 
         mockMvc.perform(get("/api/runs/{runId}/events", runId)
                         .header("X-Request-Id", "req_run_events"))
@@ -182,7 +184,41 @@ class RunControllerTest {
                 .andExpect(jsonPath("$.data[0].payload.message").value("locator click timed out"))
                 .andExpect(jsonPath("$.data[0].payload.failureCode").value("RUNNER_TIMEOUT"))
                 .andExpect(jsonPath("$.data[0].occurredAt").value("2026-04-28T10:00:03+09:00"))
-                .andExpect(jsonPath("$.meta.requestId").value("req_run_events"));
+                .andExpect(jsonPath("$.meta.requestId").value("req_run_events"))
+                .andExpect(jsonPath("$.meta.hasMore").value(false));
+    }
+
+    @Test
+    void eventsPassesQueryParamsAndReturnsPageMeta() throws Exception {
+        UUID runId = UUID.randomUUID();
+        UUID stepId = UUID.randomUUID();
+        UUID cursor = UUID.randomUUID();
+        UUID eventId = UUID.randomUUID();
+        RunEventResponse event = new RunEventResponse(
+                eventId,
+                runId,
+                stepId,
+                "step_002_submit",
+                "STEP_FAILED",
+                "RUNNER",
+                Map.of("message", "locator click timed out"),
+                OffsetDateTime.parse("2026-04-28T10:00:03+09:00")
+        );
+        when(runService.listRunEvents(runId, stepId, "STEP_FAILED", cursor.toString(), 1))
+                .thenReturn(new RunEventListResult(List.of(event), eventId.toString(), true));
+
+        mockMvc.perform(get("/api/runs/{runId}/events", runId)
+                        .param("stepId", stepId.toString())
+                        .param("eventType", "STEP_FAILED")
+                        .param("cursor", cursor.toString())
+                        .param("limit", "1")
+                        .header("X-Request-Id", "req_run_events_page"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].id").value(eventId.toString()))
+                .andExpect(jsonPath("$.meta.requestId").value("req_run_events_page"))
+                .andExpect(jsonPath("$.meta.nextCursor").value(eventId.toString()))
+                .andExpect(jsonPath("$.meta.hasMore").value(true));
+        verify(runService).listRunEvents(runId, stepId, "STEP_FAILED", cursor.toString(), 1);
     }
 
     @Test

@@ -56,8 +56,14 @@ public class RunPersistenceAdapter {
                 .map(this::toStepResponse);
     }
 
-    public List<RunEventResponse> listRunEvents(UUID runId) {
-        return runMapper.findEventsByRunId(runId).stream()
+    public List<RunEventResponse> listRunEvents(
+            UUID runId,
+            UUID stepId,
+            String eventType,
+            UUID cursorEventId,
+            int limit
+    ) {
+        return runMapper.findEvents(runId, stepId, eventType, cursorEventId, limit).stream()
                 .map(this::toEventResponse)
                 .toList();
     }
