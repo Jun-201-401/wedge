@@ -540,6 +540,129 @@ paths:
           $ref: '#/components/responses/Conflict'
         '422':
           $ref: '#/components/responses/ValidationError'
+  /api/scenario-authoring-jobs:
+    post:
+      tags:
+      - ScenarioAuthoring
+      operationId: createScenarioAuthoringJob
+      summary: 추천 기반 ScenarioAuthoring job 생성
+      description: Discovery recommendation을 즉시 Run으로 바꾸지 않고, 검증 가능한 ScenarioPlan candidate authoring job으로 고정한다. MVP provider는 RULE_BASED stub으로 시작한다.
+      security:
+      - HumanBearer: []
+      parameters:
+      - name: Idempotency-Key
+        in: header
+        required: false
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ScenarioAuthoringJobCreateRequest'
+            example:
+              projectId: 8f06dca8-9c4d-4f20-b1a8-1d5ee40a9923
+              sourceDiscoveryId: 20000000-0000-4000-8000-000000000011
+              requestedGoal: 무료 체험 CTA까지의 흐름 점검
+              preferredScenarioType: LANDING_CTA
+              selectedRecommendation:
+                scenarioType: LANDING_CTA
+                recommendationLevel: HIGH
+                confidence: 0.86
+                evidenceRefs:
+                - cp_001.obs_002
+                suggestedStartUrl: https://example.com
+              providerPolicy:
+                providerOrder:
+                - RULE_BASED
+                timeoutMs: 10000
+                fallbackAllowed: true
+                approvalRequired: true
+      responses:
+        '202':
+          description: ScenarioAuthoring job created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SingleScenarioAuthoringJobResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /api/scenario-authoring-jobs/{authoringJobId}:
+    get:
+      tags:
+      - ScenarioAuthoring
+      operationId: getScenarioAuthoringJob
+      summary: ScenarioAuthoring job 조회
+      security:
+      - HumanBearer: []
+      parameters:
+      - name: authoringJobId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: ScenarioAuthoring job
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SingleScenarioAuthoringJobResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/scenario-authoring-jobs/{authoringJobId}/confirm:
+    post:
+      tags:
+      - ScenarioAuthoring
+      operationId: confirmScenarioAuthoringCandidate
+      summary: ScenarioAuthoring candidate 확정
+      description: confirmed candidate의 embedded ScenarioPlan을 Run materialization 입력으로 사용하기 위한 선택 상태를 저장한다. 브라우저 조작이나 Runner 실행을 직접 트리거하지 않는다.
+      security:
+      - HumanBearer: []
+      parameters:
+      - name: authoringJobId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ScenarioAuthoringConfirmRequest'
+            example:
+              candidateId: rule_based_landing_cta_001
+      responses:
+        '200':
+          description: ScenarioAuthoring candidate confirmed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScenarioAuthoringConfirmEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
   /api/runs:
     get:
       tags:
@@ -2628,6 +2751,408 @@ components:
       properties:
         data:
           $ref: '#/components/schemas/DiscoveryResponse'
+        meta:
+          $ref: '#/components/schemas/Meta'
+      required:
+      - data
+      - meta
+    ScenarioAuthoringProviderPolicyRequest:
+      type: object
+      description: 현재 API skeleton은 providerOrder가 비어 있거나 [RULE_BASED]인 경우만 허용한다. 다른 provider enum 값은 향후 확장을 위해 예약되어 있다.
+      properties:
+        providerOrder:
+          type: array
+          description: 현재 지원값은 정확히 [RULE_BASED]뿐이다.
+          items:
+            $ref: '#/components/schemas/ScenarioAuthoringProviderType'
+        timeoutMs:
+          type: integer
+          minimum: 1000
+        fallbackAllowed:
+          type: boolean
+        approvalRequired:
+          type: boolean
+    ScenarioAuthoringSelectedRecommendation:
+      type: object
+      additionalProperties: false
+      properties:
+        recommendationId:
+          type: string
+          format: uuid
+          nullable: true
+        scenarioType:
+          $ref: '#/components/schemas/ScenarioType'
+        recommendationLevel:
+          $ref: '#/components/schemas/ScenarioRecommendationLevel'
+        confidence:
+          type: number
+          minimum: 0
+          maximum: 1
+        evidenceRefs:
+          type: array
+          items:
+            type: string
+        suggestedStartUrl:
+          type: string
+          format: uri
+          nullable: true
+        suggestedTarget:
+          type: object
+          nullable: true
+          additionalProperties: true
+    ScenarioAuthoringJobCreateRequest:
+      type: object
+      properties:
+        projectId:
+          type: string
+          format: uuid
+        sourceDiscoveryId:
+          type: string
+          format: uuid
+        selectedRecommendationId:
+          type: string
+          format: uuid
+          nullable: true
+        requestedGoal:
+          type: string
+        preferredScenarioType:
+          $ref: '#/components/schemas/ScenarioType'
+        selectedRecommendation:
+          nullable: true
+          allOf:
+          - $ref: '#/components/schemas/ScenarioAuthoringSelectedRecommendation'
+        constraints:
+          type: object
+          additionalProperties: true
+        providerPolicy:
+          $ref: '#/components/schemas/ScenarioAuthoringProviderPolicyRequest'
+      required:
+      - projectId
+      - sourceDiscoveryId
+      - requestedGoal
+    ScenarioAuthoringConfirmRequest:
+      type: object
+      properties:
+        candidateId:
+          type: string
+      required:
+      - candidateId
+    ScenarioAuthoringStatus:
+      type: string
+      enum:
+      - CREATED
+      - QUEUED
+      - RUNNING
+      - SUCCEEDED
+      - FAILED
+      - CANCELED
+      - EXPIRED
+    ScenarioAuthoringProviderType:
+      type: string
+      enum:
+      - CODEX
+      - CLAUDE_CODE
+      - INTERNAL_LLM
+      - RULE_BASED
+      - SERVICE_ACCOUNT
+      - OTHER
+    ScenarioAuthoringProviderPolicy:
+      type: object
+      additionalProperties: false
+      properties:
+        allowed_provider_types:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/ScenarioAuthoringProviderType'
+        provider_order:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/ScenarioAuthoringProviderType'
+        timeout_ms:
+          type: integer
+          minimum: 1000
+        fallback_allowed:
+          type: boolean
+        approval_required:
+          type: boolean
+        max_attempts:
+          type: integer
+          minimum: 1
+      required:
+      - allowed_provider_types
+      - provider_order
+      - timeout_ms
+      - fallback_allowed
+      - approval_required
+    ScenarioAuthoringValidationIssue:
+      type: object
+      additionalProperties: false
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        path:
+          type: string
+          nullable: true
+        evidence_refs:
+          type: array
+          items:
+            type: string
+      required:
+      - code
+      - message
+    ScenarioAuthoringValidation:
+      type: object
+      additionalProperties: false
+      properties:
+        schema_valid:
+          type: boolean
+        safety_valid:
+          type: boolean
+        fit_requirements_valid:
+          type: boolean
+        errors:
+          type: array
+          items:
+            $ref: '#/components/schemas/ScenarioAuthoringValidationIssue'
+        warnings:
+          type: array
+          items:
+            $ref: '#/components/schemas/ScenarioAuthoringValidationIssue'
+      required:
+      - schema_valid
+      - safety_valid
+      - fit_requirements_valid
+      - errors
+      - warnings
+    ScenarioAuthoringProviderTraceEntry:
+      type: object
+      additionalProperties: false
+      properties:
+        provider_type:
+          $ref: '#/components/schemas/ScenarioAuthoringProviderType'
+        provider_name:
+          type: string
+        provider_version:
+          type: string
+          nullable: true
+        model_or_agent:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum:
+          - STARTED
+          - SUCCEEDED
+          - FAILED
+          - TIMED_OUT
+          - SKIPPED
+        confidence:
+          type: number
+          minimum: 0
+          maximum: 1
+          nullable: true
+        fallback_reason:
+          type: string
+          nullable: true
+        started_at:
+          type: string
+          format: date-time
+        finished_at:
+          type: string
+          format: date-time
+          nullable: true
+      required:
+      - provider_type
+      - provider_name
+      - status
+      - started_at
+    ScenarioAuthoringCandidate:
+      type: object
+      additionalProperties: false
+      properties:
+        candidate_id:
+          type: string
+        scenario_plan:
+          type: object
+          description: Canonical ScenarioPlan contract payload from packages/contracts/schemas/scenario-plan.schema.json.
+          additionalProperties: true
+        confidence:
+          type: number
+          minimum: 0
+          maximum: 1
+        rationale:
+          type: string
+        evidence_refs:
+          type: array
+          items:
+            type: string
+        source_recommendation_refs:
+          type: array
+          items:
+            type: string
+        validation:
+          $ref: '#/components/schemas/ScenarioAuthoringValidation'
+      required:
+      - candidate_id
+      - scenario_plan
+      - confidence
+      - rationale
+      - evidence_refs
+      - validation
+    ScenarioAuthoringProvenance:
+      type: object
+      additionalProperties: false
+      properties:
+        source_discovery_id:
+          type: string
+        source_recommendation_refs:
+          type: array
+          items:
+            type: string
+        source_evidence_refs:
+          type: array
+          items:
+            type: string
+        prompt_version:
+          type: string
+          nullable: true
+        input_summary:
+          type: string
+        generated_at:
+          type: string
+          format: date-time
+      required:
+      - source_evidence_refs
+      - generated_at
+    ScenarioAuthoringFailure:
+      type: object
+      nullable: true
+      additionalProperties: false
+      properties:
+        failure_code:
+          type: string
+        failure_message:
+          type: string
+        provider_type:
+          $ref: '#/components/schemas/ScenarioAuthoringProviderType'
+      required:
+      - failure_code
+      - failure_message
+    ScenarioAuthoringJob:
+      type: object
+      properties:
+        schemaVersion:
+          type: string
+          enum:
+          - '0.5'
+        authoringJobId:
+          type: string
+          format: uuid
+        status:
+          $ref: '#/components/schemas/ScenarioAuthoringStatus'
+        projectId:
+          type: string
+          format: uuid
+        sourceDiscoveryId:
+          type: string
+          format: uuid
+        correlationId:
+          type: string
+          nullable: true
+        candidateCount:
+          type: integer
+          minimum: 0
+        providerOrder:
+          type: array
+          items:
+            $ref: '#/components/schemas/ScenarioAuthoringProviderType'
+        input:
+          type: object
+          additionalProperties: true
+        providerPolicy:
+          $ref: '#/components/schemas/ScenarioAuthoringProviderPolicy'
+        providerTrace:
+          type: array
+          items:
+            $ref: '#/components/schemas/ScenarioAuthoringProviderTraceEntry'
+        candidates:
+          type: array
+          items:
+            $ref: '#/components/schemas/ScenarioAuthoringCandidate'
+        validation:
+          $ref: '#/components/schemas/ScenarioAuthoringValidation'
+        provenance:
+          $ref: '#/components/schemas/ScenarioAuthoringProvenance'
+        failure:
+          $ref: '#/components/schemas/ScenarioAuthoringFailure'
+        confirmedCandidateId:
+          type: string
+          nullable: true
+        confirmedBy:
+          type: string
+          format: uuid
+          nullable: true
+        confirmedAt:
+          type: string
+          format: date-time
+          nullable: true
+        materializedRunId:
+          type: string
+          format: uuid
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+          nullable: true
+        updatedAt:
+          type: string
+          format: date-time
+          nullable: true
+        expiresAt:
+          type: string
+          format: date-time
+          nullable: true
+      required:
+      - schemaVersion
+      - authoringJobId
+      - status
+      - projectId
+      - sourceDiscoveryId
+      - candidateCount
+      - providerOrder
+      - input
+      - providerPolicy
+      - validation
+      - provenance
+    SingleScenarioAuthoringJobResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/ScenarioAuthoringJob'
+        meta:
+          $ref: '#/components/schemas/Meta'
+      required:
+      - data
+      - meta
+    ScenarioAuthoringConfirmResponse:
+      type: object
+      properties:
+        authoringJob:
+          $ref: '#/components/schemas/ScenarioAuthoringJob'
+        confirmedCandidate:
+          $ref: '#/components/schemas/ScenarioAuthoringCandidate'
+      required:
+      - authoringJob
+      - confirmedCandidate
+    ScenarioAuthoringConfirmEnvelope:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/ScenarioAuthoringConfirmResponse'
         meta:
           $ref: '#/components/schemas/Meta'
       required:

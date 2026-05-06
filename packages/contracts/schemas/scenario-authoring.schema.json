@@ -72,6 +72,31 @@
     "failure": {
       "$ref": "#/$defs/authoring_failure"
     },
+    "confirmed_candidate_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "confirmed_by": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "confirmed_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    },
+    "materialized_run_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
     "created_at": {
       "type": "string",
       "format": "date-time"
@@ -179,6 +204,12 @@
       "properties": {
         "scenario_type": {
           "$ref": "#/$defs/flow_type"
+        },
+        "recommendation_id": {
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "recommendation_level": {
           "enum": ["HIGH", "MEDIUM", "LOW", "NOT_AVAILABLE"]

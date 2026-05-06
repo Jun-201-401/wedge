@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.wedge.scenarioauthoring.infrastructure.ScenarioAuthoringJobMapper">
+    <resultMap id="ScenarioAuthoringJobResultMap" type="com.wedge.scenarioauthoring.domain.ScenarioAuthoringJob">
+        <id property="id" column="id"/>
+        <result property="projectId" column="project_id"/>
+        <result property="sourceDiscoveryId" column="source_discovery_id"/>
+        <result property="correlationId" column="correlation_id"/>
+        <result property="idempotencyKey" column="idempotency_key"/>
+        <result property="status" column="status"/>
+        <result property="inputJsonb" column="input_jsonb"/>
+        <result property="providerPolicyJsonb" column="provider_policy_jsonb"/>
+        <result property="providerTraceJsonb" column="provider_trace_jsonb"/>
+        <result property="candidatesJsonb" column="candidates_jsonb"/>
+        <result property="validationJsonb" column="validation_jsonb"/>
+        <result property="provenanceJsonb" column="provenance_jsonb"/>
+        <result property="failureJsonb" column="failure_jsonb"/>
+        <result property="createdBy" column="created_by"/>
+        <result property="confirmedCandidateId" column="confirmed_candidate_id"/>
+        <result property="confirmedBy" column="confirmed_by"/>
+        <result property="confirmedAt" column="confirmed_at"/>
+        <result property="materializedRunId" column="materialized_run_id"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+        <result property="expiresAt" column="expires_at"/>
+        <result property="deletedAt" column="deleted_at"/>
+        <result property="version" column="version"/>
+    </resultMap>
+
+    <sql id="ScenarioAuthoringJobColumns">
+        id, project_id, source_discovery_id, correlation_id, idempotency_key, status,
+        CAST(input_jsonb AS TEXT) AS input_jsonb,
+        CAST(provider_policy_jsonb AS TEXT) AS provider_policy_jsonb,
+        CAST(provider_trace_jsonb AS TEXT) AS provider_trace_jsonb,
+        CAST(candidates_jsonb AS TEXT) AS candidates_jsonb,
+        CAST(validation_jsonb AS TEXT) AS validation_jsonb,
+        CAST(provenance_jsonb AS TEXT) AS provenance_jsonb,
+        CAST(failure_jsonb AS TEXT) AS failure_jsonb,
+        created_by, confirmed_candidate_id, confirmed_by, confirmed_at, materialized_run_id,
+        created_at, updated_at, expires_at, deleted_at, version
+    </sql>
+
+    <select id="findById" resultMap="ScenarioAuthoringJobResultMap">
+        SELECT <include refid="ScenarioAuthoringJobColumns"/>
+        FROM scenario_authoring_job
+        WHERE id = #{id}
+          AND deleted_at IS NULL
+    </select>
+
+    <select id="findByIdempotencyKey" resultMap="ScenarioAuthoringJobResultMap">
+        SELECT <include refid="ScenarioAuthoringJobColumns"/>
+        FROM scenario_authoring_job
+        WHERE project_id = #{projectId}
+          AND created_by = #{createdBy}
+          AND idempotency_key = #{idempotencyKey}
+          AND deleted_at IS NULL
+    </select>
+
+    <insert id="insert" parameterType="com.wedge.scenarioauthoring.domain.ScenarioAuthoringJob">
+        INSERT INTO scenario_authoring_job (
+            id, project_id, source_discovery_id, correlation_id, idempotency_key, status,
+            input_jsonb, provider_policy_jsonb, provider_trace_jsonb, candidates_jsonb,
+            validation_jsonb, provenance_jsonb, failure_jsonb, created_by, expires_at
+        ) VALUES (
+            #{id}, #{projectId}, #{sourceDiscoveryId}, #{correlationId}, #{idempotencyKey}, #{status},
+            CAST(#{inputJsonb} AS jsonb), CAST(#{providerPolicyJsonb} AS jsonb), CAST(#{providerTraceJsonb} AS jsonb), CAST(#{candidatesJsonb} AS jsonb),
+            CAST(#{validationJsonb} AS jsonb), CAST(#{provenanceJsonb} AS jsonb), CAST(#{failureJsonb} AS jsonb), #{createdBy,jdbcType=OTHER}, #{expiresAt}
+        )
+    </insert>
+
+    <update id="confirmCandidate">
+        UPDATE scenario_authoring_job
+        SET confirmed_candidate_id = #{confirmedCandidateId},
+            confirmed_by = #{confirmedBy},
+            confirmed_at = NOW(),
+            updated_at = NOW(),
+            version = version + 1
+        WHERE id = #{id}
+          AND status = 'SUCCEEDED'
+          AND (expires_at IS NULL OR expires_at > NOW())
+          AND confirmed_candidate_id IS NULL
+          AND deleted_at IS NULL
+    </update>
+</mapper>
