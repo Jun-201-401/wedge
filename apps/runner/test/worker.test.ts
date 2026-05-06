@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { registerWorker } from "../src/worker/index.ts";
 import {
+  cloneMessage,
   createRunnerTestConfig,
   createSettledResult,
   createSimulatedPageSnapshot,
@@ -26,12 +27,12 @@ test("[Worker lifecycle] accepted callback 실패 시 session을 닫고 failed c
     browserFactory: {
       kind: "simulated-playwright",
       createSession: async () =>
-        createSimulatedSession(message.payload.scenarioPlan, {
+        createSimulatedSession(message.payload.scenarioPlan!, {
           execute: async () => {
             throw new Error("execute should not be called when accepted fails");
           },
           settle: async () => createSettledResult(),
-          snapshot: () => createSimulatedPageSnapshot(message.payload.scenarioPlan),
+          snapshot: () => createSimulatedPageSnapshot(message.payload.scenarioPlan!),
           close: async () => {
             closed = true;
           }
@@ -67,7 +68,7 @@ test("[Worker lifecycle] accepted callback 실패 시 session을 닫고 failed c
 
 test("[Worker 관측성] step timeout 실패는 timeout code와 runId/stepKey 로그를 남긴다", async () => {
   const message = await loadExampleMessage();
-  message.payload.scenarioPlan.steps = [
+  message.payload.scenarioPlan!.steps = [
     {
       step_id: "step_001_timeout",
       stage: "CTA",
@@ -106,14 +107,14 @@ test("[Worker 관측성] step timeout 실패는 timeout code와 runId/stepKey �
       browserFactory: {
         kind: "simulated-playwright",
         createSession: async () =>
-          createSimulatedSession(message.payload.scenarioPlan, {
+          createSimulatedSession(message.payload.scenarioPlan!, {
             execute: async () => {
               const error = new Error("locator click timed out after 100ms");
               error.name = "TimeoutError";
               throw error;
             },
             settle: async () => createSettledResult(),
-            snapshot: () => createSimulatedPageSnapshot(message.payload.scenarioPlan),
+            snapshot: () => createSimulatedPageSnapshot(message.payload.scenarioPlan!),
             close: async () => {}
           })
       },
@@ -172,7 +173,7 @@ test("[Worker 관측성] step timeout 실패는 timeout code와 runId/stepKey �
 
 test("[Worker lifecycle] 실행 자체가 성공했다면 finished callback 실패만으로 실행 실패로 바꾸지 않는다", async () => {
   const message = await loadExampleMessage();
-  message.payload.scenarioPlan.steps = [
+  message.payload.scenarioPlan!.steps = [
     {
       step_id: "step_001_fill_email",
       stage: "INPUT",
@@ -200,7 +201,7 @@ test("[Worker lifecycle] 실행 자체가 성공했다면 finished callback 실�
     browserFactory: {
       kind: "simulated-playwright",
       createSession: async () =>
-        createSimulatedSession(message.payload.scenarioPlan, {
+        createSimulatedSession(message.payload.scenarioPlan!, {
           execute: async (action) => ({
             actionType: action.type,
             targetSummary: "label=Email",
@@ -212,7 +213,7 @@ test("[Worker lifecycle] 실행 자체가 성공했다면 finished callback 실�
               strategy: "fixed_short",
               durationMs: 1
             }),
-          snapshot: () => createSimulatedPageSnapshot(message.payload.scenarioPlan),
+          snapshot: () => createSimulatedPageSnapshot(message.payload.scenarioPlan!),
           close: async () => {}
         })
     },
@@ -235,4 +236,99 @@ test("[Worker lifecycle] 실행 자체가 성공했다면 finished callback 실�
   assert.equal(result.summary.completedStepCount, 1);
   assert.equal(result.delivery.status, "DELIVERY_FAILED");
   assert.deepEqual(result.delivery.issues.map((issue) => issue.scope), ["finished-callback"]);
+});
+
+test("[Worker agent mode] scenarioPlan 없이 CTA 후보를 관찰해 클릭한다", async () => {
+  const message = cloneMessage(await loadExampleMessage());
+  message.payload.executionMode = "agent";
+  message.payload.agentConfig = {
+    maxTurns: 3,
+    maxScrolls: 0,
+    captureEveryTurn: false
+  };
+  delete message.payload.scenarioTemplateVersionId;
+  delete message.payload.scenarioPlan;
+
+  const executedActions: string[] = [];
+  let currentUrl = message.payload.startUrl;
+  let loaded = false;
+  let closed = false;
+
+  const worker = registerWorker({
+    config: createRunnerTestConfig({
+      artifactsRoot: join(tmpdir(), "runner-test-agent-artifacts"),
+      callbackLogFile: join(tmpdir(), "runner-test-agent-callbacks.jsonl")
+    }),
+    browserFactory: {
+      kind: "simulated-playwright",
+      createSession: async ({ plan }) =>
+        createSimulatedSession(plan, {
+          execute: async (action) => {
+            executedActions.push(action.type);
+            if (action.type === "goto") {
+              loaded = true;
+              currentUrl = message.payload.startUrl;
+            }
+            if (action.type === "click") {
+              currentUrl = "https://example.com/signup";
+            }
+            return {
+              actionType: action.type,
+              targetSummary: action.target && typeof action.target === "object" && "selector" in action.target
+                ? String(action.target.selector)
+                : null,
+              stopRequested: false,
+              details: {
+                currentUrl
+              }
+            };
+          },
+          settle: async () => createSettledResult(),
+          snapshot: () => createSimulatedPageSnapshot(plan, {
+            currentUrl,
+            finalUrl: currentUrl,
+            interactiveComponents: loaded && currentUrl === message.payload.startUrl
+              ? [
+                {
+                  text: "무료로 시작하기",
+                  selector: "#start-free",
+                  role: "link",
+                  tag: "a",
+                  clickable: true,
+                  clicked_in_scenario: false,
+                  is_cta_candidate: true,
+                  is_primary_like: true,
+                  bounds: {
+                    x: 10,
+                    y: 10,
+                    width: 120,
+                    height: 40,
+                    unit: "css_px"
+                  }
+                }
+              ]
+              : []
+          }),
+          close: async () => {
+            closed = true;
+          }
+        })
+    },
+    callbackClient: createStubCallbackClient(),
+    capturePipeline: {
+      collectCheckpoint: async () => {
+        throw new Error("checkpoint collection should not run when captureEveryTurn is false");
+      }
+    },
+    artifactStore: {
+      persistArtifacts: async () => []
+    }
+  });
+
+  const result = await worker.handleMessage(message);
+
+  assert.deepEqual(executedActions, ["goto", "click"]);
+  assert.equal(result.summary.completedStepCount, 2);
+  assert.equal(result.summary.stopped, true);
+  assert.equal(closed, true);
 });

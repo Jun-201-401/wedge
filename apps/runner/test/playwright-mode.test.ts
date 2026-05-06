@@ -465,7 +465,7 @@ test("[MVP 랜딩 CTA] 첫 화면 checkpoint 후 CTA 클릭과 도착 화면 che
     assert.equal(startFreeComponent?.role, "link");
     assert.equal(startFreeComponent?.is_cta_candidate, true);
     assert.equal(startFreeComponent?.is_primary_like, true);
-    assert.equal(startFreeComponent?.bounds?.unit, "css_px");
+    assert.equal(readString(startFreeComponent?.bounds, "unit"), "css_px");
     assert.ok(readPositiveNumber(startFreeComponent?.bounds, "width") > 0);
     assert.ok(readPositiveNumber(startFreeComponent?.bounds, "height") > 0);
   } finally {
@@ -1487,7 +1487,16 @@ function readPositiveNumber(source: unknown, key: string): number {
   const value = (source as Record<string, unknown>)[key];
   assert.equal(typeof value, "number", `Expected ${key} to be numeric`);
   assert.ok(Number.isFinite(value), `Expected ${key} to be finite`);
-  return value;
+  return value as number;
+}
+
+function readString(source: unknown, key: string): string | undefined {
+  if (typeof source !== "object" || source === null || Array.isArray(source)) {
+    return undefined;
+  }
+
+  const value = (source as Record<string, unknown>)[key];
+  return typeof value === "string" ? value : undefined;
 }
 
 function createPlaywrightBrowserFactory(artifactsRoot: string) {

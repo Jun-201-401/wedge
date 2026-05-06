@@ -6,6 +6,7 @@ import type {
 
 export type {
   Artifact,
+  AgentRunConfig,
   ArtifactBatch,
   Checkpoint,
   DiscoveryEntrypointCandidate,
@@ -25,6 +26,7 @@ export type {
   InteractiveComponentObservationItem,
   InteractiveComponentsObservation,
   RunExecuteMessage,
+  RunExecutionMode,
   RunnerAcceptedPayload,
   RunnerCheckpointsRequest,
   RunnerFailedPayload,

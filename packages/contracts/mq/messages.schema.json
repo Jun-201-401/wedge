@@ -128,6 +128,49 @@
               "type": "boolean"
             }
           }
+        },
+        "executionMode": {
+          "type": "string",
+          "enum": [
+            "agent",
+            "scripted"
+          ],
+          "default": "agent"
+        },
+        "agentConfig": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "maxTurns": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 20,
+              "default": 8
+            },
+            "maxScrolls": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 10,
+              "default": 3
+            },
+            "autonomyLevel": {
+              "type": "string",
+              "enum": [
+                "low",
+                "medium",
+                "high"
+              ],
+              "default": "medium"
+            },
+            "allowReplayHints": {
+              "type": "boolean",
+              "default": true
+            },
+            "captureEveryTurn": {
+              "type": "boolean",
+              "default": true
+            }
+          }
         }
       },
       "required": [
@@ -135,9 +178,7 @@
         "projectId",
         "startUrl",
         "goal",
-        "devicePreset",
-        "scenarioTemplateVersionId",
-        "scenarioPlan"
+        "devicePreset"
       ]
     },
     "AnalysisRequestPayload": {

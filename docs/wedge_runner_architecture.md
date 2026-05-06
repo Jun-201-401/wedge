@@ -11,6 +11,7 @@ related_documents:
   - 01_architecture_and_project_structure.md
   - 04_domain_payload_contracts.md
   - ../apps/runner/README.md
+  - wedge_runner_agent_execution.md
   - ../packages/contracts/internal/runner-callback.schema.json
   - ../packages/contracts/mq/messages.schema.json
 ---
@@ -20,6 +21,8 @@ related_documents:
 이 문서는 `apps/runner`의 기술 선택, 모듈 경계, 현재 구현 방향을 기록한다.
 
 목표는 Wedge Runner가 `run.execute.request`를 안정적으로 소비하고, `ScenarioPlan`을 브라우저 실행으로 변환하며, checkpoint/artifact/internal callback 흐름을 유지보수하기 쉽게 만드는 것이다.
+
+단, 사용자-facing 실행 방향은 `docs/wedge_runner_agent_execution.md`의 goal 기반 Runner Agent target design을 따른다. 이 문서의 기존 `ScenarioPlan` executor 설명은 scripted/replay 경로의 현재 baseline으로 유지한다.
 
 이 문서는 `docs/wedge_frontend_architecture.md`와 같은 역할을 runner 영역에서 수행한다. 즉, 세부 구현 코드보다 먼저 “어디에 어떤 책임을 둘지”를 정한다.
 

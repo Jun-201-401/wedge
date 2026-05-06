@@ -12,6 +12,8 @@ import { isRecord } from "../shared/utils.ts";
 const RUNNER_MESSAGE_TYPE = "run.execute.request";
 const DISCOVERY_MESSAGE_TYPE = "discovery.execute.request";
 const PAYLOAD_DEVICE_PRESETS = ["desktop", "tablet", "mobile"] as const;
+const RUN_EXECUTION_MODES = ["agent", "scripted"] as const;
+const AGENT_AUTONOMY_LEVELS = ["low", "medium", "high"] as const;
 const SCENARIO_TYPES = ["template", "custom_compiled"] as const;
 const SCENARIO_STEP_STAGES = ["FIRST_VIEW", "VALUE", "CTA", "INPUT", "COMMIT"] as const;
 const ENVIRONMENT_DEVICES = ["desktop", "mobile", "tablet"] as const;
@@ -98,16 +100,55 @@ function assertRunExecutePayload(value: unknown): asserts value is RunExecuteMes
   assertNonEmptyString(value.startUrl, "runner payload.startUrl");
   assertNonEmptyString(value.goal, "runner payload.goal");
   assertOneOf(value.devicePreset, PAYLOAD_DEVICE_PRESETS, "runner payload.devicePreset");
-  assertNonEmptyString(value.scenarioTemplateVersionId, "runner payload.scenarioTemplateVersionId");
-  assertScenarioPlan(value.scenarioPlan);
-  assertScenarioPlanConsistency(
-    {
-      startUrl: value.startUrl,
-      goal: value.goal,
-      devicePreset: value.devicePreset
-    },
-    value.scenarioPlan
-  );
+
+  const executionMode = value.executionMode ?? "agent";
+  assertOneOf(executionMode, RUN_EXECUTION_MODES, "runner payload.executionMode");
+
+  if (value.agentConfig !== undefined) {
+    assertAgentConfig(value.agentConfig);
+  }
+
+  if (executionMode === "scripted") {
+    assertNonEmptyString(value.scenarioTemplateVersionId, "runner payload.scenarioTemplateVersionId");
+    assertScenarioPlan(value.scenarioPlan);
+    assertScenarioPlanConsistency(
+      {
+        startUrl: value.startUrl,
+        goal: value.goal,
+        devicePreset: value.devicePreset
+      },
+      value.scenarioPlan
+    );
+    return;
+  }
+
+  if (value.scenarioPlan !== undefined) {
+    assertScenarioPlan(value.scenarioPlan);
+    assertScenarioPlanConsistency(
+      {
+        startUrl: value.startUrl,
+        goal: value.goal,
+        devicePreset: value.devicePreset
+      },
+      value.scenarioPlan
+    );
+  }
+}
+
+function assertAgentConfig(value: unknown): void {
+  if (!isRecord(value)) {
+    throw new RunnerMessageValidationError("runner payload.agentConfig must be an object");
+  }
+
+  assertOptionalIntegerRange(value.maxTurns, "runner payload.agentConfig.maxTurns", 1, 20);
+  assertOptionalIntegerRange(value.maxScrolls, "runner payload.agentConfig.maxScrolls", 0, 10);
+
+  if (value.autonomyLevel !== undefined) {
+    assertOneOf(value.autonomyLevel, AGENT_AUTONOMY_LEVELS, "runner payload.agentConfig.autonomyLevel");
+  }
+
+  assertOptionalBoolean(value.allowReplayHints, "runner payload.agentConfig.allowReplayHints");
+  assertOptionalBoolean(value.captureEveryTurn, "runner payload.agentConfig.captureEveryTurn");
 }
 
 function assertDiscoveryExecutePayload(value: unknown): asserts value is DiscoveryExecuteMessage["payload"] {
@@ -266,6 +307,22 @@ function assertLiteralString(value: unknown, expected: string, fieldName: string
 function assertBoolean(value: unknown, fieldName: string): void {
   if (typeof value !== "boolean") {
     throw new RunnerMessageValidationError(`${fieldName} must be boolean`);
+  }
+}
+
+function assertOptionalBoolean(value: unknown, fieldName: string): void {
+  if (value !== undefined && typeof value !== "boolean") {
+    throw new RunnerMessageValidationError(`${fieldName} must be boolean`);
+  }
+}
+
+function assertOptionalIntegerRange(value: unknown, fieldName: string, min: number, max: number): void {
+  if (value === undefined) {
+    return;
+  }
+
+  if (!Number.isInteger(value) || Number(value) < min || Number(value) > max) {
+    throw new RunnerMessageValidationError(`${fieldName} must be an integer between ${min} and ${max}`);
   }
 }
 

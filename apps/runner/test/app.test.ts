@@ -351,7 +351,7 @@ test("createRunnerApp stops after stop_when step requests stop", async () => {
   });
   const message = await loadExampleMessage();
 
-  message.payload.scenarioPlan.steps = [
+  message.payload.scenarioPlan!.steps = [
     {
       step_id: "step_001_stop",
       stage: "CTA",
@@ -406,7 +406,7 @@ test("[안전 정책] synthetic input이 금지되면 fill 액션을 실패 처�
   });
   const message = await loadExampleMessage();
 
-  message.payload.scenarioPlan.steps = [
+  message.payload.scenarioPlan!.steps = [
     {
       step_id: "step_001_fill_email",
       stage: "INPUT",
@@ -425,7 +425,7 @@ test("[안전 정책] synthetic input이 금지되면 fill 액션을 실패 처�
       checkpoint: false
     }
   ];
-  message.payload.scenarioPlan.safety.use_synthetic_inputs = false;
+  message.payload.scenarioPlan!.safety.use_synthetic_inputs = false;
 
   await assert.rejects(
     () => app.processMessage(message),

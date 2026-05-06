@@ -1,0 +1,28 @@
+{
+  "messageId": "70000000-0000-4000-8000-000000000001",
+  "messageType": "run.execute.request",
+  "schemaVersion": "0.5",
+  "createdAt": "2026-05-06T00:00:00.000Z",
+  "producer": "api-server",
+  "correlationId": "70000000-0000-4000-8000-000000000002",
+  "idempotencyKey": "run:70000000-0000-4000-8000-000000000011",
+  "payload": {
+    "runId": "70000000-0000-4000-8000-000000000011",
+    "projectId": "8f06dca8-9c4d-4f20-b1a8-1d5ee40a9923",
+    "triggerSource": "WEB",
+    "startUrl": "https://example.com",
+    "goal": "랜딩 페이지에서 가입 또는 시작 CTA를 찾고 가입 시작 화면까지 도달할 수 있는지 확인한다.",
+    "devicePreset": "desktop",
+    "executionMode": "agent",
+    "agentConfig": {
+      "maxTurns": 4,
+      "maxScrolls": 2,
+      "autonomyLevel": "medium",
+      "captureEveryTurn": true
+    },
+    "artifactPolicy": {
+      "captureScreenshot": true,
+      "captureDomSnapshot": true
+    }
+  }
+}
