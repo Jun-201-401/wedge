@@ -97,6 +97,7 @@ packages/contracts/examples/sample-evidence-packet.json
 필수 참조:
 
 ```text
+docs/mcp_server_design.md
 docs/03_api_reference.md
 packages/contracts/mcp/tools.schema.json
 packages/contracts/openapi/wedge_openapi.yaml
