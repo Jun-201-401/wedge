@@ -1588,6 +1588,59 @@ paths:
           $ref: '#/components/responses/Conflict'
         '422':
           $ref: '#/components/responses/ValidationError'
+  /internal/analysis/jobs/{analysisJobId}/started:
+    post:
+      tags:
+      - InternalAnalyzer
+      operationId: analysisStarted
+      summary: Analyzer 시작 callback
+      description: Analyzer가 EvidencePacket 조회 후 실제 분석 작업을 시작했음을 API 서버에 기록하는 내부 callback이다.
+      security:
+      - InternalBearer: []
+      parameters:
+      - $ref: '#/components/parameters/AnalysisJobId'
+      - name: X-Worker-Id
+        in: header
+        required: true
+        schema:
+          type: string
+      - name: X-Event-Id
+        in: header
+        required: true
+        schema:
+          type: string
+      - name: X-Signature
+        in: header
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AnalyzerStartedRequest'
+            example:
+              analysisJobId: 6f6bc8c7-ef04-420b-b4e4-8c7d7ec8d1d2
+              runId: 11111111-1111-1111-1111-111111111111
+              startedAt: '2026-04-21T08:10:00.000Z'
+      responses:
+        '200':
+          description: Accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AckResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
   /internal/analysis/jobs/{analysisJobId}/completed:
     post:
       tags:
@@ -3840,6 +3893,22 @@ components:
       - resultCompleteness
     JudgeResult:
       $ref: ../schemas/judge-result.schema.json
+    AnalyzerStartedRequest:
+      type: object
+      properties:
+        analysisJobId:
+          type: string
+          format: uuid
+        runId:
+          type: string
+          format: uuid
+        startedAt:
+          type: string
+          format: date-time
+      required:
+      - analysisJobId
+      - runId
+      - startedAt
     AnalyzerCompletedRequest:
       type: object
       properties:

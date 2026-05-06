@@ -30,6 +30,15 @@ def analyze_packet_and_callback(
     callback_client: SpringCallbackClient,
     event_id: str,
 ) -> dict[str, Any]:
+    started_payload = build_started_callback_payload(
+        analysis_job_id=analysis_job_id,
+        run_id=run_id,
+    )
+    started_response = callback_client.send_started(
+        analysis_job_id=analysis_job_id,
+        payload=started_payload,
+        event_id=f"{event_id}.started",
+    )
     judge_result = analyze_packet(evidence_packet)
     payload = build_completed_callback_payload(
         analysis_job_id=analysis_job_id,
@@ -44,9 +53,24 @@ def analyze_packet_and_callback(
     return {
         "analysisJobId": analysis_job_id,
         "runId": run_id,
+        "startedCallbackStatusCode": started_response.status_code,
         "callbackStatusCode": response.status_code,
         "callbackBody": response.body,
         "judgeResult": judge_result,
+    }
+
+
+def build_started_callback_payload(
+    *,
+    analysis_job_id: str,
+    run_id: str,
+    started_at: datetime | None = None,
+) -> dict[str, Any]:
+    started_at = started_at or datetime.now(UTC)
+    return {
+        "analysisJobId": analysis_job_id,
+        "runId": run_id,
+        "startedAt": _format_instant(started_at),
     }
 
 
