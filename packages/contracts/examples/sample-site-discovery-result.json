@@ -35,7 +35,12 @@
           "data": {
             "text": "Start free",
             "href": "/signup",
-            "is_primary_like": true
+            "is_primary_like": true,
+            "shallow_navigation": {
+              "status": "verified",
+              "destination_url": "https://example.com/signup",
+              "title": "Example Signup"
+            }
           },
           "confidence": 0.86
         },

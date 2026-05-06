@@ -2,8 +2,10 @@ import {
   chromium,
   firefox,
   webkit,
+  type BrowserContext,
   type BrowserType,
-  type Page
+  type Page,
+  type Route
 } from "playwright";
 import { randomUUID } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
@@ -30,6 +32,8 @@ import type {
 const DEFAULT_DISCOVERY_LOCALE = "ko-KR";
 const DEFAULT_DISCOVERY_TIMEZONE = "Asia/Seoul";
 const POST_LOAD_SETTLE_MS = 150;
+const MAX_SHALLOW_NAVIGATION_CANDIDATES = 6;
+const SHALLOW_NAVIGATION_TIMEOUT_MS = 1_500;
 
 const DISCOVERY_FLOW_ORDER: DiscoveryFlowType[] = [
   "LANDING_CTA",
@@ -94,6 +98,7 @@ async function executeDiscoveryForPersistence({
   timezone = DEFAULT_DISCOVERY_TIMEZONE
 }: ExecuteDiscoveryInput): Promise<DiscoveryCollectionResult> {
   const { payload } = message;
+  const discoveryDeadlineMs = Date.now() + payload.maxDurationMs;
   const browserType = resolveBrowserType(config.browserName);
   const browser = await browserType.launch({
     headless: config.browserHeadless,
@@ -105,21 +110,26 @@ async function executeDiscoveryForPersistence({
     const context = await browser.newContext({
       viewport: payload.viewport,
       locale,
-      timezoneId: timezone
+      timezoneId: timezone,
+      serviceWorkers: "block"
     });
     const page = await context.newPage();
-    page.setDefaultNavigationTimeout(Math.min(config.browserNavigationTimeoutMs, payload.maxDurationMs));
+    page.setDefaultNavigationTimeout(Math.min(config.browserNavigationTimeoutMs, remainingBudgetMs(discoveryDeadlineMs, 100)));
 
     await page.goto(payload.url, {
       waitUntil: "domcontentloaded",
-      timeout: payload.maxDurationMs
+      timeout: remainingBudgetMs(discoveryDeadlineMs, 100)
     });
-    await settleAfterLoad(page);
+    await settleWithinBudget(page, discoveryDeadlineMs);
 
     const candidatesByKey = new Map<string, DiscoveryCandidate>();
     collectUniqueCandidates(candidatesByKey, await collectCandidatesFromPage(page));
 
     for (let index = 0; index < payload.maxScrollCount; index += 1) {
+      if (remainingBudgetMs(discoveryDeadlineMs) < POST_LOAD_SETTLE_MS) {
+        break;
+      }
+
       await page.evaluate(() => {
         const scope = globalThis as typeof globalThis & {
           innerHeight?: number;
@@ -130,6 +140,13 @@ async function executeDiscoveryForPersistence({
       await page.waitForTimeout(POST_LOAD_SETTLE_MS);
       collectUniqueCandidates(candidatesByKey, await collectCandidatesFromPage(page));
     }
+
+    const shallowNavigationNotes = await verifyCandidatesWithShallowNavigation(
+      context,
+      page.url(),
+      candidatesByKey,
+      discoveryDeadlineMs
+    );
 
     const finalUrl = page.url();
     const title = await page.title().catch(() => "");
@@ -188,7 +205,8 @@ async function executeDiscoveryForPersistence({
           finalUrl
         ),
         collection_notes: [
-          `Discovery collected ${candidates.length} candidate(s) after ${payload.maxScrollCount} limited scroll(s).`
+          `Discovery collected ${candidates.length} candidate(s) after ${payload.maxScrollCount} limited scroll(s).`,
+          ...shallowNavigationNotes
         ]
       },
       artifactDraftsByCheckpointId: new Map([[checkpointId, artifactDrafts]])
@@ -481,6 +499,213 @@ async function collectCandidatesFromPage(page: Page): Promise<DiscoveryCandidate
   return rawElements.flatMap(toDiscoveryCandidates);
 }
 
+async function verifyCandidatesWithShallowNavigation(
+  context: BrowserContext,
+  baseUrl: string,
+  candidatesByKey: Map<string, DiscoveryCandidate>,
+  deadlineMs: number
+): Promise<string[]> {
+  const unsafeElementKeys = new Set(
+    [...candidatesByKey.values()]
+      .filter(isUnsafeShallowNavigationCandidate)
+      .map(candidateElementKey)
+  );
+  const candidates = [...candidatesByKey.values()]
+    .filter((candidate) => isShallowNavigationCandidate(baseUrl, candidate, unsafeElementKeys))
+    .sort(sortCandidates)
+    .slice(0, MAX_SHALLOW_NAVIGATION_CANDIDATES);
+  const notes: string[] = [];
+
+  for (const candidate of candidates) {
+    const targetUrl = candidate.url;
+    if (!targetUrl) {
+      continue;
+    }
+
+    const remainingMs = deadlineMs - Date.now();
+    if (remainingMs < 500) {
+      notes.push("Shallow navigation stopped because the discovery time budget was exhausted.");
+      break;
+    }
+
+    const navigationTimeoutMs = Math.min(SHALLOW_NAVIGATION_TIMEOUT_MS, remainingMs);
+    const preflight = await preflightShallowNavigationTarget(baseUrl, targetUrl, navigationTimeoutMs);
+    if (!preflight.safe) {
+      notes.push(`Shallow navigation blocked unsafe redirect for ${candidate.flowType} candidate "${candidate.label}".`);
+      continue;
+    }
+
+    const postPreflightRemainingMs = deadlineMs - Date.now();
+    if (postPreflightRemainingMs < 500) {
+      notes.push("Shallow navigation stopped because the discovery time budget was exhausted.");
+      break;
+    }
+
+    const postPreflightNavigationTimeoutMs = Math.min(SHALLOW_NAVIGATION_TIMEOUT_MS, postPreflightRemainingMs);
+    const page = await context.newPage();
+    const removeRequestGuard = await installShallowNavigationRequestGuard(context, page, baseUrl);
+    try {
+      page.setDefaultNavigationTimeout(postPreflightNavigationTimeoutMs);
+      await page.goto(targetUrl, {
+        waitUntil: "domcontentloaded",
+        timeout: postPreflightNavigationTimeoutMs
+      });
+      await settleWithinBudget(page, deadlineMs);
+
+      const finalUrl = page.url();
+      if (!isSafeShallowNavigationUrl(baseUrl, finalUrl)) {
+        notes.push(`Shallow navigation blocked unsafe destination for ${candidate.flowType} candidate "${candidate.label}".`);
+        continue;
+      }
+
+      const destinationCandidates = await collectCandidatesFromPage(page);
+      const verified = isFlowVerifiedByDestination(candidate.flowType, destinationCandidates, finalUrl);
+      if (verified) {
+        markCandidateShallowVerified(candidate, finalUrl, await page.title().catch(() => ""));
+      }
+    } catch (error) {
+      notes.push(`Shallow navigation skipped ${candidate.flowType} candidate "${candidate.label}": ${errorMessage(error)}.`);
+    } finally {
+      await removeRequestGuard();
+      await page.close().catch(() => undefined);
+    }
+  }
+
+  return notes;
+}
+
+async function preflightShallowNavigationTarget(
+  baseUrl: string,
+  targetUrl: string,
+  timeoutMs: number
+): Promise<{ safe: boolean }> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), Math.max(100, timeoutMs));
+
+  try {
+    const response = await fetch(targetUrl, {
+      method: "HEAD",
+      redirect: "manual",
+      signal: controller.signal
+    });
+
+    if (response.status >= 300 && response.status < 400) {
+      const location = response.headers.get("location");
+      if (!location) {
+        return { safe: false };
+      }
+
+      return { safe: isSafeShallowNavigationUrl(baseUrl, new URL(location, targetUrl).toString()) };
+    }
+
+    return { safe: isSafeShallowNavigationUrl(baseUrl, response.url || targetUrl) };
+  } catch {
+    return { safe: isSafeShallowNavigationUrl(baseUrl, targetUrl) };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function installShallowNavigationRequestGuard(
+  context: BrowserContext,
+  page: Page,
+  baseUrl: string
+): Promise<() => Promise<void>> {
+  const guard = async (route: Route): Promise<void> => {
+    const request = route.request();
+    if (request.frame().page() !== page) {
+      await route.continue().catch(() => undefined);
+      return;
+    }
+
+    const method = request.method().toUpperCase();
+    const requestUrl = request.url();
+
+    if ((method !== "GET" && method !== "HEAD") || !isSafeShallowNavigationUrl(baseUrl, requestUrl)) {
+      await route.abort("blockedbyclient").catch(() => undefined);
+      return;
+    }
+
+    await route.continue().catch(() => undefined);
+  };
+
+  await context.route("**/*", guard);
+  return () => context.unroute("**/*", guard).catch(() => undefined);
+}
+
+function isShallowNavigationCandidate(
+  baseUrl: string,
+  candidate: DiscoveryCandidate,
+  unsafeElementKeys: Set<string>
+): boolean {
+  if (!candidate.url || !candidate.selector) {
+    return false;
+  }
+
+  if (unsafeElementKeys.has(candidateElementKey(candidate))) {
+    return false;
+  }
+
+  if (isUnsafeShallowNavigationCandidate(candidate)) {
+    return false;
+  }
+
+  return isSameSiteNavigation(baseUrl, candidate.url);
+}
+
+function isUnsafeShallowNavigationCandidate(candidate: DiscoveryCandidate): boolean {
+  return candidate.flowType === "PURCHASE_CHECKOUT"
+    || isUnsafeNavigationText(candidate.label)
+    || isUnsafeNavigationText(candidate.url ?? "")
+    || isUnsafeNavigationText(String(candidate.target.href_contains ?? ""));
+}
+
+function isSafeShallowNavigationUrl(baseUrl: string, nextUrl: string): boolean {
+  return isSameSiteNavigation(baseUrl, nextUrl) && !isUnsafeNavigationText(nextUrl);
+}
+
+function isFlowVerifiedByDestination(
+  flowType: DiscoveryFlowType,
+  destinationCandidates: DiscoveryCandidate[],
+  destinationUrl: string
+): boolean {
+  const searchableUrl = normalizeSearchText(destinationUrl);
+  if (flowType === "LANDING_CTA") {
+    return destinationCandidates.length > 0 || hasAny(searchableUrl, ["signup", "start", "trial", "demo", "contact"]);
+  }
+
+  if (flowType === "CONTACT") {
+    return destinationCandidates.some((candidate) =>
+      candidate.flowType === "CONTACT" || candidate.flowType === "SIGNUP_LEAD_FORM"
+    ) || hasAny(searchableUrl, ["contact", "demo", "sales", "상담", "문의"]);
+  }
+
+  if (flowType === "SIGNUP_LEAD_FORM") {
+    return destinationCandidates.some((candidate) => candidate.flowType === "SIGNUP_LEAD_FORM")
+      || hasAny(searchableUrl, ["signup", "register", "trial", "가입"]);
+  }
+
+  if (flowType === "PRICING") {
+    return destinationCandidates.some((candidate) => candidate.flowType === "PRICING")
+      || hasAny(searchableUrl, ["pricing", "plans", "price", "요금", "가격"]);
+  }
+
+  return false;
+}
+
+function markCandidateShallowVerified(candidate: DiscoveryCandidate, verifiedUrl: string, title: string): void {
+  candidate.confidence = Math.min(0.95, candidate.confidence + 0.08);
+  candidate.reason = `${candidate.reason} Shallow navigation verified a relevant destination.`;
+  candidate.observationData = {
+    ...candidate.observationData,
+    shallow_navigation: {
+      status: "verified",
+      destination_url: verifiedUrl,
+      title
+    }
+  };
+}
+
 function toDiscoveryCandidates(raw: RawDiscoveryElement): DiscoveryCandidate[] {
   const label = normalizeText(raw.text || raw.placeholder || raw.name || raw.href || raw.selector || raw.tagName);
   if (!label) {
@@ -768,6 +993,54 @@ function isCheckoutCandidate(raw: RawDiscoveryElement, searchable: string): bool
     && (isInteractive(raw) || raw.tagName === "section");
 }
 
+function isUnsafeNavigationText(text: string): boolean {
+  return hasAny(normalizeSearchText(text), [
+    "billing",
+    "buy",
+    "cart",
+    "delete",
+    "destroy",
+    "remove",
+    "order",
+    "purchase",
+    "unsubscribe",
+    "submit",
+    "pay",
+    "payment",
+    "checkout",
+    "결제",
+    "삭제",
+    "탈퇴",
+    "제출",
+    "구매",
+    "주문",
+    "회원 탈퇴"
+  ]);
+}
+
+function isSameSiteNavigation(baseUrl: string, nextUrl: string): boolean {
+  try {
+    const base = new URL(baseUrl);
+    const next = new URL(nextUrl, base);
+    if (base.protocol === "file:" && next.protocol === "file:") {
+      return sameOrDescendantPath(dirname(base.pathname), next.pathname);
+    }
+
+    return base.origin === next.origin && (next.protocol === "http:" || next.protocol === "https:");
+  } catch {
+    return false;
+  }
+}
+
+function sameOrDescendantPath(baseDirectory: string, nextPath: string): boolean {
+  const normalizedBase = baseDirectory.endsWith("/") ? baseDirectory : `${baseDirectory}/`;
+  return nextPath.startsWith(normalizedBase);
+}
+
+function candidateElementKey(candidate: DiscoveryCandidate): string {
+  return [candidate.url, candidate.selector].join("|");
+}
+
 function isInteractive(raw: RawDiscoveryElement): boolean {
   return raw.tagName === "a" || raw.tagName === "button" || raw.role === "button" || raw.role === "link";
 }
@@ -889,8 +1162,25 @@ function isString(value: unknown): value is string {
   return typeof value === "string" && value.length > 0;
 }
 
-async function settleAfterLoad(page: Page): Promise<void> {
-  await page.waitForLoadState("networkidle", { timeout: 1_000 }).catch(() => undefined);
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function remainingBudgetMs(deadlineMs: number, minimumMs = 0): number {
+  return Math.max(minimumMs, deadlineMs - Date.now());
+}
+
+async function settleWithinBudget(page: Page, deadlineMs: number): Promise<void> {
+  const timeoutMs = Math.min(1_000, remainingBudgetMs(deadlineMs));
+  if (timeoutMs < 100) {
+    return;
+  }
+
+  await settleAfterLoad(page, timeoutMs);
+}
+
+async function settleAfterLoad(page: Page, timeoutMs = 1_000): Promise<void> {
+  await page.waitForLoadState("networkidle", { timeout: Math.max(100, timeoutMs) }).catch(() => undefined);
 }
 
 async function readReadyState(page: Page): Promise<string> {

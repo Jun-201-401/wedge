@@ -203,6 +203,36 @@ export interface DiscoveryScenarioRecommendation {
   suggested_target?: TargetDescriptorMap | null;
 }
 
+export interface DiscoveryShallowNavigationVerification {
+  status: "verified";
+  destination_url: string;
+  title?: string;
+}
+
+export interface DiscoveryObservationData {
+  shallow_navigation?: DiscoveryShallowNavigationVerification;
+  [key: string]: unknown;
+}
+
+export interface DiscoveryObservation {
+  observation_id?: string;
+  type?: string;
+  stage?: string;
+  source?: string[];
+  data?: DiscoveryObservationData;
+  confidence?: number;
+  [key: string]: unknown;
+}
+
+export interface DiscoveryCheckpoint {
+  checkpoint_id?: string;
+  stage?: string;
+  state?: Record<string, unknown>;
+  observations?: DiscoveryObservation[];
+  artifact_refs?: string[];
+  [key: string]: unknown;
+}
+
 export interface SiteDiscoveryResult {
   schema_version: string;
   discovery_id: string;
@@ -218,7 +248,7 @@ export interface SiteDiscoveryResult {
     timezone: string;
     [key: string]: unknown;
   };
-  checkpoints: Record<string, unknown>[];
+  checkpoints: DiscoveryCheckpoint[];
   detected_flow_types: DiscoveryFlowType[];
   missing_flow_types?: DiscoveryFlowType[];
   flow_candidates?: DiscoveryFlowCandidate[];

@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
 import { mkdir, rm, writeFile } from "node:fs/promises";
+import { createServer, type Server } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import test from "node:test";
 import { executeDiscovery } from "../src/discovery/index.ts";
-import type { DiscoveryExecuteMessage, DiscoveryFlowType } from "../src/shared/contracts.ts";
+import type { DiscoveryCheckpoint, DiscoveryExecuteMessage, DiscoveryFlowType, DiscoveryObservation } from "../src/shared/contracts.ts";
 import { createRunnerTestConfig } from "./support.ts";
 
 test("[Discovery] 페이지에서 CTA/가입폼/문의/가격/결제 후보 추천을 수집한다", async () => {
@@ -15,6 +16,9 @@ test("[Discovery] 페이지에서 CTA/가입폼/문의/가격/결제 후보 추�
   try {
     const fixturePath = join(fixtureRoot, "index.html");
     await writeFile(fixturePath, createDiscoveryFixtureHtml(), "utf8");
+    await writeFile(join(fixtureRoot, "demo.html"), createDemoFixtureHtml(), "utf8");
+    await writeFile(join(fixtureRoot, "pricing.html"), createPricingFixtureHtml(), "utf8");
+    await writeFile(join(fixtureRoot, "checkout.html"), createCheckoutFixtureHtml(), "utf8");
     const fixtureUrl = pathToFileURL(fixturePath).toString();
 
     const result = await executeDiscovery({
@@ -59,20 +63,118 @@ test("[Discovery] 페이지에서 CTA/가입폼/문의/가격/결제 후보 추�
     assert.ok(contactRecommendation?.suggested_target);
     assert.equal(contactRecommendation.recommendation_level, "HIGH");
     assert.ok(contactRecommendation.suggested_target.href_contains?.includes("demo"));
+    assert.ok(contactRecommendation.reason.includes("Shallow navigation verified"));
 
     const checkoutRecommendation = result.scenario_recommendations.find(
       (recommendation) => recommendation.scenario_type === "PURCHASE_CHECKOUT"
     );
     assert.ok(checkoutRecommendation?.suggested_target?.href_contains?.includes("checkout"));
 
-    const checkpoint = result.checkpoints[0] as { observations?: Array<{ type?: string }> } | undefined;
+    const checkpoint = result.checkpoints[0] as DiscoveryCheckpoint | undefined;
     const observations = checkpoint?.observations ?? [];
+    const shallowDestinations = shallowNavigationDestinations(observations);
     assert.ok(observations.some((observation) => observation.type === "cta_candidate"));
     assert.ok(observations.some((observation) => observation.type === "form_candidate"));
     assert.ok(observations.some((observation) => observation.type === "contact_candidate"));
     assert.ok(observations.some((observation) => observation.type === "pricing_candidate"));
+    assert.ok(shallowDestinations.some((destination) => destination.endsWith("/demo.html")));
+    assert.ok(shallowDestinations.some((destination) => destination.endsWith("/pricing.html")));
+    assert.ok(!shallowDestinations.some((destination) => destination.includes("checkout")));
   } finally {
     await rm(fixtureRoot, { recursive: true, force: true });
+  }
+});
+
+test("[Discovery] shallow navigation skips checkout aliases without requesting them", async () => {
+  const requestedPaths = new Map<string, number>();
+  const server = await startFixtureServer(requestedPaths, {
+    extraRootLinks: '<a href="/cart">Compare cart</a>'
+  });
+
+  try {
+    const address = server.address();
+    assert.ok(address && typeof address === "object");
+    const result = await executeDiscovery({
+      message: createDiscoveryExecuteMessage(`http://127.0.0.1:${address.port}/`),
+      config: createRunnerTestConfig({
+        browserName: "chromium",
+        browserHeadless: true,
+        browserLaunchTimeoutMs: 30_000,
+        browserNavigationTimeoutMs: 30_000
+      })
+    });
+
+    assert.equal(requestedPaths.get("/checkout") ?? 0, 0);
+    assert.equal(requestedPaths.get("/cart") ?? 0, 0);
+    const shallowDestinations = shallowNavigationDestinations(
+      result.checkpoints[0]?.observations ?? []
+    );
+    assert.ok(shallowDestinations.some((destination) => destination.endsWith("/demo")));
+    assert.ok(!shallowDestinations.some((destination) => destination.includes("checkout")));
+  } finally {
+    await closeServer(server);
+  }
+});
+
+test("[Discovery] shallow navigation blocks unsafe redirects before checkout is requested", async () => {
+  const requestedPaths = new Map<string, number>();
+  const server = await startFixtureServer(requestedPaths, {
+    pricingPath: "/pricing-redirect",
+    pricingRedirectToCheckout: true
+  });
+
+  try {
+    const address = server.address();
+    assert.ok(address && typeof address === "object");
+    const result = await executeDiscovery({
+      message: createDiscoveryExecuteMessage(`http://127.0.0.1:${address.port}/`),
+      config: createRunnerTestConfig({
+        browserName: "chromium",
+        browserHeadless: true,
+        browserLaunchTimeoutMs: 30_000,
+        browserNavigationTimeoutMs: 30_000
+      })
+    });
+
+    assert.equal(requestedPaths.get("/pricing-redirect") ?? 0, 1);
+    assert.equal(requestedPaths.get("/checkout") ?? 0, 0);
+    const shallowDestinations = shallowNavigationDestinations(
+      result.checkpoints[0]?.observations ?? []
+    );
+    assert.ok(!shallowDestinations.some((destination) => destination.includes("checkout")));
+  } finally {
+    await closeServer(server);
+  }
+});
+
+test("[Discovery] shallow navigation blocks unsafe page-load side effects", async () => {
+  const requestedPaths = new Map<string, number>();
+  const server = await startFixtureServer(requestedPaths, {
+    demoPath: "/demo-with-post",
+    demoPostsCheckout: true
+  });
+
+  try {
+    const address = server.address();
+    assert.ok(address && typeof address === "object");
+    const result = await executeDiscovery({
+      message: createDiscoveryExecuteMessage(`http://127.0.0.1:${address.port}/`),
+      config: createRunnerTestConfig({
+        browserName: "chromium",
+        browserHeadless: true,
+        browserLaunchTimeoutMs: 30_000,
+        browserNavigationTimeoutMs: 30_000
+      })
+    });
+
+    assert.ok((requestedPaths.get("/demo-with-post") ?? 0) >= 1);
+    assert.equal(requestedPaths.get("/checkout") ?? 0, 0);
+    const shallowDestinations = shallowNavigationDestinations(
+      result.checkpoints[0]?.observations ?? []
+    );
+    assert.ok(shallowDestinations.some((destination) => destination.endsWith("/demo-with-post")));
+  } finally {
+    await closeServer(server);
   }
 });
 
@@ -116,10 +218,60 @@ function createDiscoveryFixtureHtml(): string {
           <input type="text" name="company" placeholder="Company" />
         </form>
       </section>
-      <a class="sales-cta" href="/demo">Book a demo</a>
+      <a class="sales-cta" href="demo.html">Book a demo</a>
       <section id="pricing" class="pricing-plans">
         <h2>Pricing plans</h2>
+        <a class="pricing-link" href="pricing.html">See pricing</a>
         <a class="plan-cta" href="checkout.html">Choose Starter</a>
+      </section>
+    </main>
+  </body>
+</html>`;
+}
+
+function createDemoFixtureHtml(options: { postCheckoutOnLoad?: boolean } = {}): string {
+  return `<!doctype html>
+<html lang="en">
+  <head>
+    <title>Book a demo</title>
+    ${options.postCheckoutOnLoad ? "<script>fetch('/checkout', { method: 'POST' }).catch(() => undefined);</script>" : ""}
+  </head>
+  <body>
+    <main>
+      <h1>Talk to sales</h1>
+      <form id="demo-form">
+        <input type="email" name="email" placeholder="Work email" />
+        <textarea name="message" placeholder="Tell us about your team"></textarea>
+      </form>
+    </main>
+  </body>
+</html>`;
+}
+
+function createPricingFixtureHtml(): string {
+  return `<!doctype html>
+<html lang="en">
+  <head><title>Pricing</title></head>
+  <body>
+    <main>
+      <section id="pricing">
+        <h1>Pricing plans</h1>
+        <a href="checkout.html">Choose Starter</a>
+      </section>
+    </main>
+  </body>
+</html>`;
+}
+
+function createCheckoutFixtureHtml(): string {
+  return `<!doctype html>
+<html lang="en">
+  <head><title>Checkout</title></head>
+  <body>
+    <main>
+      <section id="pricing">
+        <h1>Pricing checkout</h1>
+        <a href="checkout.html">Choose Starter</a>
       </section>
     </main>
   </body>
@@ -131,4 +283,95 @@ function assertFlowDetected(detectedFlowTypes: DiscoveryFlowType[], expectedFlow
     detectedFlowTypes.includes(expectedFlowType),
     `expected ${expectedFlowType} in detected flows: ${detectedFlowTypes.join(", ")}`
   );
+}
+
+function shallowNavigationDestinations(observations: DiscoveryObservation[]): string[] {
+  return observations.flatMap((observation) => {
+    return observation.data?.shallow_navigation?.destination_url
+      ? [observation.data.shallow_navigation.destination_url]
+      : [];
+  });
+}
+
+interface FixtureServerOptions {
+  demoPath?: string;
+  demoPostsCheckout?: boolean;
+  extraRootLinks?: string;
+  pricingPath?: string;
+  pricingRedirectToCheckout?: boolean;
+}
+
+async function startFixtureServer(
+  requestedPaths: Map<string, number>,
+  options: FixtureServerOptions = {}
+): Promise<Server> {
+  const demoPath = options.demoPath ?? "/demo";
+  const pricingPath = options.pricingPath ?? "/pricing";
+
+  const server = createServer((request, response) => {
+    const path = request.url?.split("?")[0] ?? "/";
+    requestedPaths.set(path, (requestedPaths.get(path) ?? 0) + 1);
+    response.setHeader("content-type", "text/html; charset=utf-8");
+
+    if (path === demoPath) {
+      response.end(createDemoFixtureHtml({ postCheckoutOnLoad: options.demoPostsCheckout }));
+      return;
+    }
+
+    if (path === pricingPath) {
+      if (options.pricingRedirectToCheckout) {
+        response.statusCode = 302;
+        response.setHeader("location", "/checkout");
+        response.end();
+        return;
+      }
+
+      response.end(createPricingFixtureHtml());
+      return;
+    }
+
+    if (path === "/checkout") {
+      response.end(createCheckoutFixtureHtml());
+      return;
+    }
+
+    if (path === "/cart") {
+      response.end(createCheckoutFixtureHtml());
+      return;
+    }
+
+    response.end(`<!doctype html>
+<html lang="en">
+  <head><title>HTTP Discovery Fixture</title></head>
+  <body>
+    <main>
+      <a href="${demoPath}">Book a demo</a>
+      <a href="${pricingPath}">See pricing</a>
+      <a href="/checkout">Choose Starter</a>
+      ${options.extraRootLinks ?? ""}
+    </main>
+  </body>
+</html>`);
+  });
+
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      server.off("error", reject);
+      resolve();
+    });
+  });
+  return server;
+}
+
+async function closeServer(server: Server): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    server.close((error) => {
+      if (error) {
+        reject(error);
+        return;
+      }
+      resolve();
+    });
+  });
 }

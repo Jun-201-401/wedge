@@ -74,7 +74,7 @@
     "checkpoints": {
       "type": "array",
       "items": {
-        "type": "object"
+        "$ref": "#/$defs/checkpoint"
       }
     },
     "detected_flow_types": {
@@ -174,6 +174,91 @@
           "items": {
             "type": "string"
           }
+        }
+      },
+      "additionalProperties": false
+    },
+    "checkpoint": {
+      "type": "object",
+      "properties": {
+        "checkpoint_id": {
+          "type": "string"
+        },
+        "stage": {
+          "type": "string"
+        },
+        "state": {
+          "type": "object"
+        },
+        "observations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/discovery_observation"
+          }
+        },
+        "artifact_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": true
+    },
+    "discovery_observation": {
+      "type": "object",
+      "properties": {
+        "observation_id": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string"
+        },
+        "stage": {
+          "type": "string"
+        },
+        "source": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "data": {
+          "type": "object",
+          "properties": {
+            "shallow_navigation": {
+              "$ref": "#/$defs/shallow_navigation_verification"
+            }
+          },
+          "additionalProperties": true
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        }
+      },
+      "additionalProperties": true
+    },
+    "shallow_navigation_verification": {
+      "type": "object",
+      "description": "Advisory Discovery evidence that a bounded, same-site, GET/HEAD-only shallow navigation reached a relevant destination for the original candidate. It reduces obvious checkout/payment/destructive risk, but it is not a proof that arbitrary same-site GET navigation is side-effect free and must not be treated as executable ScenarioPlan authorization.",
+      "required": [
+        "status",
+        "destination_url"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "verified"
+          ]
+        },
+        "destination_url": {
+          "type": "string",
+          "format": "uri"
+        },
+        "title": {
+          "type": "string"
         }
       },
       "additionalProperties": false
