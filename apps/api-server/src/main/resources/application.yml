@@ -1,6 +1,22 @@
 spring:
   application:
     name: wedge-api-server
+  ai:
+    mcp:
+      server:
+        enabled: ${WEDGE_MCP_SERVER_ENABLED:false}
+        name: wedge-mcp-server
+        version: 0.1.0
+        type: SYNC
+        protocol: STREAMABLE
+        instructions: "Read-only MCP adapter for Wedge run, evidence, and report data."
+        capabilities:
+          tool: true
+          resource: false
+          prompt: false
+          completion: false
+        annotation-scanner:
+          enabled: ${WEDGE_MCP_SERVER_ENABLED:false}
 
 aws:
   region: ${AWS_REGION:ap-northeast-2}
