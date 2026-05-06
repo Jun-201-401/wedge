@@ -226,6 +226,7 @@ Observation은 raw data에서 추출한 구조화된 fact다.
 | `first_view_message` | first-view value proposition |
 | `cta_candidate` | button/link/action candidate |
 | `cta_cluster` | competing CTA group |
+| `interactive_components` | clickable component list with DOM/layout coordinates for CTA analysis |
 | `form_field` | input metadata |
 | `form_error` | error text and field association |
 | `trust_signal` | privacy/security/refund/review/logo |

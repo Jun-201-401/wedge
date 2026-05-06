@@ -4439,6 +4439,31 @@ components:
           items:
             type: object
             additionalProperties: true
+            example:
+              observation_id: step_002_checkpoint.obs_interactive_components
+              type: interactive_components
+              stage: CTA
+              source:
+              - dom
+              - layout
+              - screenshot
+              confidence: 0.82
+              primary_like_component_count: 1
+              components:
+              - text: 무료로 시작하기
+                selector: a.hero-start
+                role: link
+                tag: a
+                clickable: true
+                clicked_in_scenario: true
+                is_cta_candidate: true
+                is_primary_like: true
+                bounds:
+                  x: 520
+                  y: 360
+                  width: 220
+                  height: 56
+                  unit: css_px
         deltas:
           type: array
           items:

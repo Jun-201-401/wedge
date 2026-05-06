@@ -466,6 +466,36 @@ export interface Checkpoint {
   artifactRefs: string[];
 }
 
+export interface InteractiveComponentBounds {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  unit: "css_px" | "screenshot_px" | "viewport_ratio";
+}
+
+export interface InteractiveComponentObservationItem {
+  text: string;
+  selector: string | null;
+  role: string | null;
+  tag: string;
+  clickable: boolean;
+  clicked_in_scenario: boolean;
+  is_cta_candidate: boolean;
+  is_primary_like: boolean;
+  bounds: InteractiveComponentBounds;
+}
+
+export interface InteractiveComponentsObservation {
+  observation_id: string;
+  type: "interactive_components";
+  stage: "CTA";
+  source: ("dom" | "layout" | "screenshot")[];
+  confidence: number;
+  primary_like_component_count: number;
+  components: InteractiveComponentObservationItem[];
+}
+
 export interface RunnerCheckpointsRequest {
   checkpoints: Checkpoint[];
 }
