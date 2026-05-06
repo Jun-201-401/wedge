@@ -4,7 +4,9 @@ import type { CapturePipeline } from "../../capture/index.ts";
 import { createDeliverySummary, mergeDeliveryIssues, type DeliveryIssue, type DeliverySummary } from "../../delivery/index.ts";
 import type { ArtifactStore } from "../../storage/index.ts";
 import type { ScenarioPlan } from "../../shared/contracts.ts";
+import { errorMessage } from "../../shared/utils.ts";
 import { executeScenarioStep } from "./step-executor.ts";
+import { emitStepEventBestEffort } from "./step-events.ts";
 
 export interface ScenarioExecutionSummary {
   completedStepCount: number;
@@ -15,6 +17,30 @@ export interface ScenarioExecutionSummary {
 export interface ScenarioExecutionResult {
   summary: ScenarioExecutionSummary;
   delivery: DeliverySummary;
+}
+
+export class ScenarioExecutionError extends Error {
+  readonly summary: ScenarioExecutionSummary;
+  readonly delivery: DeliverySummary;
+  readonly failedStepKey: string;
+  readonly failedStepOrder: number;
+  readonly cause: unknown;
+
+  constructor(input: {
+    cause: unknown;
+    summary: ScenarioExecutionSummary;
+    delivery: DeliverySummary;
+    failedStepKey: string;
+    failedStepOrder: number;
+  }) {
+    super(errorMessage(input.cause));
+    this.name = "ScenarioExecutionError";
+    this.summary = input.summary;
+    this.delivery = input.delivery;
+    this.failedStepKey = input.failedStepKey;
+    this.failedStepOrder = input.failedStepOrder;
+    this.cause = input.cause;
+  }
 }
 
 export interface ScenarioExecutorInput {
@@ -40,16 +66,43 @@ export async function executeScenario({
 
   for (const [index, step] of plan.steps.entries()) {
     const stepOrder = index + 1;
-    const stepResult = await executeScenarioStep({
-      runId,
-      stepOrder,
-      step,
-      plan,
-      session,
-      callbackClient,
-      capturePipeline,
-      artifactStore
-    });
+    let stepResult;
+    try {
+      stepResult = await executeScenarioStep({
+        runId,
+        stepOrder,
+        step,
+        plan,
+        session,
+        callbackClient,
+        capturePipeline,
+        artifactStore
+      });
+    } catch (error) {
+      deliveryIssues.push(
+        ...(
+          await emitStepEventBestEffort(callbackClient, runId, stepOrder, step.step_id, "STEP_FAILED", {
+            description: step.description,
+            stage: step.stage,
+            actionType: step.action.type,
+            failureMessage: errorMessage(error)
+          })
+        )
+      );
+
+      const summary = {
+        completedStepCount,
+        failedStepCount: 1,
+        stopped: false
+      };
+      throw new ScenarioExecutionError({
+        cause: error,
+        summary,
+        delivery: createDeliverySummary(mergeDeliveryIssues(deliveryIssues)),
+        failedStepKey: step.step_id,
+        failedStepOrder: stepOrder
+      });
+    }
 
     completedStepCount += 1;
     deliveryIssues.push(...stepResult.deliveryIssues);

@@ -6,6 +6,7 @@ import com.wedge.run.api.internal.runner.dto.RunnerArtifactsRequest;
 import com.wedge.run.api.internal.runner.dto.RunnerCheckpointsRequest;
 import com.wedge.run.api.internal.runner.dto.RunnerFailedRequest;
 import com.wedge.run.api.internal.runner.dto.RunnerFinishedRequest;
+import com.wedge.run.api.internal.runner.dto.RunnerFinishedSummary;
 import com.wedge.run.api.internal.runner.dto.RunnerStepEventsRequest;
 import com.wedge.run.application.RunnerCallbackAckResponse;
 import com.wedge.run.application.RunnerCallbackService;
@@ -170,12 +171,16 @@ public class RunnerCallbackController {
     }
 
     private RunnerFailedCommand toFailedCommand(RunnerFailedRequest request) {
+        RunnerFinishedSummary summary = request.summary();
         return new RunnerFailedCommand(
                 request.workerId(),
                 request.failedAt(),
                 request.failureCode(),
                 request.failureMessage(),
-                request.resultCompleteness()
+                request.resultCompleteness(),
+                summary == null ? null : summary.completedStepCount(),
+                summary == null ? null : summary.failedStepCount(),
+                summary == null ? null : summary.stopped()
         );
     }
 

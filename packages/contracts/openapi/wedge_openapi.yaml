@@ -3817,6 +3817,21 @@ components:
           - NONE
           - PARTIAL
           - FINAL
+        summary:
+          type: object
+          properties:
+            completedStepCount:
+              type: integer
+              minimum: 0
+            failedStepCount:
+              type: integer
+              minimum: 0
+            stopped:
+              type: boolean
+          required:
+          - completedStepCount
+          - failedStepCount
+          - stopped
       required:
       - workerId
       - failedAt

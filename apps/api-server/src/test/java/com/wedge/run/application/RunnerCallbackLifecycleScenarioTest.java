@@ -204,7 +204,10 @@ class RunnerCallbackLifecycleScenarioTest {
                         at("2026-04-21T10:02:00+09:00"),
                         "RUNNER_TIMEOUT",
                         "Runner callback timed out",
-                        ResultCompleteness.PARTIAL
+                        ResultCompleteness.PARTIAL,
+                        null,
+                        null,
+                        null
                 ),
                 context("evt_failed_001")
         );

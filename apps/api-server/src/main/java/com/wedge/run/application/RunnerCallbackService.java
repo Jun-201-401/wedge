@@ -220,6 +220,7 @@ public class RunnerCallbackService {
         return switch (eventType) {
             case "STEP_STARTED" -> StepStatus.RUNNING;
             case "STEP_COMPLETED" -> StepStatus.PASSED;
+            case "STEP_FAILED" -> StepStatus.FAILED;
             default -> null;
         };
     }

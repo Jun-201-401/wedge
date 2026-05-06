@@ -134,6 +134,45 @@ class RunnerCallbackServiceTest {
     }
 
     @Test
+    void stepEventsCallbackMarksFailedStep() {
+        UUID runId = UUID.randomUUID();
+        UUID stepId = UUID.randomUUID();
+        OffsetDateTime occurredAt = OffsetDateTime.parse("2026-04-21T10:02:00+09:00");
+        RunResponse running = sampleRun(runId, RunStatus.RUNNING, ResultCompleteness.NONE);
+        when(processedMessagePersistenceAdapter.tryMarkProcessed("runner.step-events", "evt_step_failed_001")).thenReturn(true);
+        when(runService.markRunningIfStarting(runId)).thenReturn(running);
+        when(runPersistenceAdapter.resolveStep(runId, "step_002_submit"))
+                .thenReturn(new RunPersistenceAdapter.ResolvedStep(stepId, 2, "step_002_submit", StepStatus.RUNNING));
+
+        RunnerCallbackAckResponse result = runnerCallbackService.handleStepEvents(
+                runId,
+                new RunnerStepEventsCommand(List.of(
+                        new RunnerStepEventCommand(
+                                UUID.randomUUID(),
+                                2,
+                                "step_002_submit",
+                                "STEP_FAILED",
+                                occurredAt,
+                                Map.of("failureMessage", "browser click failed")
+                        )
+                )),
+                headers("evt_step_failed_001")
+        );
+
+        assertThat(result.status()).isEqualTo(RunStatus.RUNNING);
+        assertThat(result.eventCount()).isEqualTo(1);
+        verify(runPersistenceAdapter).updateCurrentStepOrder(runId, 2);
+        verify(runPersistenceAdapter).appendRunEvent(
+                runId,
+                stepId,
+                "STEP_FAILED",
+                Map.of("failureMessage", "browser click failed"),
+                occurredAt
+        );
+        verify(runPersistenceAdapter).updateStepState(stepId, StepStatus.FAILED, occurredAt);
+    }
+
+    @Test
     void stepEventsCallbackDoesNotMutateStepsAfterRunIsTerminal() {
         UUID runId = UUID.randomUUID();
         RunResponse completed = sampleRun(runId, RunStatus.COMPLETED, ResultCompleteness.FINAL);
@@ -173,7 +212,10 @@ class RunnerCallbackServiceTest {
                         OffsetDateTime.parse("2026-04-21T10:03:00+09:00"),
                         "RUNNER_TIMEOUT",
                         "Runner callback timed out",
-                        ResultCompleteness.PARTIAL
+                        ResultCompleteness.PARTIAL,
+                        null,
+                        null,
+                        null
                 ),
                 headers("evt_failed_001")
         ))
