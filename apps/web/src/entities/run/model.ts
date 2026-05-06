@@ -41,6 +41,23 @@ export interface Run {
   latestSnapshot?: LatestSnapshot | null;
 }
 
+
+export type RunStepStatus = 'PENDING' | 'RUNNING' | 'PASSED' | 'FAILED' | 'SKIPPED' | 'BLOCKED' | 'STOPPED';
+
+export interface RunStep {
+  id: string;
+  runId: string;
+  stepOrder: number;
+  stepKey: string;
+  stepName: string;
+  stepType: string;
+  status: RunStepStatus;
+  startedAt?: string | null;
+  finishedAt?: string | null;
+  errorCode?: string | null;
+  errorMessage?: string | null;
+}
+
 export interface RunCreateRequest {
   projectId: string;
   name: string;

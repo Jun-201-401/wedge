@@ -10,6 +10,7 @@ import type {
   RunArtifact,
   RunLive,
   RunStatus,
+  RunStep,
 } from '../entities/run';
 
 export interface ListRunsParams {
@@ -86,7 +87,7 @@ export function listRunArtifacts(runId: string, options?: RequestOptions) {
 }
 
 export function listRunSteps(runId: string, options?: RequestOptions) {
-  return requestJson<ApiResponse<unknown[]>>(`/runs/${runId}/steps`, options);
+  return requestJson<ApiResponse<RunStep[]>>(`/runs/${runId}/steps`, options);
 }
 
 export function requestRunAnalysis(runId: string, options?: RequestOptions) {
