@@ -133,6 +133,7 @@ Discovery/Run 결과 = 가격, 장바구니, 결제 CTA 없음
 ### V1 제외
 
 - 완전한 natural-language custom scenario planner
+- 완전 자율 Browser Agent Runtime. Checkout-entry Agent Runtime은 `docs/runner_agent_runtime_implementation_plan.md`의 별도 contract-first 후속 계획으로 관리한다.
 - 실제 결제 완료
 - CAPTCHA/OAuth 우회
 - authenticated flow 전체 지원

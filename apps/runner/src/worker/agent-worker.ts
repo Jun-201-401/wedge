@@ -1,15 +1,16 @@
+import { createAgentRuntimePlan, executeAgentRun } from "../agent/index.ts";
 import type { BrowserSessionFactory } from "../browser/playwright/index.ts";
 import type { CallbackClient } from "../callback/index.ts";
-import type { RunnerConfig } from "../config/index.ts";
 import type { CapturePipeline } from "../capture/index.ts";
+import type { RunnerConfig } from "../config/index.ts";
 import { createDeliverySummary, mergeDeliveryIssues, type DeliverySummary } from "../delivery/index.ts";
-import { executeScenario, ScenarioExecutionError, type ScenarioExecutionSummary } from "../scenario/executor/index.ts";
-import type { ArtifactStore } from "../storage/index.ts";
-import type { RunExecuteMessage } from "../shared/contracts.ts";
+import { ScenarioExecutionError, type ScenarioExecutionSummary } from "../scenario/executor/index.ts";
+import type { AgentExecuteMessage } from "../shared/contracts.ts";
 import { classifyRunnerFailure, errorMessage, logOperationalEvent } from "../shared/utils.ts";
+import type { ArtifactStore } from "../storage/index.ts";
 import { emitAcceptedCallback, emitFailedCallback, emitFinishedCallback } from "./callback-policy.ts";
 
-export interface RunnerExecutionResult {
+export interface AgentRunnerExecutionResult {
   runId: string;
   workerId: string;
   browserSessionId: string;
@@ -17,7 +18,7 @@ export interface RunnerExecutionResult {
   delivery: DeliverySummary;
 }
 
-export interface RegisterWorkerInput {
+export interface RegisterAgentWorkerInput {
   config: RunnerConfig;
   browserFactory: BrowserSessionFactory;
   callbackClient: CallbackClient;
@@ -25,44 +26,46 @@ export interface RegisterWorkerInput {
   artifactStore: ArtifactStore;
 }
 
-export interface RunnerWorker {
+export interface AgentRunnerWorker {
   workerId: string;
-  handleMessage: (message: RunExecuteMessage) => Promise<RunnerExecutionResult>;
+  handleMessage: (message: AgentExecuteMessage) => Promise<AgentRunnerExecutionResult>;
 }
 
-export function registerWorker({
+export function registerAgentWorker({
   config,
   browserFactory,
   callbackClient,
   capturePipeline,
   artifactStore
-}: RegisterWorkerInput): RunnerWorker {
+}: RegisterAgentWorkerInput): AgentRunnerWorker {
   return {
     workerId: config.workerId,
     async handleMessage(message) {
+      const task = message.payload.agentTask;
       let session: Awaited<ReturnType<BrowserSessionFactory["createSession"]>> | undefined;
       let accepted = false;
 
       try {
-        const plan = message.payload.scenarioPlan;
+        const plan = createAgentRuntimePlan(task);
 
         session = await browserFactory.createSession({
-          runId: message.payload.runId,
+          runId: task.run_id,
           plan
         });
 
         await emitAcceptedCallback({
           callbackClient,
-          runId: message.payload.runId,
+          runId: task.run_id,
           workerId: config.workerId,
           browserSessionId: session.id
         });
 
         accepted = true;
 
-        const executionResult = await executeScenario({
-          runId: message.payload.runId,
-          plan,
+        const executionResult = await executeAgentRun({
+          runId: task.run_id,
+          task,
+          runtimePlan: plan,
           session,
           callbackClient,
           capturePipeline,
@@ -71,13 +74,13 @@ export function registerWorker({
 
         const finishedDeliveryIssues = await emitFinishedCallback({
           callbackClient,
-          runId: message.payload.runId,
+          runId: task.run_id,
           workerId: config.workerId,
           summary: executionResult.summary
         });
 
         return {
-          runId: message.payload.runId,
+          runId: task.run_id,
           workerId: config.workerId,
           browserSessionId: session.id,
           summary: executionResult.summary,
@@ -92,10 +95,11 @@ export function registerWorker({
         const resultCompleteness = accepted ? "PARTIAL" : "NONE";
 
         logOperationalEvent(
-          "worker",
+          "agent-worker",
           "run_failed",
           {
-            runId: message.payload.runId,
+            runId: task.run_id,
+            taskId: task.task_id,
             workerId: config.workerId,
             accepted,
             hasSession: session !== undefined,
@@ -111,7 +115,7 @@ export function registerWorker({
 
         await emitFailedCallback({
           callbackClient,
-          runId: message.payload.runId,
+          runId: task.run_id,
           workerId: config.workerId,
           error,
           accepted,

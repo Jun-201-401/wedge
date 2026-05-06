@@ -1,16 +1,17 @@
 ---
-title: Wedge Runner Agent Execution Design
-document_type: runner-agent-execution-design
-status: current-draft
-last_updated: 2026-05-06
+title: Wedge Runner Agent Execution Background / MVP Spike
+document_type: runner-agent-execution-spike
+status: historical-spike
+last_updated: 2026-05-07
 intended_use:
-  - implementation_reference
-  - ai_tasking
   - product_alignment
+  - background_context
+  - spike_reference
 related_documents:
   - 01_architecture_and_project_structure.md
   - 03_api_reference.md
   - 04_domain_payload_contracts.md
+  - runner_agent_runtime_implementation_plan.md
   - wedge_runner_architecture.md
   - AI_CONTEXT_GUIDE.md
   - ../apps/runner/README.md
@@ -19,9 +20,15 @@ related_documents:
   - ../packages/contracts/internal/runner-callback.schema.json
 ---
 
+# 0. 현재 위치
+
+이 문서는 Runner Agent 전환 배경과 MVP spike 아이디어를 남기는 참고 자료다. 정식 구현 기준은 `docs/runner_agent_runtime_implementation_plan.md`이며, 현재 코드는 `run.execute.request`에 agent mode를 섞지 않고 별도 `agent.execute.request` / `AgentTask` 경로를 사용한다.
+
+이 문서 안의 `executionMode`, `agentConfig`, optional `scenarioPlan` 예시는 과거 spike 기록으로만 읽는다. 새 구현/계약 변경은 `packages/contracts`의 `AgentExecuteMessage` / `AgentTask`와 `apps/runner/src/worker/agent-worker.ts` 기준을 따른다.
+
 # 1. 목적
 
-이 문서는 Runner를 "사용자가 작성한 완성 시나리오를 실행하는 엔진"에서 "사용자 목표를 받아 화면을 관찰하고 다음 행동을 선택하는 UX Agent"로 전환하기 위한 구현 기준을 정의한다.
+이 문서는 Runner를 "사용자가 작성한 완성 시나리오를 실행하는 엔진"에서 "사용자 목표를 받아 화면을 관찰하고 다음 행동을 선택하는 UX Agent"로 전환하기 위한 제품 배경을 설명한다.
 
 현재 구현은 `ScenarioPlan.steps[]`를 순서대로 실행하는 deterministic executor다. 이 방식은 재현성은 좋지만, Wedge의 핵심 사용자가 UX 테스트 시나리오를 직접 설계할 수 있다고 가정한다. 이 가정은 제품 가치 제안과 맞지 않는다.
 
@@ -655,29 +662,30 @@ Runner Agent는 "실행과 evidence 수집"을 담당한다. 최종 UX 판단과
 
 Runner Agent 전환이 최소 성공했다고 볼 수 있는 기준:
 
-1. `run.execute.request`가 `scenarioPlan` 없이도 agent mode로 실행된다.
-2. 사용자는 URL과 goal만 제공해도 Runner가 최소 1개 이상의 행동을 선택한다.
-3. Runner는 각 turn의 observation, decision, action result, verification evidence를 남긴다.
-4. 기존 scripted `ScenarioPlan` 실행은 깨지지 않는다.
+1. `agent.execute.request`가 `AgentTask`를 받아 별도 Agent worker에서 실행된다.
+2. 기존 `run.execute.request`는 고정된 `ScenarioPlan` 실행 경로로 유지된다.
+3. 사용자는 URL과 goal을 제공하고, 시스템은 이를 `AgentTask`로 materialize한다.
+4. Runner는 각 turn의 observation, decision, action result, verification evidence를 남긴다.
 5. safety default가 irreversible/payment/external 위험 행동을 차단한다.
 6. 성공한 agent 실행은 replay/generation 가능한 trace를 남긴다.
 7. 실패해도 "어디서 왜 막혔는지"를 evidence로 설명할 수 있다.
 
 # 15. 문서 상태
 
-이 문서는 Runner Agent MVP 구현과 남은 확장 방향을 함께 기록하는 current draft다.
+이 문서는 Runner Agent 전환 배경과 MVP spike 기록이다. 정식 구현 기준은 `docs/runner_agent_runtime_implementation_plan.md`다.
 
 현재 구현된 작업:
 
-- `packages/contracts`에 `executionMode`, `agentConfig`, optional `scenarioPlan` 방향 반영
-- `apps/runner/src/agent` MVP controller/runtime-plan/rule-based planner/verifier 추가
-- `worker`에서 `agent` / `scripted` mode dispatch 추가
-- `scenarioPlan` 없는 agent request 파싱 및 worker regression test 추가
+- `packages/contracts`에 `AgentExecuteMessage` / `AgentTask`와 `agent.execute.request` schema entrypoint 추가
+- `apps/runner/src/agent` MVP controller/runtime-plan/rule-based planner/verifier를 `AgentTask` 기반으로 연결
+- `apps/runner/src/worker/agent-worker.ts`로 agent 실행 경로 분리
+- 기존 `run.execute.request` / `ScenarioPlan` worker는 scripted executor로 유지
+- agent request 파싱, MQ queue, worker regression test 추가
 
 아직 수행하지 않은 작업:
 
-- callback contract에 정식 `AgentTurnEvent` 추가
+- callback contract에 정식 `AgentEvent` / `AgentTrace` 추가
 - agent trace artifact와 generated replay path 구현
 - LLM planner 및 replay-hint planner 구현
 
-구현을 시작할 때는 이 문서를 기준으로 contract-first 순서를 따른다.
+새 구현을 시작할 때는 `docs/runner_agent_runtime_implementation_plan.md`를 기준으로 contract-first 순서를 따른다.

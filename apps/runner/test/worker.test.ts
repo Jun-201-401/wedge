@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { registerAgentWorker } from "../src/worker/agent-worker.ts";
 import { registerWorker } from "../src/worker/index.ts";
 import {
   cloneMessage,
@@ -10,6 +11,7 @@ import {
   createSimulatedPageSnapshot,
   createSimulatedSession,
   createStubCallbackClient,
+  loadAgentExampleMessage,
   loadExampleMessage
 } from "./support.ts";
 import type { RunnerFailedPayload, StepEvent } from "../src/shared/contracts.ts";
@@ -238,23 +240,25 @@ test("[Worker lifecycle] 실행 자체가 성공했다면 finished callback 실�
   assert.deepEqual(result.delivery.issues.map((issue) => issue.scope), ["finished-callback"]);
 });
 
-test("[Worker agent mode] scenarioPlan 없이 CTA 후보를 관찰해 클릭한다", async () => {
-  const message = cloneMessage(await loadExampleMessage());
-  message.payload.executionMode = "agent";
-  message.payload.agentConfig = {
-    maxTurns: 3,
-    maxScrolls: 0,
-    captureEveryTurn: false
+test("[Agent Worker] AgentTask로 CTA 후보를 관찰해 클릭한다", async () => {
+  const message = await loadAgentExampleMessage();
+  const task = message.payload.agentTask;
+  task.goal = "무료로 시작하기 CTA를 찾아 진입한다";
+  task.budget.max_steps = 3;
+  task.budget.max_same_page_attempts = 0;
+  task.artifact_policy = {
+    capture_screenshots: false,
+    capture_dom_snapshots: false,
+    capture_ax_tree: false,
+    capture_trace: true
   };
-  delete message.payload.scenarioTemplateVersionId;
-  delete message.payload.scenarioPlan;
 
   const executedActions: string[] = [];
-  let currentUrl = message.payload.startUrl;
+  let currentUrl = task.start_url;
   let loaded = false;
   let closed = false;
 
-  const worker = registerWorker({
+  const worker = registerAgentWorker({
     config: createRunnerTestConfig({
       artifactsRoot: join(tmpdir(), "runner-test-agent-artifacts"),
       callbackLogFile: join(tmpdir(), "runner-test-agent-callbacks.jsonl")
@@ -267,7 +271,7 @@ test("[Worker agent mode] scenarioPlan 없이 CTA 후보를 관찰해 클릭한�
             executedActions.push(action.type);
             if (action.type === "goto") {
               loaded = true;
-              currentUrl = message.payload.startUrl;
+              currentUrl = task.start_url;
             }
             if (action.type === "click") {
               currentUrl = "https://example.com/signup";
@@ -287,7 +291,7 @@ test("[Worker agent mode] scenarioPlan 없이 CTA 후보를 관찰해 클릭한�
           snapshot: () => createSimulatedPageSnapshot(plan, {
             currentUrl,
             finalUrl: currentUrl,
-            interactiveComponents: loaded && currentUrl === message.payload.startUrl
+            interactiveComponents: loaded && currentUrl === task.start_url
               ? [
                 {
                   text: "무료로 시작하기",
@@ -317,7 +321,7 @@ test("[Worker agent mode] scenarioPlan 없이 CTA 후보를 관찰해 클릭한�
     callbackClient: createStubCallbackClient(),
     capturePipeline: {
       collectCheckpoint: async () => {
-        throw new Error("checkpoint collection should not run when captureEveryTurn is false");
+        throw new Error("checkpoint collection should not run when capture_screenshots is false");
       }
     },
     artifactStore: {

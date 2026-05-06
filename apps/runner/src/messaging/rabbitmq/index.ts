@@ -14,6 +14,12 @@ export interface RunExecuteConsumerInput {
   client?: RabbitMqClient;
 }
 
+export interface AgentExecuteConsumerInput {
+  config: Pick<RunnerConfig, "mqUrl" | "mqQueueAgentExecute" | "mqPrefetch" | "mqRequeueOnFailure">;
+  processRawMessage: (rawMessage: string) => Promise<void>;
+  client?: RabbitMqClient;
+}
+
 export interface DiscoveryExecuteConsumerInput {
   config: Pick<RunnerConfig, "mqUrl" | "mqQueueDiscoveryExecute" | "mqPrefetch" | "mqRequeueOnFailure">;
   processRawMessage: (rawMessage: string) => Promise<void>;
@@ -21,8 +27,9 @@ export interface DiscoveryExecuteConsumerInput {
 }
 
 export interface RunnerQueuesConsumerInput {
-  config: Pick<RunnerConfig, "mqUrl" | "mqQueueRunExecute" | "mqQueueDiscoveryExecute" | "mqPrefetch" | "mqRequeueOnFailure">;
+  config: Pick<RunnerConfig, "mqUrl" | "mqQueueRunExecute" | "mqQueueAgentExecute" | "mqQueueDiscoveryExecute" | "mqPrefetch" | "mqRequeueOnFailure">;
   processRawRunMessage: (rawMessage: string) => Promise<void>;
+  processRawAgentMessage: (rawMessage: string) => Promise<void>;
   processRawDiscoveryMessage: (rawMessage: string) => Promise<void>;
   client?: RabbitMqClient;
 }
@@ -64,6 +71,21 @@ export async function startRunExecuteQueueConsumer({
   });
 }
 
+export async function startAgentExecuteQueueConsumer({
+  config,
+  processRawMessage,
+  client = defaultRabbitMqClient
+}: AgentExecuteConsumerInput): Promise<RunExecuteQueueConsumer> {
+  return startSingleQueueConsumer({
+    mqUrl: config.mqUrl,
+    queue: config.mqQueueAgentExecute,
+    prefetch: config.mqPrefetch,
+    requeueOnFailure: config.mqRequeueOnFailure,
+    processRawMessage,
+    client
+  });
+}
+
 export async function startDiscoveryExecuteQueueConsumer({
   config,
   processRawMessage,
@@ -82,6 +104,7 @@ export async function startDiscoveryExecuteQueueConsumer({
 export async function startRunnerQueueConsumers({
   config,
   processRawRunMessage,
+  processRawAgentMessage,
   processRawDiscoveryMessage,
   client = defaultRabbitMqClient
 }: RunnerQueuesConsumerInput): Promise<RunnerQueueConsumer> {
@@ -90,10 +113,16 @@ export async function startRunnerQueueConsumers({
 
   await channel.prefetch(config.mqPrefetch);
   await channel.checkQueue(config.mqQueueRunExecute);
+  await channel.checkQueue(config.mqQueueAgentExecute);
   await channel.checkQueue(config.mqQueueDiscoveryExecute);
   await channel.consume(
     config.mqQueueRunExecute,
     createQueueConsumerHandler(channel, processRawRunMessage, config.mqRequeueOnFailure),
+    { noAck: false }
+  );
+  await channel.consume(
+    config.mqQueueAgentExecute,
+    createQueueConsumerHandler(channel, processRawAgentMessage, config.mqRequeueOnFailure),
     { noAck: false }
   );
   await channel.consume(

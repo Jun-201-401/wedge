@@ -2,6 +2,8 @@ import { readFile } from "node:fs/promises";
 import {
   settleStrategyTypes,
   scenarioActionTypes,
+  type AgentExecuteMessage,
+  type AgentTask,
   type DiscoveryExecuteMessage,
   type RunExecuteMessage,
   type ScenarioPlan,
@@ -10,10 +12,10 @@ import {
 import { isRecord } from "../shared/utils.ts";
 
 const RUNNER_MESSAGE_TYPE = "run.execute.request";
+const AGENT_MESSAGE_TYPE = "agent.execute.request";
 const DISCOVERY_MESSAGE_TYPE = "discovery.execute.request";
 const PAYLOAD_DEVICE_PRESETS = ["desktop", "tablet", "mobile"] as const;
-const RUN_EXECUTION_MODES = ["agent", "scripted"] as const;
-const AGENT_AUTONOMY_LEVELS = ["low", "medium", "high"] as const;
+const AGENT_GOAL_TYPES = ["CHECKOUT_ENTRY_VERIFICATION"] as const;
 const SCENARIO_TYPES = ["template", "custom_compiled"] as const;
 const SCENARIO_STEP_STAGES = ["FIRST_VIEW", "VALUE", "CTA", "INPUT", "COMMIT"] as const;
 const ENVIRONMENT_DEVICES = ["desktop", "mobile", "tablet"] as const;
@@ -31,6 +33,11 @@ export async function readRunExecuteMessage(messageFile: string): Promise<RunExe
   return parseRunExecuteMessage(rawMessage);
 }
 
+export async function readAgentExecuteMessage(messageFile: string): Promise<AgentExecuteMessage> {
+  const rawMessage = await readFile(messageFile, "utf8");
+  return parseAgentExecuteMessage(rawMessage);
+}
+
 export async function readDiscoveryExecuteMessage(messageFile: string): Promise<DiscoveryExecuteMessage> {
   const rawMessage = await readFile(messageFile, "utf8");
   return parseDiscoveryExecuteMessage(rawMessage);
@@ -46,6 +53,19 @@ export function parseRunExecuteMessage(rawMessage: string): RunExecuteMessage {
   }
 
   assertRunExecuteMessage(parsed);
+  return parsed;
+}
+
+export function parseAgentExecuteMessage(rawMessage: string): AgentExecuteMessage {
+  let parsed: unknown;
+
+  try {
+    parsed = JSON.parse(rawMessage) as unknown;
+  } catch {
+    throw new RunnerMessageValidationError("agent message must be valid JSON");
+  }
+
+  assertAgentExecuteMessage(parsed);
   return parsed;
 }
 
@@ -76,6 +96,20 @@ function assertRunExecuteMessage(value: unknown): asserts value is RunExecuteMes
   assertRunExecutePayload(value.payload);
 }
 
+function assertAgentExecuteMessage(value: unknown): asserts value is AgentExecuteMessage {
+  if (!isRecord(value)) {
+    throw new RunnerMessageValidationError("agent message must be a JSON object");
+  }
+
+  assertLiteralString(value.messageType, AGENT_MESSAGE_TYPE, "agent messageType");
+
+  assertNonEmptyString(value.messageId, "agent messageId");
+  assertNonEmptyString(value.schemaVersion, "agent schemaVersion");
+  assertNonEmptyString(value.createdAt, "agent createdAt");
+  assertNonEmptyString(value.producer, "agent producer");
+  assertAgentExecutePayload(value.payload);
+}
+
 function assertDiscoveryExecuteMessage(value: unknown): asserts value is DiscoveryExecuteMessage {
   if (!isRecord(value)) {
     throw new RunnerMessageValidationError("discovery message must be a JSON object");
@@ -100,55 +134,84 @@ function assertRunExecutePayload(value: unknown): asserts value is RunExecuteMes
   assertNonEmptyString(value.startUrl, "runner payload.startUrl");
   assertNonEmptyString(value.goal, "runner payload.goal");
   assertOneOf(value.devicePreset, PAYLOAD_DEVICE_PRESETS, "runner payload.devicePreset");
-
-  const executionMode = value.executionMode ?? "agent";
-  assertOneOf(executionMode, RUN_EXECUTION_MODES, "runner payload.executionMode");
-
-  if (value.agentConfig !== undefined) {
-    assertAgentConfig(value.agentConfig);
-  }
-
-  if (executionMode === "scripted") {
-    assertNonEmptyString(value.scenarioTemplateVersionId, "runner payload.scenarioTemplateVersionId");
-    assertScenarioPlan(value.scenarioPlan);
-    assertScenarioPlanConsistency(
-      {
-        startUrl: value.startUrl,
-        goal: value.goal,
-        devicePreset: value.devicePreset
-      },
-      value.scenarioPlan
-    );
-    return;
-  }
-
-  if (value.scenarioPlan !== undefined) {
-    assertScenarioPlan(value.scenarioPlan);
-    assertScenarioPlanConsistency(
-      {
-        startUrl: value.startUrl,
-        goal: value.goal,
-        devicePreset: value.devicePreset
-      },
-      value.scenarioPlan
-    );
-  }
+  assertNonEmptyString(value.scenarioTemplateVersionId, "runner payload.scenarioTemplateVersionId");
+  assertScenarioPlan(value.scenarioPlan);
+  assertScenarioPlanConsistency(
+    {
+      startUrl: value.startUrl,
+      goal: value.goal,
+      devicePreset: value.devicePreset
+    },
+    value.scenarioPlan
+  );
 }
 
-function assertAgentConfig(value: unknown): void {
+function assertAgentExecutePayload(value: unknown): asserts value is AgentExecuteMessage["payload"] {
   if (!isRecord(value)) {
-    throw new RunnerMessageValidationError("runner payload.agentConfig must be an object");
+    throw new RunnerMessageValidationError("agent payload must be an object");
   }
 
-  assertOptionalIntegerRange(value.maxTurns, "runner payload.agentConfig.maxTurns", 1, 20);
-  assertOptionalIntegerRange(value.maxScrolls, "runner payload.agentConfig.maxScrolls", 0, 10);
+  assertAgentTask(value.agentTask);
+}
 
-  if (value.autonomyLevel !== undefined) {
-    assertOneOf(value.autonomyLevel, AGENT_AUTONOMY_LEVELS, "runner payload.agentConfig.autonomyLevel");
+function assertAgentTask(value: unknown): asserts value is AgentTask {
+  if (!isRecord(value)) {
+    throw new RunnerMessageValidationError("agent payload.agentTask must be an object");
   }
 
-  assertOptionalBoolean(value.allowReplayHints, "runner payload.agentConfig.allowReplayHints");
-  assertOptionalBoolean(value.captureEveryTurn, "runner payload.agentConfig.captureEveryTurn");
+  assertLiteralString(value.schema_version, "0.1", "agentTask.schema_version");
+  assertNonEmptyString(value.task_id, "agentTask.task_id");
+  assertNonEmptyString(value.attempt_id, "agentTask.attempt_id");
+  assertIntegerRange(value.attempt_index, "agentTask.attempt_index", 1, 1_000_000);
+  assertNonEmptyString(value.run_id, "agentTask.run_id");
+  assertNonEmptyString(value.project_id, "agentTask.project_id");
+  assertOneOf(value.goal_type, AGENT_GOAL_TYPES, "agentTask.goal_type");
+  assertOptionalNonEmptyString(value.goal, "agentTask.goal");
+  assertNonEmptyString(value.start_url, "agentTask.start_url");
+  assertScenarioEnvironment(value.environment);
+  assertAgentBudget(value.budget);
+  assertAgentAllowedNavigation(value.allowed_navigation);
+  assertAgentRiskPolicy(value.risk_policy);
+}
+
+function assertAgentBudget(value: unknown): void {
+  if (!isRecord(value)) {
+    throw new RunnerMessageValidationError("agentTask.budget must be an object");
+  }
+
+  assertIntegerRange(value.max_steps, "agentTask.budget.max_steps", 1, 50);
+  assertIntegerRange(value.max_duration_ms, "agentTask.budget.max_duration_ms", 1_000, 600_000);
+  assertOptionalIntegerRange(value.max_recovery_attempts, "agentTask.budget.max_recovery_attempts", 0, 10);
+  assertOptionalIntegerRange(value.max_same_page_attempts, "agentTask.budget.max_same_page_attempts", 0, 10);
+  assertOptionalIntegerRange(value.max_external_redirects, "agentTask.budget.max_external_redirects", 0, 10);
+}
+
+function assertAgentAllowedNavigation(value: unknown): void {
+  if (!isRecord(value)) {
+    throw new RunnerMessageValidationError("agentTask.allowed_navigation must be an object");
+  }
+
+  assertBoolean(value.allow_external_navigation, "agentTask.allowed_navigation.allow_external_navigation");
+  assertOptionalStringArray(value.allowed_origins, "agentTask.allowed_navigation.allowed_origins");
+  assertOptionalStringArray(
+    value.allowed_checkout_redirect_origins,
+    "agentTask.allowed_navigation.allowed_checkout_redirect_origins"
+  );
+}
+
+function assertAgentRiskPolicy(value: unknown): void {
+  if (!isRecord(value)) {
+    throw new RunnerMessageValidationError("agentTask.risk_policy must be an object");
+  }
+
+  assertBoolean(value.allow_checkout_navigation, "agentTask.risk_policy.allow_checkout_navigation");
+  assertBoolean(value.allow_cart_mutation, "agentTask.risk_policy.allow_cart_mutation");
+  assertBoolean(value.allow_shipping_form_entry, "agentTask.risk_policy.allow_shipping_form_entry");
+  assertBoolean(value.allow_payment_info_entry, "agentTask.risk_policy.allow_payment_info_entry");
+  assertBoolean(value.allow_final_payment_submit, "agentTask.risk_policy.allow_final_payment_submit");
+  assertBoolean(value.allow_final_order_commit, "agentTask.risk_policy.allow_final_order_commit");
+  assertBoolean(value.allow_destructive_action, "agentTask.risk_policy.allow_destructive_action");
+  assertBoolean(value.allow_external_message_send, "agentTask.risk_policy.allow_external_message_send");
 }
 
 function assertDiscoveryExecutePayload(value: unknown): asserts value is DiscoveryExecuteMessage["payload"] {
@@ -298,6 +361,12 @@ function assertNonEmptyString(value: unknown, fieldName: string): void {
   }
 }
 
+function assertOptionalNonEmptyString(value: unknown, fieldName: string): void {
+  if (value !== undefined && (typeof value !== "string" || value.length === 0)) {
+    throw new RunnerMessageValidationError(`${fieldName} must be a non-empty string`);
+  }
+}
+
 function assertLiteralString(value: unknown, expected: string, fieldName: string): void {
   if (value !== expected) {
     throw new RunnerMessageValidationError(`${fieldName} must be ${expected}`);
@@ -313,6 +382,12 @@ function assertBoolean(value: unknown, fieldName: string): void {
 function assertOptionalBoolean(value: unknown, fieldName: string): void {
   if (value !== undefined && typeof value !== "boolean") {
     throw new RunnerMessageValidationError(`${fieldName} must be boolean`);
+  }
+}
+
+function assertIntegerRange(value: unknown, fieldName: string, min: number, max: number): void {
+  if (!Number.isInteger(value) || Number(value) < min || Number(value) > max) {
+    throw new RunnerMessageValidationError(`${fieldName} must be an integer between ${min} and ${max}`);
   }
 }
 
@@ -334,6 +409,16 @@ function assertOneOf(
 ): void {
   if (typeof value !== "string" || !allowedValues.includes(value)) {
     throw new RunnerMessageValidationError(customMessage ? `${fieldName} ${customMessage}` : `${fieldName} is invalid`);
+  }
+}
+
+function assertOptionalStringArray(value: unknown, fieldName: string): void {
+  if (value === undefined) {
+    return;
+  }
+
+  if (!Array.isArray(value) || value.some((item) => typeof item !== "string" || item.length === 0)) {
+    throw new RunnerMessageValidationError(`${fieldName} must be an array of non-empty strings`);
   }
 }
 

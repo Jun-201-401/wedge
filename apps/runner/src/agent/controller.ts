@@ -6,7 +6,7 @@ import { ScenarioExecutionError, type ScenarioExecutionSummary } from "../scenar
 import { emitStepEventBestEffort } from "../scenario/executor/step-events.ts";
 import { executeScenarioStep } from "../scenario/executor/step-executor.ts";
 import type { ArtifactStore } from "../storage/index.ts";
-import type { AgentRunConfig, RunExecuteMessage, ScenarioPlan, ScenarioStep } from "../shared/contracts.ts";
+import type { AgentTask, ScenarioPlan, ScenarioStep } from "../shared/contracts.ts";
 import { classifyRunnerFailure, errorMessage, logOperationalEvent } from "../shared/utils.ts";
 import { decideNextAction, type AgentDecision } from "./planner.ts";
 import { observePage } from "./observation.ts";
@@ -20,7 +20,7 @@ export interface AgentExecutionResult {
 
 export interface AgentExecutorInput {
   runId: string;
-  payload: RunExecuteMessage["payload"];
+  task: AgentTask;
   runtimePlan: ScenarioPlan;
   session: BrowserSession;
   callbackClient: CallbackClient;
@@ -29,7 +29,7 @@ export interface AgentExecutorInput {
 }
 
 export async function executeAgentRun(input: AgentExecutorInput): Promise<AgentExecutionResult> {
-  const config = resolveAgentConfig(input.payload.agentConfig);
+  const config = resolveAgentBudget(input.task);
   const state = createInitialAgentState();
   const deliveryIssues: DeliveryIssue[] = [];
   let completedStepCount = 0;
@@ -39,8 +39,8 @@ export async function executeAgentRun(input: AgentExecutorInput): Promise<AgentE
     const observation = await observePage(input.session);
     const previousUrl = observation.snapshot.finalUrl;
     const decision = decideNextAction({
-      goal: input.payload.goal,
-      startUrl: input.payload.startUrl,
+      goal: resolveTaskGoal(input.task),
+      startUrl: input.task.start_url,
       state,
       observation,
       maxScrolls: config.maxScrolls
@@ -119,8 +119,8 @@ export async function executeAgentRun(input: AgentExecutorInput): Promise<AgentE
     }
 
     const verification = verifyGoal({
-      goal: input.payload.goal,
-      startUrl: input.payload.startUrl,
+      goal: resolveTaskGoal(input.task),
+      startUrl: input.task.start_url,
       previousUrl,
       snapshot: input.session.snapshot(),
       decision
@@ -158,12 +158,16 @@ export async function executeAgentRun(input: AgentExecutorInput): Promise<AgentE
   };
 }
 
-function resolveAgentConfig(config: AgentRunConfig | undefined): Required<Pick<AgentRunConfig, "maxTurns" | "maxScrolls" | "captureEveryTurn">> {
+function resolveAgentBudget(task: AgentTask): { maxTurns: number; maxScrolls: number; captureEveryTurn: boolean } {
   return {
-    maxTurns: config?.maxTurns ?? 8,
-    maxScrolls: config?.maxScrolls ?? 3,
-    captureEveryTurn: config?.captureEveryTurn ?? true
+    maxTurns: task.budget.max_steps,
+    maxScrolls: task.budget.max_same_page_attempts ?? 3,
+    captureEveryTurn: task.artifact_policy?.capture_screenshots ?? true
   };
+}
+
+function resolveTaskGoal(task: AgentTask): string {
+  return task.goal ?? task.goal_type;
 }
 
 function agentDecisionToScenarioStep(decision: AgentDecision, turn: number, checkpoint: boolean): ScenarioStep {

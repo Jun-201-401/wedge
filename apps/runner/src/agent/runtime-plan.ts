@@ -1,4 +1,4 @@
-import type { RunExecuteMessage, ScenarioPlan } from "../shared/contracts.ts";
+import type { AgentTask, ScenarioPlan } from "../shared/contracts.ts";
 
 const DEFAULT_VIEWPORTS = {
   desktop: { width: 1440, height: 900 },
@@ -6,32 +6,30 @@ const DEFAULT_VIEWPORTS = {
   mobile: { width: 390, height: 844 }
 } as const;
 
-export function createAgentRuntimePlan(payload: RunExecuteMessage["payload"]): ScenarioPlan {
-  const viewport = DEFAULT_VIEWPORTS[payload.devicePreset];
+export function createAgentRuntimePlan(task: AgentTask): ScenarioPlan {
+  const fallbackViewport = DEFAULT_VIEWPORTS[task.environment.device];
+  const viewport = task.environment.viewport ?? fallbackViewport;
 
   return {
     schema_version: "0.5",
-    plan_id: `agent-runtime-${payload.runId}`,
+    plan_id: `agent-runtime-${task.task_id}`,
     scenario_type: "custom_compiled",
-    goal: payload.goal,
-    start_url: payload.startUrl,
+    goal: resolveTaskGoal(task),
+    start_url: task.start_url,
     source_discovery_id: null,
     environment: {
-      device: payload.devicePreset,
+      ...task.environment,
       viewport: {
         width: viewport.width,
         height: viewport.height
-      },
-      locale: "ko-KR",
-      timezone: "Asia/Seoul",
-      auth_state: "anonymous"
+      }
     },
     safety: {
-      allow_external_navigation: false,
-      allow_payment_commit: false,
-      allow_destructive_action: false,
+      allow_external_navigation: task.allowed_navigation.allow_external_navigation,
+      allow_payment_commit: task.risk_policy.allow_final_payment_submit || task.risk_policy.allow_final_order_commit,
+      allow_destructive_action: task.risk_policy.allow_destructive_action,
       use_synthetic_inputs: true,
-      stop_before_real_payment: true
+      stop_before_real_payment: !task.risk_policy.allow_final_payment_submit
     },
     steps: [
       {
@@ -41,7 +39,7 @@ export function createAgentRuntimePlan(payload: RunExecuteMessage["payload"]): S
         action: {
           type: "goto",
           target: {
-            url: payload.startUrl
+            url: task.start_url
           }
         },
         settle_strategy: {
@@ -52,4 +50,8 @@ export function createAgentRuntimePlan(payload: RunExecuteMessage["payload"]): S
       }
     ]
   };
+}
+
+function resolveTaskGoal(task: AgentTask): string {
+  return task.goal ?? task.goal_type;
 }

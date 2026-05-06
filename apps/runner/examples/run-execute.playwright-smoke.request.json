@@ -59,7 +59,6 @@
           "checkpoint": true
         }
       ]
-    },
-    "executionMode": "scripted"
+    }
   }
 }

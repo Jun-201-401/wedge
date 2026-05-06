@@ -9,8 +9,9 @@ import type {
   BrowserSettleResult
 } from "../src/browser/playwright/index.ts";
 import type { RunnerConfig } from "../src/config/index.ts";
-import { parseRunExecuteMessage } from "../src/messaging/index.ts";
+import { parseAgentExecuteMessage, parseRunExecuteMessage } from "../src/messaging/index.ts";
 import type {
+  AgentExecuteMessage,
   ArtifactBatch,
   RunExecuteMessage,
   RunnerAcceptedPayload,
@@ -24,14 +25,24 @@ import type {
 const currentDir = dirname(fileURLToPath(import.meta.url));
 
 export const exampleMessageFile = resolve(currentDir, "../examples/run-execute.request.json");
+export const agentExampleMessageFile = resolve(currentDir, "../examples/run-execute.agent.request.json");
 
 export async function loadExampleMessage(): Promise<RunExecuteMessage> {
   const rawMessage = await readFile(exampleMessageFile, "utf8");
   return parseRunExecuteMessage(rawMessage);
 }
 
+export async function loadAgentExampleMessage(): Promise<AgentExecuteMessage> {
+  const rawMessage = await readFile(agentExampleMessageFile, "utf8");
+  return parseAgentExecuteMessage(rawMessage);
+}
+
 export function cloneMessage(message: RunExecuteMessage): RunExecuteMessage {
   return JSON.parse(JSON.stringify(message)) as RunExecuteMessage;
+}
+
+export function cloneAgentMessage(message: AgentExecuteMessage): AgentExecuteMessage {
+  return JSON.parse(JSON.stringify(message)) as AgentExecuteMessage;
 }
 
 export function createMinimalPlan(): ScenarioPlan {
@@ -100,6 +111,7 @@ export function createRunnerTestConfig(overrides: Partial<RunnerConfig> = {}): R
     mqConsumerEnabled: false,
     mqUrl: "amqp://localhost",
     mqQueueRunExecute: "run.execute.request",
+    mqQueueAgentExecute: "agent.execute.request",
     mqQueueDiscoveryExecute: "discovery.execute.request",
     mqPrefetch: 1,
     mqRequeueOnFailure: false,

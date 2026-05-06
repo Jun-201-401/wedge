@@ -155,7 +155,7 @@ test("[RabbitMQ consumer] queue consume을 설정하고 종료 시 연결 자원
   assert.ok(events.includes("connection:close"));
 });
 
-test("startRunnerQueueConsumers consumes run and discovery queues", async () => {
+test("startRunnerQueueConsumers consumes run, agent, and discovery queues", async () => {
   const events: string[] = [];
   const handlers = new Map<string, (message: ConsumeMessage | null) => void | Promise<void>>();
 
@@ -163,12 +163,16 @@ test("startRunnerQueueConsumers consumes run and discovery queues", async () => 
     config: {
       mqUrl: "amqp://localhost",
       mqQueueRunExecute: "run.execute.request",
+      mqQueueAgentExecute: "agent.execute.request",
       mqQueueDiscoveryExecute: "discovery.execute.request",
       mqPrefetch: 2,
       mqRequeueOnFailure: false
     },
     processRawRunMessage: async (rawMessage) => {
       events.push(`run:${rawMessage}`);
+    },
+    processRawAgentMessage: async (rawMessage) => {
+      events.push(`agent:${rawMessage}`);
     },
     processRawDiscoveryMessage: async (rawMessage) => {
       events.push(`discovery:${rawMessage}`);
@@ -208,11 +212,13 @@ test("startRunnerQueueConsumers consumes run and discovery queues", async () => 
   });
 
   await handlers.get("run.execute.request")?.(createMessage('{"messageType":"run.execute.request"}'));
+  await handlers.get("agent.execute.request")?.(createMessage('{"messageType":"agent.execute.request"}'));
   await handlers.get("discovery.execute.request")?.(createMessage('{"messageType":"discovery.execute.request"}'));
 
   assert.ok(events.includes('run:{"messageType":"run.execute.request"}'));
+  assert.ok(events.includes('agent:{"messageType":"agent.execute.request"}'));
   assert.ok(events.includes('discovery:{"messageType":"discovery.execute.request"}'));
-  assert.equal(events.filter((event) => event === "ack").length, 2);
+  assert.equal(events.filter((event) => event === "ack").length, 3);
 
   await consumer.close();
   assert.ok(events.includes("channel:close"));
