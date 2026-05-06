@@ -34,6 +34,7 @@ const POST_LOAD_SETTLE_MS = 150;
 const DISCOVERY_FLOW_ORDER: DiscoveryFlowType[] = [
   "LANDING_CTA",
   "SIGNUP_LEAD_FORM",
+  "CONTACT",
   "PRICING",
   "PURCHASE_CHECKOUT"
 ];
@@ -511,6 +512,17 @@ function toDiscoveryCandidates(raw: RawDiscoveryElement): DiscoveryCandidate[] {
     }));
   }
 
+  if (isContactCandidate(raw, searchable)) {
+    candidates.push(createCandidate(raw, {
+      entrypointType: "contact",
+      flowType: "CONTACT",
+      label,
+      confidence: isDemoOrSalesLike(searchable) ? 0.86 : 0.74,
+      reason: "Contact, consultation, or demo request candidate was found.",
+      observationType: "contact_candidate"
+    }));
+  }
+
   if (isPricingCandidate(raw, searchable)) {
     candidates.push(createCandidate(raw, {
       entrypointType: "pricing",
@@ -725,6 +737,27 @@ function isSignupForm(raw: RawDiscoveryElement, searchable: string): boolean {
   return false;
 }
 
+function isContactCandidate(raw: RawDiscoveryElement, searchable: string): boolean {
+  return hasAny(searchable, [
+    "contact",
+    "contact us",
+    "contact sales",
+    "talk to sales",
+    "book a demo",
+    "request demo",
+    "schedule demo",
+    "demo",
+    "sales",
+    "문의",
+    "문의하기",
+    "상담",
+    "상담 신청",
+    "데모",
+    "데모 신청",
+    "영업 문의"
+  ]) && (isInteractive(raw) || raw.tagName === "section" || raw.tagName === "form");
+}
+
 function isPricingCandidate(raw: RawDiscoveryElement, searchable: string): boolean {
   return hasAny(searchable, ["pricing", "price", "plan", "starter", "요금", "가격", "플랜"])
     && (isInteractive(raw) || raw.tagName === "section");
@@ -741,6 +774,10 @@ function isInteractive(raw: RawDiscoveryElement): boolean {
 
 function isSignupLike(searchable: string): boolean {
   return hasAny(searchable, ["signup", "sign up", "register", "회원가입", "가입"]);
+}
+
+function isDemoOrSalesLike(searchable: string): boolean {
+  return hasAny(searchable, ["contact sales", "talk to sales", "book a demo", "request demo", "schedule demo", "데모", "상담", "영업"]);
 }
 
 function isPrimaryLike(searchable: string): boolean {
@@ -783,7 +820,7 @@ function toHrefContains(urlString: string | null): string | undefined {
 }
 
 function resolveObservationStage(flowType: DiscoveryFlowType): string {
-  if (flowType === "LANDING_CTA" || flowType === "PRICING") {
+  if (flowType === "LANDING_CTA" || flowType === "PRICING" || flowType === "CONTACT") {
     return "CTA";
   }
 

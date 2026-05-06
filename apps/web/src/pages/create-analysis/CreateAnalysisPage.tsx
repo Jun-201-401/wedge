@@ -1,5 +1,6 @@
-import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
+import { createDiscovery, getDiscovery } from '../../api/discoveries';
 import { createRun, startRun } from '../../api/runs';
 import { FIRST_WORD_DELAY_MS, WORD_ROTATION_INTERVAL_MS } from '../../features/landing-vision';
 import { pushAppPath } from '../../shared/lib/navigation';
@@ -11,19 +12,30 @@ import {
   readCreateRunContextFromEnv,
   type CreateAnalysisRouteOptions,
   type CreateAnalysisRouteState,
-  type CreateAnalysisRouteStage,
   withCreateRunContextFallback,
 } from './lib/createAnalysisRouteState';
 import { normalizeAnalysisUrl } from './lib/createAnalysisUrl';
+import {
+  CREATE_ANALYSIS_SCENARIO_IDS,
+  toScenarioRecommendationViewModels,
+  type CreateAnalysisScenarioId,
+  type ScenarioRecommendationViewModel,
+} from './lib/discoveryRecommendations';
+import { createDiscoveryIdempotencyKey, isDiscoveryBusy } from './lib/discoveryPreflight';
 import { buildPrototypeScenarioPlan } from './lib/prototypeScenarioPlan';
 import './CreateAnalysisPage.css';
 
 type DiscoveryStepStatus = 'complete' | 'active' | 'pending';
-type ScenarioLevel = '추천' | '가능' | '낮음';
-type ScenarioTone = 'recommended' | 'available' | 'low';
-type CreateAnalysisStage = CreateAnalysisRouteStage;
-type ScenarioId = 'landing-cta' | 'signup-form' | 'checkout';
+type ScenarioId = CreateAnalysisScenarioId;
+type ScenarioRecommendation = ScenarioRecommendationViewModel;
 type ScenarioDepthId = 'hero-only' | 'next-screen' | 'form-depth';
+type DiscoveryUiState =
+  | { kind: 'idle' }
+  | { kind: 'creating' }
+  | { kind: 'polling'; discoveryId: string; status: string; progressSteps: DiscoveryStep[] }
+  | { kind: 'completed'; discoveryId: string; scenarios: ScenarioRecommendation[] }
+  | { kind: 'empty'; discoveryId: string; message: string }
+  | { kind: 'failed'; message: string };
 
 function SendIcon() {
   return (
@@ -39,16 +51,6 @@ interface DiscoveryStep {
   status: DiscoveryStepStatus;
 }
 
-interface ScenarioRecommendation {
-  id: ScenarioId;
-  level: ScenarioLevel;
-  tone: ScenarioTone;
-  title: string;
-  summary: string;
-  evidence: string;
-  actionLabel: string;
-}
-
 interface ScenarioDepthOption {
   id: ScenarioDepthId;
   title: string;
@@ -56,25 +58,28 @@ interface ScenarioDepthOption {
 }
 
 const HEADLINE_PHRASES = ['Find', 'Friction'] as const;
+const DISCOVERY_POLL_INTERVAL_MS = 1800;
+const DISCOVERY_TIMEOUT_MS = 90000;
+const DISCOVERY_VIEWPORT = { width: 1440, height: 900 } as const;
 const PREFLIGHT_DISCOVERY_STEPS: DiscoveryStep[] = [
   {
-    label: '페이지 열기',
-    detail: '입력한 URL에 연결하고 기본 응답을 확인합니다',
-    status: 'complete',
-  },
-  {
-    label: '첫 화면 확인',
-    detail: '첫 화면의 메시지와 주요 섹션을 읽습니다',
-    status: 'complete',
-  },
-  {
-    label: 'CTA 후보 탐색',
-    detail: '사용자가 다음 행동으로 이동하는 버튼과 링크를 찾습니다',
+    label: 'Discovery 요청',
+    detail: '입력한 URL로 사전 탐색 작업을 생성합니다',
     status: 'active',
   },
   {
-    label: 'Form / Pricing / Contact 후보 확인',
-    detail: '진단 가능한 전환 흐름 후보를 좁히는 중입니다',
+    label: '사이트 열기',
+    detail: 'Runner가 페이지에 연결하고 기본 응답을 확인합니다',
+    status: 'pending',
+  },
+  {
+    label: 'CTA / Form / Contact 후보 탐색',
+    detail: '사용자가 다음 행동으로 이동하는 버튼, 링크, 입력 후보를 찾습니다',
+    status: 'pending',
+  },
+  {
+    label: 'Pricing / Checkout 후보 확인',
+    detail: '요금제, 구매, 결제 전환 흐름 후보를 좁힙니다',
     status: 'pending',
   },
   {
@@ -83,35 +88,7 @@ const PREFLIGHT_DISCOVERY_STEPS: DiscoveryStep[] = [
     status: 'pending',
   },
 ];
-const scenarioRecommendations: ScenarioRecommendation[] = [
-  {
-    id: 'landing-cta',
-    level: '추천',
-    tone: 'recommended',
-    title: '첫 화면 CTA 점검',
-    summary: '첫 화면에서 주요 CTA 후보 2개를 발견했어요. 사용자가 다음 행동을 바로 이해할 수 있는지 확인하기 좋습니다.',
-    evidence: 'hero section, primary button, nav CTA',
-    actionLabel: '이 흐름으로 진단',
-  },
-  {
-    id: 'signup-form',
-    level: '가능',
-    tone: 'available',
-    title: '가입 / 문의 Form 점검',
-    summary: '문의 또는 가입 form 후보 1개를 발견했어요. 입력 부담과 제출 전 신뢰 요소를 확인할 수 있습니다.',
-    evidence: 'contact link, email input candidate',
-    actionLabel: '이 흐름으로 진단',
-  },
-  {
-    id: 'checkout',
-    level: '낮음',
-    tone: 'low',
-    title: '구매 / 결제 흐름 점검',
-    summary: '가격, 장바구니, 결제 진입점을 아직 찾지 못했어요. 이 URL에는 랜딩 CTA나 문의 흐름이 더 적합해 보입니다.',
-    evidence: 'pricing / checkout 후보 없음',
-    actionLabel: '그래도 직접 설정',
-  },
-];
+
 const SCENARIO_DEPTH_OPTIONS: ScenarioDepthOption[] = [
   {
     id: 'hero-only',
@@ -129,7 +106,7 @@ const SCENARIO_DEPTH_OPTIONS: ScenarioDepthOption[] = [
     detail: '입력 부담과 제출 전 신뢰 요소까지 확인합니다',
   },
 ];
-const SCENARIO_IDS = scenarioRecommendations.map((scenario) => scenario.id);
+const SCENARIO_IDS = CREATE_ANALYSIS_SCENARIO_IDS;
 const SCENARIO_DEPTH_IDS = SCENARIO_DEPTH_OPTIONS.map((option) => option.id);
 const DEFAULT_SCENARIO_DEPTH_ID = 'hero-only' satisfies ScenarioDepthId;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -173,7 +150,6 @@ function getDiscoveryProgressPercent(steps: DiscoveryStep[]) {
   return Math.round((completedStepCount / steps.length) * 100);
 }
 
-const PREFLIGHT_PROGRESS_PERCENT = getDiscoveryProgressPercent(PREFLIGHT_DISCOVERY_STEPS);
 
 type CreateAnalysisPageRouteState = CreateAnalysisRouteState<ScenarioId, ScenarioDepthId>;
 
@@ -193,8 +169,8 @@ function getInitialRouteState(): CreateAnalysisPageRouteState {
   );
 }
 
-function findScenarioById(scenarioId: ScenarioId | null) {
-  return scenarioRecommendations.find((scenario) => scenario.id === scenarioId) ?? null;
+function findScenarioById(scenarioId: ScenarioId | null, scenarios: ScenarioRecommendation[]) {
+  return scenarios.find((scenario) => scenario.id === scenarioId) ?? null;
 }
 
 function findDepthById(depthId: ScenarioDepthId | null) {
@@ -219,14 +195,59 @@ function getCreateRunIds(routeState: CreateAnalysisPageRouteState): CreateRunIds
   };
 }
 
+
+function getProjectId(routeState: CreateAnalysisPageRouteState) {
+  const projectId = routeState.projectId ?? null;
+  return isUuid(projectId) ? projectId : null;
+}
+
+function wait(ms: number) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+function isDiscoveryTerminalFailure(status: string) {
+  return status === 'FAILED' || status === 'CANCELED' || status === 'EXPIRED';
+}
+
+function getPollingSteps(status: string): DiscoveryStep[] {
+  if (status === 'COMPLETED') {
+    return PREFLIGHT_DISCOVERY_STEPS.map((step) => ({ ...step, status: 'complete' }));
+  }
+
+  const activeIndex = status === 'RUNNING' ? 2 : 1;
+  return PREFLIGHT_DISCOVERY_STEPS.map((step, index) => ({
+    ...step,
+    status: index < activeIndex ? 'complete' : index === activeIndex ? 'active' : 'pending',
+  }));
+}
+
+function getPreflightStateMessage(discoveryState: DiscoveryUiState) {
+  if (discoveryState.kind === 'creating') {
+    return 'Discovery request creating';
+  }
+
+  if (discoveryState.kind === 'polling') {
+    return `Discovery ${discoveryState.status.toLowerCase()}`;
+  }
+
+  if (discoveryState.kind === 'failed') {
+    return 'Discovery failed';
+  }
+
+  return 'Site trace active';
+}
+
 interface PreflightAgentProps {
   submittedUrl: string;
-  onShowRecommendations: () => void;
+  discoveryState: DiscoveryUiState;
+  onRetry: () => void;
+  onEditUrl: () => void;
 }
 
 interface RecommendationAgentProps {
   submittedUrl: string;
   scenarios: ScenarioRecommendation[];
+  emptyMessage?: string;
   onChooseScenario: (scenario: ScenarioRecommendation) => void;
 }
 
@@ -270,7 +291,12 @@ function PreflightNode({ status }: { status: DiscoveryStepStatus }) {
   return <span className="preflight-agent__node-dot" />;
 }
 
-function PreflightAgent({ submittedUrl, onShowRecommendations }: PreflightAgentProps) {
+function PreflightAgent({ submittedUrl, discoveryState, onRetry, onEditUrl }: PreflightAgentProps) {
+  const steps = discoveryState.kind === 'polling' ? discoveryState.progressSteps : PREFLIGHT_DISCOVERY_STEPS;
+  const progressPercent = getDiscoveryProgressPercent(steps);
+  const stateMessage = getPreflightStateMessage(discoveryState);
+  const isFailed = discoveryState.kind === 'failed';
+
   return (
     <section className="create-analysis-panel create-analysis-panel--preflight" aria-labelledby="discovery-progress-title">
       <div className="preflight-agent" aria-live="polite">
@@ -284,15 +310,15 @@ function PreflightAgent({ submittedUrl, onShowRecommendations }: PreflightAgentP
             <div className="preflight-agent__header-copy">
               <p>Preflight</p>
               <h2 id="discovery-progress-title">사이트를 살펴보고 있어요</h2>
-              <div className="preflight-agent__header-status">
+              <div className={`preflight-agent__header-status ${isFailed ? 'preflight-agent__header-status--failed' : ''}`}>
                 <span className="preflight-agent__header-status-dot" aria-hidden="true" />
-                <span>Site trace active</span>
+                <span>{stateMessage}</span>
               </div>
             </div>
           </div>
 
-          <div className="preflight-agent__progress" aria-label={`진행률 ${PREFLIGHT_PROGRESS_PERCENT}%`}>
-            <span className="preflight-agent__progress-value">{PREFLIGHT_PROGRESS_PERCENT}</span>
+          <div className="preflight-agent__progress" aria-label={`진행률 ${progressPercent}%`}>
+            <span className="preflight-agent__progress-value">{progressPercent}</span>
             <span className="preflight-agent__progress-unit">%</span>
           </div>
         </div>
@@ -301,13 +327,13 @@ function PreflightAgent({ submittedUrl, onShowRecommendations }: PreflightAgentP
         <div className="preflight-agent__divider" aria-hidden="true" />
 
         <ol className="preflight-agent__timeline" aria-label="Discovery 진행 상태">
-          {PREFLIGHT_DISCOVERY_STEPS.map((step, stepIndex) => (
+          {steps.map((step, stepIndex) => (
             <li
               key={step.label}
               className={`preflight-agent__step preflight-agent__step--${step.status}`}
               aria-current={step.status === 'active' ? 'step' : undefined}
             >
-              {stepIndex < PREFLIGHT_DISCOVERY_STEPS.length - 1 ? (
+              {stepIndex < steps.length - 1 ? (
                 <div className="preflight-agent__rail" aria-hidden="true">
                   <div className="preflight-agent__rail-base" />
                   <div className="preflight-agent__rail-stream" />
@@ -331,16 +357,27 @@ function PreflightAgent({ submittedUrl, onShowRecommendations }: PreflightAgentP
           ))}
         </ol>
 
-        <p className="preflight-agent__note">전체 분석 전, 가능한 사용자 흐름을 찾기 위한 짧은 탐색입니다.</p>
-        <button className="create-analysis-panel__action preflight-agent__action" type="button" onClick={onShowRecommendations}>
-          추천 결과 보기
-        </button>
+        {isFailed ? (
+          <div className="preflight-agent__error" role="alert">
+            <p>{discoveryState.message}</p>
+            <div className="preflight-agent__actions">
+              <button className="create-analysis-panel__action preflight-agent__action" type="button" onClick={onRetry}>
+                다시 시도
+              </button>
+              <button className="preflight-agent__secondary-action" type="button" onClick={onEditUrl}>
+                URL 수정
+              </button>
+            </div>
+          </div>
+        ) : (
+          <p className="preflight-agent__note">전체 분석 전, 실제 Discovery로 가능한 사용자 흐름을 찾고 있습니다.</p>
+        )}
       </div>
     </section>
   );
 }
 
-function RecommendationAgent({ submittedUrl, scenarios, onChooseScenario }: RecommendationAgentProps) {
+function RecommendationAgent({ submittedUrl, scenarios, emptyMessage, onChooseScenario }: RecommendationAgentProps) {
   return (
     <section className="create-analysis-panel create-analysis-panel--recommendations" aria-labelledby="recommendations-title">
       <div className="recommendation-agent">
@@ -373,19 +410,27 @@ function RecommendationAgent({ submittedUrl, scenarios, onChooseScenario }: Reco
         <p className="recommendation-agent__url">{submittedUrl}</p>
         <div className="recommendation-agent__divider" aria-hidden="true" />
 
-        <div className="scenario-grid">
-          {scenarios.map((scenario) => (
-            <article key={scenario.id} className={`scenario-card scenario-card--${scenario.tone}`}>
-              <span className="scenario-card__level">{scenario.level}</span>
-              <h3>{scenario.title}</h3>
-              <p>{scenario.summary}</p>
-              <p className="scenario-card__evidence">근거: {scenario.evidence}</p>
-              <button type="button" aria-label={`${scenario.title} 흐름으로 진단`} onClick={() => onChooseScenario(scenario)}>
-                {scenario.actionLabel}
-              </button>
-            </article>
-          ))}
-        </div>
+        {scenarios.length === 0 ? (
+          <div className="recommendation-agent__empty" role="status">
+            <strong>추천 가능한 흐름을 찾지 못했어요</strong>
+            <p>{emptyMessage ?? 'URL을 바꾸거나 잠시 후 다시 시도해주세요.'}</p>
+          </div>
+        ) : (
+          <div className="scenario-grid">
+            {scenarios.map((scenario) => (
+              <article key={`${scenario.scenarioType}-${scenario.id}`} className={`scenario-card scenario-card--${scenario.tone}`}>
+                <span className="scenario-card__level">{scenario.level}</span>
+                <h3>{scenario.title}</h3>
+                <p>{scenario.summary}</p>
+                <p className="scenario-card__confidence">신뢰도: {scenario.confidenceLabel}</p>
+                <p className="scenario-card__evidence">근거: {scenario.evidence}</p>
+                <button type="button" aria-label={`${scenario.title} 흐름으로 진단`} onClick={() => onChooseScenario(scenario)}>
+                  {scenario.actionLabel}
+                </button>
+              </article>
+            ))}
+          </div>
+        )}
       </div>
     </section>
   );
@@ -540,11 +585,20 @@ export function CreateAnalysisPage() {
   const [headlineIndex, setHeadlineIndex] = useState(0);
   const [urlInput, setUrlInput] = useState(routeState.submittedUrl ?? '');
   const [urlError, setUrlError] = useState('');
+  const [discoveryState, setDiscoveryState] = useState<DiscoveryUiState>({ kind: 'idle' });
   const [isCreatingRun, setIsCreatingRun] = useState(false);
   const [runStartError, setRunStartError] = useState('');
+  const discoveryRequestSeq = useRef(0);
   const stage = routeState.stage;
   const submittedUrl = routeState.submittedUrl ?? '';
-  const selectedScenario = useMemo(() => findScenarioById(routeState.scenarioId), [routeState.scenarioId]);
+  const recommendationScenarios = useMemo(
+    () => discoveryState.kind === 'completed' ? discoveryState.scenarios : [],
+    [discoveryState],
+  );
+  const selectedScenario = useMemo(
+    () => findScenarioById(routeState.scenarioId, recommendationScenarios),
+    [routeState.scenarioId, recommendationScenarios],
+  );
   const selectedDepthId = routeState.depthId ?? DEFAULT_SCENARIO_DEPTH_ID;
   const selectedDepth = useMemo(() => findDepthById(selectedDepthId), [selectedDepthId]);
   const createRunIds = useMemo(() => getCreateRunIds(routeState), [routeState]);
@@ -571,8 +625,13 @@ export function CreateAnalysisPage() {
     };
   }, []);
 
+  useEffect(() => () => {
+    discoveryRequestSeq.current += 1;
+  }, []);
+
   const normalizedUrl = useMemo(() => normalizeAnalysisUrl(urlInput), [urlInput]);
-  const canSubmit = urlInput.trim().length > 0;
+  const discoveryBusy = isDiscoveryBusy(discoveryState.kind);
+  const canSubmit = urlInput.trim().length > 0 && !discoveryBusy;
   const navigateToRouteState = useCallback((nextRouteState: CreateAnalysisPageRouteState, historyMode: 'push' | 'replace' = 'push') => {
     const routeStateWithDevContext = withCreateRunContextFallback(nextRouteState, DEV_CREATE_RUN_CONTEXT);
     const nextPath = buildCreateAnalysisPath(routeStateWithDevContext, CREATE_ANALYSIS_ROUTE_OPTIONS);
@@ -588,6 +647,7 @@ export function CreateAnalysisPage() {
 
   useEffect(() => {
     const handlePopState = () => {
+      discoveryRequestSeq.current += 1;
       setRouteState(withCreateRunContextFallback(
         parseCreateAnalysisRouteState(window.location.search, CREATE_ANALYSIS_ROUTE_OPTIONS),
         DEV_CREATE_RUN_CONTEXT,
@@ -603,8 +663,123 @@ export function CreateAnalysisPage() {
     setUrlError('');
   }, [routeState.submittedUrl]);
 
+  const runDiscovery = useCallback(async (targetUrl: string, currentRouteState: CreateAnalysisPageRouteState) => {
+    const projectId = getProjectId(currentRouteState);
+
+    if (!projectId) {
+      setUrlError('Discovery 실행에 필요한 project UUID가 없습니다. MVP 기본 설정 또는 create-analysis URL을 확인해주세요.');
+      setDiscoveryState({ kind: 'idle' });
+      return;
+    }
+
+    const requestSeq = discoveryRequestSeq.current + 1;
+    discoveryRequestSeq.current = requestSeq;
+    setDiscoveryState({ kind: 'creating' });
+    setRunStartError('');
+
+    const discoveryRouteState: CreateAnalysisPageRouteState = {
+      ...currentRouteState,
+      stage: 'discovering',
+      submittedUrl: targetUrl,
+      scenarioId: null,
+      depthId: null,
+    };
+    navigateToRouteState(discoveryRouteState);
+
+    const completeDiscovery = (discoveryId: string, scenarios: ScenarioRecommendation[]) => {
+      if (discoveryRequestSeq.current !== requestSeq) {
+        return;
+      }
+
+      if (scenarios.length === 0) {
+        setDiscoveryState({
+          kind: 'empty',
+          discoveryId,
+          message: 'Discovery는 완료됐지만 추천 가능한 시나리오 근거를 찾지 못했습니다.',
+        });
+      } else {
+        setDiscoveryState({ kind: 'completed', discoveryId, scenarios });
+      }
+
+      navigateToRouteState({
+        ...discoveryRouteState,
+        stage: 'recommendations',
+      });
+    };
+
+    try {
+      const created = await createDiscovery({
+        projectId,
+        url: targetUrl,
+        devicePreset: 'desktop',
+        viewport: DISCOVERY_VIEWPORT,
+      }, {
+        idempotencyKey: createDiscoveryIdempotencyKey(projectId, targetUrl),
+      });
+
+      if (discoveryRequestSeq.current !== requestSeq) {
+        return;
+      }
+
+      let discovery = created.data;
+      const discoveryId = discovery.discoveryId;
+      setDiscoveryState({
+        kind: 'polling',
+        discoveryId,
+        status: discovery.status,
+        progressSteps: getPollingSteps(discovery.status),
+      });
+
+      const startedAt = Date.now();
+      while (Date.now() - startedAt <= DISCOVERY_TIMEOUT_MS) {
+        if (discovery.status === 'COMPLETED') {
+          completeDiscovery(discoveryId, toScenarioRecommendationViewModels(discovery));
+          return;
+        }
+
+        if (isDiscoveryTerminalFailure(discovery.status)) {
+          setDiscoveryState({
+            kind: 'failed',
+            message: discovery.failureMessage ?? 'Discovery가 실패했습니다. URL을 확인한 뒤 다시 시도해주세요.',
+          });
+          return;
+        }
+
+        await wait(DISCOVERY_POLL_INTERVAL_MS);
+        if (discoveryRequestSeq.current !== requestSeq) {
+          return;
+        }
+
+        const polled = await getDiscovery(discoveryId);
+        discovery = polled.data;
+        setDiscoveryState({
+          kind: 'polling',
+          discoveryId,
+          status: discovery.status,
+          progressSteps: getPollingSteps(discovery.status),
+        });
+      }
+
+      setDiscoveryState({
+        kind: 'failed',
+        message: 'Discovery 응답 시간이 초과됐습니다. 잠시 후 다시 시도해주세요.',
+      });
+    } catch {
+      if (discoveryRequestSeq.current === requestSeq) {
+        setDiscoveryState({
+          kind: 'failed',
+          message: 'Discovery 요청에 실패했습니다. 네트워크와 로그인 상태를 확인한 뒤 다시 시도해주세요.',
+        });
+      }
+    }
+  }, [navigateToRouteState]);
+
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+
+    if (discoveryBusy) {
+      return;
+    }
 
     if (!canSubmit) {
       setUrlError('분석할 사이트 URL을 입력해주세요.');
@@ -617,24 +792,24 @@ export function CreateAnalysisPage() {
     }
 
     setUrlError('');
-    navigateToRouteState({
-      ...routeState,
-      stage: 'discovering',
-      submittedUrl: normalizedUrl,
-      scenarioId: null,
-      depthId: null,
-    });
+    void runDiscovery(normalizedUrl, routeState);
   };
 
-  const showRecommendations = () => {
+  const retryDiscovery = () => {
     if (!submittedUrl) {
       return;
     }
 
+    void runDiscovery(submittedUrl, routeState);
+  };
+
+  const editUrl = () => {
+    discoveryRequestSeq.current += 1;
+    setDiscoveryState({ kind: 'idle' });
     navigateToRouteState({
       ...routeState,
-      stage: 'recommendations',
-      submittedUrl,
+      stage: 'input',
+      submittedUrl: null,
       scenarioId: null,
       depthId: null,
     });
@@ -726,6 +901,11 @@ export function CreateAnalysisPage() {
         scenarioOverrides: {
           depthId: selectedDepthId,
           source: 'create-analysis-ready',
+          sourceDiscoveryId: selectedScenario.sourceDiscoveryId ?? null,
+          scenarioType: selectedScenario.scenarioType,
+          evidenceRefs: selectedScenario.evidenceRefs,
+          suggestedStartUrl: selectedScenario.suggestedStartUrl ?? null,
+          suggestedTarget: selectedScenario.suggestedTarget ?? null,
         },
         scenarioPlan: buildPrototypeScenarioPlan({ submittedUrl, selectedScenario, selectedDepth }),
       });
@@ -830,10 +1010,17 @@ export function CreateAnalysisPage() {
           </section>
         )}
 
-        {stage === 'discovering' && <PreflightAgent submittedUrl={submittedUrl} onShowRecommendations={showRecommendations} />}
+        {stage === 'discovering' && (
+          <PreflightAgent submittedUrl={submittedUrl} discoveryState={discoveryState} onRetry={retryDiscovery} onEditUrl={editUrl} />
+        )}
 
         {stage === 'recommendations' && (
-          <RecommendationAgent submittedUrl={submittedUrl} scenarios={scenarioRecommendations} onChooseScenario={chooseScenario} />
+          <RecommendationAgent
+            submittedUrl={submittedUrl}
+            scenarios={recommendationScenarios}
+            emptyMessage={discoveryState.kind === 'empty' ? discoveryState.message : undefined}
+            onChooseScenario={chooseScenario}
+          />
         )}
 
         {stage === 'onboarding' && selectedScenario && (

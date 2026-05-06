@@ -1339,3 +1339,87 @@
     transition-duration: 0.01ms;
   }
 }
+
+.preflight-agent__header-status--failed {
+  color: #b91c1c;
+}
+
+.preflight-agent__header-status--failed .preflight-agent__header-status-dot,
+.preflight-agent__header-status--failed .preflight-agent__header-status-dot::after {
+  background: #f87171;
+}
+
+.preflight-agent__error {
+  display: grid;
+  gap: 0.9rem;
+  margin-top: 1rem;
+  padding: 1rem;
+  border: 1px solid rgba(248, 113, 113, 0.28);
+  border-radius: 1rem;
+  background: rgba(254, 242, 242, 0.72);
+}
+
+.preflight-agent__error p {
+  margin: 0;
+  color: #991b1b;
+  font-size: 0.85rem;
+  font-weight: 700;
+  line-height: 1.5;
+}
+
+.preflight-agent__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.preflight-agent__secondary-action {
+  border: 1px solid rgba(226, 232, 240, 0.9);
+  border-radius: 999px;
+  padding: 0.75rem 1rem;
+  color: #334155;
+  background: rgba(255, 255, 255, 0.88);
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.recommendation-agent__empty {
+  display: grid;
+  gap: 0.45rem;
+  padding: 1.25rem;
+  border: 1px solid rgba(226, 232, 240, 0.78);
+  border-radius: 1.25rem;
+  background: rgba(248, 250, 252, 0.76);
+}
+
+.recommendation-agent__empty strong {
+  color: #334155;
+  font-size: 1rem;
+}
+
+.recommendation-agent__empty p {
+  margin: 0;
+  color: #64748b;
+  font-size: 0.86rem;
+  line-height: 1.5;
+}
+
+.scenario-card--available .scenario-card__level {
+  color: #047857;
+  background: rgba(209, 250, 229, 0.86);
+}
+
+.scenario-card--unavailable {
+  background: rgba(248, 250, 252, 0.82);
+}
+
+.scenario-card--unavailable .scenario-card__level {
+  color: #475569;
+  background: rgba(226, 232, 240, 0.86);
+}
+
+.scenario-card__confidence {
+  color: #334155;
+  font-size: 0.75rem;
+  font-weight: 800;
+}

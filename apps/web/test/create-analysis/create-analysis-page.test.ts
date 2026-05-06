@@ -11,15 +11,15 @@ test('create analysis preflight renders an agent-style progress card', () => {
   assert.match(source, /className="create-analysis-panel create-analysis-panel--preflight"/);
   assert.match(source, /className="preflight-agent"/);
   assert.match(source, /className="preflight-agent__header"/);
-  assert.match(source, /Site trace active/);
+  assert.match(source, /getPreflightStateMessage/);
   assert.match(source, /className="preflight-agent__progress"/);
   assert.match(source, /className="preflight-agent__timeline"/);
   assert.match(source, /preflight-agent__step preflight-agent__step--\$\{step\.status\}/);
   assert.match(source, /className="preflight-agent__rail"/);
   assert.match(source, /className="preflight-agent__node-spinner"/);
   assert.match(source, /className="create-analysis-panel__action preflight-agent__action"/);
-  assert.match(source, /onClick=\{onShowRecommendations\}/);
-  assert.match(source, /onShowRecommendations=\{showRecommendations\}/);
+  assert.match(source, /onRetry=\{retryDiscovery\}/);
+  assert.match(source, /onEditUrl=\{editUrl\}/);
 });
 
 test('create analysis preflight css keeps the landing-agent card language', () => {
@@ -50,6 +50,8 @@ test('create analysis recommendations use a wider agent-style results card', () 
   assert.match(source, /className="create-analysis-panel create-analysis-panel--recommendations"/);
   assert.match(source, /className="recommendation-agent"/);
   assert.match(source, /Scenario match complete/);
+  assert.match(source, /scenario-card__confidence/);
+  assert.match(source, /recommendation-agent__empty/);
   assert.match(source, /className="recommendation-agent__count"/);
   assert.match(source, /onChooseScenario=\{chooseScenario\}/);
   assert.match(source, /onClick=\{\(\) => onChooseScenario\(scenario\)\}/);
@@ -146,6 +148,7 @@ test('create analysis ready run controls remain wired', () => {
     'utf8',
   );
 
+  assert.match(source, /import \{ createDiscovery, getDiscovery \} from '..\/..\/api\/discoveries'/);
   assert.match(source, /import \{ createRun, startRun \} from '..\/..\/api\/runs'/);
   assert.match(source, /import \{ buildRunMonitorPath \}/);
   assert.doesNotMatch(source, /buildMockRunId/);
@@ -159,6 +162,14 @@ test('create analysis ready run controls remain wired', () => {
   assert.match(source, /scenarioTemplateVersionId: createRunIds\.scenarioTemplateVersionId/);
   assert.match(source, /import \{ buildPrototypeScenarioPlan \} from '\.\/lib\/prototypeScenarioPlan'/);
   assert.match(source, /scenarioPlan: buildPrototypeScenarioPlan/);
+  assert.match(source, /sourceDiscoveryId: selectedScenario\.sourceDiscoveryId/);
+  assert.match(source, /suggestedTarget: selectedScenario\.suggestedTarget/);
+  assert.match(source, /void runDiscovery\(normalizedUrl, routeState\)/);
+  assert.match(source, /isDiscoveryBusy\(discoveryState\.kind\)/);
+  assert.match(source, /discoveryRequestSeq\.current \+= 1/);
+  assert.match(source, /createDiscoveryIdempotencyKey\(projectId, targetUrl\)/);
+  assert.match(source, /await createDiscovery/);
+  assert.match(source, /await getDiscovery\(discoveryId\)/);
   assert.match(source, /createdRunId = response\.data\.id/);
   assert.match(source, /await startRun\(createdRunId\)/);
   assert.match(source, /Run은 생성됐지만 시작 요청에 실패했습니다/);
@@ -190,6 +201,7 @@ test('create analysis page wires stages to browser history query state', () => {
   assert.match(source, /window\.removeEventListener\('popstate', handlePopState\)/);
   assert.match(source, /stage: 'discovering'/);
   assert.match(source, /stage: 'recommendations'/);
+  assert.match(source, /discoveryState/);
   assert.match(source, /stage: 'onboarding'/);
   assert.match(source, /stage: 'ready'/);
 });

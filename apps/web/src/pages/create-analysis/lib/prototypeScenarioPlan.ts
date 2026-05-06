@@ -3,6 +3,11 @@ interface PrototypeScenarioRecommendation {
   title: string;
   summary: string;
   evidence: string;
+  scenarioType?: string;
+  sourceDiscoveryId?: string | null;
+  evidenceRefs?: string[];
+  suggestedStartUrl?: string | null;
+  suggestedTarget?: Record<string, unknown> | null;
 }
 
 interface PrototypeScenarioDepthOption {
@@ -21,6 +26,26 @@ function toStepIdFragment(value: string) {
   return value.replace(/[^a-zA-Z0-9]+/g, '_').replace(/^_+|_+$/g, '') || 'scenario';
 }
 
+function entrypointTypesForScenario(scenarioType: string | undefined) {
+  if (scenarioType === 'SIGNUP_LEAD_FORM') {
+    return ['form', 'signup'];
+  }
+
+  if (scenarioType === 'CONTACT') {
+    return ['contact', 'form', 'cta'];
+  }
+
+  if (scenarioType === 'PRICING') {
+    return ['pricing', 'cta'];
+  }
+
+  if (scenarioType === 'PURCHASE_CHECKOUT') {
+    return ['checkout', 'cart'];
+  }
+
+  return ['cta'];
+}
+
 export function buildPrototypeScenarioPlan({
   submittedUrl,
   selectedScenario,
@@ -36,6 +61,12 @@ export function buildPrototypeScenarioPlan({
     template_key: selectedScenario.id,
     goal: selectedScenario.summary,
     start_url: submittedUrl,
+    source_discovery_id: selectedScenario.sourceDiscoveryId ?? null,
+    fit_requirements: selectedScenario.scenarioType ? {
+      required_flow_type: selectedScenario.scenarioType,
+      required_entrypoint_types: entrypointTypesForScenario(selectedScenario.scenarioType),
+      fallback_allowed: true,
+    } : null,
     environment: {
       device: 'desktop',
       viewport: {
@@ -82,6 +113,9 @@ export function buildPrototypeScenarioPlan({
             scenario_id: selectedScenario.id,
             depth_id: selectedDepth.id,
             text: selectedScenario.evidence,
+            evidence_refs: selectedScenario.evidenceRefs ?? [],
+            suggested_start_url: selectedScenario.suggestedStartUrl ?? null,
+            suggested_target: selectedScenario.suggestedTarget ?? null,
           },
         },
         settle_strategy: {
