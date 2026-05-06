@@ -101,6 +101,39 @@ class RunPersistenceAdapterTest {
     }
 
     @Test
+    void listRunStepsMapsStoredStepRowsToApiResponses() {
+        UUID runId = UUID.randomUUID();
+        RunStepRecord failedStep = sampleStepRecord(runId, 2, "step_002_submit", StepStatus.FAILED);
+        failedStep.setErrorCode("RUNNER_TIMEOUT");
+        failedStep.setErrorMessage("locator click timed out");
+        when(runMapper.findStepsByRunId(runId)).thenReturn(List.of(failedStep));
+
+        List<com.wedge.run.api.dto.RunStepResponse> steps = adapter().listRunSteps(runId);
+
+        assertThat(steps).hasSize(1);
+        assertThat(steps.get(0).id()).isEqualTo(failedStep.getId());
+        assertThat(steps.get(0).runId()).isEqualTo(runId);
+        assertThat(steps.get(0).stepOrder()).isEqualTo(2);
+        assertThat(steps.get(0).stepKey()).isEqualTo("step_002_submit");
+        assertThat(steps.get(0).status()).isEqualTo(StepStatus.FAILED);
+        assertThat(steps.get(0).errorCode()).isEqualTo("RUNNER_TIMEOUT");
+        assertThat(steps.get(0).errorMessage()).isEqualTo("locator click timed out");
+    }
+
+    @Test
+    void findRunStepMapsStoredStepRowWhenItBelongsToRun() {
+        UUID runId = UUID.randomUUID();
+        RunStepRecord step = sampleStepRecord(runId, 1, "step_001_goto", StepStatus.PASSED);
+        when(runMapper.findStepByRunIdAndId(runId, step.getId())).thenReturn(Optional.of(step));
+
+        Optional<com.wedge.run.api.dto.RunStepResponse> response = adapter().findRunStep(runId, step.getId());
+
+        assertThat(response).isPresent();
+        assertThat(response.orElseThrow().stepKey()).isEqualTo("step_001_goto");
+        assertThat(response.orElseThrow().status()).isEqualTo(StepStatus.PASSED);
+    }
+
+    @Test
     void findExecutionRequestSourceParsesStoredScenarioPlanJson() {
         RunPersistenceAdapter runPersistenceAdapter = adapter();
         RunRecord stored = sampleRecord();
@@ -252,5 +285,20 @@ class RunPersistenceAdapterTest {
                 null,
                 null
         );
+    }
+
+    private RunStepRecord sampleStepRecord(UUID runId, int stepOrder, String stepKey, StepStatus status) {
+        RunStepRecord record = new RunStepRecord();
+        record.setId(UUID.randomUUID());
+        record.setRunId(runId);
+        record.setStepOrder(stepOrder);
+        record.setStepKey(stepKey);
+        record.setStepName(stepKey + " name");
+        record.setStage("CTA");
+        record.setStepType(stepKey.contains("goto") ? "GOTO" : "CLICK");
+        record.setStatus(status);
+        record.setStartedAt(OffsetDateTime.parse("2026-04-21T10:00:00+09:00"));
+        record.setFinishedAt(status == StepStatus.PENDING ? null : OffsetDateTime.parse("2026-04-21T10:00:03+09:00"));
+        return record;
     }
 }

@@ -90,6 +90,22 @@
           AND deleted_at IS NULL
     </select>
 
+    <select id="findStepsByRunId" resultMap="RunStepRecordResultMap">
+        SELECT id, run_id, step_order, step_key, step_name, stage, step_type,
+               status, started_at, finished_at, error_code, error_message
+        FROM test_run_step
+        WHERE run_id = #{runId}
+        ORDER BY step_order ASC, created_at ASC
+    </select>
+
+    <select id="findStepByRunIdAndId" resultMap="RunStepRecordResultMap">
+        SELECT id, run_id, step_order, step_key, step_name, stage, step_type,
+               status, started_at, finished_at, error_code, error_message
+        FROM test_run_step
+        WHERE run_id = #{runId}
+          AND id = #{stepId}
+    </select>
+
     <select id="findStepByRunIdAndStepKey" resultMap="RunStepRecordResultMap">
         SELECT id, run_id, step_order, step_key, step_name, stage, step_type,
                status, started_at, finished_at, error_code, error_message

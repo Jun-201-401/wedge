@@ -17,6 +17,10 @@ public interface RunMapper {
 
     Optional<RunRecord> findById(@Param("runId") UUID runId);
 
+    List<RunStepRecord> findStepsByRunId(@Param("runId") UUID runId);
+
+    Optional<RunStepRecord> findStepByRunIdAndId(@Param("runId") UUID runId, @Param("stepId") UUID stepId);
+
     Optional<RunStepRecord> findStepByRunIdAndStepKey(@Param("runId") UUID runId, @Param("stepKey") String stepKey);
 
     int insert(RunRecord run);

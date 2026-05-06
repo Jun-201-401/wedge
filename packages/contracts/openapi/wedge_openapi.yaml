@@ -849,7 +849,7 @@ paths:
       - Steps
       operationId: listRunSteps
       summary: 실행 단계 목록 조회
-      description: Run의 시나리오 step 목록을 조회하는 API다. 현재 구현은 MVP에서 제한적/placeholder일 수 있어 live/evidence-packet과 함께 확인한다.
+      description: Run의 시나리오 step 목록과 각 step의 실행 상태/실패 정보를 조회하는 API다.
       security:
       - HumanBearer: []
       parameters:

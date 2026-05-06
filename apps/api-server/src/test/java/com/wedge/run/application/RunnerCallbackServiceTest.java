@@ -130,7 +130,7 @@ class RunnerCallbackServiceTest {
         assertThat(result.eventCount()).isEqualTo(1);
         verify(runPersistenceAdapter).updateCurrentStepOrder(runId, 1);
         verify(runPersistenceAdapter).appendRunEvent(runId, stepId, "STEP_STARTED", Map.of("message", "started"), occurredAt);
-        verify(runPersistenceAdapter).updateStepState(stepId, StepStatus.RUNNING, occurredAt);
+        verify(runPersistenceAdapter).updateStepState(stepId, StepStatus.RUNNING, occurredAt, null, null);
     }
 
     @Test
@@ -153,7 +153,7 @@ class RunnerCallbackServiceTest {
                                 "step_002_submit",
                                 "STEP_FAILED",
                                 occurredAt,
-                                Map.of("failureMessage", "browser click failed")
+                                Map.of("failureCode", "RUNNER_TIMEOUT", "failureMessage", "browser click failed")
                         )
                 )),
                 headers("evt_step_failed_001")
@@ -166,10 +166,16 @@ class RunnerCallbackServiceTest {
                 runId,
                 stepId,
                 "STEP_FAILED",
-                Map.of("failureMessage", "browser click failed"),
+                Map.of("failureCode", "RUNNER_TIMEOUT", "failureMessage", "browser click failed"),
                 occurredAt
         );
-        verify(runPersistenceAdapter).updateStepState(stepId, StepStatus.FAILED, occurredAt);
+        verify(runPersistenceAdapter).updateStepState(
+                stepId,
+                StepStatus.FAILED,
+                occurredAt,
+                "RUNNER_TIMEOUT",
+                "browser click failed"
+        );
     }
 
     @Test
