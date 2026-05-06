@@ -25,12 +25,15 @@ import com.wedge.run.infrastructure.RunMapper;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
+@RequiredArgsConstructor
 public class ReportGenerationService {
     private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {};
+    private static final String DEFAULT_REPORT_TITLE = "JudgeResult analysis report";
     private static final String READY = "READY";
     private static final String GENERATABLE = "GENERATABLE";
     private static final String NOT_READY = "NOT_READY";
@@ -44,26 +47,6 @@ public class ReportGenerationService {
     private final RunMapper runMapper;
     private final ReportAccessGuard reportAccessGuard;
     private final ObjectMapper objectMapper;
-
-    public ReportGenerationService(
-            RunService runService,
-            AnalysisJobMapper analysisJobMapper,
-            AnalysisFindingMapper analysisFindingMapper,
-            NudgeMapper nudgeMapper,
-            ReportMapper reportMapper,
-            RunMapper runMapper,
-            ReportAccessGuard reportAccessGuard,
-            ObjectMapper objectMapper
-    ) {
-        this.runService = runService;
-        this.analysisJobMapper = analysisJobMapper;
-        this.analysisFindingMapper = analysisFindingMapper;
-        this.nudgeMapper = nudgeMapper;
-        this.reportMapper = reportMapper;
-        this.runMapper = runMapper;
-        this.reportAccessGuard = reportAccessGuard;
-        this.objectMapper = objectMapper;
-    }
 
     @Transactional(readOnly = true)
     public RunReportResponse getRunReport(UUID runId, UUID userId) {
@@ -127,7 +110,7 @@ public class ReportGenerationService {
         report.setId(UUID.randomUUID());
         report.setRunId(analysisJob.getRunId());
         report.setAnalysisJobId(analysisJob.getId());
-        report.setTitle("JudgeResult analysis report");
+        report.setTitle(DEFAULT_REPORT_TITLE);
         report.setFormat(ReportFormat.JSON);
         report.setStatus(ReportStatus.READY);
         report.setSummaryJsonb(writeJson(asMap(judgeResult.get("summary"))));
