@@ -59,17 +59,27 @@ services:
       - "127.0.0.1:9001:9001"
     volumes:
       - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:9000/minio/health/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   minio-init:
     image: minio/mc:RELEASE.2025-08-13T08-35-41Z
     depends_on:
       minio:
-        condition: service_started
+        condition: service_healthy
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+      WEDGE_ARTIFACT_BUCKET: ${WEDGE_ARTIFACT_BUCKET:-wedge-artifacts}
+      RUNNER_ARTIFACT_BUCKET: ${RUNNER_ARTIFACT_BUCKET:-${WEDGE_ARTIFACT_BUCKET:-wedge-artifacts}}
     entrypoint: >
       /bin/sh -c "
-      mc alias set local http://minio:9000 ${MINIO_ROOT_USER} ${MINIO_ROOT_PASSWORD};
-      until mc ready local; do sleep 1; done;
-      mc mb --ignore-existing local/wedge-artifacts;
+      mc alias set local http://minio:9000 $${MINIO_ROOT_USER} $${MINIO_ROOT_PASSWORD};
+      mc mb --ignore-existing local/$${WEDGE_ARTIFACT_BUCKET};
+      mc mb --ignore-existing local/$${RUNNER_ARTIFACT_BUCKET};
       exit 0;
       "
 
@@ -101,7 +111,7 @@ services:
       WEDGE_RUN_EXECUTE_QUEUE: ${WEDGE_RUN_EXECUTE_QUEUE}
       WEDGE_DISCOVERY_EXECUTE_QUEUE: ${WEDGE_DISCOVERY_EXECUTE_QUEUE:-discovery.execute.request}
       WEDGE_ARTIFACT_STORAGE: ${WEDGE_ARTIFACT_STORAGE:-filesystem}
-      WEDGE_ARTIFACT_BUCKET: ${WEDGE_ARTIFACT_BUCKET:-local-runner}
+      WEDGE_ARTIFACT_BUCKET: ${WEDGE_ARTIFACT_BUCKET:-wedge-artifacts}
       WEDGE_ARTIFACT_LOCAL_ROOT: /app/apps/runner/.runner-artifacts
       WEDGE_ARTIFACT_S3_ENDPOINT: ${WEDGE_ARTIFACT_S3_ENDPOINT:-http://minio:9000}
       WEDGE_ARTIFACT_S3_REGION: ${WEDGE_ARTIFACT_S3_REGION:-us-east-1}
@@ -155,7 +165,7 @@ services:
       RUNNER_CALLBACK_SIGNATURE_SECRET: ${INTERNAL_RUNNER_CALLBACK_SIGNATURE_SECRET:-${RUNNER_CALLBACK_SIGNATURE_SECRET:-local-runner-callback-secret}}
       RUNNER_ARTIFACTS_ROOT: /app/apps/runner/.runner-artifacts
       RUNNER_ARTIFACT_STORAGE: ${RUNNER_ARTIFACT_STORAGE:-filesystem}
-      RUNNER_ARTIFACT_BUCKET: ${RUNNER_ARTIFACT_BUCKET:-local-runner}
+      RUNNER_ARTIFACT_BUCKET: ${RUNNER_ARTIFACT_BUCKET:-${WEDGE_ARTIFACT_BUCKET:-wedge-artifacts}}
       RUNNER_ARTIFACT_S3_ENDPOINT: ${RUNNER_ARTIFACT_S3_ENDPOINT:-http://minio:9000}
       RUNNER_ARTIFACT_S3_REGION: ${RUNNER_ARTIFACT_S3_REGION:-us-east-1}
       RUNNER_ARTIFACT_S3_ACCESS_KEY_ID: ${RUNNER_ARTIFACT_S3_ACCESS_KEY_ID:-${MINIO_ROOT_USER}}
