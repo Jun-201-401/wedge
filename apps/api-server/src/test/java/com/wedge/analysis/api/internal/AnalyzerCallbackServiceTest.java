@@ -8,6 +8,7 @@ import static org.mockito.Mockito.when;
 
 import com.wedge.analysis.api.internal.dto.AnalyzerCallbackHeaders;
 import com.wedge.analysis.api.internal.dto.AnalyzerCompletedRequest;
+import com.wedge.analysis.api.internal.dto.AnalyzerFailedRequest;
 import com.wedge.analysis.api.internal.dto.AnalyzerStartedRequest;
 import com.wedge.analysis.application.JudgeResultPersistenceService;
 import com.wedge.common.error.BusinessException;
@@ -106,6 +107,41 @@ class AnalyzerCallbackServiceTest {
                 .hasMessage("Analyzer callback analysisJobId does not match path.");
     }
 
+    @Test
+    void failedCallbackDelegatesPersistenceOnce() {
+        UUID analysisJobId = UUID.randomUUID();
+        AnalyzerFailedRequest request = failedRequest(analysisJobId);
+        when(processedMessagePersistenceAdapter.tryMarkProcessed("analyzer.failed", "evt_analyzer_failed_001")).thenReturn(true);
+        when(judgeResultPersistenceService.saveFailed(request)).thenReturn(Map.of("status", "FAILED"));
+
+        Map<String, Object> result = analyzerCallbackService.handleFailed(analysisJobId, request, headers("evt_analyzer_failed_001"));
+
+        assertThat(result.get("status")).isEqualTo("FAILED");
+        verify(judgeResultPersistenceService).saveFailed(request);
+    }
+
+    @Test
+    void duplicateFailedCallbackDoesNotPersistAgain() {
+        UUID analysisJobId = UUID.randomUUID();
+        AnalyzerFailedRequest request = failedRequest(analysisJobId);
+        when(processedMessagePersistenceAdapter.tryMarkProcessed("analyzer.failed", "evt_analyzer_failed_001")).thenReturn(false);
+
+        Map<String, Object> result = analyzerCallbackService.handleFailed(analysisJobId, request, headers("evt_analyzer_failed_001"));
+
+        assertThat(result.get("duplicate")).isEqualTo(true);
+        assertThat(result.get("status")).isEqualTo("FAILED");
+        verify(judgeResultPersistenceService, never()).saveFailed(request);
+    }
+
+    @Test
+    void failedCallbackRequiresMatchingAnalysisJobId() {
+        AnalyzerFailedRequest request = failedRequest(UUID.randomUUID());
+
+        assertThatThrownBy(() -> analyzerCallbackService.handleFailed(UUID.randomUUID(), request, headers("evt_analyzer_failed_001")))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Analyzer callback analysisJobId does not match path.");
+    }
+
     private AnalyzerCallbackHeaders headers(String eventId) {
         return new AnalyzerCallbackHeaders("analyzer_001", eventId, "hmac-sha256=sig");
     }
@@ -129,6 +165,16 @@ class AnalyzerCallbackServiceTest {
                 List.of(),
                 Map.of("summary", Map.of(), "issues", List.of(), "decision_map", List.of()),
                 OffsetDateTime.parse("2026-04-28T11:00:00+09:00")
+        );
+    }
+
+    private AnalyzerFailedRequest failedRequest(UUID analysisJobId) {
+        return new AnalyzerFailedRequest(
+                analysisJobId,
+                UUID.randomUUID(),
+                OffsetDateTime.parse("2026-04-28T11:05:00+09:00"),
+                "ANALYZER_TIMEOUT",
+                "Analyzer timed out"
         );
     }
 }

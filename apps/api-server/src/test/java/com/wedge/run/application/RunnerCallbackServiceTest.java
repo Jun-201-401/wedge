@@ -381,6 +381,34 @@ class RunnerCallbackServiceTest {
     }
 
     @Test
+    void duplicateStepEventsCallbackDoesNotAppendRunEventsAgain() {
+        UUID runId = UUID.randomUUID();
+        RunnerStepEventsCommand command = new RunnerStepEventsCommand(List.of(
+                new RunnerStepEventCommand(
+                        UUID.randomUUID(),
+                        1,
+                        "step_001_goto",
+                        "STEP_STARTED",
+                        OffsetDateTime.parse("2026-04-21T10:01:00+09:00"),
+                        Map.of("message", "started")
+                )
+        ));
+        when(processedMessagePersistenceAdapter.tryMarkProcessed("runner.step-events", "evt_step_batch_001")).thenReturn(false);
+        when(runService.getRun(runId)).thenReturn(sampleRun(runId, RunStatus.RUNNING, ResultCompleteness.NONE));
+
+        RunnerCallbackAckResponse result = runnerCallbackService.handleStepEvents(
+                runId,
+                command,
+                headers("evt_step_batch_001")
+        );
+
+        assertThat(result.eventCount()).isEqualTo(1);
+        assertThat(result.duplicate()).isTrue();
+        verify(runService, never()).markRunningIfStarting(runId);
+        verifyNoInteractions(runPersistenceAdapter);
+    }
+
+    @Test
     void duplicateCheckpointCallbackDoesNotPersistAgain() {
         UUID runId = UUID.randomUUID();
         RunnerCheckpointsCommand command = sampleCheckpointCommand();
@@ -414,6 +442,62 @@ class RunnerCallbackServiceTest {
         assertThat(result.artifactCount()).isEqualTo(1);
         assertThat(result.duplicate()).isTrue();
         verifyNoInteractions(artifactPersistenceService);
+    }
+
+    @Test
+    void duplicateFinishedCallbackDoesNotFinishRunAgain() {
+        UUID runId = UUID.randomUUID();
+        RunResponse completed = sampleRun(runId, RunStatus.COMPLETED, ResultCompleteness.FINAL);
+        when(processedMessagePersistenceAdapter.tryMarkProcessed("runner.finished", "evt_finished_001")).thenReturn(false);
+        when(runService.getRun(runId)).thenReturn(completed);
+
+        RunnerCallbackAckResponse result = runnerCallbackService.handleFinished(
+                runId,
+                new RunnerFinishedCommand(
+                        WORKER_ID,
+                        OffsetDateTime.parse("2026-04-21T10:05:00+09:00"),
+                        5,
+                        0,
+                        false
+                ),
+                headers("evt_finished_001")
+        );
+
+        assertThat(result.status()).isEqualTo(RunStatus.COMPLETED);
+        assertThat(result.duplicate()).isTrue();
+        verify(runService, never()).finishRun(runId, false);
+    }
+
+    @Test
+    void duplicateFailedCallbackDoesNotFailRunAgain() {
+        UUID runId = UUID.randomUUID();
+        RunResponse failed = sampleRun(runId, RunStatus.FAILED, ResultCompleteness.PARTIAL);
+        when(processedMessagePersistenceAdapter.tryMarkProcessed("runner.failed", "evt_failed_001")).thenReturn(false);
+        when(runService.getRun(runId)).thenReturn(failed);
+
+        RunnerCallbackAckResponse result = runnerCallbackService.handleFailed(
+                runId,
+                new RunnerFailedCommand(
+                        WORKER_ID,
+                        OffsetDateTime.parse("2026-04-21T10:03:00+09:00"),
+                        "RUNNER_TIMEOUT",
+                        "Runner callback timed out",
+                        ResultCompleteness.PARTIAL,
+                        null,
+                        null,
+                        null
+                ),
+                headers("evt_failed_001")
+        );
+
+        assertThat(result.status()).isEqualTo(RunStatus.FAILED);
+        assertThat(result.duplicate()).isTrue();
+        verify(runService, never()).failRun(
+                eq(runId),
+                eq("RUNNER_TIMEOUT"),
+                eq("Runner callback timed out"),
+                eq(ResultCompleteness.PARTIAL)
+        );
     }
 
     private RunResponse sampleRun(UUID runId, RunStatus status, ResultCompleteness resultCompleteness) {
