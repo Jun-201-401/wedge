@@ -128,9 +128,9 @@ Spring AI 1.1.5
 - Boot 3.4.x는 변화 폭이 상대적으로 작지만, 2026년 기준으로는 3.5.x가 지원 기간과 최신 patch 측면에서 더 적합하다.
 - 안정성은 latest minor가 아니라 latest supported patch를 사용하는 방식으로 확보한다.
 
-## 6. V1 read-only tool 범위
+## 6. V1 우선 구현 read-only tool 범위
 
-V1 MCP Server는 read-only tool만 제공한다.
+V1 MCP Server는 read-only tool만 제공한다. 다만 `packages/contracts/mcp/tools.schema.json`의 모든 read tool을 한 번에 구현하지 않고, Run / Evidence / Report 조회에 필요한 tool부터 우선 구현한다.
 
 | Tool | Category | Scope | Approval | 목적 |
 |---|---|---|---|---|
@@ -143,14 +143,17 @@ V1 MCP Server는 read-only tool만 제공한다.
 | `get_report` | read | `wedge.read` | never | report detail 조회 |
 | `list_reports` | read | `wedge.read` | never | Run 또는 project report 목록 조회 |
 
-이 목록은 `packages/contracts/mcp/tools.schema.json`의 read tool 목록과 맞춰 관리한다. tool 이름, category, requiredScope, approvalPolicy는 docs가 아니라 contract가 최종 기준이다.
+이 목록은 V1 우선 구현 범위다. tool 이름, category, requiredScope, approvalPolicy의 최종 허용 값은 `packages/contracts/mcp/tools.schema.json`이 기준이다. 계약상 read tool의 `approvalPolicy`는 `never` 또는 `on_failure`를 허용할 수 있지만, V1 우선 구현 tool은 상태 변경이 없는 조회 기능이므로 `never`로 시작한다.
 
 ## 7. V1 제외 범위
 
-다음 tool은 V1 read-only MCP Server에서 제외한다.
+다음 tool은 V1 우선 구현 범위에서 제외한다.
 
 | Tool | 제외 이유 |
 |---|---|
+| `get_discovery_result` | Discovery 결과 조회 tool이지만 V1의 첫 목표를 Run / Evidence / Report 조회로 제한하므로 후순위로 둔다. |
+| `list_scenario_authoring_jobs` | Agent-assisted scenario recommendation 흐름에 필요한 read tool이므로 scenario authoring 설계와 함께 다룬다. |
+| `get_scenario_authoring_job` | Agent-assisted scenario recommendation 흐름에 필요한 read tool이므로 scenario authoring 설계와 함께 다룬다. |
 | `discover_site` | Runner 작업을 큐잉하는 상태 변경 tool이다. idempotency, 승인, 비용 제어가 필요하다. |
 | `create_run` | Run resource 생성 tool이다. project 권한, quota, idempotency 정책이 필요하다. |
 | `create_run_from_discovery` | Discovery 결과와 ScenarioPlan materialization 정책이 필요하다. |
@@ -161,7 +164,7 @@ V1 MCP Server는 read-only tool만 제공한다.
 | `export_report` | 파일 생성과 외부 공유 정책이 필요하다. |
 | `submit_scenario_authoring_result` | 외부 Agent 결과 write-back tool이므로 별도 검증과 저장 정책이 필요하다. |
 
-V2에서 execute/write-back tool을 추가할 때는 다음을 먼저 확정한다.
+후순위 read tool과 V2 execute/write-back tool을 추가할 때는 다음을 먼저 확정한다.
 
 ```text
 wedge.execute / wedge.export scope
