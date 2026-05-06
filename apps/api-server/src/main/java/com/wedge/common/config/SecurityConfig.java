@@ -72,7 +72,8 @@ public class SecurityConfig {
                                 "/api/discoveries/**"
                         ).authenticated()
                         .requestMatchers("/internal/runner/**", "/internal/analysis/**").hasRole("INTERNAL_RUNNER")
-                        .requestMatchers("/api/**", "/internal/**", "/mcp/**").denyAll()
+                        .requestMatchers("/mcp", "/mcp/**").hasRole("MCP_CLIENT")
+                        .requestMatchers("/api/**", "/internal/**").denyAll()
                         .anyRequest().permitAll()
                 )
                 .addFilterBefore(internalServiceTokenFilter, UsernamePasswordAuthenticationFilter.class)
