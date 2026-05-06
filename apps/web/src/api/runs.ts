@@ -8,6 +8,7 @@ import type {
   RunActionRequest,
   RunCreateRequest,
   RunArtifact,
+  RunEvent,
   RunLive,
   RunStatus,
   RunStep,
@@ -23,10 +24,17 @@ export interface ListRunsParams {
   limit?: number;
 }
 
-function buildQuery(params: ListRunsParams = {}) {
+export interface ListRunEventsParams {
+  cursor?: string;
+  limit?: number;
+  stepId?: string;
+  eventType?: string;
+}
+
+function buildQuery<T extends object>(params?: T) {
   const query = new URLSearchParams();
 
-  Object.entries(params).forEach(([key, value]) => {
+  Object.entries(params ?? {}).forEach(([key, value]) => {
     if (value !== undefined && value !== null && value !== '') {
       query.set(key, String(value));
     }
@@ -90,6 +98,10 @@ export function listRunSteps(runId: string, options?: RequestOptions) {
   return requestJson<ApiResponse<RunStep[]>>(`/runs/${runId}/steps`, options);
 }
 
+export function listRunEvents(runId: string, params?: ListRunEventsParams, options?: RequestOptions) {
+  return requestJson<ApiResponse<RunEvent[]>>(`/runs/${runId}/events${buildQuery(params)}`, options);
+}
+
 export function requestRunAnalysis(runId: string, options?: RequestOptions) {
   return requestJson<ApiResponse<AnalysisRequestResponse>>(`/runs/${runId}/analysis`, {
     ...options,
@@ -108,5 +120,6 @@ export const runsApi = {
   getRunEvidencePacket,
   listRunArtifacts,
   listRunSteps,
+  listRunEvents,
   requestRunAnalysis,
 };

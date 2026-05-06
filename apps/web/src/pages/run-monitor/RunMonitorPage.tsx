@@ -8,6 +8,8 @@ import type { RunReportProjection } from '../../entities/report';
 import type { EvidencePacket, RunEvidenceCounts } from '../../entities/run';
 import { RUN_STATUS_LABEL } from '../../entities/run';
 import {
+  buildApiEventLogs,
+  buildApiEventTimeline,
   buildApiSnapshotLogs,
   buildApiStepTimeline,
   buildMockRunMonitorData,
@@ -277,6 +279,9 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
     runSteps,
     isStepLoading,
     stepLoadError,
+    runEvents,
+    isEventLoading,
+    eventLoadError,
   } = useRunMonitorState(runId, mockData, isMockRun);
   const [runActionState, setRunActionState] = useState<{ kind: 'idle' | 'pending' | 'success' | 'error'; message: string }>({
     kind: 'idle',
@@ -417,15 +422,19 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
         depthId: readQueryParam('depth') ?? 'hero-only',
       })
     : null;
-  const visibleSteps = isApiFallback ? mockData.steps : buildApiStepTimeline(run, live, runSteps);
-  const visibleLogs = isApiFallback ? mockData.logs : buildApiSnapshotLogs(run, live);
+  const visibleSteps = isApiFallback ? mockData.steps : buildApiEventTimeline(run, live, runEvents, runSteps);
+  const visibleLogs = isApiFallback ? mockData.logs : buildApiEventLogs(run, live, runEvents);
   const deviceLabel = getDevicePresetLabel(run.devicePreset);
   const evidenceStats = getEvidenceSummaryStats(evidencePacket, live.evidenceCounts);
   const timelineNote = isApiFallback
-    ? '모의 실행 화면 · 실제 step API 연동 시 교체됩니다.'
-    : stepLoadError || (isStepLoading && runSteps.length === 0)
-      ? (stepLoadError || '실제 step timeline을 불러오는 중입니다.')
-      : 'API step timeline · Runner callback으로 저장된 실제 step 상태를 표시합니다.';
+    ? '모의 실행 화면 · 실제 event API 연동 시 교체됩니다.'
+    : eventLoadError || (isEventLoading && runEvents.length === 0)
+      ? (eventLoadError || '실제 event timeline을 불러오는 중입니다.')
+      : runEvents.length > 0
+        ? 'API event timeline · Runner callback으로 저장된 실제 이벤트를 표시합니다.'
+        : stepLoadError || (isStepLoading && runSteps.length === 0)
+          ? (stepLoadError || '실제 step timeline을 불러오는 중입니다.')
+          : 'API step timeline · Runner callback으로 저장된 실제 step 상태를 표시합니다.';
   const isRunActionPending = runActionState.kind === 'pending';
   const canStopCurrentRun = !isMockRun && canRequestRunStop(live.status);
   const canDeleteCurrentRun = !isMockRun && canRequestRunDelete(live.status);

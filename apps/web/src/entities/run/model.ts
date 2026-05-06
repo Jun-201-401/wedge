@@ -58,6 +58,17 @@ export interface RunStep {
   errorMessage?: string | null;
 }
 
+export interface RunEvent {
+  id: string;
+  runId: string;
+  stepId?: string | null;
+  stepKey?: string | null;
+  eventType: string;
+  eventSource: string;
+  payload: Record<string, unknown>;
+  occurredAt: string;
+}
+
 export interface RunCreateRequest {
   projectId: string;
   name: string;
