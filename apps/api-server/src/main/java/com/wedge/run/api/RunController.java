@@ -8,6 +8,7 @@ import com.wedge.run.api.dto.RunActionRequest;
 import com.wedge.run.api.dto.RunActionResponse;
 import com.wedge.run.api.dto.RunCreateRequest;
 import com.wedge.run.api.dto.LatestSnapshotResponse;
+import com.wedge.run.api.dto.RunEventResponse;
 import com.wedge.run.api.dto.RunLiveResponse;
 import com.wedge.run.api.dto.RunResponse;
 import com.wedge.run.api.dto.RunStepResponse;
@@ -128,9 +129,8 @@ public class RunController {
     }
 
     @GetMapping("/{runId}/events")
-    public ResponseEntity<ApiResponse<List<Object>>> listRunEvents(@PathVariable UUID runId) {
-        runService.getRun(runId);
-        return ApiResponse.ok(List.of());
+    public ResponseEntity<ApiResponse<List<RunEventResponse>>> listRunEvents(@PathVariable UUID runId) {
+        return ApiResponse.ok(runService.listRunEvents(runId));
     }
 
     @GetMapping("/{runId}/artifacts")

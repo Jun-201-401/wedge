@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.wedge.common.error.BusinessException;
 import com.wedge.common.error.ErrorCode;
 import com.wedge.run.api.dto.RunCreateRequest;
+import com.wedge.run.api.dto.RunEventResponse;
 import com.wedge.run.api.dto.RunResponse;
 import com.wedge.run.api.dto.RunStepResponse;
 import com.wedge.run.application.RunExecutionRequestSource;
@@ -25,6 +26,8 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class RunPersistenceAdapter {
     private static final String RUN_TYPE = "run";
+    private static final String RUNNER_EVENT_SOURCE = "RUNNER";
+    private static final TypeReference<Map<String, Object>> JSON_MAP_TYPE = new TypeReference<>() {};
 
     private final RunMapper runMapper;
     private final ObjectMapper objectMapper;
@@ -51,6 +54,12 @@ public class RunPersistenceAdapter {
     public Optional<RunStepResponse> findRunStep(UUID runId, UUID stepId) {
         return runMapper.findStepByRunIdAndId(runId, stepId)
                 .map(this::toStepResponse);
+    }
+
+    public List<RunEventResponse> listRunEvents(UUID runId) {
+        return runMapper.findEventsByRunId(runId).stream()
+                .map(this::toEventResponse)
+                .toList();
     }
 
     public Optional<RunExecutionRequestSource> findExecutionRequestSource(UUID runId) {
@@ -157,7 +166,7 @@ public class RunPersistenceAdapter {
                 runId,
                 stepId,
                 eventType,
-                "RUNNER",
+                RUNNER_EVENT_SOURCE,
                 writeJson(payload),
                 occurredAt
         );
@@ -258,6 +267,19 @@ public class RunPersistenceAdapter {
         );
     }
 
+    private RunEventResponse toEventResponse(RunEventRecord record) {
+        return new RunEventResponse(
+                record.getId(),
+                record.getRunId(),
+                record.getStepId(),
+                record.getStepKey(),
+                record.getEventType(),
+                record.getSource(),
+                readJsonMap(record.getPayloadJson(), "Stored run event payload is invalid"),
+                record.getOccurredAt()
+        );
+    }
+
     private RunExecutionRequestSource toExecutionRequestSource(RunRecord record) {
         return new RunExecutionRequestSource(
                 record.getId(),
@@ -267,7 +289,7 @@ public class RunPersistenceAdapter {
                 record.getGoal(),
                 record.getDevicePreset(),
                 record.getScenarioTemplateVersionId(),
-                readJsonMap(record.getScenarioPlanJson())
+                readJsonMap(record.getScenarioPlanJson(), "Stored scenarioPlanJson is invalid")
         );
     }
 
@@ -283,11 +305,15 @@ public class RunPersistenceAdapter {
         }
     }
 
-    private Map<String, Object> readJsonMap(String rawJson) {
+    private Map<String, Object> readJsonMap(String rawJson, String invalidMessage) {
+        if (rawJson == null || rawJson.isBlank()) {
+            throw new IllegalStateException(invalidMessage);
+        }
+
         try {
-            return objectMapper.readValue(rawJson, new TypeReference<>() {});
+            return objectMapper.readValue(rawJson, JSON_MAP_TYPE);
         } catch (JsonProcessingException exception) {
-            throw new IllegalStateException("Stored scenarioPlanJson is invalid", exception);
+            throw new IllegalStateException(invalidMessage, exception);
         }
     }
 
