@@ -22,6 +22,7 @@
 - `ddd_architecture_guide.md` — DDD를 처음 보는 팀원을 위한 Wedge 구조 해설
 - `wedge_frontend_architecture.md` — `apps/web` 프론트엔드 스택과 경계
 - `wedge_runner_architecture.md` — `apps/runner` 실행 구조와 경계
+- `wedge_runner_agent_execution.md` — Runner를 goal 기반 UX Agent로 전환하기 위한 target design
 - `wedge_api_spec.md` — 최종 human-readable API 명세서
 - `wedge_schema.sql` — 현재 PostgreSQL DDL 기준
 - `git_conventions.md` — commit/PR 규칙

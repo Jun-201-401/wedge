@@ -109,6 +109,16 @@ export interface ScenarioPlan {
   steps: ScenarioStep[];
 }
 
+export type RunExecutionMode = "agent" | "scripted";
+
+export interface AgentRunConfig {
+  maxTurns?: number;
+  maxScrolls?: number;
+  autonomyLevel?: "low" | "medium" | "high";
+  allowReplayHints?: boolean;
+  captureEveryTurn?: boolean;
+}
+
 export interface RunExecuteMessage {
   messageId: string;
   messageType: "run.execute.request";
@@ -124,9 +134,11 @@ export interface RunExecuteMessage {
     startUrl: string;
     goal: string;
     devicePreset: "desktop" | "tablet" | "mobile";
-    scenarioTemplateVersionId: string;
+    executionMode?: RunExecutionMode;
+    agentConfig?: AgentRunConfig;
+    scenarioTemplateVersionId?: string;
     scenarioOverrides?: Record<string, unknown>;
-    scenarioPlan: ScenarioPlan;
+    scenarioPlan?: ScenarioPlan;
     artifactPolicy?: Record<string, unknown>;
   };
 }

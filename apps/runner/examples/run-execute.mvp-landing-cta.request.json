@@ -134,6 +134,7 @@
           "checkpoint": true
         }
       ]
-    }
+    },
+    "executionMode": "scripted"
   }
 }

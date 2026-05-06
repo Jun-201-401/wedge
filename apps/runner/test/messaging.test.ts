@@ -9,7 +9,41 @@ test("[MQ 계약] 정상 run.execute.request envelope를 파싱한다", async ()
   const message = parseRunExecuteMessage(rawMessage);
 
   assert.equal(message.messageType, "run.execute.request");
-  assert.equal(message.payload.scenarioPlan.steps.length, 4);
+  assert.equal(message.payload.scenarioPlan!.steps.length, 4);
+});
+
+
+test("[MQ 계약] agent mode는 scenarioPlan 없이 URL과 목표만으로 파싱한다", async () => {
+  const message = cloneMessage(await loadExampleMessage()) as unknown as {
+    payload: Record<string, unknown>;
+  };
+  message.payload.executionMode = "agent";
+  message.payload.agentConfig = {
+    maxTurns: 3,
+    maxScrolls: 1,
+    autonomyLevel: "medium",
+    captureEveryTurn: false
+  };
+  delete message.payload.scenarioTemplateVersionId;
+  delete message.payload.scenarioPlan;
+
+  const parsed = parseRunExecuteMessage(JSON.stringify(message));
+
+  assert.equal(parsed.payload.executionMode, "agent");
+  assert.equal(parsed.payload.scenarioPlan, undefined);
+});
+
+test("[MQ 계약] scripted mode는 scenarioPlan이 없으면 거부한다", async () => {
+  const message = cloneMessage(await loadExampleMessage()) as unknown as {
+    payload: Record<string, unknown>;
+  };
+  message.payload.executionMode = "scripted";
+  delete message.payload.scenarioPlan;
+
+  assert.throws(
+    () => parseRunExecuteMessage(JSON.stringify(message)),
+    /scenarioPlan must be an object/
+  );
 });
 
 test("[MQ 계약] ScenarioPlan 필수 필드가 빠지면 run.execute.request를 거부한다", async () => {
@@ -19,7 +53,7 @@ test("[MQ 계약] ScenarioPlan 필수 필드가 빠지면 run.execute.request를
     };
   };
 
-  delete invalidMessage.payload.scenarioPlan.start_url;
+  delete invalidMessage.payload.scenarioPlan!.start_url;
 
   assert.throws(
     () => parseRunExecuteMessage(JSON.stringify(invalidMessage)),
@@ -71,7 +105,7 @@ test("[MQ 계약] scenarioTemplateVersionId가 없으면 run.execute.request를 
 
 test("[MQ 계약] runner가 지원하지 않는 action type은 거부한다", async () => {
   const invalidMessage = cloneMessage(await loadExampleMessage());
-  invalidMessage.payload.scenarioPlan.steps[0]!.action.type = "drag" as never;
+  invalidMessage.payload.scenarioPlan!.steps[0]!.action.type = "drag" as never;
 
   assert.throws(
     () => parseRunExecuteMessage(JSON.stringify(invalidMessage)),
@@ -81,7 +115,7 @@ test("[MQ 계약] runner가 지원하지 않는 action type은 거부한다", as
 
 test("[MQ 계약] runner가 지원하지 않는 settle strategy는 거부한다", async () => {
   const invalidMessage = cloneMessage(await loadExampleMessage());
-  invalidMessage.payload.scenarioPlan.steps[0]!.settle_strategy.type = "long_poll" as never;
+  invalidMessage.payload.scenarioPlan!.steps[0]!.settle_strategy.type = "long_poll" as never;
 
   assert.throws(
     () => parseRunExecuteMessage(JSON.stringify(invalidMessage)),

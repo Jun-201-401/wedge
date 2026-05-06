@@ -41,6 +41,7 @@ test("[계약 동기화] runner TS mirror의 scenario/MQ literal이 packages/con
   );
   assertPropertyMatchesSchemaEnum(runnerTypesSource, "triggerSource", mqSchema, mqSchema.$defs.RunExecutePayload.properties.triggerSource);
   assertPropertyMatchesSchemaEnum(runnerTypesSource, "devicePreset", mqSchema, mqSchema.$defs.RunExecutePayload.properties.devicePreset);
+  assertTypeAliasMatchesSchemaEnum(runnerTypesSource, "RunExecutionMode", mqSchema, mqSchema.$defs.RunExecutePayload.properties.executionMode);
   assertPropertyMatchesSchemaEnum(runnerTypesSource, "messageType", mqSchema, mqSchema.$defs.RunExecuteMessage.properties.messageType);
 
   assertPropertyPrimitiveMatchesSchema(runnerTypesSource, "url_includes", scenarioSchema.$defs.settle_strategy.properties.url_includes);
