@@ -2,7 +2,9 @@
 
 ## 1. 목적
 
-Wedge MCP Server는 외부 AI Agent가 Wedge의 분석 결과, evidence, report를 안전하게 조회할 수 있도록 제공하는 공식 adapter다.
+Wedge MCP Server는 Wedge가 특정 AI provider에 고정되지 않고 외부 AI Agent와 연동할 수 있도록 제공하는 공식 adapter다.
+
+현재 Wedge의 AI 연동은 GMS 기반 기능을 포함하지만, 프로젝트 진행 과정에서 GMS, 개인 AI Agent, 외부 Agent 연동 방식은 바뀔 수 있다. 따라서 V1 MCP Server의 목표는 최종 사용 시나리오를 확정하는 것이 아니라, GMS 기반 기능을 향후 MCP 기반 외부 AI Agent 흐름으로 대체하거나 확장할 수 있는 표준 통로를 마련하는 것이다.
 
 Wedge에서 MCP는 브라우저 원격 조종기가 아니다. MCP는 Wedge의 기존 기능을 외부 AI Agent가 표준 tool 인터페이스로 호출할 수 있게 하는 기능 호출 계층이다.
 
@@ -16,10 +18,11 @@ External AI Agent
 따라서 V1 MCP Server의 1차 목적은 다음으로 제한한다.
 
 ```text
-외부 AI Agent가 Wedge의 Run / Evidence / Report 결과를 read-only로 조회한다.
+Wedge API Server 안에 MCP 표준 통로를 마련하고,
+외부 AI Agent가 Wedge의 Run / Evidence / Report 결과를 read-only로 조회할 수 있는 최소 tool surface를 제공한다.
 ```
 
-상태 변경, 실행 시작, 분석 재요청, report export, Agent 분석 결과 write-back은 V1 MCP Server의 필수 범위에서 제외하고 후속 단계에서 다룬다.
+GMS 완전 대체, 시나리오 추천 자동화, 상태 변경, 실행 시작, 분석 재요청, report export, Agent 분석 결과 write-back은 V1 MCP Server의 필수 범위에서 제외하고 후속 단계에서 다룬다.
 
 ## 2. 공식 기준
 
@@ -131,6 +134,8 @@ Spring AI 1.1.5
 ## 6. V1 우선 구현 read-only tool 범위
 
 V1 MCP Server는 read-only tool만 제공한다. 다만 `packages/contracts/mcp/tools.schema.json`의 모든 read tool을 한 번에 구현하지 않고, Run / Evidence / Report 조회에 필요한 tool부터 우선 구현한다.
+
+이 범위는 "Wedge의 최종 MCP 사용 시나리오"가 아니라 "GMS 또는 외부 AI Agent 연동을 나중에 교체/확장할 수 있는 최소 기반"이다. 따라서 tool은 실제 service가 준비된 순서대로 작게 추가하고, 특정 provider나 특정 화면 UX에 종속된 계약은 V1에서 확정하지 않는다.
 
 | Tool | Category | Scope | Approval | 목적 |
 |---|---|---|---|---|
@@ -303,13 +308,16 @@ MCP adapter spike는 다음 기준을 통과해야 한다.
 ```text
 Spring Boot 3.5.x upgrade compile 성공
 Spring AI MCP WebMVC starter 적용 후 application context 로드 성공
+MCP server enable/disable 환경변수 구성
 기존 api-server test 통과
 기존 /api/auth, /api/runs, /internal/runner 보안 동작 유지
 /actuator/health 정상
-MCP tools/list에서 get_run_status 확인
-MCP tools/call get_run_status 성공
-mcp_invocation_log 기록 확인
+get_run_status 같은 최소 read-only tool 구현
+향후 Run / Evidence / Report / Analysis tool을 추가할 수 있는 패키지 구조 마련
+MCP endpoint는 인증/권한 정책 확정 전까지 운영 공개하지 않음
 ```
+
+MCP client 또는 inspector 기반 `tools/list`, `tools/call` 검증과 `mcp_invocation_log` 기록 확인은 MCP endpoint 접근 정책을 정한 뒤 진행한다.
 
 초기 검증은 dev DB와 seed run을 사용한다. 운영 데이터와 운영 MCP 공개는 별도 보안 검토 후 진행한다.
 
@@ -332,6 +340,8 @@ mcp_invocation_log 기록 확인
 
 Wedge MCP Server는 `api-server` 내부 adapter로 시작한다.
 
-V1의 정석 범위는 read-only tool이다. 외부 AI Agent가 Wedge의 evidence와 report를 읽고 해석할 수 있게 하는 것이 우선이며, Run 생성/시작/분석 요청/write-back은 보안과 승인 정책을 확정한 뒤 V2에서 추가한다.
+V1의 정석 범위는 최종 Agent 사용 시나리오 확정이 아니라 MCP 사용 환경 마련이다. 즉 GMS 기능을 즉시 대체하는 구현이 아니라, 향후 GMS 기반 기능을 MCP 기반 외부 AI Agent 흐름으로 전환할 수 있도록 표준 adapter 통로와 최소 read-only tool surface를 준비한다.
+
+외부 AI Agent가 Wedge의 evidence와 report를 읽고 해석할 수 있게 하는 것이 우선이며, Run 생성/시작/분석 요청/write-back은 보안과 승인 정책을 확정한 뒤 V2에서 추가한다.
 
 Spring AI 1.1.5와 MCP 2025-11-25 기준을 따르기 위해 Spring Boot는 3.5.x latest patch로 upgrade spike를 진행한다. 이 선택은 안정성, 지원 범위, 최신 공식 문서 정합성을 함께 고려한 기준이다.
