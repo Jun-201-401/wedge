@@ -52,6 +52,7 @@ export function buildMockRunReportData(runId: string, targetUrl: string, scenari
     heroTitle: 'Make your value clear above the fold',
     heroSubtitle: 'Hero section · 결과 요약 근거',
     heroCallToAction: 'Start free trial',
+    evidencePreviewUrl: '/mock-report-evidence.png',
     findings: [
       {
         id: 'cta-contrast',

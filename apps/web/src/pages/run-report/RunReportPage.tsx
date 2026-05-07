@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 
-import { generateRunReport, getRunReport } from '../../api/reports';
+import { generateRunReport, getReport, getRunReport } from '../../api/reports';
 import { getRun, getRunEvidencePacket, listRunArtifacts, requestRunAnalysis } from '../../api/runs';
-import type { RunReportProjection } from '../../entities/report';
+import type { ReportDetail, RunReportProjection } from '../../entities/report';
 import type { EvidencePacket, Run } from '../../entities/run';
 import { buildMockRunReportData, buildRunReportFromApi, buildRunReportFromEvidence, hydrateEvidenceArtifacts, RunReportBrand, RunReportViewer } from '../../features/report-viewer';
 import { isMockRunId } from '../run-monitor/lib/runMonitorRoute';
@@ -96,6 +96,7 @@ export function RunReportPage({ runId }: RunReportPageProps) {
   const [isEvidenceLoading, setIsEvidenceLoading] = useState(false);
   const [evidenceLoadError, setEvidenceLoadError] = useState('');
   const [reportProjection, setReportProjection] = useState<RunReportProjection | null>(null);
+  const [reportDetail, setReportDetail] = useState<ReportDetail | null>(null);
   const [isReportLoading, setIsReportLoading] = useState(false);
   const [reportLoadError, setReportLoadError] = useState('');
   const [reportActionState, setReportActionState] = useState<ReportActionState>(IDLE_REPORT_ACTION_STATE);
@@ -105,7 +106,7 @@ export function RunReportPage({ runId }: RunReportPageProps) {
     }
 
     if (run && reportProjection?.reportStatus === 'READY') {
-      return buildRunReportFromApi({ run, report: reportProjection, scenarioId });
+      return buildRunReportFromApi({ run, report: reportProjection, detail: reportDetail, scenarioId });
     }
 
     if (!run || !evidencePacket) {
@@ -114,7 +115,7 @@ export function RunReportPage({ runId }: RunReportPageProps) {
 
     const fallbackReport = buildRunReportFromEvidence({ run, evidencePacket, scenarioId });
     return reportLoadError ? { ...fallbackReport, sourceNotice: reportLoadError } : fallbackReport;
-  }, [evidencePacket, isMockRun, reportLoadError, reportProjection, run, runId, scenarioId, targetUrl]);
+  }, [evidencePacket, isMockRun, reportDetail, reportLoadError, reportProjection, run, runId, scenarioId, targetUrl]);
 
   useEffect(() => {
     if (isMockRun) {
@@ -125,6 +126,7 @@ export function RunReportPage({ runId }: RunReportPageProps) {
       setRunLoadError('');
       setEvidenceLoadError('');
       setReportProjection(null);
+      setReportDetail(null);
       setIsReportLoading(false);
       setReportLoadError('');
       setReportActionState(IDLE_REPORT_ACTION_STATE);
@@ -140,6 +142,7 @@ export function RunReportPage({ runId }: RunReportPageProps) {
       setEvidenceLoadError('');
       setEvidencePacket(null);
       setReportProjection(null);
+      setReportDetail(null);
       setIsReportLoading(false);
       setReportLoadError('');
       setReportActionState(IDLE_REPORT_ACTION_STATE);
@@ -230,6 +233,32 @@ export function RunReportPage({ runId }: RunReportPageProps) {
       isActive = false;
     };
   }, [isMockRun, runId]);
+
+  useEffect(() => {
+    if (isMockRun || reportProjection?.reportStatus !== 'READY' || !reportProjection.reportId) {
+      setReportDetail(null);
+      return undefined;
+    }
+
+    let isActive = true;
+    setReportDetail(null);
+
+    void getReport(reportProjection.reportId)
+      .then((response) => {
+        if (isActive) {
+          setReportDetail(response.data);
+        }
+      })
+      .catch(() => {
+        if (isActive) {
+          setReportDetail(null);
+        }
+      });
+
+    return () => {
+      isActive = false;
+    };
+  }, [isMockRun, reportProjection?.reportId, reportProjection?.reportStatus]);
 
   const reportState = resolveRunReportState({
     isMockRun,

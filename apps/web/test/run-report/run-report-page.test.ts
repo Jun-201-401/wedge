@@ -27,6 +27,7 @@ test('run report page follows the report.html result-first layout', () => {
   assert.match(source, /function RunReportStatePage/);
   assert.match(source, /getRun\(runId\)/);
   assert.match(source, /getRunReport\(runId\)/);
+  assert.match(source, /getReport\(reportProjection\.reportId\)/);
   assert.match(source, /generateRunReport\(runId\)/);
   assert.match(source, /requestRunAnalysis\(runId\)/);
   assert.match(source, /getRunEvidencePacket\(runId\)/);
@@ -37,7 +38,7 @@ test('run report page follows the report.html result-first layout', () => {
   assert.match(source, /buildRunReportFromApi/);
   assert.match(source, /buildRunReportFromEvidence/);
   assert.match(source, /reportProjection\?\.reportStatus === 'READY'/);
-  assert.match(source, /\[evidencePacket, isMockRun, reportLoadError, reportProjection, run, runId, scenarioId, targetUrl\]/);
+  assert.match(source, /\[evidencePacket, isMockRun, reportDetail, reportLoadError, reportProjection, run, runId, scenarioId, targetUrl\]/);
   assert.match(source, /sourceNotice: reportLoadError/);
   assert.match(source, /useAuthenticatedResourceUrl\(report\.evidencePreviewUrl\)/);
   assert.match(source, /role="status"/);
@@ -69,6 +70,7 @@ test('run report page follows the report.html result-first layout', () => {
   assert.match(source, /run-report-evidence-preview/);
   assert.doesNotMatch(source, /run-report-side-column/);
   assert.match(mock, /reportId/);
+  assert.match(mock, /mock-report-evidence\.png/);
   assert.doesNotMatch(mock, /interface RunReportViewModel/);
   assert.match(viewModel, /interface RunReportViewModel/);
   assert.match(mock, /totalSteps/);
