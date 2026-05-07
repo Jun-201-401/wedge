@@ -171,6 +171,7 @@ test('buildRunReportFromApi prefers report detail finding preview image when ava
   assert.equal(report.evidencePreviewUrl, reportDetail.findings[0].previewImage?.artifact.contentUrl);
   assert.equal(report.findings[0].id, 'detail-finding-1');
   assert.equal(report.findings[0].title, '상세 CTA 문맥 부족');
+  assert.equal(report.findings[0].previewImageUrl, reportDetail.findings[0].previewImage?.artifact.contentUrl);
   assert.equal(report.findings[0].evidenceRefs[0], 'cp-detail.obs-1');
   assert.equal(report.recommendations[0].detail, '상세 CTA 아래에 기대 결과를 한 문장으로 설명하세요.');
 });

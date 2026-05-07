@@ -109,10 +109,16 @@ function buildFindings(report: RunReportProjection): ReportFinding[] {
       confidence: finding.confidence ?? 0.72,
       priorityScore: finding.priorityScore ?? Math.max(50, 86 - index * 8),
       evidenceRefs,
+      previewImageUrl: null,
       recommendation: finding.impactHypothesis ?? '분석 결과의 근거와 추천 nudge를 함께 검토하세요.',
       highlight: createHighlight(index),
     };
   });
+}
+
+function getFindingPreviewUrl(finding: ReportDetail['findings'][number]) {
+  const artifact = finding.previewImage?.artifact;
+  return artifact?.contentUrl ?? artifact?.url ?? null;
 }
 
 function buildFindingsFromDetail(detail: ReportDetail): ReportFinding[] {
@@ -134,6 +140,7 @@ function buildFindingsFromDetail(detail: ReportDetail): ReportFinding[] {
       confidence: finding.confidence ?? 0.72,
       priorityScore: finding.priorityScore ?? Math.max(50, 86 - index * 8),
       evidenceRefs,
+      previewImageUrl: getFindingPreviewUrl(finding),
       recommendation: firstNudge?.recommendation
         ?? firstNudge?.rationale
         ?? finding.impactHypothesis
@@ -203,8 +210,8 @@ function buildRecommendations(report: RunReportProjection, findings: ReportFindi
 }
 
 function getDetailPreviewUrl(detail: ReportDetail | null | undefined) {
-  const artifact = detail?.findings[0]?.previewImage?.artifact;
-  return artifact?.contentUrl ?? artifact?.url ?? null;
+  const firstFinding = detail?.findings[0];
+  return firstFinding ? getFindingPreviewUrl(firstFinding) : null;
 }
 
 function getCompletedAt(run: Run, report: RunReportProjection) {

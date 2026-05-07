@@ -1,5 +1,6 @@
+import { useEffect, useMemo, useState } from 'react';
 import { useAuthenticatedResourceUrl } from '../../../shared/lib/authenticatedResourceUrl';
-import type { RunReportViewModel } from '../lib/runReportViewModel';
+import type { ReportFinding, RunReportViewModel } from '../lib/runReportViewModel';
 import '../styles/run-report-viewer.css';
 
 interface RunReportViewerProps {
@@ -22,6 +23,10 @@ function formatConfidence(confidence: number) {
   return `${Math.round(confidence * 100)}%`;
 }
 
+function selectedFindingFrom(findings: ReportFinding[], selectedFindingId: string | null) {
+  return findings.find((finding) => finding.id === selectedFindingId) ?? findings[0] ?? null;
+}
+
 export function RunReportBrand() {
   return (
     <a href="/" className="run-report-brand" aria-label="Wedge home">
@@ -31,9 +36,28 @@ export function RunReportBrand() {
 }
 
 export function RunReportViewer({ report }: RunReportViewerProps) {
-  const primaryFinding = report.findings[0] ?? null;
+  const [selectedFindingId, setSelectedFindingId] = useState<string | null>(report.findings[0]?.id ?? null);
+  const [isFullFindingListOpen, setIsFullFindingListOpen] = useState(false);
   const topFindings = report.findings.slice(0, 3);
-  const evidencePreviewUrl = useAuthenticatedResourceUrl(report.evidencePreviewUrl);
+  const selectedFinding = useMemo(
+    () => selectedFindingFrom(report.findings, selectedFindingId),
+    [report.findings, selectedFindingId],
+  );
+  const hiddenFindingCount = Math.max(0, report.findings.length - topFindings.length);
+  const selectedEvidencePreviewUrl = selectedFinding?.previewImageUrl ?? report.evidencePreviewUrl;
+  const evidencePreviewUrl = useAuthenticatedResourceUrl(selectedEvidencePreviewUrl);
+
+  useEffect(() => {
+    if (report.findings.length === 0) {
+      setSelectedFindingId(null);
+      setIsFullFindingListOpen(false);
+      return;
+    }
+
+    if (!selectedFindingFrom(report.findings, selectedFindingId)) {
+      setSelectedFindingId(report.findings[0].id);
+    }
+  }, [report.findings, selectedFindingId]);
 
   return (
     <div className="run-report-page">
@@ -98,7 +122,12 @@ export function RunReportViewer({ report }: RunReportViewerProps) {
                 <ol className="run-report-top-finding-list">
                   {topFindings.map((finding, index) => (
                     <li key={finding.id} className={`run-report-top-finding-card run-report-top-finding-card--${finding.severity}`}>
-                      <article>
+                      <button
+                        type="button"
+                        className="run-report-top-finding-card__button"
+                        aria-pressed={selectedFinding?.id === finding.id}
+                        onClick={() => setSelectedFindingId(finding.id)}
+                      >
                         <div className="run-report-top-finding-card__meta">
                           <span>#{String(index + 1).padStart(2, '0')}</span>
                           <strong>{severityLabel(finding.severity)}</strong>
@@ -119,7 +148,7 @@ export function RunReportViewer({ report }: RunReportViewerProps) {
                             <dd>{finding.evidenceCount}</dd>
                           </div>
                         </dl>
-                      </article>
+                      </button>
                     </li>
                   ))}
                 </ol>
@@ -129,6 +158,37 @@ export function RunReportViewer({ report }: RunReportViewerProps) {
                   <p>이번 분석에서는 상위 3개로 표시할 마찰 지점이 발견되지 않았습니다.</p>
                 </div>
               )}
+
+              {hiddenFindingCount > 0 ? (
+                <div className="run-report-finding-more">
+                  <button
+                    type="button"
+                    onClick={() => setIsFullFindingListOpen((value) => !value)}
+                    aria-expanded={isFullFindingListOpen}
+                  >
+                    {isFullFindingListOpen ? '전체 문제 접기' : `나머지 ${hiddenFindingCount}개 더보기`}
+                  </button>
+
+                  {isFullFindingListOpen ? (
+                    <ol className="run-report-finding-full-list" aria-label="전체 finding 목록">
+                      {report.findings.map((finding, index) => (
+                        <li key={finding.id}>
+                          <button
+                            type="button"
+                            className="run-report-finding-row"
+                            aria-pressed={selectedFinding?.id === finding.id}
+                            onClick={() => setSelectedFindingId(finding.id)}
+                          >
+                            <span>#{String(index + 1).padStart(2, '0')}</span>
+                            <strong>{finding.title}</strong>
+                            <small>{finding.stage} · {formatConfidence(finding.confidence)}</small>
+                          </button>
+                        </li>
+                      ))}
+                    </ol>
+                  ) : null}
+                </div>
+              ) : null}
             </section>
 
             <section className="run-report-section run-report-section--priority" aria-labelledby="run-report-nudge-title">
@@ -193,12 +253,12 @@ export function RunReportViewer({ report }: RunReportViewerProps) {
               <article className="run-report-evidence-card">
                 <div className="run-report-evidence-card__head">
                   <div>
-                    <h3>Problem: {primaryFinding?.title ?? '발견된 마찰이 없습니다'}</h3>
-                    <p>관련 지점: {primaryFinding?.evidenceLabel ?? '추가 근거 없음'}</p>
+                    <h3>Problem: {selectedFinding?.title ?? '발견된 마찰이 없습니다'}</h3>
+                    <p>관련 지점: {selectedFinding?.evidenceLabel ?? '추가 근거 없음'}</p>
                   </div>
                   <div>
                     <span>Confidence</span>
-                    <strong>{primaryFinding ? formatConfidence(primaryFinding.confidence) : '0%'}</strong>
+                    <strong>{selectedFinding ? formatConfidence(selectedFinding.confidence) : '0%'}</strong>
                   </div>
                 </div>
 
@@ -219,21 +279,21 @@ export function RunReportViewer({ report }: RunReportViewerProps) {
                       </div>
                     </div>
                   )}
-                  {primaryFinding ? (
+                  {selectedFinding ? (
                     <div
-                      className={`run-report-friction-marker run-report-friction-marker--${primaryFinding.severity}`}
+                      className={`run-report-friction-marker run-report-friction-marker--${selectedFinding.severity}`}
                       style={{
-                        top: primaryFinding.highlight.top,
-                        left: primaryFinding.highlight.left,
-                        width: primaryFinding.highlight.width,
-                        height: primaryFinding.highlight.height,
+                        top: selectedFinding.highlight.top,
+                        left: selectedFinding.highlight.left,
+                        width: selectedFinding.highlight.width,
+                        height: selectedFinding.highlight.height,
                       }}
                     >
-                      <span>{primaryFinding.highlight.label}</span>
+                      <span>{selectedFinding.highlight.label}</span>
                     </div>
                   ) : null}
                   <div className="run-report-evidence-preview__caption">
-                    <p>{primaryFinding?.summary ?? '이번 흐름에서는 우선 조치가 필요한 마찰을 찾지 못했습니다.'}</p>
+                    <p>{selectedFinding?.summary ?? '이번 흐름에서는 우선 조치가 필요한 마찰을 찾지 못했습니다.'}</p>
                   </div>
                 </div>
               </article>
