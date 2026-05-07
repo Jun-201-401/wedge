@@ -25,6 +25,11 @@ CREATE TABLE IF NOT EXISTS site_discovery (
     version             BIGINT NOT NULL DEFAULT 0
 );
 
+-- 기존 dev DB에 site_discovery가 먼저 생성되어 있던 경우 CREATE TABLE IF NOT EXISTS는
+-- 새 컬럼을 보정하지 않는다. Discovery create path는 이 컬럼을 조회하므로 재적용 안전하게 보강한다.
+ALTER TABLE site_discovery
+    ADD COLUMN IF NOT EXISTS idempotency_key VARCHAR(160);
+
 CREATE TABLE IF NOT EXISTS scenario_recommendation (
     id                   UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     discovery_id         UUID NOT NULL REFERENCES site_discovery(id) ON DELETE CASCADE,

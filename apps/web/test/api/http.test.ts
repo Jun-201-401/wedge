@@ -67,7 +67,9 @@ test('requestJson refreshes once and retries a protected request after 401', asy
   }) as typeof fetch;
 
   try {
-    const response = await requestJson<ApiResponse<{ ok: boolean }>>('/runs/one');
+    const response = await requestJson<ApiResponse<{ ok: boolean }>>('/runs/one', {
+      idempotencyKey: 'idem-run-start-1',
+    });
 
     assert.deepEqual(response.data, { ok: true });
     assert.equal(readAccessToken(), refreshedToken.accessToken);
@@ -75,10 +77,12 @@ test('requestJson refreshes once and retries a protected request after 401', asy
     assert.equal(calls[0].url, '/api/runs/one');
     assert.equal(calls[0].init?.credentials, 'include');
     assert.equal(new Headers(calls[0].init?.headers).get('Authorization'), 'Bearer access-token');
+    assert.equal(new Headers(calls[0].init?.headers).get('Idempotency-Key'), 'idem-run-start-1');
     assert.equal(calls[1].url, '/api/auth/refresh');
     assert.equal(calls[1].init?.credentials, 'include');
     assert.equal(calls[2].url, '/api/runs/one');
     assert.equal(new Headers(calls[2].init?.headers).get('Authorization'), 'Bearer fresh-access-token');
+    assert.equal(new Headers(calls[2].init?.headers).get('Idempotency-Key'), 'idem-run-start-1');
   } finally {
     globalThis.fetch = originalFetch;
     clearAuthToken();

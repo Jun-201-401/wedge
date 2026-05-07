@@ -12,5 +12,5 @@ export function createDiscoveryIdempotencyKey(projectId: string, targetUrl: stri
     hash = Math.imul(hash ^ input.charCodeAt(index), 16777619);
   }
 
-  return `create-analysis-discovery:${projectId}:${(hash >>> 0).toString(36)}`;
+  return `create-analysis-discovery:${projectId}:${(hash >>> 0).toString(36)}:${crypto.randomUUID()}`;
 }

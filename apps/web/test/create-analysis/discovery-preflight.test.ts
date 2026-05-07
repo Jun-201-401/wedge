@@ -5,13 +5,15 @@ import { createDiscoveryIdempotencyKey, isDiscoveryBusy } from '../../src/pages/
 
 const projectId = '8f06dca8-9c4d-4f20-b1a8-1d5ee40a9923';
 
-test('createDiscoveryIdempotencyKey is stable and bounded for duplicate preflight submits', () => {
-  const key = createDiscoveryIdempotencyKey(projectId, 'https://example.com/pricing?utm=demo');
+test('createDiscoveryIdempotencyKey creates a fresh bounded key for each explicit discovery submit', () => {
+  const firstKey = createDiscoveryIdempotencyKey(projectId, 'https://example.com/pricing?utm=demo');
+  const secondKey = createDiscoveryIdempotencyKey(projectId, 'https://example.com/pricing?utm=demo');
+  const otherUrlKey = createDiscoveryIdempotencyKey(projectId, 'https://example.com/contact');
 
-  assert.equal(key, createDiscoveryIdempotencyKey(projectId, 'https://example.com/pricing?utm=demo'));
-  assert.notEqual(key, createDiscoveryIdempotencyKey(projectId, 'https://example.com/contact'));
-  assert.ok(key.length <= 160);
-  assert.match(key, /^create-analysis-discovery:/);
+  assert.notEqual(firstKey, secondKey);
+  assert.notEqual(firstKey, otherUrlKey);
+  assert.ok(firstKey.length <= 160);
+  assert.match(firstKey, /^create-analysis-discovery:/);
 });
 
 test('isDiscoveryBusy gates duplicate create requests while discovery is active', () => {
