@@ -151,7 +151,10 @@ class AnalysisRequestConsumerTest(unittest.TestCase):
         payload = callback_client.completed[0]["payload"]
         self.assertEqual(payload["analysisJobId"], "22222222-2222-2222-2222-222222222222")
         self.assertEqual(payload["runId"], "11111111-1111-1111-1111-111111111111")
-        self.assertEqual([issue["criterion_id"] for issue in payload["judgeResult"]["issues"]], ["PATH-CTA-002"])
+        self.assertEqual(
+            [issue["criterion_id"] for issue in payload["judgeResult"]["issues"]],
+            ["PATH-CTA-002", "JOURNEY-ACTION-RESULT-001"],
+        )
 
     def test_started_callback_failure_does_not_block_completed_callback(self) -> None:
         packet = load_sample_packet()
