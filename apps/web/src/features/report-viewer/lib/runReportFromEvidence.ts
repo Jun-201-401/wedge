@@ -218,9 +218,9 @@ function buildFindings(evidencePacket: EvidencePacket): ReportFinding[] {
 
 function createHighlight(index: number) {
   const highlights = [
-    { label: 'EVIDENCE POINT', top: '38%', left: '34%', width: '30%', height: '14%' },
-    { label: 'CHECKPOINT', top: '58%', left: '18%', width: '36%', height: '15%' },
-    { label: 'FOLLOW-UP', top: '29%', left: '55%', width: '24%', height: '18%' },
+    { label: 'EVIDENCE POINT', source: 'fallback' as const, top: '38%', left: '34%', width: '30%', height: '14%' },
+    { label: 'CHECKPOINT', source: 'fallback' as const, top: '58%', left: '18%', width: '36%', height: '15%' },
+    { label: 'FOLLOW-UP', source: 'fallback' as const, top: '29%', left: '55%', width: '24%', height: '18%' },
   ];
   return highlights[index] ?? highlights[0];
 }
@@ -274,6 +274,7 @@ function buildRecommendations(findings: ReportFinding[]): ReportRecommendation[]
 
   return sourceFindings.slice(0, 3).map((finding, index) => ({
     id: `recommendation-${finding.id}`,
+    findingId: finding.id,
     priority: `NUDGE #${String(index + 1).padStart(2, '0')}`,
     title: finding.title,
     detail: finding.recommendation,

@@ -1,4 +1,7 @@
+import { useMemo, useState } from 'react';
+
 import { useAuthenticatedResourceUrl } from '../../../shared/lib/authenticatedResourceUrl';
+import { resolveActiveFinding, resolveLinkedFindingId } from '../lib/runReportInteractions';
 import type { RunReportViewModel } from '../lib/runReportViewModel';
 import '../styles/run-report-viewer.css';
 
@@ -19,8 +22,16 @@ export function RunReportBrand() {
 }
 
 export function RunReportViewer({ report }: RunReportViewerProps) {
-  const primaryFinding = report.findings[0] ?? null;
+  const [hoveredFindingId, setHoveredFindingId] = useState<string | null>(null);
+  const [selectedFindingId, setSelectedFindingId] = useState<string | null>(report.findings[0]?.id ?? null);
   const evidencePreviewUrl = useAuthenticatedResourceUrl(report.evidencePreviewUrl);
+  const recommendations = report.recommendations.slice(0, 3);
+  const activeFinding = useMemo(() => {
+    const activeId = hoveredFindingId ?? selectedFindingId;
+    return resolveActiveFinding(report.findings, activeId);
+  }, [hoveredFindingId, report.findings, selectedFindingId]);
+  const activeFindingId = activeFinding?.id ?? null;
+  const highlightSourceLabel = activeFinding?.highlight.source === 'fallback' ? '추정 영역' : '실측 영역';
 
   return (
     <div className="run-report-page">
@@ -74,34 +85,113 @@ export function RunReportViewer({ report }: RunReportViewerProps) {
         </header>
 
         <div className="run-report-layout">
-          <div className="run-report-main-column">
+          <section className="run-report-visual-panel" aria-labelledby="run-report-evidence-title">
+            <div className="run-report-section-heading run-report-section-heading--plain">
+              <h2 id="run-report-evidence-title">Evidence Screen</h2>
+            </div>
+
+            <article className="run-report-evidence-card">
+              <div className="run-report-evidence-card__head">
+                <div>
+                  <h3>{activeFinding?.title ?? '발견된 마찰이 없습니다'}</h3>
+                  <p>관련 지점: {activeFinding?.evidenceLabel ?? '추가 근거 없음'}</p>
+                </div>
+                <div>
+                  <span>Confidence</span>
+                  <strong>{activeFinding ? `${Math.round(activeFinding.confidence * 100)}%` : '0%'}</strong>
+                </div>
+              </div>
+
+              <div className="run-report-evidence-preview" aria-label="분석 근거 화면 미리보기">
+                {evidencePreviewUrl ? (
+                  <img className="run-report-evidence-preview__image" src={evidencePreviewUrl} alt="실제 실행에서 수집된 evidence 화면" />
+                ) : (
+                  <div className="run-report-evidence-preview__site">
+                    <div className="run-report-evidence-preview__nav" aria-hidden="true">
+                      <span />
+                      <span />
+                      <span />
+                    </div>
+                    <div className="run-report-evidence-preview__hero">
+                      <small>{report.heroSubtitle}</small>
+                      <strong>{report.heroTitle}</strong>
+                      <button type="button">{report.heroCallToAction}</button>
+                    </div>
+                  </div>
+                )}
+                {activeFinding ? (
+                  <div
+                    className={`run-report-friction-marker run-report-friction-marker--${activeFinding.severity}`}
+                    style={{
+                      top: activeFinding.highlight.top,
+                      left: activeFinding.highlight.left,
+                      width: activeFinding.highlight.width,
+                      height: activeFinding.highlight.height,
+                    }}
+                  >
+                    <span>{activeFinding.highlight.label}</span>
+                  </div>
+                ) : null}
+              </div>
+
+              <div className="run-report-evidence-card__summary">
+                <span>{activeFinding ? `${activeFinding.issueId} · ${highlightSourceLabel}` : 'NO ISSUE'}</span>
+                <p>{activeFinding?.summary ?? '이번 흐름에서는 우선 조치가 필요한 마찰을 찾지 못했습니다.'}</p>
+              </div>
+            </article>
+          </section>
+
+          <aside className="run-report-insight-panel" aria-label="Nudge and finding details">
             <section className="run-report-section run-report-section--priority" aria-labelledby="run-report-nudge-title">
               <div className="run-report-section-heading">
                 <h2 id="run-report-nudge-title">Recommended Nudge</h2>
                 <span aria-hidden="true" />
               </div>
 
-              <div className="run-report-nudge-list">
-                {report.recommendations.slice(0, 2).map((recommendation) => (
-                  <article key={recommendation.id} className="run-report-nudge-card">
-                    <div className="run-report-nudge-card__eyebrow">
-                      <span aria-hidden="true">+</span>
-                      <strong>{recommendation.priority}</strong>
-                    </div>
-                    <h3>{recommendation.title}</h3>
-                    <p>{recommendation.detail}</p>
-                    <dl>
-                      <div>
-                        <dt>Expected Impact</dt>
-                        <dd>{recommendation.expectedImpact}</dd>
-                      </div>
-                      <div>
-                        <dt>Difficulty</dt>
-                        <dd>{recommendation.effort}</dd>
-                      </div>
-                    </dl>
-                  </article>
-                ))}
+              <div className="run-report-nudge-list" onMouseLeave={() => setHoveredFindingId(null)}>
+                {recommendations.map((recommendation) => {
+                  const relatedFindingId = resolveLinkedFindingId(report.findings, recommendation.findingId);
+                  const isActive = relatedFindingId === activeFindingId;
+                  const isSelected = relatedFindingId === selectedFindingId;
+
+                  return (
+                    <button
+                      key={recommendation.id}
+                      type="button"
+                      className={`run-report-nudge-card${isActive ? ' run-report-nudge-card--active' : ''}`}
+                      aria-pressed={isSelected}
+                      onBlur={() => setHoveredFindingId(null)}
+                      onClick={() => {
+                        if (relatedFindingId) {
+                          setSelectedFindingId(relatedFindingId);
+                        }
+                      }}
+                      onFocus={() => {
+                        if (relatedFindingId) {
+                          setSelectedFindingId(relatedFindingId);
+                        }
+                      }}
+                      onMouseEnter={() => setHoveredFindingId(relatedFindingId)}
+                    >
+                      <span className="run-report-nudge-card__eyebrow">
+                        <span aria-hidden="true">+</span>
+                        <strong>{recommendation.priority}</strong>
+                      </span>
+                      <span className="run-report-nudge-card__title">{recommendation.title}</span>
+                      <span className="run-report-nudge-card__detail">{recommendation.detail}</span>
+                      <span className="run-report-nudge-card__meta">
+                        <span>
+                          <small>Expected Impact</small>
+                          <strong>{recommendation.expectedImpact}</strong>
+                        </span>
+                        <span>
+                          <small>Difficulty</small>
+                          <strong>{recommendation.effort}</strong>
+                        </span>
+                      </span>
+                    </button>
+                  );
+                })}
               </div>
             </section>
 
@@ -128,61 +218,7 @@ export function RunReportViewer({ report }: RunReportViewerProps) {
                 ))}
               </ol>
             </section>
-
-            <section className="run-report-section run-report-evidence-detail" aria-labelledby="run-report-evidence-title">
-              <div className="run-report-section-heading run-report-section-heading--plain">
-                <h2 id="run-report-evidence-title">Evidence Details</h2>
-              </div>
-
-              <article className="run-report-evidence-card">
-                <div className="run-report-evidence-card__head">
-                  <div>
-                    <h3>Problem: {primaryFinding?.title ?? '발견된 마찰이 없습니다'}</h3>
-                    <p>관련 지점: {primaryFinding?.evidenceLabel ?? '추가 근거 없음'}</p>
-                  </div>
-                  <div>
-                    <span>Confidence</span>
-                    <strong>{primaryFinding ? `${Math.round(primaryFinding.confidence * 100)}%` : '0%'}</strong>
-                  </div>
-                </div>
-
-                <div className="run-report-evidence-preview" aria-label="분석 근거 화면 축약 미리보기">
-                  {evidencePreviewUrl ? (
-                    <img className="run-report-evidence-preview__image" src={evidencePreviewUrl} alt="실제 실행에서 수집된 evidence 화면" />
-                  ) : (
-                    <div className="run-report-evidence-preview__site">
-                      <div className="run-report-evidence-preview__nav" aria-hidden="true">
-                        <span />
-                        <span />
-                        <span />
-                      </div>
-                      <div className="run-report-evidence-preview__hero">
-                        <small>{report.heroSubtitle}</small>
-                        <strong>{report.heroTitle}</strong>
-                        <button type="button">{report.heroCallToAction}</button>
-                      </div>
-                    </div>
-                  )}
-                  {primaryFinding ? (
-                    <div
-                      className={`run-report-friction-marker run-report-friction-marker--${primaryFinding.severity}`}
-                      style={{
-                        top: primaryFinding.highlight.top,
-                        left: primaryFinding.highlight.left,
-                        width: primaryFinding.highlight.width,
-                        height: primaryFinding.highlight.height,
-                      }}
-                    >
-                      <span>{primaryFinding.highlight.label}</span>
-                    </div>
-                  ) : null}
-                  <div className="run-report-evidence-preview__caption">
-                    <p>{primaryFinding?.summary ?? '이번 흐름에서는 우선 조치가 필요한 마찰을 찾지 못했습니다.'}</p>
-                  </div>
-                </div>
-              </article>
-            </section>
-          </div>
+          </aside>
         </div>
       </main>
     </div>

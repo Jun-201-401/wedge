@@ -115,9 +115,9 @@ function buildFindings(report: RunReportProjection): ReportFinding[] {
 
 function createHighlight(index: number) {
   const highlights = [
-    { label: 'REPORT FINDING', top: '38%', left: '34%', width: '30%', height: '14%' },
-    { label: 'DECISION POINT', top: '58%', left: '18%', width: '36%', height: '15%' },
-    { label: 'NUDGE TARGET', top: '29%', left: '55%', width: '24%', height: '18%' },
+    { label: 'REPORT FINDING', source: 'fallback' as const, top: '38%', left: '34%', width: '30%', height: '14%' },
+    { label: 'DECISION POINT', source: 'fallback' as const, top: '58%', left: '18%', width: '36%', height: '15%' },
+    { label: 'NUDGE TARGET', source: 'fallback' as const, top: '29%', left: '55%', width: '24%', height: '18%' },
   ];
   return highlights[index] ?? highlights[0];
 }
@@ -126,6 +126,7 @@ function buildRecommendations(report: RunReportProjection, findings: ReportFindi
   if (report.nudges.length > 0) {
     return report.nudges.slice(0, 3).map((nudge, index) => ({
       id: nudge.id,
+      findingId: nudge.findingId,
       priority: `NUDGE #${String(nudge.rankOrder ?? index + 1).padStart(2, '0')}`,
       title: nudge.title,
       detail: nudge.recommendation ?? nudge.rationale ?? '분석 결과에 맞춰 전환 마찰을 줄이는 개선안을 검토하세요.',
@@ -136,6 +137,7 @@ function buildRecommendations(report: RunReportProjection, findings: ReportFindi
 
   return findings.slice(0, 3).map((finding, index) => ({
     id: `recommendation-${finding.id}`,
+    findingId: finding.id,
     priority: `NUDGE #${String(index + 1).padStart(2, '0')}`,
     title: finding.title,
     detail: finding.recommendation,
