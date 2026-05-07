@@ -56,6 +56,7 @@ export interface RunnerConfig {
   mqQueueRunExecute: string;
   mqQueueDiscoveryExecute: string;
   mqPrefetch: number;
+  agentConcurrency: number;
   mqRequeueOnFailure: boolean;
   mqCallbackOutboxWorkerEnabled: boolean;
   mqArtifactOutboxWorkerEnabled: boolean;
@@ -153,6 +154,7 @@ export function loadRunnerConfig(overrides: Partial<RunnerConfig> = {}): RunnerC
   const mqQueueDiscoveryExecute =
     overrides.mqQueueDiscoveryExecute ?? process.env.RUNNER_MQ_QUEUE_DISCOVERY_EXECUTE ?? "discovery.execute.request";
   const mqPrefetch = parseNumber(overrides.mqPrefetch, process.env.RUNNER_MQ_PREFETCH, 1);
+  const agentConcurrency = parsePositiveInteger(overrides.agentConcurrency, process.env.RUNNER_AGENT_CONCURRENCY, 1);
   const mqRequeueOnFailure = parseBoolean(
     overrides.mqRequeueOnFailure,
     process.env.RUNNER_MQ_REQUEUE_ON_FAILURE,
@@ -239,6 +241,7 @@ export function loadRunnerConfig(overrides: Partial<RunnerConfig> = {}): RunnerC
     mqQueueRunExecute,
     mqQueueDiscoveryExecute,
     mqPrefetch,
+    agentConcurrency,
     mqRequeueOnFailure,
     mqCallbackOutboxWorkerEnabled,
     mqArtifactOutboxWorkerEnabled,
@@ -322,6 +325,15 @@ function parseBoolean(
   }
 
   return defaultValue;
+}
+
+function parsePositiveInteger(
+  overrideValue: number | undefined,
+  envValue: string | undefined,
+  defaultValue: number
+): number {
+  const parsed = parseNumber(overrideValue, envValue, defaultValue);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : defaultValue;
 }
 
 function parseNumber(

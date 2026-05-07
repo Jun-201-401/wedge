@@ -21,7 +21,9 @@ const ARTIFACT_ENV_KEYS = [
 
 const MQ_RUNTIME_ENV_KEYS = [
   RUNNER_MQ_CALLBACK_OUTBOX_WORKER_ENABLED_ENV,
-  RUNNER_MQ_ARTIFACT_OUTBOX_WORKER_ENABLED_ENV
+  RUNNER_MQ_ARTIFACT_OUTBOX_WORKER_ENABLED_ENV,
+  "RUNNER_MQ_PREFETCH",
+  "RUNNER_AGENT_CONCURRENCY"
 ] as const;
 
 type ArtifactEnvKey = typeof ARTIFACT_ENV_KEYS[number];
@@ -118,6 +120,34 @@ test("[설정] MQ consumer outbox replay worker는 환경변수로 끌 수 있�
 
       assert.equal(config.mqCallbackOutboxWorkerEnabled, false);
       assert.equal(config.mqArtifactOutboxWorkerEnabled, false);
+    }
+  );
+});
+
+test("[설정] Agent concurrency는 MQ prefetch와 별도 환경변수로 읽는다", () => {
+  withMqRuntimeEnv(
+    {
+      RUNNER_MQ_PREFETCH: "4",
+      RUNNER_AGENT_CONCURRENCY: "1"
+    },
+    () => {
+      const config = loadRunnerConfig({ serviceName: "runner-test" });
+
+      assert.equal(config.mqPrefetch, 4);
+      assert.equal(config.agentConcurrency, 1);
+    }
+  );
+});
+
+test("[설정] Agent concurrency는 1 이상의 정수만 허용한다", () => {
+  withMqRuntimeEnv(
+    {
+      RUNNER_AGENT_CONCURRENCY: "0"
+    },
+    () => {
+      const config = loadRunnerConfig({ serviceName: "runner-test" });
+
+      assert.equal(config.agentConcurrency, 1);
     }
   );
 });

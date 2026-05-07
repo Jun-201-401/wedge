@@ -14,6 +14,12 @@ export interface RunExecuteConsumerInput {
   client?: RabbitMqClient;
 }
 
+export interface AgentExecuteConsumerInput {
+  config: Pick<RunnerConfig, "mqUrl" | "mqQueueAgentExecute" | "agentConcurrency" | "mqRequeueOnFailure">;
+  processRawMessage: (rawMessage: string) => Promise<void>;
+  client?: RabbitMqClient;
+}
+
 export interface DiscoveryExecuteConsumerInput {
   config: Pick<RunnerConfig, "mqUrl" | "mqQueueDiscoveryExecute" | "mqPrefetch" | "mqRequeueOnFailure">;
   processRawMessage: (rawMessage: string) => Promise<void>;
@@ -21,8 +27,9 @@ export interface DiscoveryExecuteConsumerInput {
 }
 
 export interface RunnerQueuesConsumerInput {
-  config: Pick<RunnerConfig, "mqUrl" | "mqQueueRunExecute" | "mqQueueDiscoveryExecute" | "mqPrefetch" | "mqRequeueOnFailure">;
+  config: Pick<RunnerConfig, "mqUrl" | "mqQueueRunExecute" | "mqQueueAgentExecute" | "mqQueueDiscoveryExecute" | "mqPrefetch" | "agentConcurrency" | "mqRequeueOnFailure">;
   processRawRunMessage: (rawMessage: string) => Promise<void>;
+  processRawAgentMessage: (rawMessage: string) => Promise<void>;
   processRawDiscoveryMessage: (rawMessage: string) => Promise<void>;
   client?: RabbitMqClient;
 }
@@ -64,6 +71,21 @@ export async function startRunExecuteQueueConsumer({
   });
 }
 
+export async function startAgentExecuteQueueConsumer({
+  config,
+  processRawMessage,
+  client = defaultRabbitMqClient
+}: AgentExecuteConsumerInput): Promise<RunExecuteQueueConsumer> {
+  return startSingleQueueConsumer({
+    mqUrl: config.mqUrl,
+    queue: config.mqQueueAgentExecute,
+    prefetch: config.agentConcurrency,
+    requeueOnFailure: config.mqRequeueOnFailure,
+    processRawMessage,
+    client
+  });
+}
+
 export async function startDiscoveryExecuteQueueConsumer({
   config,
   processRawMessage,
@@ -82,32 +104,103 @@ export async function startDiscoveryExecuteQueueConsumer({
 export async function startRunnerQueueConsumers({
   config,
   processRawRunMessage,
+  processRawAgentMessage,
   processRawDiscoveryMessage,
   client = defaultRabbitMqClient
 }: RunnerQueuesConsumerInput): Promise<RunnerQueueConsumer> {
   const connection = await client.connect(config.mqUrl);
-  const channel = await connection.createChannel();
+  const channels: RabbitMqChannel[] = [];
 
-  await channel.prefetch(config.mqPrefetch);
-  await channel.checkQueue(config.mqQueueRunExecute);
-  await channel.checkQueue(config.mqQueueDiscoveryExecute);
-  await channel.consume(
-    config.mqQueueRunExecute,
-    createQueueConsumerHandler(channel, processRawRunMessage, config.mqRequeueOnFailure),
-    { noAck: false }
-  );
-  await channel.consume(
-    config.mqQueueDiscoveryExecute,
-    createQueueConsumerHandler(channel, processRawDiscoveryMessage, config.mqRequeueOnFailure),
-    { noAck: false }
-  );
+  try {
+    const runChannel = await startQueueConsumerOnNewChannel({
+      connection,
+      queue: config.mqQueueRunExecute,
+      prefetch: config.mqPrefetch,
+      requeueOnFailure: config.mqRequeueOnFailure,
+      processRawMessage: processRawRunMessage
+    });
+    channels.push(runChannel);
+
+    const agentChannel = await startQueueConsumerOnNewChannel({
+      connection,
+      queue: config.mqQueueAgentExecute,
+      prefetch: config.agentConcurrency,
+      requeueOnFailure: config.mqRequeueOnFailure,
+      processRawMessage: processRawAgentMessage
+    });
+    channels.push(agentChannel);
+
+    const discoveryChannel = await startQueueConsumerOnNewChannel({
+      connection,
+      queue: config.mqQueueDiscoveryExecute,
+      prefetch: config.mqPrefetch,
+      requeueOnFailure: config.mqRequeueOnFailure,
+      processRawMessage: processRawDiscoveryMessage
+    });
+    channels.push(discoveryChannel);
+  } catch (error) {
+    await closeQueueConsumerResources(channels, connection);
+    throw error;
+  }
 
   return {
     close: async () => {
-      await channel.close();
-      await connection.close();
+      await closeQueueConsumerResources(channels, connection);
     }
   };
+}
+
+async function startQueueConsumerOnNewChannel({
+  connection,
+  queue,
+  prefetch,
+  requeueOnFailure,
+  processRawMessage
+}: {
+  connection: RabbitMqConnection;
+  queue: string;
+  prefetch: number;
+  requeueOnFailure: boolean;
+  processRawMessage: (rawMessage: string) => Promise<void>;
+}): Promise<RabbitMqChannel> {
+  const channel = await connection.createChannel();
+
+  await channel.prefetch(prefetch);
+  await channel.checkQueue(queue);
+  await channel.consume(queue, createQueueConsumerHandler(channel, processRawMessage, requeueOnFailure), {
+    noAck: false
+  });
+
+  return channel;
+}
+
+async function closeQueueConsumerResources(
+  channels: RabbitMqChannel[],
+  connection: RabbitMqConnection
+): Promise<void> {
+  const errors: unknown[] = [];
+
+  for (const channel of [...channels].reverse()) {
+    try {
+      await channel.close();
+    } catch (error) {
+      errors.push(error);
+    }
+  }
+
+  try {
+    await connection.close();
+  } catch (error) {
+    errors.push(error);
+  }
+
+  if (errors.length === 1) {
+    throw errors[0];
+  }
+
+  if (errors.length > 1) {
+    throw new AggregateError(errors, "failed to close RabbitMQ consumer resources");
+  }
 }
 
 async function startSingleQueueConsumer({

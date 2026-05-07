@@ -108,6 +108,7 @@ try {
             mqUrl: app.config.mqUrl,
             queues: [app.config.mqQueueRunExecute, app.config.mqQueueDiscoveryExecute],
             prefetch: app.config.mqPrefetch,
+            agentConcurrency: app.config.agentConcurrency,
             recoveryWorkers: {
               enabled: runtime.enabledWorkers,
               callbackOutbox: createOutboxRecoveryWorkerStatus(
