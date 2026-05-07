@@ -11,4 +11,13 @@ import org.springframework.stereotype.Component;
 @ConfigurationProperties(prefix = "wedge.report")
 public class ReportProperties {
     private boolean projectAccessCheckEnabled = true;
+    private int shareDefaultExpirationMinutes = 10;
+    private String publicBaseUrl = "http://localhost:8080";
+
+    public String shareUrl(String shareToken) {
+        String normalizedBaseUrl = publicBaseUrl == null || publicBaseUrl.isBlank()
+                ? "http://localhost:8080"
+                : publicBaseUrl.replaceAll("/+$", "");
+        return normalizedBaseUrl + "/api/report-shares/" + shareToken;
+    }
 }

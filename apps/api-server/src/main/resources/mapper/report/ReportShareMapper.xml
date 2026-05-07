@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.wedge.report.infrastructure.ReportShareMapper">
+    <resultMap id="ReportShareResultMap" type="com.wedge.report.domain.ReportShare">
+        <id property="id" column="id"/>
+        <result property="reportId" column="report_id"/>
+        <result property="shareToken" column="share_token"/>
+        <result property="accessLevel" column="access_level"/>
+        <result property="expiresAt" column="expires_at"/>
+        <result property="revokedAt" column="revoked_at"/>
+        <result property="createdBy" column="created_by"/>
+        <result property="createdAt" column="created_at"/>
+    </resultMap>
+
+    <sql id="ReportShareColumns">
+        id, report_id, share_token, access_level, expires_at, revoked_at, created_by, created_at
+    </sql>
+
+    <select id="findByReportId" resultMap="ReportShareResultMap">
+        SELECT <include refid="ReportShareColumns"/>
+        FROM report_share
+        WHERE report_id = #{reportId}
+        ORDER BY created_at DESC
+    </select>
+
+    <select id="findActiveByToken" resultMap="ReportShareResultMap">
+        SELECT share.id, share.report_id, share.share_token, share.access_level,
+               share.expires_at, share.revoked_at, share.created_by, share.created_at
+        FROM report_share share
+        JOIN report ON report.id = share.report_id
+        WHERE share.share_token = #{shareToken}
+          AND share.revoked_at IS NULL
+          AND (share.expires_at IS NULL OR share.expires_at &gt; #{now})
+          AND report.deleted_at IS NULL
+    </select>
+
+    <insert id="insert" parameterType="com.wedge.report.domain.ReportShare">
+        INSERT INTO report_share (
+            id, report_id, share_token, access_level, expires_at, created_by, created_at
+        )
+        VALUES (
+            #{id}, #{reportId}, #{shareToken}, #{accessLevel}, #{expiresAt}, #{createdBy}, #{createdAt}
+        )
+    </insert>
+
+    <update id="revoke">
+        UPDATE report_share
+        SET revoked_at = #{revokedAt}
+        WHERE id = #{id}
+          AND report_id = #{reportId}
+          AND revoked_at IS NULL
+    </update>
+</mapper>
