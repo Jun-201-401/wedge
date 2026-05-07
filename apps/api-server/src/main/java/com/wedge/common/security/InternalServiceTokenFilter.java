@@ -37,6 +37,7 @@ public class InternalServiceTokenFilter extends OncePerRequestFilter {
     private static final String HMAC_SHA256_ALGORITHM = "HmacSHA256";
     private static final String HMAC_SHA256_PREFIX = "hmac-sha256=";
     private static final List<String> INTERNAL_CALLBACK_PATHS = List.of("/internal/runner/**", "/internal/analysis/**");
+    private static final List<String> MCP_PATHS = List.of("/mcp", "/mcp/**");
     private static final String INTERNAL_RUNNER_CALLBACK_PATH = "/internal/runner/**";
 
     private final JsonAuthenticationEntryPoint authenticationEntryPoint;
@@ -44,6 +45,9 @@ public class InternalServiceTokenFilter extends OncePerRequestFilter {
 
     @Value("${wedge.internal.service-token:}")
     private String serviceToken;
+
+    @Value("${wedge.mcp.service-token:}")
+    private String mcpServiceToken;
 
     @Value("${wedge.internal.runner-callback-signature-secret:}")
     private String runnerCallbackSignatureSecret;
@@ -60,7 +64,8 @@ public class InternalServiceTokenFilter extends OncePerRequestFilter {
                 ? authorization.substring(BEARER_PREFIX.length())
                 : null;
 
-        if (serviceToken == null || serviceToken.isBlank() || token == null || !matchesServiceToken(token)) {
+        String expectedToken = expectedToken(request);
+        if (expectedToken == null || expectedToken.isBlank() || token == null || !matchesToken(token, expectedToken)) {
             SecurityContextHolder.clearContext();
             authenticationEntryPoint.write(response, ErrorCode.UNAUTHORIZED);
             return;
@@ -77,10 +82,12 @@ public class InternalServiceTokenFilter extends OncePerRequestFilter {
             requestToFilter = new CachedBodyHttpServletRequest(request, body);
         }
 
+        String principal = isMcpRequest(request) ? "mcp-client" : "internal-runner";
+        String role = isMcpRequest(request) ? "ROLE_MCP_CLIENT" : "ROLE_INTERNAL_RUNNER";
         UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
-                "internal-runner",
+                principal,
                 null,
-                List.of(new SimpleGrantedAuthority("ROLE_INTERNAL_RUNNER"))
+                List.of(new SimpleGrantedAuthority(role))
         );
         SecurityContextHolder.getContext().setAuthentication(authentication);
         filterChain.doFilter(requestToFilter, response);
@@ -92,18 +99,30 @@ public class InternalServiceTokenFilter extends OncePerRequestFilter {
             return true;
         }
         String path = request.getRequestURI();
-        return INTERNAL_CALLBACK_PATHS.stream().noneMatch(pattern -> pathMatcher.match(pattern, path));
+        return !matchesAny(INTERNAL_CALLBACK_PATHS, path) && !matchesAny(MCP_PATHS, path);
     }
 
-    private boolean matchesServiceToken(String token) {
+    private String expectedToken(HttpServletRequest request) {
+        return isMcpRequest(request) ? mcpServiceToken : serviceToken;
+    }
+
+    private boolean matchesToken(String token, String expectedToken) {
         return MessageDigest.isEqual(
                 token.getBytes(StandardCharsets.UTF_8),
-                serviceToken.getBytes(StandardCharsets.UTF_8)
+                expectedToken.getBytes(StandardCharsets.UTF_8)
         );
     }
 
     private boolean isInternalRunnerCallback(HttpServletRequest request) {
         return pathMatcher.match(INTERNAL_RUNNER_CALLBACK_PATH, request.getRequestURI());
+    }
+
+    private boolean isMcpRequest(HttpServletRequest request) {
+        return matchesAny(MCP_PATHS, request.getRequestURI());
+    }
+
+    private boolean matchesAny(List<String> patterns, String path) {
+        return patterns.stream().anyMatch(pattern -> pathMatcher.match(pattern, path));
     }
 
     private boolean matchesRunnerCallbackSignature(String providedSignature, byte[] body) {
