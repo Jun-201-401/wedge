@@ -7,6 +7,7 @@ import type {
   SettleStrategy
 } from "../shared/contracts.ts";
 import { candidateText, targetFromComponent, targetKey } from "./component-target.ts";
+import { ADD_TO_CART_PATTERN, CART_NAVIGATION_PATTERN, CHECKOUT_GOAL_PATTERN, CHECKOUT_NAVIGATION_PATTERN, COOKIE_ACCEPT_PATTERN, COOKIE_CONTEXT_PATTERN } from "./semantics.ts";
 
 export type AgentDecisionKind = "act" | "checkpoint" | "finish";
 
@@ -110,12 +111,6 @@ interface ActionCandidate {
   stage: ScenarioStage;
 }
 
-const CHECKOUT_GOAL_PATTERN = /checkout|payment|cart|order|결제|주문|장바구니|카트/i;
-const COOKIE_ACCEPT_PATTERN = /accept|agree|allow all|confirm|동의|허용|확인/i;
-const COOKIE_CONTEXT_PATTERN = /cookie|cookies|쿠키|개인정보|privacy/i;
-const ADD_TO_CART_PATTERN = /add to cart|add to basket|장바구니 담기|카트 담기|담기/i;
-const CART_NAVIGATION_PATTERN = /view cart|go to cart|cart|basket|장바구니|카트/i;
-const CHECKOUT_NAVIGATION_PATTERN = /checkout|proceed to checkout|payment|billing|shipping|order|결제|배송|주문서|주문하기/i;
 
 function selectActionCandidate(input: AgentDecisionInput): ActionCandidate | undefined {
   const untriedComponents = input.observation.snapshot.interactiveComponents.filter((component) =>

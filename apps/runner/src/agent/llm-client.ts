@@ -51,15 +51,16 @@ export class AgentLlmDecisionClient implements AgentDecisionClient {
     }
 
     try {
+      const candidateReferences = createLlmCandidateReferences(input.observation.snapshot.interactiveComponents);
       const rawResponse = await this.transport.complete({
         endpoint: this.options.endpoint,
         apiKey: this.options.apiKey,
         model: this.options.model,
         timeoutMs: resolveLlmTimeoutMs(this.options.timeoutMs, input.remainingTimeMs),
-        payload: createLlmRequestPayload(input, this.options.model)
+        payload: createLlmRequestPayload(input, this.options.model, candidateReferences)
       });
 
-      return parseLlmDecision(rawResponse, input);
+      return parseLlmDecision(rawResponse, input, candidateReferences);
     } catch (error) {
       logOperationalEvent(
         "agent-llm-decision",
@@ -127,8 +128,11 @@ function createFetchLlmDecisionTransport(): AgentLlmDecisionTransport {
   };
 }
 
-function createLlmRequestPayload(input: AgentDecisionInput, model: string): Record<string, unknown> {
-  const candidateReferences = createLlmCandidateReferences(input.observation.snapshot.interactiveComponents);
+function createLlmRequestPayload(
+  input: AgentDecisionInput,
+  model: string,
+  candidateReferences: LlmCandidateReference[]
+): Record<string, unknown> {
   const userPayload = redactSensitiveValue({
     goal: input.goal,
     startUrl: input.startUrl,
@@ -194,7 +198,11 @@ function createLlmCandidateReferences(components: InteractiveComponentObservatio
   }));
 }
 
-function parseLlmDecision(rawResponse: unknown, input: AgentDecisionInput): AgentDecision {
+function parseLlmDecision(
+  rawResponse: unknown,
+  input: AgentDecisionInput,
+  candidateReferences: LlmCandidateReference[]
+): AgentDecision {
   const candidate = extractDecisionCandidate(rawResponse);
   const record = asRecord(candidate, "LLM decision");
   const kind = readString(record, "kind");
@@ -270,7 +278,6 @@ function parseLlmDecision(rawResponse: unknown, input: AgentDecisionInput): Agen
 
   if (actionType === "click") {
     const selectedTargetKey = readString(record, "targetKey");
-    const candidateReferences = createLlmCandidateReferences(input.observation.snapshot.interactiveComponents);
     const selectedCandidate = candidateReferences.find((candidate) =>
       candidate.id === selectedTargetKey
     ) ?? candidateReferences.find((candidate) =>

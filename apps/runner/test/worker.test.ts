@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { createAgentRuntimePlan, executeAgentRun, type AgentDecisionClient } from "../src/agent/index.ts";
+import { createAgentWorkerHarness, createCheckoutHeuristicComponents } from "./agent-support.ts";
 import { registerAgentWorker } from "../src/worker/agent-worker.ts";
 import { registerWorker } from "../src/worker/index.ts";
 import {
@@ -16,7 +17,7 @@ import {
   loadAgentExampleMessage,
   loadExampleMessage
 } from "./support.ts";
-import type { AgentEvent, AgentTraceCallbackPayload, Artifact, ArtifactDraft, InteractiveComponentObservationItem, RunnerFailedPayload, StepEvent } from "../src/shared/contracts.ts";
+import type { AgentEvent, AgentTraceCallbackPayload, Artifact, ArtifactDraft, RunnerFailedPayload, StepEvent } from "../src/shared/contracts.ts";
 
 test("[Worker lifecycle] accepted callback 실패 시 session을 닫고 failed callback을 보낸다", async () => {
   const message = await loadExampleMessage();
@@ -1018,11 +1019,8 @@ test("[Agent Worker] checkout 휴리스틱은 장바구니 담기, 카트, check
   let loaded = false;
   let addedToCart = false;
 
-  const worker = registerAgentWorker({
-    config: createRunnerTestConfig({
-      artifactsRoot: join(tmpdir(), "runner-test-agent-checkout-heuristic-artifacts"),
-      callbackLogFile: join(tmpdir(), "runner-test-agent-checkout-heuristic-callbacks.jsonl")
-    }),
+  const worker = createAgentWorkerHarness({
+    name: "checkout-heuristic",
     browserFactory: {
       kind: "simulated-playwright",
       createSession: async ({ plan }) =>
@@ -1064,15 +1062,6 @@ test("[Agent Worker] checkout 휴리스틱은 장바구니 담기, 카트, check
             interactiveComponents: createCheckoutHeuristicComponents(currentUrl, loaded, addedToCart)
           })
         })
-    },
-    callbackClient: createStubCallbackClient(),
-    capturePipeline: {
-      collectCheckpoint: async () => {
-        throw new Error("checkpoint collection should not run when capture_screenshots is false");
-      }
-    },
-    artifactStore: {
-      persistArtifacts: async () => []
     }
   });
 
@@ -1082,56 +1071,3 @@ test("[Agent Worker] checkout 휴리스틱은 장바구니 담기, 카트, check
   assert.equal(result.trace.outcome.status, "SUCCESS");
   assert.equal(result.trace.turns.at(-1)?.postActionVerification?.satisfied, true);
 });
-
-function createCheckoutHeuristicComponents(
-  currentUrl: string,
-  loaded: boolean,
-  addedToCart: boolean
-): InteractiveComponentObservationItem[] {
-  if (!loaded) {
-    return [];
-  }
-
-  if (currentUrl.endsWith("/cart")) {
-    return [
-      workerComponent("Checkout", "#checkout", true),
-      workerComponent("Remove item", "#remove", false)
-    ];
-  }
-
-  if (addedToCart) {
-    return [
-      workerComponent("장바구니", "#cart", false),
-      workerComponent("계속 쇼핑", "#continue", true)
-    ];
-  }
-
-  return [
-    workerComponent("Learn more", "#learn-more", true),
-    workerComponent("장바구니 담기", "#add-to-cart", false)
-  ];
-}
-
-function workerComponent(
-  text: string,
-  selector: string,
-  isPrimaryLike: boolean
-): InteractiveComponentObservationItem {
-  return {
-    text,
-    selector,
-    role: "button",
-    tag: "button",
-    clickable: true,
-    clicked_in_scenario: false,
-    is_cta_candidate: true,
-    is_primary_like: isPrimaryLike,
-    bounds: {
-      x: 10,
-      y: 10,
-      width: 120,
-      height: 40,
-      unit: "css_px"
-    }
-  };
-}

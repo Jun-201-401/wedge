@@ -1,6 +1,7 @@
 import type { BrowserPageSnapshot } from "../browser/playwright/index.ts";
 import type { AgentTask } from "../shared/contracts.ts";
 import type { AgentDecision } from "./planner.ts";
+import { CART_MUTATION_PATTERN, CHECKOUT_POLICY_NAVIGATION_PATTERN, DESTRUCTIVE_PATTERN, EXTERNAL_MESSAGE_PATTERN, FINAL_COMMIT_PATTERN, PAYMENT_INFO_PATTERN, SHIPPING_FORM_PATTERN } from "./semantics.ts";
 
 export interface AgentPolicyResult {
   allowed: boolean;
@@ -17,13 +18,6 @@ export interface AgentPolicyResult {
     | "EXTERNAL_MESSAGE_SEND";
 }
 
-const CHECKOUT_NAVIGATION_PATTERN = /checkout|proceed to checkout|payment|billing|shipping|결제|배송|주문서/i;
-const CART_MUTATION_PATTERN = /add to cart|add to basket|장바구니 담기|카트 담기|담기|cart add|basket add/i;
-const SHIPPING_FORM_PATTERN = /shipping|delivery|address|postal|zip|recipient|phone|배송|주소|우편번호|수령|연락처|전화/i;
-const PAYMENT_INFO_PATTERN = /card|credit|cvc|cvv|expiry|expiration|payment info|카드|신용카드|유효기간|결제정보/i;
-const FINAL_PAYMENT_PATTERN = /pay now|place order|complete order|submit order|confirm purchase|결제하기|주문하기|구매하기|최종 결제|결제 완료/i;
-const DESTRUCTIVE_PATTERN = /delete|remove account|cancel subscription|destroy|탈퇴|삭제|구독 취소|회원 탈퇴/i;
-const EXTERNAL_MESSAGE_PATTERN = /send message|submit inquiry|contact us|문의 보내기|상담 신청|메시지 전송/i;
 
 export function evaluateAgentPolicy(input: {
   task: AgentTask;
@@ -32,7 +26,7 @@ export function evaluateAgentPolicy(input: {
 }): AgentPolicyResult {
   const targetText = describeDecisionTarget(input.decision);
 
-  if (input.decision.action.type === "click" && FINAL_PAYMENT_PATTERN.test(targetText)) {
+  if (input.decision.action.type === "click" && FINAL_COMMIT_PATTERN.test(targetText)) {
     const allowed = input.task.risk_policy.allow_final_payment_submit || input.task.risk_policy.allow_final_order_commit;
     return {
       allowed,
@@ -100,7 +94,7 @@ export function evaluateAgentPolicy(input: {
     };
   }
 
-  if (input.decision.action.type === "click" && CHECKOUT_NAVIGATION_PATTERN.test(targetText)) {
+  if (input.decision.action.type === "click" && CHECKOUT_POLICY_NAVIGATION_PATTERN.test(targetText)) {
     return {
       allowed: input.task.risk_policy.allow_checkout_navigation,
       riskClass: "CHECKOUT_NAVIGATION",

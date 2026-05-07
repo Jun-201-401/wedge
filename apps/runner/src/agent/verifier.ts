@@ -1,5 +1,6 @@
 import type { BrowserPageSnapshot } from "../browser/playwright/index.ts";
 import type { AgentDecision } from "./planner.ts";
+import { CAPTCHA_PATTERN, CHECKOUT_ENTRY_PATTERN, CHECKOUT_GOAL_PATTERN, FINAL_COMMIT_PATTERN, LOGIN_WALL_PATTERN, SUCCESS_URL_PATTERN } from "./semantics.ts";
 
 export type AgentVerificationOutcome =
   | "CONTINUE"
@@ -18,11 +19,6 @@ export interface AgentVerificationResult {
   phase: "pre_decision" | "post_action";
 }
 
-const SUCCESS_URL_PATTERN = /signup|register|join|contact|pricing|checkout|start|demo|apply|inquiry|consult|회원|가입|문의|가격|결제|신청|상담/i;
-const CHECKOUT_ENTRY_PATTERN = /checkout|payment|billing|shipping|order|결제|배송|주문/i;
-const LOGIN_WALL_PATTERN = /login|log in|sign in|signin|account login|로그인|계정 로그인/i;
-const CAPTCHA_PATTERN = /captcha|recaptcha|hcaptcha|bot detection|robot check|verify you are human|비정상|자동화|로봇|보안문자|캡차/i;
-const FINAL_COMMIT_PATTERN = /pay now|place order|complete order|submit order|confirm purchase|결제하기|주문하기|구매하기|최종 결제|결제 완료/i;
 
 export function verifyGoal(input: {
   goal: string;
@@ -154,7 +150,7 @@ function isGoalLikeDestination(input: {
     return true;
   }
 
-  const checkoutGoal = /checkout|payment|cart|order|결제|주문|장바구니|카트/.test(input.goalText);
+  const checkoutGoal = CHECKOUT_GOAL_PATTERN.test(input.goalText);
   return checkoutGoal && (
     CHECKOUT_ENTRY_PATTERN.test(input.finalUrl) ||
     CHECKOUT_ENTRY_PATTERN.test(input.title)
