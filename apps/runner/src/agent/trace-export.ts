@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { AgentTask, ArtifactDraft, ScenarioAction, ScenarioPlan, ScenarioStep, SettleStrategy } from "../shared/contracts.ts";
 import { toIsoTimestamp } from "../shared/utils.ts";
-import { redactScenarioAction, redactSensitiveString, redactSensitiveValue, redactSettleStrategy } from "./redaction.ts";
+import { redactSensitiveValue } from "./redaction.ts";
 import { createAgentRuntimePlan } from "./runtime-plan.ts";
 import type { AgentTrace, AgentTurnTrace } from "./trace.ts";
 
@@ -65,19 +65,31 @@ export function exportAgentTraceToScenarioPlan(input: {
     };
   }
 
-  const finalUrl = redactSensitiveString(findFinalUrl(input.trace) ?? input.task.start_url);
+  const finalUrl = findFinalUrl(input.trace) ?? input.task.start_url;
   const scenarioPlan: ScenarioPlan = {
     ...createAgentRuntimePlan(input.task),
     plan_id: `agent-export-${input.task.task_id}`,
     scenario_type: "custom_compiled",
-    goal: redactSensitiveString(input.task.goal ?? input.task.goal_type),
-    start_url: redactSensitiveString(input.task.start_url),
+    goal: input.task.goal ?? input.task.goal_type,
+    start_url: input.task.start_url,
     steps: [
       ...replaySteps,
       createFinalCheckpointStep(replaySteps.length + 1),
       createFinalStopStep(replaySteps.length + 2, finalUrl)
     ]
   };
+
+  if (wouldRedactValue(scenarioPlan)) {
+    return {
+      ...base,
+      status: "NOT_EXPORTABLE",
+      reason: "Successful AgentTrace contains sensitive replay fields; sanitized artifacts may be persisted, but executable ScenarioPlan export is disabled.",
+      skipped_turns: input.trace.turns.map((turn) => ({
+        turn: turn.turn,
+        reason: "replay fields require redaction"
+      }))
+    };
+  }
 
   return {
     ...base,
@@ -157,7 +169,7 @@ function turnToScenarioStep(
   return {
     step_id: `agent_export_turn_${String(turn.turn).padStart(3, "0")}`,
     stage: turn.decision.stage,
-    description: redactSensitiveString(turn.decision.description),
+    description: turn.decision.description,
     action: cloneAction(turn.decision.action),
     settle_strategy: cloneSettleStrategy(turn.decision.settleStrategy),
     checkpoint: turn.decision.action.type === "checkpoint" || turn.postActionVerification?.satisfied === true
@@ -214,9 +226,13 @@ function findFinalUrl(trace: AgentTrace): string | null {
 }
 
 function cloneAction(action: ScenarioAction): ScenarioAction {
-  return redactScenarioAction(JSON.parse(JSON.stringify(action)) as ScenarioAction);
+  return JSON.parse(JSON.stringify(action)) as ScenarioAction;
 }
 
 function cloneSettleStrategy(settleStrategy: SettleStrategy): SettleStrategy {
-  return redactSettleStrategy(JSON.parse(JSON.stringify(settleStrategy)) as SettleStrategy);
+  return JSON.parse(JSON.stringify(settleStrategy)) as SettleStrategy;
+}
+
+function wouldRedactValue(value: unknown): boolean {
+  return JSON.stringify(value) !== JSON.stringify(redactSensitiveValue(value));
 }

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import { createAgentRuntimePlan, executeAgentRun, type AgentDecisionClient } from "../src/agent/index.ts";
 import { registerAgentWorker } from "../src/worker/agent-worker.ts";
 import { registerWorker } from "../src/worker/index.ts";
@@ -365,7 +366,7 @@ test("[Agent Worker] AgentTask로 CTA 후보를 관찰해 클릭한다", async (
 
   assert.deepEqual(executedActions, ["goto", "click"]);
   assert.equal(result.summary.completedStepCount, 2);
-  assert.equal(result.summary.stopped, true);
+  assert.equal(result.summary.stopped, false);
   assert.equal(result.trace.outcome.status, "SUCCESS");
   assert.equal(result.trace.turns.length, 2);
   assert.equal(result.trace.turns[0].preDecisionVerification.phase, "pre_decision");
@@ -454,7 +455,7 @@ test("[Agent Worker] 이미 목표 상태면 새 decision 전에 중단한다", 
 
   assert.deepEqual(executedActions, []);
   assert.equal(result.summary.completedStepCount, 0);
-  assert.equal(result.summary.stopped, true);
+  assert.equal(result.summary.stopped, false);
   assert.equal(result.trace.outcome.status, "SUCCESS");
   assert.equal(result.trace.turns.length, 1);
   assert.equal(result.trace.turns[0].preDecisionVerification.satisfied, true);
@@ -551,6 +552,75 @@ test("[Agent Worker] checkpoint decision은 browser action으로 실행하지 �
   assert.equal(result.trace.outcome.status, "EXHAUSTED");
   assert.equal(agentEvents.some((event) => event.eventType === "ACTION_COMPLETED"), false);
   assert.equal(agentEvents.some((event) => event.eventType === "GOAL_VERIFIED"), true);
+});
+
+test("[Agent Worker] max_duration_ms를 넘긴 decision은 action 전에 EXHAUSTED로 종료한다", async () => {
+  const message = await loadAgentExampleMessage();
+  const task = message.payload.agentTask;
+  task.budget.max_steps = 5;
+  task.budget.max_duration_ms = 5;
+  task.artifact_policy = {
+    capture_screenshots: false,
+    capture_dom_snapshots: false,
+    capture_ax_tree: false,
+    capture_trace: false
+  };
+
+  const runtimePlan = createAgentRuntimePlan(task);
+  const executedActions: string[] = [];
+  const decisionClient: AgentDecisionClient = {
+    decide: async () => {
+      await delay(50);
+      return {
+        kind: "act",
+        description: "Late decision",
+        reason: "This decision should exceed the duration budget.",
+        confidence: 0.1,
+        action: {
+          type: "click",
+          target: {
+            selector: "#checkout"
+          }
+        },
+        settleStrategy: {
+          type: "fixed_short",
+          timeout_ms: 1
+        },
+        stage: "CTA",
+        targetKey: "#checkout"
+      };
+    }
+  };
+
+  const result = await executeAgentRun({
+    runId: task.run_id,
+    task,
+    runtimePlan,
+    session: createSimulatedSession(runtimePlan, {
+      execute: async (action) => {
+        executedActions.push(action.type);
+        throw new Error("action should not run after duration budget exhaustion");
+      },
+      settle: async () => createSettledResult(),
+      snapshot: () => createSimulatedPageSnapshot(runtimePlan)
+    }),
+    callbackClient: createStubCallbackClient(),
+    capturePipeline: {
+      collectCheckpoint: async () => {
+        throw new Error("checkpoint collection should not run after duration budget exhaustion");
+      }
+    },
+    artifactStore: {
+      persistArtifacts: async () => []
+    },
+    decisionClient
+  });
+
+  assert.deepEqual(executedActions, []);
+  assert.equal(result.summary.completedStepCount, 0);
+  assert.equal(result.summary.stopped, false);
+  assert.equal(result.trace.outcome.status, "EXHAUSTED");
+  assert.match(result.trace.outcome.reason, /max_duration_ms/);
 });
 
 test("[Agent Worker] 동일 idempotency_key 중복 메시지는 같은 실행 결과를 재사용한다", async () => {

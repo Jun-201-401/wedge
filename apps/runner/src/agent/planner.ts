@@ -27,6 +27,7 @@ export interface AgentDecisionInput {
   state: AgentExecutionState;
   observation: AgentObservation;
   maxScrolls: number;
+  remainingTimeMs?: number;
 }
 
 export interface AgentDecisionClient {

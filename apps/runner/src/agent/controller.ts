@@ -38,15 +38,29 @@ export interface AgentExecutorInput {
 
 export async function executeAgentRun(input: AgentExecutorInput): Promise<AgentExecutionResult> {
   const config = resolveAgentBudget(input.task);
+  const deadline = createAgentDeadline(config.maxDurationMs);
   const decisionClient = input.decisionClient ?? new HeuristicDecisionClient();
   const state = createInitialAgentState();
   const trace = createAgentTrace(input.task);
   const deliveryIssues: DeliveryIssue[] = [];
   let completedStepCount = 0;
-  let stopped = false;
 
   for (let turn = 1; turn <= config.maxTurns; turn += 1) {
-    const observation = await observePage(input.session);
+    let observation: Awaited<ReturnType<typeof observePage>>;
+    try {
+      assertAgentDeadline(deadline, "turn start");
+      observation = await runWithinAgentDeadline(deadline, "observation", () => observePage(input.session));
+    } catch (error) {
+      if (error instanceof AgentBudgetExceededError) {
+        trace.outcome = {
+          status: "EXHAUSTED",
+          reason: error.message
+        };
+        break;
+      }
+      throw error;
+    }
+
     const previousUrl = observation.snapshot.finalUrl;
     const preDecisionVerification = verifyGoal({
       goal: resolveTaskGoal(input.task),
@@ -75,17 +89,30 @@ export async function executeAgentRun(input: AgentExecutorInput): Promise<AgentE
         status: traceStatusFromVerification(preDecisionVerification.outcome),
         reason: preDecisionVerification.reason
       };
-      stopped = true;
       break;
     }
 
-    const decision = await decisionClient.decide({
-      goal: resolveTaskGoal(input.task),
-      startUrl: input.task.start_url,
-      state,
-      observation,
-      maxScrolls: config.maxScrolls
-    });
+    let decision: AgentDecision;
+    try {
+      decision = await runWithinAgentDeadline(deadline, "decision", () => decisionClient.decide({
+        goal: resolveTaskGoal(input.task),
+        startUrl: input.task.start_url,
+        state,
+        observation,
+        maxScrolls: config.maxScrolls,
+        remainingTimeMs: remainingAgentBudgetMs(deadline)
+      }));
+    } catch (error) {
+      if (error instanceof AgentBudgetExceededError) {
+        trace.outcome = {
+          status: "EXHAUSTED",
+          reason: error.message
+        };
+        break;
+      }
+      throw error;
+    }
+
     turnTrace.decision = decision;
     const step = agentDecisionToScenarioStep(decision, turn, config.captureEveryTurn);
 
@@ -114,13 +141,14 @@ export async function executeAgentRun(input: AgentExecutorInput): Promise<AgentE
         status: "POLICY_BLOCKED",
         reason: policy.reason
       };
-      stopped = true;
       break;
     }
 
+    let stopRequested = false;
+
     if (decision.kind === "act") {
       try {
-        const stepResult = await executeScenarioStep({
+        const stepResult = await runWithinAgentDeadline(deadline, "action", () => executeScenarioStep({
           runId: input.runId,
           stepOrder: turn,
           step,
@@ -130,7 +158,7 @@ export async function executeAgentRun(input: AgentExecutorInput): Promise<AgentE
           capturePipeline: input.capturePipeline,
           artifactStore: input.artifactStore,
           emitStepEvents: false
-        });
+        }));
         deliveryIssues.push(...stepResult.deliveryIssues);
         turnTrace.actionResult = {
           actionType: decision.action.type,
@@ -142,7 +170,17 @@ export async function executeAgentRun(input: AgentExecutorInput): Promise<AgentE
           finalUrl: input.session.snapshot().finalUrl,
           targetKey: decision.targetKey
         }, turn)));
+
+        stopRequested = stepResult.stopRequested;
       } catch (error) {
+        if (error instanceof AgentBudgetExceededError) {
+          trace.outcome = {
+            status: "EXHAUSTED",
+            reason: error.message
+          };
+          break;
+        }
+
         const failureCode = classifyRunnerFailure(error);
         const failureMessage = errorMessage(error);
 
@@ -190,6 +228,14 @@ export async function executeAgentRun(input: AgentExecutorInput): Promise<AgentE
       if (decision.action.type === "click" && decision.targetKey) {
         state.clickedTargetKeys.add(decision.targetKey);
       }
+
+      if (stopRequested) {
+        trace.outcome = {
+          status: "EXHAUSTED",
+          reason: "Agent action requested a stop condition before completing the goal."
+        };
+        break;
+      }
     } else {
       turnTrace.actionResult = {
         actionType: decision.action.type,
@@ -229,7 +275,6 @@ export async function executeAgentRun(input: AgentExecutorInput): Promise<AgentE
         status: verification.satisfied ? "SUCCESS" : "EXHAUSTED",
         reason: verification.reason
       };
-      stopped = true;
       break;
     }
   }
@@ -277,7 +322,7 @@ export async function executeAgentRun(input: AgentExecutorInput): Promise<AgentE
     summary: {
       completedStepCount,
       failedStepCount: 0,
-      stopped
+      stopped: shouldReportStopped(trace)
     },
     delivery: createDeliverySummary(mergeDeliveryIssues(deliveryIssues)),
     trace,
@@ -413,12 +458,72 @@ async function persistAgentScenarioPlanExportArtifact({
   };
 }
 
-function resolveAgentBudget(task: AgentTask): { maxTurns: number; maxScrolls: number; captureEveryTurn: boolean } {
+function resolveAgentBudget(task: AgentTask): {
+  maxTurns: number;
+  maxDurationMs: number;
+  maxScrolls: number;
+  captureEveryTurn: boolean;
+} {
   return {
     maxTurns: task.budget.max_steps,
+    maxDurationMs: task.budget.max_duration_ms,
     maxScrolls: task.budget.max_same_page_attempts ?? 3,
     captureEveryTurn: task.artifact_policy?.capture_screenshots ?? true
   };
+}
+
+interface AgentDeadline {
+  readonly expiresAtMs: number;
+}
+
+class AgentBudgetExceededError extends Error {
+  constructor(phase: string) {
+    super(`Agent execution exceeded max_duration_ms during ${phase}.`);
+    this.name = "AgentBudgetExceededError";
+  }
+}
+
+function createAgentDeadline(maxDurationMs: number): AgentDeadline {
+  return {
+    expiresAtMs: Date.now() + maxDurationMs
+  };
+}
+
+function remainingAgentBudgetMs(deadline: AgentDeadline): number {
+  return deadline.expiresAtMs - Date.now();
+}
+
+function assertAgentDeadline(deadline: AgentDeadline, phase: string): void {
+  if (remainingAgentBudgetMs(deadline) <= 0) {
+    throw new AgentBudgetExceededError(phase);
+  }
+}
+
+async function runWithinAgentDeadline<T>(
+  deadline: AgentDeadline,
+  phase: string,
+  operation: () => Promise<T> | T
+): Promise<T> {
+  assertAgentDeadline(deadline, phase);
+  const remainingMs = remainingAgentBudgetMs(deadline);
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+
+  try {
+    return await Promise.race([
+      Promise.resolve().then(operation),
+      new Promise<never>((_, reject) => {
+        timeout = setTimeout(() => reject(new AgentBudgetExceededError(phase)), Math.max(1, remainingMs));
+      })
+    ]);
+  } finally {
+    if (timeout) {
+      clearTimeout(timeout);
+    }
+  }
+}
+
+function shouldReportStopped(trace: AgentTrace): boolean {
+  return trace.outcome.status === "POLICY_BLOCKED" || trace.outcome.status === "BLOCKED";
 }
 
 function resolveTaskGoal(task: AgentTask): string {

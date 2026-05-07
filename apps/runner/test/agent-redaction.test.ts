@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { createAgentEventBatch } from "../src/agent/callbacks.ts";
+import { redactSensitiveValue } from "../src/agent/redaction.ts";
 import { createAgentTraceArtifact, type AgentTrace } from "../src/agent/trace.ts";
 import { createAgentScenarioPlanExportArtifact, exportAgentTraceToScenarioPlan } from "../src/agent/trace-export.ts";
 import { cloneAgentMessage, loadAgentExampleMessage } from "./support.ts";
@@ -15,7 +17,7 @@ test("[Agent Redaction] TRACE artifact는 decision/URL의 민감값을 저장 �
   assert.match(artifact.content, /REDACTED_SECRET/);
 });
 
-test("[Agent Redaction] ScenarioPlan export artifact는 replay 후보의 민감값을 마스킹한다", async () => {
+test("[Agent Redaction] ScenarioPlan export는 실행 필드에 redaction이 필요하면 NOT_EXPORTABLE로 남긴다", async () => {
   const message = cloneAgentMessage(await loadAgentExampleMessage());
   const task = message.payload.agentTask;
   task.start_url = "https://example.com/product?email=mvp.tester@example.com&token=start-secret";
@@ -28,11 +30,45 @@ test("[Agent Redaction] ScenarioPlan export artifact는 replay 후보의 민감�
   });
   const artifact = createAgentScenarioPlanExportArtifact(exportResult);
 
-  assert.equal(exportResult.status, "EXPORTED");
+  assert.equal(exportResult.status, "NOT_EXPORTABLE");
+  assert.equal(exportResult.scenario_plan, undefined);
   assertRedacted(artifact.content);
-  assert.match(artifact.content, /REDACTED_EMAIL/);
-  assert.match(artifact.content, /REDACTED_PHONE/);
-  assert.match(artifact.content, /REDACTED_SECRET/);
+  assert.doesNotMatch(artifact.content, /"scenario_plan"/);
+  assert.match(artifact.content, /sensitive replay fields/);
+});
+
+test("[Agent Redaction] agent event payload는 callback batch 생성 시 마스킹한다", async () => {
+  const message = cloneAgentMessage(await loadAgentExampleMessage());
+  const task = message.payload.agentTask;
+  const batch = createAgentEventBatch({
+    task,
+    eventType: "ACTION_COMPLETED",
+    payload: {
+      finalUrl: "https://checkout.example/session?email=mvp.tester@example.com&token=event-secret",
+      decisionReason: "Call 010-1234-5678 with card 4242 4242 4242 4242.",
+      nested: {
+        token: "object-secret-token"
+      }
+    },
+    turn: 1
+  });
+
+  const content = JSON.stringify(batch);
+  assertRedacted(content);
+  assert.doesNotMatch(content, /object-secret-token/);
+  assert.match(content, /REDACTED_SECRET/);
+});
+
+test("[Agent Redaction] plain token object key도 민감값으로 마스킹한다", () => {
+  const redacted = redactSensitiveValue({
+    token: "object-secret-token",
+    access_token: "access-secret-token"
+  });
+
+  assert.deepEqual(redacted, {
+    token: "[REDACTED_SECRET]",
+    access_token: "[REDACTED_SECRET]"
+  });
 });
 
 function createSensitiveTrace(): AgentTrace {

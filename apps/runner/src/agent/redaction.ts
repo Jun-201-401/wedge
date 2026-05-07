@@ -25,7 +25,7 @@ const SENSITIVE_QUERY_KEYS = new Set([
   "cvc",
   "cvv"
 ]);
-const SENSITIVE_OBJECT_KEY_PATTERN = /(^|[_-])(api[_-]?key|access[_-]?token|refresh[_-]?token|authorization|cookie|secret|password|card[_-]?number|cvc|cvv|email|phone|tel)($|[_-])/i;
+const SENSITIVE_OBJECT_KEY_PATTERN = /(^|[_-])(api[_-]?key|access[_-]?token|refresh[_-]?token|token|authorization|cookie|secret|password|card[_-]?number|cvc|cvv|email|phone|tel)($|[_-])/i;
 
 export function redactSensitiveString(value: string): string {
   const preservedValues: string[] = [];

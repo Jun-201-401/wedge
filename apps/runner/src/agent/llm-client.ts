@@ -48,7 +48,7 @@ export class AgentLlmDecisionClient implements AgentDecisionClient {
         endpoint: this.options.endpoint,
         apiKey: this.options.apiKey,
         model: this.options.model,
-        timeoutMs: this.options.timeoutMs,
+        timeoutMs: resolveLlmTimeoutMs(this.options.timeoutMs, input.remainingTimeMs),
         payload: createLlmRequestPayload(input, this.options.model)
       });
 
@@ -65,6 +65,14 @@ export class AgentLlmDecisionClient implements AgentDecisionClient {
       return this.fallbackClient.decide(input);
     }
   }
+}
+
+function resolveLlmTimeoutMs(configuredTimeoutMs: number, remainingTimeMs: number | undefined): number {
+  if (remainingTimeMs === undefined) {
+    return configuredTimeoutMs;
+  }
+
+  return Math.max(1, Math.min(configuredTimeoutMs, Math.floor(remainingTimeMs)));
 }
 
 export function createAgentDecisionClient(config: Pick<

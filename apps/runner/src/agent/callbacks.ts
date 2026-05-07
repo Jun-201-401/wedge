@@ -3,7 +3,7 @@ import type { CallbackClient } from "../callback/index.ts";
 import type { DeliveryIssue } from "../delivery/index.ts";
 import type { AgentCallbackEventType, AgentEventBatch, AgentTask, AgentTraceCallbackPayload, Artifact } from "../shared/contracts.ts";
 import { errorMessage, toIsoTimestamp } from "../shared/utils.ts";
-import { redactAgentTrace } from "./redaction.ts";
+import { redactAgentTrace, redactSensitiveValue } from "./redaction.ts";
 import type { AgentTrace } from "./trace.ts";
 
 export function createAgentEventBatch(input: {
@@ -21,7 +21,7 @@ export function createAgentEventBatch(input: {
         turn: input.turn,
         eventType: input.eventType,
         occurredAt: toIsoTimestamp(),
-        payload: input.payload
+        payload: redactSensitiveValue(input.payload) as Record<string, unknown>
       }
     ]
   };
