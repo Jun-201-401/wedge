@@ -52,6 +52,7 @@ export function buildMockRunReportData(runId: string, targetUrl: string, scenari
     heroTitle: 'Make your value clear above the fold',
     heroSubtitle: 'Hero section · 결과 요약 근거',
     heroCallToAction: 'Start free trial',
+    evidencePreviewUrl: '/mock-report-evidence.png',
     findings: [
       {
         id: 'cta-contrast',
@@ -66,6 +67,7 @@ export function buildMockRunReportData(runId: string, targetUrl: string, scenari
         confidence: 0.86,
         priorityScore: 91,
         evidenceRefs: ['checkpoint.hero.primary_cta', 'artifact.screenshot.hero'],
+        previewImageUrl: '/mock-report-evidence.png',
         recommendation: 'CTA 주변에 결과 중심 혜택 문구를 추가하고 버튼 대비를 한 단계 높이세요.',
         highlight: {
           label: 'FRICTION POINT',
@@ -88,6 +90,7 @@ export function buildMockRunReportData(runId: string, targetUrl: string, scenari
         confidence: 0.74,
         priorityScore: 72,
         evidenceRefs: ['checkpoint.below_fold.proof'],
+        previewImageUrl: '/mock-report-evidence.png',
         recommendation: '고객 수, 보안, 환불 정책처럼 즉시 판단을 돕는 신뢰 정보를 CTA 근처로 올리세요.',
         highlight: {
           label: 'TRUST GAP',
@@ -110,6 +113,7 @@ export function buildMockRunReportData(runId: string, targetUrl: string, scenari
         confidence: 0.7,
         priorityScore: 68,
         evidenceRefs: ['checkpoint.cta.destination', 'artifact.dom.form_hint'],
+        previewImageUrl: '/mock-report-evidence.png',
         recommendation: 'CTA 하단에 예상 소요 시간과 필수 입력 항목 수를 짧게 안내하세요.',
         highlight: {
           label: 'NEXT STEP GAP',
