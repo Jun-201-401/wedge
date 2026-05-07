@@ -13,6 +13,7 @@ public record ScenarioRecommendationResponse(
         BigDecimal confidence,
         String reason,
         List<String> evidenceRefs,
+        Map<String, Object> evidenceSummary,
         URI suggestedStartUrl,
         Map<String, Object> suggestedTarget
 ) {

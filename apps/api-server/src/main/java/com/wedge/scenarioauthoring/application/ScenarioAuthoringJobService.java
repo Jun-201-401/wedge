@@ -239,6 +239,7 @@ public class ScenarioAuthoringJobService {
                 "confidence", recommendation.getConfidence(),
                 "reason", recommendation.getReason(),
                 "evidence_refs", evidenceRefs,
+                "evidence_summary", readMap(recommendation.getEvidenceSummaryJsonb()),
                 "suggested_start_url", suggestedStartUrl,
                 "suggested_target", readMap(recommendation.getSuggestedTargetJsonb())
         );

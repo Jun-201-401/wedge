@@ -10,6 +10,7 @@ public record DiscoveryRecommendationCommand(
         BigDecimal confidence,
         String reason,
         List<String> evidenceRefs,
+        Map<String, Object> evidenceSummary,
         String suggestedStartUrl,
         Map<String, Object> suggestedTarget
 ) {

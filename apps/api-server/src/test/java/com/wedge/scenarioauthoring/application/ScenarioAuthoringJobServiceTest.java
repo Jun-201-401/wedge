@@ -173,6 +173,23 @@ class ScenarioAuthoringJobServiceTest {
     }
 
     @Test
+    void createJobIncludesPersistedEvidenceSummaryInAuthoringInput() {
+        when(discoveryService.findDiscovery(DISCOVERY_ID)).thenReturn(discovery());
+        ScenarioRecommendation recommendation = recommendation();
+        recommendation.setEvidenceSummaryJsonb("{\"matched_signals\":[{\"source\":\"aria_label\",\"value\":\"Book a demo\"}],\"missing_signals\":[\"safe_submit_boundary_not_verified\"],\"limitations\":[\"image_text_ocr_not_performed\"]}");
+        when(scenarioRecommendationMapper.findByDiscoveryId(DISCOVERY_ID)).thenReturn(List.of(recommendation));
+
+        ScenarioAuthoringJobResponse response = service.createJob(createRequest(), USER_ID, null);
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> selectedRecommendation = (Map<String, Object>) response.input().get("selected_recommendation");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> evidenceSummary = (Map<String, Object>) selectedRecommendation.get("evidence_summary");
+        assertThat(evidenceSummary.get("matched_signals")).asList().hasSize(1);
+        assertThat(evidenceSummary.get("limitations")).asList().contains("image_text_ocr_not_performed");
+    }
+
+    @Test
     void createJobRejectsRecommendationIdAndScenarioTypeMismatch() {
         when(discoveryService.findDiscovery(DISCOVERY_ID)).thenReturn(discovery());
         ScenarioRecommendation pricing = recommendation();

@@ -114,6 +114,7 @@ public class DiscoveryService {
                 recommendation.getConfidence(),
                 recommendation.getReason(),
                 readStringList(recommendation.getEvidenceRefsJsonb()),
+                readMap(recommendation.getEvidenceSummaryJsonb()),
                 recommendation.getSuggestedStartUrl() == null ? null : URI.create(recommendation.getSuggestedStartUrl()),
                 readMap(recommendation.getSuggestedTargetJsonb())
         );
