@@ -10,6 +10,18 @@ const contactRecommendation = {
   confidence: 0.86,
   reason: 'Contact, consultation, or demo request candidate was found.',
   evidenceRefs: ['cp_001.obs_003'],
+  evidenceSummary: {
+    matched_signals: [{
+      signal_id: 'sig_001',
+      source: 'aria_label',
+      signal_type: 'contact_keyword',
+      value: 'Book a demo',
+      evidence_ref: 'cp_001.obs_003',
+      weight: 0.3,
+    }],
+    missing_signals: ['safe_submit_boundary_not_verified'],
+    limitations: ['image_text_ocr_not_performed'],
+  },
   suggestedStartUrl: 'https://example.com',
   suggestedTarget: { text: 'Book a demo' },
 } satisfies ScenarioRecommendation;
@@ -24,7 +36,9 @@ test('discovery recommendation mapper exposes canonical levels and CONTACT copy'
   assert.match(card.summary, /B2B 전환 흐름/);
   assert.equal(card.confidence, 0.86);
   assert.equal(card.confidenceLabel, '높음');
-  assert.equal(card.evidence, 'cp_001.obs_003');
+  assert.equal(card.evidence, 'aria-label: Book a demo');
+  assert.deepEqual(card.signalLabels, ['aria-label: Book a demo']);
+  assert.deepEqual(card.limitationLabels, ['이미지 안 텍스트는 OCR하지 않음']);
   assert.equal(card.isRunnable, true);
   assert.equal(card.sourceDiscoveryId, undefined);
   assert.deepEqual(card.evidenceRefs, ['cp_001.obs_003']);

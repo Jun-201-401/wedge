@@ -1437,3 +1437,9 @@
   font-size: 0.75rem;
   font-weight: 800;
 }
+
+.scenario-card__limitations {
+  color: #64748b;
+  font-size: 0.72rem;
+  font-weight: 700;
+}

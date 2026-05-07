@@ -13,6 +13,35 @@ export type DiscoveryScenarioType =
   | 'CONTENT_ONLY'
   | 'CUSTOM_GUIDED';
 
+export type DiscoveryEvidenceSignalSource =
+  | 'text'
+  | 'aria_label'
+  | 'aria_labelled_by_text'
+  | 'label_text'
+  | 'alt'
+  | 'title'
+  | 'href'
+  | 'selector'
+  | 'name'
+  | 'placeholder'
+  | 'form_field'
+  | 'shallow_navigation';
+
+export interface DiscoveryEvidenceSignal {
+  signal_id: string;
+  source: DiscoveryEvidenceSignalSource;
+  signal_type: string;
+  value: string;
+  evidence_ref?: string | null;
+  weight?: number;
+}
+
+export interface DiscoveryEvidenceSummary {
+  matched_signals: DiscoveryEvidenceSignal[];
+  missing_signals: string[];
+  limitations: string[];
+}
+
 export interface DiscoveryViewport {
   width: number;
   height: number;
@@ -42,6 +71,7 @@ export interface ScenarioRecommendation {
   confidence: number;
   reason: string;
   evidenceRefs: string[];
+  evidenceSummary?: DiscoveryEvidenceSummary | null;
   suggestedStartUrl?: string | null;
   suggestedTarget?: Record<string, unknown> | null;
 }

@@ -18,6 +18,9 @@ export interface ScenarioRecommendationViewModel {
   sourceDiscoveryId?: string;
   recommendationId?: string | null;
   evidenceRefs: string[];
+  evidenceSummary: ApiScenarioRecommendation['evidenceSummary'];
+  signalLabels: string[];
+  limitationLabels: string[];
   suggestedStartUrl?: string | null;
   suggestedTarget?: Record<string, unknown> | null;
 }
@@ -27,9 +30,9 @@ export const CREATE_ANALYSIS_SCENARIO_IDS = ['landing-cta', 'signup-form', 'cont
 const SCENARIO_COPY = {
   LANDING_CTA: {
     id: 'landing-cta',
-    title: '첫 화면 CTA 점검',
-    availableSummary: '첫 화면에서 주요 CTA 후보를 발견했어요. 사용자가 다음 행동을 바로 이해할 수 있는지 확인하기 좋습니다.',
-    unavailableSummary: '첫 화면에서 명확한 CTA 진입점을 찾지 못했어요.',
+    title: '랜딩 전환 CTA 점검',
+    availableSummary: '랜딩 페이지에서 가입, 체험, 문의 같은 전환 CTA 후보를 발견했어요. 사용자가 다음 행동을 바로 이해할 수 있는지 확인하기 좋습니다.',
+    unavailableSummary: '랜딩 페이지에서 명확한 전환 CTA 진입점을 찾지 못했어요.',
   },
   SIGNUP_LEAD_FORM: {
     id: 'signup-form',
@@ -112,6 +115,11 @@ function detectionSignalLabel(confidence: number) {
 }
 
 function evidenceLabel(recommendation: ApiScenarioRecommendation) {
+  const signalLabels = signalLabelsFor(recommendation);
+  if (signalLabels.length > 0) {
+    return signalLabels.slice(0, 2).join(', ');
+  }
+
   const refs = recommendation.evidenceRefs?.filter(Boolean) ?? [];
   if (refs.length > 0) {
     return refs.slice(0, 3).join(', ');
@@ -122,6 +130,53 @@ function evidenceLabel(recommendation: ApiScenarioRecommendation) {
   const selector = typeof target?.selector === 'string' ? target.selector : null;
   const href = typeof target?.href_contains === 'string' ? target.href_contains : null;
   return text ?? selector ?? href ?? '발견된 근거 없음';
+}
+
+function signalLabelsFor(recommendation: ApiScenarioRecommendation) {
+  const summary = recommendation.evidenceSummary;
+  const signals = summary?.matched_signals ?? [];
+  return signals
+    .map((signal) => {
+      const source = sourceLabel(signal.source);
+      const value = signal.value?.trim();
+      return value ? `${source}: ${value}` : '';
+    })
+    .filter(Boolean)
+    .slice(0, 4);
+}
+
+function limitationLabelsFor(recommendation: ApiScenarioRecommendation) {
+  const summary = recommendation.evidenceSummary;
+  const limitations = summary?.limitations ?? [];
+  return limitations.map(limitationLabel).filter(Boolean).slice(0, 3);
+}
+
+function sourceLabel(source: string) {
+  switch (source) {
+    case 'aria_label':
+      return 'aria-label';
+    case 'aria_labelled_by_text':
+      return 'aria-labelledby';
+    case 'label_text':
+      return 'label';
+    case 'form_field':
+      return 'form field';
+    case 'shallow_navigation':
+      return '도착 확인';
+    default:
+      return source;
+  }
+}
+
+function limitationLabel(limitation: string) {
+  switch (limitation) {
+    case 'image_text_ocr_not_performed':
+      return '이미지 안 텍스트는 OCR하지 않음';
+    case 'authenticated_pages_not_explored':
+      return '로그인 뒤 흐름은 탐색하지 않음';
+    default:
+      return limitation.replace(/_/g, ' ');
+  }
 }
 
 export function toScenarioRecommendationViewModel(recommendation: ApiScenarioRecommendation, sourceDiscoveryId?: string): ScenarioRecommendationViewModel {
@@ -145,6 +200,9 @@ export function toScenarioRecommendationViewModel(recommendation: ApiScenarioRec
     sourceDiscoveryId,
     recommendationId: recommendation.recommendationId ?? null,
     evidenceRefs: recommendation.evidenceRefs ?? [],
+    evidenceSummary: recommendation.evidenceSummary ?? null,
+    signalLabels: signalLabelsFor(recommendation),
+    limitationLabels: limitationLabelsFor(recommendation),
     suggestedStartUrl: recommendation.suggestedStartUrl ?? null,
     suggestedTarget: recommendation.suggestedTarget ?? null,
   };

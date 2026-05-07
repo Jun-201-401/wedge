@@ -431,6 +431,9 @@ function RecommendationAgent({ submittedUrl, scenarios, emptyMessage, onChooseSc
                 <p>{scenario.summary}</p>
                 <p className="scenario-card__confidence">탐지 신호: {scenario.confidenceLabel}</p>
                 <p className="scenario-card__evidence">근거: {scenario.evidence}</p>
+                {scenario.limitationLabels.length > 0 ? (
+                  <p className="scenario-card__limitations">한계: {scenario.limitationLabels.join(', ')}</p>
+                ) : null}
                 <button
                   type="button"
                   aria-label={`${scenario.title} 흐름으로 진단`}
@@ -913,6 +916,7 @@ export function CreateAnalysisPage() {
         recommendationId: selectedScenario.recommendationId ?? null,
         scenarioType: selectedScenario.scenarioType,
         evidenceRefs: selectedScenario.evidenceRefs,
+        evidenceSummary: selectedScenario.evidenceSummary ?? null,
         suggestedStartUrl: selectedScenario.suggestedStartUrl ?? null,
         suggestedTarget: selectedScenario.suggestedTarget ?? null,
       };
@@ -930,6 +934,7 @@ export function CreateAnalysisPage() {
             recommendationLevel: selectedScenario.level,
             confidence: selectedScenario.confidence,
             evidenceRefs: selectedScenario.evidenceRefs,
+            evidenceSummary: selectedScenario.evidenceSummary ?? null,
             suggestedStartUrl: selectedScenario.suggestedStartUrl ?? null,
             suggestedTarget: selectedScenario.suggestedTarget ?? null,
           },

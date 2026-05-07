@@ -1,4 +1,4 @@
-import type { DiscoveryScenarioType, ScenarioRecommendationLevel } from '../discovery';
+import type { DiscoveryEvidenceSummary, DiscoveryScenarioType, ScenarioRecommendationLevel } from '../discovery';
 
 export type ScenarioAuthoringStatus = 'CREATED' | 'QUEUED' | 'RUNNING' | 'SUCCEEDED' | 'FAILED' | 'CANCELED' | 'EXPIRED';
 
@@ -23,6 +23,7 @@ export interface ScenarioAuthoringSelectedRecommendation {
   recommendationLevel: ScenarioRecommendationLevel;
   confidence: number;
   evidenceRefs: string[];
+  evidenceSummary?: DiscoveryEvidenceSummary | null;
   suggestedStartUrl?: string | null;
   suggestedTarget?: Record<string, unknown> | null;
 }

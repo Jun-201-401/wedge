@@ -52,6 +52,7 @@ test('create analysis recommendations use a wider agent-style results card', () 
   assert.match(source, /Discovery signals ready/);
   assert.match(source, /DOM 기반 사전 탐색 결과/);
   assert.match(source, /scenario-card__confidence/);
+  assert.match(source, /scenario-card__limitations/);
   assert.match(source, /recommendation-agent__empty/);
   assert.match(source, /className="recommendation-agent__count"/);
   assert.match(source, /onChooseScenario=\{chooseScenario\}/);

@@ -27,6 +27,17 @@ const discoveryResponse = {
       confidence: 0.86,
       reason: 'Contact, consultation, or demo request candidate was found.',
       evidenceRefs: ['cp_001.obs_003'],
+      evidenceSummary: {
+        matched_signals: [{
+          signal_id: 'sig_001',
+          source: 'aria_label',
+          signal_type: 'contact_keyword',
+          value: 'Book a demo',
+          evidence_ref: 'cp_001.obs_003',
+        }],
+        missing_signals: ['safe_submit_boundary_not_verified'],
+        limitations: ['image_text_ocr_not_performed'],
+      },
       suggestedStartUrl: 'https://example.com',
       suggestedTarget: { text: 'Book a demo' },
     }],
@@ -54,6 +65,7 @@ test('discovery api client creates and polls public discovery endpoints', async 
 
     assert.equal(created.data.discoveryId, discoveryId);
     assert.equal(polled.data.scenarioRecommendations?.[0]?.scenarioType, 'CONTACT');
+    assert.equal(polled.data.scenarioRecommendations?.[0]?.evidenceSummary?.matched_signals?.[0]?.value, 'Book a demo');
     assert.deepEqual(calls.map((call) => [call.method, call.url]), [
       ['POST', '/api/discoveries'],
       ['GET', `/api/discoveries/${discoveryId}`],
