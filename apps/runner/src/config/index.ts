@@ -15,6 +15,7 @@ const DEFAULT_OUTBOX_MAX_RECORDS = 1_000;
 const DEFAULT_CALLBACK_TIMEOUT_MS = 5_000;
 const DEFAULT_BROWSER_TIMEOUT_MS = 30_000;
 const DEFAULT_SIMULATED_DELAY_CAP_MS = 25;
+const DEFAULT_MQ_MAX_DELIVERY_ATTEMPTS = 3;
 export const RUNNER_MQ_CALLBACK_OUTBOX_WORKER_ENABLED_ENV = "RUNNER_MQ_CALLBACK_OUTBOX_WORKER_ENABLED";
 export const RUNNER_MQ_ARTIFACT_OUTBOX_WORKER_ENABLED_ENV = "RUNNER_MQ_ARTIFACT_OUTBOX_WORKER_ENABLED";
 
@@ -58,6 +59,7 @@ export interface RunnerConfig {
   mqPrefetch: number;
   agentConcurrency: number;
   mqRequeueOnFailure: boolean;
+  mqMaxDeliveryAttempts: number;
   mqCallbackOutboxWorkerEnabled: boolean;
   mqArtifactOutboxWorkerEnabled: boolean;
   browserMode: RunnerBrowserMode;
@@ -160,6 +162,11 @@ export function loadRunnerConfig(overrides: Partial<RunnerConfig> = {}): RunnerC
     process.env.RUNNER_MQ_REQUEUE_ON_FAILURE,
     false
   );
+  const mqMaxDeliveryAttempts = parsePositiveInteger(
+    overrides.mqMaxDeliveryAttempts,
+    process.env.RUNNER_MQ_MAX_DELIVERY_ATTEMPTS,
+    DEFAULT_MQ_MAX_DELIVERY_ATTEMPTS
+  );
   const mqCallbackOutboxWorkerEnabled = parseBoolean(
     overrides.mqCallbackOutboxWorkerEnabled,
     process.env[RUNNER_MQ_CALLBACK_OUTBOX_WORKER_ENABLED_ENV],
@@ -243,6 +250,7 @@ export function loadRunnerConfig(overrides: Partial<RunnerConfig> = {}): RunnerC
     mqPrefetch,
     agentConcurrency,
     mqRequeueOnFailure,
+    mqMaxDeliveryAttempts,
     mqCallbackOutboxWorkerEnabled,
     mqArtifactOutboxWorkerEnabled,
     browserMode,

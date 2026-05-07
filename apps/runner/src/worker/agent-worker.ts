@@ -41,100 +41,159 @@ export function registerAgentWorker({
   capturePipeline,
   artifactStore
 }: RegisterAgentWorkerInput): AgentRunnerWorker {
+  const idempotentExecutions = new Map<string, Promise<AgentRunnerExecutionResult>>();
+
   return {
     workerId: config.workerId,
     async handleMessage(message) {
-      const task = message.payload.agentTask;
-      let session: Awaited<ReturnType<BrowserSessionFactory["createSession"]>> | undefined;
-      let accepted = false;
+      const idempotencyKey = resolveAgentIdempotencyKey(message);
+      if (idempotencyKey) {
+        const existingExecution = idempotentExecutions.get(idempotencyKey);
+        if (existingExecution) {
+          logOperationalEvent(
+            "agent-worker",
+            "duplicate_message_suppressed",
+            {
+              runId: message.payload.agentTask.run_id,
+              taskId: message.payload.agentTask.task_id,
+              idempotencyKey
+            },
+            "warn"
+          );
+          return existingExecution;
+        }
 
-      try {
-        const plan = createAgentRuntimePlan(task);
-
-        session = await browserFactory.createSession({
-          runId: task.run_id,
-          plan
-        });
-
-        await emitAcceptedCallback({
-          callbackClient,
-          runId: task.run_id,
-          workerId: config.workerId,
-          browserSessionId: session.id
-        });
-
-        accepted = true;
-
-        const executionResult = await executeAgentRun({
-          runId: task.run_id,
-          task,
-          runtimePlan: plan,
-          session,
+        const execution = executeAgentMessage({
+          message,
+          config,
+          browserFactory,
           callbackClient,
           capturePipeline,
           artifactStore
+        }).catch((error) => {
+          idempotentExecutions.delete(idempotencyKey);
+          throw error;
         });
-
-        const finishedDeliveryIssues = await emitFinishedCallback({
-          callbackClient,
-          runId: task.run_id,
-          workerId: config.workerId,
-          summary: executionResult.summary
-        });
-
-        return {
-          runId: task.run_id,
-          workerId: config.workerId,
-          browserSessionId: session.id,
-          summary: executionResult.summary,
-          trace: executionResult.trace,
-          traceArtifact: executionResult.traceArtifact,
-          delivery: createDeliverySummary(
-            mergeDeliveryIssues(executionResult.delivery.issues, finishedDeliveryIssues)
-          )
-        };
-      } catch (error) {
-        const failureCode = error instanceof ScenarioExecutionError
-          ? error.failureCode
-          : classifyRunnerFailure(error);
-        const resultCompleteness = accepted ? "PARTIAL" : "NONE";
-
-        logOperationalEvent(
-          "agent-worker",
-          "run_failed",
-          {
-            runId: task.run_id,
-            taskId: task.task_id,
-            workerId: config.workerId,
-            accepted,
-            hasSession: session !== undefined,
-            resultCompleteness,
-            failureCode,
-            failureMessage: errorMessage(error),
-            failedStepKey: error instanceof ScenarioExecutionError ? error.failedStepKey : null,
-            failedStepOrder: error instanceof ScenarioExecutionError ? error.failedStepOrder : null,
-            summary: error instanceof ScenarioExecutionError ? error.summary : undefined
-          },
-          "error"
-        );
-
-        await emitFailedCallback({
-          callbackClient,
-          runId: task.run_id,
-          workerId: config.workerId,
-          error,
-          accepted,
-          hasSession: session !== undefined,
-          summary: error instanceof ScenarioExecutionError ? error.summary : undefined,
-          failureCode
-        });
-
-        throw error;
-      } finally {
-        if (session) {
-          await session.close();
-        }
+        idempotentExecutions.set(idempotencyKey, execution);
+        return execution;
       }
+
+      return executeAgentMessage({
+        message,
+        config,
+        browserFactory,
+        callbackClient,
+        capturePipeline,
+        artifactStore
+      });
     }
   };
+}
+
+async function executeAgentMessage({
+  message,
+  config,
+  browserFactory,
+  callbackClient,
+  capturePipeline,
+  artifactStore
+}: RegisterAgentWorkerInput & {
+  message: AgentExecuteMessage;
+}): Promise<AgentRunnerExecutionResult> {
+  const task = message.payload.agentTask;
+  let session: Awaited<ReturnType<BrowserSessionFactory["createSession"]>> | undefined;
+  let accepted = false;
+
+  try {
+    const plan = createAgentRuntimePlan(task);
+
+    session = await browserFactory.createSession({
+      runId: task.run_id,
+      plan
+    });
+
+    await emitAcceptedCallback({
+      callbackClient,
+      runId: task.run_id,
+      workerId: config.workerId,
+      browserSessionId: session.id
+    });
+
+    accepted = true;
+
+    const executionResult = await executeAgentRun({
+      runId: task.run_id,
+      task,
+      runtimePlan: plan,
+      session,
+      callbackClient,
+      capturePipeline,
+      artifactStore
+    });
+
+    const finishedDeliveryIssues = await emitFinishedCallback({
+      callbackClient,
+      runId: task.run_id,
+      workerId: config.workerId,
+      summary: executionResult.summary
+    });
+
+    return {
+      runId: task.run_id,
+      workerId: config.workerId,
+      browserSessionId: session.id,
+      summary: executionResult.summary,
+      trace: executionResult.trace,
+      traceArtifact: executionResult.traceArtifact,
+      delivery: createDeliverySummary(
+        mergeDeliveryIssues(executionResult.delivery.issues, finishedDeliveryIssues)
+      )
+    };
+  } catch (error) {
+    const failureCode = error instanceof ScenarioExecutionError
+      ? error.failureCode
+      : classifyRunnerFailure(error);
+    const resultCompleteness = accepted ? "PARTIAL" : "NONE";
+
+    logOperationalEvent(
+      "agent-worker",
+      "run_failed",
+      {
+        runId: task.run_id,
+        taskId: task.task_id,
+        workerId: config.workerId,
+        accepted,
+        hasSession: session !== undefined,
+        resultCompleteness,
+        failureCode,
+        failureMessage: errorMessage(error),
+        failedStepKey: error instanceof ScenarioExecutionError ? error.failedStepKey : null,
+        failedStepOrder: error instanceof ScenarioExecutionError ? error.failedStepOrder : null,
+        summary: error instanceof ScenarioExecutionError ? error.summary : undefined
+      },
+      "error"
+    );
+
+    await emitFailedCallback({
+      callbackClient,
+      runId: task.run_id,
+      workerId: config.workerId,
+      error,
+      accepted,
+      hasSession: session !== undefined,
+      summary: error instanceof ScenarioExecutionError ? error.summary : undefined,
+      failureCode
+    });
+
+    throw error;
+  } finally {
+    if (session) {
+      await session.close();
+    }
+  }
+}
+
+function resolveAgentIdempotencyKey(message: AgentExecuteMessage): string | null {
+  const key = message.payload.agentTask.idempotency_key ?? message.idempotencyKey;
+  return typeof key === "string" && key.trim().length > 0 ? key.trim() : null;
 }

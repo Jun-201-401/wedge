@@ -1,6 +1,9 @@
 import amqp, { type ChannelModel, type ConsumeMessage } from "amqplib";
 import type { RunnerConfig } from "../../config/index.ts";
+import { logOperationalEvent } from "../../shared/utils.ts";
 import { RunnerMessageValidationError } from "../index.ts";
+
+const DEFAULT_MAX_DELIVERY_ATTEMPTS = 3;
 
 export interface RunExecuteQueueConsumer {
   close: () => Promise<void>;
@@ -9,25 +12,25 @@ export interface RunExecuteQueueConsumer {
 export type RunnerQueueConsumer = RunExecuteQueueConsumer;
 
 export interface RunExecuteConsumerInput {
-  config: Pick<RunnerConfig, "mqUrl" | "mqQueueRunExecute" | "mqPrefetch" | "mqRequeueOnFailure">;
+  config: Pick<RunnerConfig, "mqUrl" | "mqQueueRunExecute" | "mqPrefetch" | "mqRequeueOnFailure"> & Partial<Pick<RunnerConfig, "mqMaxDeliveryAttempts">>;
   processRawMessage: (rawMessage: string) => Promise<void>;
   client?: RabbitMqClient;
 }
 
 export interface AgentExecuteConsumerInput {
-  config: Pick<RunnerConfig, "mqUrl" | "mqQueueAgentExecute" | "agentConcurrency" | "mqRequeueOnFailure">;
+  config: Pick<RunnerConfig, "mqUrl" | "mqQueueAgentExecute" | "agentConcurrency" | "mqRequeueOnFailure"> & Partial<Pick<RunnerConfig, "mqMaxDeliveryAttempts">>;
   processRawMessage: (rawMessage: string) => Promise<void>;
   client?: RabbitMqClient;
 }
 
 export interface DiscoveryExecuteConsumerInput {
-  config: Pick<RunnerConfig, "mqUrl" | "mqQueueDiscoveryExecute" | "mqPrefetch" | "mqRequeueOnFailure">;
+  config: Pick<RunnerConfig, "mqUrl" | "mqQueueDiscoveryExecute" | "mqPrefetch" | "mqRequeueOnFailure"> & Partial<Pick<RunnerConfig, "mqMaxDeliveryAttempts">>;
   processRawMessage: (rawMessage: string) => Promise<void>;
   client?: RabbitMqClient;
 }
 
 export interface RunnerQueuesConsumerInput {
-  config: Pick<RunnerConfig, "mqUrl" | "mqQueueRunExecute" | "mqQueueAgentExecute" | "mqQueueDiscoveryExecute" | "mqPrefetch" | "agentConcurrency" | "mqRequeueOnFailure">;
+  config: Pick<RunnerConfig, "mqUrl" | "mqQueueRunExecute" | "mqQueueAgentExecute" | "mqQueueDiscoveryExecute" | "mqPrefetch" | "agentConcurrency" | "mqRequeueOnFailure"> & Partial<Pick<RunnerConfig, "mqMaxDeliveryAttempts">>;
   processRawRunMessage: (rawMessage: string) => Promise<void>;
   processRawAgentMessage: (rawMessage: string) => Promise<void>;
   processRawDiscoveryMessage: (rawMessage: string) => Promise<void>;
@@ -66,6 +69,7 @@ export async function startRunExecuteQueueConsumer({
     queue: config.mqQueueRunExecute,
     prefetch: config.mqPrefetch,
     requeueOnFailure: config.mqRequeueOnFailure,
+    maxDeliveryAttempts: config.mqMaxDeliveryAttempts,
     processRawMessage,
     client
   });
@@ -81,6 +85,7 @@ export async function startAgentExecuteQueueConsumer({
     queue: config.mqQueueAgentExecute,
     prefetch: config.agentConcurrency,
     requeueOnFailure: config.mqRequeueOnFailure,
+    maxDeliveryAttempts: config.mqMaxDeliveryAttempts,
     processRawMessage,
     client
   });
@@ -96,6 +101,7 @@ export async function startDiscoveryExecuteQueueConsumer({
     queue: config.mqQueueDiscoveryExecute,
     prefetch: config.mqPrefetch,
     requeueOnFailure: config.mqRequeueOnFailure,
+    maxDeliveryAttempts: config.mqMaxDeliveryAttempts,
     processRawMessage,
     client
   });
@@ -117,6 +123,7 @@ export async function startRunnerQueueConsumers({
       queue: config.mqQueueRunExecute,
       prefetch: config.mqPrefetch,
       requeueOnFailure: config.mqRequeueOnFailure,
+      maxDeliveryAttempts: config.mqMaxDeliveryAttempts,
       processRawMessage: processRawRunMessage
     });
     channels.push(runChannel);
@@ -126,6 +133,7 @@ export async function startRunnerQueueConsumers({
       queue: config.mqQueueAgentExecute,
       prefetch: config.agentConcurrency,
       requeueOnFailure: config.mqRequeueOnFailure,
+      maxDeliveryAttempts: config.mqMaxDeliveryAttempts,
       processRawMessage: processRawAgentMessage
     });
     channels.push(agentChannel);
@@ -135,6 +143,7 @@ export async function startRunnerQueueConsumers({
       queue: config.mqQueueDiscoveryExecute,
       prefetch: config.mqPrefetch,
       requeueOnFailure: config.mqRequeueOnFailure,
+      maxDeliveryAttempts: config.mqMaxDeliveryAttempts,
       processRawMessage: processRawDiscoveryMessage
     });
     channels.push(discoveryChannel);
@@ -155,19 +164,21 @@ async function startQueueConsumerOnNewChannel({
   queue,
   prefetch,
   requeueOnFailure,
+  maxDeliveryAttempts,
   processRawMessage
 }: {
   connection: RabbitMqConnection;
   queue: string;
   prefetch: number;
   requeueOnFailure: boolean;
+  maxDeliveryAttempts?: number;
   processRawMessage: (rawMessage: string) => Promise<void>;
 }): Promise<RabbitMqChannel> {
   const channel = await connection.createChannel();
 
   await channel.prefetch(prefetch);
   await channel.checkQueue(queue);
-  await channel.consume(queue, createQueueConsumerHandler(channel, processRawMessage, requeueOnFailure), {
+  await channel.consume(queue, createQueueConsumerHandler(channel, processRawMessage, requeueOnFailure, maxDeliveryAttempts), {
     noAck: false
   });
 
@@ -208,6 +219,7 @@ async function startSingleQueueConsumer({
   queue,
   prefetch,
   requeueOnFailure,
+  maxDeliveryAttempts,
   processRawMessage,
   client
 }: {
@@ -215,6 +227,7 @@ async function startSingleQueueConsumer({
   queue: string;
   prefetch: number;
   requeueOnFailure: boolean;
+  maxDeliveryAttempts?: number;
   processRawMessage: (rawMessage: string) => Promise<void>;
   client: RabbitMqClient;
 }): Promise<RunExecuteQueueConsumer> {
@@ -223,7 +236,7 @@ async function startSingleQueueConsumer({
 
   await channel.prefetch(prefetch);
   await channel.checkQueue(queue);
-  await channel.consume(queue, createQueueConsumerHandler(channel, processRawMessage, requeueOnFailure), {
+  await channel.consume(queue, createQueueConsumerHandler(channel, processRawMessage, requeueOnFailure, maxDeliveryAttempts), {
     noAck: false
   });
 
@@ -238,7 +251,8 @@ async function startSingleQueueConsumer({
 function createQueueConsumerHandler(
   channel: Pick<RabbitMqChannel, "ack" | "nack">,
   processRawMessage: (rawMessage: string) => Promise<void>,
-  requeueOnFailure: boolean
+  requeueOnFailure: boolean,
+  maxDeliveryAttempts?: number
 ): (message: ConsumeMessage | null) => Promise<void> {
   return async (message) => {
     if (!message) {
@@ -249,7 +263,8 @@ function createQueueConsumerHandler(
       channel,
       message,
       processRawMessage,
-      requeueOnFailure
+      requeueOnFailure,
+      maxDeliveryAttempts
     });
   };
 }
@@ -259,6 +274,7 @@ export async function handleRunExecuteMessage(input: {
   message: ConsumeMessage;
   processRawMessage: (rawMessage: string) => Promise<void>;
   requeueOnFailure: boolean;
+  maxDeliveryAttempts?: number;
 }): Promise<void> {
   return handleQueueMessage(input);
 }
@@ -267,12 +283,14 @@ export async function handleQueueMessage({
   channel,
   message,
   processRawMessage,
-  requeueOnFailure
+  requeueOnFailure,
+  maxDeliveryAttempts
 }: {
   channel: Pick<RabbitMqChannel, "ack" | "nack">;
   message: ConsumeMessage;
   processRawMessage: (rawMessage: string) => Promise<void>;
   requeueOnFailure: boolean;
+  maxDeliveryAttempts?: number;
 }): Promise<void> {
   const rawMessage = message.content.toString("utf8");
 
@@ -285,8 +303,65 @@ export async function handleQueueMessage({
       return;
     }
 
-    channel.nack(message, false, requeueOnFailure);
+    const observedAttempts = resolveObservedDeliveryAttempts(message);
+    const maxAttempts = normalizeMaxDeliveryAttempts(maxDeliveryAttempts);
+    const shouldRequeue = requeueOnFailure && observedAttempts < maxAttempts;
+
+    if (requeueOnFailure && !shouldRequeue) {
+      logOperationalEvent(
+        "rabbitmq-consumer",
+        "poison_message_rejected",
+        {
+          observedAttempts,
+          maxDeliveryAttempts: maxAttempts
+        },
+        "warn"
+      );
+    }
+
+    channel.nack(message, false, shouldRequeue);
   }
+}
+
+function normalizeMaxDeliveryAttempts(value: number | undefined): number {
+  if (typeof value === "number" && Number.isInteger(value) && value > 0) {
+    return value;
+  }
+
+  return DEFAULT_MAX_DELIVERY_ATTEMPTS;
+}
+
+function resolveObservedDeliveryAttempts(message: ConsumeMessage): number {
+  const deliveryCount = readPositiveHeaderNumber(message.properties.headers?.["x-delivery-count"]);
+  const deathCount = readXDeathCount(message.properties.headers?.["x-death"]);
+
+  return Math.max(
+    deliveryCount ?? 0,
+    deathCount !== null ? deathCount + 1 : 0,
+    message.fields.redelivered ? 2 : 1
+  );
+}
+
+function readXDeathCount(value: unknown): number | null {
+  if (!Array.isArray(value)) {
+    return null;
+  }
+
+  const counts = value
+    .map((entry) => typeof entry === "object" && entry !== null ? readPositiveHeaderNumber((entry as { count?: unknown }).count) : null)
+    .filter((count): count is number => count !== null);
+
+  return counts.length > 0 ? Math.max(...counts) : null;
+}
+
+function readPositiveHeaderNumber(value: unknown): number | null {
+  const parsed = typeof value === "number"
+    ? value
+    : typeof value === "string"
+      ? Number(value)
+      : NaN;
+
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
 }
 
 const defaultRabbitMqClient: RabbitMqClient = {

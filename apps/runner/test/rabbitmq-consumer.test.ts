@@ -92,6 +92,33 @@ test("[RabbitMQ consumer] 실행 실패는 설정된 경우에만 requeue 한다
   assert.deepEqual(requeueCalls, [["nack", true]]);
 });
 
+test("[RabbitMQ consumer] poison message는 최대 delivery 시도 후 requeue 없이 reject 한다", async () => {
+  const calls: Array<[string, boolean]> = [];
+  const message = createMessage("valid", {
+    headers: {
+      "x-delivery-count": 3
+    },
+    redelivered: true
+  });
+
+  await handleRunExecuteMessage({
+    channel: {
+      ack: () => {},
+      nack: (_message, _allUpTo, requeue) => {
+        calls.push(["nack", requeue ?? false]);
+      }
+    },
+    message,
+    processRawMessage: async () => {
+      throw new Error("worker failed repeatedly");
+    },
+    requeueOnFailure: true,
+    maxDeliveryAttempts: 3
+  });
+
+  assert.deepEqual(calls, [["nack", false]]);
+});
+
 test("[RabbitMQ consumer] queue consume을 설정하고 종료 시 연결 자원을 닫는다", async () => {
   const events: string[] = [];
   let consumeHandler: ((message: ConsumeMessage | null) => void | Promise<void>) | undefined;
@@ -328,10 +355,20 @@ test("[RabbitMQ consumer] null delivery는 ack/reject 없이 무시한다", asyn
   assert.deepEqual(events, []);
 });
 
-function createMessage(content: string): ConsumeMessage {
+function createMessage(
+  content: string,
+  options: {
+    headers?: Record<string, unknown>;
+    redelivered?: boolean;
+  } = {}
+): ConsumeMessage {
   return {
     content: Buffer.from(content, "utf8"),
-    fields: {} as ConsumeMessage["fields"],
-    properties: {} as ConsumeMessage["properties"]
+    fields: {
+      redelivered: options.redelivered ?? false
+    } as ConsumeMessage["fields"],
+    properties: {
+      headers: options.headers ?? {}
+    } as ConsumeMessage["properties"]
   };
 }

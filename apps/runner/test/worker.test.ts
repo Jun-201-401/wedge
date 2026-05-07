@@ -445,6 +445,67 @@ test("[Agent Worker] 이미 목표 상태면 새 decision 전에 중단한다", 
   assert.equal(closed, true);
 });
 
+test("[Agent Worker] 동일 idempotency_key 중복 메시지는 같은 실행 결과를 재사용한다", async () => {
+  const message = await loadAgentExampleMessage();
+  const task = message.payload.agentTask;
+  task.goal = "checkout 진입 여부를 확인한다";
+  task.idempotency_key = "agent-idempotency-smoke";
+
+  let createSessionCount = 0;
+  let acceptedCount = 0;
+  let finishedCount = 0;
+
+  const worker = registerAgentWorker({
+    config: createRunnerTestConfig({
+      artifactsRoot: join(tmpdir(), "runner-test-agent-idempotency-artifacts"),
+      callbackLogFile: join(tmpdir(), "runner-test-agent-idempotency-callbacks.jsonl")
+    }),
+    browserFactory: {
+      kind: "simulated-playwright",
+      createSession: async ({ plan }) => {
+        createSessionCount += 1;
+
+        return createSimulatedSession(plan, {
+          execute: async () => {
+            throw new Error("duplicate idempotency test should stop before action");
+          },
+          settle: async () => createSettledResult(),
+          snapshot: () => createSimulatedPageSnapshot(plan, {
+            currentUrl: "https://example.com/checkout",
+            finalUrl: "https://example.com/checkout",
+            title: "Checkout"
+          })
+        });
+      }
+    },
+    callbackClient: createStubCallbackClient({
+      sendAccepted: async () => {
+        acceptedCount += 1;
+      },
+      sendFinished: async () => {
+        finishedCount += 1;
+      }
+    }),
+    capturePipeline: {
+      collectCheckpoint: async () => {
+        throw new Error("checkpoint collection should not run when pre-decision verification succeeds");
+      }
+    },
+    artifactStore: {
+      persistArtifacts: async () => []
+    }
+  });
+
+  const firstResult = await worker.handleMessage(message);
+  const duplicateResult = await worker.handleMessage(message);
+
+  assert.equal(firstResult, duplicateResult);
+  assert.equal(createSessionCount, 1);
+  assert.equal(acceptedCount, 1);
+  assert.equal(finishedCount, 1);
+  assert.equal(duplicateResult.trace.outcome.status, "SUCCESS");
+});
+
 test("[Agent Worker] 로그인 벽을 감지하면 decision 전에 중단한다", async () => {
   const message = await loadAgentExampleMessage();
   const task = message.payload.agentTask;

@@ -117,7 +117,8 @@ export function createRunnerTestConfig(overrides: Partial<RunnerConfig> = {}): R
     playwrightSlowMoMs: 0,
     playwrightBrowsersPath: undefined,
     simulatedDelayCapMs: 1,
-    ...overrides
+    ...overrides,
+    mqMaxDeliveryAttempts: overrides.mqMaxDeliveryAttempts ?? 3
   };
 }
 

@@ -23,7 +23,8 @@ const MQ_RUNTIME_ENV_KEYS = [
   RUNNER_MQ_CALLBACK_OUTBOX_WORKER_ENABLED_ENV,
   RUNNER_MQ_ARTIFACT_OUTBOX_WORKER_ENABLED_ENV,
   "RUNNER_MQ_PREFETCH",
-  "RUNNER_AGENT_CONCURRENCY"
+  "RUNNER_AGENT_CONCURRENCY",
+  "RUNNER_MQ_MAX_DELIVERY_ATTEMPTS"
 ] as const;
 
 type ArtifactEnvKey = typeof ARTIFACT_ENV_KEYS[number];
@@ -148,6 +149,30 @@ test("[설정] Agent concurrency는 1 이상의 정수만 허용한다", () => {
       const config = loadRunnerConfig({ serviceName: "runner-test" });
 
       assert.equal(config.agentConcurrency, 1);
+    }
+  );
+});
+
+test("[설정] MQ max delivery attempts는 poison message 차단용 양의 정수만 허용한다", () => {
+  withMqRuntimeEnv(
+    {
+      RUNNER_MQ_MAX_DELIVERY_ATTEMPTS: "5"
+    },
+    () => {
+      const config = loadRunnerConfig({ serviceName: "runner-test" });
+
+      assert.equal(config.mqMaxDeliveryAttempts, 5);
+    }
+  );
+
+  withMqRuntimeEnv(
+    {
+      RUNNER_MQ_MAX_DELIVERY_ATTEMPTS: "0"
+    },
+    () => {
+      const config = loadRunnerConfig({ serviceName: "runner-test" });
+
+      assert.equal(config.mqMaxDeliveryAttempts, 3);
     }
   );
 });

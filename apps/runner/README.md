@@ -24,7 +24,7 @@ MVP `run-execute.mvp-*.request.json` files are contract-shaped runner message sa
 
 `discovery-execute.request.json` runs the lightweight Runner Discovery collector and writes its `SiteDiscoveryResult` to `.runner-artifacts/discoveries/{discoveryId}/site-discovery-result.json`.
 
-Discovery can also run from RabbitMQ when `--consume-mq` is enabled. The runner consumes both `run.execute.request` and `discovery.execute.request`; set `RUNNER_MQ_QUEUE_DISCOVERY_EXECUTE` to override the discovery queue name. When `RUNNER_CALLBACK_BASE_URL` is configured, discovery accepted/finished/failed callbacks are sent to `/internal/runner/discoveries/{discoveryId}/...`.
+Discovery and Agent runtime can also run from RabbitMQ when `--consume-mq` is enabled. The runner consumes `run.execute.request`, `agent.execute.request`, and `discovery.execute.request`; set `RUNNER_MQ_QUEUE_AGENT_EXECUTE` or `RUNNER_MQ_QUEUE_DISCOVERY_EXECUTE` to override queue names. When `RUNNER_CALLBACK_BASE_URL` is configured, discovery accepted/finished/failed callbacks are sent to `/internal/runner/discoveries/{discoveryId}/...`, and agent event/trace callbacks are sent to the dedicated run agent endpoints.
 
 MQ consumer mode starts the callback outbox replay worker and artifact outbox replay worker by default so transient callback/storage failures can recover while new queue messages are consumed. Disable either worker only when a separate replay process owns that outbox:
 
@@ -33,6 +33,17 @@ RUNNER_MQ_CALLBACK_OUTBOX_WORKER_ENABLED=false \
 RUNNER_MQ_ARTIFACT_OUTBOX_WORKER_ENABLED=false \
 npm run start -- --consume-mq
 ```
+
+Operational defaults:
+
+```bash
+RUNNER_MQ_PREFETCH=4
+RUNNER_AGENT_CONCURRENCY=1
+RUNNER_MQ_REQUEUE_ON_FAILURE=false
+RUNNER_MQ_MAX_DELIVERY_ATTEMPTS=3
+```
+
+Keep `RUNNER_AGENT_CONCURRENCY` lower than static `RUNNER_MQ_PREFETCH` because agent jobs can loop through multiple browser observations. If `RUNNER_MQ_REQUEUE_ON_FAILURE=true`, `RUNNER_MQ_MAX_DELIVERY_ATTEMPTS` bounds poison message requeues before the consumer rejects without requeue.
 
 For a reproducible discovery smoke against a real URL, run from the repo root:
 

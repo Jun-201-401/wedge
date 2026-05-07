@@ -290,11 +290,25 @@ RUNNER_MQ_CALLBACK_OUTBOX_WORKER_ENABLED=false
 RUNNER_MQ_ARTIFACT_OUTBOX_WORKER_ENABLED=false
 ```
 
+구현된 hardening:
+
+- agent worker는 동일 `AgentTask.idempotency_key` 중복 delivery를 같은 process 안에서 재실행하지 않고 기존 실행 promise/result를 재사용한다.
+- MQ consumer는 `RUNNER_MQ_REQUEUE_ON_FAILURE=true`여도 `RUNNER_MQ_MAX_DELIVERY_ATTEMPTS` 이상 관측된 poison message를 requeue 없이 reject한다.
+- worker concurrency 정책은 static run/discovery는 `RUNNER_MQ_PREFETCH`, agent는 `RUNNER_AGENT_CONCURRENCY`로 분리한다.
+
+운영 기본값:
+
+```text
+RUNNER_MQ_PREFETCH=4
+RUNNER_AGENT_CONCURRENCY=1
+RUNNER_MQ_REQUEUE_ON_FAILURE=false
+RUNNER_MQ_MAX_DELIVERY_ATTEMPTS=3
+```
+
 남은 hardening:
 
-- idempotency key 처리
-- poison message 처리
-- worker concurrency 정책: static run/discovery는 `RUNNER_MQ_PREFETCH`, agent는 `RUNNER_AGENT_CONCURRENCY`로 분리됨. 남은 작업은 운영 기본값/스케일링 가이드 확정.
+- cross-process idempotency는 API/DB의 processed_message 또는 terminal trace 조회와 연결한다.
+- production traffic 기준 concurrency scaling guide를 부하 테스트 결과로 확정한다.
 
 ## 4.2 Spring internal callback HTTP client
 
@@ -302,9 +316,10 @@ RUNNER_MQ_ARTIFACT_OUTBOX_WORKER_ENABLED=false
 
 현재 `RUNNER_CALLBACK_BASE_URL`이 있으면 HTTP callback mode로 전환되며, `X-Event-Id`, `X-Worker-Id`, bearer token, optional HMAC signature, timeout/retry, callback outbox persistence가 연결되어 있다. JSONL 기록은 local fallback으로 유지한다.
 
-남은 hardening:
+현재 duplicate delivery tolerance:
 
-- duplicate delivery tolerance
+- API callback은 `X-Event-Id` 기반 processed_message로 중복 callback을 duplicate ack 처리한다.
+- Runner HTTP callback client는 timeout/retry 후 callback outbox에 남기고 replay worker가 재전송한다.
 
 ## 4.3 S3 artifact storage
 
