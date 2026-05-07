@@ -140,6 +140,7 @@ export async function executeAgentRun(input: AgentExecutorInput): Promise<AgentE
     }
 
     let stopRequested = false;
+    let postActionSnapshot = observation.snapshot;
 
     if (decision.kind === "act") {
       try {
@@ -155,14 +156,15 @@ export async function executeAgentRun(input: AgentExecutorInput): Promise<AgentE
           emitStepEvents: false
         }));
         deliveryIssues.push(...stepResult.deliveryIssues);
+        postActionSnapshot = input.session.snapshot();
         turnTrace.actionResult = {
           actionType: decision.action.type,
-          finalUrl: input.session.snapshot().finalUrl,
+          finalUrl: postActionSnapshot.finalUrl,
           completed: true
         };
         deliveryIssues.push(...(await emitAgentEventBestEffort(input.callbackClient, input.runId, input.task, "ACTION_COMPLETED", {
           actionType: decision.action.type,
-          finalUrl: input.session.snapshot().finalUrl,
+          finalUrl: postActionSnapshot.finalUrl,
           targetKey: decision.targetKey
         }, turn)));
 
@@ -228,9 +230,10 @@ export async function executeAgentRun(input: AgentExecutorInput): Promise<AgentE
         break;
       }
     } else {
+      postActionSnapshot = input.session.snapshot();
       turnTrace.actionResult = {
         actionType: decision.action.type,
-        finalUrl: input.session.snapshot().finalUrl,
+        finalUrl: postActionSnapshot.finalUrl,
         completed: false
       };
     }
@@ -239,7 +242,7 @@ export async function executeAgentRun(input: AgentExecutorInput): Promise<AgentE
       goal: resolveTaskGoal(input.task),
       startUrl: input.task.start_url,
       previousUrl,
-      snapshot: input.session.snapshot(),
+      snapshot: postActionSnapshot,
       phase: "post_action",
       decision
     });
@@ -249,7 +252,7 @@ export async function executeAgentRun(input: AgentExecutorInput): Promise<AgentE
       turn,
       actionType: decision.action.type,
       targetKey: decision.targetKey,
-      finalUrl: input.session.snapshot().finalUrl,
+      finalUrl: postActionSnapshot.finalUrl,
       goalSatisfied: verification.satisfied
     });
 
