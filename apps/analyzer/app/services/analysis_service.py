@@ -142,7 +142,7 @@ def _to_top_finding(issue: dict[str, Any], rank: int) -> dict[str, Any]:
     finding = {
         "rank": rank,
         "category": criterion_id,
-        "title": str(issue.get("summary") or criterion_id),
+        "title": str(issue.get("title") or issue.get("summary") or criterion_id),
         "description": str(issue.get("impact_hypothesis") or issue.get("summary") or criterion_id),
         "confidence": issue.get("confidence", 0),
         "impact": _impact(issue.get("severity")),
