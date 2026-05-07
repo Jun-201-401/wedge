@@ -257,6 +257,7 @@ test("[Agent Worker] AgentTask로 CTA 후보를 관찰해 클릭한다", async (
   const persistedArtifacts: ArtifactDraft[] = [];
   const artifactCallbacks: Artifact[] = [];
   const agentEvents: AgentEvent[] = [];
+  const stepEvents: StepEvent[] = [];
   const agentTraces: AgentTraceCallbackPayload[] = [];
   let currentUrl = task.start_url;
   let loaded = false;
@@ -329,6 +330,9 @@ test("[Agent Worker] AgentTask로 CTA 후보를 관찰해 클릭한다", async (
       sendAgentEvents: async (_runId, payload) => {
         agentEvents.push(...payload.events);
       },
+      sendStepEvents: async (_runId, payload) => {
+        stepEvents.push(...payload.events);
+      },
       sendAgentTrace: async (_runId, payload) => {
         agentTraces.push(payload);
       }
@@ -381,6 +385,7 @@ test("[Agent Worker] AgentTask로 CTA 후보를 관찰해 클릭한다", async (
   assert.equal(artifactCallbacks.length, 2);
   assert.ok(artifactCallbacks.some((artifact) => artifact.artifactType === "TRACE"));
   assert.ok(artifactCallbacks.some((artifact) => artifact.stepKey === "agent_scenario_plan_export"));
+  assert.equal(stepEvents.length, 0);
   assert.ok(agentEvents.some((event) => event.eventType === "PRE_DECISION_VERIFIED"));
   assert.ok(agentEvents.some((event) => event.eventType === "DECISION_MADE"));
   assert.ok(agentEvents.some((event) => event.eventType === "TRACE_PERSISTED"));
@@ -402,7 +407,7 @@ test("[Agent Worker] 이미 목표 상태면 새 decision 전에 중단한다", 
   task.budget.max_steps = 3;
 
   const executedActions: string[] = [];
-  const stepEvents: StepEvent[] = [];
+  const agentEvents: AgentEvent[] = [];
   let closed = false;
 
   const worker = registerAgentWorker({
@@ -430,8 +435,8 @@ test("[Agent Worker] 이미 목표 상태면 새 decision 전에 중단한다", 
         })
     },
     callbackClient: createStubCallbackClient({
-      sendStepEvents: async (_runId, payload) => {
-        stepEvents.push(...payload.events);
+      sendAgentEvents: async (_runId, payload) => {
+        agentEvents.push(...payload.events);
       }
     }),
     capturePipeline: {
@@ -452,7 +457,7 @@ test("[Agent Worker] 이미 목표 상태면 새 decision 전에 중단한다", 
   assert.equal(result.trace.outcome.status, "SUCCESS");
   assert.equal(result.trace.turns.length, 1);
   assert.equal(result.trace.turns[0].preDecisionVerification.satisfied, true);
-  assert.ok(stepEvents.some((event) => event.payload.event === "PRE_DECISION_VERIFIED"));
+  assert.equal(agentEvents.some((event) => event.eventType === "PRE_DECISION_VERIFIED"), true);
   assert.equal(closed, true);
 });
 
@@ -600,7 +605,7 @@ test("[Agent Worker] 로그인 벽을 감지하면 decision 전에 중단한다"
   task.goal = "checkout 진입 여부를 확인한다";
 
   const executedActions: string[] = [];
-  const stepEvents: StepEvent[] = [];
+  const agentEvents: AgentEvent[] = [];
 
   const worker = registerAgentWorker({
     config: createRunnerTestConfig({
@@ -624,8 +629,8 @@ test("[Agent Worker] 로그인 벽을 감지하면 decision 전에 중단한다"
         })
     },
     callbackClient: createStubCallbackClient({
-      sendStepEvents: async (_runId, payload) => {
-        stepEvents.push(...payload.events);
+      sendAgentEvents: async (_runId, payload) => {
+        agentEvents.push(...payload.events);
       }
     }),
     capturePipeline: {
@@ -643,7 +648,10 @@ test("[Agent Worker] 로그인 벽을 감지하면 decision 전에 중단한다"
   assert.deepEqual(executedActions, []);
   assert.equal(result.trace.outcome.status, "BLOCKED");
   assert.equal(result.trace.turns[0].preDecisionVerification.outcome, "BLOCKED_LOGIN");
-  assert.ok(stepEvents.some((event) => event.payload.outcome === "BLOCKED_LOGIN"));
+  assert.equal(
+    agentEvents.some((event) => event.eventType === "PRE_DECISION_VERIFIED" && event.payload.outcome === "BLOCKED_LOGIN"),
+    true
+  );
 });
 
 test("[Agent Worker] CAPTCHA를 감지하면 decision 전에 중단한다", async () => {

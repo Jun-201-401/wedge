@@ -3,7 +3,6 @@ import type { CallbackClient } from "../callback/index.ts";
 import type { CapturePipeline } from "../capture/index.ts";
 import { createDeliverySummary, mergeDeliveryIssues, type DeliveryIssue, type DeliverySummary } from "../delivery/index.ts";
 import { ScenarioExecutionError, type ScenarioExecutionSummary } from "../scenario/executor/index.ts";
-import { emitStepEventBestEffort } from "../scenario/executor/step-events.ts";
 import { executeScenarioStep } from "../scenario/executor/step-executor.ts";
 import type { ArtifactStore } from "../storage/index.ts";
 import type { AgentTask, Artifact, ScenarioPlan, ScenarioStep } from "../shared/contracts.ts";
@@ -63,15 +62,6 @@ export async function executeAgentRun(input: AgentExecutorInput): Promise<AgentE
     };
     trace.turns.push(turnTrace);
 
-    deliveryIssues.push(...(await emitStepEventBestEffort(input.callbackClient, input.runId, turn, `agent_turn_${String(turn).padStart(3, "0")}`, "ISSUE_SIGNAL_DETECTED", {
-      agentTurn: turn,
-      event: "PRE_DECISION_VERIFIED",
-      outcome: preDecisionVerification.outcome,
-      terminal: preDecisionVerification.terminal,
-      satisfied: preDecisionVerification.satisfied,
-      reason: preDecisionVerification.reason,
-      confidence: preDecisionVerification.confidence
-    })));
     deliveryIssues.push(...(await emitAgentEventBestEffort(input.callbackClient, input.runId, input.task, "PRE_DECISION_VERIFIED", {
       outcome: preDecisionVerification.outcome,
       terminal: preDecisionVerification.terminal,
@@ -99,14 +89,6 @@ export async function executeAgentRun(input: AgentExecutorInput): Promise<AgentE
     turnTrace.decision = decision;
     const step = agentDecisionToScenarioStep(decision, turn, config.captureEveryTurn);
 
-    deliveryIssues.push(...(await emitStepEventBestEffort(input.callbackClient, input.runId, turn, step.step_id, "ISSUE_SIGNAL_DETECTED", {
-      agentTurn: turn,
-      event: "DECISION_MADE",
-      decisionReason: decision.reason,
-      confidence: decision.confidence,
-      actionType: decision.action.type,
-      targetKey: decision.targetKey
-    })));
     deliveryIssues.push(...(await emitAgentEventBestEffort(input.callbackClient, input.runId, input.task, "DECISION_MADE", {
       decisionReason: decision.reason,
       confidence: decision.confidence,
@@ -121,13 +103,6 @@ export async function executeAgentRun(input: AgentExecutorInput): Promise<AgentE
     });
     turnTrace.policy = policy;
 
-    deliveryIssues.push(...(await emitStepEventBestEffort(input.callbackClient, input.runId, turn, step.step_id, "ISSUE_SIGNAL_DETECTED", {
-      agentTurn: turn,
-      event: "POLICY_CHECKED",
-      allowed: policy.allowed,
-      riskClass: policy.riskClass,
-      reason: policy.reason
-    })));
     deliveryIssues.push(...(await emitAgentEventBestEffort(input.callbackClient, input.runId, input.task, "POLICY_CHECKED", {
       allowed: policy.allowed,
       riskClass: policy.riskClass,
@@ -152,7 +127,8 @@ export async function executeAgentRun(input: AgentExecutorInput): Promise<AgentE
         session: input.session,
         callbackClient: input.callbackClient,
         capturePipeline: input.capturePipeline,
-        artifactStore: input.artifactStore
+        artifactStore: input.artifactStore,
+        emitStepEvents: false
       });
       deliveryIssues.push(...stepResult.deliveryIssues);
       turnTrace.actionResult = {
@@ -183,14 +159,6 @@ export async function executeAgentRun(input: AgentExecutorInput): Promise<AgentE
         "error"
       );
 
-      deliveryIssues.push(...(await emitStepEventBestEffort(input.callbackClient, input.runId, turn, step.step_id, "STEP_FAILED", {
-        agentTurn: turn,
-        description: step.description,
-        stage: step.stage,
-        actionType: step.action.type,
-        failureCode,
-        failureMessage
-      })));
       deliveryIssues.push(...(await emitAgentEventBestEffort(input.callbackClient, input.runId, input.task, "ACTION_FAILED", {
         description: step.description,
         stage: step.stage,
@@ -240,15 +208,6 @@ export async function executeAgentRun(input: AgentExecutorInput): Promise<AgentE
       goalSatisfied: verification.satisfied
     });
 
-    deliveryIssues.push(...(await emitStepEventBestEffort(input.callbackClient, input.runId, turn, step.step_id, "ISSUE_SIGNAL_DETECTED", {
-      agentTurn: turn,
-      event: "GOAL_VERIFIED",
-      outcome: verification.outcome,
-      terminal: verification.terminal,
-      satisfied: verification.satisfied,
-      reason: verification.reason,
-      confidence: verification.confidence
-    })));
     deliveryIssues.push(...(await emitAgentEventBestEffort(input.callbackClient, input.runId, input.task, "GOAL_VERIFIED", {
       outcome: verification.outcome,
       terminal: verification.terminal,
