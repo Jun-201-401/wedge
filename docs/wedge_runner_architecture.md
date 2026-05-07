@@ -322,6 +322,26 @@ RUNNER_MQ_MAX_DELIVERY_ATTEMPTS=3
 - API callback은 `X-Event-Id` 기반 processed_message로 중복 callback을 duplicate ack 처리한다.
 - Runner HTTP callback client는 timeout/retry 후 callback outbox에 남기고 replay worker가 재전송한다.
 
+## 4.2.1 Agent decision client
+
+기본값은 rule-based heuristic decision client다.
+
+```text
+RUNNER_AGENT_DECISION_MODE=heuristic
+```
+
+LLM decision client는 명시적으로만 활성화한다.
+
+```text
+RUNNER_AGENT_DECISION_MODE=llm
+RUNNER_AGENT_LLM_ENDPOINT=<OpenAI-compatible or internal decision endpoint>
+RUNNER_AGENT_LLM_API_KEY=<optional bearer token>
+RUNNER_AGENT_LLM_MODEL=<model-or-router-name>
+RUNNER_AGENT_LLM_TIMEOUT_MS=10000
+```
+
+LLM이 활성화되어도 pre-decision verifier, risk policy, fixed browser tool runtime은 그대로 우선 적용된다. LLM 응답이 invalid JSON이거나 관찰되지 않은 target을 선택하면 heuristic으로 fallback한다.
+
 ## 4.3 S3 artifact storage
 
 기본 운영 선택: artifact binary는 S3-compatible storage, DB에는 metadata/key만 저장.

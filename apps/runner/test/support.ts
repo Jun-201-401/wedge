@@ -118,6 +118,11 @@ export function createRunnerTestConfig(overrides: Partial<RunnerConfig> = {}): R
     playwrightSlowMoMs: 0,
     playwrightBrowsersPath: undefined,
     simulatedDelayCapMs: 1,
+    agentDecisionMode: "heuristic",
+    agentLlmEndpoint: undefined,
+    agentLlmApiKey: undefined,
+    agentLlmModel: "agent-decision",
+    agentLlmTimeoutMs: 10_000,
     ...overrides,
     mqMaxDeliveryAttempts: overrides.mqMaxDeliveryAttempts ?? 3
   };

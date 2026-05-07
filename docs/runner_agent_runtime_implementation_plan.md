@@ -1738,7 +1738,6 @@ Completed:
 - MQ poison message requeue is bounded by RUNNER_MQ_MAX_DELIVERY_ATTEMPTS.
 
 Remaining:
-- Add LLM decision client behind config.
 - Add trace-to-ScenarioPlan export.
 ```
 
@@ -1749,12 +1748,14 @@ Start only after heuristic fixture baseline is stable.
 Tasks:
 
 ```text
-Define DecisionClient interface if not already done.
-Add LLMDecisionClient behind config flag.
-Add structured output validation.
-Add prompt redaction.
-Add retry for invalid JSON only, not unsafe decisions.
-Compare LLM against heuristic on fixtures.
+DONE: Define DecisionClient interface.
+DONE: Add LLMDecisionClient behind RUNNER_AGENT_DECISION_MODE=llm.
+DONE: Keep heuristic as the default decision client.
+DONE: Validate LLM output against observed target keys and constrained action types.
+DONE: Fall back to heuristic when LLM output is invalid or the endpoint fails.
+TODO: Add prompt redaction beyond the current minimal observation payload.
+TODO: Add retry for invalid JSON only, not unsafe decisions.
+TODO: Compare LLM against heuristic on broader fixtures.
 ```
 
 Acceptance criteria:

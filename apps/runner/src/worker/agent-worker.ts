@@ -1,4 +1,4 @@
-import { createAgentRuntimePlan, executeAgentRun } from "../agent/index.ts";
+import { createAgentDecisionClient, createAgentRuntimePlan, executeAgentRun } from "../agent/index.ts";
 import type { BrowserSessionFactory } from "../browser/playwright/index.ts";
 import type { CallbackClient } from "../callback/index.ts";
 import type { CapturePipeline } from "../capture/index.ts";
@@ -157,7 +157,8 @@ async function executeAgentMessage({
       session,
       callbackClient,
       capturePipeline,
-      artifactStore
+      artifactStore,
+      decisionClient: createAgentDecisionClient(config)
     });
 
     const finishedDeliveryIssues = await emitFinishedCallback({

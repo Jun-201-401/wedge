@@ -46,6 +46,18 @@ RUNNER_MQ_MAX_DELIVERY_ATTEMPTS=3
 
 Keep `RUNNER_AGENT_CONCURRENCY` lower than static `RUNNER_MQ_PREFETCH` because agent jobs can loop through multiple browser observations. `RUNNER_AGENT_IDEMPOTENCY_STORE_ENABLED=true` keeps terminal agent results under the artifact root so duplicate delivery after runner restart does not re-run the browser flow. If `RUNNER_MQ_REQUEUE_ON_FAILURE=true`, `RUNNER_MQ_MAX_DELIVERY_ATTEMPTS` bounds poison message requeues before the consumer rejects without requeue.
 
+Agent decisions use the heuristic client by default. LLM decisions are config-gated and still pass through the same pre-decision verifier, risk policy, and fixed browser tool runtime:
+
+```bash
+RUNNER_AGENT_DECISION_MODE=llm
+RUNNER_AGENT_LLM_ENDPOINT=https://llm.example/v1/chat/completions
+RUNNER_AGENT_LLM_API_KEY=...
+RUNNER_AGENT_LLM_MODEL=agent-model
+RUNNER_AGENT_LLM_TIMEOUT_MS=10000
+```
+
+If the LLM endpoint is missing, times out, returns invalid JSON, or selects a target that was not observed, the runner falls back to the heuristic decision client.
+
 For a reproducible discovery smoke against a real URL, run from the repo root:
 
 ```bash

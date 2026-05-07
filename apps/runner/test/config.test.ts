@@ -28,8 +28,17 @@ const MQ_RUNTIME_ENV_KEYS = [
   "RUNNER_MQ_MAX_DELIVERY_ATTEMPTS"
 ] as const;
 
+const AGENT_LLM_ENV_KEYS = [
+  "RUNNER_AGENT_DECISION_MODE",
+  "RUNNER_AGENT_LLM_ENDPOINT",
+  "RUNNER_AGENT_LLM_API_KEY",
+  "RUNNER_AGENT_LLM_MODEL",
+  "RUNNER_AGENT_LLM_TIMEOUT_MS"
+] as const;
+
 type ArtifactEnvKey = typeof ARTIFACT_ENV_KEYS[number];
 type MqRuntimeEnvKey = typeof MQ_RUNTIME_ENV_KEYS[number];
+type AgentLlmEnvKey = typeof AGENT_LLM_ENV_KEYS[number];
 type EnvSnapshot<K extends string> = Partial<Record<K, string>>;
 
 test("[설정] artifact storage 기본값은 로컬 filesystem이다", () => {
@@ -197,12 +206,46 @@ test("[설정] MQ max delivery attempts는 poison message 차단용 양의 정�
   );
 });
 
+test("[설정] Agent decision client는 기본 heuristic이고 env로만 LLM mode를 활성화한다", () => {
+  withAgentLlmEnv({}, () => {
+    const config = loadRunnerConfig({ serviceName: "runner-test" });
+
+    assert.equal(config.agentDecisionMode, "heuristic");
+    assert.equal(config.agentLlmEndpoint, undefined);
+    assert.equal(config.agentLlmModel, "agent-decision");
+    assert.equal(config.agentLlmTimeoutMs, 10_000);
+  });
+
+  withAgentLlmEnv(
+    {
+      RUNNER_AGENT_DECISION_MODE: "llm",
+      RUNNER_AGENT_LLM_ENDPOINT: "https://llm.example/decision",
+      RUNNER_AGENT_LLM_API_KEY: "secret",
+      RUNNER_AGENT_LLM_MODEL: "agent-model",
+      RUNNER_AGENT_LLM_TIMEOUT_MS: "5000"
+    },
+    () => {
+      const config = loadRunnerConfig({ serviceName: "runner-test" });
+
+      assert.equal(config.agentDecisionMode, "llm");
+      assert.equal(config.agentLlmEndpoint, "https://llm.example/decision");
+      assert.equal(config.agentLlmApiKey, "secret");
+      assert.equal(config.agentLlmModel, "agent-model");
+      assert.equal(config.agentLlmTimeoutMs, 5_000);
+    }
+  );
+});
+
 function withArtifactEnv(values: Partial<Record<ArtifactEnvKey, string>>, run: () => void): void {
   withEnv(ARTIFACT_ENV_KEYS, values, run);
 }
 
 function withMqRuntimeEnv(values: Partial<Record<MqRuntimeEnvKey, string>>, run: () => void): void {
   withEnv(MQ_RUNTIME_ENV_KEYS, values, run);
+}
+
+function withAgentLlmEnv(values: Partial<Record<AgentLlmEnvKey, string>>, run: () => void): void {
+  withEnv(AGENT_LLM_ENV_KEYS, values, run);
 }
 
 function withEnv<K extends string>(

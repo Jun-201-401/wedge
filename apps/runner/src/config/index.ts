@@ -5,6 +5,7 @@ export type RunnerBrowserMode = "simulated" | "playwright";
 export type RunnerBrowserName = "chromium" | "firefox" | "webkit";
 export type RunnerCallbackMode = "file" | "http";
 export type RunnerArtifactStoreMode = "filesystem" | "s3";
+export type RunnerAgentDecisionMode = "heuristic" | "llm";
 
 const DEFAULT_RETRY_DELAYS_MS = [200, 1000, 3000] as const;
 const DEFAULT_OUTBOX_LOCK_STALE_MS = 30_000;
@@ -16,6 +17,7 @@ const DEFAULT_CALLBACK_TIMEOUT_MS = 5_000;
 const DEFAULT_BROWSER_TIMEOUT_MS = 30_000;
 const DEFAULT_SIMULATED_DELAY_CAP_MS = 25;
 const DEFAULT_MQ_MAX_DELIVERY_ATTEMPTS = 3;
+const DEFAULT_AGENT_LLM_TIMEOUT_MS = 10_000;
 export const RUNNER_MQ_CALLBACK_OUTBOX_WORKER_ENABLED_ENV = "RUNNER_MQ_CALLBACK_OUTBOX_WORKER_ENABLED";
 export const RUNNER_MQ_ARTIFACT_OUTBOX_WORKER_ENABLED_ENV = "RUNNER_MQ_ARTIFACT_OUTBOX_WORKER_ENABLED";
 
@@ -71,6 +73,11 @@ export interface RunnerConfig {
   playwrightSlowMoMs: number;
   playwrightBrowsersPath?: string;
   simulatedDelayCapMs: number;
+  agentDecisionMode: RunnerAgentDecisionMode;
+  agentLlmEndpoint?: string;
+  agentLlmApiKey?: string;
+  agentLlmModel: string;
+  agentLlmTimeoutMs: number;
 }
 
 export function loadRunnerConfig(overrides: Partial<RunnerConfig> = {}): RunnerConfig {
@@ -201,6 +208,12 @@ export function loadRunnerConfig(overrides: Partial<RunnerConfig> = {}): RunnerC
     process.env.RUNNER_PLAYWRIGHT_SLOW_MO_MS,
     0
   );
+  const agentDecisionMode = resolveAgentDecisionMode(overrides.agentDecisionMode ?? process.env.RUNNER_AGENT_DECISION_MODE);
+  const agentLlmTimeoutMs = parsePositiveInteger(
+    overrides.agentLlmTimeoutMs,
+    process.env.RUNNER_AGENT_LLM_TIMEOUT_MS,
+    DEFAULT_AGENT_LLM_TIMEOUT_MS
+  );
 
   return {
     serviceName,
@@ -271,7 +284,12 @@ export function loadRunnerConfig(overrides: Partial<RunnerConfig> = {}): RunnerC
       overrides.simulatedDelayCapMs,
       process.env.RUNNER_SIMULATED_DELAY_CAP_MS,
       DEFAULT_SIMULATED_DELAY_CAP_MS
-    )
+    ),
+    agentDecisionMode,
+    agentLlmEndpoint: overrides.agentLlmEndpoint ?? process.env.RUNNER_AGENT_LLM_ENDPOINT ?? undefined,
+    agentLlmApiKey: overrides.agentLlmApiKey ?? process.env.RUNNER_AGENT_LLM_API_KEY ?? undefined,
+    agentLlmModel: overrides.agentLlmModel ?? process.env.RUNNER_AGENT_LLM_MODEL ?? "agent-decision",
+    agentLlmTimeoutMs
   };
 }
 
@@ -316,6 +334,10 @@ function parseBrowserName(value: RunnerConfig["browserName"] | string | undefine
   }
 
   return "chromium";
+}
+
+function resolveAgentDecisionMode(value: RunnerAgentDecisionMode | string | undefined): RunnerAgentDecisionMode {
+  return value === "llm" ? "llm" : "heuristic";
 }
 
 function parseBoolean(
