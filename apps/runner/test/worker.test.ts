@@ -14,7 +14,7 @@ import {
   loadAgentExampleMessage,
   loadExampleMessage
 } from "./support.ts";
-import type { Artifact, ArtifactDraft, RunnerFailedPayload, StepEvent } from "../src/shared/contracts.ts";
+import type { Artifact, ArtifactDraft, InteractiveComponentObservationItem, RunnerFailedPayload, StepEvent } from "../src/shared/contracts.ts";
 
 test("[Worker lifecycle] accepted callback 실패 시 session을 닫고 failed callback을 보낸다", async () => {
   const message = await loadExampleMessage();
@@ -589,3 +589,139 @@ test("[Agent Worker] 최종 결제 액션이 보이면 decision 전에 정책 �
   assert.equal(result.trace.outcome.status, "POLICY_BLOCKED");
   assert.equal(result.trace.turns[0].preDecisionVerification.outcome, "POLICY_BLOCKED");
 });
+
+test("[Agent Worker] checkout 휴리스틱은 장바구니 담기, 카트, checkout 순서로 진행한다", async () => {
+  const message = await loadAgentExampleMessage();
+  const task = message.payload.agentTask;
+  task.goal = "checkout 진입 여부를 확인한다";
+  task.budget.max_steps = 5;
+  task.budget.max_same_page_attempts = 0;
+  task.artifact_policy = {
+    capture_screenshots: false,
+    capture_dom_snapshots: false,
+    capture_ax_tree: false,
+    capture_trace: true
+  };
+
+  const executedTargets: Array<string | null> = [];
+  let currentUrl = task.start_url;
+  let loaded = false;
+  let addedToCart = false;
+
+  const worker = registerAgentWorker({
+    config: createRunnerTestConfig({
+      artifactsRoot: join(tmpdir(), "runner-test-agent-checkout-heuristic-artifacts"),
+      callbackLogFile: join(tmpdir(), "runner-test-agent-checkout-heuristic-callbacks.jsonl")
+    }),
+    browserFactory: {
+      kind: "simulated-playwright",
+      createSession: async ({ plan }) =>
+        createSimulatedSession(plan, {
+          execute: async (action) => {
+            const selector = action.target && typeof action.target === "object" && "selector" in action.target
+              ? String(action.target.selector)
+              : null;
+            executedTargets.push(selector);
+
+            if (action.type === "goto") {
+              loaded = true;
+              currentUrl = task.start_url;
+            }
+            if (selector === "#add-to-cart") {
+              addedToCart = true;
+            }
+            if (selector === "#cart") {
+              currentUrl = "https://example.com/cart";
+            }
+            if (selector === "#checkout") {
+              currentUrl = "https://example.com/checkout";
+            }
+
+            return {
+              actionType: action.type,
+              targetSummary: selector,
+              stopRequested: false,
+              details: {
+                currentUrl
+              }
+            };
+          },
+          settle: async () => createSettledResult(),
+          snapshot: () => createSimulatedPageSnapshot(plan, {
+            currentUrl,
+            finalUrl: currentUrl,
+            title: currentUrl.endsWith("/cart") ? "Cart" : "Product",
+            interactiveComponents: createCheckoutHeuristicComponents(currentUrl, loaded, addedToCart)
+          })
+        })
+    },
+    callbackClient: createStubCallbackClient(),
+    capturePipeline: {
+      collectCheckpoint: async () => {
+        throw new Error("checkpoint collection should not run when capture_screenshots is false");
+      }
+    },
+    artifactStore: {
+      persistArtifacts: async () => []
+    }
+  });
+
+  const result = await worker.handleMessage(message);
+
+  assert.deepEqual(executedTargets, [null, "#add-to-cart", "#cart", "#checkout"]);
+  assert.equal(result.trace.outcome.status, "SUCCESS");
+  assert.equal(result.trace.turns.at(-1)?.postActionVerification?.satisfied, true);
+});
+
+function createCheckoutHeuristicComponents(
+  currentUrl: string,
+  loaded: boolean,
+  addedToCart: boolean
+): InteractiveComponentObservationItem[] {
+  if (!loaded) {
+    return [];
+  }
+
+  if (currentUrl.endsWith("/cart")) {
+    return [
+      workerComponent("Checkout", "#checkout", true),
+      workerComponent("Remove item", "#remove", false)
+    ];
+  }
+
+  if (addedToCart) {
+    return [
+      workerComponent("장바구니", "#cart", false),
+      workerComponent("계속 쇼핑", "#continue", true)
+    ];
+  }
+
+  return [
+    workerComponent("Learn more", "#learn-more", true),
+    workerComponent("장바구니 담기", "#add-to-cart", false)
+  ];
+}
+
+function workerComponent(
+  text: string,
+  selector: string,
+  isPrimaryLike: boolean
+): InteractiveComponentObservationItem {
+  return {
+    text,
+    selector,
+    role: "button",
+    tag: "button",
+    clickable: true,
+    clicked_in_scenario: false,
+    is_cta_candidate: true,
+    is_primary_like: isPrimaryLike,
+    bounds: {
+      x: 10,
+      y: 10,
+      width: 120,
+      height: 40,
+      unit: "css_px"
+    }
+  };
+}

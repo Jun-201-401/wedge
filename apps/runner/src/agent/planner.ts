@@ -61,26 +61,9 @@ export function decideNextAction(input: AgentDecisionInput): AgentDecision {
     };
   }
 
-  const component = selectPrimaryCandidate(input.observation.snapshot.interactiveComponents, input.state.clickedTargetKeys);
-  if (component) {
-    return {
-      kind: "act",
-      description: `Click likely UX entrypoint: ${component.text || component.selector || component.role || component.tag}`,
-      reason: component.is_primary_like
-        ? "The component is the primary-like CTA candidate in the current viewport."
-        : "The component matches CTA-like copy or interaction semantics.",
-      confidence: component.is_primary_like ? 0.82 : 0.68,
-      action: {
-        type: "click",
-        target: targetFromComponent(component)
-      },
-      settleStrategy: {
-        type: "fixed_short",
-        timeout_ms: 500
-      },
-      stage: "CTA",
-      targetKey: targetKey(component)
-    };
+  const candidate = selectActionCandidate(input);
+  if (candidate) {
+    return componentToDecision(candidate);
   }
 
   if (input.state.scrollCount < input.maxScrolls) {
@@ -119,13 +102,135 @@ export function decideNextAction(input: AgentDecisionInput): AgentDecision {
   };
 }
 
-function selectPrimaryCandidate(
-  components: InteractiveComponentObservationItem[],
-  clickedTargetKeys: Set<string>
-): InteractiveComponentObservationItem | undefined {
-  return components.find((component) =>
-    (component.is_primary_like || component.is_cta_candidate) && !clickedTargetKeys.has(targetKey(component))
-  ) ?? components.find((component) => component.clickable && !clickedTargetKeys.has(targetKey(component)));
+interface ActionCandidate {
+  component: InteractiveComponentObservationItem;
+  reason: string;
+  confidence: number;
+  stage: ScenarioStage;
+}
+
+const CHECKOUT_GOAL_PATTERN = /checkout|payment|cart|order|결제|주문|장바구니|카트/i;
+const COOKIE_ACCEPT_PATTERN = /accept|agree|allow all|confirm|동의|허용|확인/i;
+const COOKIE_CONTEXT_PATTERN = /cookie|cookies|쿠키|개인정보|privacy/i;
+const ADD_TO_CART_PATTERN = /add to cart|add to basket|장바구니 담기|카트 담기|담기/i;
+const CART_NAVIGATION_PATTERN = /view cart|go to cart|cart|basket|장바구니|카트/i;
+const CHECKOUT_NAVIGATION_PATTERN = /checkout|proceed to checkout|payment|billing|shipping|order|결제|배송|주문서|주문하기/i;
+
+function selectActionCandidate(input: AgentDecisionInput): ActionCandidate | undefined {
+  const untriedComponents = input.observation.snapshot.interactiveComponents.filter((component) =>
+    component.clickable && !input.state.clickedTargetKeys.has(targetKey(component))
+  );
+
+  const cookieAction = selectCookieAction(untriedComponents);
+  if (cookieAction) {
+    return cookieAction;
+  }
+
+  if (CHECKOUT_GOAL_PATTERN.test(input.goal)) {
+    const checkoutAction = selectCheckoutAction(untriedComponents);
+    if (checkoutAction) {
+      return checkoutAction;
+    }
+  }
+
+  return selectPrimaryAction(untriedComponents);
+}
+
+function selectCookieAction(components: InteractiveComponentObservationItem[]): ActionCandidate | undefined {
+  const component = components.find((candidate) => {
+    const text = candidateText(candidate);
+    return COOKIE_ACCEPT_PATTERN.test(text) && COOKIE_CONTEXT_PATTERN.test(text);
+  });
+
+  return component
+    ? {
+        component,
+        reason: "Cookie or privacy banner action is blocking the page, so the agent clears it first.",
+        confidence: 0.76,
+        stage: "FIRST_VIEW"
+      }
+    : undefined;
+}
+
+function selectCheckoutAction(components: InteractiveComponentObservationItem[]): ActionCandidate | undefined {
+  const rankedRules: Array<{
+    pattern: RegExp;
+    reason: string;
+    confidence: number;
+    stage: ScenarioStage;
+  }> = [
+    {
+      pattern: ADD_TO_CART_PATTERN,
+      reason: "Checkout verification should add an obvious product to the cart before looking for checkout.",
+      confidence: 0.82,
+      stage: "CTA"
+    },
+    {
+      pattern: CART_NAVIGATION_PATTERN,
+      reason: "Checkout verification should inspect the cart after a cart-related entrypoint appears.",
+      confidence: 0.78,
+      stage: "CTA"
+    },
+    {
+      pattern: CHECKOUT_NAVIGATION_PATTERN,
+      reason: "Checkout verification found a checkout or payment-entry navigation candidate.",
+      confidence: 0.84,
+      stage: "COMMIT"
+    }
+  ];
+
+  for (const rule of rankedRules) {
+    const component = components.find((candidate) => rule.pattern.test(candidateText(candidate)));
+    if (component) {
+      return {
+        component,
+        reason: rule.reason,
+        confidence: rule.confidence,
+        stage: rule.stage
+      };
+    }
+  }
+
+  return undefined;
+}
+
+function selectPrimaryAction(components: InteractiveComponentObservationItem[]): ActionCandidate | undefined {
+  const component = components.find((candidate) =>
+    candidate.is_primary_like || candidate.is_cta_candidate
+  ) ?? components[0];
+
+  if (!component) {
+    return undefined;
+  }
+
+  return {
+    component,
+    reason: component.is_primary_like
+      ? "The component is the primary-like CTA candidate in the current viewport."
+      : "The component matches CTA-like copy or interaction semantics.",
+    confidence: component.is_primary_like ? 0.82 : 0.68,
+    stage: "CTA"
+  };
+}
+
+function componentToDecision(candidate: ActionCandidate): AgentDecision {
+  const label = candidate.component.text || candidate.component.selector || candidate.component.role || candidate.component.tag;
+  return {
+    kind: "act",
+    description: `Click candidate: ${label}`,
+    reason: candidate.reason,
+    confidence: candidate.confidence,
+    action: {
+      type: "click",
+      target: targetFromComponent(candidate.component)
+    },
+    settleStrategy: {
+      type: "fixed_short",
+      timeout_ms: 500
+    },
+    stage: candidate.stage,
+    targetKey: targetKey(candidate.component)
+  };
 }
 
 function targetFromComponent(component: InteractiveComponentObservationItem): TargetDescriptorMap {
@@ -148,4 +253,13 @@ function targetFromComponent(component: InteractiveComponentObservationItem): Ta
 
 export function targetKey(component: InteractiveComponentObservationItem): string {
   return component.selector ?? `${component.role ?? component.tag}:${component.text}`;
+}
+
+function candidateText(component: InteractiveComponentObservationItem): string {
+  return [
+    component.text,
+    component.role ?? "",
+    component.selector ?? "",
+    component.tag
+  ].join(" ");
 }
