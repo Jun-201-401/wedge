@@ -50,6 +50,59 @@ test("[Agent Policy] allowed checkout redirect origins permit external navigatio
   assert.equal(result.riskClass, "EXTERNAL_NAVIGATION");
 });
 
+test("[Agent Policy] final payment semantics override allowed external checkout redirects", async () => {
+  const message = cloneAgentMessage(await loadAgentExampleMessage());
+  const task = message.payload.agentTask;
+  task.allowed_navigation.allowed_checkout_redirect_origins = ["https://checkout.example"];
+  task.risk_policy.allow_final_payment_submit = false;
+  task.risk_policy.allow_final_order_commit = false;
+  const snapshot = createSimulatedPageSnapshot(createAgentRuntimePlan(task), {
+    finalUrl: task.start_url
+  });
+
+  const result = evaluateAgentPolicy({
+    task,
+    snapshot,
+    decision: createDecision({
+      type: "click",
+      target: {
+        text: "Pay now",
+        role: "button",
+        url: "https://checkout.example/pay"
+      }
+    })
+  });
+
+  assert.equal(result.allowed, false);
+  assert.equal(result.riskClass, "PAYMENT_COMMIT");
+});
+
+test("[Agent Policy] destructive semantics override allowed external navigation", async () => {
+  const message = cloneAgentMessage(await loadAgentExampleMessage());
+  const task = message.payload.agentTask;
+  task.allowed_navigation.allow_external_navigation = true;
+  task.risk_policy.allow_destructive_action = false;
+  const snapshot = createSimulatedPageSnapshot(createAgentRuntimePlan(task), {
+    finalUrl: task.start_url
+  });
+
+  const result = evaluateAgentPolicy({
+    task,
+    snapshot,
+    decision: createDecision({
+      type: "click",
+      target: {
+        text: "Delete account",
+        role: "button",
+        url: "https://external.example/delete-account"
+      }
+    })
+  });
+
+  assert.equal(result.allowed, false);
+  assert.equal(result.riskClass, "DESTRUCTIVE_ACTION");
+});
+
 test("[Agent Policy] cart mutation respects allow_cart_mutation", async () => {
   const message = cloneAgentMessage(await loadAgentExampleMessage());
   const task = message.payload.agentTask;

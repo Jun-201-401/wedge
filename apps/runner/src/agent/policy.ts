@@ -31,10 +31,6 @@ export function evaluateAgentPolicy(input: {
   snapshot: BrowserPageSnapshot;
 }): AgentPolicyResult {
   const targetText = describeDecisionTarget(input.decision);
-  const navigationPolicy = evaluateNavigationPolicy(input.task, input.decision, input.snapshot);
-  if (navigationPolicy) {
-    return navigationPolicy;
-  }
 
   if (input.decision.action.type === "click" && FINAL_PAYMENT_PATTERN.test(targetText)) {
     const allowed = input.task.risk_policy.allow_final_payment_submit || input.task.risk_policy.allow_final_order_commit;
@@ -69,26 +65,6 @@ export function evaluateAgentPolicy(input: {
     }
   }
 
-  if (input.decision.action.type === "click" && CART_MUTATION_PATTERN.test(targetText)) {
-    return {
-      allowed: input.task.risk_policy.allow_cart_mutation,
-      riskClass: "CART_MUTATION",
-      reason: input.task.risk_policy.allow_cart_mutation
-        ? "AgentTask risk policy permits cart mutation actions."
-        : "AgentTask risk policy blocks cart mutation actions."
-    };
-  }
-
-  if (input.decision.action.type === "click" && CHECKOUT_NAVIGATION_PATTERN.test(targetText)) {
-    return {
-      allowed: input.task.risk_policy.allow_checkout_navigation,
-      riskClass: "CHECKOUT_NAVIGATION",
-      reason: input.task.risk_policy.allow_checkout_navigation
-        ? "AgentTask risk policy permits checkout navigation."
-        : "AgentTask risk policy blocks checkout navigation."
-    };
-  }
-
   if (input.decision.action.type === "click" && DESTRUCTIVE_PATTERN.test(targetText)) {
     return {
       allowed: input.task.risk_policy.allow_destructive_action,
@@ -106,6 +82,31 @@ export function evaluateAgentPolicy(input: {
       reason: input.task.risk_policy.allow_external_message_send
         ? "AgentTask risk policy permits external message sending."
         : "AgentTask risk policy blocks external message sending."
+    };
+  }
+
+  const navigationPolicy = evaluateNavigationPolicy(input.task, input.decision, input.snapshot);
+  if (navigationPolicy) {
+    return navigationPolicy;
+  }
+
+  if (input.decision.action.type === "click" && CART_MUTATION_PATTERN.test(targetText)) {
+    return {
+      allowed: input.task.risk_policy.allow_cart_mutation,
+      riskClass: "CART_MUTATION",
+      reason: input.task.risk_policy.allow_cart_mutation
+        ? "AgentTask risk policy permits cart mutation actions."
+        : "AgentTask risk policy blocks cart mutation actions."
+    };
+  }
+
+  if (input.decision.action.type === "click" && CHECKOUT_NAVIGATION_PATTERN.test(targetText)) {
+    return {
+      allowed: input.task.risk_policy.allow_checkout_navigation,
+      riskClass: "CHECKOUT_NAVIGATION",
+      reason: input.task.risk_policy.allow_checkout_navigation
+        ? "AgentTask risk policy permits checkout navigation."
+        : "AgentTask risk policy blocks checkout navigation."
     };
   }
 
