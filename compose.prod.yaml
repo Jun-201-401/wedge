@@ -87,6 +87,7 @@ services:
       RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD}
       WEDGE_RUNNER_MQ_EXCHANGE: ${WEDGE_RUNNER_MQ_EXCHANGE}
       WEDGE_RUN_EXECUTE_QUEUE: ${WEDGE_RUN_EXECUTE_QUEUE}
+      WEDGE_ANALYZER_MQ_ANALYSIS_REQUEST_QUEUE: ${WEDGE_ANALYSIS_REQUEST_QUEUE:-analysis.request}
       AWS_REGION: ${AWS_REGION}
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
@@ -127,6 +128,37 @@ services:
     shm_size: 1gb
     volumes:
       - runner_data:/app/apps/runner/.runner-artifacts
+
+  analyzer-worker:
+    image: ${ANALYZER_IMAGE:-wedge-analyzer:deploy-local}
+    restart: unless-stopped
+    init: true
+    depends_on:
+      api-server:
+        condition: service_started
+      rabbitmq:
+        condition: service_healthy
+    command: ["python", "scripts/consume_analysis_requests.py"]
+    environment:
+      ANALYZER_WORKER_ID: analyzer-worker-prod
+      ANALYZER_MQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672/%2F
+      ANALYZER_MQ_QUEUE_ANALYSIS_REQUEST: ${WEDGE_ANALYSIS_REQUEST_QUEUE:-analysis.request}
+      ANALYZER_MQ_PREFETCH: ${ANALYZER_MQ_PREFETCH:-1}
+      ANALYZER_MQ_REQUEUE_ON_FAILURE: "false"
+      ANALYZER_MQ_QUEUE_DEAD_LETTER_EXCHANGE: wedge.dlq
+      ANALYZER_MQ_QUEUE_DEAD_LETTER_ROUTING_KEY: analysis.dlq
+      ANALYZER_MQ_QUEUE_TYPE: ""
+      ANALYZER_CALLBACK_BASE_URL: http://api-server:8080
+      ANALYZER_CALLBACK_AUTH_TOKEN: ${INTERNAL_SERVICE_TOKEN}
+      ANALYZER_CALLBACK_SIGNATURE_SECRET: ${INTERNAL_RUNNER_CALLBACK_SIGNATURE_SECRET}
+      ANALYZER_EVIDENCE_BASE_URL: http://api-server:8080
+      ANALYZER_EVIDENCE_AUTH_TOKEN: ${INTERNAL_SERVICE_TOKEN}
+      ANALYZER_GMS_ENABLED: ${ANALYZER_GMS_ENABLED:-false}
+      ANALYZER_GMS_API_KEY: ${ANALYZER_GMS_API_KEY:-}
+      ANALYZER_GMS_MODEL: ${ANALYZER_GMS_MODEL:-gpt-4.1-nano}
+      ANALYZER_GMS_BASE_URL: ${ANALYZER_GMS_BASE_URL:-https://gms.ssafy.io/gmsapi}
+      ANALYZER_GMS_OPENAI_RESPONSES_PATH: ${ANALYZER_GMS_OPENAI_RESPONSES_PATH:-api.openai.com/v1/responses}
+      ANALYZER_GMS_TIMEOUT_SECONDS: ${ANALYZER_GMS_TIMEOUT_SECONDS:-20}
 
 volumes:
   postgres_data:
