@@ -623,6 +623,82 @@ test("[Agent Worker] max_duration_ms를 넘긴 decision은 action 전에 EXHAUST
   assert.match(result.trace.outcome.reason, /max_duration_ms/);
 });
 
+test("[Agent Worker] max_duration_ms를 넘긴 in-flight action은 반환 전 정리한다", async () => {
+  const message = await loadAgentExampleMessage();
+  const task = message.payload.agentTask;
+  task.budget.max_steps = 1;
+  task.budget.max_duration_ms = 20;
+  task.artifact_policy = {
+    capture_screenshots: false,
+    capture_dom_snapshots: false,
+    capture_ax_tree: false,
+    capture_trace: false
+  };
+
+  const runtimePlan = createAgentRuntimePlan(task);
+  let actionFinished = false;
+  const decisionClient: AgentDecisionClient = {
+    decide: () => ({
+      kind: "act",
+      description: "Click slow target.",
+      reason: "Exercise action duration budget.",
+      confidence: 0.8,
+      action: {
+        type: "click",
+        target: {
+          selector: "#slow-checkout"
+        }
+      },
+      settleStrategy: {
+        type: "fixed_short",
+        timeout_ms: 1
+      },
+      stage: "CTA",
+      targetKey: "#slow-checkout"
+    })
+  };
+
+  const result = await executeAgentRun({
+    runId: task.run_id,
+    task,
+    runtimePlan,
+    session: createSimulatedSession(runtimePlan, {
+      execute: async (action) => {
+        await delay(50);
+        actionFinished = true;
+        return {
+          actionType: action.type,
+          targetSummary: "#slow-checkout",
+          stopRequested: false,
+          details: {}
+        };
+      },
+      settle: async () => createSettledResult(),
+      snapshot: () => createSimulatedPageSnapshot(runtimePlan)
+    }),
+    callbackClient: createStubCallbackClient(),
+    capturePipeline: {
+      collectCheckpoint: async () => {
+        throw new Error("checkpoint collection should not run after duration budget exhaustion");
+      }
+    },
+    artifactStore: {
+      persistArtifacts: async () => []
+    },
+    decisionClient
+  });
+
+  assert.equal(actionFinished, true);
+  assert.equal(result.summary.completedStepCount, 0);
+  assert.equal(result.summary.stopped, false);
+  assert.equal(result.trace.outcome.status, "EXHAUSTED");
+  assert.match(result.trace.outcome.reason, /max_duration_ms/);
+
+  actionFinished = false;
+  await delay(20);
+  assert.equal(actionFinished, false);
+});
+
 test("[Agent Worker] 동일 idempotency_key 중복 메시지는 같은 실행 결과를 재사용한다", async () => {
   const message = await loadAgentExampleMessage();
   const task = message.payload.agentTask;

@@ -8,7 +8,7 @@ const KOREA_MOBILE_PATTERN = /\b(?:\+82[-.\s]?)?0?1[016789][-\s.]?\d{3,4}[-\s.]?
 const US_PHONE_PATTERN = /\b(?:\+?1[-.\s]?)?(?:\(\d{3}\)|\d{3})[-.\s]?\d{3}[-.\s]?\d{4}\b/g;
 const BEARER_TOKEN_PATTERN = /\b(Bearer\s+)[A-Za-z0-9._~+/=-]{8,}\b/gi;
 const UUID_PATTERN = /\b[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b/gi;
-const INLINE_SECRET_PATTERN = /\b(api[_-]?key|access[_-]?token|refresh[_-]?token|token|secret|password)=([^&\s]+)/gi;
+const INLINE_SECRET_PATTERN = /\b(api[_-]?key|access[_-]?token|refresh[_-]?token|token|secret|password)([=:]\s*|\s+)([^&\s]+)/gi;
 const SENSITIVE_QUERY_KEYS = new Set([
   "email",
   "phone",
@@ -40,7 +40,7 @@ export function redactSensitiveString(value: string): string {
     .replace(KOREA_MOBILE_PATTERN, "[REDACTED_PHONE]")
     .replace(US_PHONE_PATTERN, "[REDACTED_PHONE]")
     .replace(BEARER_TOKEN_PATTERN, "$1[REDACTED_TOKEN]")
-    .replace(INLINE_SECRET_PATTERN, "$1=[REDACTED_SECRET]");
+    .replace(INLINE_SECRET_PATTERN, "$1$2[REDACTED_SECRET]");
 
   return preservedValues.reduce(
     (current, preserved, index) => current.replaceAll(`__WEDGE_UUID_${index}__`, preserved),

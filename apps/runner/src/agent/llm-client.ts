@@ -27,6 +27,12 @@ export interface AgentLlmDecisionClientOptions {
 
 const SCENARIO_STAGES = new Set<ScenarioStage>(["FIRST_VIEW", "VALUE", "CTA", "INPUT", "COMMIT"]);
 
+interface LlmCandidateReference {
+  id: string;
+  rawTargetKey: string;
+  component: InteractiveComponentObservationItem;
+}
+
 export class AgentLlmDecisionClient implements AgentDecisionClient {
   private readonly options: AgentLlmDecisionClientOptions;
   private readonly fallbackClient: AgentDecisionClient;
@@ -121,6 +127,7 @@ function createFetchLlmDecisionTransport(): AgentLlmDecisionTransport {
 }
 
 function createLlmRequestPayload(input: AgentDecisionInput, model: string): Record<string, unknown> {
+  const candidateReferences = createLlmCandidateReferences(input.observation.snapshot.interactiveComponents);
   const userPayload = redactSensitiveValue({
     goal: input.goal,
     startUrl: input.startUrl,
@@ -132,20 +139,20 @@ function createLlmRequestPayload(input: AgentDecisionInput, model: string): Reco
     page: {
       finalUrl: input.observation.snapshot.finalUrl,
       title: input.observation.snapshot.title,
-      candidates: input.observation.snapshot.interactiveComponents.map((component) => ({
-        targetKey: targetKey(component),
-        text: component.text,
-        selector: component.selector,
-        role: component.role,
-        href: component.href,
-        tag: component.tag,
-        isPrimaryLike: component.is_primary_like,
-        isCtaCandidate: component.is_cta_candidate
+      candidates: candidateReferences.map((candidate) => ({
+        targetKey: candidate.id,
+        text: candidate.component.text,
+        selector: candidate.component.selector,
+        role: candidate.component.role,
+        href: candidate.component.href,
+        tag: candidate.component.tag,
+        isPrimaryLike: candidate.component.is_primary_like,
+        isCtaCandidate: candidate.component.is_cta_candidate
       }))
     },
     outputSchema: {
       kind: "act|checkpoint|finish",
-      targetKey: "observed targetKey for click, null otherwise",
+      targetKey: "opaque candidate targetKey for click, null otherwise",
       actionType: "goto|click|scroll|checkpoint",
       scrollY: "number, only for scroll",
       stage: "FIRST_VIEW|VALUE|CTA|INPUT|COMMIT",
@@ -176,6 +183,14 @@ function createLlmRequestPayload(input: AgentDecisionInput, model: string): Reco
       }
     ]
   };
+}
+
+function createLlmCandidateReferences(components: InteractiveComponentObservationItem[]): LlmCandidateReference[] {
+  return components.map((component, index) => ({
+    id: `candidate_${String(index + 1).padStart(3, "0")}`,
+    rawTargetKey: targetKey(component),
+    component
+  }));
 }
 
 function parseLlmDecision(rawResponse: unknown, input: AgentDecisionInput): AgentDecision {
@@ -254,11 +269,14 @@ function parseLlmDecision(rawResponse: unknown, input: AgentDecisionInput): Agen
 
   if (actionType === "click") {
     const selectedTargetKey = readString(record, "targetKey");
-    const selectedComponent = input.observation.snapshot.interactiveComponents.find((component) =>
-      targetKey(component) === selectedTargetKey
+    const candidateReferences = createLlmCandidateReferences(input.observation.snapshot.interactiveComponents);
+    const selectedCandidate = candidateReferences.find((candidate) =>
+      candidate.id === selectedTargetKey
+    ) ?? candidateReferences.find((candidate) =>
+      candidate.rawTargetKey === selectedTargetKey
     );
 
-    if (!selectedTargetKey || !selectedComponent) {
+    if (!selectedTargetKey || !selectedCandidate) {
       throw new Error("LLM click targetKey must match an observed component");
     }
 
@@ -269,14 +287,14 @@ function parseLlmDecision(rawResponse: unknown, input: AgentDecisionInput): Agen
       confidence,
       action: {
         type: "click",
-        target: targetFromComponent(selectedComponent)
+        target: targetFromComponent(selectedCandidate.component)
       },
       settleStrategy: {
         type: "fixed_short",
         timeout_ms: 500
       },
       stage,
-      targetKey: selectedTargetKey
+      targetKey: selectedCandidate.rawTargetKey
     };
   }
 

@@ -3,6 +3,7 @@ import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import type { RunnerConfig } from "../config/index.ts";
 import { logOperationalEvent } from "../shared/utils.ts";
+import { redactAgentTrace, redactSensitiveValue } from "../agent/redaction.ts";
 import type { AgentRunnerExecutionResult } from "./agent-worker.ts";
 
 export interface AgentIdempotencyRecord {
@@ -74,12 +75,28 @@ export async function persistAgentIdempotencyResult(
     taskId: result.trace.task_id,
     attemptId: result.trace.attempt_id,
     completedAt: new Date().toISOString(),
-    result
+    result: sanitizeAgentIdempotencyResult(result)
   };
 
   await mkdir(dirname(recordPath), { recursive: true });
   await writeFile(tempPath, JSON.stringify(record, null, 2), "utf8");
   await rename(tempPath, recordPath);
+}
+
+function sanitizeAgentIdempotencyResult(result: AgentRunnerExecutionResult): AgentRunnerExecutionResult {
+  return {
+    ...result,
+    trace: redactAgentTrace(result.trace),
+    scenarioPlanExport: result.scenarioPlanExport
+      ? redactSensitiveValue(result.scenarioPlanExport)
+      : undefined,
+    traceArtifact: result.traceArtifact
+      ? redactSensitiveValue(result.traceArtifact)
+      : undefined,
+    scenarioPlanExportArtifact: result.scenarioPlanExportArtifact
+      ? redactSensitiveValue(result.scenarioPlanExportArtifact)
+      : undefined
+  };
 }
 
 function agentIdempotencyRecordPath(config: Pick<RunnerConfig, "artifactsRoot">, idempotencyKey: string): string {
