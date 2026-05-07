@@ -541,6 +541,93 @@ test("[Agent Checkout Smoke] 실제 Playwright 경로에서 장바구니, 카트
   }
 });
 
+test("[Agent Login Blocker Smoke] 실제 Playwright 경로에서 로그인 벽을 decision 전에 감지한다", async () => {
+  const fixtureRoot = await mkdtemp(join(tmpdir(), "wedge-runner-agent-blocker-site-"));
+  const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-agent-blocker-artifacts-"));
+
+  try {
+    const { blockerUrl } = await createAgentBlockerFixtureSite(fixtureRoot, {
+      fileName: "account.html",
+      title: "Account login required",
+      heading: "Login required",
+      body: "Please log in to continue to checkout."
+    });
+    const result = await executeRealAgentTask({
+      task: createAgentCheckoutTask(blockerUrl),
+      artifactsRoot
+    });
+
+    assert.equal(result.execution.summary.completedStepCount, 1);
+    assert.equal(result.execution.summary.stopped, true);
+    assert.equal(result.execution.trace.outcome.status, "BLOCKED");
+    assert.equal(result.execution.trace.turns.at(-1)?.preDecisionVerification?.outcome, "BLOCKED_LOGIN");
+    assert.deepEqual(result.actionCompletedTargets, [blockerUrl]);
+    assert.equal(result.traceArtifacts.length, 1);
+  } finally {
+    await rm(fixtureRoot, { recursive: true, force: true });
+    await rm(artifactsRoot, { recursive: true, force: true });
+  }
+});
+
+test("[Agent CAPTCHA Blocker Smoke] 실제 Playwright 경로에서 CAPTCHA 벽을 decision 전에 감지한다", async () => {
+  const fixtureRoot = await mkdtemp(join(tmpdir(), "wedge-runner-agent-challenge-site-"));
+  const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-agent-challenge-artifacts-"));
+
+  try {
+    const { blockerUrl } = await createAgentBlockerFixtureSite(fixtureRoot, {
+      fileName: "gate.html",
+      title: "Verify you are human - CAPTCHA",
+      heading: "Security check",
+      body: "Complete the CAPTCHA before checkout can continue."
+    });
+    const result = await executeRealAgentTask({
+      task: createAgentCheckoutTask(blockerUrl),
+      artifactsRoot
+    });
+
+    assert.equal(result.execution.summary.completedStepCount, 1);
+    assert.equal(result.execution.summary.stopped, true);
+    assert.equal(result.execution.trace.outcome.status, "BLOCKED");
+    assert.equal(result.execution.trace.turns.at(-1)?.preDecisionVerification?.outcome, "BLOCKED_CAPTCHA");
+    assert.deepEqual(result.actionCompletedTargets, [blockerUrl]);
+    assert.equal(result.traceArtifacts.length, 1);
+  } finally {
+    await rm(fixtureRoot, { recursive: true, force: true });
+    await rm(artifactsRoot, { recursive: true, force: true });
+  }
+});
+
+test("[Agent External Checkout Smoke] allowlist된 외부 checkout redirect는 실제 Playwright 경로에서 허용한다", async () => {
+  const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-agent-external-artifacts-"));
+  const fixture = await createAgentExternalCheckoutFixtureServer();
+
+  try {
+    const task = createAgentCheckoutTask(fixture.productUrl);
+    task.allowed_navigation.allowed_checkout_redirect_origins = [fixture.checkoutOrigin];
+
+    const result = await executeRealAgentTask({
+      task,
+      artifactsRoot
+    });
+
+    assert.equal(result.execution.summary.completedStepCount, 4);
+    assert.equal(result.execution.summary.stopped, true);
+    assert.equal(result.execution.trace.outcome.status, "SUCCESS");
+    assert.ok(result.snapshot.finalUrl.startsWith(fixture.checkoutOrigin));
+    assert.deepEqual(result.actionCompletedTargets, [
+      fixture.productUrl,
+      "#add-to-cart",
+      "#cart-link",
+      "#external-checkout-link"
+    ]);
+    assert.ok(!result.actionCompletedTargets.includes("#pay-now"));
+    assert.equal(result.traceArtifacts.length, 1);
+  } finally {
+    await fixture.close();
+    await rm(artifactsRoot, { recursive: true, force: true });
+  }
+});
+
 test("[MVP 가격/결제] checkout 진입점까지 이동하되 실제 결제 commit 전 중단한다", async () => {
   const fixtureRoot = await mkdtemp(join(tmpdir(), "wedge-runner-mvp-site-"));
   const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-mvp-artifacts-"));
@@ -1871,6 +1958,187 @@ async function createAgentCheckoutFixtureSite(root: string): Promise<{ productUr
   return {
     productUrl: pathToFileURL(productFile).toString()
   };
+}
+
+async function createAgentBlockerFixtureSite(
+  root: string,
+  input: {
+    fileName: string;
+    title: string;
+    heading: string;
+    body: string;
+  }
+): Promise<{ blockerUrl: string }> {
+  const blockerFile = join(root, input.fileName);
+
+  await writeFile(
+    blockerFile,
+    `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>${input.title}</title>
+  </head>
+  <body>
+    <main>
+      <h1>${input.heading}</h1>
+      <p>${input.body}</p>
+      <button id="blocked-action" type="button">Continue</button>
+    </main>
+  </body>
+</html>`,
+    "utf8"
+  );
+
+  return {
+    blockerUrl: pathToFileURL(blockerFile).toString()
+  };
+}
+
+async function createAgentExternalCheckoutFixtureServer(): Promise<{
+  productUrl: string;
+  checkoutOrigin: string;
+  close: () => Promise<void>;
+}> {
+  let checkoutOrigin = "";
+
+  const checkoutServer = createServer((request, response) => {
+    const requestUrl = new URL(request.url ?? "/", "http://127.0.0.1");
+
+    if (requestUrl.pathname === "/session") {
+      response.writeHead(200, {
+        "content-type": "text/html; charset=utf-8"
+      });
+      response.end(`<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Checkout Redirect Session</title>
+  </head>
+  <body>
+    <main>
+      <h1>Checkout</h1>
+      <p>External checkout session is ready.</p>
+      <button id="pay-now" type="button">Pay now</button>
+    </main>
+  </body>
+</html>`);
+      return;
+    }
+
+    response.writeHead(404, {
+      "content-type": "text/plain; charset=utf-8"
+    });
+    response.end("Not found");
+  });
+
+  await listenOnLocalhost(checkoutServer);
+  checkoutOrigin = serverOrigin(checkoutServer);
+
+  const storefrontServer = createServer((request, response) => {
+    const requestUrl = new URL(request.url ?? "/", "http://127.0.0.1");
+
+    if (requestUrl.pathname === "/product") {
+      response.writeHead(200, {
+        "content-type": "text/html; charset=utf-8"
+      });
+      response.end(`<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>External Product Fixture</title>
+  </head>
+  <body>
+    <main>
+      <h1>External product fixture</h1>
+      <button id="add-to-cart" type="button">Add to cart</button>
+      <a id="cart-link" href="/cart" hidden>View cart</a>
+    </main>
+    <script>
+      document.getElementById("add-to-cart")?.addEventListener("click", () => {
+        document.getElementById("cart-link")?.removeAttribute("hidden");
+      });
+    </script>
+  </body>
+</html>`);
+      return;
+    }
+
+    if (requestUrl.pathname === "/cart") {
+      response.writeHead(200, {
+        "content-type": "text/html; charset=utf-8"
+      });
+      response.end(`<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Cart</title>
+  </head>
+  <body>
+    <main>
+      <h1>Cart</h1>
+      <a id="external-checkout-link" href="${checkoutOrigin}/session">Proceed to checkout</a>
+    </main>
+  </body>
+</html>`);
+      return;
+    }
+
+    response.writeHead(404, {
+      "content-type": "text/plain; charset=utf-8"
+    });
+    response.end("Not found");
+  });
+
+  try {
+    await listenOnLocalhost(storefrontServer);
+  } catch (error) {
+    await closeServer(checkoutServer);
+    throw error;
+  }
+
+  return {
+    productUrl: `${serverOrigin(storefrontServer)}/product`,
+    checkoutOrigin,
+    close: async () => {
+      await Promise.all([
+        closeServer(storefrontServer),
+        closeServer(checkoutServer)
+      ]);
+    }
+  };
+}
+
+async function listenOnLocalhost(server: ReturnType<typeof createServer>): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      server.off("error", reject);
+      resolve();
+    });
+  });
+}
+
+function serverOrigin(server: ReturnType<typeof createServer>): string {
+  const address = server.address();
+  if (!address || typeof address === "string") {
+    throw new Error("Unable to resolve fixture server address");
+  }
+
+  return `http://127.0.0.1:${address.port}`;
+}
+
+async function closeServer(server: ReturnType<typeof createServer>): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    server.close((error) => {
+      if (error) {
+        reject(error);
+        return;
+      }
+
+      resolve();
+    });
+  });
 }
 
 function createAgentCheckoutTask(startUrl: string): AgentTask {

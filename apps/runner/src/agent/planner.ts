@@ -248,6 +248,10 @@ function targetFromComponent(component: InteractiveComponentObservationItem): Ta
     target.text = component.text;
   }
 
+  if (component.href) {
+    target.url = component.href;
+  }
+
   return target;
 }
 
@@ -259,6 +263,7 @@ function candidateText(component: InteractiveComponentObservationItem): string {
   return [
     component.text,
     component.role ?? "",
+    component.href ?? "",
     component.selector ?? "",
     component.tag
   ].join(" ");

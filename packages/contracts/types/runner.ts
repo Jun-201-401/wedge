@@ -94,6 +94,7 @@ export interface ScenarioPlan {
   };
   safety: {
     allow_external_navigation: boolean;
+    allowed_external_origins?: string[];
     allow_payment_commit: boolean;
     allow_destructive_action: boolean;
     use_synthetic_inputs: boolean;
@@ -521,6 +522,7 @@ export interface InteractiveComponentObservationItem {
   text: string;
   selector: string | null;
   role: string | null;
+  href?: string | null;
   tag: string;
   clickable: boolean;
   clicked_in_scenario: boolean;

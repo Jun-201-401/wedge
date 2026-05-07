@@ -1732,7 +1732,7 @@ Completed:
 - Checkout heuristic prioritizes add-to-cart, cart navigation, and checkout entry before generic CTA clicks.
 - Agent queue concurrency is isolated with RUNNER_AGENT_CONCURRENCY.
 - Agent event/trace callbacks are emitted to dedicated `agent-events` and `agent-traces` endpoints.
-- A real Playwright checkout smoke covers product entry, add-to-cart, cart navigation, checkout entry, TRACE persistence, agent event/trace callback emission, and stop-before-payment behavior.
+- Real Playwright checkout smoke coverage includes product entry, add-to-cart, cart navigation, checkout entry, TRACE persistence, agent event/trace callback emission, stop-before-payment behavior, login blocker detection, CAPTCHA blocker detection, and allowlisted external checkout redirects.
 
 Remaining:
 - Add LLM decision client behind config.

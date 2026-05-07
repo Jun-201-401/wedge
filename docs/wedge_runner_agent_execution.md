@@ -640,6 +640,8 @@ apps/runner/test/playwright-mode.test.ts
 -> checkout 진입
 -> TRACE artifact / agent-events / agent-traces 확인
 -> final payment button 미클릭 확인
+-> login blocker / CAPTCHA blocker 실제 감지 확인
+-> allowed checkout redirect origin 실제 이동 확인
 ```
 
 실행 명령:
