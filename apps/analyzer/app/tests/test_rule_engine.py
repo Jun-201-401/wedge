@@ -193,6 +193,72 @@ class RuleEngineTest(unittest.TestCase):
         self.assertEqual(decision_by_stage["COMMIT"]["status"], "NOT_APPLICABLE")
         self.assertEqual(result["summary"]["task_success"], "partial")
 
+    def test_interactive_components_issue_keeps_component_bounds(self) -> None:
+        packet = load_sample_packet()
+        packet["aggregate_signals"]["primary_cta_count_by_stage"] = {}
+        packet["checkpoints"][0]["observations"] = [
+            observation
+            for observation in packet["checkpoints"][0]["observations"]
+            if observation["type"] != "cta_cluster"
+        ]
+        packet["checkpoints"][0]["observations"].append(
+            {
+                "observation_id": "obs_interactive_components",
+                "type": "interactive_components",
+                "stage": "CTA",
+                "source": ["dom", "layout", "screenshot"],
+                "confidence": 0.82,
+                "data": {
+                    "primary_like_component_count": 3,
+                    "components": [
+                        {
+                            "text": "Start free",
+                            "selector": "a.hero-start",
+                            "role": "link",
+                            "tag": "a",
+                            "clickable": True,
+                            "clicked_in_scenario": True,
+                            "is_cta_candidate": True,
+                            "is_primary_like": True,
+                            "bounds": {"x": 520, "y": 360, "width": 220, "height": 56},
+                        },
+                        {
+                            "text": "Try demo",
+                            "selector": "button.hero-demo",
+                            "role": "button",
+                            "tag": "button",
+                            "clickable": True,
+                            "clicked_in_scenario": False,
+                            "is_cta_candidate": True,
+                            "is_primary_like": True,
+                            "bounds": {"x": 760, "y": 360, "width": 180, "height": 56},
+                        },
+                        {
+                            "text": "Contact sales",
+                            "selector": "a.hero-sales",
+                            "role": "link",
+                            "tag": "a",
+                            "clickable": True,
+                            "clicked_in_scenario": False,
+                            "is_cta_candidate": True,
+                            "is_primary_like": True,
+                            "bounds": {"x": 960, "y": 360, "width": 190, "height": 56},
+                        },
+                    ],
+                },
+            }
+        )
+
+        result = analyze_evidence_packet(packet)
+
+        issue = [issue for issue in result["issues"] if issue["criterion_id"] == "PATH-CTA-002"][0]
+        self.assertEqual(issue["evidence_refs"], ["cp_001.obs_interactive_components"])
+        location = issue["evidence_locations"][0]
+        self.assertEqual(location["type"], "interactive_components")
+        self.assertEqual(location["components"][0]["selector"], "a.hero-start")
+        self.assertEqual(location["components"][0]["bounds"], {"x": 520, "y": 360, "width": 220, "height": 56})
+        self.assertEqual(location["problem_components"][0]["bounds"], {"x": 520, "y": 360, "width": 220, "height": 56})
+
     def test_missing_cta_evidence_is_not_user_facing_issue(self) -> None:
         packet = load_sample_packet()
         packet["aggregate_signals"]["primary_cta_count_by_stage"] = {"CTA": 0}

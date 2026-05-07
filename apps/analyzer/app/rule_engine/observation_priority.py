@@ -26,6 +26,7 @@ OBSERVATION_WEIGHTS: dict[str, ObservationWeight] = {
     "trust_signal": ObservationWeight(1.0, "trust evidence"),
     "cta_cluster": ObservationWeight(1.55, "CTA cluster evidence"),
     "cta_candidate": ObservationWeight(1.25, "CTA candidate evidence"),
+    "interactive_components": ObservationWeight(1.45, "interactive component evidence"),
     "cta_text_specificity": ObservationWeight(1.05, "CTA copy specificity evidence"),
     "visual_emphasis": ObservationWeight(1.0, "visual emphasis evidence"),
     "target_size_issue": ObservationWeight(1.15, "CTA target usability evidence"),
@@ -167,12 +168,13 @@ def _data_condition_multiplier(observation_type: str, data: Any) -> tuple[float,
     if not isinstance(data, dict):
         return 1.0, "no structured data condition"
 
-    if observation_type == "cta_cluster":
-        count = data.get("primary_like_cta_count")
+    if observation_type in {"cta_cluster", "interactive_components"}:
+        count_key = "primary_like_component_count" if observation_type == "interactive_components" else "primary_like_cta_count"
+        count = data.get(count_key)
         if isinstance(count, int) and count >= 3:
-            return 1.2, "primary_like_cta_count >= 3"
+            return 1.2, f"{count_key} >= 3"
         if count == 0:
-            return 1.15, "primary_like_cta_count = 0"
+            return 1.15, f"{count_key} = 0"
         return 1.0, "CTA count is within baseline range"
 
     if observation_type in {"network_failure", "console_error"}:
