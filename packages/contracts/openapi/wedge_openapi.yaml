@@ -444,6 +444,7 @@ paths:
       parameters:
       - name: Idempotency-Key
         in: header
+        description: 같은 Discovery 생성 시도에 대한 네트워크 재시도 dedupe 키다. 같은 project/url의 의도적 재검사는 새 키를 사용해야 하며, 같은 키로 다른 payload를 보내면 충돌로 처리될 수 있다.
         required: false
         schema:
           type: string
@@ -2602,6 +2603,60 @@ components:
       - MEDIUM
       - LOW
       - NOT_AVAILABLE
+    DiscoveryEvidenceSignal:
+      type: object
+      additionalProperties: false
+      properties:
+        signal_id:
+          type: string
+        source:
+          type: string
+          enum:
+          - text
+          - aria_label
+          - aria_labelled_by_text
+          - label_text
+          - alt
+          - title
+          - href
+          - selector
+          - name
+          - placeholder
+          - form_field
+          - shallow_navigation
+        signal_type:
+          type: string
+        value:
+          type: string
+        evidence_ref:
+          type: string
+          nullable: true
+        weight:
+          type: number
+          minimum: 0
+      required:
+      - source
+      - value
+    DiscoveryEvidenceSummary:
+      type: object
+      additionalProperties: false
+      properties:
+        matched_signals:
+          type: array
+          items:
+            $ref: '#/components/schemas/DiscoveryEvidenceSignal'
+        missing_signals:
+          type: array
+          items:
+            type: string
+        limitations:
+          type: array
+          items:
+            type: string
+      required:
+      - matched_signals
+      - missing_signals
+      - limitations
     DiscoveryStatus:
       type: string
       enum:
@@ -2704,6 +2759,9 @@ components:
           type: array
           items:
             type: string
+        evidenceSummary:
+          $ref: '#/components/schemas/DiscoveryEvidenceSummary'
+          nullable: true
         suggestedStartUrl:
           type: string
           format: uri
@@ -2796,6 +2854,9 @@ components:
           type: array
           items:
             type: string
+        evidenceSummary:
+          $ref: '#/components/schemas/DiscoveryEvidenceSummary'
+          nullable: true
         suggestedStartUrl:
           type: string
           format: uri

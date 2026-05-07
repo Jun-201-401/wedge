@@ -193,12 +193,42 @@ export interface DiscoveryFlowCandidate {
   reason: string;
 }
 
+export type DiscoveryEvidenceSignalSource =
+  | "text"
+  | "aria_label"
+  | "aria_labelled_by_text"
+  | "label_text"
+  | "alt"
+  | "title"
+  | "href"
+  | "selector"
+  | "name"
+  | "placeholder"
+  | "form_field"
+  | "shallow_navigation";
+
+export interface DiscoveryEvidenceSignal {
+  signal_id: string;
+  source: DiscoveryEvidenceSignalSource;
+  signal_type: string;
+  value: string;
+  evidence_ref?: string | null;
+  weight?: number;
+}
+
+export interface DiscoveryEvidenceSummary {
+  matched_signals: DiscoveryEvidenceSignal[];
+  missing_signals: string[];
+  limitations: string[];
+}
+
 export interface DiscoveryScenarioRecommendation {
   scenario_type: DiscoveryFlowType;
   recommendation_level: DiscoveryRecommendationLevel;
   confidence: number;
   reason: string;
   evidence_refs: string[];
+  evidence_summary?: DiscoveryEvidenceSummary | null;
   suggested_start_url?: string | null;
   suggested_target?: TargetDescriptorMap | null;
 }
@@ -279,6 +309,7 @@ export interface ScenarioAuthoringSelectedRecommendation {
   recommendation_level: DiscoveryRecommendationLevel;
   confidence: number;
   evidence_refs: string[];
+  evidence_summary?: DiscoveryEvidenceSummary | null;
   suggested_start_url?: string | null;
   suggested_target?: TargetDescriptorMap | null;
 }
@@ -389,6 +420,7 @@ export interface DiscoverySummaryPayload {
     confidence: number;
     reason: string;
     evidenceRefs: string[];
+    evidenceSummary?: DiscoveryEvidenceSummary | null;
     suggestedStartUrl?: string | null;
     suggestedTarget?: TargetDescriptorMap | null;
   }>;

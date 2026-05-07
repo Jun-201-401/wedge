@@ -225,6 +225,9 @@
             "type": "string"
           }
         },
+        "evidence_summary": {
+          "$ref": "site-discovery-result.schema.json#/$defs/evidence_summary"
+        },
         "suggested_start_url": {
           "type": ["string", "null"],
           "format": "uri"

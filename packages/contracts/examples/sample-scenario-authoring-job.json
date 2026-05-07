@@ -87,6 +87,25 @@
       "evidence_refs": [
         "cp_001.obs_002"
       ],
+      "evidence_summary": {
+        "matched_signals": [
+          {
+            "signal_id": "sig_001",
+            "source": "text",
+            "signal_type": "signup_keyword",
+            "value": "Start free",
+            "evidence_ref": "cp_001.obs_002",
+            "weight": 0.35
+          }
+        ],
+        "missing_signals": [
+          "safe_submit_boundary_not_verified"
+        ],
+        "limitations": [
+          "image_text_ocr_not_performed",
+          "authenticated_pages_not_explored"
+        ]
+      },
       "suggested_start_url": "https://example.com",
       "suggested_target": {
         "selector": "#signup-form",

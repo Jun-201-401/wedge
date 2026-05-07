@@ -299,6 +299,82 @@
       },
       "additionalProperties": false
     },
+    "evidence_signal": {
+      "type": "object",
+      "required": [
+        "signal_id",
+        "source",
+        "signal_type",
+        "value"
+      ],
+      "properties": {
+        "signal_id": {
+          "type": "string"
+        },
+        "source": {
+          "enum": [
+            "text",
+            "aria_label",
+            "aria_labelled_by_text",
+            "label_text",
+            "alt",
+            "title",
+            "href",
+            "selector",
+            "name",
+            "placeholder",
+            "form_field",
+            "shallow_navigation"
+          ]
+        },
+        "signal_type": {
+          "type": "string"
+        },
+        "value": {
+          "type": "string"
+        },
+        "evidence_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "weight": {
+          "type": "number",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    },
+    "evidence_summary": {
+      "type": "object",
+      "required": [
+        "matched_signals",
+        "missing_signals",
+        "limitations"
+      ],
+      "properties": {
+        "matched_signals": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/evidence_signal"
+          }
+        },
+        "missing_signals": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "limitations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
     "scenario_recommendation": {
       "type": "object",
       "required": [
@@ -328,6 +404,9 @@
           "items": {
             "type": "string"
           }
+        },
+        "evidence_summary": {
+          "$ref": "#/$defs/evidence_summary"
         },
         "suggested_start_url": {
           "type": [

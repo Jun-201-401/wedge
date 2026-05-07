@@ -145,6 +145,7 @@ CREATE TABLE scenario_recommendation (
     confidence          NUMERIC(4,3) NOT NULL CHECK (confidence >= 0 AND confidence <= 1),
     reason              TEXT NOT NULL,
     evidence_refs_jsonb JSONB NOT NULL DEFAULT '[]'::jsonb,
+    evidence_summary_jsonb JSONB NOT NULL DEFAULT '{}'::jsonb,
     suggested_start_url TEXT,
     suggested_target_jsonb JSONB NOT NULL DEFAULT '{}'::jsonb,
     created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
