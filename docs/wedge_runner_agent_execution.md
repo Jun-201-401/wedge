@@ -629,6 +629,19 @@ callback/checkpoint compatibility
 real Playwright smoke for one URL fixture
 ```
 
+현재 checkout-entry smoke 기준:
+
+```text
+apps/runner/test/playwright-mode.test.ts
+-> [Agent Checkout Smoke]
+-> product 진입
+-> add-to-cart
+-> cart 이동
+-> checkout 진입
+-> TRACE artifact / agent-events / agent-traces 확인
+-> final payment button 미클릭 확인
+```
+
 실행 명령:
 
 ```bash

@@ -2,7 +2,7 @@
 title: Runner Agent Runtime Implementation Plan
 document_type: implementation-plan
 status: proposal
-last_updated: 2026-05-06
+last_updated: 2026-05-07
 intended_use:
   - implementation_handoff
   - contract_design
@@ -1732,9 +1732,9 @@ Completed:
 - Checkout heuristic prioritizes add-to-cart, cart navigation, and checkout entry before generic CTA clicks.
 - Agent queue concurrency is isolated with RUNNER_AGENT_CONCURRENCY.
 - Agent event/trace callbacks are emitted to dedicated `agent-events` and `agent-traces` endpoints.
+- A real Playwright checkout smoke covers product entry, add-to-cart, cart navigation, checkout entry, TRACE persistence, agent event/trace callback emission, and stop-before-payment behavior.
 
 Remaining:
-- Add broader fixture/e2e smoke coverage for the agent checkout path.
 - Add LLM decision client behind config.
 - Add trace-to-ScenarioPlan export.
 ```
@@ -1870,6 +1870,7 @@ Runtime:
 Testing:
 - Fixtures 1-12 plus 9b exist or deferred with tracked TODOs.
 - Fixtures 1-9b pass before LLM client is enabled.
+- Agent checkout has at least one real Playwright smoke that reaches checkout entry and proves the final payment button is not clicked.
 - LLM tests are gated and cannot bypass schema/policy.
 - AgentTrace -> ScenarioPlan export passes at least one fixture.
 
