@@ -3,6 +3,7 @@ import type { CallbackClient } from "../callback/index.ts";
 import type { DeliveryIssue } from "../delivery/index.ts";
 import type { AgentCallbackEventType, AgentEventBatch, AgentTask, AgentTraceCallbackPayload, Artifact } from "../shared/contracts.ts";
 import { errorMessage, toIsoTimestamp } from "../shared/utils.ts";
+import { redactAgentTrace } from "./redaction.ts";
 import type { AgentTrace } from "./trace.ts";
 
 export function createAgentEventBatch(input: {
@@ -57,7 +58,7 @@ export function createAgentTraceCallbackPayload(input: {
     taskId: input.task.task_id,
     attemptId: input.task.attempt_id,
     occurredAt: toIsoTimestamp(),
-    trace: input.trace as unknown as Record<string, unknown>,
+    trace: redactAgentTrace(input.trace) as unknown as Record<string, unknown>,
     traceArtifact: input.traceArtifact
   };
 }

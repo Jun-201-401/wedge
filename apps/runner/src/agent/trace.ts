@@ -3,6 +3,7 @@ import type { BrowserPageSnapshot } from "../browser/playwright/index.ts";
 import type { AgentTask, ArtifactDraft, ScenarioAction } from "../shared/contracts.ts";
 import type { AgentDecision } from "./planner.ts";
 import type { AgentPolicyResult } from "./policy.ts";
+import { redactAgentTrace, redactSensitiveString } from "./redaction.ts";
 import type { AgentVerificationResult } from "./verifier.ts";
 
 export interface AgentTurnTrace {
@@ -51,8 +52,8 @@ export function createAgentTrace(task: AgentTask): AgentTrace {
 
 export function summarizeObservation(snapshot: BrowserPageSnapshot): AgentTurnTrace["observation"] {
   return {
-    finalUrl: snapshot.finalUrl,
-    title: snapshot.title,
+    finalUrl: redactSensitiveString(snapshot.finalUrl),
+    title: redactSensitiveString(snapshot.title),
     candidateCount: snapshot.interactiveComponents.length
   };
 }
@@ -64,6 +65,6 @@ export function createAgentTraceArtifact(trace: AgentTrace): ArtifactDraft {
     stepKey: "agent_trace",
     mimeType: "application/json",
     fileExtension: "json",
-    content: JSON.stringify(trace, null, 2)
+    content: JSON.stringify(redactAgentTrace(trace), null, 2)
   };
 }

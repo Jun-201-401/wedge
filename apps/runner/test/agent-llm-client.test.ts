@@ -196,3 +196,72 @@ test("[Agent LLM Decision] checkpoint 응답은 heuristic click으로 변환하�
   assert.equal(decision.action.type, "checkpoint");
   assert.equal(decision.targetKey, null);
 });
+
+test("[Agent LLM Decision] prompt payload는 민감 문자열을 redaction 후 전송한다", async () => {
+  let capturedPayload: Record<string, unknown> | null = null;
+  const transport: AgentLlmDecisionTransport = {
+    complete: async (request) => {
+      capturedPayload = request.payload;
+      return {
+        decision: {
+          kind: "checkpoint",
+          actionType: "checkpoint",
+          reason: "Stop before using mvp.tester@example.com",
+          confidence: 0.6
+        }
+      };
+    }
+  };
+  const client = new AgentLlmDecisionClient({
+    endpoint: "https://llm.example/decision",
+    model: "agent-model",
+    timeoutMs: 1_000,
+    transport
+  });
+
+  await client.decide({
+    goal: "Find checkout for mvp.tester@example.com and 010-1234-5678",
+    startUrl: "https://example.com/product?email=mvp.tester@example.com&token=secret-token",
+    state: {
+      ...createInitialAgentState(),
+      started: true
+    },
+    maxScrolls: 1,
+    observation: {
+      snapshot: createSimulatedPageSnapshot(createMinimalPlan(), {
+        finalUrl: "https://example.com/product?phone=01012345678",
+        title: "Account mvp.tester@example.com",
+        interactiveComponents: [
+          {
+            text: "Checkout with card 4242 4242 4242 4242",
+            selector: "#checkout",
+            role: "link",
+            href: "https://checkout.example/session?token=checkout-secret&email=mvp.tester@example.com",
+            tag: "a",
+            clickable: true,
+            clicked_in_scenario: false,
+            is_cta_candidate: true,
+            is_primary_like: true,
+            bounds: {
+              x: 0,
+              y: 0,
+              width: 100,
+              height: 40,
+              unit: "css_px"
+            }
+          }
+        ]
+      })
+    }
+  });
+
+  const serializedPayload = JSON.stringify(capturedPayload);
+  assert.doesNotMatch(serializedPayload, /mvp\.tester@example\.com/);
+  assert.doesNotMatch(serializedPayload, /010-?1234-?5678/);
+  assert.doesNotMatch(serializedPayload, /4242 4242 4242 4242/);
+  assert.doesNotMatch(serializedPayload, /checkout-secret|secret-token/);
+  assert.match(serializedPayload, /REDACTED_EMAIL/);
+  assert.match(serializedPayload, /REDACTED_PHONE/);
+  assert.match(serializedPayload, /REDACTED_CARD/);
+  assert.match(serializedPayload, /REDACTED_SECRET/);
+});

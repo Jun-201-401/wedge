@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { AgentTask, ArtifactDraft, ScenarioAction, ScenarioPlan, ScenarioStep, SettleStrategy } from "../shared/contracts.ts";
 import { toIsoTimestamp } from "../shared/utils.ts";
+import { redactScenarioAction, redactSensitiveString, redactSensitiveValue, redactSettleStrategy } from "./redaction.ts";
 import { createAgentRuntimePlan } from "./runtime-plan.ts";
 import type { AgentTrace, AgentTurnTrace } from "./trace.ts";
 
@@ -64,13 +65,13 @@ export function exportAgentTraceToScenarioPlan(input: {
     };
   }
 
-  const finalUrl = findFinalUrl(input.trace) ?? input.task.start_url;
+  const finalUrl = redactSensitiveString(findFinalUrl(input.trace) ?? input.task.start_url);
   const scenarioPlan: ScenarioPlan = {
     ...createAgentRuntimePlan(input.task),
     plan_id: `agent-export-${input.task.task_id}`,
     scenario_type: "custom_compiled",
-    goal: input.task.goal ?? input.task.goal_type,
-    start_url: input.task.start_url,
+    goal: redactSensitiveString(input.task.goal ?? input.task.goal_type),
+    start_url: redactSensitiveString(input.task.start_url),
     steps: [
       ...replaySteps,
       createFinalCheckpointStep(replaySteps.length + 1),
@@ -94,7 +95,7 @@ export function createAgentScenarioPlanExportArtifact(traceExport: AgentTraceSce
     stepKey: "agent_scenario_plan_export",
     mimeType: "application/json",
     fileExtension: "json",
-    content: JSON.stringify(traceExport, null, 2)
+    content: JSON.stringify(redactSensitiveValue(traceExport), null, 2)
   };
 }
 
@@ -156,7 +157,7 @@ function turnToScenarioStep(
   return {
     step_id: `agent_export_turn_${String(turn.turn).padStart(3, "0")}`,
     stage: turn.decision.stage,
-    description: turn.decision.description,
+    description: redactSensitiveString(turn.decision.description),
     action: cloneAction(turn.decision.action),
     settle_strategy: cloneSettleStrategy(turn.decision.settleStrategy),
     checkpoint: turn.decision.action.type === "checkpoint" || turn.postActionVerification?.satisfied === true
@@ -213,9 +214,9 @@ function findFinalUrl(trace: AgentTrace): string | null {
 }
 
 function cloneAction(action: ScenarioAction): ScenarioAction {
-  return JSON.parse(JSON.stringify(action)) as ScenarioAction;
+  return redactScenarioAction(JSON.parse(JSON.stringify(action)) as ScenarioAction);
 }
 
 function cloneSettleStrategy(settleStrategy: SettleStrategy): SettleStrategy {
-  return JSON.parse(JSON.stringify(settleStrategy)) as SettleStrategy;
+  return redactSettleStrategy(JSON.parse(JSON.stringify(settleStrategy)) as SettleStrategy);
 }

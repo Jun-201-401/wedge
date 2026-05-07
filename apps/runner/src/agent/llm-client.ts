@@ -2,6 +2,7 @@ import type { RunnerConfig } from "../config/index.ts";
 import type { InteractiveComponentObservationItem, ScenarioAction, ScenarioStage, TargetDescriptorMap } from "../shared/contracts.ts";
 import { errorMessage, logOperationalEvent } from "../shared/utils.ts";
 import { HeuristicDecisionClient, targetKey, type AgentDecision, type AgentDecisionClient, type AgentDecisionInput } from "./planner.ts";
+import { redactSensitiveString, redactSensitiveValue } from "./redaction.ts";
 
 export interface AgentLlmDecisionTransport {
   complete: (request: AgentLlmDecisionRequest) => Promise<unknown>;
@@ -112,6 +113,39 @@ function createFetchLlmDecisionTransport(): AgentLlmDecisionTransport {
 }
 
 function createLlmRequestPayload(input: AgentDecisionInput, model: string): Record<string, unknown> {
+  const userPayload = redactSensitiveValue({
+    goal: input.goal,
+    startUrl: input.startUrl,
+    state: {
+      started: input.state.started,
+      scrollCount: input.state.scrollCount,
+      clickedTargetKeys: [...input.state.clickedTargetKeys]
+    },
+    page: {
+      finalUrl: input.observation.snapshot.finalUrl,
+      title: input.observation.snapshot.title,
+      candidates: input.observation.snapshot.interactiveComponents.map((component) => ({
+        targetKey: targetKey(component),
+        text: component.text,
+        selector: component.selector,
+        role: component.role,
+        href: component.href,
+        tag: component.tag,
+        isPrimaryLike: component.is_primary_like,
+        isCtaCandidate: component.is_cta_candidate
+      }))
+    },
+    outputSchema: {
+      kind: "act|checkpoint|finish",
+      targetKey: "observed targetKey for click, null otherwise",
+      actionType: "goto|click|scroll|checkpoint",
+      scrollY: "number, only for scroll",
+      stage: "FIRST_VIEW|VALUE|CTA|INPUT|COMMIT",
+      reason: "short reason",
+      confidence: "0..1"
+    }
+  });
+
   return {
     model,
     temperature: 0,
@@ -130,38 +164,7 @@ function createLlmRequestPayload(input: AgentDecisionInput, model: string): Reco
       },
       {
         role: "user",
-        content: JSON.stringify({
-          goal: input.goal,
-          startUrl: input.startUrl,
-          state: {
-            started: input.state.started,
-            scrollCount: input.state.scrollCount,
-            clickedTargetKeys: [...input.state.clickedTargetKeys]
-          },
-          page: {
-            finalUrl: input.observation.snapshot.finalUrl,
-            title: input.observation.snapshot.title,
-            candidates: input.observation.snapshot.interactiveComponents.map((component) => ({
-              targetKey: targetKey(component),
-              text: component.text,
-              selector: component.selector,
-              role: component.role,
-              href: component.href,
-              tag: component.tag,
-              isPrimaryLike: component.is_primary_like,
-              isCtaCandidate: component.is_cta_candidate
-            }))
-          },
-          outputSchema: {
-            kind: "act|checkpoint|finish",
-            targetKey: "observed targetKey for click, null otherwise",
-            actionType: "goto|click|scroll|checkpoint",
-            scrollY: "number, only for scroll",
-            stage: "FIRST_VIEW|VALUE|CTA|INPUT|COMMIT",
-            reason: "short reason",
-            confidence: "0..1"
-          }
-        })
+        content: JSON.stringify(userPayload)
       }
     ]
   };
@@ -171,7 +174,7 @@ function parseLlmDecision(rawResponse: unknown, input: AgentDecisionInput): Agen
   const candidate = extractDecisionCandidate(rawResponse);
   const record = asRecord(candidate, "LLM decision");
   const kind = readString(record, "kind");
-  const reason = readString(record, "reason") ?? "LLM selected a constrained browser decision.";
+  const reason = redactSensitiveString(readString(record, "reason") ?? "LLM selected a constrained browser decision.");
   const confidence = clampConfidence(readNumber(record, "confidence") ?? 0.5);
   const stage = readStage(record, "stage") ?? "CTA";
 
@@ -253,7 +256,7 @@ function parseLlmDecision(rawResponse: unknown, input: AgentDecisionInput): Agen
 
     return {
       kind: "act",
-      description: `LLM selected click target: ${selectedTargetKey}`,
+      description: `LLM selected click target: ${redactSensitiveString(selectedTargetKey)}`,
       reason,
       confidence,
       action: {
