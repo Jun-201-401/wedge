@@ -231,13 +231,23 @@ Recommended config:
 RUNNER_MQ_QUEUE_RUN_EXECUTE=run.execute.request
 RUNNER_MQ_QUEUE_DISCOVERY_EXECUTE=discovery.execute.request
 RUNNER_MQ_QUEUE_AGENT_EXECUTE=agent.execute.request
-RUNNER_STATIC_CONCURRENCY=4
+RUNNER_MQ_PREFETCH=4
 RUNNER_AGENT_CONCURRENCY=1
 ```
 
 Discovery queue/routing remains the existing discovery behavior. Agent isolation is about preventing long-running agent jobs from starving deterministic `run.execute.request` jobs; it does not remove or merge `discovery.execute.request`.
 
 If the current RabbitMQ consumer abstraction only supports one prefetch/concurrency value, update the runtime before enabling agent MQ consumption.
+
+Current implementation checkpoint:
+
+```text
+Implemented in apps/runner:
+- run.execute.request and discovery.execute.request continue to use RUNNER_MQ_PREFETCH.
+- agent.execute.request uses separate RUNNER_AGENT_CONCURRENCY.
+- RabbitMQ consumers use separate channels so agent prefetch does not consume the shared run/discovery channel budget.
+- RUNNER_AGENT_CONCURRENCY defaults to 1 and rejects non-positive values.
+```
 
 # 5. Contract-first Work
 
@@ -1684,13 +1694,13 @@ cd apps/runner && npm test -- test/agent/heuristic-agent.test.ts test/agent/trac
 Tasks:
 
 ```text
-Implement worker/agent-worker.ts.
-Update app.ts to process AgentExecuteMessage.
-Update messaging parser.
-Update RabbitMQ consumer to consume agent.execute.request from separate queue/routing config if configured.
-Add agent-specific concurrency configuration.
-Persist AgentTrace as TRACE artifact.
-Emit accepted/finished/failed through existing run lifecycle callbacks.
+DONE: Implement worker/agent-worker.ts.
+DONE: Update app.ts to process AgentExecuteMessage.
+DONE: Update messaging parser.
+DONE: Update RabbitMQ consumer to consume agent.execute.request from separate queue/routing config if configured.
+DONE: Add agent-specific concurrency configuration.
+DONE: Persist AgentTrace as TRACE artifact.
+DONE: Emit accepted/finished/failed through existing run lifecycle callbacks.
 Emit agent-events/agent-traces through the agent-specific callback endpoints.
 ```
 
@@ -1709,6 +1719,24 @@ Verification:
 
 ```bash
 cd apps/runner && npm test -- test/app.test.ts test/messaging.test.ts test/rabbitmq-consumer.test.ts test/agent/agent-worker.test.ts
+```
+
+Implementation status as of 2026-05-07:
+
+```text
+Completed:
+- In-memory AgentTrace is attached to agent worker results.
+- AgentTrace is persisted as TRACE artifact when artifact_policy.capture_trace is enabled.
+- Pre-decision verification runs immediately after observation and can stop on success, login wall, CAPTCHA, or final payment/order risk.
+- Policy evaluation honors AgentTask risk_policy for navigation, cart mutation, checkout navigation, shipping form entry, payment info entry, final payment/order commit, destructive action, and external message send.
+- Checkout heuristic prioritizes add-to-cart, cart navigation, and checkout entry before generic CTA clicks.
+- Agent queue concurrency is isolated with RUNNER_AGENT_CONCURRENCY.
+
+Remaining:
+- Emit agent-events/agent-traces through agent-specific callback endpoints.
+- Add broader fixture/e2e smoke coverage for the agent checkout path.
+- Add LLM decision client behind config.
+- Add trace-to-ScenarioPlan export.
 ```
 
 ## Phase 7: LLM Decision Client
@@ -1881,7 +1909,6 @@ Observer cannot provide stable executable candidates.
 Policy needs arbitrary LLM judgment to allow/block risky actions.
 Verifier can only prove success through LLM reasoning without structured evidence.
 Fixture tests are flaky under headless Playwright.
-Agent queue/concurrency cannot be isolated from static run work.
 Trace or observation payloads cannot be bounded/redacted safely.
 Iframe final commit/payment candidates cannot be detected in the fixture set.
 Product selection requires arbitrary catalog browsing for the MVP.

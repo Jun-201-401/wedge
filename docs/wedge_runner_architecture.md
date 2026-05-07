@@ -294,7 +294,7 @@ RUNNER_MQ_ARTIFACT_OUTBOX_WORKER_ENABLED=false
 
 - idempotency key 처리
 - poison message 처리
-- worker concurrency 정책
+- worker concurrency 정책: static run/discovery는 `RUNNER_MQ_PREFETCH`, agent는 `RUNNER_AGENT_CONCURRENCY`로 분리됨. 남은 작업은 운영 기본값/스케일링 가이드 확정.
 
 ## 4.2 Spring internal callback HTTP client
 
