@@ -6,19 +6,20 @@ import { ScenarioExecutionError, type ScenarioExecutionSummary } from "../scenar
 import { emitStepEventBestEffort } from "../scenario/executor/step-events.ts";
 import { executeScenarioStep } from "../scenario/executor/step-executor.ts";
 import type { ArtifactStore } from "../storage/index.ts";
-import type { AgentTask, ScenarioPlan, ScenarioStep } from "../shared/contracts.ts";
+import type { AgentTask, Artifact, ScenarioPlan, ScenarioStep } from "../shared/contracts.ts";
 import { classifyRunnerFailure, errorMessage, logOperationalEvent } from "../shared/utils.ts";
 import { HeuristicDecisionClient, type AgentDecision, type AgentDecisionClient } from "./planner.ts";
 import { observePage } from "./observation.ts";
 import { evaluateAgentPolicy } from "./policy.ts";
 import { createInitialAgentState } from "./state.ts";
-import { createAgentTrace, summarizeObservation, type AgentTrace, type AgentTurnTrace } from "./trace.ts";
+import { createAgentTrace, createAgentTraceArtifact, summarizeObservation, type AgentTrace, type AgentTurnTrace } from "./trace.ts";
 import { verifyGoal } from "./verifier.ts";
 
 export interface AgentExecutionResult {
   summary: ScenarioExecutionSummary;
   delivery: DeliverySummary;
   trace: AgentTrace;
+  traceArtifact?: Artifact;
 }
 
 export interface AgentExecutorInput {
@@ -228,6 +229,15 @@ export async function executeAgentRun(input: AgentExecutorInput): Promise<AgentE
     };
   }
 
+  const traceDelivery = await persistAgentTraceArtifact({
+    task: input.task,
+    runId: input.runId,
+    trace,
+    artifactStore: input.artifactStore,
+    callbackClient: input.callbackClient
+  });
+  deliveryIssues.push(...traceDelivery.deliveryIssues);
+
   return {
     summary: {
       completedStepCount,
@@ -235,7 +245,63 @@ export async function executeAgentRun(input: AgentExecutorInput): Promise<AgentE
       stopped
     },
     delivery: createDeliverySummary(mergeDeliveryIssues(deliveryIssues)),
-    trace
+    trace,
+    traceArtifact: traceDelivery.artifact
+  };
+}
+
+async function persistAgentTraceArtifact({
+  task,
+  runId,
+  trace,
+  artifactStore,
+  callbackClient
+}: {
+  task: AgentTask;
+  runId: string;
+  trace: AgentTrace;
+  artifactStore: ArtifactStore;
+  callbackClient: CallbackClient;
+}): Promise<{ artifact?: Artifact; deliveryIssues: DeliveryIssue[] }> {
+  if (task.artifact_policy?.capture_trace === false) {
+    return {
+      deliveryIssues: []
+    };
+  }
+
+  const deliveryIssues: DeliveryIssue[] = [];
+  let storedArtifacts: Artifact[] = [];
+
+  try {
+    storedArtifacts = await artifactStore.persistArtifacts({
+      runId,
+      artifacts: [createAgentTraceArtifact(trace)]
+    });
+  } catch (error) {
+    deliveryIssues.push({
+      scope: "artifact-storage",
+      stepKey: "agent_trace",
+      message: `agent trace artifact storage failed: ${errorMessage(error)}`
+    });
+  }
+
+  if (storedArtifacts.length > 0) {
+    try {
+      await callbackClient.sendArtifacts(runId, {
+        artifacts: storedArtifacts
+      });
+    } catch (error) {
+      deliveryIssues.push({
+        scope: "artifacts-callback",
+        stepKey: "agent_trace",
+        message: `agent trace artifact callback failed: ${errorMessage(error)}`
+      });
+    }
+  }
+
+  return {
+    artifact: storedArtifacts[0],
+    deliveryIssues
   };
 }
 

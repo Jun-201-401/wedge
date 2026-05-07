@@ -1,5 +1,6 @@
+import { randomUUID } from "node:crypto";
 import type { BrowserPageSnapshot } from "../browser/playwright/index.ts";
-import type { AgentTask, ScenarioAction } from "../shared/contracts.ts";
+import type { AgentTask, ArtifactDraft, ScenarioAction } from "../shared/contracts.ts";
 import type { AgentDecision } from "./planner.ts";
 import type { AgentPolicyResult } from "./policy.ts";
 import type { AgentVerificationResult } from "./verifier.ts";
@@ -53,5 +54,16 @@ export function summarizeObservation(snapshot: BrowserPageSnapshot): AgentTurnTr
     finalUrl: snapshot.finalUrl,
     title: snapshot.title,
     candidateCount: snapshot.interactiveComponents.length
+  };
+}
+
+export function createAgentTraceArtifact(trace: AgentTrace): ArtifactDraft {
+  return {
+    artifactId: randomUUID(),
+    artifactType: "TRACE",
+    stepKey: "agent_trace",
+    mimeType: "application/json",
+    fileExtension: "json",
+    content: JSON.stringify(trace, null, 2)
   };
 }

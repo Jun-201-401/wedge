@@ -5,7 +5,7 @@ import type { CapturePipeline } from "../capture/index.ts";
 import type { RunnerConfig } from "../config/index.ts";
 import { createDeliverySummary, mergeDeliveryIssues, type DeliverySummary } from "../delivery/index.ts";
 import { ScenarioExecutionError, type ScenarioExecutionSummary } from "../scenario/executor/index.ts";
-import type { AgentExecuteMessage } from "../shared/contracts.ts";
+import type { AgentExecuteMessage, Artifact } from "../shared/contracts.ts";
 import { classifyRunnerFailure, errorMessage, logOperationalEvent } from "../shared/utils.ts";
 import type { ArtifactStore } from "../storage/index.ts";
 import type { AgentTrace } from "../agent/trace.ts";
@@ -18,6 +18,7 @@ export interface AgentRunnerExecutionResult {
   summary: ScenarioExecutionSummary;
   delivery: DeliverySummary;
   trace: AgentTrace;
+  traceArtifact?: Artifact;
 }
 
 export interface RegisterAgentWorkerInput {
@@ -87,6 +88,7 @@ export function registerAgentWorker({
           browserSessionId: session.id,
           summary: executionResult.summary,
           trace: executionResult.trace,
+          traceArtifact: executionResult.traceArtifact,
           delivery: createDeliverySummary(
             mergeDeliveryIssues(executionResult.delivery.issues, finishedDeliveryIssues)
           )
