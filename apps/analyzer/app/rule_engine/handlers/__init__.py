@@ -4,6 +4,7 @@ from collections.abc import Callable
 from typing import Any
 
 from app.rule_engine.handlers.form_labels import evaluate_form_labels
+from app.rule_engine.handlers.journey import evaluate_journey_action_result, evaluate_journey_goal_cta_mismatch
 from app.rule_engine.handlers.path_cta import evaluate_path_cta_competition, evaluate_path_cta_presence
 from app.rule_engine.handlers.reliability import evaluate_reliability
 from app.rule_engine.models import RuleHit
@@ -16,4 +17,6 @@ DEFAULT_RULE_HANDLERS: dict[str, RuleHandler] = {
     "PATH-CTA-002": evaluate_path_cta_competition,
     "FRICTION-FORM-001": evaluate_form_labels,
     "RELIABILITY-TECH-001": evaluate_reliability,
+    "JOURNEY-ACTION-RESULT-001": evaluate_journey_action_result,
+    "JOURNEY-GOAL-CTA-MISMATCH-001": evaluate_journey_goal_cta_mismatch,
 }
