@@ -62,14 +62,16 @@ export async function executeAgentRun(input: AgentExecutorInput): Promise<AgentE
     deliveryIssues.push(...(await emitStepEventBestEffort(input.callbackClient, input.runId, turn, `agent_turn_${String(turn).padStart(3, "0")}`, "ISSUE_SIGNAL_DETECTED", {
       agentTurn: turn,
       event: "PRE_DECISION_VERIFIED",
+      outcome: preDecisionVerification.outcome,
+      terminal: preDecisionVerification.terminal,
       satisfied: preDecisionVerification.satisfied,
       reason: preDecisionVerification.reason,
       confidence: preDecisionVerification.confidence
     })));
 
-    if (preDecisionVerification.satisfied) {
+    if (preDecisionVerification.terminal) {
       trace.outcome = {
-        status: "SUCCESS",
+        status: traceStatusFromVerification(preDecisionVerification.outcome),
         reason: preDecisionVerification.reason
       };
       stopped = true;
@@ -207,6 +209,8 @@ export async function executeAgentRun(input: AgentExecutorInput): Promise<AgentE
     deliveryIssues.push(...(await emitStepEventBestEffort(input.callbackClient, input.runId, turn, step.step_id, "ISSUE_SIGNAL_DETECTED", {
       agentTurn: turn,
       event: "GOAL_VERIFIED",
+      outcome: verification.outcome,
+      terminal: verification.terminal,
       satisfied: verification.satisfied,
       reason: verification.reason,
       confidence: verification.confidence
@@ -248,6 +252,22 @@ export async function executeAgentRun(input: AgentExecutorInput): Promise<AgentE
     trace,
     traceArtifact: traceDelivery.artifact
   };
+}
+
+function traceStatusFromVerification(outcome: ReturnType<typeof verifyGoal>["outcome"]): AgentTrace["outcome"]["status"] {
+  switch (outcome) {
+    case "SUCCESS":
+      return "SUCCESS";
+    case "POLICY_BLOCKED":
+      return "POLICY_BLOCKED";
+    case "BLOCKED_LOGIN":
+    case "BLOCKED_CAPTCHA":
+      return "BLOCKED";
+    case "EXHAUSTED":
+      return "EXHAUSTED";
+    case "CONTINUE":
+      return "RUNNING";
+  }
 }
 
 async function persistAgentTraceArtifact({

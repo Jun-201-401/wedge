@@ -30,7 +30,7 @@ export interface AgentTrace {
   run_id: string;
   turns: AgentTurnTrace[];
   outcome: {
-    status: "RUNNING" | "SUCCESS" | "POLICY_BLOCKED" | "FAILED" | "EXHAUSTED";
+    status: "RUNNING" | "SUCCESS" | "POLICY_BLOCKED" | "BLOCKED" | "FAILED" | "EXHAUSTED";
     reason: string;
   };
 }

@@ -429,3 +429,163 @@ test("[Agent Worker] 이미 목표 상태면 새 decision 전에 중단한다", 
   assert.ok(stepEvents.some((event) => event.payload.event === "PRE_DECISION_VERIFIED"));
   assert.equal(closed, true);
 });
+
+test("[Agent Worker] 로그인 벽을 감지하면 decision 전에 중단한다", async () => {
+  const message = await loadAgentExampleMessage();
+  const task = message.payload.agentTask;
+  task.goal = "checkout 진입 여부를 확인한다";
+
+  const executedActions: string[] = [];
+  const stepEvents: StepEvent[] = [];
+
+  const worker = registerAgentWorker({
+    config: createRunnerTestConfig({
+      artifactsRoot: join(tmpdir(), "runner-test-agent-login-wall-artifacts"),
+      callbackLogFile: join(tmpdir(), "runner-test-agent-login-wall-callbacks.jsonl")
+    }),
+    browserFactory: {
+      kind: "simulated-playwright",
+      createSession: async ({ plan }) =>
+        createSimulatedSession(plan, {
+          execute: async (action) => {
+            executedActions.push(action.type);
+            throw new Error("agent should stop at login wall before requesting an action");
+          },
+          settle: async () => createSettledResult(),
+          snapshot: () => createSimulatedPageSnapshot(plan, {
+            currentUrl: "https://example.com/login",
+            finalUrl: "https://example.com/login",
+            title: "로그인 필요"
+          })
+        })
+    },
+    callbackClient: createStubCallbackClient({
+      sendStepEvents: async (_runId, payload) => {
+        stepEvents.push(...payload.events);
+      }
+    }),
+    capturePipeline: {
+      collectCheckpoint: async () => {
+        throw new Error("checkpoint collection should not run on login wall");
+      }
+    },
+    artifactStore: {
+      persistArtifacts: async () => []
+    }
+  });
+
+  const result = await worker.handleMessage(message);
+
+  assert.deepEqual(executedActions, []);
+  assert.equal(result.trace.outcome.status, "BLOCKED");
+  assert.equal(result.trace.turns[0].preDecisionVerification.outcome, "BLOCKED_LOGIN");
+  assert.ok(stepEvents.some((event) => event.payload.outcome === "BLOCKED_LOGIN"));
+});
+
+test("[Agent Worker] CAPTCHA를 감지하면 decision 전에 중단한다", async () => {
+  const message = await loadAgentExampleMessage();
+  const task = message.payload.agentTask;
+
+  const executedActions: string[] = [];
+
+  const worker = registerAgentWorker({
+    config: createRunnerTestConfig({
+      artifactsRoot: join(tmpdir(), "runner-test-agent-captcha-artifacts"),
+      callbackLogFile: join(tmpdir(), "runner-test-agent-captcha-callbacks.jsonl")
+    }),
+    browserFactory: {
+      kind: "simulated-playwright",
+      createSession: async ({ plan }) =>
+        createSimulatedSession(plan, {
+          execute: async (action) => {
+            executedActions.push(action.type);
+            throw new Error("agent should stop at CAPTCHA before requesting an action");
+          },
+          settle: async () => createSettledResult(),
+          snapshot: () => createSimulatedPageSnapshot(plan, {
+            title: "Verify you are human - CAPTCHA"
+          })
+        })
+    },
+    callbackClient: createStubCallbackClient(),
+    capturePipeline: {
+      collectCheckpoint: async () => {
+        throw new Error("checkpoint collection should not run on CAPTCHA");
+      }
+    },
+    artifactStore: {
+      persistArtifacts: async () => []
+    }
+  });
+
+  const result = await worker.handleMessage(message);
+
+  assert.deepEqual(executedActions, []);
+  assert.equal(result.trace.outcome.status, "BLOCKED");
+  assert.equal(result.trace.turns[0].preDecisionVerification.outcome, "BLOCKED_CAPTCHA");
+});
+
+test("[Agent Worker] 최종 결제 액션이 보이면 decision 전에 정책 차단한다", async () => {
+  const message = await loadAgentExampleMessage();
+  const task = message.payload.agentTask;
+  task.goal = "checkout 진입 여부를 확인한다";
+
+  const executedActions: string[] = [];
+
+  const worker = registerAgentWorker({
+    config: createRunnerTestConfig({
+      artifactsRoot: join(tmpdir(), "runner-test-agent-payment-block-artifacts"),
+      callbackLogFile: join(tmpdir(), "runner-test-agent-payment-block-callbacks.jsonl")
+    }),
+    browserFactory: {
+      kind: "simulated-playwright",
+      createSession: async ({ plan }) =>
+        createSimulatedSession(plan, {
+          execute: async (action) => {
+            executedActions.push(action.type);
+            throw new Error("agent should stop before final payment decision");
+          },
+          settle: async () => createSettledResult(),
+          snapshot: () => createSimulatedPageSnapshot(plan, {
+            currentUrl: "https://example.com/checkout/payment",
+            finalUrl: "https://example.com/checkout/payment",
+            title: "결제",
+            interactiveComponents: [
+              {
+                text: "결제하기",
+                selector: "#pay-now",
+                role: "button",
+                tag: "button",
+                clickable: true,
+                clicked_in_scenario: false,
+                is_cta_candidate: true,
+                is_primary_like: true,
+                bounds: {
+                  x: 10,
+                  y: 10,
+                  width: 120,
+                  height: 40,
+                  unit: "css_px"
+                }
+              }
+            ]
+          })
+        })
+    },
+    callbackClient: createStubCallbackClient(),
+    capturePipeline: {
+      collectCheckpoint: async () => {
+        throw new Error("checkpoint collection should not run on final payment block");
+      }
+    },
+    artifactStore: {
+      persistArtifacts: async () => []
+    }
+  });
+
+  const result = await worker.handleMessage(message);
+
+  assert.deepEqual(executedActions, []);
+  assert.equal(result.trace.outcome.status, "POLICY_BLOCKED");
+  assert.equal(result.trace.turns[0].preDecisionVerification.outcome, "POLICY_BLOCKED");
+});
