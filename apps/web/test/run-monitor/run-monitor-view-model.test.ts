@@ -2,8 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import type { RunReportProjection } from '../../src/entities/report';
-import type { EvidencePacket, Run, RunLive } from '../../src/entities/run';
+import type { EvidencePacket, Run, RunEvent, RunLive } from '../../src/entities/run';
 import {
+  buildApiEventLogs,
+  buildApiEventTimeline,
+  buildApiStepTimeline,
   buildApiSnapshotLogs,
   buildApiSnapshotSteps,
   canOpenRunReport,
@@ -15,6 +18,7 @@ import {
   getCheckpointArtifacts,
   getEvidenceArtifactLabel,
   getEvidenceObservationSummary,
+  getFailureCodeLabel,
   getStatusTone,
   resolveRunMonitorReportCtaState,
   shouldRefreshRunReport,
@@ -120,6 +124,101 @@ test('run monitor view model handles stop requested without falling back to fres
   assert.equal(steps[1].status, 'active');
   assert.equal(steps[1].detail, '중지 요청을 처리 중입니다');
   assert.equal(logs[1].tone, 'warning');
+});
+
+test('run monitor view model maps API run steps into a real timeline with failure details', () => {
+  const steps = buildApiStepTimeline({ ...baseRun, status: 'FAILED', failureCode: 'RUNNER_TIMEOUT', failureMessage: 'navigation timed out' }, {
+    ...baseLive,
+    status: 'FAILED',
+    currentStepOrder: 2,
+  }, [
+    {
+      id: 'step-2',
+      runId: baseRun.id,
+      stepOrder: 2,
+      stepKey: 'step_002_submit',
+      stepName: 'CTA 제출',
+      stepType: 'CLICK',
+      status: 'FAILED',
+      startedAt: '2026-04-27T01:01:00.000Z',
+      finishedAt: '2026-04-27T01:01:03.000Z',
+      errorCode: 'RUNNER_TIMEOUT',
+      errorMessage: 'locator click timed out',
+    },
+    {
+      id: 'step-1',
+      runId: baseRun.id,
+      stepOrder: 1,
+      stepKey: 'step_001_goto',
+      stepName: '첫 화면 로드',
+      stepType: 'GOTO',
+      status: 'PASSED',
+      startedAt: '2026-04-27T01:00:00.000Z',
+      finishedAt: '2026-04-27T01:00:02.000Z',
+      errorCode: null,
+      errorMessage: null,
+    },
+  ]);
+
+  assert.deepEqual(steps.map((step) => step.id), ['step-1', 'step-2']);
+  assert.equal(steps[0].status, 'complete');
+  assert.equal(steps[1].status, 'failed');
+  assert.equal(steps[1].label, '2. CTA 제출');
+  assert.equal(steps[1].detail, '시간 초과: locator click timed out');
+  assert.equal(getFailureCodeLabel('RUNNER_TIMEOUT'), '시간 초과');
+});
+
+
+test('run monitor view model prefers API run events for timeline and logs', () => {
+  const events: RunEvent[] = [
+    {
+      id: 'event-2',
+      runId: baseRun.id,
+      stepId: 'step-2',
+      stepKey: 'step_002_submit',
+      eventType: 'STEP_FAILED',
+      eventSource: 'RUNNER',
+      payload: {
+        failureCode: 'RUNNER_TIMEOUT',
+        failureMessage: 'locator click timed out',
+      },
+      occurredAt: '2026-04-27T01:01:03.000Z',
+    },
+    {
+      id: 'event-1',
+      runId: baseRun.id,
+      stepId: 'step-1',
+      stepKey: 'step_001_goto',
+      eventType: 'STEP_STARTED',
+      eventSource: 'RUNNER',
+      payload: {
+        description: '첫 화면 로드',
+        stage: 'FIRST_VIEW',
+      },
+      occurredAt: '2026-04-27T01:00:00.000Z',
+    },
+  ];
+
+  const timeline = buildApiEventTimeline(baseRun, baseLive, events, []);
+  const logs = buildApiEventLogs(baseRun, baseLive, events);
+
+  assert.deepEqual(timeline.map((step) => step.id), ['event-1', 'event-2']);
+  assert.equal(timeline[0].label, 'step_001_goto · Step 시작');
+  assert.equal(timeline[0].status, 'complete');
+  assert.equal(timeline[1].label, 'step_002_submit · Step 실패');
+  assert.equal(timeline[1].status, 'failed');
+  assert.equal(timeline[1].detail, '시간 초과: locator click timed out');
+  assert.equal(logs[1].tone, 'warning');
+  assert.match(logs[1].message, /step_002_submit · Step 실패/);
+});
+
+test('run monitor view model falls back to snapshot steps when API steps are not available', () => {
+  const steps = buildApiStepTimeline(baseRun, baseLive, []);
+
+  assert.deepEqual(
+    steps.map((step) => step.id),
+    buildApiSnapshotSteps(baseRun, baseLive).map((step) => step.id),
+  );
 });
 
 const evidencePacket: EvidencePacket = {

@@ -3,7 +3,7 @@ import test from "node:test";
 import type { BrowserPageSnapshot, BrowserSettleResult } from "../src/browser/playwright/index.ts";
 import { createCapturePipeline } from "../src/capture/index.ts";
 import { createDeliverySummary, mergeDeliveryIssues, resolveDeliveryStatus } from "../src/delivery/index.ts";
-import { executeScenario } from "../src/scenario/executor/index.ts";
+import { executeScenario, ScenarioExecutionError } from "../src/scenario/executor/index.ts";
 import { createArtifactBatch, createCheckpointRequest } from "../src/scenario/executor/checkpoint-payloads.ts";
 import { executeScenarioStep } from "../src/scenario/executor/step-executor.ts";
 import {
@@ -274,6 +274,93 @@ test("[증거 전달] artifact 저장과 checkpoint callback이 실패해도 실
     "artifact-storage",
     "checkpoints-callback"
   ]);
+});
+
+test("[실패 요약] step 실행 실패 시 STEP_FAILED 이벤트와 부분 요약을 남긴다", async () => {
+  const plan = createMinimalPlan();
+  plan.steps = [
+    {
+      step_id: "step_001_done",
+      stage: "INPUT",
+      description: "completed before failure",
+      action: {
+        type: "fill",
+        target: {
+          label: "Email"
+        },
+        value: "test@example.com"
+      },
+      settle_strategy: {
+        type: "fixed_short",
+        timeout_ms: 1
+      },
+      checkpoint: false
+    },
+    {
+      step_id: "step_002_fail",
+      stage: "CTA",
+      description: "fails on click",
+      action: {
+        type: "click",
+        target: {
+          selector: "#submit"
+        }
+      },
+      settle_strategy: {
+        type: "fixed_short",
+        timeout_ms: 1
+      },
+      checkpoint: false
+    }
+  ];
+  const emittedEventTypes: string[] = [];
+
+  try {
+    await executeScenario({
+      runId: "run-1",
+      plan,
+      session: createSimulatedSession(plan, {
+        execute: async (action, step) => {
+          if (step.step_id === "step_002_fail") {
+            throw new Error("browser click failed");
+          }
+
+          return {
+            actionType: action.type,
+            targetSummary: "label=Email",
+            stopRequested: false,
+            details: {}
+          };
+        },
+        settle: async () => createSettledResult({ strategy: "fixed_short", durationMs: 1 })
+      }),
+      callbackClient: createStubCallbackClient({
+        sendStepEvents: async (_runId, payload) => {
+          emittedEventTypes.push(...payload.events.map((event) => event.eventType));
+        }
+      }),
+      capturePipeline: {
+        collectCheckpoint: async () => {
+          throw new Error("checkpoint collection should not be called");
+        }
+      },
+      artifactStore: {
+        persistArtifacts: async () => []
+      }
+    });
+    assert.fail("executeScenario should throw on a failed scenario step");
+  } catch (error) {
+    assert.ok(error instanceof ScenarioExecutionError);
+    assert.deepEqual(error.summary, {
+      completedStepCount: 1,
+      failedStepCount: 1,
+      stopped: false
+    });
+    assert.equal(error.failedStepKey, "step_002_fail");
+    assert.equal(error.failedStepOrder, 2);
+  }
+
+  assert.ok(emittedEventTypes.includes("STEP_FAILED"));
 });
 
 test("[증거 payload] checkpoint callback payload는 artifact 원본 metadata와 artifactRefs를 보존한다", () => {
@@ -591,6 +678,84 @@ test("[수집 pipeline] page snapshot만 있어도 fallback screenshot/DOM/conso
         observation.target === "role=button[name=Continue]"
     )
   );
+});
+
+test("[수집 pipeline] CTA 분석용 interactive_components observation을 checkpoint에 포함한다", async () => {
+  const capturePipeline = createCapturePipeline();
+  const plan = createMinimalPlan();
+  const pageSnapshot: BrowserPageSnapshot = createSimulatedPageSnapshot(plan, {
+    interactiveComponents: [
+      {
+        text: "무료로 시작하기",
+        selector: "a.hero-start",
+        role: "link",
+        tag: "a",
+        clickable: true,
+        clicked_in_scenario: true,
+        is_cta_candidate: true,
+        is_primary_like: true,
+        bounds: {
+          x: 520,
+          y: 360,
+          width: 220,
+          height: 56,
+          unit: "css_px"
+        }
+      }
+    ]
+  });
+
+  const collection = await capturePipeline.collectCheckpoint({
+    step: {
+      step_id: "step_capture_interactive_components",
+      stage: "CTA",
+      description: "capture CTA interactive components",
+      action: {
+        type: "checkpoint"
+      },
+      settle_strategy: {
+        type: "none",
+        timeout_ms: 0
+      },
+      checkpoint: true
+    },
+    stepOrder: 4,
+    plan,
+    pageSnapshot,
+    settleResult: createSettledResult()
+  });
+
+  const observation = collection.checkpoint.observations.find(
+    (candidate) => candidate.type === "interactive_components"
+  );
+
+  assert.deepEqual(observation, {
+    observation_id: "step_capture_interactive_components.obs_interactive_components",
+    type: "interactive_components",
+    stage: "CTA",
+    source: ["dom", "layout", "screenshot"],
+    confidence: 0.82,
+    primary_like_component_count: 1,
+    components: [
+      {
+        text: "무료로 시작하기",
+        selector: "a.hero-start",
+        role: "link",
+        tag: "a",
+        clickable: true,
+        clicked_in_scenario: true,
+        is_cta_candidate: true,
+        is_primary_like: true,
+        bounds: {
+          x: 520,
+          y: 360,
+          width: 220,
+          height: 56,
+          unit: "css_px"
+        }
+      }
+    ]
+  });
 });
 
 test("[전달 정책] optional delivery 이슈를 병합하고 finished callback 실패는 fatal로 분류한다", () => {

@@ -204,7 +204,10 @@ class RunnerCallbackLifecycleScenarioTest {
                         at("2026-04-21T10:02:00+09:00"),
                         "RUNNER_TIMEOUT",
                         "Runner callback timed out",
-                        ResultCompleteness.PARTIAL
+                        ResultCompleteness.PARTIAL,
+                        null,
+                        null,
+                        null
                 ),
                 context("evt_failed_001")
         );
@@ -310,6 +313,47 @@ class RunnerCallbackLifecycleScenarioTest {
         public Optional<RunRecord> findById(UUID runId) {
             return Optional.ofNullable(runs.get(runId))
                     .filter(run -> run.getDeletedAt() == null);
+        }
+
+        @Override
+        public List<RunStepRecord> findStepsByRunId(UUID runId) {
+            return stepsForRun(runId);
+        }
+
+        @Override
+        public List<com.wedge.run.infrastructure.RunEventRecord> findEvents(
+                UUID runId,
+                UUID stepId,
+                String eventType,
+                UUID cursorEventId,
+                int limit
+        ) {
+            RunEventRecord cursorEvent = cursorEventId == null
+                    ? null
+                    : runEvents.stream()
+                            .filter(event -> runId.equals(event.runId()))
+                            .filter(event -> cursorEventId.equals(event.id()))
+                            .findFirst()
+                            .orElse(null);
+            if (cursorEventId != null && cursorEvent == null) {
+                return List.of();
+            }
+
+            return runEvents.stream()
+                    .filter(event -> runId.equals(event.runId()))
+                    .filter(event -> stepId == null || stepId.equals(event.stepId()))
+                    .filter(event -> eventType == null || eventType.equals(event.eventType()))
+                    .filter(event -> cursorEvent == null || compareRunEvents(event, cursorEvent) > 0)
+                    .sorted(this::compareRunEvents)
+                    .limit(limit)
+                    .map(this::toRunEventRecord)
+                    .toList();
+        }
+
+        @Override
+        public Optional<RunStepRecord> findStepByRunIdAndId(UUID runId, UUID stepId) {
+            return Optional.ofNullable(steps.get(stepId))
+                    .filter(step -> runId.equals(step.getRunId()));
         }
 
         @Override
@@ -493,6 +537,32 @@ class RunnerCallbackLifecycleScenarioTest {
 
         private RunStepRecord step(UUID runId, String stepKey) {
             return findStepByRunIdAndStepKey(runId, stepKey).orElseThrow();
+        }
+
+        private int compareRunEvents(RunEventRecord left, RunEventRecord right) {
+            int occurredAtComparison = left.occurredAt().compareTo(right.occurredAt());
+            return occurredAtComparison != 0
+                    ? occurredAtComparison
+                    : left.id().compareTo(right.id());
+        }
+
+        private com.wedge.run.infrastructure.RunEventRecord toRunEventRecord(RunEventRecord event) {
+            com.wedge.run.infrastructure.RunEventRecord record = new com.wedge.run.infrastructure.RunEventRecord();
+            record.setId(event.id());
+            record.setRunId(event.runId());
+            record.setStepId(event.stepId());
+            record.setStepKey(stepKeyFor(event.stepId()));
+            record.setEventType(event.eventType());
+            record.setSource(event.source());
+            record.setPayloadJson(event.payloadJson());
+            record.setOccurredAt(event.occurredAt());
+            return record;
+        }
+
+        private String stepKeyFor(UUID stepId) {
+            return Optional.ofNullable(steps.get(stepId))
+                    .map(RunStepRecord::getStepKey)
+                    .orElse(null);
         }
     }
 

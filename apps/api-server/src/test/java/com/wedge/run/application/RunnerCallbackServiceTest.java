@@ -130,7 +130,52 @@ class RunnerCallbackServiceTest {
         assertThat(result.eventCount()).isEqualTo(1);
         verify(runPersistenceAdapter).updateCurrentStepOrder(runId, 1);
         verify(runPersistenceAdapter).appendRunEvent(runId, stepId, "STEP_STARTED", Map.of("message", "started"), occurredAt);
-        verify(runPersistenceAdapter).updateStepState(stepId, StepStatus.RUNNING, occurredAt);
+        verify(runPersistenceAdapter).updateStepState(stepId, StepStatus.RUNNING, occurredAt, null, null);
+    }
+
+    @Test
+    void stepEventsCallbackMarksFailedStep() {
+        UUID runId = UUID.randomUUID();
+        UUID stepId = UUID.randomUUID();
+        OffsetDateTime occurredAt = OffsetDateTime.parse("2026-04-21T10:02:00+09:00");
+        RunResponse running = sampleRun(runId, RunStatus.RUNNING, ResultCompleteness.NONE);
+        when(processedMessagePersistenceAdapter.tryMarkProcessed("runner.step-events", "evt_step_failed_001")).thenReturn(true);
+        when(runService.markRunningIfStarting(runId)).thenReturn(running);
+        when(runPersistenceAdapter.resolveStep(runId, "step_002_submit"))
+                .thenReturn(new RunPersistenceAdapter.ResolvedStep(stepId, 2, "step_002_submit", StepStatus.RUNNING));
+
+        RunnerCallbackAckResponse result = runnerCallbackService.handleStepEvents(
+                runId,
+                new RunnerStepEventsCommand(List.of(
+                        new RunnerStepEventCommand(
+                                UUID.randomUUID(),
+                                2,
+                                "step_002_submit",
+                                "STEP_FAILED",
+                                occurredAt,
+                                Map.of("failureCode", "RUNNER_TIMEOUT", "failureMessage", "browser click failed")
+                        )
+                )),
+                headers("evt_step_failed_001")
+        );
+
+        assertThat(result.status()).isEqualTo(RunStatus.RUNNING);
+        assertThat(result.eventCount()).isEqualTo(1);
+        verify(runPersistenceAdapter).updateCurrentStepOrder(runId, 2);
+        verify(runPersistenceAdapter).appendRunEvent(
+                runId,
+                stepId,
+                "STEP_FAILED",
+                Map.of("failureCode", "RUNNER_TIMEOUT", "failureMessage", "browser click failed"),
+                occurredAt
+        );
+        verify(runPersistenceAdapter).updateStepState(
+                stepId,
+                StepStatus.FAILED,
+                occurredAt,
+                "RUNNER_TIMEOUT",
+                "browser click failed"
+        );
     }
 
     @Test
@@ -173,7 +218,10 @@ class RunnerCallbackServiceTest {
                         OffsetDateTime.parse("2026-04-21T10:03:00+09:00"),
                         "RUNNER_TIMEOUT",
                         "Runner callback timed out",
-                        ResultCompleteness.PARTIAL
+                        ResultCompleteness.PARTIAL,
+                        null,
+                        null,
+                        null
                 ),
                 headers("evt_failed_001")
         ))
@@ -333,6 +381,34 @@ class RunnerCallbackServiceTest {
     }
 
     @Test
+    void duplicateStepEventsCallbackDoesNotAppendRunEventsAgain() {
+        UUID runId = UUID.randomUUID();
+        RunnerStepEventsCommand command = new RunnerStepEventsCommand(List.of(
+                new RunnerStepEventCommand(
+                        UUID.randomUUID(),
+                        1,
+                        "step_001_goto",
+                        "STEP_STARTED",
+                        OffsetDateTime.parse("2026-04-21T10:01:00+09:00"),
+                        Map.of("message", "started")
+                )
+        ));
+        when(processedMessagePersistenceAdapter.tryMarkProcessed("runner.step-events", "evt_step_batch_001")).thenReturn(false);
+        when(runService.getRun(runId)).thenReturn(sampleRun(runId, RunStatus.RUNNING, ResultCompleteness.NONE));
+
+        RunnerCallbackAckResponse result = runnerCallbackService.handleStepEvents(
+                runId,
+                command,
+                headers("evt_step_batch_001")
+        );
+
+        assertThat(result.eventCount()).isEqualTo(1);
+        assertThat(result.duplicate()).isTrue();
+        verify(runService, never()).markRunningIfStarting(runId);
+        verifyNoInteractions(runPersistenceAdapter);
+    }
+
+    @Test
     void duplicateCheckpointCallbackDoesNotPersistAgain() {
         UUID runId = UUID.randomUUID();
         RunnerCheckpointsCommand command = sampleCheckpointCommand();
@@ -366,6 +442,62 @@ class RunnerCallbackServiceTest {
         assertThat(result.artifactCount()).isEqualTo(1);
         assertThat(result.duplicate()).isTrue();
         verifyNoInteractions(artifactPersistenceService);
+    }
+
+    @Test
+    void duplicateFinishedCallbackDoesNotFinishRunAgain() {
+        UUID runId = UUID.randomUUID();
+        RunResponse completed = sampleRun(runId, RunStatus.COMPLETED, ResultCompleteness.FINAL);
+        when(processedMessagePersistenceAdapter.tryMarkProcessed("runner.finished", "evt_finished_001")).thenReturn(false);
+        when(runService.getRun(runId)).thenReturn(completed);
+
+        RunnerCallbackAckResponse result = runnerCallbackService.handleFinished(
+                runId,
+                new RunnerFinishedCommand(
+                        WORKER_ID,
+                        OffsetDateTime.parse("2026-04-21T10:05:00+09:00"),
+                        5,
+                        0,
+                        false
+                ),
+                headers("evt_finished_001")
+        );
+
+        assertThat(result.status()).isEqualTo(RunStatus.COMPLETED);
+        assertThat(result.duplicate()).isTrue();
+        verify(runService, never()).finishRun(runId, false);
+    }
+
+    @Test
+    void duplicateFailedCallbackDoesNotFailRunAgain() {
+        UUID runId = UUID.randomUUID();
+        RunResponse failed = sampleRun(runId, RunStatus.FAILED, ResultCompleteness.PARTIAL);
+        when(processedMessagePersistenceAdapter.tryMarkProcessed("runner.failed", "evt_failed_001")).thenReturn(false);
+        when(runService.getRun(runId)).thenReturn(failed);
+
+        RunnerCallbackAckResponse result = runnerCallbackService.handleFailed(
+                runId,
+                new RunnerFailedCommand(
+                        WORKER_ID,
+                        OffsetDateTime.parse("2026-04-21T10:03:00+09:00"),
+                        "RUNNER_TIMEOUT",
+                        "Runner callback timed out",
+                        ResultCompleteness.PARTIAL,
+                        null,
+                        null,
+                        null
+                ),
+                headers("evt_failed_001")
+        );
+
+        assertThat(result.status()).isEqualTo(RunStatus.FAILED);
+        assertThat(result.duplicate()).isTrue();
+        verify(runService, never()).failRun(
+                eq(runId),
+                eq("RUNNER_TIMEOUT"),
+                eq("Runner callback timed out"),
+                eq(ResultCompleteness.PARTIAL)
+        );
     }
 
     private RunResponse sampleRun(UUID runId, RunStatus status, ResultCompleteness resultCompleteness) {

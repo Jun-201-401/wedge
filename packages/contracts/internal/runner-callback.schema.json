@@ -60,6 +60,7 @@
             "STEP_STARTED",
             "ACTION_EXECUTED",
             "STEP_COMPLETED",
+            "STEP_FAILED",
             "CONSOLE_ERROR",
             "NETWORK_ERROR",
             "ISSUE_SIGNAL_DETECTED"
@@ -245,6 +246,9 @@
             "PARTIAL",
             "FINAL"
           ]
+        },
+        "summary": {
+          "$ref": "#/$defs/Finished/properties/summary"
         }
       },
       "required": [
@@ -332,6 +336,37 @@
                 "current_count": 3,
                 "expected_count": 3,
                 "count_delta": 2
+              },
+              {
+                "observation_id": "step_002_checkpoint.obs_interactive_components",
+                "type": "interactive_components",
+                "stage": "CTA",
+                "source": [
+                  "dom",
+                  "layout",
+                  "screenshot"
+                ],
+                "confidence": 0.82,
+                "primary_like_component_count": 1,
+                "components": [
+                  {
+                    "text": "무료로 시작하기",
+                    "selector": "a.hero-start",
+                    "role": "link",
+                    "tag": "a",
+                    "clickable": true,
+                    "clicked_in_scenario": true,
+                    "is_cta_candidate": true,
+                    "is_primary_like": true,
+                    "bounds": {
+                      "x": 520,
+                      "y": 360,
+                      "width": 220,
+                      "height": 56,
+                      "unit": "css_px"
+                    }
+                  }
+                ]
               }
             ]
           },
@@ -356,6 +391,39 @@
                 "current_count": 3,
                 "expected_count": 3,
                 "count_delta": 2
+              }
+            ],
+            [
+              {
+                "observation_id": "step_002_checkpoint.obs_interactive_components",
+                "type": "interactive_components",
+                "stage": "CTA",
+                "source": [
+                  "dom",
+                  "layout",
+                  "screenshot"
+                ],
+                "confidence": 0.82,
+                "primary_like_component_count": 1,
+                "components": [
+                  {
+                    "text": "무료로 시작하기",
+                    "selector": "a.hero-start",
+                    "role": "link",
+                    "tag": "a",
+                    "clickable": true,
+                    "clicked_in_scenario": true,
+                    "is_cta_candidate": true,
+                    "is_primary_like": true,
+                    "bounds": {
+                      "x": 520,
+                      "y": 360,
+                      "width": 220,
+                      "height": 56,
+                      "unit": "css_px"
+                    }
+                  }
+                ]
               }
             ]
           ]
@@ -420,6 +488,37 @@
               "method": "POST",
               "status_code": 200,
               "url_includes": "/api/signup/validate-email"
+            },
+            {
+              "observation_id": "step_003_fill_email.obs_interactive_components",
+              "type": "interactive_components",
+              "stage": "CTA",
+              "source": [
+                "dom",
+                "layout",
+                "screenshot"
+              ],
+              "confidence": 0.82,
+              "primary_like_component_count": 1,
+              "components": [
+                {
+                  "text": "무료로 시작하기",
+                  "selector": "a.hero-start",
+                  "role": "link",
+                  "tag": "a",
+                  "clickable": true,
+                  "clicked_in_scenario": false,
+                  "is_cta_candidate": true,
+                  "is_primary_like": true,
+                  "bounds": {
+                    "x": 520,
+                    "y": 360,
+                    "width": 220,
+                    "height": 56,
+                    "unit": "css_px"
+                  }
+                }
+              ]
             }
           ],
           "deltas": [

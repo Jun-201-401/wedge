@@ -34,6 +34,18 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 class ReportControllerTest {
+    private static final String REPORT_TITLE = "Landing CTA audit";
+    private static final String FINDING_TITLE = "CTA issue";
+    private static final String NUDGE_TITLE = "Make CTA clearer";
+    private static final String SUMMARY_REQUEST_ID = "req_report_summary";
+    private static final String GENERATE_REQUEST_ID = "req_report_generate";
+    private static final String RUN_REPORT_REQUEST_ID = "req_run_report";
+    private static final String DETAIL_REQUEST_ID = "req_report_detail";
+    private static final String MISSING_REPORT_REQUEST_ID = "req_report_missing";
+    private static final BigDecimal FRICTION_SCORE = new BigDecimal("61.0");
+    private static final OffsetDateTime CREATED_AT = OffsetDateTime.parse("2026-04-29T12:00:00+09:00");
+    private static final int INITIAL_DISPLAY_COUNT = 3;
+
     private final ReportSummaryQueryService reportSummaryQueryService = mock(ReportSummaryQueryService.class);
     private final ReportDetailQueryService reportDetailQueryService = mock(ReportDetailQueryService.class);
     private final ReportGenerationService reportGenerationService = mock(ReportGenerationService.class);
@@ -53,12 +65,12 @@ class ReportControllerTest {
 
         mockMvc.perform(get("/api/runs/{runId}/reports", runId)
                         .principal(authentication(userId))
-                        .header("X-Request-Id", "req_report_summary"))
+                        .header("X-Request-Id", SUMMARY_REQUEST_ID))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data[0].id").value(reportId.toString()))
                 .andExpect(jsonPath("$.data[0].frictionScore").value(61.0))
                 .andExpect(jsonPath("$.data[0].topFindings").isArray())
-                .andExpect(jsonPath("$.meta.requestId").value("req_report_summary"));
+                .andExpect(jsonPath("$.meta.requestId").value(SUMMARY_REQUEST_ID));
     }
 
     @Test
@@ -70,11 +82,11 @@ class ReportControllerTest {
 
         mockMvc.perform(post("/api/runs/{runId}/report", runId)
                         .principal(authentication(userId))
-                        .header("X-Request-Id", "req_report_generate"))
+                        .header("X-Request-Id", GENERATE_REQUEST_ID))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.data.runId").value(runId.toString()))
                 .andExpect(jsonPath("$.data.reportId").value(reportId.toString()))
-                .andExpect(jsonPath("$.meta.requestId").value("req_report_generate"));
+                .andExpect(jsonPath("$.meta.requestId").value(GENERATE_REQUEST_ID));
     }
 
     @Test
@@ -86,11 +98,11 @@ class ReportControllerTest {
 
         mockMvc.perform(get("/api/runs/{runId}/report", runId)
                         .principal(authentication(userId))
-                        .header("X-Request-Id", "req_run_report"))
+                        .header("X-Request-Id", RUN_REPORT_REQUEST_ID))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.reportStatus").value("READY"))
                 .andExpect(jsonPath("$.data.reportId").value(reportId.toString()))
-                .andExpect(jsonPath("$.meta.requestId").value("req_run_report"));
+                .andExpect(jsonPath("$.meta.requestId").value(RUN_REPORT_REQUEST_ID));
     }
 
     @Test
@@ -102,13 +114,13 @@ class ReportControllerTest {
 
         mockMvc.perform(get("/api/reports/{reportId}", reportId)
                         .principal(authentication(userId))
-                        .header("X-Request-Id", "req_report_detail"))
+                        .header("X-Request-Id", DETAIL_REQUEST_ID))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.id").value(reportId.toString()))
-                .andExpect(jsonPath("$.data.initialDisplayCount").value(3))
-                .andExpect(jsonPath("$.data.findings[0].title").value("CTA issue"))
-                .andExpect(jsonPath("$.data.findings[0].nudges[0].title").value("Make CTA clearer"))
-                .andExpect(jsonPath("$.meta.requestId").value("req_report_detail"));
+                .andExpect(jsonPath("$.data.initialDisplayCount").value(INITIAL_DISPLAY_COUNT))
+                .andExpect(jsonPath("$.data.findings[0].title").value(FINDING_TITLE))
+                .andExpect(jsonPath("$.data.findings[0].nudges[0].title").value(NUDGE_TITLE))
+                .andExpect(jsonPath("$.meta.requestId").value(DETAIL_REQUEST_ID));
     }
 
     @Test
@@ -120,10 +132,10 @@ class ReportControllerTest {
 
         mockMvc.perform(get("/api/reports/{reportId}", reportId)
                         .principal(authentication(userId))
-                        .header("X-Request-Id", "req_report_missing"))
+                        .header("X-Request-Id", MISSING_REPORT_REQUEST_ID))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.error.code").value("report_not_found"))
-                .andExpect(jsonPath("$.meta.requestId").value("req_report_missing"));
+                .andExpect(jsonPath("$.meta.requestId").value(MISSING_REPORT_REQUEST_ID));
     }
 
     private ReportSummaryResponse summary(UUID reportId, UUID runId) {
@@ -131,14 +143,14 @@ class ReportControllerTest {
                 reportId,
                 runId,
                 UUID.randomUUID(),
-                "Landing CTA audit",
+                REPORT_TITLE,
                 ReportFormat.JSON,
                 ReportStatus.READY,
-                new BigDecimal("61.0"),
-                Map.of("headline", "CTA issue"),
+                FRICTION_SCORE,
+                summaryPayload(),
                 List.of(decisionMapItem()),
                 List.of(),
-                OffsetDateTime.parse("2026-04-29T12:00:00+09:00")
+                CREATED_AT
         );
     }
 
@@ -147,15 +159,15 @@ class ReportControllerTest {
                 reportId,
                 runId,
                 UUID.randomUUID(),
-                "Landing CTA audit",
+                REPORT_TITLE,
                 ReportFormat.JSON,
                 ReportStatus.READY,
-                new BigDecimal("61.0"),
-                Map.of("headline", "CTA issue"),
+                FRICTION_SCORE,
+                summaryPayload(),
                 List.of(decisionMapItem()),
-                3,
+                INITIAL_DISPLAY_COUNT,
                 List.of(detailFinding()),
-                OffsetDateTime.parse("2026-04-29T12:00:00+09:00")
+                CREATED_AT
         );
     }
 
@@ -163,7 +175,7 @@ class ReportControllerTest {
         return new ReportDetailFindingResponse(
                 UUID.randomUUID(),
                 1,
-                "CTA issue",
+                FINDING_TITLE,
                 "CTA is unclear.",
                 "conversion",
                 "CTA",
@@ -193,7 +205,7 @@ class ReportControllerTest {
         return new ReportDetailNudgeResponse(
                 UUID.randomUUID(),
                 1,
-                "Make CTA clearer",
+                NUDGE_TITLE,
                 "The current label is ambiguous.",
                 "Use a direct action label.",
                 "LOW",
@@ -209,7 +221,7 @@ class ReportControllerTest {
                 "COMPLETED",
                 UUID.randomUUID(),
                 reportId,
-                "Landing CTA audit",
+                REPORT_TITLE,
                 ReportFormat.JSON,
                 ReportStatus.READY,
                 null,
@@ -218,9 +230,13 @@ class ReportControllerTest {
                 List.of(),
                 null,
                 null,
-                OffsetDateTime.parse("2026-04-29T12:00:00+09:00"),
-                OffsetDateTime.parse("2026-04-29T12:00:00+09:00")
+                CREATED_AT,
+                CREATED_AT
         );
+    }
+
+    private Map<String, Object> summaryPayload() {
+        return Map.of("headline", FINDING_TITLE);
     }
 
     private UsernamePasswordAuthenticationToken authentication(UUID userId) {

@@ -74,6 +74,7 @@ Canonical bounds shape:
 | `trust_signal` | `VALUE` | 결제, 보안, 인증, 리뷰, 평점, 환불, 공식 브랜드, 파트너 로고, trust provider | `signal_text`, `signal_type`, `source_refs` |
 | `cta_candidate` | `CTA` | `interactivity = true`이고 button, link, icon action, navigation item, card, actionable banner처럼 보임 | `text`, `role_hint`, `bounds`, `source_ref` |
 | `cta_cluster` | `CTA` | 가까운 `cta_candidate`들이 header, navigation, menu, card row, carousel, content-action region을 공유 | `texts`, `primary_like_cta_count`, `cluster_role`, `source_refs`, `bounds` |
+| `interactive_components` | `CTA` | Runner가 DOM에서 실제 클릭 가능한 요소와 layout bounds를 수집함 | `components`, `primary_like_component_count`, `bounds.unit` |
 | `form_field` | `INPUT` | search/input/select처럼 보이거나 placeholder-like text를 가진 interactive element | `field_role_hint`, `placeholder`, `bounds`, `source_ref` |
 | `required_field` | `INPUT` | form field 근처에 `*`, required text, 필수 시각 표시가 있음 | `field_ref`, `required_indicator`, `source_refs` |
 | `visual_emphasis` | `VALUE` 또는 `CTA` | 첫 viewport에서 큰 면적을 차지하거나 중앙/상단에 있는 banner, hero, product card, primary content block | `dominant_elements`, `area_ratio`, `source_refs` |
@@ -146,5 +147,39 @@ Canonical bounds shape:
     }
   },
   "confidence": 0.65
+}
+```
+
+### interactive_components
+
+Runner checkpoint callback은 CTA/클릭 분석용으로 클릭 가능한 컴포넌트 묶음을 `observations[]`에 포함할 수 있다. Spring은 `components`와 `primary_like_component_count`를 EvidencePacket의 `observation.data` 아래로 materialize한다.
+
+```json
+{
+  "observation_id": "step_002_checkpoint.obs_interactive_components",
+  "type": "interactive_components",
+  "stage": "CTA",
+  "source": ["dom", "layout", "screenshot"],
+  "confidence": 0.82,
+  "primary_like_component_count": 1,
+  "components": [
+    {
+      "text": "무료로 시작하기",
+      "selector": "a.hero-start",
+      "role": "link",
+      "tag": "a",
+      "clickable": true,
+      "clicked_in_scenario": true,
+      "is_cta_candidate": true,
+      "is_primary_like": true,
+      "bounds": {
+        "x": 520,
+        "y": 360,
+        "width": 220,
+        "height": 56,
+        "unit": "css_px"
+      }
+    }
+  ]
 }
 ```

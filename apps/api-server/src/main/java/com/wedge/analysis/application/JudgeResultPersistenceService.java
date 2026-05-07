@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.wedge.analysis.api.internal.dto.AnalyzerCompletedRequest;
 import com.wedge.analysis.api.internal.dto.AnalyzerFailedRequest;
+import com.wedge.analysis.api.internal.dto.AnalyzerStartedRequest;
 import com.wedge.analysis.domain.AnalysisFinding;
 import com.wedge.analysis.domain.AnalysisJob;
 import com.wedge.analysis.domain.Nudge;
@@ -57,6 +58,36 @@ public class JudgeResultPersistenceService {
     }
 
     @Transactional
+    public Map<String, Object> saveStarted(AnalyzerStartedRequest request) {
+        int updated = analysisJobMapper.markRunning(request.analysisJobId(), request.runId(), request.startedAt());
+        if (updated > 0) {
+            runMapper.updateCurrentAnalysisState(request.runId(), AnalysisStatus.RUNNING, request.analysisJobId(), null, null);
+            return startedResponse(request);
+        }
+
+        AnalysisJob existing = analysisJobMapper.findById(request.analysisJobId())
+                .orElseThrow(() -> new BusinessException(ErrorCode.RUN_NOT_FOUND, "AnalysisJob was not found."));
+        validateStartedRunId(request, existing);
+        if (existing.getStatus() == AnalysisJobStatus.RUNNING) {
+            return Map.of(
+                    "analysisJobId", request.analysisJobId(),
+                    "runId", request.runId(),
+                    "status", AnalysisJobStatus.RUNNING,
+                    "alreadyRunning", true
+            );
+        }
+        if (isTerminalStatus(existing.getStatus())) {
+            return Map.of(
+                    "analysisJobId", request.analysisJobId(),
+                    "runId", request.runId(),
+                    "status", existing.getStatus(),
+                    "ignored", true
+            );
+        }
+        throw new BusinessException(ErrorCode.STATE_CONFLICT, "AnalysisJob cannot be marked RUNNING from current state.");
+    }
+
+    @Transactional
     public Map<String, Object> saveCompleted(AnalyzerCompletedRequest request) {
         List<Map<String, Object>> issues = readList(request.judgeResult(), "issues");
         validateIssueStages(issues);
@@ -103,6 +134,24 @@ public class JudgeResultPersistenceService {
         analysisJob.setErrorCode(request.errorCode());
         analysisJob.setErrorMessage(request.errorMessage());
         return analysisJob;
+    }
+
+    private Map<String, Object> startedResponse(AnalyzerStartedRequest request) {
+        return Map.of(
+                "analysisJobId", request.analysisJobId(),
+                "runId", request.runId(),
+                "status", AnalysisJobStatus.RUNNING
+        );
+    }
+
+    private void validateStartedRunId(AnalyzerStartedRequest request, AnalysisJob existing) {
+        if (!request.runId().equals(existing.getRunId())) {
+            throw new BusinessException(ErrorCode.INVALID_REQUEST, "Analyzer callback runId does not match analysis job.");
+        }
+    }
+
+    private boolean isTerminalStatus(AnalysisJobStatus status) {
+        return status == AnalysisJobStatus.COMPLETED || status == AnalysisJobStatus.FAILED;
     }
 
     private Map<String, Object> completedOutput(AnalyzerCompletedRequest request) {

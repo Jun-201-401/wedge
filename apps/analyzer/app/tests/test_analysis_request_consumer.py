@@ -23,8 +23,19 @@ def load_sample_packet() -> dict[str, Any]:
 
 class FakeCallbackClient:
     def __init__(self) -> None:
+        self.started: list[dict[str, Any]] = []
         self.completed: list[dict[str, Any]] = []
         self.failed: list[dict[str, Any]] = []
+
+    def send_started(
+        self,
+        *,
+        analysis_job_id: str,
+        payload: dict[str, Any],
+        event_id: str,
+    ) -> SpringCallbackResponse:
+        self.started.append({"analysisJobId": analysis_job_id, "payload": payload, "eventId": event_id})
+        return SpringCallbackResponse(status_code=200, body={"data": {"status": "RUNNING"}})
 
     def send_completed(
         self,
@@ -117,8 +128,12 @@ class AnalysisRequestConsumerTest(unittest.TestCase):
 
         result = consumer.process_raw_message(raw_message)
 
+        self.assertEqual(result["startedCallbackStatusCode"], 200)
         self.assertEqual(result["callbackStatusCode"], 200)
         self.assertEqual(evidence_client.packet_ids, ["44444444-4444-4444-4444-444444444444"])
+        self.assertEqual(len(callback_client.started), 1)
+        self.assertEqual(callback_client.started[0]["eventId"], "analysis.request.22222222-2222-2222-2222-222222222222.started")
+        self.assertEqual(callback_client.started[0]["payload"]["analysisJobId"], "22222222-2222-2222-2222-222222222222")
         self.assertEqual(len(callback_client.completed), 1)
         payload = callback_client.completed[0]["payload"]
         self.assertEqual(payload["analysisJobId"], "22222222-2222-2222-2222-222222222222")

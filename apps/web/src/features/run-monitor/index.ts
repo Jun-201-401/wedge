@@ -2,6 +2,9 @@ export { buildMockRunMonitorData } from './lib/runMonitorMock';
 export type { MockRunMonitorData, RunActionLog, RunStepItem, StepStatus } from './lib/runMonitorMock';
 export {
   RUN_MONITOR_REFRESH_INTERVAL_MS,
+  buildApiEventLogs,
+  buildApiEventTimeline,
+  buildApiStepTimeline,
   buildApiSnapshotLogs,
   buildApiSnapshotSteps,
   canOpenRunReport,
@@ -17,6 +20,7 @@ export {
   getEvidenceArtifactLabel,
   getEvidenceCheckpointTitle,
   getEvidenceObservationSummary,
+  getFailureCodeLabel,
   getStatusTone,
   getStepStatusLabel,
   resolveRunMonitorReportCtaState,

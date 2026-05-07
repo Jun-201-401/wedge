@@ -1,7 +1,7 @@
 import type { CallbackClient } from "../callback/index.ts";
 import type { DeliveryIssue } from "../delivery/index.ts";
 import type { ScenarioExecutionSummary } from "../scenario/executor/index.ts";
-import { errorMessage, toIsoTimestamp } from "../shared/utils.ts";
+import { classifyRunnerFailure, errorMessage, toIsoTimestamp, type RunnerFailureCode } from "../shared/utils.ts";
 
 export interface AcceptedCallbackInput {
   callbackClient: CallbackClient;
@@ -24,6 +24,8 @@ export interface FailedCallbackInput {
   error: unknown;
   accepted: boolean;
   hasSession: boolean;
+  summary?: ScenarioExecutionSummary;
+  failureCode?: RunnerFailureCode;
 }
 
 export async function emitAcceptedCallback({
@@ -68,7 +70,9 @@ export async function emitFailedCallback({
   workerId,
   error,
   accepted,
-  hasSession
+  hasSession,
+  summary,
+  failureCode
 }: FailedCallbackInput): Promise<void> {
   if (!hasSession) {
     return;
@@ -78,9 +82,10 @@ export async function emitFailedCallback({
     await callbackClient.sendFailed(runId, {
       workerId,
       failedAt: toIsoTimestamp(),
-      failureCode: "RUNNER_EXECUTION_FAILED",
+      failureCode: failureCode ?? classifyRunnerFailure(error),
       failureMessage: errorMessage(error),
-      resultCompleteness: accepted ? "PARTIAL" : "NONE"
+      resultCompleteness: accepted ? "PARTIAL" : "NONE",
+      summary
     });
   } catch (sendFailedError) {
     throw new Error(

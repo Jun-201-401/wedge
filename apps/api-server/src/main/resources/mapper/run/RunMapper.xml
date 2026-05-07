@@ -43,6 +43,17 @@
         <result property="errorMessage" column="error_message"/>
     </resultMap>
 
+    <resultMap id="RunEventRecordResultMap" type="com.wedge.run.infrastructure.RunEventRecord">
+        <id property="id" column="id"/>
+        <result property="runId" column="run_id"/>
+        <result property="stepId" column="step_id"/>
+        <result property="stepKey" column="step_key"/>
+        <result property="eventType" column="event_type"/>
+        <result property="source" column="source"/>
+        <result property="payloadJson" column="payload_jsonb"/>
+        <result property="occurredAt" column="occurred_at"/>
+    </resultMap>
+
     <sql id="RunColumns">
         id,
         project_id,
@@ -90,12 +101,58 @@
           AND deleted_at IS NULL
     </select>
 
+    <select id="findStepsByRunId" resultMap="RunStepRecordResultMap">
+        SELECT id, run_id, step_order, step_key, step_name, stage, step_type,
+               status, started_at, finished_at, error_code, error_message
+        FROM test_run_step
+        WHERE run_id = #{runId}
+        ORDER BY step_order ASC, created_at ASC
+    </select>
+
+    <select id="findStepByRunIdAndId" resultMap="RunStepRecordResultMap">
+        SELECT id, run_id, step_order, step_key, step_name, stage, step_type,
+               status, started_at, finished_at, error_code, error_message
+        FROM test_run_step
+        WHERE run_id = #{runId}
+          AND id = #{stepId}
+    </select>
+
     <select id="findStepByRunIdAndStepKey" resultMap="RunStepRecordResultMap">
         SELECT id, run_id, step_order, step_key, step_name, stage, step_type,
                status, started_at, finished_at, error_code, error_message
         FROM test_run_step
         WHERE run_id = #{runId}
           AND step_key = #{stepKey}
+    </select>
+
+    <select id="findEvents" resultMap="RunEventRecordResultMap">
+        SELECT e.id,
+               e.run_id,
+               e.step_id,
+               s.step_key,
+               e.event_type,
+               e.source,
+               CAST(e.payload_jsonb AS TEXT) AS payload_jsonb,
+               e.occurred_at
+        FROM test_run_event e
+        LEFT JOIN test_run_step s ON s.id = e.step_id
+        WHERE e.run_id = #{runId}
+        <if test="stepId != null">
+            AND e.step_id = #{stepId}
+        </if>
+        <if test="eventType != null">
+            AND e.event_type = #{eventType}
+        </if>
+        <if test="cursorEventId != null">
+            AND (e.occurred_at, e.id) &gt; (
+                SELECT cursor_event.occurred_at, cursor_event.id
+                FROM test_run_event cursor_event
+                WHERE cursor_event.run_id = #{runId}
+                  AND cursor_event.id = #{cursorEventId}
+            )
+        </if>
+        ORDER BY e.occurred_at ASC, e.id ASC
+        LIMIT #{limit}
     </select>
 
     <insert id="insert" parameterType="com.wedge.run.infrastructure.RunRecord">

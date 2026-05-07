@@ -3,6 +3,7 @@ import type { BrowserCapturedArtifacts, BrowserPageSnapshot, BrowserSettleResult
 import type {
   ArtifactDraft,
   Checkpoint,
+  InteractiveComponentsObservation,
   ScenarioPlan,
   ScenarioStep
 } from "../shared/contracts.ts";
@@ -120,6 +121,7 @@ function createCheckpointObservations(
   settleResult: BrowserSettleResult
 ): Record<string, unknown>[] {
   return [
+    ...createInteractiveComponentsObservations(step, pageSnapshot),
     ...createFormFieldObservations(pageSnapshot.fields),
     ...createCtaCandidateObservations(step, pageSnapshot),
     ...pageSnapshot.consoleErrors.map((message) => ({
@@ -131,6 +133,28 @@ function createCheckpointObservations(
       message
     })),
     ...createSettleObservations(settleResult)
+  ];
+}
+
+function createInteractiveComponentsObservations(
+  step: ScenarioStep,
+  pageSnapshot: BrowserPageSnapshot
+): InteractiveComponentsObservation[] {
+  if (pageSnapshot.interactiveComponents.length === 0) {
+    return [];
+  }
+
+  const primaryLikeComponentCount = pageSnapshot.interactiveComponents.filter((component) => component.is_primary_like).length;
+  return [
+    {
+      observation_id: `${step.step_id}.obs_interactive_components`,
+      type: "interactive_components",
+      stage: "CTA",
+      source: ["dom", "layout", "screenshot"],
+      confidence: primaryLikeComponentCount > 0 ? 0.82 : 0.65,
+      primary_like_component_count: primaryLikeComponentCount,
+      components: pageSnapshot.interactiveComponents
+    }
   ];
 }
 

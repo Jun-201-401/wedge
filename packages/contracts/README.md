@@ -31,6 +31,15 @@ Canonical machine-readable contracts belong here. Human-readable design rational
 - `examples/sample-site-discovery-result.json`: SiteDiscoveryResult fixture
 - `examples/sample-scenario-authoring-job.json`: queued ScenarioAuthoring job fixture
 - `examples/sample-scenario-authoring-result.json`: completed ScenarioAuthoring result fixture with a `custom_compiled` ScenarioPlan candidate
+- Planned Runner Agent Runtime schemas, to be added contract-first before implementation:
+  - `schemas/agent-task.schema.json`
+  - `schemas/agent-observation.schema.json`
+  - `schemas/agent-decision.schema.json`
+  - `schemas/agent-policy-result.schema.json`
+  - `schemas/agent-verification-result.schema.json`
+  - `schemas/agent-event.schema.json`
+  - `schemas/agent-outcome.schema.json`
+  - `schemas/agent-trace.schema.json`
 - `examples/sample-evidence-packet.json`: EvidencePacket fixture
 - `examples/sample-run-artifacts-response.json`: prototype REST fixture for `GET /api/runs/{runId}/artifacts`
 - `examples/sample-run-evidence-packet-response.json`: prototype REST fixture for `GET /api/runs/{runId}/evidence-packet`
@@ -39,12 +48,16 @@ Canonical machine-readable contracts belong here. Human-readable design rational
 - `examples/sample-semantic-classification-response.json`: SemanticClassification provider response fixture
 - `examples/sample-analyzer-completed.json`: analyzer completed callback example consuming settle observations
 - `examples/sample-runner-checkpoints.json`: runner callback checkpoint example including settle observation subtypes
+- Planned Runner Agent Runtime examples:
+  - `examples/sample-agent-execute-checkout-entry.request.json`
+  - `examples/sample-agent-trace-checkout-entry.json`
 - `mq/messages.schema.json`: RabbitMQ common envelope and message type contract; this is the canonical MQ source
 - `mq/run.execute.request.schema.json`: thin `$ref` entrypoint to `messages.schema.json#/$defs/RunExecutePayload`
+- Planned `mq/agent.execute.request.schema.json`: thin `$ref` entrypoint for AgentExecutePayload
 - `mq/analysis.request.schema.json`: thin `$ref` entrypoint to `messages.schema.json#/$defs/AnalysisRequestPayload`
 - `mq/report.export.request.schema.json`: thin `$ref` entrypoint to `messages.schema.json#/$defs/ReportExportRequestPayload`
 - `websocket/events.schema.json`: live event envelope and event variants
-- `internal/runner-callback.schema.json`: runner callback payload definitions
+- `internal/runner-callback.schema.json`: runner callback payload definitions; planned Agent Runtime callback payloads should be added here unless a dedicated agent callback schema is introduced
 - `internal/analyzer-callback.schema.json`: analyzer callback payload definitions
 - `mcp/tools.schema.json`: MCP tool metadata contract, including asynchronous ScenarioAuthoring job/result tools
 - `enums/run-status.json`: shared lifecycle enums

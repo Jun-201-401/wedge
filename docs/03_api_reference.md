@@ -226,7 +226,7 @@ POST   /api/scenario-authoring-jobs/{authoringJobId}/confirm
 
 ScenarioAuthoring은 Discovery recommendation과 Run 생성 사이의 계약 단계다. API shape는 V1 계약 방향을 고정하기 위한 문서 기준이며, OpenAPI/앱 구현은 후속 작업에서 `packages/contracts`를 먼저 갱신한 뒤 진행한다.
 
-Authoring job/result는 별도 실행 DSL이 아니다. Provider는 기존 `ScenarioPlan` schema를 만족하는 candidate만 제출하며, Spring은 confirmed candidate를 입력으로 `POST /api/runs` 또는 내부 materializer에서 ScenarioPlan + fit requirements를 고정한다. Runner는 authoring job/result를 받지 않고, 고정된 ScenarioPlan만 실행한다.
+Authoring job/result는 별도 실행 DSL이 아니다. Provider는 기존 `ScenarioPlan` schema를 만족하는 candidate만 제출하며, Spring은 confirmed candidate를 입력으로 `POST /api/runs` 또는 내부 materializer에서 ScenarioPlan + fit requirements를 고정한다. ScenarioAuthoring 기반 run path에서 Runner는 authoring job/result를 받지 않고, 고정된 ScenarioPlan만 실행한다. Runner Agent Runtime은 별도 `agent.execute.request` / agent callback stream(`agent-events`, `agent-traces`) 경로이며, 상세 contract-first 기준은 `docs/runner_agent_runtime_implementation_plan.md`를 따른다.
 
 ### Runs
 
@@ -563,6 +563,11 @@ POST /internal/runner/runs/{runId}/artifacts
 POST /internal/runner/runs/{runId}/finished
 POST /internal/runner/runs/{runId}/failed
 
+# Runner Agent Runtime callbacks, contract-first implementation plan
+POST /internal/runner/runs/{runId}/agent-events
+POST /internal/runner/runs/{runId}/agent-traces
+
+POST /internal/analysis/jobs/{analysisJobId}/started
 POST /internal/analysis/jobs/{analysisJobId}/completed
 POST /internal/analysis/jobs/{analysisJobId}/failed
 ```
@@ -722,6 +727,8 @@ Canonical MQ contract는 `packages/contracts/mq/messages.schema.json`의 envelop
 
 Run execution message는 Spring이 고정한 `scenarioTemplateVersionId`와 materialized `scenarioPlan`을 포함한다. MVP Analyzer message는 Spring이 저장한 EvidencePacket snapshot을 가리키는 `evidencePacketId`를 포함하고, Analyzer는 내부 API `/internal/analysis/evidence-packets/{evidencePacketId}`로 packet을 조회한다.
 
+Runner Agent Runtime contract-first 구현 범위에는 `agent.execute.request` 별도 MQ message가 포함된다. 이 메시지는 `ScenarioPlan`을 확장하지 않고 `AgentTask`를 전달하며, Runner는 AgentTrace를 TRACE artifact와 agent callback으로 남긴다. Machine-readable agent callback payloads should be added to `packages/contracts/internal/runner-callback.schema.json` unless implementation introduces a dedicated agent callback schema and updates this section. 상세 contract-first 계획은 `docs/runner_agent_runtime_implementation_plan.md`를 기준으로 한다.
+
 MQ payload는 camelCase envelope를 사용한다.
 
 ```json
@@ -739,6 +746,7 @@ Queues:
 
 ```text
 run.execute.request        # payload: scenarioTemplateVersionId + scenarioPlan
+agent.execute.request      # contract-first payload: AgentTask
 discovery.execute.request  # payload: discoveryId + url + devicePreset + viewport + maxDurationMs + maxScrollCount
 discovery.evaluate.request # payload: discoveryId + evidencePacketRef
 analysis.request           # MVP payload: evidencePacketId + analysisType(PRIMARY/REPROCESS/COMPARE)

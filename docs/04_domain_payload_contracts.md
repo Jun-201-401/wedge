@@ -18,6 +18,8 @@ Domain payload:
 
 ## 2. Canonical schema
 
+Implemented contracts:
+
 | Contract | File |
 |---|---|
 | ScenarioPlan | `packages/contracts/schemas/scenario-plan.schema.json` |
@@ -26,6 +28,26 @@ Domain payload:
 | EvidencePacket | `packages/contracts/schemas/evidence-packet.schema.json` |
 | RuleRegistry | `packages/contracts/schemas/rule-registry.schema.json` |
 | JudgeResult | `packages/contracts/schemas/judge-result.schema.json` |
+
+Runner Agent Runtime contracts are planned and must be added contract-first before implementation. The implementation plan currently reserves the following schema names:
+
+```text
+packages/contracts/schemas/agent-task.schema.json
+packages/contracts/schemas/agent-observation.schema.json
+packages/contracts/schemas/agent-decision.schema.json
+packages/contracts/schemas/agent-policy-result.schema.json
+packages/contracts/schemas/agent-verification-result.schema.json
+packages/contracts/schemas/agent-event.schema.json
+packages/contracts/schemas/agent-outcome.schema.json
+packages/contracts/schemas/agent-trace.schema.json
+packages/contracts/mq/agent.execute.request.schema.json
+```
+
+Agent event consistency rule:
+
+- `AgentEvent` is the canonical event record for both agent callbacks and `AgentTrace.events[]`.
+- Agent event records use `event_type` with `AGENT_*` enum values.
+- `AgentTrace.events[]` must not introduce a separate trace-local `type` enum.
 
 ## 3. SiteDiscoveryResult
 
@@ -85,8 +107,9 @@ Domain payload:
 경계:
 
 - `ScenarioAuthoringResult`는 별도 실행 DSL이 아니다. Candidate는 반드시 기존 `ScenarioPlan` schema를 만족해야 한다.
-- `ScenarioPlan`은 materialization 이후 fixed executable plan이다. Runner는 이 fixed `ScenarioPlan`만 실행한다.
+- `ScenarioPlan`은 materialization 이후 fixed executable plan이다. ScenarioAuthoring 기반 Run 경로에서 Runner는 이 fixed `ScenarioPlan`만 실행한다.
 - Runner는 authoring job/result를 생성, 수정, 해석하지 않는다.
+- Runner Agent Runtime은 ScenarioAuthoring provider가 아니다. Agent Runtime은 별도 `AgentTask` 실행 경로이며, 성공한 `AgentTrace`를 검증된 `ScenarioPlan` candidate로 export하는 후속 기능만 가질 수 있다.
 - MCP tool이나 UI가 authoring job/result를 다룰 수는 있지만, 이는 Wedge API/tool 호출이며 browser-control이 아니다.
 - Codex/Claude Code/Internal LLM/Rule-based provider는 final Judge stage, severity, scoring truth를 생성하지 않는다.
 
@@ -96,6 +119,8 @@ ScenarioPlan은 확정된 템플릿 선택, 자연어 요청, 또는 ScenarioAut
 
 V1에서는 완전한 natural-language planner를 구현하지 않는다.
 템플릿 기반 ScenarioPlan을 우선 사용하고, ScenarioAuthoring provider/runtime 구현은 후속 작업으로 둔다.
+
+Runner Agent Runtime은 `ScenarioPlan`에 agent 상태를 추가하지 않는다. Agent exploration은 `AgentTask` / `AgentObservation` / `AgentDecision` / `AgentTrace` 계약으로 분리하고, 안정화된 경로만 별도 export 단계를 거쳐 `custom_compiled` ScenarioPlan 후보가 될 수 있다.
 
 Stage는 `ScenarioPlan`, `EvidencePacket`, `RuleRegistry`, `JudgeResult`를 연결하는 code-level enum이다.
 
@@ -132,6 +157,7 @@ stop_when
 - `settle_strategy`
 - `checkpoint`
 - optional `stop_condition`
+
 추가 optional 필드:
 
 - `source_discovery_id`
@@ -226,6 +252,7 @@ Observation은 raw data에서 추출한 구조화된 fact다.
 | `first_view_message` | first-view value proposition |
 | `cta_candidate` | button/link/action candidate |
 | `cta_cluster` | competing CTA group |
+| `interactive_components` | clickable component list with DOM/layout coordinates for CTA analysis |
 | `form_field` | input metadata |
 | `form_error` | error text and field association |
 | `trust_signal` | privacy/security/refund/review/logo |

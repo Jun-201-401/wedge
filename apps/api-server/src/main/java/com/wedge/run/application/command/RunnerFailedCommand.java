@@ -8,6 +8,9 @@ public record RunnerFailedCommand(
         OffsetDateTime failedAt,
         String failureCode,
         String failureMessage,
-        ResultCompleteness resultCompleteness
+        ResultCompleteness resultCompleteness,
+        Integer completedStepCount,
+        Integer failedStepCount,
+        Boolean stopped
 ) {
 }

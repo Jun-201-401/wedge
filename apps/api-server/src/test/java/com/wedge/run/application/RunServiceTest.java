@@ -9,6 +9,7 @@ import static org.mockito.Mockito.when;
 
 import com.wedge.common.error.BusinessException;
 import com.wedge.run.api.dto.RunCreateRequest;
+import com.wedge.run.api.dto.RunEventResponse;
 import com.wedge.run.api.dto.RunResponse;
 import com.wedge.run.domain.ResultCompleteness;
 import com.wedge.run.domain.RunStatus;
@@ -103,6 +104,41 @@ class RunServiceTest {
         assertThatThrownBy(() -> runService.finishRun(created.id(), false))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("CREATED -> COMPLETED");
+    }
+
+    @Test
+    void listRunEventsReturnsLimitedPageAndNextCursor() {
+        UUID runId = UUID.randomUUID();
+        UUID stepId = UUID.randomUUID();
+        UUID cursor = UUID.randomUUID();
+        RunResponse run = sampleRun(runId, RunStatus.RUNNING, ResultCompleteness.NONE);
+        RunEventResponse first = sampleRunEvent(runId, stepId);
+        RunEventResponse second = sampleRunEvent(runId, stepId);
+
+        when(runPersistenceAdapter.findRun(runId)).thenReturn(Optional.of(run));
+        when(runPersistenceAdapter.listRunEvents(runId, stepId, "STEP_FAILED", cursor, 2))
+                .thenReturn(List.of(first, second));
+
+        RunEventListResult result = runService.listRunEvents(runId, stepId, " STEP_FAILED ", cursor.toString(), 1);
+
+        assertThat(result.events()).containsExactly(first);
+        assertThat(result.nextCursor()).isEqualTo(first.id().toString());
+        assertThat(result.hasMore()).isTrue();
+    }
+
+    @Test
+    void listRunEventsRejectsInvalidLimitAndCursor() {
+        UUID runId = UUID.randomUUID();
+        RunResponse run = sampleRun(runId, RunStatus.RUNNING, ResultCompleteness.NONE);
+        when(runPersistenceAdapter.findRun(runId)).thenReturn(Optional.of(run));
+
+        assertThatThrownBy(() -> runService.listRunEvents(runId, null, null, null, 101))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Run event limit must be between 1 and 100.");
+
+        assertThatThrownBy(() -> runService.listRunEvents(runId, null, null, "not-a-uuid", 20))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Run event cursor must be an event id UUID.");
     }
 
     @Test
@@ -219,6 +255,19 @@ class RunServiceTest {
         assertThatThrownBy(() -> runService.createRun(request))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("scenarioPlan.environment.device must match devicePreset.");
+    }
+
+    private RunEventResponse sampleRunEvent(UUID runId, UUID stepId) {
+        return new RunEventResponse(
+                UUID.randomUUID(),
+                runId,
+                stepId,
+                "step_002_submit",
+                "STEP_FAILED",
+                "RUNNER",
+                Map.of("message", "locator click timed out"),
+                OffsetDateTime.parse("2026-04-28T10:00:03+09:00")
+        );
     }
 
     private RunCreateRequest sampleRequest() {

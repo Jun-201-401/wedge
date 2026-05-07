@@ -133,6 +133,7 @@ export function createSimulatedPageSnapshot(
     selectedOptions: {},
     scrollY: 0,
     lastAction: null,
+    interactiveComponents: [],
     consoleErrors: [],
     networkErrors: [],
     cdpSession: {

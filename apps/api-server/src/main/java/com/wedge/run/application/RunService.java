@@ -3,7 +3,9 @@ package com.wedge.run.application;
 import com.wedge.common.error.BusinessException;
 import com.wedge.common.error.ErrorCode;
 import com.wedge.run.api.dto.RunCreateRequest;
+import com.wedge.run.api.dto.RunEventResponse;
 import com.wedge.run.api.dto.RunResponse;
+import com.wedge.run.api.dto.RunStepResponse;
 import com.wedge.run.domain.ResultCompleteness;
 import com.wedge.run.domain.RunStatus;
 import com.wedge.common.infrastructure.outbox.OutboxMessagePersistenceAdapter;
@@ -18,6 +20,9 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 @RequiredArgsConstructor
 public class RunService {
+    private static final int DEFAULT_EVENT_LIMIT = 20;
+    private static final int MAX_EVENT_LIMIT = 100;
+
     private final RunPersistenceAdapter runPersistenceAdapter;
     private final RunExecuteRequestMessageFactory runExecuteRequestMessageFactory;
     private final OutboxMessagePersistenceAdapter outboxMessagePersistenceAdapter;
@@ -39,6 +44,66 @@ public class RunService {
     public RunResponse getRun(UUID runId) {
         return runPersistenceAdapter.findRun(runId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.RUN_NOT_FOUND));
+    }
+
+    @Transactional(readOnly = true)
+    public List<RunStepResponse> listRunSteps(UUID runId) {
+        getRun(runId);
+        return runPersistenceAdapter.listRunSteps(runId);
+    }
+
+    @Transactional(readOnly = true)
+    public RunStepResponse getRunStep(UUID runId, UUID stepId) {
+        getRun(runId);
+        return runPersistenceAdapter.findRunStep(runId, stepId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_REQUEST, "Run step was not found for the run."));
+    }
+
+    @Transactional(readOnly = true)
+    public RunEventListResult listRunEvents(UUID runId, UUID stepId, String eventType, String cursor, Integer limit) {
+        getRun(runId);
+
+        int pageLimit = normalizeEventLimit(limit);
+        List<RunEventResponse> fetchedEvents = runPersistenceAdapter.listRunEvents(
+                runId,
+                stepId,
+                normalizeEventType(eventType),
+                parseEventCursor(cursor),
+                pageLimit + 1
+        );
+        boolean hasMore = fetchedEvents.size() > pageLimit;
+        List<RunEventResponse> events = hasMore
+                ? fetchedEvents.subList(0, pageLimit)
+                : fetchedEvents;
+        String nextCursor = hasMore && !events.isEmpty()
+                ? events.get(events.size() - 1).id().toString()
+                : null;
+        return new RunEventListResult(events, nextCursor, hasMore);
+    }
+
+    private int normalizeEventLimit(Integer limit) {
+        if (limit == null) {
+            return DEFAULT_EVENT_LIMIT;
+        }
+        if (limit < 1 || limit > MAX_EVENT_LIMIT) {
+            throw new BusinessException(ErrorCode.INVALID_REQUEST, "Run event limit must be between 1 and 100.");
+        }
+        return limit;
+    }
+
+    private String normalizeEventType(String eventType) {
+        return eventType == null || eventType.isBlank() ? null : eventType.trim();
+    }
+
+    private UUID parseEventCursor(String cursor) {
+        if (cursor == null || cursor.isBlank()) {
+            return null;
+        }
+        try {
+            return UUID.fromString(cursor.trim());
+        } catch (IllegalArgumentException exception) {
+            throw new BusinessException(ErrorCode.INVALID_REQUEST, "Run event cursor must be an event id UUID.");
+        }
     }
 
     @Transactional

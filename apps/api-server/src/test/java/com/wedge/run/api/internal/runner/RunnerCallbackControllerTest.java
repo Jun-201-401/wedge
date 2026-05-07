@@ -199,7 +199,8 @@ class RunnerCallbackControllerTest {
                         "failedAt", "2026-04-21T10:03:00+09:00",
                         "failureCode", "RUNNER_TIMEOUT",
                         "failureMessage", "Runner callback timed out",
-                        "resultCompleteness", "PARTIAL"
+                        "resultCompleteness", "PARTIAL",
+                        "summary", Map.of("completedStepCount", 3, "failedStepCount", 1, "stopped", false)
                 ))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status").value("FAILED"));
@@ -211,6 +212,9 @@ class RunnerCallbackControllerTest {
         assertThat(commandCaptor.getValue().failureCode()).isEqualTo("RUNNER_TIMEOUT");
         assertThat(commandCaptor.getValue().failureMessage()).isEqualTo("Runner callback timed out");
         assertThat(commandCaptor.getValue().resultCompleteness()).isEqualTo(ResultCompleteness.PARTIAL);
+        assertThat(commandCaptor.getValue().completedStepCount()).isEqualTo(3);
+        assertThat(commandCaptor.getValue().failedStepCount()).isEqualTo(1);
+        assertThat(commandCaptor.getValue().stopped()).isFalse();
     }
 
     @Test
