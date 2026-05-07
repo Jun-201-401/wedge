@@ -47,7 +47,9 @@ export function RunReportViewer({ report }: RunReportViewerProps) {
   const activeFindingId = activeFinding?.id ?? null;
   const selectedEvidencePreviewUrl = activeFinding?.previewImageUrl ?? report.evidencePreviewUrl;
   const evidencePreviewUrl = useAuthenticatedResourceUrl(selectedEvidencePreviewUrl);
-  const highlightSourceLabel = activeFinding?.highlight.source === 'fallback' ? '추정 영역' : '실측 영역';
+  const highlightSourceLabel = !activeFinding?.highlight
+    ? '영역 없음'
+    : activeFinding.highlight.source === 'fallback' ? '추정 영역' : '실측 영역';
 
   useEffect(() => {
     if (report.findings.length === 0) {
@@ -147,7 +149,7 @@ export function RunReportViewer({ report }: RunReportViewerProps) {
                     </div>
                   </div>
                 )}
-                {activeFinding ? (
+                {activeFinding?.highlight ? (
                   <div
                     className={`run-report-friction-marker run-report-friction-marker--${activeFinding.severity}`}
                     style={{

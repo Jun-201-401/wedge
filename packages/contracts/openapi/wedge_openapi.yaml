@@ -4202,6 +4202,11 @@ components:
           allOf:
           - $ref: '#/components/schemas/ReportPreviewImage'
           nullable: true
+        highlight:
+          type: object
+          allOf:
+          - $ref: '#/components/schemas/ReportFindingHighlight'
+          nullable: true
         nudges:
           type: array
           items:
@@ -4214,6 +4219,79 @@ components:
       - stage
       - evidenceRefs
       - nudges
+    ReportFindingHighlight:
+      type: object
+      description: Screen coordinate metadata for drawing a finding marker over the preview image.
+      properties:
+        evidenceRef:
+          type: string
+          nullable: true
+        label:
+          type: string
+        source:
+          type: string
+          enum:
+          - artifact-coordinate
+        coordinateSpace:
+          type: string
+          nullable: true
+          enum:
+          - viewport
+          - screenshot
+          - viewport_ratio
+          description: Coordinate origin emitted by analyzer. `viewport` uses runner viewport coordinates.
+        bounds:
+          type: object
+          properties:
+            x:
+              type: number
+            y:
+              type: number
+            width:
+              type: number
+            height:
+              type: number
+            unit:
+              type: string
+              enum:
+              - css_px
+              - screenshot_px
+              - viewport_ratio
+          description: Element bounds in the unit emitted by the runner, usually css_px.
+          example:
+            x: 520
+            y: 360
+            width: 220
+            height: 56
+            unit: css_px
+          required:
+          - x
+          - y
+          - width
+          - height
+        viewport:
+          type: object
+          nullable: true
+          properties:
+            width:
+              type: number
+            height:
+              type: number
+          required:
+          - width
+          - height
+          description: Viewport dimensions used to translate bounds into preview percentages.
+          example:
+            width: 1440
+            height: 900
+        screenshotArtifactId:
+          type: string
+          description: Screenshot artifact id that the coordinate was captured against.
+      required:
+      - label
+      - source
+      - bounds
+      - screenshotArtifactId
     ReportDetailNudge:
       type: object
       properties:

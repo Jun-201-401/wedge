@@ -142,6 +142,74 @@ function getFindingPreviewUrl(finding: ReportDetail['findings'][number]) {
   return artifact?.contentUrl ?? artifact?.url ?? null;
 }
 
+function readBound(value: unknown) {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : null;
+}
+
+function boundsToPercent(value: number, total: number) {
+  return `${Math.max(0, Math.min(100, (value / total) * 100)).toFixed(2)}%`;
+}
+
+function ratioToPercent(value: number) {
+  return `${Math.max(0, Math.min(100, value * 100)).toFixed(2)}%`;
+}
+
+function normalizeArtifactRef(value: string | null) {
+  return value?.startsWith('artifact:') ? value.slice('artifact:'.length) : value;
+}
+
+function hasMatchedHighlightArtifact(finding: ReportDetail['findings'][number]) {
+  const highlightArtifactId = normalizeArtifactRef(readString(finding.highlight?.screenshotArtifactId));
+  const previewArtifactId = normalizeArtifactRef(readString(finding.previewImage?.artifact.id));
+  return Boolean(highlightArtifactId && previewArtifactId && highlightArtifactId === previewArtifactId);
+}
+
+function createArtifactHighlight(finding: ReportDetail['findings'][number]) {
+  const bounds = finding.highlight?.bounds;
+  const viewport = finding.highlight?.viewport;
+  const unit = readString(bounds?.unit) ?? 'css_px';
+  const coordinateSpace = readString(finding.highlight?.coordinateSpace);
+  const x = readBound(bounds?.x);
+  const y = readBound(bounds?.y);
+  const width = readBound(bounds?.width);
+  const height = readBound(bounds?.height);
+
+  if (x === null || y === null || width === null || height === null || !hasMatchedHighlightArtifact(finding)) {
+    return null;
+  }
+
+  if (unit === 'viewport_ratio') {
+    return {
+      label: readString(finding.highlight?.label) ?? 'EVIDENCE TARGET',
+      source: 'artifact-coordinate' as const,
+      top: ratioToPercent(y),
+      left: ratioToPercent(x),
+      width: ratioToPercent(width),
+      height: ratioToPercent(height),
+    };
+  }
+
+  const scaleWidth = unit === 'screenshot_px'
+    ? readBound(finding.previewImage?.artifact.width)
+    : readBound(viewport?.width) ?? readBound(finding.previewImage?.artifact.width);
+  const scaleHeight = unit === 'screenshot_px'
+    ? readBound(finding.previewImage?.artifact.height)
+    : readBound(viewport?.height) ?? readBound(finding.previewImage?.artifact.height);
+
+  if (!scaleWidth || !scaleHeight || (unit !== 'css_px' && unit !== 'screenshot_px' && coordinateSpace !== 'viewport')) {
+    return null;
+  }
+
+  return {
+    label: readString(finding.highlight?.label) ?? 'EVIDENCE TARGET',
+    source: 'artifact-coordinate' as const,
+    top: boundsToPercent(y, scaleHeight),
+    left: boundsToPercent(x, scaleWidth),
+    width: boundsToPercent(width, scaleWidth),
+    height: boundsToPercent(height, scaleHeight),
+  };
+}
+
 function buildFindingsFromDetail(detail: ReportDetail): ReportFinding[] {
   return detail.findings.map((finding, index) => {
     const severity = severityFromScore(finding.severity);
@@ -166,7 +234,7 @@ function buildFindingsFromDetail(detail: ReportDetail): ReportFinding[] {
         ?? firstNudge?.rationale
         ?? finding.impactHypothesis
         ?? '분석 결과의 근거와 추천 nudge를 함께 검토하세요.',
-      highlight: createHighlight(index),
+      highlight: createArtifactHighlight(finding),
     };
   });
 }

@@ -131,6 +131,24 @@ const reportDetail: ReportDetail = {
       },
       source: 'STAGE_SCREENSHOT',
     },
+    highlight: {
+      evidenceRef: 'cp-detail.obs-1',
+      label: 'Start free',
+      source: 'artifact-coordinate',
+      coordinateSpace: 'viewport',
+      bounds: {
+        x: 520,
+        y: 360,
+        width: 220,
+        height: 56,
+        unit: 'css_px',
+      },
+      viewport: {
+        width: 1440,
+        height: 900,
+      },
+      screenshotArtifactId: '66666666-6666-4666-8666-666666666666',
+    },
     nudges: [{
       id: 'detail-nudge-1',
       rank: 1,
@@ -227,7 +245,109 @@ test('buildRunReportFromApi prefers report detail finding preview image when ava
   assert.equal(report.findings[0].title, '상세 CTA 문맥 부족');
   assert.equal(report.findings[0].previewImageUrl, reportDetail.findings[0].previewImage?.artifact.contentUrl);
   assert.equal(report.findings[0].evidenceRefs[0], 'cp-detail.obs-1');
+  assert.equal(report.findings[0].highlight?.source, 'artifact-coordinate');
+  assert.equal(report.findings[0].highlight?.label, 'Start free');
+  assert.equal(report.findings[0].highlight?.left, '36.11%');
+  assert.equal(report.findings[0].highlight?.top, '40.00%');
   assert.equal(report.recommendations[0].detail, '상세 CTA 아래에 기대 결과를 한 문장으로 설명하세요.');
+});
+
+test('buildRunReportFromApi ignores coordinate highlight when it targets another screenshot', () => {
+  const mismatchedDetail: ReportDetail = {
+    ...reportDetail,
+    findings: [{
+      ...reportDetail.findings[0],
+      highlight: {
+        ...reportDetail.findings[0].highlight!,
+        screenshotArtifactId: '99999999-9999-4999-8999-999999999999',
+      },
+    }],
+  };
+  const report = buildRunReportFromApi({
+    run: completedRun,
+    report: readyReport,
+    detail: mismatchedDetail,
+    scenarioId: 'landing-cta',
+  });
+
+  assert.equal(report.findings[0].highlight, null);
+});
+
+test('buildRunReportFromApi accepts artifact-prefixed coordinate highlight ids', () => {
+  const prefixedDetail: ReportDetail = {
+    ...reportDetail,
+    findings: [{
+      ...reportDetail.findings[0],
+      highlight: {
+        ...reportDetail.findings[0].highlight!,
+        screenshotArtifactId: `artifact:${reportDetail.findings[0].previewImage!.artifact.id}`,
+      },
+    }],
+  };
+  const report = buildRunReportFromApi({
+    run: completedRun,
+    report: readyReport,
+    detail: prefixedDetail,
+    scenarioId: 'landing-cta',
+  });
+
+  assert.equal(report.findings[0].highlight?.source, 'artifact-coordinate');
+});
+
+test('buildRunReportFromApi ignores coordinate highlight without a screenshot binding', () => {
+  const unboundDetail: ReportDetail = {
+    ...reportDetail,
+    findings: [{
+      ...reportDetail.findings[0],
+      highlight: {
+        ...reportDetail.findings[0].highlight!,
+        screenshotArtifactId: '',
+      },
+    }],
+  };
+  const report = buildRunReportFromApi({
+    run: completedRun,
+    report: readyReport,
+    detail: unboundDetail,
+    scenarioId: 'landing-cta',
+  });
+
+  assert.equal(report.findings[0].highlight, null);
+});
+
+test('buildRunReportFromApi converts viewport ratio highlight coordinates directly', () => {
+  const ratioDetail: ReportDetail = {
+    ...reportDetail,
+    findings: [{
+      ...reportDetail.findings[0],
+      highlight: {
+        evidenceRef: 'cp-detail.obs-1',
+        label: 'Ratio target',
+        source: 'artifact-coordinate',
+        coordinateSpace: 'viewport_ratio',
+        bounds: {
+          x: 0.25,
+          y: 0.5,
+          width: 0.2,
+          height: 0.1,
+          unit: 'viewport_ratio',
+        },
+        viewport: null,
+        screenshotArtifactId: '66666666-6666-4666-8666-666666666666',
+      },
+    }],
+  };
+  const report = buildRunReportFromApi({
+    run: completedRun,
+    report: readyReport,
+    detail: ratioDetail,
+    scenarioId: 'landing-cta',
+  });
+
+  assert.equal(report.findings[0].highlight?.left, '25.00%');
+  assert.equal(report.findings[0].highlight?.top, '50.00%');
+  assert.equal(report.findings[0].highlight?.width, '20.00%');
+  assert.equal(report.findings[0].highlight?.height, '10.00%');
 });
 
 test('selectLatestScreenshotPreviewUrl picks the latest screenshot artifact', () => {

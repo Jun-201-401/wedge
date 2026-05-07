@@ -32,7 +32,7 @@ export interface ReportFinding {
     left: string;
     width: string;
     height: string;
-  };
+  } | null;
 }
 
 export interface ReportRecommendation {
