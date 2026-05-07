@@ -37,11 +37,23 @@ public class ReportDetailQueryService {
 
     @Transactional(readOnly = true)
     public ReportDetailResponse getReportDetail(UUID reportId, UUID userId) {
-        Report report = reportMapper.findById(reportId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.REPORT_NOT_FOUND));
+        Report report = findReport(reportId);
         RunResponse run = runService.getRun(report.getRunId());
         reportAccessGuard.ensureProjectAccessible(run.projectId(), userId);
+        return toDetailResponse(report);
+    }
 
+    @Transactional(readOnly = true)
+    public ReportDetailResponse getSharedReportDetail(UUID reportId) {
+        return toDetailResponse(findReport(reportId));
+    }
+
+    private Report findReport(UUID reportId) {
+        return reportMapper.findById(reportId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.REPORT_NOT_FOUND));
+    }
+
+    private ReportDetailResponse toDetailResponse(Report report) {
         Map<String, Object> summary = reportJsonReader.readObject(report.getSummaryJsonb());
         return new ReportDetailResponse(
                 report.getId(),
