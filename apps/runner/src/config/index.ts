@@ -5,6 +5,7 @@ export type RunnerBrowserMode = "simulated" | "playwright";
 export type RunnerBrowserName = "chromium" | "firefox" | "webkit";
 export type RunnerCallbackMode = "file" | "http";
 export type RunnerArtifactStoreMode = "filesystem" | "s3";
+export type RunnerAgentDecisionMode = "heuristic" | "llm";
 
 const DEFAULT_RETRY_DELAYS_MS = [200, 1000, 3000] as const;
 const DEFAULT_OUTBOX_LOCK_STALE_MS = 30_000;
@@ -15,6 +16,8 @@ const DEFAULT_OUTBOX_MAX_RECORDS = 1_000;
 const DEFAULT_CALLBACK_TIMEOUT_MS = 5_000;
 const DEFAULT_BROWSER_TIMEOUT_MS = 30_000;
 const DEFAULT_SIMULATED_DELAY_CAP_MS = 25;
+const DEFAULT_MQ_MAX_DELIVERY_ATTEMPTS = 3;
+const DEFAULT_AGENT_LLM_TIMEOUT_MS = 10_000;
 export const RUNNER_MQ_CALLBACK_OUTBOX_WORKER_ENABLED_ENV = "RUNNER_MQ_CALLBACK_OUTBOX_WORKER_ENABLED";
 export const RUNNER_MQ_ARTIFACT_OUTBOX_WORKER_ENABLED_ENV = "RUNNER_MQ_ARTIFACT_OUTBOX_WORKER_ENABLED";
 
@@ -54,9 +57,13 @@ export interface RunnerConfig {
   mqConsumerEnabled: boolean;
   mqUrl: string;
   mqQueueRunExecute: string;
+  mqQueueAgentExecute: string;
   mqQueueDiscoveryExecute: string;
   mqPrefetch: number;
+  agentConcurrency: number;
+  agentIdempotencyStoreEnabled: boolean;
   mqRequeueOnFailure: boolean;
+  mqMaxDeliveryAttempts: number;
   mqCallbackOutboxWorkerEnabled: boolean;
   mqArtifactOutboxWorkerEnabled: boolean;
   browserMode: RunnerBrowserMode;
@@ -67,6 +74,11 @@ export interface RunnerConfig {
   playwrightSlowMoMs: number;
   playwrightBrowsersPath?: string;
   simulatedDelayCapMs: number;
+  agentDecisionMode: RunnerAgentDecisionMode;
+  agentLlmEndpoint?: string;
+  agentLlmApiKey?: string;
+  agentLlmModel: string;
+  agentLlmTimeoutMs: number;
 }
 
 export function loadRunnerConfig(overrides: Partial<RunnerConfig> = {}): RunnerConfig {
@@ -150,13 +162,26 @@ export function loadRunnerConfig(overrides: Partial<RunnerConfig> = {}): RunnerC
   const mqUrl = overrides.mqUrl ?? process.env.RUNNER_MQ_URL ?? "amqp://localhost";
   const mqQueueRunExecute =
     overrides.mqQueueRunExecute ?? process.env.RUNNER_MQ_QUEUE_RUN_EXECUTE ?? "run.execute.request";
+  const mqQueueAgentExecute =
+    overrides.mqQueueAgentExecute ?? process.env.RUNNER_MQ_QUEUE_AGENT_EXECUTE ?? "agent.execute.request";
   const mqQueueDiscoveryExecute =
     overrides.mqQueueDiscoveryExecute ?? process.env.RUNNER_MQ_QUEUE_DISCOVERY_EXECUTE ?? "discovery.execute.request";
   const mqPrefetch = parseNumber(overrides.mqPrefetch, process.env.RUNNER_MQ_PREFETCH, 1);
+  const agentConcurrency = parsePositiveInteger(overrides.agentConcurrency, process.env.RUNNER_AGENT_CONCURRENCY, 1);
+  const agentIdempotencyStoreEnabled = parseBoolean(
+    overrides.agentIdempotencyStoreEnabled,
+    process.env.RUNNER_AGENT_IDEMPOTENCY_STORE_ENABLED,
+    true
+  );
   const mqRequeueOnFailure = parseBoolean(
     overrides.mqRequeueOnFailure,
     process.env.RUNNER_MQ_REQUEUE_ON_FAILURE,
     false
+  );
+  const mqMaxDeliveryAttempts = parsePositiveInteger(
+    overrides.mqMaxDeliveryAttempts,
+    process.env.RUNNER_MQ_MAX_DELIVERY_ATTEMPTS,
+    DEFAULT_MQ_MAX_DELIVERY_ATTEMPTS
   );
   const mqCallbackOutboxWorkerEnabled = parseBoolean(
     overrides.mqCallbackOutboxWorkerEnabled,
@@ -185,6 +210,12 @@ export function loadRunnerConfig(overrides: Partial<RunnerConfig> = {}): RunnerC
     overrides.playwrightSlowMoMs,
     process.env.RUNNER_PLAYWRIGHT_SLOW_MO_MS,
     0
+  );
+  const agentDecisionMode = resolveAgentDecisionMode(overrides.agentDecisionMode ?? process.env.RUNNER_AGENT_DECISION_MODE);
+  const agentLlmTimeoutMs = parsePositiveInteger(
+    overrides.agentLlmTimeoutMs,
+    process.env.RUNNER_AGENT_LLM_TIMEOUT_MS,
+    DEFAULT_AGENT_LLM_TIMEOUT_MS
   );
 
   return {
@@ -237,9 +268,13 @@ export function loadRunnerConfig(overrides: Partial<RunnerConfig> = {}): RunnerC
     mqConsumerEnabled,
     mqUrl,
     mqQueueRunExecute,
+    mqQueueAgentExecute,
     mqQueueDiscoveryExecute,
     mqPrefetch,
+    agentConcurrency,
+    agentIdempotencyStoreEnabled,
     mqRequeueOnFailure,
+    mqMaxDeliveryAttempts,
     mqCallbackOutboxWorkerEnabled,
     mqArtifactOutboxWorkerEnabled,
     browserMode,
@@ -253,7 +288,12 @@ export function loadRunnerConfig(overrides: Partial<RunnerConfig> = {}): RunnerC
       overrides.simulatedDelayCapMs,
       process.env.RUNNER_SIMULATED_DELAY_CAP_MS,
       DEFAULT_SIMULATED_DELAY_CAP_MS
-    )
+    ),
+    agentDecisionMode,
+    agentLlmEndpoint: overrides.agentLlmEndpoint ?? process.env.RUNNER_AGENT_LLM_ENDPOINT ?? undefined,
+    agentLlmApiKey: overrides.agentLlmApiKey ?? process.env.RUNNER_AGENT_LLM_API_KEY ?? undefined,
+    agentLlmModel: overrides.agentLlmModel ?? process.env.RUNNER_AGENT_LLM_MODEL ?? "agent-decision",
+    agentLlmTimeoutMs
   };
 }
 
@@ -300,6 +340,10 @@ function parseBrowserName(value: RunnerConfig["browserName"] | string | undefine
   return "chromium";
 }
 
+function resolveAgentDecisionMode(value: RunnerAgentDecisionMode | string | undefined): RunnerAgentDecisionMode {
+  return value === "llm" ? "llm" : "heuristic";
+}
+
 function parseBoolean(
   overrideValue: boolean | undefined,
   envValue: string | undefined,
@@ -322,6 +366,15 @@ function parseBoolean(
   }
 
   return defaultValue;
+}
+
+function parsePositiveInteger(
+  overrideValue: number | undefined,
+  envValue: string | undefined,
+  defaultValue: number
+): number {
+  const parsed = parseNumber(overrideValue, envValue, defaultValue);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : defaultValue;
 }
 
 function parseNumber(

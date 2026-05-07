@@ -2,7 +2,12 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { ConsumeMessage } from "amqplib";
 import { RunnerMessageValidationError } from "../src/messaging/index.ts";
-import { handleRunExecuteMessage, startRunExecuteQueueConsumer, startRunnerQueueConsumers } from "../src/messaging/rabbitmq/index.ts";
+import {
+  handleRunExecuteMessage,
+  startAgentExecuteQueueConsumer,
+  startRunExecuteQueueConsumer,
+  startRunnerQueueConsumers
+} from "../src/messaging/rabbitmq/index.ts";
 
 test("[RabbitMQ consumer] run.execute 메시지 처리 성공 시 ack 한다", async () => {
   const calls: string[] = [];
@@ -87,6 +92,33 @@ test("[RabbitMQ consumer] 실행 실패는 설정된 경우에만 requeue 한다
   assert.deepEqual(requeueCalls, [["nack", true]]);
 });
 
+test("[RabbitMQ consumer] poison message는 최대 delivery 시도 후 requeue 없이 reject 한다", async () => {
+  const calls: Array<[string, boolean]> = [];
+  const message = createMessage("valid", {
+    headers: {
+      "x-delivery-count": 3
+    },
+    redelivered: true
+  });
+
+  await handleRunExecuteMessage({
+    channel: {
+      ack: () => {},
+      nack: (_message, _allUpTo, requeue) => {
+        calls.push(["nack", requeue ?? false]);
+      }
+    },
+    message,
+    processRawMessage: async () => {
+      throw new Error("worker failed repeatedly");
+    },
+    requeueOnFailure: true,
+    maxDeliveryAttempts: 3
+  });
+
+  assert.deepEqual(calls, [["nack", false]]);
+});
+
 test("[RabbitMQ consumer] queue consume을 설정하고 종료 시 연결 자원을 닫는다", async () => {
   const events: string[] = [];
   let consumeHandler: ((message: ConsumeMessage | null) => void | Promise<void>) | undefined;
@@ -155,7 +187,58 @@ test("[RabbitMQ consumer] queue consume을 설정하고 종료 시 연결 자원
   assert.ok(events.includes("connection:close"));
 });
 
-test("startRunnerQueueConsumers consumes run and discovery queues", async () => {
+test("[RabbitMQ consumer] agent.execute queue는 RUNNER_AGENT_CONCURRENCY 값을 prefetch로 사용한다", async () => {
+  const events: string[] = [];
+
+  const consumer = await startAgentExecuteQueueConsumer({
+    config: {
+      mqUrl: "amqp://localhost",
+      mqQueueAgentExecute: "agent.execute.request",
+      agentConcurrency: 1,
+      mqRequeueOnFailure: false
+    },
+    processRawMessage: async () => {},
+    client: {
+      connect: async (url) => {
+        events.push(`connect:${url}`);
+
+        return {
+          createChannel: async () => ({
+            prefetch: async (count) => {
+              events.push(`prefetch:${count}`);
+            },
+            checkQueue: async (queue) => {
+              events.push(`checkQueue:${queue}`);
+            },
+            consume: async (queue) => {
+              events.push(`consume:${queue}`);
+              return { consumerTag: "consumer-tag" };
+            },
+            ack: () => {},
+            nack: () => {},
+            close: async () => {
+              events.push("channel:close");
+            }
+          }),
+          close: async () => {
+            events.push("connection:close");
+          }
+        };
+      }
+    }
+  });
+
+  assert.deepEqual(events.slice(0, 4), [
+    "connect:amqp://localhost",
+    "prefetch:1",
+    "checkQueue:agent.execute.request",
+    "consume:agent.execute.request"
+  ]);
+
+  await consumer.close();
+});
+
+test("startRunnerQueueConsumers consumes run, agent, and discovery queues", async () => {
   const events: string[] = [];
   const handlers = new Map<string, (message: ConsumeMessage | null) => void | Promise<void>>();
 
@@ -163,12 +246,17 @@ test("startRunnerQueueConsumers consumes run and discovery queues", async () => 
     config: {
       mqUrl: "amqp://localhost",
       mqQueueRunExecute: "run.execute.request",
+      mqQueueAgentExecute: "agent.execute.request",
       mqQueueDiscoveryExecute: "discovery.execute.request",
       mqPrefetch: 2,
+      agentConcurrency: 1,
       mqRequeueOnFailure: false
     },
     processRawRunMessage: async (rawMessage) => {
       events.push(`run:${rawMessage}`);
+    },
+    processRawAgentMessage: async (rawMessage) => {
+      events.push(`agent:${rawMessage}`);
     },
     processRawDiscoveryMessage: async (rawMessage) => {
       events.push(`discovery:${rawMessage}`);
@@ -207,12 +295,19 @@ test("startRunnerQueueConsumers consumes run and discovery queues", async () => 
     }
   });
 
+  assert.deepEqual(
+    events.filter((event) => event.startsWith("prefetch:")),
+    ["prefetch:2", "prefetch:1", "prefetch:2"]
+  );
+
   await handlers.get("run.execute.request")?.(createMessage('{"messageType":"run.execute.request"}'));
+  await handlers.get("agent.execute.request")?.(createMessage('{"messageType":"agent.execute.request"}'));
   await handlers.get("discovery.execute.request")?.(createMessage('{"messageType":"discovery.execute.request"}'));
 
   assert.ok(events.includes('run:{"messageType":"run.execute.request"}'));
+  assert.ok(events.includes('agent:{"messageType":"agent.execute.request"}'));
   assert.ok(events.includes('discovery:{"messageType":"discovery.execute.request"}'));
-  assert.equal(events.filter((event) => event === "ack").length, 2);
+  assert.equal(events.filter((event) => event === "ack").length, 3);
 
   await consumer.close();
   assert.ok(events.includes("channel:close"));
@@ -260,10 +355,20 @@ test("[RabbitMQ consumer] null delivery는 ack/reject 없이 무시한다", asyn
   assert.deepEqual(events, []);
 });
 
-function createMessage(content: string): ConsumeMessage {
+function createMessage(
+  content: string,
+  options: {
+    headers?: Record<string, unknown>;
+    redelivered?: boolean;
+  } = {}
+): ConsumeMessage {
   return {
     content: Buffer.from(content, "utf8"),
-    fields: {} as ConsumeMessage["fields"],
-    properties: {} as ConsumeMessage["properties"]
+    fields: {
+      redelivered: options.redelivered ?? false
+    } as ConsumeMessage["fields"],
+    properties: {
+      headers: options.headers ?? {}
+    } as ConsumeMessage["properties"]
   };
 }

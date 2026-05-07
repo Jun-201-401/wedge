@@ -162,6 +162,7 @@
           "format": "date-time"
         },
         "stepKey": {
+          "description": "Scenario step key for step-scoped artifacts. Reserved agent run-scoped keys such as agent_trace and agent_scenario_plan_export are persisted without resolving a ScenarioPlan step.",
           "type": "string",
           "minLength": 1
         }
@@ -794,6 +795,104 @@
         "failedAt",
         "failureCode",
         "failureMessage"
+      ]
+    },
+
+    "AgentEventBatch": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "events": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/AgentEvent"
+          }
+        }
+      },
+      "required": [
+        "events"
+      ]
+    },
+    "AgentEvent": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "eventId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "taskId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "attemptId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "turn": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "eventType": {
+          "type": "string",
+          "enum": [
+            "PRE_DECISION_VERIFIED",
+            "DECISION_MADE",
+            "POLICY_CHECKED",
+            "ACTION_COMPLETED",
+            "ACTION_FAILED",
+            "GOAL_VERIFIED",
+            "TRACE_PERSISTED"
+          ]
+        },
+        "occurredAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "payload": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "eventId",
+        "taskId",
+        "attemptId",
+        "eventType",
+        "occurredAt",
+        "payload"
+      ]
+    },
+    "AgentTraceCallback": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "taskId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "attemptId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "occurredAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "trace": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "traceArtifact": {
+          "$ref": "#/$defs/Artifact"
+        }
+      },
+      "required": [
+        "taskId",
+        "attemptId",
+        "occurredAt",
+        "trace"
       ]
     },
     "DecisionStage": {

@@ -11,6 +11,7 @@ related_documents:
   - 01_architecture_and_project_structure.md
   - 04_domain_payload_contracts.md
   - ../apps/runner/README.md
+  - wedge_runner_agent_execution.md
   - ../packages/contracts/internal/runner-callback.schema.json
   - ../packages/contracts/mq/messages.schema.json
 ---
@@ -20,6 +21,8 @@ related_documents:
 이 문서는 `apps/runner`의 기술 선택, 모듈 경계, 현재 구현 방향을 기록한다.
 
 목표는 Wedge Runner가 `run.execute.request`를 안정적으로 소비하고, `ScenarioPlan`을 브라우저 실행으로 변환하며, checkpoint/artifact/internal callback 흐름을 유지보수하기 쉽게 만드는 것이다.
+
+단, 사용자-facing 실행 방향은 `docs/wedge_runner_agent_execution.md`의 goal 기반 Runner Agent target design을 따른다. 이 문서의 기존 `ScenarioPlan` executor 설명은 scripted/replay 경로의 현재 baseline으로 유지한다.
 
 이 문서는 `docs/wedge_frontend_architecture.md`와 같은 역할을 runner 영역에서 수행한다. 즉, 세부 구현 코드보다 먼저 “어디에 어떤 책임을 둘지”를 정한다.
 
@@ -287,11 +290,26 @@ RUNNER_MQ_CALLBACK_OUTBOX_WORKER_ENABLED=false
 RUNNER_MQ_ARTIFACT_OUTBOX_WORKER_ENABLED=false
 ```
 
+구현된 hardening:
+
+- agent worker는 동일 `AgentTask.idempotency_key` 중복 delivery를 같은 process 안에서 재실행하지 않고 기존 실행 promise/result를 재사용한다.
+- terminal agent execution result는 `artifactsRoot/agent-idempotency/`에 저장되어 runner process 재시작 후에도 같은 idempotency key를 재실행하지 않는다.
+- MQ consumer는 `RUNNER_MQ_REQUEUE_ON_FAILURE=true`여도 `RUNNER_MQ_MAX_DELIVERY_ATTEMPTS` 이상 관측된 poison message를 requeue 없이 reject한다.
+- worker concurrency 정책은 static run/discovery는 `RUNNER_MQ_PREFETCH`, agent는 `RUNNER_AGENT_CONCURRENCY`로 분리한다.
+
+운영 기본값:
+
+```text
+RUNNER_MQ_PREFETCH=4
+RUNNER_AGENT_CONCURRENCY=1
+RUNNER_MQ_REQUEUE_ON_FAILURE=false
+RUNNER_MQ_MAX_DELIVERY_ATTEMPTS=3
+```
+
 남은 hardening:
 
-- idempotency key 처리
-- poison message 처리
-- worker concurrency 정책
+- API/DB 기반 global idempotency는 processed_message 또는 terminal trace 조회와 연결한다.
+- production traffic 기준 concurrency scaling guide를 부하 테스트 결과로 확정한다.
 
 ## 4.2 Spring internal callback HTTP client
 
@@ -299,9 +317,44 @@ RUNNER_MQ_ARTIFACT_OUTBOX_WORKER_ENABLED=false
 
 현재 `RUNNER_CALLBACK_BASE_URL`이 있으면 HTTP callback mode로 전환되며, `X-Event-Id`, `X-Worker-Id`, bearer token, optional HMAC signature, timeout/retry, callback outbox persistence가 연결되어 있다. JSONL 기록은 local fallback으로 유지한다.
 
-남은 hardening:
+현재 duplicate delivery tolerance:
 
-- duplicate delivery tolerance
+- API callback은 `X-Event-Id` 기반 processed_message로 중복 callback을 duplicate ack 처리한다.
+- Runner HTTP callback client는 timeout/retry 후 callback outbox에 남기고 replay worker가 재전송한다.
+
+## 4.2.1 Agent decision client
+
+기본값은 rule-based heuristic decision client다.
+
+```text
+RUNNER_AGENT_DECISION_MODE=heuristic
+```
+
+LLM decision client는 명시적으로만 활성화한다.
+
+```text
+RUNNER_AGENT_DECISION_MODE=llm
+RUNNER_AGENT_LLM_ENDPOINT=<OpenAI-compatible or internal decision endpoint>
+RUNNER_AGENT_LLM_API_KEY=<optional bearer token>
+RUNNER_AGENT_LLM_MODEL=<model-or-router-name>
+RUNNER_AGENT_LLM_TIMEOUT_MS=10000
+```
+
+LLM이 활성화되어도 pre-decision verifier, risk policy, fixed browser tool runtime은 그대로 우선 적용된다. LLM 응답이 invalid JSON이거나 관찰되지 않은 target을 선택하면 heuristic으로 fallback한다.
+
+
+## 4.2.2 AgentTrace ScenarioPlan export
+
+성공한 AgentTrace는 TRACE artifact와 별개로 `agent_scenario_plan_export` JSON artifact로 변환될 수 있다. Export 결과는 `custom_compiled` ScenarioPlan 후보이며, Agent가 실제 완료한 replayable action(`goto`, `click`, `scroll`, `checkpoint`)만 step으로 복사한다.
+
+안전 경계:
+
+- `trace.outcome.status=SUCCESS`인 trace만 export한다.
+- login/CAPTCHA/blocker/policy-blocked trace는 reusable ScenarioPlan으로 만들지 않는다.
+- policy가 허용했고 actionResult가 completed인 turn만 export한다.
+- export plan 끝에는 final checkpoint와 `stop_when` guard를 추가해 payment/final order/destructive terminal action 직전 중단을 정적 plan에도 보존한다.
+
+이 export는 Runner가 ScenarioAuthoring provider가 된다는 뜻이 아니다. Agent가 찾은 경로를 후속 검증/승인 단계에서 재사용 가능한 ScenarioPlan 후보로 넘기기 위한 artifact boundary다.
 
 ## 4.3 S3 artifact storage
 

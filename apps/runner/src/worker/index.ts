@@ -44,9 +44,11 @@ export function registerWorker({
       let accepted = false;
 
       try {
+        const plan = message.payload.scenarioPlan;
+
         session = await browserFactory.createSession({
           runId: message.payload.runId,
-          plan: message.payload.scenarioPlan
+          plan
         });
 
         await emitAcceptedCallback({
@@ -60,7 +62,7 @@ export function registerWorker({
 
         const executionResult = await executeScenario({
           runId: message.payload.runId,
-          plan: message.payload.scenarioPlan,
+          plan,
           session,
           callbackClient,
           capturePipeline,

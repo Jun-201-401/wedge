@@ -7,6 +7,9 @@
       "$ref": "#/$defs/RunExecuteMessage"
     },
     {
+      "$ref": "#/$defs/AgentExecuteMessage"
+    },
+    {
       "$ref": "#/$defs/AnalysisRequestMessage"
     },
     {
@@ -252,6 +255,50 @@
         },
         "payload": {
           "$ref": "#/$defs/RunExecutePayload"
+        }
+      },
+      "required": [
+        "messageId",
+        "messageType",
+        "schemaVersion",
+        "createdAt",
+        "producer",
+        "payload"
+      ]
+    },
+    "AgentExecuteMessage": {
+      "title": "AgentExecuteMessage",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "messageId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "messageType": {
+          "const": "agent.execute.request"
+        },
+        "schemaVersion": {
+          "type": "string"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "producer": {
+          "type": "string",
+          "minLength": 1
+        },
+        "correlationId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "idempotencyKey": {
+          "type": "string",
+          "minLength": 1
+        },
+        "payload": {
+          "$ref": "#/$defs/AgentExecutePayload"
         }
       },
       "required": [
@@ -525,6 +572,395 @@
         "createdAt",
         "producer",
         "payload"
+      ]
+    },
+    "AgentExecutePayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "agentTask": {
+          "$ref": "#/$defs/AgentTask"
+        }
+      },
+      "required": [
+        "agentTask"
+      ]
+    },
+    "AgentTask": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "0.1"
+        },
+        "task_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "attempt_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "attempt_index": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "idempotency_key": {
+          "type": "string",
+          "minLength": 1
+        },
+        "run_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "project_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "goal_type": {
+          "type": "string",
+          "enum": [
+            "CHECKOUT_ENTRY_VERIFICATION"
+          ]
+        },
+        "goal": {
+          "type": "string",
+          "minLength": 1
+        },
+        "start_url": {
+          "type": "string",
+          "format": "uri"
+        },
+        "environment": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "device": {
+              "type": "string",
+              "enum": [
+                "desktop",
+                "mobile",
+                "tablet"
+              ]
+            },
+            "viewport": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "width": {
+                  "type": "integer",
+                  "minimum": 320
+                },
+                "height": {
+                  "type": "integer",
+                  "minimum": 480
+                }
+              },
+              "required": [
+                "width",
+                "height"
+              ]
+            },
+            "locale": {
+              "type": "string",
+              "minLength": 1
+            },
+            "timezone": {
+              "type": "string",
+              "minLength": 1
+            },
+            "geolocation": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "additionalProperties": true
+            },
+            "permissions": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "auth_state": {
+              "type": "string",
+              "enum": [
+                "anonymous",
+                "test_account",
+                "stored_state"
+              ]
+            }
+          },
+          "required": [
+            "device",
+            "viewport",
+            "locale",
+            "timezone",
+            "auth_state"
+          ]
+        },
+        "budget": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "max_steps": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50
+            },
+            "max_duration_ms": {
+              "type": "integer",
+              "minimum": 1000,
+              "maximum": 600000
+            },
+            "max_recovery_attempts": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 10
+            },
+            "max_same_page_attempts": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 10
+            },
+            "max_external_redirects": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 10
+            }
+          },
+          "required": [
+            "max_steps",
+            "max_duration_ms"
+          ]
+        },
+        "observation_budget": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "max_candidates": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 500
+            },
+            "max_visible_text_chars": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100000
+            },
+            "max_nearby_text_chars_per_candidate": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 5000
+            },
+            "max_dom_snapshot_bytes": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "max_ax_tree_bytes": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "max_artifacts_per_run": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "max_artifact_bytes_per_run": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        "allowed_navigation": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "allow_external_navigation": {
+              "type": "boolean"
+            },
+            "allowed_origins": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "format": "uri"
+              }
+            },
+            "allowed_checkout_redirect_origins": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "format": "uri"
+              }
+            }
+          },
+          "required": [
+            "allow_external_navigation"
+          ]
+        },
+        "product_selection_policy": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "mode": {
+              "type": "string",
+              "enum": [
+                "PROVIDED_OR_OBVIOUS_ONLY"
+              ]
+            },
+            "provided_product_url": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uri"
+            },
+            "required_option_strategy": {
+              "type": "string",
+              "enum": [
+                "FIRST_AVAILABLE"
+              ]
+            },
+            "allow_quantity_change": {
+              "type": "boolean"
+            },
+            "max_add_to_cart_attempts": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 10
+            }
+          },
+          "required": [
+            "mode"
+          ]
+        },
+        "risk_policy": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "allow_checkout_navigation": {
+              "type": "boolean"
+            },
+            "allow_cart_mutation": {
+              "type": "boolean"
+            },
+            "allow_shipping_form_entry": {
+              "type": "boolean"
+            },
+            "allow_payment_info_entry": {
+              "type": "boolean"
+            },
+            "allow_final_payment_submit": {
+              "type": "boolean"
+            },
+            "allow_final_order_commit": {
+              "type": "boolean"
+            },
+            "allow_destructive_action": {
+              "type": "boolean"
+            },
+            "allow_external_message_send": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "allow_checkout_navigation",
+            "allow_cart_mutation",
+            "allow_shipping_form_entry",
+            "allow_payment_info_entry",
+            "allow_final_payment_submit",
+            "allow_final_order_commit",
+            "allow_destructive_action",
+            "allow_external_message_send"
+          ]
+        },
+        "test_data": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "email": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "name": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "phone": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "shipping_address": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "additionalProperties": true
+            },
+            "postal_code": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "country": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "coupon_code": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "sandbox_payment": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "additionalProperties": true
+            }
+          }
+        },
+        "artifact_policy": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "capture_screenshots": {
+              "type": "boolean"
+            },
+            "capture_dom_snapshots": {
+              "type": "boolean"
+            },
+            "capture_ax_tree": {
+              "type": "boolean"
+            },
+            "capture_trace": {
+              "type": "boolean"
+            }
+          }
+        }
+      },
+      "required": [
+        "schema_version",
+        "task_id",
+        "attempt_id",
+        "attempt_index",
+        "run_id",
+        "project_id",
+        "goal_type",
+        "start_url",
+        "environment",
+        "budget",
+        "allowed_navigation",
+        "risk_policy"
       ]
     }
   }

@@ -21,11 +21,24 @@ const ARTIFACT_ENV_KEYS = [
 
 const MQ_RUNTIME_ENV_KEYS = [
   RUNNER_MQ_CALLBACK_OUTBOX_WORKER_ENABLED_ENV,
-  RUNNER_MQ_ARTIFACT_OUTBOX_WORKER_ENABLED_ENV
+  RUNNER_MQ_ARTIFACT_OUTBOX_WORKER_ENABLED_ENV,
+  "RUNNER_MQ_PREFETCH",
+  "RUNNER_AGENT_CONCURRENCY",
+  "RUNNER_AGENT_IDEMPOTENCY_STORE_ENABLED",
+  "RUNNER_MQ_MAX_DELIVERY_ATTEMPTS"
+] as const;
+
+const AGENT_LLM_ENV_KEYS = [
+  "RUNNER_AGENT_DECISION_MODE",
+  "RUNNER_AGENT_LLM_ENDPOINT",
+  "RUNNER_AGENT_LLM_API_KEY",
+  "RUNNER_AGENT_LLM_MODEL",
+  "RUNNER_AGENT_LLM_TIMEOUT_MS"
 ] as const;
 
 type ArtifactEnvKey = typeof ARTIFACT_ENV_KEYS[number];
 type MqRuntimeEnvKey = typeof MQ_RUNTIME_ENV_KEYS[number];
+type AgentLlmEnvKey = typeof AGENT_LLM_ENV_KEYS[number];
 type EnvSnapshot<K extends string> = Partial<Record<K, string>>;
 
 test("[설정] artifact storage 기본값은 로컬 filesystem이다", () => {
@@ -122,12 +135,117 @@ test("[설정] MQ consumer outbox replay worker는 환경변수로 끌 수 있�
   );
 });
 
+test("[설정] Agent concurrency는 MQ prefetch와 별도 환경변수로 읽는다", () => {
+  withMqRuntimeEnv(
+    {
+      RUNNER_MQ_PREFETCH: "4",
+      RUNNER_AGENT_CONCURRENCY: "1"
+    },
+    () => {
+      const config = loadRunnerConfig({ serviceName: "runner-test" });
+
+      assert.equal(config.mqPrefetch, 4);
+      assert.equal(config.agentConcurrency, 1);
+    }
+  );
+});
+
+test("[설정] Agent concurrency는 1 이상의 정수만 허용한다", () => {
+  withMqRuntimeEnv(
+    {
+      RUNNER_AGENT_CONCURRENCY: "0"
+    },
+    () => {
+      const config = loadRunnerConfig({ serviceName: "runner-test" });
+
+      assert.equal(config.agentConcurrency, 1);
+    }
+  );
+});
+
+test("[설정] Agent idempotency store는 기본 활성화되고 환경변수로 끌 수 있다", () => {
+  withMqRuntimeEnv({}, () => {
+    const config = loadRunnerConfig({ serviceName: "runner-test" });
+
+    assert.equal(config.agentIdempotencyStoreEnabled, true);
+  });
+
+  withMqRuntimeEnv(
+    {
+      RUNNER_AGENT_IDEMPOTENCY_STORE_ENABLED: "false"
+    },
+    () => {
+      const config = loadRunnerConfig({ serviceName: "runner-test" });
+
+      assert.equal(config.agentIdempotencyStoreEnabled, false);
+    }
+  );
+});
+
+test("[설정] MQ max delivery attempts는 poison message 차단용 양의 정수만 허용한다", () => {
+  withMqRuntimeEnv(
+    {
+      RUNNER_MQ_MAX_DELIVERY_ATTEMPTS: "5"
+    },
+    () => {
+      const config = loadRunnerConfig({ serviceName: "runner-test" });
+
+      assert.equal(config.mqMaxDeliveryAttempts, 5);
+    }
+  );
+
+  withMqRuntimeEnv(
+    {
+      RUNNER_MQ_MAX_DELIVERY_ATTEMPTS: "0"
+    },
+    () => {
+      const config = loadRunnerConfig({ serviceName: "runner-test" });
+
+      assert.equal(config.mqMaxDeliveryAttempts, 3);
+    }
+  );
+});
+
+test("[설정] Agent decision client는 기본 heuristic이고 env로만 LLM mode를 활성화한다", () => {
+  withAgentLlmEnv({}, () => {
+    const config = loadRunnerConfig({ serviceName: "runner-test" });
+
+    assert.equal(config.agentDecisionMode, "heuristic");
+    assert.equal(config.agentLlmEndpoint, undefined);
+    assert.equal(config.agentLlmModel, "agent-decision");
+    assert.equal(config.agentLlmTimeoutMs, 10_000);
+  });
+
+  withAgentLlmEnv(
+    {
+      RUNNER_AGENT_DECISION_MODE: "llm",
+      RUNNER_AGENT_LLM_ENDPOINT: "https://llm.example/decision",
+      RUNNER_AGENT_LLM_API_KEY: "secret",
+      RUNNER_AGENT_LLM_MODEL: "agent-model",
+      RUNNER_AGENT_LLM_TIMEOUT_MS: "5000"
+    },
+    () => {
+      const config = loadRunnerConfig({ serviceName: "runner-test" });
+
+      assert.equal(config.agentDecisionMode, "llm");
+      assert.equal(config.agentLlmEndpoint, "https://llm.example/decision");
+      assert.equal(config.agentLlmApiKey, "secret");
+      assert.equal(config.agentLlmModel, "agent-model");
+      assert.equal(config.agentLlmTimeoutMs, 5_000);
+    }
+  );
+});
+
 function withArtifactEnv(values: Partial<Record<ArtifactEnvKey, string>>, run: () => void): void {
   withEnv(ARTIFACT_ENV_KEYS, values, run);
 }
 
 function withMqRuntimeEnv(values: Partial<Record<MqRuntimeEnvKey, string>>, run: () => void): void {
   withEnv(MQ_RUNTIME_ENV_KEYS, values, run);
+}
+
+function withAgentLlmEnv(values: Partial<Record<AgentLlmEnvKey, string>>, run: () => void): void {
+  withEnv(AGENT_LLM_ENV_KEYS, values, run);
 }
 
 function withEnv<K extends string>(

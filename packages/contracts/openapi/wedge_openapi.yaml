@@ -1438,6 +1438,106 @@ paths:
           $ref: '#/components/responses/Conflict'
         '422':
           $ref: '#/components/responses/ValidationError'
+  /internal/runner/runs/{runId}/agent-events:
+    post:
+      tags:
+      - InternalRunner
+      operationId: runnerAgentEvents
+      summary: Runner Agent 이벤트 callback
+      description: Agent runtime의 observation, decision, policy, action, verification 이벤트를 별도 스트림으로 전달하는 내부 callback이다.
+      security:
+      - InternalBearer: []
+      parameters:
+      - $ref: '#/components/parameters/RunId'
+      - name: X-Worker-Id
+        in: header
+        required: true
+        schema:
+          type: string
+      - name: X-Event-Id
+        in: header
+        required: true
+        schema:
+          type: string
+      - name: X-Signature
+        in: header
+        description: HMAC-SHA256 digest of the raw JSON request body using the shared runner callback signature secret. The preferred format is `hmac-sha256=<hex>`; raw hex is accepted for compatibility.
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RunnerAgentEventsRequest'
+      responses:
+        '200':
+          description: Accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AckResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /internal/runner/runs/{runId}/agent-traces:
+    post:
+      tags:
+      - InternalRunner
+      operationId: runnerAgentTrace
+      summary: Runner Agent trace callback
+      description: Agent runtime이 최종 AgentTrace와 선택적 TRACE artifact 참조를 전달하는 내부 callback이다.
+      security:
+      - InternalBearer: []
+      parameters:
+      - $ref: '#/components/parameters/RunId'
+      - name: X-Worker-Id
+        in: header
+        required: true
+        schema:
+          type: string
+      - name: X-Event-Id
+        in: header
+        required: true
+        schema:
+          type: string
+      - name: X-Signature
+        in: header
+        description: HMAC-SHA256 digest of the raw JSON request body using the shared runner callback signature secret. The preferred format is `hmac-sha256=<hex>`; raw hex is accepted for compatibility.
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RunnerAgentTraceRequest'
+      responses:
+        '200':
+          description: Accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AckResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
   /internal/runner/runs/{runId}/artifacts:
     post:
       tags:
@@ -3809,6 +3909,75 @@ components:
             $ref: '#/components/schemas/RunnerStepEvent'
       required:
       - events
+    RunnerAgentEvent:
+      type: object
+      properties:
+        eventId:
+          type: string
+          format: uuid
+        taskId:
+          type: string
+        attemptId:
+          type: string
+        turn:
+          type: integer
+          minimum: 1
+          nullable: true
+        eventType:
+          type: string
+          enum:
+          - PRE_DECISION_VERIFIED
+          - DECISION_MADE
+          - POLICY_CHECKED
+          - ACTION_COMPLETED
+          - ACTION_FAILED
+          - GOAL_VERIFIED
+          - TRACE_PERSISTED
+        occurredAt:
+          type: string
+          format: date-time
+        payload:
+          type: object
+          additionalProperties: true
+      required:
+      - eventId
+      - taskId
+      - attemptId
+      - eventType
+      - occurredAt
+      - payload
+    RunnerAgentEventsRequest:
+      type: object
+      properties:
+        events:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/RunnerAgentEvent'
+      required:
+      - events
+    RunnerAgentTraceRequest:
+      type: object
+      properties:
+        taskId:
+          type: string
+        attemptId:
+          type: string
+        occurredAt:
+          type: string
+          format: date-time
+        trace:
+          type: object
+          additionalProperties: true
+        traceArtifact:
+          type: object
+          additionalProperties: true
+          nullable: true
+      required:
+      - taskId
+      - attemptId
+      - occurredAt
+      - trace
     RunnerArtifactsRequest:
       type: object
       properties:
@@ -3823,6 +3992,7 @@ components:
                 format: uuid
               stepKey:
                 type: string
+                description: Scenario step key for step-scoped artifacts. Reserved agent run-scoped keys such as agent_trace and agent_scenario_plan_export are persisted without resolving a ScenarioPlan step.
               artifactType:
                 type: string
                 enum:

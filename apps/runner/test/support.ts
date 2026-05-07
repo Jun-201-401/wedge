@@ -9,8 +9,11 @@ import type {
   BrowserSettleResult
 } from "../src/browser/playwright/index.ts";
 import type { RunnerConfig } from "../src/config/index.ts";
-import { parseRunExecuteMessage } from "../src/messaging/index.ts";
+import { parseAgentExecuteMessage, parseRunExecuteMessage } from "../src/messaging/index.ts";
 import type {
+  AgentEventBatch,
+  AgentExecuteMessage,
+  AgentTraceCallbackPayload,
   ArtifactBatch,
   RunExecuteMessage,
   RunnerAcceptedPayload,
@@ -24,14 +27,24 @@ import type {
 const currentDir = dirname(fileURLToPath(import.meta.url));
 
 export const exampleMessageFile = resolve(currentDir, "../examples/run-execute.request.json");
+export const agentExampleMessageFile = resolve(currentDir, "../examples/run-execute.agent.request.json");
 
 export async function loadExampleMessage(): Promise<RunExecuteMessage> {
   const rawMessage = await readFile(exampleMessageFile, "utf8");
   return parseRunExecuteMessage(rawMessage);
 }
 
+export async function loadAgentExampleMessage(): Promise<AgentExecuteMessage> {
+  const rawMessage = await readFile(agentExampleMessageFile, "utf8");
+  return parseAgentExecuteMessage(rawMessage);
+}
+
 export function cloneMessage(message: RunExecuteMessage): RunExecuteMessage {
   return JSON.parse(JSON.stringify(message)) as RunExecuteMessage;
+}
+
+export function cloneAgentMessage(message: AgentExecuteMessage): AgentExecuteMessage {
+  return JSON.parse(JSON.stringify(message)) as AgentExecuteMessage;
 }
 
 export function createMinimalPlan(): ScenarioPlan {
@@ -100,8 +113,11 @@ export function createRunnerTestConfig(overrides: Partial<RunnerConfig> = {}): R
     mqConsumerEnabled: false,
     mqUrl: "amqp://localhost",
     mqQueueRunExecute: "run.execute.request",
+    mqQueueAgentExecute: "agent.execute.request",
     mqQueueDiscoveryExecute: "discovery.execute.request",
     mqPrefetch: 1,
+    agentConcurrency: 1,
+    agentIdempotencyStoreEnabled: false,
     mqRequeueOnFailure: false,
     mqCallbackOutboxWorkerEnabled: true,
     mqArtifactOutboxWorkerEnabled: true,
@@ -113,7 +129,13 @@ export function createRunnerTestConfig(overrides: Partial<RunnerConfig> = {}): R
     playwrightSlowMoMs: 0,
     playwrightBrowsersPath: undefined,
     simulatedDelayCapMs: 1,
-    ...overrides
+    agentDecisionMode: "heuristic",
+    agentLlmEndpoint: undefined,
+    agentLlmApiKey: undefined,
+    agentLlmModel: "agent-decision",
+    agentLlmTimeoutMs: 10_000,
+    ...overrides,
+    mqMaxDeliveryAttempts: overrides.mqMaxDeliveryAttempts ?? 3
   };
 }
 
@@ -187,6 +209,8 @@ export function createStubCallbackClient(overrides: Partial<StubCallbackClient> 
     sendCheckpoints: async () => {},
     sendFinished: async () => {},
     sendFailed: async () => {},
+    sendAgentEvents: async () => {},
+    sendAgentTrace: async () => {},
     ...overrides
   };
 }
@@ -198,4 +222,6 @@ export interface StubCallbackClient {
   sendCheckpoints: (runId: string, payload: RunnerCheckpointsRequest) => Promise<void>;
   sendFinished: (runId: string, payload: RunnerFinishedPayload) => Promise<void>;
   sendFailed: (runId: string, payload: RunnerFailedPayload) => Promise<void>;
+  sendAgentEvents: (runId: string, payload: AgentEventBatch) => Promise<void>;
+  sendAgentTrace: (runId: string, payload: AgentTraceCallbackPayload) => Promise<void>;
 }

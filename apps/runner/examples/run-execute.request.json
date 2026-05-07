@@ -66,13 +66,20 @@
             "type": "click",
             "target": {
               "role": "button",
-              "text_any": ["무료로 시작", "회원가입", "Start free"]
+              "text_any": [
+                "무료로 시작",
+                "회원가입",
+                "Start free"
+              ]
             }
           },
           "settle_strategy": {
             "type": "locator_visible",
             "target": {
-              "selector_any": ["input[type=email]", "form"]
+              "selector_any": [
+                "input[type=email]",
+                "form"
+              ]
             },
             "timeout_ms": 8000
           },
@@ -85,7 +92,10 @@
           "action": {
             "type": "fill",
             "target": {
-              "label_any": ["이메일", "Email"]
+              "label_any": [
+                "이메일",
+                "Email"
+              ]
             },
             "value": "test+wedge@example.com"
           },
@@ -106,7 +116,10 @@
             "type": "click",
             "target": {
               "role": "button",
-              "text_any": ["혜택 보기", "See benefits"]
+              "text_any": [
+                "혜택 보기",
+                "See benefits"
+              ]
             }
           },
           "settle_strategy": {
