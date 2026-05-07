@@ -1734,6 +1734,7 @@ Completed:
 - Agent event/trace callbacks are emitted to dedicated `agent-events` and `agent-traces` endpoints.
 - Real Playwright checkout smoke coverage includes product entry, add-to-cart, cart navigation, checkout entry, TRACE persistence, agent event/trace callback emission, stop-before-payment behavior, login blocker detection, CAPTCHA blocker detection, and allowlisted external checkout redirects.
 - Same-process duplicate agent deliveries with the same idempotency key are suppressed.
+- Terminal agent results are persisted under the runner artifact root so duplicate deliveries after a runner process restart do not re-execute the browser flow.
 - MQ poison message requeue is bounded by RUNNER_MQ_MAX_DELIVERY_ATTEMPTS.
 
 Remaining:
@@ -1831,12 +1832,13 @@ MVP idempotency:
 ```text
 DONE: Use message idempotencyKey or AgentTask.idempotency_key at task start.
 DONE: Suppress duplicate same-process agent delivery by reusing the existing execution promise/result.
+DONE: Suppress duplicate post-restart agent delivery with a local terminal idempotency record.
 Use attempt_id and attempt_index for every execution attempt.
 Persist terminal AgentTrace once.
 Do not resume mid-action in MVP.
 On worker crash, retry should start a new browser session and produce a new trace attempt.
 Never replay final commit actions because policy blocks them.
-TODO: If a terminal trace already exists for the same idempotencyKey across processes, do not execute again.
+TODO: Promote local terminal idempotency records to API/DB-backed global idempotency when multiple runner replicas share a queue.
 ```
 
 Future resume policy can be designed later:

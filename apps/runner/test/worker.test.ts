@@ -506,6 +506,83 @@ test("[Agent Worker] 동일 idempotency_key 중복 메시지는 같은 실행 �
   assert.equal(duplicateResult.trace.outcome.status, "SUCCESS");
 });
 
+test("[Agent Worker] terminal idempotency record가 있으면 새 worker process도 재실행하지 않는다", async () => {
+  const message = await loadAgentExampleMessage();
+  const task = message.payload.agentTask;
+  task.goal = "checkout 진입 여부를 확인한다";
+  task.idempotency_key = "agent-idempotency-cross-process";
+  const artifactsRoot = join(tmpdir(), `runner-test-agent-idempotency-cross-${Date.now()}`);
+
+  let firstCreateSessionCount = 0;
+  const firstWorker = registerAgentWorker({
+    config: createRunnerTestConfig({
+      artifactsRoot,
+      callbackLogFile: join(artifactsRoot, "first-callbacks.jsonl"),
+      agentIdempotencyStoreEnabled: true
+    }),
+    browserFactory: {
+      kind: "simulated-playwright",
+      createSession: async ({ plan }) => {
+        firstCreateSessionCount += 1;
+
+        return createSimulatedSession(plan, {
+          execute: async () => {
+            throw new Error("idempotency record test should stop before action");
+          },
+          settle: async () => createSettledResult(),
+          snapshot: () => createSimulatedPageSnapshot(plan, {
+            currentUrl: "https://example.com/checkout",
+            finalUrl: "https://example.com/checkout",
+            title: "Checkout"
+          })
+        });
+      }
+    },
+    callbackClient: createStubCallbackClient(),
+    capturePipeline: {
+      collectCheckpoint: async () => {
+        throw new Error("checkpoint collection should not run when pre-decision verification succeeds");
+      }
+    },
+    artifactStore: {
+      persistArtifacts: async () => []
+    }
+  });
+
+  const firstResult = await firstWorker.handleMessage(message);
+  assert.equal(firstCreateSessionCount, 1);
+  assert.equal(firstResult.trace.outcome.status, "SUCCESS");
+
+  const secondWorker = registerAgentWorker({
+    config: createRunnerTestConfig({
+      artifactsRoot,
+      callbackLogFile: join(artifactsRoot, "second-callbacks.jsonl"),
+      agentIdempotencyStoreEnabled: true
+    }),
+    browserFactory: {
+      kind: "simulated-playwright",
+      createSession: async () => {
+        throw new Error("persisted idempotency record should prevent a new browser session");
+      }
+    },
+    callbackClient: createStubCallbackClient(),
+    capturePipeline: {
+      collectCheckpoint: async () => {
+        throw new Error("checkpoint collection should not run for persisted duplicate");
+      }
+    },
+    artifactStore: {
+      persistArtifacts: async () => []
+    }
+  });
+
+  const duplicateResult = await secondWorker.handleMessage(message);
+  assert.deepEqual(duplicateResult.summary, firstResult.summary);
+  assert.deepEqual(duplicateResult.trace, firstResult.trace);
+  assert.deepEqual(duplicateResult.delivery, firstResult.delivery);
+  assert.equal(duplicateResult.runId, firstResult.runId);
+});
+
 test("[Agent Worker] 로그인 벽을 감지하면 decision 전에 중단한다", async () => {
   const message = await loadAgentExampleMessage();
   const task = message.payload.agentTask;

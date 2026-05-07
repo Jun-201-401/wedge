@@ -58,6 +58,7 @@ export interface RunnerConfig {
   mqQueueDiscoveryExecute: string;
   mqPrefetch: number;
   agentConcurrency: number;
+  agentIdempotencyStoreEnabled: boolean;
   mqRequeueOnFailure: boolean;
   mqMaxDeliveryAttempts: number;
   mqCallbackOutboxWorkerEnabled: boolean;
@@ -157,6 +158,11 @@ export function loadRunnerConfig(overrides: Partial<RunnerConfig> = {}): RunnerC
     overrides.mqQueueDiscoveryExecute ?? process.env.RUNNER_MQ_QUEUE_DISCOVERY_EXECUTE ?? "discovery.execute.request";
   const mqPrefetch = parseNumber(overrides.mqPrefetch, process.env.RUNNER_MQ_PREFETCH, 1);
   const agentConcurrency = parsePositiveInteger(overrides.agentConcurrency, process.env.RUNNER_AGENT_CONCURRENCY, 1);
+  const agentIdempotencyStoreEnabled = parseBoolean(
+    overrides.agentIdempotencyStoreEnabled,
+    process.env.RUNNER_AGENT_IDEMPOTENCY_STORE_ENABLED,
+    true
+  );
   const mqRequeueOnFailure = parseBoolean(
     overrides.mqRequeueOnFailure,
     process.env.RUNNER_MQ_REQUEUE_ON_FAILURE,
@@ -249,6 +255,7 @@ export function loadRunnerConfig(overrides: Partial<RunnerConfig> = {}): RunnerC
     mqQueueDiscoveryExecute,
     mqPrefetch,
     agentConcurrency,
+    agentIdempotencyStoreEnabled,
     mqRequeueOnFailure,
     mqMaxDeliveryAttempts,
     mqCallbackOutboxWorkerEnabled,

@@ -24,6 +24,7 @@ const MQ_RUNTIME_ENV_KEYS = [
   RUNNER_MQ_ARTIFACT_OUTBOX_WORKER_ENABLED_ENV,
   "RUNNER_MQ_PREFETCH",
   "RUNNER_AGENT_CONCURRENCY",
+  "RUNNER_AGENT_IDEMPOTENCY_STORE_ENABLED",
   "RUNNER_MQ_MAX_DELIVERY_ATTEMPTS"
 ] as const;
 
@@ -149,6 +150,25 @@ test("[설정] Agent concurrency는 1 이상의 정수만 허용한다", () => {
       const config = loadRunnerConfig({ serviceName: "runner-test" });
 
       assert.equal(config.agentConcurrency, 1);
+    }
+  );
+});
+
+test("[설정] Agent idempotency store는 기본 활성화되고 환경변수로 끌 수 있다", () => {
+  withMqRuntimeEnv({}, () => {
+    const config = loadRunnerConfig({ serviceName: "runner-test" });
+
+    assert.equal(config.agentIdempotencyStoreEnabled, true);
+  });
+
+  withMqRuntimeEnv(
+    {
+      RUNNER_AGENT_IDEMPOTENCY_STORE_ENABLED: "false"
+    },
+    () => {
+      const config = loadRunnerConfig({ serviceName: "runner-test" });
+
+      assert.equal(config.agentIdempotencyStoreEnabled, false);
     }
   );
 });

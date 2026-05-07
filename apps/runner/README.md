@@ -39,11 +39,12 @@ Operational defaults:
 ```bash
 RUNNER_MQ_PREFETCH=4
 RUNNER_AGENT_CONCURRENCY=1
+RUNNER_AGENT_IDEMPOTENCY_STORE_ENABLED=true
 RUNNER_MQ_REQUEUE_ON_FAILURE=false
 RUNNER_MQ_MAX_DELIVERY_ATTEMPTS=3
 ```
 
-Keep `RUNNER_AGENT_CONCURRENCY` lower than static `RUNNER_MQ_PREFETCH` because agent jobs can loop through multiple browser observations. If `RUNNER_MQ_REQUEUE_ON_FAILURE=true`, `RUNNER_MQ_MAX_DELIVERY_ATTEMPTS` bounds poison message requeues before the consumer rejects without requeue.
+Keep `RUNNER_AGENT_CONCURRENCY` lower than static `RUNNER_MQ_PREFETCH` because agent jobs can loop through multiple browser observations. `RUNNER_AGENT_IDEMPOTENCY_STORE_ENABLED=true` keeps terminal agent results under the artifact root so duplicate delivery after runner restart does not re-run the browser flow. If `RUNNER_MQ_REQUEUE_ON_FAILURE=true`, `RUNNER_MQ_MAX_DELIVERY_ATTEMPTS` bounds poison message requeues before the consumer rejects without requeue.
 
 For a reproducible discovery smoke against a real URL, run from the repo root:
 

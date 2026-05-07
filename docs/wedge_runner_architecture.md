@@ -293,6 +293,7 @@ RUNNER_MQ_ARTIFACT_OUTBOX_WORKER_ENABLED=false
 구현된 hardening:
 
 - agent worker는 동일 `AgentTask.idempotency_key` 중복 delivery를 같은 process 안에서 재실행하지 않고 기존 실행 promise/result를 재사용한다.
+- terminal agent execution result는 `artifactsRoot/agent-idempotency/`에 저장되어 runner process 재시작 후에도 같은 idempotency key를 재실행하지 않는다.
 - MQ consumer는 `RUNNER_MQ_REQUEUE_ON_FAILURE=true`여도 `RUNNER_MQ_MAX_DELIVERY_ATTEMPTS` 이상 관측된 poison message를 requeue 없이 reject한다.
 - worker concurrency 정책은 static run/discovery는 `RUNNER_MQ_PREFETCH`, agent는 `RUNNER_AGENT_CONCURRENCY`로 분리한다.
 
@@ -307,7 +308,7 @@ RUNNER_MQ_MAX_DELIVERY_ATTEMPTS=3
 
 남은 hardening:
 
-- cross-process idempotency는 API/DB의 processed_message 또는 terminal trace 조회와 연결한다.
+- API/DB 기반 global idempotency는 processed_message 또는 terminal trace 조회와 연결한다.
 - production traffic 기준 concurrency scaling guide를 부하 테스트 결과로 확정한다.
 
 ## 4.2 Spring internal callback HTTP client

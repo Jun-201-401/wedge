@@ -106,6 +106,7 @@ export function createRunnerTestConfig(overrides: Partial<RunnerConfig> = {}): R
     mqQueueDiscoveryExecute: "discovery.execute.request",
     mqPrefetch: 1,
     agentConcurrency: 1,
+    agentIdempotencyStoreEnabled: false,
     mqRequeueOnFailure: false,
     mqCallbackOutboxWorkerEnabled: true,
     mqArtifactOutboxWorkerEnabled: true,

@@ -9,6 +9,7 @@ import type { AgentExecuteMessage, Artifact } from "../shared/contracts.ts";
 import { classifyRunnerFailure, errorMessage, logOperationalEvent } from "../shared/utils.ts";
 import type { ArtifactStore } from "../storage/index.ts";
 import type { AgentTrace } from "../agent/trace.ts";
+import { persistAgentIdempotencyResult, readAgentIdempotencyResult, resolveAgentIdempotencyKey } from "./agent-idempotency.ts";
 import { emitAcceptedCallback, emitFailedCallback, emitFinishedCallback } from "./callback-policy.ts";
 
 export interface AgentRunnerExecutionResult {
@@ -46,7 +47,10 @@ export function registerAgentWorker({
   return {
     workerId: config.workerId,
     async handleMessage(message) {
-      const idempotencyKey = resolveAgentIdempotencyKey(message);
+      const idempotencyKey = resolveAgentIdempotencyKey({
+        envelopeIdempotencyKey: message.idempotencyKey,
+        taskIdempotencyKey: message.payload.agentTask.idempotency_key
+      });
       if (idempotencyKey) {
         const existingExecution = idempotentExecutions.get(idempotencyKey);
         if (existingExecution) {
@@ -63,6 +67,24 @@ export function registerAgentWorker({
           return existingExecution;
         }
 
+        if (config.agentIdempotencyStoreEnabled) {
+          const persistedResult = await readAgentIdempotencyResult(config, idempotencyKey);
+          if (persistedResult) {
+            logOperationalEvent(
+              "agent-worker",
+              "duplicate_message_replayed",
+              {
+                runId: message.payload.agentTask.run_id,
+                taskId: message.payload.agentTask.task_id,
+                idempotencyKey,
+                originalRunId: persistedResult.runId
+              },
+              "warn"
+            );
+            return persistedResult;
+          }
+        }
+
         const execution = executeAgentMessage({
           message,
           config,
@@ -70,10 +92,17 @@ export function registerAgentWorker({
           callbackClient,
           capturePipeline,
           artifactStore
-        }).catch((error) => {
-          idempotentExecutions.delete(idempotencyKey);
-          throw error;
-        });
+        })
+          .then(async (result) => {
+            if (config.agentIdempotencyStoreEnabled) {
+              await persistAgentIdempotencyResult(config, idempotencyKey, result);
+            }
+            return result;
+          })
+          .catch((error) => {
+            idempotentExecutions.delete(idempotencyKey);
+            throw error;
+          });
         idempotentExecutions.set(idempotencyKey, execution);
         return execution;
       }
@@ -191,9 +220,4 @@ async function executeAgentMessage({
       await session.close();
     }
   }
-}
-
-function resolveAgentIdempotencyKey(message: AgentExecuteMessage): string | null {
-  const key = message.payload.agentTask.idempotency_key ?? message.idempotencyKey;
-  return typeof key === "string" && key.trim().length > 0 ? key.trim() : null;
 }
