@@ -29,6 +29,16 @@ export interface AgentDecisionInput {
   maxScrolls: number;
 }
 
+export interface AgentDecisionClient {
+  decide: (input: AgentDecisionInput) => Promise<AgentDecision> | AgentDecision;
+}
+
+export class HeuristicDecisionClient implements AgentDecisionClient {
+  decide(input: AgentDecisionInput): AgentDecision {
+    return decideNextAction(input);
+  }
+}
+
 export function decideNextAction(input: AgentDecisionInput): AgentDecision {
   if (!input.state.started) {
     return {

@@ -330,5 +330,72 @@ test("[Worker agent mode] scenarioPlan 없이 CTA 후보를 관찰해 클릭한�
   assert.deepEqual(executedActions, ["goto", "click"]);
   assert.equal(result.summary.completedStepCount, 2);
   assert.equal(result.summary.stopped, true);
+  assert.equal(result.trace.outcome.status, "SUCCESS");
+  assert.equal(result.trace.turns.length, 2);
+  assert.equal(result.trace.turns[0].preDecisionVerification.phase, "pre_decision");
+  assert.equal(result.trace.turns[1].decision?.action.type, "click");
+  assert.equal(result.trace.turns[1].policy?.allowed, true);
+  assert.equal(result.trace.turns[1].postActionVerification?.satisfied, true);
+  assert.equal(closed, true);
+});
+
+test("[Agent Worker] 이미 목표 상태면 새 decision 전에 중단한다", async () => {
+  const message = await loadAgentExampleMessage();
+  const task = message.payload.agentTask;
+  task.goal = "checkout 진입 여부를 확인한다";
+  task.budget.max_steps = 3;
+
+  const executedActions: string[] = [];
+  const stepEvents: StepEvent[] = [];
+  let closed = false;
+
+  const worker = registerAgentWorker({
+    config: createRunnerTestConfig({
+      artifactsRoot: join(tmpdir(), "runner-test-agent-preverify-artifacts"),
+      callbackLogFile: join(tmpdir(), "runner-test-agent-preverify-callbacks.jsonl")
+    }),
+    browserFactory: {
+      kind: "simulated-playwright",
+      createSession: async ({ plan }) =>
+        createSimulatedSession(plan, {
+          execute: async (action) => {
+            executedActions.push(action.type);
+            throw new Error("agent should stop before requesting an action");
+          },
+          settle: async () => createSettledResult(),
+          snapshot: () => createSimulatedPageSnapshot(plan, {
+            currentUrl: "https://example.com/checkout",
+            finalUrl: "https://example.com/checkout",
+            title: "Checkout"
+          }),
+          close: async () => {
+            closed = true;
+          }
+        })
+    },
+    callbackClient: createStubCallbackClient({
+      sendStepEvents: async (_runId, payload) => {
+        stepEvents.push(...payload.events);
+      }
+    }),
+    capturePipeline: {
+      collectCheckpoint: async () => {
+        throw new Error("checkpoint collection should not run when pre-decision verification succeeds");
+      }
+    },
+    artifactStore: {
+      persistArtifacts: async () => []
+    }
+  });
+
+  const result = await worker.handleMessage(message);
+
+  assert.deepEqual(executedActions, []);
+  assert.equal(result.summary.completedStepCount, 0);
+  assert.equal(result.summary.stopped, true);
+  assert.equal(result.trace.outcome.status, "SUCCESS");
+  assert.equal(result.trace.turns.length, 1);
+  assert.equal(result.trace.turns[0].preDecisionVerification.satisfied, true);
+  assert.ok(stepEvents.some((event) => event.payload.event === "PRE_DECISION_VERIFIED"));
   assert.equal(closed, true);
 });

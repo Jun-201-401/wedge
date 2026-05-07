@@ -5,6 +5,7 @@ export interface AgentVerificationResult {
   satisfied: boolean;
   reason: string;
   confidence: number;
+  phase: "pre_decision" | "post_action";
 }
 
 const SUCCESS_URL_PATTERN = /signup|register|join|contact|pricing|checkout|start|demo|apply|inquiry|consult|회원|가입|문의|가격|결제|신청|상담/i;
@@ -14,8 +15,10 @@ export function verifyGoal(input: {
   startUrl: string;
   previousUrl: string;
   snapshot: BrowserPageSnapshot;
-  decision: AgentDecision;
+  phase?: "pre_decision" | "post_action";
+  decision?: AgentDecision;
 }): AgentVerificationResult {
+  const phase = input.phase ?? "post_action";
   const finalUrl = input.snapshot.finalUrl;
   const title = input.snapshot.title;
   const goalText = input.goal.toLowerCase();
@@ -24,26 +27,38 @@ export function verifyGoal(input: {
     finalUrl.toLowerCase().includes(keyword) || title.toLowerCase().includes(keyword)
   );
 
-  if (input.decision.action.type === "click" && (goalKeywordMatched || (urlChanged && SUCCESS_URL_PATTERN.test(finalUrl)))) {
+  if (phase === "pre_decision" && finalUrl !== input.startUrl && (goalKeywordMatched || SUCCESS_URL_PATTERN.test(finalUrl))) {
     return {
       satisfied: true,
-      reason: "A CTA click moved the browser to a goal-like destination.",
-      confidence: goalKeywordMatched ? 0.8 : 0.65
+      reason: "The current page already appears to satisfy the agent goal before a new decision.",
+      confidence: goalKeywordMatched ? 0.8 : 0.65,
+      phase
     };
   }
 
-  if (input.decision.kind === "finish") {
+  if (input.decision?.action.type === "click" && (goalKeywordMatched || (urlChanged && SUCCESS_URL_PATTERN.test(finalUrl)))) {
+    return {
+      satisfied: true,
+      reason: "A CTA click moved the browser to a goal-like destination.",
+      confidence: goalKeywordMatched ? 0.8 : 0.65,
+      phase
+    };
+  }
+
+  if (input.decision?.kind === "finish") {
     return {
       satisfied: false,
       reason: input.decision.reason,
-      confidence: input.decision.confidence
+      confidence: input.decision.confidence,
+      phase
     };
   }
 
   return {
     satisfied: false,
     reason: "Goal has not been satisfied yet.",
-    confidence: 0.5
+    confidence: 0.5,
+    phase
   };
 }
 
