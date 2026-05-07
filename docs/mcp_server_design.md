@@ -4,24 +4,36 @@
 
 Wedge MCP Server는 Wedge가 특정 AI provider에 고정되지 않고 외부 AI Agent와 연동할 수 있도록 제공하는 공식 adapter다.
 
-현재 Wedge의 AI 연동은 GMS 기반 기능을 포함하지만, 프로젝트 진행 과정에서 GMS, 개인 AI Agent, 외부 Agent 연동 방식은 바뀔 수 있다. 따라서 MCP Server의 제품 관점 1차 목표는 운영 측 GMS key에만 의존하지 않고, 사용자 또는 외부 MCP Host가 제공하는 LLM 판단을 Wedge 기능과 연결할 수 있는 표준 통로를 마련하는 것이다.
+현재 Wedge의 AI 연동은 GMS 기반 기능을 포함하지만, 프로젝트 진행 과정에서 GMS, 개인 AI Agent, 외부 Agent 연동 방식은 바뀔 수 있다. 따라서 MCP Server의 제품 관점 1차 목표는 Runner Agent의 판단 provider를 고정하지 않고, GMS/Gemini 모드와 MCP 기반 사용자 LLM 모드를 선택할 수 있는 표준 통로를 마련하는 것이다.
 
-이 목표는 "MCP가 LLM 자체를 대체한다"는 뜻이 아니다. MCP는 판단 모델이 아니라 tool/context protocol이다. Wedge가 목표로 하는 GMS 대체는 다음 의미다.
+이 목표는 "MCP가 LLM 자체를 대체한다"는 뜻이 아니다. MCP는 판단 모델이 아니라 tool/context protocol이다. Wedge가 목표로 하는 것은 GMS/Gemini 제거가 아니라 다음 provider 선택 구조다.
 
 ```text
-Before:
-Wedge Runner / Server
-  -> GMS / Gemini API 직접 호출
-  -> 운영 측 LLM key와 비용 발생
+Provider options:
+1. heuristic
+   -> LLM 없이 규칙 기반 판단
 
-After:
-External MCP Host / User AI / Local Agent
-  -> Wedge MCP Server
-  -> Wedge tool 호출 또는 판단 결과 제공
-  -> Wedge는 검증된 결과만 실행/저장
+2. gms / llm
+   -> Wedge 운영 측 GMS/Gemini/LLM provider 호출
+
+3. mcp
+   -> 사용자 또는 외부 MCP Host가 제공하는 LLM 판단 사용
+   -> MCP 모드에서는 운영 측 GMS/Gemini API key를 사용하지 않음
 ```
 
-즉, Wedge 운영 서버가 항상 GMS key를 들고 LLM을 호출하는 구조를 줄이고, MCP Host가 제공하는 외부 AI 판단을 Wedge의 Run / Evidence / Report / Agent Runtime 흐름에 연결하는 것이 목표다.
+목표 형태:
+
+```text
+Runner Agent Runtime
+  -> selected DecisionProvider
+    -> HeuristicDecisionClient
+    -> AgentLlmDecisionClient
+    -> AgentMcpDecisionClient
+  -> AgentDecision
+  -> Runner validation / policy / fixed tool execution
+```
+
+즉, Wedge는 GMS/Gemini 모드를 유지하면서 MCP Host가 제공하는 외부 AI 판단을 Wedge의 Run / Evidence / Report / Agent Runtime 흐름에 추가 provider로 연결한다.
 
 Wedge에서 MCP는 브라우저 원격 조종기가 아니다. MCP는 Wedge의 기존 기능을 외부 AI Agent가 표준 tool 인터페이스로 호출할 수 있게 하는 기능 호출 계층이다.
 
@@ -32,14 +44,14 @@ External AI Agent
   -> PostgreSQL / artifact storage / report projection
 ```
 
-다만 구현 단계는 한 번에 GMS 완전 대체로 뛰지 않는다. V1 MCP Server의 1차 구현 목적은 다음으로 제한한다.
+다만 구현 단계는 한 번에 provider 선택 구조 전체로 뛰지 않는다. V1 MCP Server의 1차 구현 목적은 다음으로 제한한다.
 
 ```text
 Wedge API Server 안에 MCP 표준 통로를 마련하고,
 외부 AI Agent가 Wedge의 Run / Evidence / Report 결과를 read-only로 조회할 수 있는 최소 tool surface를 제공한다.
 ```
 
-GMS 없는 LLM 판단 구조, 시나리오 추천 자동화, 상태 변경, 실행 시작, 분석 재요청, report export, Agent 분석 결과 write-back은 V1 MCP Server의 필수 범위에서 제외하고 후속 단계에서 다룬다. 이 후속 단계의 중심 개념은 `MCP Decision Gateway`다.
+MCP 기반 사용자 LLM 판단 구조, 시나리오 추천 자동화, 상태 변경, 실행 시작, 분석 재요청, report export, Agent 분석 결과 write-back은 V1 MCP Server의 필수 범위에서 제외하고 후속 단계에서 다룬다. 이 후속 단계의 중심 개념은 `MCP Decision Gateway`다.
 
 ## 2. 공식 기준
 
@@ -169,7 +181,7 @@ V1 MCP Server는 read-only tool만 제공한다. 다만 `packages/contracts/mcp/
 
 ## 7. MCP Decision Gateway 목표
 
-MCP Decision Gateway는 운영 측 GMS key 없이 외부 AI 판단을 Wedge Agent Runtime에 연결하기 위한 후속 목표다.
+MCP Decision Gateway는 Runner Agent Runtime의 decision provider 중 하나다. GMS/Gemini provider를 제거하는 것이 아니라, 사용자가 MCP 모드를 선택했을 때 운영 측 GMS/Gemini API key를 사용하지 않고 외부 AI 판단을 연결하기 위한 후속 목표다.
 
 이 구조에서 MCP Server는 LLM 자체가 아니다. MCP Server는 외부 MCP Host, 사용자 AI Agent, 또는 MCP Sampling을 지원하는 client가 제공하는 LLM 판단을 Wedge의 표준 계약으로 받아들이는 gateway다.
 
@@ -177,9 +189,9 @@ MCP Decision Gateway는 운영 측 GMS key 없이 외부 AI 판단을 Wedge Agen
 
 ```text
 Runner Agent Runtime
-  -> RemoteDecisionClient
+  -> AgentMcpDecisionClient
   -> MCP Decision Gateway
-  -> External MCP Host / User AI / Local Agent
+  -> External MCP Host / User AI / Local Agent / MCP Sampling-capable client
   -> AgentDecision JSON 반환
   -> Runner schema validation
   -> policy validation
@@ -197,7 +209,7 @@ User AI Agent / MCP Host
   -> 사용자에게 결과 설명
 ```
 
-Wedge가 GMS key를 사용하지 않는다는 말은 Wedge 운영 서버가 Gemini/GMS API를 직접 호출하지 않는다는 뜻이다. 실제 판단 주체는 MCP Host 쪽 LLM, 사용자 로컬 LLM, 또는 외부 Agent다.
+MCP 모드에서 Wedge가 GMS key를 사용하지 않는다는 말은 Wedge 운영 서버가 Gemini/GMS API를 직접 호출하지 않는다는 뜻이다. `llm` 모드에서는 기존처럼 운영 측 GMS/Gemini provider를 사용할 수 있다. 실제 MCP 모드의 판단 주체는 MCP Host 쪽 LLM, 사용자 로컬 LLM, 또는 외부 Agent다.
 
 허용:
 
@@ -251,13 +263,13 @@ User Browser
 이 경우 LLM 비용은 Wedge 운영 측에서 발생한다. 실제 운영 서비스에서는 다음 정책이 필요하다.
 
 ```text
-free quota
-credit / usage metering
+usage monitoring
 rate limit
-paid tier
-model cost accounting
+cost protection
 abuse prevention
 ```
+
+다만 SSAFY MVP 범위에서는 과금, 크레딧, 결제, 요금제 기능을 구현하지 않는다. 이 문서의 MCP 작업 범위는 decision provider 선택 구조와 MCP 기반 판단 연결이다.
 
 사용자 경험은 기존 웹 사용 흐름과 동일하게 유지할 수 있다.
 
@@ -542,9 +554,11 @@ MCP Decision Gateway 검증 기준은 별도로 둔다.
 ```text
 AgentObservation input schema 정의
 AgentDecision output schema 정의
-RemoteDecisionClient가 MCP Decision Gateway 호출 가능
+Runner decision provider mode에 mcp 추가
+AgentMcpDecisionClient가 MCP Decision Gateway 호출 가능
 MCP Host / Client가 LLM 판단을 제공하는 최소 spike 성공
-GMS/Gemini key 없이 fixture 기반 decision round-trip 성공
+MCP 모드에서 GMS/Gemini key 없이 fixture 기반 decision round-trip 성공
+LLM 모드에서는 기존 GMS/Gemini provider 경로 유지
 Runner가 MCP decision 결과를 schema/policy/candidate 검증 후 실행
 검증 실패 decision은 실행하지 않고 typed failure로 기록
 full DOM / screenshot base64 / secret이 request/response/audit log에 저장되지 않음
@@ -565,20 +579,21 @@ full DOM / screenshot base64 / secret이 request/response/audit log에 저장되
 10. 사용자 시나리오 기준 MCP tool surface 재정의
 11. AgentObservation / AgentDecision 계약 정의
 12. MCP Decision Gateway spike 설계
-13. Runner RemoteDecisionClient 설계
-14. GMS/Gemini key 없는 fixture decision round-trip 검증
-15. V2 execute/write-back tool 설계
+13. Runner AgentMcpDecisionClient 설계
+14. MCP 모드 fixture decision round-trip 검증
+15. LLM 모드와 MCP 모드 선택 설정 검증
+16. V2 execute/write-back tool 설계
 ```
 
 ## 16. 최종 판단
 
 Wedge MCP Server는 `api-server` 내부 adapter로 시작한다.
 
-제품 관점의 1차 목표는 운영 측 GMS key 없이도 외부 MCP Host 또는 사용자 AI Agent의 LLM 판단을 Wedge 흐름에 연결하는 것이다. 다만 구현 순서는 read-only MCP adapter를 먼저 안정화하고, 그 다음 MCP Decision Gateway로 확장한다.
+제품 관점의 1차 목표는 Runner Agent 판단 provider를 선택 가능하게 만드는 것이다. GMS/Gemini provider는 유지하고, MCP provider를 추가해 외부 MCP Host 또는 사용자 AI Agent의 LLM 판단을 Wedge 흐름에 연결한다. 다만 구현 순서는 read-only MCP adapter를 먼저 안정화하고, 그 다음 MCP Decision Gateway로 확장한다.
 
 V1의 정석 범위는 MCP 사용 환경 마련과 최소 read-only tool surface다. 외부 AI Agent가 Wedge의 Run, Evidence, Report를 읽고 해석할 수 있게 하는 것이 우선이다.
 
-V2의 핵심은 `MCP Decision Gateway`다. 이 단계에서는 GMS/Gemini API key를 Wedge 운영 서버가 직접 들고 호출하는 구조를 줄이고, MCP Host가 제공하는 외부 AI 판단을 `AgentDecision` 계약으로 받아 Runner가 검증 후 실행한다.
+V2의 핵심은 `MCP Decision Gateway`다. 이 단계에서는 `heuristic`, `llm`, `mcp` decision provider를 명확히 분리한다. `llm` 모드는 기존 GMS/Gemini provider를 유지하고, `mcp` 모드는 MCP Host가 제공하는 외부 AI 판단을 `AgentDecision` 계약으로 받아 Runner가 검증 후 실행한다.
 
 Run 생성/시작/분석 요청/write-back은 보안과 승인 정책을 확정한 뒤 V2 execute/write-back tool로 추가한다. 이때도 MCP Server는 브라우저 원격 조종기가 아니며, Runner의 policy와 fixed tool execution 경계를 침범하지 않는다.
 
