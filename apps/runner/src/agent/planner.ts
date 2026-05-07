@@ -8,7 +8,7 @@ import type {
   TargetDescriptorMap
 } from "../shared/contracts.ts";
 
-export type AgentDecisionKind = "act" | "finish";
+export type AgentDecisionKind = "act" | "checkpoint" | "finish";
 
 export interface AgentDecision {
   kind: AgentDecisionKind;

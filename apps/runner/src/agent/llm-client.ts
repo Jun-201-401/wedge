@@ -1,7 +1,7 @@
 import type { RunnerConfig } from "../config/index.ts";
 import type { InteractiveComponentObservationItem, ScenarioAction, ScenarioStage, TargetDescriptorMap } from "../shared/contracts.ts";
 import { errorMessage, logOperationalEvent } from "../shared/utils.ts";
-import { decideNextAction, HeuristicDecisionClient, targetKey, type AgentDecision, type AgentDecisionClient, type AgentDecisionInput } from "./planner.ts";
+import { HeuristicDecisionClient, targetKey, type AgentDecision, type AgentDecisionClient, type AgentDecisionInput } from "./planner.ts";
 
 export interface AgentLlmDecisionTransport {
   complete: (request: AgentLlmDecisionRequest) => Promise<unknown>;
@@ -123,7 +123,7 @@ function createLlmRequestPayload(input: AgentDecisionInput, model: string): Reco
         role: "system",
         content: [
           "Return only JSON for a constrained browser AgentDecision.",
-          "Allowed actions are goto start_url before start, click an observed target_key, scroll, or finish.",
+          "Allowed actions are goto start_url before start, click an observed target_key, scroll, checkpoint without browser action, or finish.",
           "Never invent selectors, credentials, payment data, shell commands, JavaScript, or final purchase actions.",
           "Policy and verifier run after this decision and may reject unsafe actions."
         ].join(" ")
@@ -153,7 +153,7 @@ function createLlmRequestPayload(input: AgentDecisionInput, model: string): Reco
             }))
           },
           outputSchema: {
-            kind: "act|finish",
+            kind: "act|checkpoint|finish",
             targetKey: "observed targetKey for click, null otherwise",
             actionType: "goto|click|scroll|checkpoint",
             scrollY: "number, only for scroll",
@@ -193,11 +193,29 @@ function parseLlmDecision(rawResponse: unknown, input: AgentDecisionInput): Agen
     };
   }
 
-  if (kind !== "act") {
-    throw new Error("LLM decision kind must be act or finish");
+  if (kind !== "act" && kind !== "checkpoint") {
+    throw new Error("LLM decision kind must be act, checkpoint, or finish");
   }
 
   const actionType = readString(record, "actionType") ?? readNestedActionType(record);
+  if (kind === "checkpoint" || actionType === "checkpoint") {
+    return {
+      kind: "checkpoint",
+      description: "LLM requested checkpoint without browser action.",
+      reason,
+      confidence,
+      action: {
+        type: "checkpoint"
+      },
+      settleStrategy: {
+        type: "none",
+        timeout_ms: 0
+      },
+      stage,
+      targetKey: null
+    };
+  }
+
   if (actionType === "goto") {
     if (input.state.started) {
       throw new Error("LLM goto is allowed only before the agent has started");
@@ -268,16 +286,6 @@ function parseLlmDecision(rawResponse: unknown, input: AgentDecisionInput): Agen
       stage: "VALUE",
       targetKey: "scroll:700"
     };
-  }
-
-  if (actionType === "checkpoint") {
-    return decideNextAction({
-      ...input,
-      state: {
-        ...input.state,
-        scrollCount: input.maxScrolls
-      }
-    });
   }
 
   throw new Error(`LLM actionType is not allowed: ${actionType ?? "missing"}`);

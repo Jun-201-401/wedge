@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { createAgentRuntimePlan, executeAgentRun, type AgentDecisionClient } from "../src/agent/index.ts";
 import { registerAgentWorker } from "../src/worker/agent-worker.ts";
 import { registerWorker } from "../src/worker/index.ts";
 import {
@@ -459,6 +460,97 @@ test("[Agent Worker] 이미 목표 상태면 새 decision 전에 중단한다", 
   assert.equal(result.trace.turns[0].preDecisionVerification.satisfied, true);
   assert.equal(agentEvents.some((event) => event.eventType === "PRE_DECISION_VERIFIED"), true);
   assert.equal(closed, true);
+});
+
+test("[Agent Worker] checkpoint decision은 browser action으로 실행하지 않는다", async () => {
+  const message = await loadAgentExampleMessage();
+  const task = message.payload.agentTask;
+  task.goal = "현재 페이지를 검증하되 브라우저 액션은 실행하지 않는다";
+  task.budget.max_steps = 1;
+  task.artifact_policy = {
+    capture_screenshots: false,
+    capture_dom_snapshots: false,
+    capture_ax_tree: false,
+    capture_trace: false
+  };
+
+  const runtimePlan = createAgentRuntimePlan(task);
+  const executedActions: string[] = [];
+  const agentEvents: AgentEvent[] = [];
+  const decisionClient: AgentDecisionClient = {
+    decide: () => ({
+      kind: "checkpoint",
+      description: "Test checkpoint without browser action.",
+      reason: "LLM requested checkpoint before continuing.",
+      confidence: 0.7,
+      action: {
+        type: "checkpoint"
+      },
+      settleStrategy: {
+        type: "none",
+        timeout_ms: 0
+      },
+      stage: "CTA",
+      targetKey: null
+    })
+  };
+
+  const result = await executeAgentRun({
+    runId: task.run_id,
+    task,
+    runtimePlan,
+    session: createSimulatedSession(runtimePlan, {
+      execute: async (action) => {
+        executedActions.push(action.type);
+        throw new Error("checkpoint decision should not execute a browser action");
+      },
+      settle: async () => createSettledResult(),
+      snapshot: () => createSimulatedPageSnapshot(runtimePlan, {
+        finalUrl: task.start_url,
+        interactiveComponents: [
+          {
+            text: "Proceed to checkout",
+            selector: "#real-checkout",
+            role: "link",
+            tag: "a",
+            clickable: true,
+            clicked_in_scenario: false,
+            is_cta_candidate: true,
+            is_primary_like: true,
+            bounds: {
+              x: 0,
+              y: 0,
+              width: 100,
+              height: 40,
+              unit: "css_px"
+            }
+          }
+        ]
+      })
+    }),
+    callbackClient: createStubCallbackClient({
+      sendAgentEvents: async (_runId, payload) => {
+        agentEvents.push(...payload.events);
+      }
+    }),
+    capturePipeline: {
+      collectCheckpoint: async () => {
+        throw new Error("checkpoint decision should not collect scenario checkpoint artifacts");
+      }
+    },
+    artifactStore: {
+      persistArtifacts: async () => []
+    },
+    decisionClient
+  });
+
+  assert.deepEqual(executedActions, []);
+  assert.equal(result.summary.completedStepCount, 0);
+  assert.equal(result.trace.turns[0].decision?.kind, "checkpoint");
+  assert.equal(result.trace.turns[0].actionResult?.completed, false);
+  assert.equal(result.trace.outcome.status, "EXHAUSTED");
+  assert.equal(agentEvents.some((event) => event.eventType === "ACTION_COMPLETED"), false);
+  assert.equal(agentEvents.some((event) => event.eventType === "GOAL_VERIFIED"), true);
 });
 
 test("[Agent Worker] 동일 idempotency_key 중복 메시지는 같은 실행 결과를 재사용한다", async () => {

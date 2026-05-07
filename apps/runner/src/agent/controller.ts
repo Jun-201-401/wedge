@@ -118,76 +118,84 @@ export async function executeAgentRun(input: AgentExecutorInput): Promise<AgentE
       break;
     }
 
-    try {
-      const stepResult = await executeScenarioStep({
-        runId: input.runId,
-        stepOrder: turn,
-        step,
-        plan: input.runtimePlan,
-        session: input.session,
-        callbackClient: input.callbackClient,
-        capturePipeline: input.capturePipeline,
-        artifactStore: input.artifactStore,
-        emitStepEvents: false
-      });
-      deliveryIssues.push(...stepResult.deliveryIssues);
-      turnTrace.actionResult = {
-        actionType: decision.action.type,
-        finalUrl: input.session.snapshot().finalUrl,
-        completed: true
-      };
-      deliveryIssues.push(...(await emitAgentEventBestEffort(input.callbackClient, input.runId, input.task, "ACTION_COMPLETED", {
-        actionType: decision.action.type,
-        finalUrl: input.session.snapshot().finalUrl,
-        targetKey: decision.targetKey
-      }, turn)));
-    } catch (error) {
-      const failureCode = classifyRunnerFailure(error);
-      const failureMessage = errorMessage(error);
-
-      logOperationalEvent(
-        "agent-executor",
-        "turn_failed",
-        {
+    if (decision.kind === "act") {
+      try {
+        const stepResult = await executeScenarioStep({
           runId: input.runId,
-          turn,
-          stepKey: step.step_id,
+          stepOrder: turn,
+          step,
+          plan: input.runtimePlan,
+          session: input.session,
+          callbackClient: input.callbackClient,
+          capturePipeline: input.capturePipeline,
+          artifactStore: input.artifactStore,
+          emitStepEvents: false
+        });
+        deliveryIssues.push(...stepResult.deliveryIssues);
+        turnTrace.actionResult = {
+          actionType: decision.action.type,
+          finalUrl: input.session.snapshot().finalUrl,
+          completed: true
+        };
+        deliveryIssues.push(...(await emitAgentEventBestEffort(input.callbackClient, input.runId, input.task, "ACTION_COMPLETED", {
+          actionType: decision.action.type,
+          finalUrl: input.session.snapshot().finalUrl,
+          targetKey: decision.targetKey
+        }, turn)));
+      } catch (error) {
+        const failureCode = classifyRunnerFailure(error);
+        const failureMessage = errorMessage(error);
+
+        logOperationalEvent(
+          "agent-executor",
+          "turn_failed",
+          {
+            runId: input.runId,
+            turn,
+            stepKey: step.step_id,
+            actionType: step.action.type,
+            failureCode,
+            failureMessage
+          },
+          "error"
+        );
+
+        deliveryIssues.push(...(await emitAgentEventBestEffort(input.callbackClient, input.runId, input.task, "ACTION_FAILED", {
+          description: step.description,
+          stage: step.stage,
           actionType: step.action.type,
           failureCode,
           failureMessage
-        },
-        "error"
-      );
+        }, turn)));
 
-      deliveryIssues.push(...(await emitAgentEventBestEffort(input.callbackClient, input.runId, input.task, "ACTION_FAILED", {
-        description: step.description,
-        stage: step.stage,
-        actionType: step.action.type,
-        failureCode,
-        failureMessage
-      }, turn)));
+        throw new ScenarioExecutionError({
+          cause: error,
+          summary: {
+            completedStepCount,
+            failedStepCount: 1,
+            stopped: false
+          },
+          delivery: createDeliverySummary(mergeDeliveryIssues(deliveryIssues)),
+          failedStepKey: step.step_id,
+          failedStepOrder: turn,
+          failureCode
+        });
+      }
 
-      throw new ScenarioExecutionError({
-        cause: error,
-        summary: {
-          completedStepCount,
-          failedStepCount: 1,
-          stopped: false
-        },
-        delivery: createDeliverySummary(mergeDeliveryIssues(deliveryIssues)),
-        failedStepKey: step.step_id,
-        failedStepOrder: turn,
-        failureCode
-      });
-    }
-
-    completedStepCount += 1;
-    state.started = true;
-    if (decision.action.type === "scroll") {
-      state.scrollCount += 1;
-    }
-    if (decision.action.type === "click" && decision.targetKey) {
-      state.clickedTargetKeys.add(decision.targetKey);
+      completedStepCount += 1;
+      state.started = true;
+      if (decision.action.type === "scroll") {
+        state.scrollCount += 1;
+      }
+      if (decision.action.type === "click" && decision.targetKey) {
+        state.clickedTargetKeys.add(decision.targetKey);
+      }
+    } else {
+      turnTrace.actionResult = {
+        actionType: decision.action.type,
+        finalUrl: input.session.snapshot().finalUrl,
+        completed: false
+      };
     }
 
     const verification = verifyGoal({
