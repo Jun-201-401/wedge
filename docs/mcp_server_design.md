@@ -504,7 +504,141 @@ Decision Gateway 응답 예:
 
 이 응답은 MCP Server 또는 외부 MCP Host가 반환할 수 있지만, Runner는 이 결과를 그대로 실행하지 않는다. Runner는 schema validation, candidate resolution, policy check를 통과한 경우에만 fixed Playwright tool을 실행한다.
 
-## 14. 검증 기준
+## 14. MCP Sampling spike 준비
+
+MCP Decision Gateway 구현 전에는 MCP Sampling이 Wedge 목표에 맞게 동작하는지 먼저 검증한다. 이 spike의 목적은 "MCP Server가 LLM을 대체할 수 있는가"가 아니라, "Wedge MCP Server가 연결된 MCP Host / Client의 LLM capability에 판단 요청을 보내고 `AgentDecision` 형태의 응답을 받을 수 있는가"를 확인하는 것이다.
+
+### 14.1 검증 질문
+
+이 spike는 다음 질문에 답해야 한다.
+
+```text
+1. Spring AI 1.1.5 기반 MCP server가 initialize 과정에서 어떤 protocolVersion을 협상하는가?
+2. 연결된 MCP Client / Host가 sampling capability를 선언하는가?
+3. Wedge MCP Server 또는 별도 spike server가 sampling/createMessage 요청을 보낼 수 있는가?
+4. MCP Host 쪽 LLM이 JSON-only AgentDecision 응답을 반환할 수 있는가?
+5. Wedge가 반환값을 schema validation / policy validation 대상으로 사용할 수 있는가?
+6. sampling 요청과 응답에 full DOM, screenshot base64, token, secret이 포함되지 않도록 제한할 수 있는가?
+7. Host가 sampling을 지원하지 않을 때 실패를 typed failure로 구분할 수 있는가?
+```
+
+### 14.2 최소 성공 흐름
+
+최소 성공 흐름은 실제 Runner와 Playwright 실행을 붙이지 않고, fixture 기반 observation만 사용한다.
+
+```text
+MCP Host / Client
+  -> Wedge MCP Server 연결
+  -> initialize에서 sampling capability 확인
+  -> Wedge가 fixture AgentObservation으로 sampling/createMessage 요청
+  -> Host 쪽 LLM이 AgentDecision JSON 반환
+  -> Wedge가 AgentDecision schema validation 수행
+  -> candidateId가 fixture candidate 목록에 존재하는지 검증
+```
+
+이 단계에서는 실제 클릭, 이동, 스크롤을 실행하지 않는다. Runner 실행 책임은 이후 `AgentMcpDecisionClient` 단계에서만 연결한다.
+
+### 14.3 Fixture 입력
+
+Sampling spike 입력은 실제 EvidencePacket 전체가 아니라 decision에 필요한 최소 observation으로 제한한다.
+
+```json
+{
+  "runId": "fixture-run-id",
+  "stepKey": "step_001_goto_start_url",
+  "goal": "Find the primary landing page CTA.",
+  "startUrl": "https://example.com/",
+  "currentUrl": "https://example.com/",
+  "allowedActions": ["click", "scroll", "finish"],
+  "candidates": [
+    {
+      "candidateId": "candidate_1",
+      "role": "link",
+      "text": "Start now",
+      "visible": true,
+      "risk": "LOW"
+    },
+    {
+      "candidateId": "candidate_2",
+      "role": "button",
+      "text": "Subscribe",
+      "visible": true,
+      "risk": "LOW"
+    }
+  ]
+}
+```
+
+금지 입력:
+
+```text
+full DOM
+screenshot base64
+raw network payload
+cookie / token / credential
+arbitrary selector
+arbitrary JavaScript
+```
+
+### 14.4 기대 출력
+
+Sampling 응답은 자연어 설명이 아니라 `AgentDecision` JSON으로 제한한다.
+
+```json
+{
+  "decisionType": "ACT",
+  "tool": "click",
+  "candidateId": "candidate_1",
+  "reason": "The visible Start now link is the clearest primary CTA candidate.",
+  "confidence": 0.82
+}
+```
+
+허용 action과 candidate는 요청에 포함된 목록 안에서만 선택할 수 있다. 응답이 JSON parse, schema validation, candidate validation, policy validation 중 하나라도 실패하면 실행 가능한 decision으로 취급하지 않는다.
+
+### 14.5 성공 기준
+
+```text
+Spring AI 1.1.5 MCP runtime protocolVersion 확인 완료
+MCP Client / Host sampling capability 확인 완료
+sampling/createMessage 요청/응답 round-trip 성공
+AgentDecision JSON parse 성공
+AgentDecision schema validation 성공
+candidateId allow-list 검증 성공
+금지 데이터가 sampling request/response에 포함되지 않음
+sampling 미지원 Host에서 typed unsupported failure 확인
+```
+
+### 14.6 실패 시 판단
+
+Sampling spike가 실패하면 실패 원인에 따라 다음처럼 분기한다.
+
+```text
+Spring AI server에서 sampling request API 접근 불가
+  -> Spring AI MCP SDK 직접 사용 또는 별도 MCP gateway process 검토
+
+연결 대상 Host가 sampling capability 미지원
+  -> MCP Tools 기반 read-only 연동은 유지하되, 사용자 LLM decision provider는 해당 Host에서 불가
+
+Host가 sampling은 지원하지만 승인 UX 또는 JSON 출력 제어가 불안정
+  -> MCP 모드는 experimental provider로 제한하고 GMS/Gemini provider를 기본 유지
+
+민감정보/대용량 데이터 제한이 어려움
+  -> EvidencePacket 전체 전달 금지, AgentObservation projection 계층 선행 구현
+```
+
+### 14.7 이번 spike 제외 범위
+
+```text
+실제 Run 생성
+실제 Playwright 실행
+Runner AgentMcpDecisionClient 구현
+운영 MCP endpoint 공개
+OAuth/OIDC resource server 전환
+과금/크레딧/결제 기능
+```
+
+## 15. 검증 기준
 
 MCP adapter spike는 다음 기준을 통과해야 한다.
 
@@ -575,7 +709,7 @@ Runner가 MCP decision 결과를 schema/policy/candidate 검증 후 실행
 full DOM / screenshot base64 / secret이 request/response/audit log에 저장되지 않음
 ```
 
-## 15. 단계별 작업 계획
+## 16. 단계별 작업 계획
 
 ```text
 1. docs/mcp_server_design.md 작성
@@ -598,7 +732,7 @@ full DOM / screenshot base64 / secret이 request/response/audit log에 저장되
 18. V2 execute/write-back tool 설계
 ```
 
-## 16. 최종 판단
+## 17. 최종 판단
 
 Wedge MCP Server는 `api-server` 내부 adapter로 시작한다.
 
