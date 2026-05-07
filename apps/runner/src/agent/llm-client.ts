@@ -1,7 +1,8 @@
 import type { RunnerConfig } from "../config/index.ts";
-import type { InteractiveComponentObservationItem, ScenarioAction, ScenarioStage, TargetDescriptorMap } from "../shared/contracts.ts";
+import type { InteractiveComponentObservationItem, ScenarioAction, ScenarioStage } from "../shared/contracts.ts";
 import { errorMessage, logOperationalEvent } from "../shared/utils.ts";
-import { HeuristicDecisionClient, targetKey, type AgentDecision, type AgentDecisionClient, type AgentDecisionInput } from "./planner.ts";
+import { targetFromComponent, targetKey } from "./component-target.ts";
+import { HeuristicDecisionClient, type AgentDecision, type AgentDecisionClient, type AgentDecisionInput } from "./planner.ts";
 import { redactSensitiveString, redactSensitiveValue } from "./redaction.ts";
 
 export interface AgentLlmDecisionTransport {
@@ -340,23 +341,6 @@ function extractDecisionCandidate(rawResponse: unknown): unknown {
   }
 
   return rawResponse;
-}
-
-function targetFromComponent(component: InteractiveComponentObservationItem): TargetDescriptorMap {
-  const target: TargetDescriptorMap = {};
-  if (component.selector) {
-    target.selector = component.selector;
-  }
-  if (component.role) {
-    target.role = component.role;
-  }
-  if (component.text) {
-    target.text = component.text;
-  }
-  if (component.href) {
-    target.url = component.href;
-  }
-  return target;
 }
 
 function asRecord(value: unknown, label: string): Record<string, unknown> {

@@ -52,6 +52,10 @@ export function redactSensitiveValue<T>(value: T): T {
   return redactValue(value, null) as T;
 }
 
+export function containsSensitiveValue(value: unknown): boolean {
+  return JSON.stringify(value) !== JSON.stringify(redactSensitiveValue(value));
+}
+
 export function redactAgentDecision(decision: AgentDecision): AgentDecision {
   return redactSensitiveValue(decision);
 }

@@ -4,9 +4,9 @@ import type {
   InteractiveComponentObservationItem,
   ScenarioAction,
   ScenarioStage,
-  SettleStrategy,
-  TargetDescriptorMap
+  SettleStrategy
 } from "../shared/contracts.ts";
+import { candidateText, targetFromComponent, targetKey } from "./component-target.ts";
 
 export type AgentDecisionKind = "act" | "checkpoint" | "finish";
 
@@ -232,40 +232,4 @@ function componentToDecision(candidate: ActionCandidate): AgentDecision {
     stage: candidate.stage,
     targetKey: targetKey(candidate.component)
   };
-}
-
-function targetFromComponent(component: InteractiveComponentObservationItem): TargetDescriptorMap {
-  const target: TargetDescriptorMap = {};
-
-  if (component.selector) {
-    target.selector = component.selector;
-  }
-
-  if (component.role) {
-    target.role = component.role;
-  }
-
-  if (component.text) {
-    target.text = component.text;
-  }
-
-  if (component.href) {
-    target.url = component.href;
-  }
-
-  return target;
-}
-
-export function targetKey(component: InteractiveComponentObservationItem): string {
-  return component.selector ?? `${component.role ?? component.tag}:${component.text}`;
-}
-
-function candidateText(component: InteractiveComponentObservationItem): string {
-  return [
-    component.text,
-    component.role ?? "",
-    component.href ?? "",
-    component.selector ?? "",
-    component.tag
-  ].join(" ");
 }

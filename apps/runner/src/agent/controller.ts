@@ -7,13 +7,16 @@ import { executeScenarioStep } from "../scenario/executor/step-executor.ts";
 import type { ArtifactStore } from "../storage/index.ts";
 import type { AgentTask, Artifact, ScenarioPlan, ScenarioStep } from "../shared/contracts.ts";
 import { classifyRunnerFailure, errorMessage, logOperationalEvent } from "../shared/utils.ts";
+import { persistAgentScenarioPlanExportArtifact, persistAgentTraceArtifact } from "./artifacts.ts";
 import { emitAgentEventBestEffort, emitAgentTraceBestEffort } from "./callbacks.ts";
+import { AgentBudgetExceededError, assertAgentDeadline, createAgentDeadline, remainingAgentBudgetMs, runSideEffectWithDeadlineCleanup, runWithinAgentDeadline } from "./deadline.ts";
 import { HeuristicDecisionClient, type AgentDecision, type AgentDecisionClient } from "./planner.ts";
 import { observePage } from "./observation.ts";
 import { evaluateAgentPolicy } from "./policy.ts";
 import { createInitialAgentState } from "./state.ts";
-import { createAgentScenarioPlanExportArtifact, exportAgentTraceToScenarioPlan, type AgentTraceScenarioPlanExport } from "./trace-export.ts";
-import { createAgentTrace, createAgentTraceArtifact, summarizeObservation, type AgentTrace, type AgentTurnTrace } from "./trace.ts";
+import { shouldReportStopped, traceStatusFromVerification } from "./outcome.ts";
+import { exportAgentTraceToScenarioPlan, type AgentTraceScenarioPlanExport } from "./trace-export.ts";
+import { createAgentTrace, summarizeObservation, type AgentTrace, type AgentTurnTrace } from "./trace.ts";
 import { verifyGoal } from "./verifier.ts";
 
 export interface AgentExecutionResult {
@@ -148,7 +151,7 @@ export async function executeAgentRun(input: AgentExecutorInput): Promise<AgentE
 
     if (decision.kind === "act") {
       try {
-        const stepResult = await runSideEffectWithinAgentDeadline(deadline, "action", () => executeScenarioStep({
+        const stepResult = await runSideEffectWithDeadlineCleanup(deadline, "action", () => executeScenarioStep({
           runId: input.runId,
           stepOrder: turn,
           step,
@@ -332,132 +335,6 @@ export async function executeAgentRun(input: AgentExecutorInput): Promise<AgentE
   };
 }
 
-function traceStatusFromVerification(outcome: ReturnType<typeof verifyGoal>["outcome"]): AgentTrace["outcome"]["status"] {
-  switch (outcome) {
-    case "SUCCESS":
-      return "SUCCESS";
-    case "POLICY_BLOCKED":
-      return "POLICY_BLOCKED";
-    case "BLOCKED_LOGIN":
-    case "BLOCKED_CAPTCHA":
-      return "BLOCKED";
-    case "EXHAUSTED":
-      return "EXHAUSTED";
-    case "CONTINUE":
-      return "RUNNING";
-  }
-}
-
-async function persistAgentTraceArtifact({
-  task,
-  runId,
-  trace,
-  artifactStore,
-  callbackClient
-}: {
-  task: AgentTask;
-  runId: string;
-  trace: AgentTrace;
-  artifactStore: ArtifactStore;
-  callbackClient: CallbackClient;
-}): Promise<{ artifact?: Artifact; deliveryIssues: DeliveryIssue[] }> {
-  if (task.artifact_policy?.capture_trace === false) {
-    return {
-      deliveryIssues: []
-    };
-  }
-
-  const deliveryIssues: DeliveryIssue[] = [];
-  let storedArtifacts: Artifact[] = [];
-
-  try {
-    storedArtifacts = await artifactStore.persistArtifacts({
-      runId,
-      artifacts: [createAgentTraceArtifact(trace)]
-    });
-  } catch (error) {
-    deliveryIssues.push({
-      scope: "artifact-storage",
-      stepKey: "agent_trace",
-      message: `agent trace artifact storage failed: ${errorMessage(error)}`
-    });
-  }
-
-  if (storedArtifacts.length > 0) {
-    try {
-      await callbackClient.sendArtifacts(runId, {
-        artifacts: storedArtifacts
-      });
-    } catch (error) {
-      deliveryIssues.push({
-        scope: "artifacts-callback",
-        stepKey: "agent_trace",
-        message: `agent trace artifact callback failed: ${errorMessage(error)}`
-      });
-    }
-  }
-
-  return {
-    artifact: storedArtifacts[0],
-    deliveryIssues
-  };
-}
-
-async function persistAgentScenarioPlanExportArtifact({
-  task,
-  runId,
-  traceExport,
-  artifactStore,
-  callbackClient
-}: {
-  task: AgentTask;
-  runId: string;
-  traceExport: AgentTraceScenarioPlanExport;
-  artifactStore: ArtifactStore;
-  callbackClient: CallbackClient;
-}): Promise<{ artifact?: Artifact; deliveryIssues: DeliveryIssue[] }> {
-  if (task.artifact_policy?.capture_trace === false || traceExport.status !== "EXPORTED") {
-    return {
-      deliveryIssues: []
-    };
-  }
-
-  const deliveryIssues: DeliveryIssue[] = [];
-  let storedArtifacts: Artifact[] = [];
-
-  try {
-    storedArtifacts = await artifactStore.persistArtifacts({
-      runId,
-      artifacts: [createAgentScenarioPlanExportArtifact(traceExport)]
-    });
-  } catch (error) {
-    deliveryIssues.push({
-      scope: "artifact-storage",
-      stepKey: "agent_scenario_plan_export",
-      message: `agent scenario plan export artifact storage failed: ${errorMessage(error)}`
-    });
-  }
-
-  if (storedArtifacts.length > 0) {
-    try {
-      await callbackClient.sendArtifacts(runId, {
-        artifacts: storedArtifacts
-      });
-    } catch (error) {
-      deliveryIssues.push({
-        scope: "artifacts-callback",
-        stepKey: "agent_scenario_plan_export",
-        message: `agent scenario plan export artifact callback failed: ${errorMessage(error)}`
-      });
-    }
-  }
-
-  return {
-    artifact: storedArtifacts[0],
-    deliveryIssues
-  };
-}
-
 function resolveAgentBudget(task: AgentTask): {
   maxTurns: number;
   maxDurationMs: number;
@@ -470,97 +347,6 @@ function resolveAgentBudget(task: AgentTask): {
     maxScrolls: task.budget.max_same_page_attempts ?? 3,
     captureEveryTurn: task.artifact_policy?.capture_screenshots ?? true
   };
-}
-
-interface AgentDeadline {
-  readonly expiresAtMs: number;
-}
-
-class AgentBudgetExceededError extends Error {
-  constructor(phase: string) {
-    super(`Agent execution exceeded max_duration_ms during ${phase}.`);
-    this.name = "AgentBudgetExceededError";
-  }
-}
-
-function createAgentDeadline(maxDurationMs: number): AgentDeadline {
-  return {
-    expiresAtMs: Date.now() + maxDurationMs
-  };
-}
-
-function remainingAgentBudgetMs(deadline: AgentDeadline): number {
-  return deadline.expiresAtMs - Date.now();
-}
-
-function assertAgentDeadline(deadline: AgentDeadline, phase: string): void {
-  if (remainingAgentBudgetMs(deadline) <= 0) {
-    throw new AgentBudgetExceededError(phase);
-  }
-}
-
-async function runWithinAgentDeadline<T>(
-  deadline: AgentDeadline,
-  phase: string,
-  operation: () => Promise<T> | T
-): Promise<T> {
-  assertAgentDeadline(deadline, phase);
-  const remainingMs = remainingAgentBudgetMs(deadline);
-  let timeout: ReturnType<typeof setTimeout> | undefined;
-
-  try {
-    return await Promise.race([
-      Promise.resolve().then(operation),
-      new Promise<never>((_, reject) => {
-        timeout = setTimeout(() => reject(new AgentBudgetExceededError(phase)), Math.max(1, remainingMs));
-      })
-    ]);
-  } finally {
-    if (timeout) {
-      clearTimeout(timeout);
-    }
-  }
-}
-
-async function runSideEffectWithinAgentDeadline<T>(
-  deadline: AgentDeadline,
-  phase: string,
-  operation: () => Promise<T> | T
-): Promise<T> {
-  assertAgentDeadline(deadline, phase);
-  const remainingMs = remainingAgentBudgetMs(deadline);
-  const operationPromise = Promise.resolve().then(operation);
-  let timeout: ReturnType<typeof setTimeout> | undefined;
-
-  try {
-    return await Promise.race([
-      operationPromise,
-      new Promise<never>((_, reject) => {
-        timeout = setTimeout(() => reject(new AgentBudgetExceededError(phase)), Math.max(1, remainingMs));
-      })
-    ]);
-  } catch (error) {
-    if (error instanceof AgentBudgetExceededError) {
-      try {
-        await operationPromise;
-      } catch {
-        // The run has already exceeded its Agent duration budget. Swallow the
-        // late operation error so the terminal outcome stays EXHAUSTED while
-        // still preventing side effects from continuing after executeAgentRun
-        // returns.
-      }
-    }
-
-    throw error;
-  } finally {
-    if (timeout) {
-      clearTimeout(timeout);
-    }
-  }
-}
-
-function shouldReportStopped(trace: AgentTrace): boolean {
-  return trace.outcome.status === "POLICY_BLOCKED" || trace.outcome.status === "BLOCKED";
 }
 
 function resolveTaskGoal(task: AgentTask): string {

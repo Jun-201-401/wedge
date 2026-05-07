@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { AgentTask, ArtifactDraft, ScenarioAction, ScenarioPlan, ScenarioStep, SettleStrategy } from "../shared/contracts.ts";
 import { toIsoTimestamp } from "../shared/utils.ts";
-import { redactSensitiveValue } from "./redaction.ts";
+import { containsSensitiveValue, redactSensitiveValue } from "./redaction.ts";
 import { createAgentRuntimePlan } from "./runtime-plan.ts";
 import type { AgentTrace, AgentTurnTrace } from "./trace.ts";
 
@@ -79,7 +79,7 @@ export function exportAgentTraceToScenarioPlan(input: {
     ]
   };
 
-  if (wouldRedactValue(scenarioPlan)) {
+  if (containsSensitiveValue(scenarioPlan)) {
     return {
       ...base,
       status: "NOT_EXPORTABLE",
@@ -231,8 +231,4 @@ function cloneAction(action: ScenarioAction): ScenarioAction {
 
 function cloneSettleStrategy(settleStrategy: SettleStrategy): SettleStrategy {
   return JSON.parse(JSON.stringify(settleStrategy)) as SettleStrategy;
-}
-
-function wouldRedactValue(value: unknown): boolean {
-  return JSON.stringify(value) !== JSON.stringify(redactSensitiveValue(value));
 }
