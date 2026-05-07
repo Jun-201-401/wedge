@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Any
 
-from app.clients import SpringCallbackClient
+from app.clients import SpringCallbackClient, SpringCallbackError, SpringCallbackResponse
 from app.rule_engine import analyze_evidence_packet, load_default_registry
 from app.services.llm_analysis import GMSReportExplainer
 
@@ -34,7 +34,8 @@ def analyze_packet_and_callback(
         analysis_job_id=analysis_job_id,
         run_id=run_id,
     )
-    started_response = callback_client.send_started(
+    started_response, started_error = _try_send_started_callback(
+        callback_client=callback_client,
         analysis_job_id=analysis_job_id,
         payload=started_payload,
         event_id=f"{event_id}.started",
@@ -53,7 +54,8 @@ def analyze_packet_and_callback(
     return {
         "analysisJobId": analysis_job_id,
         "runId": run_id,
-        "startedCallbackStatusCode": started_response.status_code,
+        "startedCallbackStatusCode": started_response.status_code if started_response else None,
+        "startedCallbackError": started_error,
         "callbackStatusCode": response.status_code,
         "callbackBody": response.body,
         "judgeResult": judge_result,
@@ -72,6 +74,24 @@ def build_started_callback_payload(
         "runId": run_id,
         "startedAt": _format_instant(started_at),
     }
+
+
+def _try_send_started_callback(
+    *,
+    callback_client: SpringCallbackClient,
+    analysis_job_id: str,
+    payload: dict[str, Any],
+    event_id: str,
+) -> tuple[SpringCallbackResponse | None, str | None]:
+    try:
+        response = callback_client.send_started(
+            analysis_job_id=analysis_job_id,
+            payload=payload,
+            event_id=event_id,
+        )
+        return response, None
+    except SpringCallbackError as exc:
+        return None, str(exc)
 
 
 def build_completed_callback_payload(
@@ -119,7 +139,7 @@ def build_failed_callback_payload(
 
 def _to_top_finding(issue: dict[str, Any], rank: int) -> dict[str, Any]:
     criterion_id = str(issue.get("criterion_id") or issue.get("issue_id") or "UNKNOWN")
-    return {
+    finding = {
         "rank": rank,
         "category": criterion_id,
         "title": str(issue.get("summary") or criterion_id),
@@ -128,6 +148,10 @@ def _to_top_finding(issue: dict[str, Any], rank: int) -> dict[str, Any]:
         "impact": _impact(issue.get("severity")),
         "evidenceRefs": [{"type": "evidence", "id": ref} for ref in issue.get("evidence_refs") or []],
     }
+    evidence_locations = issue.get("evidence_locations")
+    if isinstance(evidence_locations, list) and evidence_locations:
+        finding["evidenceLocations"] = evidence_locations
+    return finding
 
 
 def _to_nudge(nudge: dict[str, Any]) -> dict[str, Any]:
