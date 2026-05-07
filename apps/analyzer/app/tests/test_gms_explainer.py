@@ -44,6 +44,18 @@ def sample_judge_result() -> dict[str, Any]:
                 "confidence": 0.81,
                 "priority_score": 2.03,
                 "evidence_refs": ["cp_001.obs_002"],
+                "evidence_locations": [
+                    {
+                        "evidence_ref": "cp_001.obs_002",
+                        "type": "interactive_components",
+                        "components": [
+                            {
+                                "selector": "a.hero-start",
+                                "bounds": {"x": 520, "y": 360, "width": 220, "height": 56},
+                            }
+                        ],
+                    }
+                ],
                 "summary": "CTA competition was detected.",
                 "impact_hypothesis": "Primary action may be harder to choose.",
                 "recommendations": ["Reduce CTA competition."],
@@ -102,6 +114,7 @@ class GMSReportExplainerTest(unittest.TestCase):
         self.assertEqual(issue["severity"], 2)
         self.assertEqual(issue["confidence"], 0.81)
         self.assertEqual(issue["evidence_refs"], ["cp_001.obs_002"])
+        self.assertEqual(issue["evidence_locations"][0]["components"][0]["bounds"], {"x": 520, "y": 360, "width": 220, "height": 56})
         self.assertEqual(result["summary"]["llm_overall_summary"], response["overall_summary"])
         self.assertEqual(result["nudges"][0]["recommendation"], "Pick one primary CTA and demote the others.")
         self.assertEqual(result["llm_provider"], "gms")

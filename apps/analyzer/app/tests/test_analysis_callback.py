@@ -41,6 +41,29 @@ class AnalysisCallbackPayloadTest(unittest.TestCase):
                         "confidence": 0.81,
                         "priority_score": 2.03,
                         "evidence_refs": ["cp_001.obs_002"],
+                        "evidence_locations": [
+                            {
+                                "evidence_ref": "cp_001.obs_002",
+                                "checkpoint_id": "cp_001",
+                                "observation_id": "obs_002",
+                                "type": "interactive_components",
+                                "stage": "CTA",
+                                "source": ["dom", "layout", "screenshot"],
+                                "components": [
+                                    {
+                                        "text": "Start free",
+                                        "selector": "a.hero-start",
+                                        "role": "link",
+                                        "tag": "a",
+                                        "clickable": True,
+                                        "clicked_in_scenario": True,
+                                        "is_cta_candidate": True,
+                                        "is_primary_like": True,
+                                        "bounds": {"x": 520, "y": 360, "width": 220, "height": 56},
+                                    }
+                                ],
+                            }
+                        ],
                         "summary": "CTA competition was detected.",
                         "impact_hypothesis": "Primary action may be harder to choose.",
                     }
@@ -64,6 +87,10 @@ class AnalysisCallbackPayloadTest(unittest.TestCase):
         self.assertEqual(payload["completedAt"], "2026-04-29T01:02:03Z")
         self.assertEqual(payload["topFindings"][0]["category"], "PATH-CTA-002")
         self.assertEqual(payload["topFindings"][0]["impact"], "MEDIUM")
+        self.assertEqual(
+            payload["topFindings"][0]["evidenceLocations"][0]["components"][0]["bounds"],
+            {"x": 520, "y": 360, "width": 220, "height": 56},
+        )
         self.assertEqual(payload["nudges"][0]["followUpQuestion"], "Is the primary CTA visually dominant?")
         self.assertEqual(payload["judgeResult"]["issues"][0]["stage"], "CTA")
 
