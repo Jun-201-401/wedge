@@ -118,6 +118,14 @@
           "type": "boolean",
           "default": false
         },
+        "allowed_external_origins": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "format": "uri"
+          },
+          "default": []
+        },
         "allow_payment_commit": {
           "type": "boolean",
           "default": false

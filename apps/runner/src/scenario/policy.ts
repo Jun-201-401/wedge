@@ -53,6 +53,13 @@ export function assertNavigationAllowed(plan: ScenarioPlan, currentUrl: string, 
   const nextOrigin = resolveOrigin(nextUrl, currentUrl);
 
   if (currentOrigin && nextOrigin && currentOrigin !== nextOrigin) {
+    const allowedExternalOrigins = new Set((plan.safety.allowed_external_origins ?? [])
+      .map((origin) => resolveOrigin(origin, plan.start_url))
+      .filter((origin): origin is string => origin !== null));
+    if (allowedExternalOrigins.has(nextOrigin)) {
+      return;
+    }
+
     throw new RunnerExecutionPolicyError(
       `Scenario safety forbids external navigation from ${currentOrigin} to ${nextOrigin}`
     );
@@ -68,6 +75,13 @@ export function assertVisitedUrlAllowed(plan: ScenarioPlan, currentUrl: string):
   const currentOrigin = resolveOrigin(currentUrl, plan.start_url);
 
   if (allowedOrigin && currentOrigin && allowedOrigin !== currentOrigin) {
+    const allowedExternalOrigins = new Set((plan.safety.allowed_external_origins ?? [])
+      .map((origin) => resolveOrigin(origin, plan.start_url))
+      .filter((origin): origin is string => origin !== null));
+    if (allowedExternalOrigins.has(currentOrigin)) {
+      return;
+    }
+
     throw new RunnerExecutionPolicyError(
       `Scenario safety forbids visiting external origin ${currentOrigin} from start origin ${allowedOrigin}`
     );
@@ -83,7 +97,7 @@ function resolveOrigin(candidateUrl: string, baseUrl: string): string | null {
 }
 
 function looksLikePaymentTarget(targetSummary: string): boolean {
-  return containsAny(targetSummary, ["pay", "purchase", "checkout", "buy", "order", "결제", "구매", "주문"]);
+  return containsAny(targetSummary, ["pay", "purchase", "buy", "order", "결제", "구매", "주문"]);
 }
 
 function looksLikeDestructiveTarget(targetSummary: string): boolean {

@@ -26,12 +26,12 @@ test("[Worker lifecycle] accepted callback 실패 시 session을 닫고 failed c
     browserFactory: {
       kind: "simulated-playwright",
       createSession: async () =>
-        createSimulatedSession(message.payload.scenarioPlan, {
+        createSimulatedSession(message.payload.scenarioPlan!, {
           execute: async () => {
             throw new Error("execute should not be called when accepted fails");
           },
           settle: async () => createSettledResult(),
-          snapshot: () => createSimulatedPageSnapshot(message.payload.scenarioPlan),
+          snapshot: () => createSimulatedPageSnapshot(message.payload.scenarioPlan!),
           close: async () => {
             closed = true;
           }
@@ -67,7 +67,7 @@ test("[Worker lifecycle] accepted callback 실패 시 session을 닫고 failed c
 
 test("[Worker 관측성] step timeout 실패는 timeout code와 runId/stepKey 로그를 남긴다", async () => {
   const message = await loadExampleMessage();
-  message.payload.scenarioPlan.steps = [
+  message.payload.scenarioPlan!.steps = [
     {
       step_id: "step_001_timeout",
       stage: "CTA",
@@ -106,14 +106,14 @@ test("[Worker 관측성] step timeout 실패는 timeout code와 runId/stepKey �
       browserFactory: {
         kind: "simulated-playwright",
         createSession: async () =>
-          createSimulatedSession(message.payload.scenarioPlan, {
+          createSimulatedSession(message.payload.scenarioPlan!, {
             execute: async () => {
               const error = new Error("locator click timed out after 100ms");
               error.name = "TimeoutError";
               throw error;
             },
             settle: async () => createSettledResult(),
-            snapshot: () => createSimulatedPageSnapshot(message.payload.scenarioPlan),
+            snapshot: () => createSimulatedPageSnapshot(message.payload.scenarioPlan!),
             close: async () => {}
           })
       },
@@ -172,7 +172,7 @@ test("[Worker 관측성] step timeout 실패는 timeout code와 runId/stepKey �
 
 test("[Worker lifecycle] 실행 자체가 성공했다면 finished callback 실패만으로 실행 실패로 바꾸지 않는다", async () => {
   const message = await loadExampleMessage();
-  message.payload.scenarioPlan.steps = [
+  message.payload.scenarioPlan!.steps = [
     {
       step_id: "step_001_fill_email",
       stage: "INPUT",
@@ -200,7 +200,7 @@ test("[Worker lifecycle] 실행 자체가 성공했다면 finished callback 실�
     browserFactory: {
       kind: "simulated-playwright",
       createSession: async () =>
-        createSimulatedSession(message.payload.scenarioPlan, {
+        createSimulatedSession(message.payload.scenarioPlan!, {
           execute: async (action) => ({
             actionType: action.type,
             targetSummary: "label=Email",
@@ -212,7 +212,7 @@ test("[Worker lifecycle] 실행 자체가 성공했다면 finished callback 실�
               strategy: "fixed_short",
               durationMs: 1
             }),
-          snapshot: () => createSimulatedPageSnapshot(message.payload.scenarioPlan),
+          snapshot: () => createSimulatedPageSnapshot(message.payload.scenarioPlan!),
           close: async () => {}
         })
     },

@@ -416,9 +416,9 @@ async function collectCandidatesFromPage(page: Page): Promise<DiscoveryCandidate
         escape?: (nextValue: string) => string;
       };
     };
-    const elements = [
-      ...scope.document.querySelectorAll("a, button, [role='button'], [role='link'], form, input, select, textarea, section, [id], [class]")
-    ].slice(0, 250);
+    const elements = Array.from(
+      scope.document.querySelectorAll("a, button, [role='button'], [role='link'], form, input, select, textarea, section, [id], [class]")
+    ).slice(0, 250) as BrowserElement[];
 
     return elements.map((element): RawDiscoveryElement => {
       return {

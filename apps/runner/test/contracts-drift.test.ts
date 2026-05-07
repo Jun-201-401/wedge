@@ -41,7 +41,11 @@ test("[계약 동기화] runner TS mirror의 scenario/MQ literal이 packages/con
   );
   assertPropertyMatchesSchemaEnum(runnerTypesSource, "triggerSource", mqSchema, mqSchema.$defs.RunExecutePayload.properties.triggerSource);
   assertPropertyMatchesSchemaEnum(runnerTypesSource, "devicePreset", mqSchema, mqSchema.$defs.RunExecutePayload.properties.devicePreset);
-  assertPropertyMatchesSchemaEnum(runnerTypesSource, "messageType", mqSchema, mqSchema.$defs.RunExecuteMessage.properties.messageType);
+  assertTypeAliasMatchesSchemaEnum(runnerTypesSource, "AgentGoalType", mqSchema, mqSchema.$defs.AgentTask.properties.goal_type);
+  assert.ok(runnerTypesSource.includes('messageType: "run.execute.request";'));
+  assert.equal(mqSchema.$defs.RunExecuteMessage.properties.messageType.const, "run.execute.request");
+  assert.ok(runnerTypesSource.includes('messageType: "agent.execute.request";'));
+  assert.equal(mqSchema.$defs.AgentExecuteMessage.properties.messageType.const, "agent.execute.request");
 
   assertPropertyPrimitiveMatchesSchema(runnerTypesSource, "url_includes", scenarioSchema.$defs.settle_strategy.properties.url_includes);
   assertPropertyPrimitiveMatchesSchema(runnerTypesSource, "method", scenarioSchema.$defs.settle_strategy.properties.method);
@@ -75,6 +79,12 @@ test("[계약 동기화] runner callback literal이 packages/contracts callback 
   const callbackSchema = await readJson(resolve(repoRoot, "packages/contracts/internal/runner-callback.schema.json"));
 
   assertPropertyMatchesSchemaEnum(runnerTypesSource, "eventType", callbackSchema, callbackSchema.$defs.StepEvent.properties.eventType);
+  assertTypeAliasMatchesSchemaEnum(
+    runnerTypesSource,
+    "AgentCallbackEventType",
+    callbackSchema,
+    callbackSchema.$defs.AgentEvent.properties.eventType
+  );
   assertPropertyMatchesSchemaEnum(runnerTypesSource, "artifactType", callbackSchema, callbackSchema.$defs.Artifact.properties.artifactType);
   assertPropertyMatchesSchemaEnum(
     runnerTypesSource,
