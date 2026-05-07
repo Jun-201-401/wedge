@@ -1,5 +1,5 @@
 import type { ReportDetail, RunReportProjection } from '../../../entities/report';
-import type { Run } from '../../../entities/run';
+import type { Run, RunArtifact } from '../../../entities/run';
 import { getScenarioLabel } from '../../../shared';
 import type { FindingSeverity, ReportDecisionNode, ReportFinding, ReportRecommendation, RunReportViewModel } from './runReportViewModel';
 
@@ -7,6 +7,7 @@ interface BuildRunReportFromApiInput {
   run: Run;
   report: RunReportProjection;
   detail?: ReportDetail | null;
+  fallbackPreviewUrl?: string | null;
   scenarioId: string | null;
 }
 
@@ -16,6 +17,26 @@ function readNumber(value: unknown) {
 
 function readString(value: unknown) {
   return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
+function artifactCreatedTime(artifact: RunArtifact) {
+  if (!artifact.createdAt) {
+    return 0;
+  }
+
+  const time = new Date(artifact.createdAt).getTime();
+  return Number.isFinite(time) ? time : 0;
+}
+
+function artifactPreviewUrl(artifact: RunArtifact) {
+  return artifact.contentUrl ?? artifact.url ?? null;
+}
+
+export function selectLatestScreenshotPreviewUrl(artifacts: RunArtifact[]) {
+  return artifacts
+    .filter((artifact) => artifact.artifactType === 'SCREENSHOT' && artifactPreviewUrl(artifact))
+    .sort((left, right) => artifactCreatedTime(right) - artifactCreatedTime(left))
+    .map(artifactPreviewUrl)[0] ?? null;
 }
 
 function severityFromScore(severity: number | null | undefined): FindingSeverity {
@@ -245,9 +266,10 @@ function getDurationLabel(run: Run) {
   return seconds >= 60 ? `${Math.floor(seconds / 60)}m ${seconds % 60}s` : `${seconds}s`;
 }
 
-export function buildRunReportFromApi({ run, report, detail, scenarioId }: BuildRunReportFromApiInput): RunReportViewModel {
+export function buildRunReportFromApi({ run, report, detail, fallbackPreviewUrl, scenarioId }: BuildRunReportFromApiInput): RunReportViewModel {
   const detailWithFindings = detail && detail.findings.length > 0 ? detail : null;
   const findings = detailWithFindings ? buildFindingsFromDetail(detailWithFindings) : buildFindings(report);
+  const detailPreviewUrl = getDetailPreviewUrl(detailWithFindings);
   const score = readNumber(report.summary.friction_score) ?? readNumber(report.summary.frictionScore) ?? 72;
   const targetUrl = readString(report.summary.targetUrl) ?? readString(report.summary.url) ?? run.startUrl;
 
@@ -266,7 +288,7 @@ export function buildRunReportFromApi({ run, report, detail, scenarioId }: Build
     heroTitle: report.title ?? '전환 마찰 리포트',
     heroSubtitle: `${report.analysisStatus} · ${report.reportStatus}`,
     heroCallToAction: readString(report.summary.primary_cta) ?? readString(report.summary.primaryCta) ?? 'Primary CTA',
-    evidencePreviewUrl: getDetailPreviewUrl(detailWithFindings),
+    evidencePreviewUrl: detailPreviewUrl ?? fallbackPreviewUrl ?? null,
     findings,
     recommendations: detailWithFindings ? buildRecommendationsFromDetail(detailWithFindings, findings) : buildRecommendations(report, findings),
   };

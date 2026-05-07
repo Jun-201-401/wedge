@@ -2,8 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import type { ReportDetail, RunReportProjection } from '../../src/entities/report';
-import type { Run } from '../../src/entities/run';
-import { buildRunReportFromApi } from '../../src/features/report-viewer/lib/runReportFromApi';
+import type { Run, RunArtifact } from '../../src/entities/run';
+import { buildRunReportFromApi, selectLatestScreenshotPreviewUrl } from '../../src/features/report-viewer/lib/runReportFromApi';
 
 const completedRun: Run = {
   id: '11111111-1111-4111-8111-111111111111',
@@ -145,6 +145,60 @@ const reportDetail: ReportDetail = {
   createdAt: '2026-04-27T01:02:00.000Z',
 };
 
+const screenshotArtifacts: RunArtifact[] = [
+  {
+    id: '77777777-7777-4777-8777-777777777777',
+    runId: completedRun.id,
+    stepId: null,
+    stepKey: 'first-view',
+    artifactType: 'SCREENSHOT',
+    bucket: 'wedge-artifacts',
+    key: 'runs/report/first-view.png',
+    mimeType: 'image/png',
+    width: 1440,
+    height: 900,
+    sizeBytes: 2048,
+    sha256: null,
+    url: null,
+    contentUrl: `/api/runs/${completedRun.id}/artifacts/77777777-7777-4777-8777-777777777777/content`,
+    createdAt: '2026-04-27T01:02:00.000Z',
+  },
+  {
+    id: '88888888-8888-4888-8888-888888888888',
+    runId: completedRun.id,
+    stepId: null,
+    stepKey: 'final',
+    artifactType: 'SCREENSHOT',
+    bucket: 'wedge-artifacts',
+    key: 'runs/report/final.png',
+    mimeType: 'image/png',
+    width: 1440,
+    height: 900,
+    sizeBytes: 4096,
+    sha256: null,
+    url: null,
+    contentUrl: `/api/runs/${completedRun.id}/artifacts/88888888-8888-4888-8888-888888888888/content`,
+    createdAt: '2026-04-27T01:03:00.000Z',
+  },
+  {
+    id: '99999999-9999-4999-8999-999999999999',
+    runId: completedRun.id,
+    stepId: null,
+    stepKey: 'dom',
+    artifactType: 'DOM_SNAPSHOT',
+    bucket: 'wedge-artifacts',
+    key: 'runs/report/dom.html',
+    mimeType: 'text/html',
+    width: null,
+    height: null,
+    sizeBytes: 512,
+    sha256: null,
+    url: null,
+    contentUrl: `/api/runs/${completedRun.id}/artifacts/99999999-9999-4999-8999-999999999999/content`,
+    createdAt: '2026-04-27T01:04:00.000Z',
+  },
+];
+
 test('buildRunReportFromApi projects backend report data into report view model', () => {
   const report = buildRunReportFromApi({ run: completedRun, report: readyReport, scenarioId: 'landing-cta' });
 
@@ -174,4 +228,35 @@ test('buildRunReportFromApi prefers report detail finding preview image when ava
   assert.equal(report.findings[0].previewImageUrl, reportDetail.findings[0].previewImage?.artifact.contentUrl);
   assert.equal(report.findings[0].evidenceRefs[0], 'cp-detail.obs-1');
   assert.equal(report.recommendations[0].detail, '상세 CTA 아래에 기대 결과를 한 문장으로 설명하세요.');
+});
+
+test('selectLatestScreenshotPreviewUrl picks the latest screenshot artifact', () => {
+  assert.equal(selectLatestScreenshotPreviewUrl(screenshotArtifacts), screenshotArtifacts[1].contentUrl);
+  assert.equal(selectLatestScreenshotPreviewUrl([screenshotArtifacts[2]]), null);
+});
+
+test('selectLatestScreenshotPreviewUrl uses public artifact url when content url is absent', () => {
+  assert.equal(selectLatestScreenshotPreviewUrl([{
+    ...screenshotArtifacts[0],
+    contentUrl: null,
+    url: 'https://cdn.example.com/report-preview.png',
+  }]), 'https://cdn.example.com/report-preview.png');
+});
+
+test('buildRunReportFromApi uses a run screenshot fallback when report findings have no preview', () => {
+  const reportWithoutFindings: RunReportProjection = {
+    ...readyReport,
+    findings: [],
+    nudges: [],
+  };
+  const fallbackPreviewUrl = selectLatestScreenshotPreviewUrl(screenshotArtifacts);
+  const report = buildRunReportFromApi({
+    run: completedRun,
+    report: reportWithoutFindings,
+    fallbackPreviewUrl,
+    scenarioId: 'landing-cta',
+  });
+
+  assert.equal(report.findings.length, 0);
+  assert.equal(report.evidencePreviewUrl, fallbackPreviewUrl);
 });

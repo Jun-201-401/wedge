@@ -4,7 +4,15 @@ import { generateRunReport, getReport, getRunReport } from '../../api/reports';
 import { getRun, getRunEvidencePacket, listRunArtifacts, requestRunAnalysis } from '../../api/runs';
 import type { ReportDetail, RunReportProjection } from '../../entities/report';
 import type { EvidencePacket, Run } from '../../entities/run';
-import { buildMockRunReportData, buildRunReportFromApi, buildRunReportFromEvidence, hydrateEvidenceArtifacts, RunReportBrand, RunReportViewer } from '../../features/report-viewer';
+import {
+  buildMockRunReportData,
+  buildRunReportFromApi,
+  buildRunReportFromEvidence,
+  hydrateEvidenceArtifacts,
+  RunReportBrand,
+  RunReportViewer,
+  selectLatestScreenshotPreviewUrl,
+} from '../../features/report-viewer';
 import { isMockRunId } from '../run-monitor/lib/runMonitorRoute';
 import { resolveRunReportState } from './lib/runReportState';
 
@@ -27,6 +35,11 @@ const GENERATE_REPORT_ERROR_MESSAGE = '리포트 생성 요청에 실패했습�
 const REQUEST_ANALYSIS_PENDING_MESSAGE = '분석 요청 중입니다.';
 const REQUEST_ANALYSIS_SUCCESS_MESSAGE = '분석 요청이 접수됐습니다. 분석이 완료되면 리포트를 생성할 수 있습니다.';
 const REQUEST_ANALYSIS_ERROR_MESSAGE = '분석 요청에 실패했습니다. Run 상태 또는 접근 권한을 확인해주세요.';
+
+async function fetchRunReportPreviewUrl(runId: string) {
+  const artifactsResponse = await listRunArtifacts(runId);
+  return selectLatestScreenshotPreviewUrl(artifactsResponse.data);
+}
 
 function readQueryParam(name: string) {
   if (typeof window === 'undefined') {
@@ -97,6 +110,7 @@ export function RunReportPage({ runId }: RunReportPageProps) {
   const [evidenceLoadError, setEvidenceLoadError] = useState('');
   const [reportProjection, setReportProjection] = useState<RunReportProjection | null>(null);
   const [reportDetail, setReportDetail] = useState<ReportDetail | null>(null);
+  const [reportPreviewUrl, setReportPreviewUrl] = useState<string | null>(null);
   const [isReportLoading, setIsReportLoading] = useState(false);
   const [reportLoadError, setReportLoadError] = useState('');
   const [reportActionState, setReportActionState] = useState<ReportActionState>(IDLE_REPORT_ACTION_STATE);
@@ -106,7 +120,7 @@ export function RunReportPage({ runId }: RunReportPageProps) {
     }
 
     if (run && reportProjection?.reportStatus === 'READY') {
-      return buildRunReportFromApi({ run, report: reportProjection, detail: reportDetail, scenarioId });
+      return buildRunReportFromApi({ run, report: reportProjection, detail: reportDetail, fallbackPreviewUrl: reportPreviewUrl, scenarioId });
     }
 
     if (!run || !evidencePacket) {
@@ -115,7 +129,7 @@ export function RunReportPage({ runId }: RunReportPageProps) {
 
     const fallbackReport = buildRunReportFromEvidence({ run, evidencePacket, scenarioId });
     return reportLoadError ? { ...fallbackReport, sourceNotice: reportLoadError } : fallbackReport;
-  }, [evidencePacket, isMockRun, reportDetail, reportLoadError, reportProjection, run, runId, scenarioId, targetUrl]);
+  }, [evidencePacket, isMockRun, reportDetail, reportLoadError, reportPreviewUrl, reportProjection, run, runId, scenarioId, targetUrl]);
 
   useEffect(() => {
     if (isMockRun) {
@@ -127,6 +141,7 @@ export function RunReportPage({ runId }: RunReportPageProps) {
       setEvidenceLoadError('');
       setReportProjection(null);
       setReportDetail(null);
+      setReportPreviewUrl(null);
       setIsReportLoading(false);
       setReportLoadError('');
       setReportActionState(IDLE_REPORT_ACTION_STATE);
@@ -143,6 +158,7 @@ export function RunReportPage({ runId }: RunReportPageProps) {
       setEvidencePacket(null);
       setReportProjection(null);
       setReportDetail(null);
+      setReportPreviewUrl(null);
       setIsReportLoading(false);
       setReportLoadError('');
       setReportActionState(IDLE_REPORT_ACTION_STATE);
@@ -233,6 +249,33 @@ export function RunReportPage({ runId }: RunReportPageProps) {
       isActive = false;
     };
   }, [isMockRun, runId]);
+
+  useEffect(() => {
+    if (isMockRun || reportProjection?.reportStatus !== 'READY') {
+      setReportPreviewUrl(null);
+      return undefined;
+    }
+
+    let isActive = true;
+    setReportPreviewUrl(null);
+
+    void fetchRunReportPreviewUrl(runId)
+      .then((previewUrl) => {
+        if (isActive) {
+          setReportPreviewUrl(previewUrl);
+        }
+      })
+      .catch(() => {
+        // Preview images are an enhancement; keep the report usable if artifacts cannot be listed.
+        if (isActive) {
+          setReportPreviewUrl(null);
+        }
+      });
+
+    return () => {
+      isActive = false;
+    };
+  }, [isMockRun, reportProjection?.reportId, reportProjection?.reportStatus, reportProjection?.updatedAt, runId]);
 
   useEffect(() => {
     if (isMockRun || reportProjection?.reportStatus !== 'READY' || !reportProjection.reportId) {
