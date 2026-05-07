@@ -10,8 +10,10 @@ import {
 import { loadRunnerConfig, type RunnerConfig } from "./config/index.ts";
 import { createCapturePipeline } from "./capture/index.ts";
 import {
+  parseAgentExecuteMessage,
   parseDiscoveryExecuteMessage,
   parseRunExecuteMessage,
+  readAgentExecuteMessage,
   readDiscoveryExecuteMessage,
   readRunExecuteMessage
 } from "./messaging/index.ts";
@@ -25,13 +27,18 @@ import {
   type ArtifactOutboxReplayWorker
 } from "./storage/replay.ts";
 import { createArtifactStore } from "./storage/index.ts";
+import { registerAgentWorker, type AgentRunnerExecutionResult } from "./worker/agent-worker.ts";
 import { registerWorker, type RunnerExecutionResult } from "./worker/index.ts";
-import type { DiscoveryExecuteMessage, RunExecuteMessage } from "./shared/contracts.ts";
+import type { AgentExecuteMessage, DiscoveryExecuteMessage, RunExecuteMessage } from "./shared/contracts.ts";
 
 export type RunnerInputMessageResult =
   | {
       kind: "run";
       execution: RunnerExecutionResult;
+    }
+  | {
+      kind: "agent";
+      execution: AgentRunnerExecutionResult;
     }
   | {
       kind: "discovery";
@@ -44,6 +51,8 @@ export interface RunnerApp {
   processMessage: (message: RunExecuteMessage) => Promise<RunnerExecutionResult>;
   processRawMessage: (rawMessage: string) => Promise<RunnerExecutionResult>;
   processMessageFile: (messageFile: string) => Promise<RunnerExecutionResult>;
+  processAgentMessage: (message: AgentExecuteMessage) => Promise<AgentRunnerExecutionResult>;
+  processAgentMessageFile: (messageFile: string) => Promise<AgentRunnerExecutionResult>;
   processDiscoveryMessage: (message: DiscoveryExecuteMessage) => Promise<DiscoveryExecutionResult>;
   processDiscoveryMessageFile: (messageFile: string) => Promise<DiscoveryExecutionResult>;
   processRawInputMessage: (rawMessage: string) => Promise<RunnerInputMessageResult>;
@@ -69,11 +78,21 @@ export function createRunnerApp(overrides: Partial<RunnerConfig> = {}): RunnerAp
     capturePipeline,
     artifactStore
   });
+  const agentWorker = registerAgentWorker({
+    config,
+    browserFactory,
+    callbackClient,
+    capturePipeline,
+    artifactStore
+  });
   const startMqConsumer = async () =>
     startRunnerQueueConsumers({
       config,
       processRawRunMessage: async (rawMessage) => {
         await worker.handleMessage(parseRunExecuteMessage(rawMessage));
+      },
+      processRawAgentMessage: async (rawMessage) => {
+        await agentWorker.handleMessage(parseAgentExecuteMessage(rawMessage));
       },
       processRawDiscoveryMessage: async (rawMessage) => {
         await executeDiscoveryAndPersist({
@@ -91,6 +110,8 @@ export function createRunnerApp(overrides: Partial<RunnerConfig> = {}): RunnerAp
     processMessage: (message) => worker.handleMessage(message),
     processRawMessage: (rawMessage) => worker.handleMessage(parseRunExecuteMessage(rawMessage)),
     processMessageFile: async (messageFile) => worker.handleMessage(await readRunExecuteMessage(messageFile)),
+    processAgentMessage: (message) => agentWorker.handleMessage(message),
+    processAgentMessageFile: async (messageFile) => agentWorker.handleMessage(await readAgentExecuteMessage(messageFile)),
     processDiscoveryMessage: (message) => executeDiscoveryAndPersist({ message, config, callbackClient, artifactStore }),
     processDiscoveryMessageFile: async (messageFile) =>
       executeDiscoveryAndPersist({
@@ -101,6 +122,13 @@ export function createRunnerApp(overrides: Partial<RunnerConfig> = {}): RunnerAp
       }),
     processRawInputMessage: async (rawMessage) => {
       const messageType = readInputMessageType(rawMessage);
+      if (messageType === "agent.execute.request") {
+        return {
+          kind: "agent",
+          execution: await agentWorker.handleMessage(parseAgentExecuteMessage(rawMessage))
+        };
+      }
+
       if (messageType === "discovery.execute.request") {
         return {
           kind: "discovery",
@@ -122,6 +150,7 @@ export function createRunnerApp(overrides: Partial<RunnerConfig> = {}): RunnerAp
       const rawMessage = await readFile(messageFile, "utf8");
       return dispatchInputMessage(rawMessage, {
         processRun: async (message) => worker.handleMessage(message),
+        processAgent: async (message) => agentWorker.handleMessage(message),
         processDiscovery: async (message) => executeDiscoveryAndPersist({ message, config, callbackClient, artifactStore })
       });
     },
@@ -158,10 +187,18 @@ async function dispatchInputMessage(
   rawMessage: string,
   handlers: {
     processRun: (message: RunExecuteMessage) => Promise<RunnerExecutionResult>;
+    processAgent: (message: AgentExecuteMessage) => Promise<AgentRunnerExecutionResult>;
     processDiscovery: (message: DiscoveryExecuteMessage) => Promise<DiscoveryExecutionResult>;
   }
 ): Promise<RunnerInputMessageResult> {
   const messageType = readInputMessageType(rawMessage);
+  if (messageType === "agent.execute.request") {
+    return {
+      kind: "agent",
+      execution: await handlers.processAgent(parseAgentExecuteMessage(rawMessage))
+    };
+  }
+
   if (messageType === "discovery.execute.request") {
     return {
       kind: "discovery",

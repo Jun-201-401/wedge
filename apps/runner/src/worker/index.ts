@@ -1,4 +1,3 @@
-import { createAgentRuntimePlan, executeAgentRun } from "../agent/index.ts";
 import type { BrowserSessionFactory } from "../browser/playwright/index.ts";
 import type { CallbackClient } from "../callback/index.ts";
 import type { RunnerConfig } from "../config/index.ts";
@@ -45,10 +44,7 @@ export function registerWorker({
       let accepted = false;
 
       try {
-        const executionMode = message.payload.executionMode ?? "agent";
-        const plan = executionMode === "scripted"
-          ? requireScenarioPlan(message)
-          : createAgentRuntimePlan(message.payload);
+        const plan = message.payload.scenarioPlan;
 
         session = await browserFactory.createSession({
           runId: message.payload.runId,
@@ -64,24 +60,14 @@ export function registerWorker({
 
         accepted = true;
 
-        const executionResult = executionMode === "scripted"
-          ? await executeScenario({
-            runId: message.payload.runId,
-            plan,
-            session,
-            callbackClient,
-            capturePipeline,
-            artifactStore
-          })
-          : await executeAgentRun({
-            runId: message.payload.runId,
-            payload: message.payload,
-            runtimePlan: plan,
-            session,
-            callbackClient,
-            capturePipeline,
-            artifactStore
-          });
+        const executionResult = await executeScenario({
+          runId: message.payload.runId,
+          plan,
+          session,
+          callbackClient,
+          capturePipeline,
+          artifactStore
+        });
 
         const finishedDeliveryIssues = await emitFinishedCallback({
           callbackClient,
@@ -142,12 +128,4 @@ export function registerWorker({
       }
     }
   };
-}
-
-function requireScenarioPlan(message: RunExecuteMessage) {
-  if (!message.payload.scenarioPlan) {
-    throw new Error("scripted execution requires scenarioPlan");
-  }
-
-  return message.payload.scenarioPlan;
 }

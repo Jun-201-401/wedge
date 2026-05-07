@@ -110,14 +110,101 @@ export interface ScenarioPlan {
   steps: ScenarioStep[];
 }
 
-export type RunExecutionMode = "agent" | "scripted";
+export type AgentGoalType = "CHECKOUT_ENTRY_VERIFICATION";
 
-export interface AgentRunConfig {
-  maxTurns?: number;
-  maxScrolls?: number;
-  autonomyLevel?: "low" | "medium" | "high";
-  allowReplayHints?: boolean;
-  captureEveryTurn?: boolean;
+export interface AgentBudget {
+  max_steps: number;
+  max_duration_ms: number;
+  max_recovery_attempts?: number;
+  max_same_page_attempts?: number;
+  max_external_redirects?: number;
+}
+
+export interface AgentObservationBudget {
+  max_candidates?: number;
+  max_visible_text_chars?: number;
+  max_nearby_text_chars_per_candidate?: number;
+  max_dom_snapshot_bytes?: number;
+  max_ax_tree_bytes?: number;
+  max_artifacts_per_run?: number;
+  max_artifact_bytes_per_run?: number;
+}
+
+export interface AgentAllowedNavigation {
+  allow_external_navigation: boolean;
+  allowed_origins?: string[];
+  allowed_checkout_redirect_origins?: string[];
+}
+
+export interface AgentProductSelectionPolicy {
+  mode: "PROVIDED_OR_OBVIOUS_ONLY";
+  provided_product_url?: string | null;
+  required_option_strategy?: "FIRST_AVAILABLE";
+  allow_quantity_change?: boolean;
+  max_add_to_cart_attempts?: number;
+}
+
+export interface AgentRiskPolicy {
+  allow_checkout_navigation: boolean;
+  allow_cart_mutation: boolean;
+  allow_shipping_form_entry: boolean;
+  allow_payment_info_entry: boolean;
+  allow_final_payment_submit: boolean;
+  allow_final_order_commit: boolean;
+  allow_destructive_action: boolean;
+  allow_external_message_send: boolean;
+}
+
+export interface AgentTestData {
+  email?: string | null;
+  name?: string | null;
+  phone?: string | null;
+  shipping_address?: Record<string, unknown> | null;
+  postal_code?: string | null;
+  country?: string | null;
+  coupon_code?: string | null;
+  sandbox_payment?: Record<string, unknown> | null;
+}
+
+export interface AgentArtifactPolicy {
+  capture_screenshots?: boolean;
+  capture_dom_snapshots?: boolean;
+  capture_ax_tree?: boolean;
+  capture_trace?: boolean;
+}
+
+export interface AgentTask {
+  schema_version: "0.1";
+  task_id: string;
+  attempt_id: string;
+  attempt_index: number;
+  idempotency_key?: string;
+  run_id: string;
+  project_id: string;
+  goal_type: AgentGoalType;
+  goal?: string;
+  start_url: string;
+  environment: ScenarioPlan["environment"];
+  budget: AgentBudget;
+  observation_budget?: AgentObservationBudget;
+  allowed_navigation: AgentAllowedNavigation;
+  product_selection_policy?: AgentProductSelectionPolicy;
+  risk_policy: AgentRiskPolicy;
+  test_data?: AgentTestData;
+  artifact_policy?: AgentArtifactPolicy;
+}
+
+export interface AgentExecuteMessage {
+  messageId: string;
+  messageType: "agent.execute.request";
+  schemaVersion: string;
+  createdAt: string;
+  producer: string;
+  correlationId?: string;
+  idempotencyKey?: string;
+  payload: {
+    agentTask: AgentTask;
+  };
 }
 
 export interface RunExecuteMessage {
@@ -135,11 +222,9 @@ export interface RunExecuteMessage {
     startUrl: string;
     goal: string;
     devicePreset: "desktop" | "tablet" | "mobile";
-    executionMode?: RunExecutionMode;
-    agentConfig?: AgentRunConfig;
-    scenarioTemplateVersionId?: string;
+    scenarioTemplateVersionId: string;
     scenarioOverrides?: Record<string, unknown>;
-    scenarioPlan?: ScenarioPlan;
+    scenarioPlan: ScenarioPlan;
     artifactPolicy?: Record<string, unknown>;
   };
 }

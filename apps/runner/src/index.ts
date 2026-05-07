@@ -106,7 +106,7 @@ try {
             workerId: app.config.workerId,
             mode: "mq-consumer",
             mqUrl: app.config.mqUrl,
-            queues: [app.config.mqQueueRunExecute, app.config.mqQueueDiscoveryExecute],
+            queues: [app.config.mqQueueRunExecute, app.config.mqQueueAgentExecute, app.config.mqQueueDiscoveryExecute],
             prefetch: app.config.mqPrefetch,
             agentConcurrency: app.config.agentConcurrency,
             recoveryWorkers: {
