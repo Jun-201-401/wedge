@@ -709,7 +709,7 @@ async function collectCandidatesFromPage(page: Page): Promise<DiscoveryCandidate
         "시작", "회원가입", "가입", "무료", "체험", "문의", "상담", "데모", "요금", "가격", "플랜", "결제", "구매", "장바구니"
       ];
       const priorityBuckets: BrowserElement[][] = [[], [], [], []];
-      const allElements = [...scope.document.querySelectorAll(candidateSelector)];
+      const allElements = Array.from(scope.document.querySelectorAll(candidateSelector)) as unknown as BrowserElement[];
 
       for (const element of allElements) {
         const tagName = element.tagName.toLowerCase();
@@ -894,7 +894,7 @@ async function collectCandidatesFromPage(page: Page): Promise<DiscoveryCandidate
       const ids = (element.getAttribute("aria-labelledby") ?? "").split(/\s+/).filter(Boolean);
       const text = ids
         .map((id) => {
-          const labelElement = scope.document.getElementById?.(id);
+          const labelElement = scope.document.getElementById?.(id) as BrowserElement | null | undefined;
           return labelElement ? readSafeRenderedText(labelElement) : "";
         })
         .join(" ");
@@ -917,7 +917,7 @@ async function collectCandidatesFromPage(page: Page): Promise<DiscoveryCandidate
         return null;
       }
 
-      const text = [...scope.document.querySelectorAll(`label[for="${cssStringEscape(id)}"]`)]
+      const text = (Array.from(scope.document.querySelectorAll(`label[for="${cssStringEscape(id)}"]`)) as unknown as BrowserElement[])
         .map((label) => readSafeRenderedText(label))
         .join(" ");
       return normalizeNullableText(text);

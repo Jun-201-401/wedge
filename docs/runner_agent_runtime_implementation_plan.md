@@ -2,7 +2,7 @@
 title: Runner Agent Runtime Implementation Plan
 document_type: implementation-plan
 status: proposal
-last_updated: 2026-05-06
+last_updated: 2026-05-07
 intended_use:
   - implementation_handoff
   - contract_design
@@ -231,13 +231,23 @@ Recommended config:
 RUNNER_MQ_QUEUE_RUN_EXECUTE=run.execute.request
 RUNNER_MQ_QUEUE_DISCOVERY_EXECUTE=discovery.execute.request
 RUNNER_MQ_QUEUE_AGENT_EXECUTE=agent.execute.request
-RUNNER_STATIC_CONCURRENCY=4
+RUNNER_MQ_PREFETCH=4
 RUNNER_AGENT_CONCURRENCY=1
 ```
 
 Discovery queue/routing remains the existing discovery behavior. Agent isolation is about preventing long-running agent jobs from starving deterministic `run.execute.request` jobs; it does not remove or merge `discovery.execute.request`.
 
 If the current RabbitMQ consumer abstraction only supports one prefetch/concurrency value, update the runtime before enabling agent MQ consumption.
+
+Current implementation checkpoint:
+
+```text
+Implemented in apps/runner:
+- run.execute.request and discovery.execute.request continue to use RUNNER_MQ_PREFETCH.
+- agent.execute.request uses separate RUNNER_AGENT_CONCURRENCY.
+- RabbitMQ consumers use separate channels so agent prefetch does not consume the shared run/discovery channel budget.
+- RUNNER_AGENT_CONCURRENCY defaults to 1 and rejects non-positive values.
+```
 
 # 5. Contract-first Work
 
@@ -1684,14 +1694,14 @@ cd apps/runner && npm test -- test/agent/heuristic-agent.test.ts test/agent/trac
 Tasks:
 
 ```text
-Implement worker/agent-worker.ts.
-Update app.ts to process AgentExecuteMessage.
-Update messaging parser.
-Update RabbitMQ consumer to consume agent.execute.request from separate queue/routing config if configured.
-Add agent-specific concurrency configuration.
-Persist AgentTrace as TRACE artifact.
-Emit accepted/finished/failed through existing run lifecycle callbacks.
-Emit agent-events/agent-traces through the agent-specific callback endpoints.
+DONE: Implement worker/agent-worker.ts.
+DONE: Update app.ts to process AgentExecuteMessage.
+DONE: Update messaging parser.
+DONE: Update RabbitMQ consumer to consume agent.execute.request from separate queue/routing config if configured.
+DONE: Add agent-specific concurrency configuration.
+DONE: Persist AgentTrace as TRACE artifact.
+DONE: Emit accepted/finished/failed through existing run lifecycle callbacks.
+DONE: Emit agent-events/agent-traces through the agent-specific callback endpoints.
 ```
 
 Acceptance criteria:
@@ -1711,6 +1721,28 @@ Verification:
 cd apps/runner && npm test -- test/app.test.ts test/messaging.test.ts test/rabbitmq-consumer.test.ts test/agent/agent-worker.test.ts
 ```
 
+Implementation status as of 2026-05-07:
+
+```text
+Completed:
+- In-memory AgentTrace is attached to agent worker results.
+- AgentTrace is persisted as TRACE artifact when artifact_policy.capture_trace is enabled.
+- Pre-decision verification runs immediately after observation and can stop on success, login wall, CAPTCHA, or final payment/order risk.
+- Policy evaluation honors AgentTask risk_policy for navigation, cart mutation, checkout navigation, shipping form entry, payment info entry, final payment/order commit, destructive action, and external message send.
+- Checkout heuristic prioritizes add-to-cart, cart navigation, and checkout entry before generic CTA clicks.
+- Agent queue concurrency is isolated with RUNNER_AGENT_CONCURRENCY.
+- Agent event/trace callbacks are emitted to dedicated `agent-events` and `agent-traces` endpoints.
+- Real Playwright checkout smoke coverage includes product entry, add-to-cart, cart navigation, checkout entry, TRACE persistence, agent event/trace callback emission, stop-before-payment behavior, login blocker detection, CAPTCHA blocker detection, and allowlisted external checkout redirects.
+- Same-process duplicate agent deliveries with the same idempotency key are suppressed.
+- Terminal agent results are persisted under the runner artifact root so duplicate deliveries after a runner process restart do not re-execute the browser flow.
+- MQ poison message requeue is bounded by RUNNER_MQ_MAX_DELIVERY_ATTEMPTS.
+- Successful AgentTrace results are exported to custom_compiled ScenarioPlan candidate artifacts with final checkpoint and stop-before-commit guard steps.
+
+Remaining:
+- Add prompt redaction beyond the current minimal observation payload.
+- Add invalid-JSON-only LLM retry and broader heuristic-vs-LLM fixture comparison.
+```
+
 ## Phase 7: LLM Decision Client
 
 Start only after heuristic fixture baseline is stable.
@@ -1718,12 +1750,14 @@ Start only after heuristic fixture baseline is stable.
 Tasks:
 
 ```text
-Define DecisionClient interface if not already done.
-Add LLMDecisionClient behind config flag.
-Add structured output validation.
-Add prompt redaction.
-Add retry for invalid JSON only, not unsafe decisions.
-Compare LLM against heuristic on fixtures.
+DONE: Define DecisionClient interface.
+DONE: Add LLMDecisionClient behind RUNNER_AGENT_DECISION_MODE=llm.
+DONE: Keep heuristic as the default decision client.
+DONE: Validate LLM output against observed target keys and constrained action types.
+DONE: Fall back to heuristic when LLM output is invalid or the endpoint fails.
+TODO: Add prompt redaction beyond the current minimal observation payload.
+TODO: Add retry for invalid JSON only, not unsafe decisions.
+TODO: Compare LLM against heuristic on broader fixtures.
 ```
 
 Acceptance criteria:
@@ -1749,10 +1783,11 @@ LLM integration tests may be skipped by default unless credentials/config are pr
 Tasks:
 
 ```text
-Add export module that converts successful trace actions into ScenarioPlan candidate.
-Use candidate_fingerprint and locator_recipe.
-Mark generated plan as custom_compiled.
-Include source agent trace ref.
+DONE: Add export module that converts successful completed trace actions into a ScenarioPlan candidate.
+TODO: Add candidate_fingerprint and locator_recipe after replay stability data exists.
+DONE: Mark generated plan as custom_compiled.
+DONE: Include source agent trace provenance in the export wrapper.
+DONE: Append final checkpoint and stop_before_commit guard steps so payment/final-order boundaries remain explicit.
 ```
 
 Acceptance criteria:
@@ -1761,12 +1796,13 @@ Acceptance criteria:
 Exported ScenarioPlan validates against existing schema.
 Exported plan replays on the same fixture with static runner.
 Export skips unsafe/final commit actions.
+Blocked login/CAPTCHA traces are not exported as reusable plans.
 ```
 
 Verification:
 
 ```bash
-cd apps/runner && npm test -- test/agent/trace-export.test.ts test/executor.test.ts
+cd apps/runner && node --experimental-strip-types --test test/agent-trace-export.test.ts test/worker.test.ts
 ```
 
 # 17. Redaction, Idempotency, and Resume
@@ -1799,13 +1835,15 @@ error logs
 MVP idempotency:
 
 ```text
-Use message idempotencyKey at task start.
+DONE: Use message idempotencyKey or AgentTask.idempotency_key at task start.
+DONE: Suppress duplicate same-process agent delivery by reusing the existing execution promise/result.
+DONE: Suppress duplicate post-restart agent delivery with a local terminal idempotency record.
 Use attempt_id and attempt_index for every execution attempt.
 Persist terminal AgentTrace once.
 Do not resume mid-action in MVP.
 On worker crash, retry should start a new browser session and produce a new trace attempt.
 Never replay final commit actions because policy blocks them.
-If a terminal trace already exists for the same idempotencyKey, do not execute again.
+TODO: Promote local terminal idempotency records to API/DB-backed global idempotency when multiple runner replicas share a queue.
 ```
 
 Future resume policy can be designed later:
@@ -1842,6 +1880,7 @@ Runtime:
 Testing:
 - Fixtures 1-12 plus 9b exist or deferred with tracked TODOs.
 - Fixtures 1-9b pass before LLM client is enabled.
+- Agent checkout has at least one real Playwright smoke that reaches checkout entry and proves the final payment button is not clicked.
 - LLM tests are gated and cannot bypass schema/policy.
 - AgentTrace -> ScenarioPlan export passes at least one fixture.
 
@@ -1881,7 +1920,6 @@ Observer cannot provide stable executable candidates.
 Policy needs arbitrary LLM judgment to allow/block risky actions.
 Verifier can only prove success through LLM reasoning without structured evidence.
 Fixture tests are flaky under headless Playwright.
-Agent queue/concurrency cannot be isolated from static run work.
 Trace or observation payloads cannot be bounded/redacted safely.
 Iframe final commit/payment candidates cannot be detected in the fixture set.
 Product selection requires arbitrary catalog browsing for the MVP.

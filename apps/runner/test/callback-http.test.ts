@@ -206,6 +206,82 @@ test("createCallbackClient sends discovery callbacks to discovery endpoint", asy
   }
 });
 
+test("[콜백:http] agent callbacks use dedicated run endpoints", async () => {
+  const received: Array<{ url: string; body: string }> = [];
+  const server = createServer((request, response) => {
+    let body = "";
+    request.setEncoding("utf8");
+    request.on("data", (chunk) => {
+      body += chunk;
+    });
+    request.on("end", () => {
+      received.push({ url: request.url ?? "", body });
+      response.writeHead(200, {
+        "content-type": "application/json"
+      });
+      response.end(JSON.stringify({ accepted: true }));
+    });
+  });
+
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      server.off("error", reject);
+      resolve();
+    });
+  });
+
+  try {
+    const address = server.address();
+    assert.ok(address && typeof address !== "string");
+
+    const callbackClient = createCallbackClient(
+      createRunnerTestConfig({
+        callbackMode: "http",
+        callbackBaseUrl: `http://127.0.0.1:${address.port}`
+      })
+    );
+
+    await callbackClient.sendAgentEvents("run-1", {
+      events: [
+        {
+          eventId: "00000000-0000-4000-8000-000000000001",
+          taskId: "task-1",
+          attemptId: "attempt-1",
+          turn: 1,
+          eventType: "DECISION_MADE",
+          occurredAt: "2026-05-07T00:00:00.000Z",
+          payload: { actionType: "click" }
+        }
+      ]
+    });
+
+    await callbackClient.sendAgentTrace("run-1", {
+      taskId: "task-1",
+      attemptId: "attempt-1",
+      occurredAt: "2026-05-07T00:00:01.000Z",
+      trace: { outcome: { status: "SUCCESS" } }
+    });
+
+    assert.deepEqual(received.map((request) => request.url), [
+      "/internal/runner/runs/run-1/agent-events",
+      "/internal/runner/runs/run-1/agent-traces"
+    ]);
+    assert.match(received[0]?.body ?? "", /"eventType":"DECISION_MADE"/);
+    assert.match(received[1]?.body ?? "", /"attemptId":"attempt-1"/);
+  } finally {
+    await new Promise<void>((resolve, reject) => {
+      server.close((error) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+        resolve();
+      });
+    });
+  }
+});
+
 test("[콜백:http] 비정상 HTTP 응답은 callback 실패로 처리하고 outbox에 남긴다", async () => {
   const server = createServer((_request, response) => {
     response.writeHead(409, {

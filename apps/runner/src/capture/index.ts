@@ -121,7 +121,7 @@ function createCheckpointObservations(
   settleResult: BrowserSettleResult
 ): Record<string, unknown>[] {
   return [
-    ...createInteractiveComponentsObservations(step, pageSnapshot),
+    ...createInteractiveComponentsObservations(step, pageSnapshot).map((observation) => ({ ...observation })),
     ...createFormFieldObservations(pageSnapshot.fields),
     ...createCtaCandidateObservations(step, pageSnapshot),
     ...pageSnapshot.consoleErrors.map((message) => ({

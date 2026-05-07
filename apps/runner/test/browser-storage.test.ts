@@ -17,7 +17,7 @@ test("[브라우저 어댑터] simulated goto는 target.url 객체 값을 실제
   );
   const session = await browserFactory.createSession({
     runId: message.payload.runId,
-    plan: message.payload.scenarioPlan
+    plan: message.payload.scenarioPlan!
   });
 
   await session.execute(
@@ -86,7 +86,7 @@ test("[안전 중단] stop_when 조건이 맞지 않으면 simulated session은 
   );
   const session = await browserFactory.createSession({
     runId: message.payload.runId,
-    plan: message.payload.scenarioPlan
+    plan: message.payload.scenarioPlan!
   });
 
   const noConditionResult = await session.execute(

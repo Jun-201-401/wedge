@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
-import { parseDiscoveryExecuteMessage, parseRunExecuteMessage } from "../src/messaging/index.ts";
-import { cloneMessage, exampleMessageFile, loadExampleMessage } from "./support.ts";
+import { parseAgentExecuteMessage, parseDiscoveryExecuteMessage, parseRunExecuteMessage } from "../src/messaging/index.ts";
+import { agentExampleMessageFile, cloneAgentMessage, cloneMessage, exampleMessageFile, loadAgentExampleMessage, loadExampleMessage } from "./support.ts";
 
 test("[MQ 계약] 정상 run.execute.request envelope를 파싱한다", async () => {
   const rawMessage = await readFile(exampleMessageFile, "utf8");
@@ -10,6 +10,76 @@ test("[MQ 계약] 정상 run.execute.request envelope를 파싱한다", async ()
 
   assert.equal(message.messageType, "run.execute.request");
   assert.equal(message.payload.scenarioPlan.steps.length, 4);
+});
+
+
+test("[MQ 계약] 정상 agent.execute.request envelope를 파싱한다", async () => {
+  const rawMessage = await readFile(agentExampleMessageFile, "utf8");
+  const message = parseAgentExecuteMessage(rawMessage);
+
+  assert.equal(message.messageType, "agent.execute.request");
+  assert.equal(message.payload.agentTask.goal_type, "CHECKOUT_ENTRY_VERIFICATION");
+  assert.equal(message.payload.agentTask.budget.max_steps, 8);
+});
+
+test("[MQ 계약] agent.execute.request는 AgentTask가 없으면 거부한다", async () => {
+  const message = cloneAgentMessage(await loadAgentExampleMessage()) as unknown as {
+    payload: Record<string, unknown>;
+  };
+  delete message.payload.agentTask;
+
+  assert.throws(
+    () => parseAgentExecuteMessage(JSON.stringify(message)),
+    /agent payload\.agentTask must be an object/
+  );
+});
+
+test("[MQ 계약] agent optional policy object의 타입이 다르면 거부한다", async () => {
+  const message = cloneAgentMessage(await loadAgentExampleMessage());
+  message.payload.agentTask.artifact_policy = {
+    capture_trace: "not-a-boolean" as never
+  };
+
+  assert.throws(
+    () => parseAgentExecuteMessage(JSON.stringify(message)),
+    /agentTask\.artifact_policy\.capture_trace must be boolean/
+  );
+});
+
+test("[MQ 계약] agent optional budget object의 범위가 다르면 거부한다", async () => {
+  const message = cloneAgentMessage(await loadAgentExampleMessage());
+  message.payload.agentTask.observation_budget = {
+    max_candidates: 0
+  };
+
+  assert.throws(
+    () => parseAgentExecuteMessage(JSON.stringify(message)),
+    /agentTask\.observation_budget\.max_candidates must be an integer between 1 and 500/
+  );
+});
+
+test("[MQ 계약] agent product_selection_policy의 필수 mode가 없으면 거부한다", async () => {
+  const message = cloneAgentMessage(await loadAgentExampleMessage());
+  message.payload.agentTask.product_selection_policy = {
+    allow_quantity_change: false
+  } as never;
+
+  assert.throws(
+    () => parseAgentExecuteMessage(JSON.stringify(message)),
+    /agentTask\.product_selection_policy\.mode is invalid/
+  );
+});
+
+test("[MQ 계약] run.execute.request는 scenarioPlan이 없으면 거부한다", async () => {
+  const message = cloneMessage(await loadExampleMessage()) as unknown as {
+    payload: Record<string, unknown>;
+  };
+  delete message.payload.scenarioPlan;
+
+  assert.throws(
+    () => parseRunExecuteMessage(JSON.stringify(message)),
+    /scenarioPlan must be an object/
+  );
 });
 
 test("[MQ 계약] ScenarioPlan 필수 필드가 빠지면 run.execute.request를 거부한다", async () => {

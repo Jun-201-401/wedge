@@ -17,6 +17,7 @@ export interface ScenarioStepExecutorInput {
   callbackClient: CallbackClient;
   capturePipeline: CapturePipeline;
   artifactStore: ArtifactStore;
+  emitStepEvents?: boolean;
 }
 
 export interface ScenarioStepExecutionResult {
@@ -32,19 +33,18 @@ export async function executeScenarioStep({
   session,
   callbackClient,
   capturePipeline,
-  artifactStore
+  artifactStore,
+  emitStepEvents = true
 }: ScenarioStepExecutorInput): Promise<ScenarioStepExecutionResult> {
   const deliveryIssues: DeliveryIssue[] = [];
   const preparedSettle = await session.prepareSettle?.(step.settle_strategy);
 
-  deliveryIssues.push(
-    ...(
-      await emitStepEventBestEffort(callbackClient, runId, stepOrder, step.step_id, "STEP_STARTED", {
-    description: step.description,
-    stage: step.stage
-      })
-    )
-  );
+  if (emitStepEvents) {
+    deliveryIssues.push(...(await emitStepEventBestEffort(callbackClient, runId, stepOrder, step.step_id, "STEP_STARTED", {
+      description: step.description,
+      stage: step.stage
+    })));
+  }
 
   let actionResult;
   try {
@@ -54,15 +54,13 @@ export async function executeScenarioStep({
     throw error;
   }
 
-  deliveryIssues.push(
-    ...(
-      await emitStepEventBestEffort(callbackClient, runId, stepOrder, step.step_id, "ACTION_EXECUTED", {
-        actionType: actionResult.actionType,
-        target: actionResult.targetSummary,
-        details: actionResult.details
-      })
-    )
-  );
+  if (emitStepEvents) {
+    deliveryIssues.push(...(await emitStepEventBestEffort(callbackClient, runId, stepOrder, step.step_id, "ACTION_EXECUTED", {
+      actionType: actionResult.actionType,
+      target: actionResult.targetSummary,
+      details: actionResult.details
+    })));
+  }
 
   const settleResult = preparedSettle ? await preparedSettle.settle() : await session.settle(step.settle_strategy);
   const pageSnapshot = session.snapshot();
@@ -83,14 +81,12 @@ export async function executeScenarioStep({
     })));
   }
 
-  deliveryIssues.push(
-    ...(
-      await emitStepEventBestEffort(callbackClient, runId, stepOrder, step.step_id, "STEP_COMPLETED", {
-        settle: settleResult,
-        finalUrl: pageSnapshot.finalUrl
-      })
-    )
-  );
+  if (emitStepEvents) {
+    deliveryIssues.push(...(await emitStepEventBestEffort(callbackClient, runId, stepOrder, step.step_id, "STEP_COMPLETED", {
+      settle: settleResult,
+      finalUrl: pageSnapshot.finalUrl
+    })));
+  }
 
   return {
     stopRequested: actionResult.stopRequested,

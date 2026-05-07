@@ -179,19 +179,129 @@ class SemanticClassificationContractTest(unittest.TestCase):
 
 
 class RuleEngineTest(unittest.TestCase):
-    def test_sample_packet_emits_cta_competition_only(self) -> None:
+    def test_sample_packet_emits_cta_competition_and_journey_timeout(self) -> None:
         result = analyze_evidence_packet(load_sample_packet())
         criteria = [issue["criterion_id"] for issue in result["issues"]]
-        self.assertEqual(criteria, ["PATH-CTA-002"])
-        issue = result["issues"][0]
-        self.assertEqual(issue["stage"], "CTA")
-        self.assertEqual(issue["evidence_refs"], ["cp_001.obs_002"])
-        self.assertEqual(issue["priority_score"], 2.03)
+        self.assertEqual(criteria, ["PATH-CTA-002", "JOURNEY-ACTION-RESULT-001"])
+        cta_issue = result["issues"][0]
+        self.assertEqual(cta_issue["stage"], "CTA")
+        self.assertEqual(cta_issue["evidence_refs"], ["cp_001.obs_002"])
+        self.assertEqual(cta_issue["priority_score"], 2.03)
+        journey_issue = result["issues"][1]
+        self.assertEqual(journey_issue["stage"], "VALUE")
+        self.assertEqual(journey_issue["evidence_refs"], ["cp_005.obs_010"])
         decision_by_stage = {item["stage"]: item for item in result["decision_map"]}
         self.assertEqual(decision_by_stage["CTA"]["status"], "WARNING")
         self.assertEqual(decision_by_stage["FIRST_VIEW"]["status"], "PASS")
         self.assertEqual(decision_by_stage["COMMIT"]["status"], "NOT_APPLICABLE")
         self.assertEqual(result["summary"]["task_success"], "partial")
+
+    def test_journey_action_result_ignores_non_click_timeout(self) -> None:
+        packet = load_sample_packet()
+        packet["checkpoints"][4]["settle"]["status"] = "settled"
+        packet["checkpoints"][4]["observations"][1]["data"]["settle_status"] = "settled"
+        packet["checkpoints"][4]["observations"][1]["data"]["current_count"] = 5
+        result = analyze_evidence_packet(packet)
+        criteria = [issue["criterion_id"] for issue in result["issues"]]
+        self.assertNotIn("JOURNEY-ACTION-RESULT-001", criteria)
+
+    def test_journey_action_result_ignores_settled_unmet_count(self) -> None:
+        packet = load_sample_packet()
+        packet["checkpoints"][4]["settle"]["status"] = "settled"
+        packet["checkpoints"][4]["observations"][1]["data"]["settle_status"] = "settled"
+        packet["checkpoints"][4]["observations"][1]["data"]["current_count"] = 3
+        packet["checkpoints"][4]["observations"][1]["data"]["expected_count"] = 5
+        result = analyze_evidence_packet(packet)
+        criteria = [issue["criterion_id"] for issue in result["issues"]]
+        self.assertNotIn("JOURNEY-ACTION-RESULT-001", criteria)
+
+    def test_journey_goal_cta_mismatch_uses_semantic_label(self) -> None:
+        class IrrelevantCtaProvider:
+            def classify_cta(self, *, text: str, scenario_goal: str, target_ref: str):
+                return SemanticLabelResult(
+                    target_observation_ref=target_ref,
+                    provider_type="test",
+                    provider_name="irrelevant_cta_provider",
+                    labels={
+                        "scenario_relevance_label": "IRRELEVANT_ACTION",
+                        "action_specificity_label": "SPECIFIC_ACTION",
+                    },
+                    confidence=0.88,
+                )
+
+        packet = load_sample_packet()
+        packet["checkpoints"][0]["trigger"] = {"type": "click", "target": "a.careers"}
+        packet["checkpoints"][0]["observations"] = [
+            {
+                "observation_id": "obs_goal_mismatch_cta",
+                "type": "cta_candidate",
+                "stage": "CTA",
+                "source": ["dom", "ax"],
+                "data": {"visible_text": "Read careers"},
+                "confidence": 0.8,
+            },
+            {
+                "observation_id": "obs_cta_cluster_ok",
+                "type": "cta_cluster",
+                "stage": "CTA",
+                "source": ["dom", "layout"],
+                "data": {"primary_like_cta_count": 1},
+                "confidence": 0.8,
+            },
+        ]
+        for checkpoint in packet["checkpoints"][1:]:
+            checkpoint["observations"] = [
+                observation
+                for observation in checkpoint["observations"]
+                if observation["type"] != "cta_candidate"
+            ]
+        result = analyze_evidence_packet(packet, semantic_provider=IrrelevantCtaProvider())
+        mismatch = [issue for issue in result["issues"] if issue["criterion_id"] == "JOURNEY-GOAL-CTA-MISMATCH-001"]
+        self.assertEqual(len(mismatch), 1)
+        self.assertEqual(mismatch[0]["severity"], 2)
+        self.assertEqual(mismatch[0]["confidence"], 0.88)
+
+    def test_journey_goal_cta_mismatch_ignores_unclicked_candidate(self) -> None:
+        class MixedCtaProvider:
+            def classify_cta(self, *, text: str, scenario_goal: str, target_ref: str):
+                irrelevant = target_ref.endswith("obs_unclicked_cta")
+                return SemanticLabelResult(
+                    target_observation_ref=target_ref,
+                    provider_type="test",
+                    provider_name="mixed_cta_provider",
+                    labels={
+                        "scenario_relevance_label": "IRRELEVANT_ACTION" if irrelevant else "DIRECT_GOAL_ACTION",
+                        "action_specificity_label": "SPECIFIC_ACTION",
+                    },
+                    confidence=0.9,
+                )
+
+        packet = load_sample_packet()
+        packet["checkpoints"][0]["trigger"] = {"type": "goto"}
+        packet["checkpoints"][0]["observations"] = [
+            {
+                "observation_id": "obs_unclicked_cta",
+                "type": "cta_candidate",
+                "stage": "CTA",
+                "source": ["dom"],
+                "data": {"visible_text": "Read careers"},
+                "confidence": 0.8,
+            }
+        ]
+        packet["checkpoints"][2]["trigger"] = {"type": "click", "target": "a.start"}
+        packet["checkpoints"][2]["observations"] = [
+            {
+                "observation_id": "obs_clicked_cta",
+                "type": "cta_candidate",
+                "stage": "CTA",
+                "source": ["dom"],
+                "data": {"visible_text": "Start free"},
+                "confidence": 0.8,
+            }
+        ]
+        result = analyze_evidence_packet(packet, semantic_provider=MixedCtaProvider())
+        criteria = [issue["criterion_id"] for issue in result["issues"]]
+        self.assertNotIn("JOURNEY-GOAL-CTA-MISMATCH-001", criteria)
 
     def test_interactive_components_issue_keeps_component_bounds(self) -> None:
         packet = load_sample_packet()

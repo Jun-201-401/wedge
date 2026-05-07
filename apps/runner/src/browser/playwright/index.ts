@@ -1528,6 +1528,23 @@ async function safeInteractiveComponents(
         return tag;
       }
 
+      function hrefFor(element: Element, tag: string): string | null {
+        if (tag !== "a") {
+          return null;
+        }
+
+        const href = element.getAttribute("href");
+        if (!href) {
+          return null;
+        }
+
+        try {
+          return new URL(href, document.baseURI).toString();
+        } catch {
+          return href;
+        }
+      }
+
       function isClickable(element: Element, tag: string, role: string | null): boolean {
         return Boolean(
           tag === "a" ||
@@ -1560,6 +1577,7 @@ async function safeInteractiveComponents(
           const role = element.getAttribute("role") ?? implicitRole(element, tag);
           const text = textFor(element);
           const selector = selectorFor(element, tag);
+          const href = hrefFor(element, tag);
           const clickable = isClickable(element, tag, role);
           const visible = rect.width > 0 && rect.height > 0 && rect.bottom >= 0 && rect.right >= 0 && rect.top <= viewportHeight && rect.left <= viewportWidth;
           const isCtaCandidate = clickable && Boolean(text.match(CTA_TEXT_PATTERN) || role === "button" || tag === "button");
@@ -1568,6 +1586,7 @@ async function safeInteractiveComponents(
             text,
             selector,
             role,
+            href,
             tag,
             clickable,
             clicked_in_scenario: isClickedInScenario({ text, selector, role }),
@@ -1593,6 +1612,7 @@ async function safeInteractiveComponents(
         text: component.text,
         selector: component.selector,
         role: component.role,
+        href: component.href,
         tag: component.tag,
         clickable: component.clickable,
         clicked_in_scenario: component.clicked_in_scenario,

@@ -106,8 +106,9 @@ try {
             workerId: app.config.workerId,
             mode: "mq-consumer",
             mqUrl: app.config.mqUrl,
-            queues: [app.config.mqQueueRunExecute, app.config.mqQueueDiscoveryExecute],
+            queues: [app.config.mqQueueRunExecute, app.config.mqQueueAgentExecute, app.config.mqQueueDiscoveryExecute],
             prefetch: app.config.mqPrefetch,
+            agentConcurrency: app.config.agentConcurrency,
             recoveryWorkers: {
               enabled: runtime.enabledWorkers,
               callbackOutbox: createOutboxRecoveryWorkerStatus(
@@ -241,10 +242,13 @@ If --message-file is omitted, the runner uses:
 
 The --message-file input supports:
   run.execute.request
+  agent.execute.request
   discovery.execute.request
 
-If --consume-mq is provided, the runner starts RabbitMQ consumers for run.execute.request and discovery.execute.request instead of file input.
+If --consume-mq is provided, the runner starts RabbitMQ consumers for run.execute.request, agent.execute.request, and discovery.execute.request instead of file input.
 MQ consumer mode also starts callback and artifact outbox replay workers by default.
+Agent queue concurrency uses RUNNER_AGENT_CONCURRENCY separately from RUNNER_MQ_PREFETCH.
+Set RUNNER_MQ_MAX_DELIVERY_ATTEMPTS to bound poison message requeue attempts when RUNNER_MQ_REQUEUE_ON_FAILURE=true.
 Set ${RUNNER_MQ_CALLBACK_OUTBOX_WORKER_ENABLED_ENV}=false or ${RUNNER_MQ_ARTIFACT_OUTBOX_WORKER_ENABLED_ENV}=false to disable either recovery worker.`);
 }
 

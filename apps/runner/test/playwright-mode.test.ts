@@ -10,7 +10,16 @@ import { createCapturePipeline } from "../src/capture/index.ts";
 import { executeScenario } from "../src/scenario/executor/index.ts";
 import { executeScenarioStep } from "../src/scenario/executor/step-executor.ts";
 import { createArtifactStore } from "../src/storage/index.ts";
-import type { Checkpoint, ScenarioPlan, ScenarioStep } from "../src/shared/contracts.ts";
+import { registerAgentWorker } from "../src/worker/agent-worker.ts";
+import type {
+  AgentEvent,
+  AgentTask,
+  AgentTraceCallbackPayload,
+  Artifact,
+  Checkpoint,
+  ScenarioPlan,
+  ScenarioStep
+} from "../src/shared/contracts.ts";
 import { createMinimalPlan, createRunnerTestConfig, createStubCallbackClient } from "./support.ts";
 
 test("[Playwright 실제 실행] goto/fill/select를 수행하고 실제 screenshot과 DOM snapshot을 캡처한다", async () => {
@@ -465,7 +474,7 @@ test("[MVP 랜딩 CTA] 첫 화면 checkpoint 후 CTA 클릭과 도착 화면 che
     assert.equal(startFreeComponent?.role, "link");
     assert.equal(startFreeComponent?.is_cta_candidate, true);
     assert.equal(startFreeComponent?.is_primary_like, true);
-    assert.equal(startFreeComponent?.bounds?.unit, "css_px");
+    assert.equal(readString(startFreeComponent?.bounds, "unit"), "css_px");
     assert.ok(readPositiveNumber(startFreeComponent?.bounds, "width") > 0);
     assert.ok(readPositiveNumber(startFreeComponent?.bounds, "height") > 0);
   } finally {
@@ -495,6 +504,126 @@ test("[MVP 가입폼] 폼까지 이동해 synthetic 입력/플랜 선택을 수�
     assert.ok(!result.domSnapshots.some((snapshot) => snapshot.includes('data-form-submitted="true"')));
   } finally {
     await rm(fixtureRoot, { recursive: true, force: true });
+    await rm(artifactsRoot, { recursive: true, force: true });
+  }
+});
+
+test("[Agent Checkout Smoke] 실제 Playwright 경로에서 장바구니, 카트, checkout 진입 후 결제 전 중단한다", async () => {
+  const fixtureRoot = await mkdtemp(join(tmpdir(), "wedge-runner-agent-smoke-site-"));
+  const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-agent-smoke-artifacts-"));
+
+  try {
+    const { productUrl } = await createAgentCheckoutFixtureSite(fixtureRoot);
+    const result = await executeRealAgentTask({
+      task: createAgentCheckoutTask(productUrl),
+      artifactsRoot
+    });
+
+    assert.equal(result.execution.summary.completedStepCount, 4);
+    assert.equal(result.execution.summary.stopped, false);
+    assert.equal(result.execution.delivery.status, "DELIVERY_COMPLETE");
+    assert.equal(result.execution.trace.outcome.status, "SUCCESS");
+    assert.ok(result.snapshot.finalUrl.endsWith("/checkout.html"));
+    assert.deepEqual(result.actionCompletedTargets, [
+      productUrl,
+      "#add-to-cart",
+      "#cart-link",
+      "#checkout-link"
+    ]);
+    assert.ok(result.agentEvents.some((event) => event.eventType === "TRACE_PERSISTED"));
+    assert.equal(result.agentTraces.length, 1);
+    assert.equal(result.traceArtifacts.length, 1);
+    assert.equal(result.traceArtifacts[0].artifactType, "TRACE");
+    assert.ok(!result.actionCompletedTargets.includes("#pay-now"));
+  } finally {
+    await rm(fixtureRoot, { recursive: true, force: true });
+    await rm(artifactsRoot, { recursive: true, force: true });
+  }
+});
+
+test("[Agent Login Blocker Smoke] 실제 Playwright 경로에서 로그인 벽을 decision 전에 감지한다", async () => {
+  const fixtureRoot = await mkdtemp(join(tmpdir(), "wedge-runner-agent-blocker-site-"));
+  const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-agent-blocker-artifacts-"));
+
+  try {
+    const { blockerUrl } = await createAgentBlockerFixtureSite(fixtureRoot, {
+      fileName: "account.html",
+      title: "Account login required",
+      heading: "Login required",
+      body: "Please log in to continue to checkout."
+    });
+    const result = await executeRealAgentTask({
+      task: createAgentCheckoutTask(blockerUrl),
+      artifactsRoot
+    });
+
+    assert.equal(result.execution.summary.completedStepCount, 1);
+    assert.equal(result.execution.summary.stopped, true);
+    assert.equal(result.execution.trace.outcome.status, "BLOCKED");
+    assert.equal(result.execution.trace.turns.at(-1)?.preDecisionVerification?.outcome, "BLOCKED_LOGIN");
+    assert.deepEqual(result.actionCompletedTargets, [blockerUrl]);
+    assert.equal(result.traceArtifacts.length, 1);
+  } finally {
+    await rm(fixtureRoot, { recursive: true, force: true });
+    await rm(artifactsRoot, { recursive: true, force: true });
+  }
+});
+
+test("[Agent CAPTCHA Blocker Smoke] 실제 Playwright 경로에서 CAPTCHA 벽을 decision 전에 감지한다", async () => {
+  const fixtureRoot = await mkdtemp(join(tmpdir(), "wedge-runner-agent-challenge-site-"));
+  const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-agent-challenge-artifacts-"));
+
+  try {
+    const { blockerUrl } = await createAgentBlockerFixtureSite(fixtureRoot, {
+      fileName: "gate.html",
+      title: "Verify you are human - CAPTCHA",
+      heading: "Security check",
+      body: "Complete the CAPTCHA before checkout can continue."
+    });
+    const result = await executeRealAgentTask({
+      task: createAgentCheckoutTask(blockerUrl),
+      artifactsRoot
+    });
+
+    assert.equal(result.execution.summary.completedStepCount, 1);
+    assert.equal(result.execution.summary.stopped, true);
+    assert.equal(result.execution.trace.outcome.status, "BLOCKED");
+    assert.equal(result.execution.trace.turns.at(-1)?.preDecisionVerification?.outcome, "BLOCKED_CAPTCHA");
+    assert.deepEqual(result.actionCompletedTargets, [blockerUrl]);
+    assert.equal(result.traceArtifacts.length, 1);
+  } finally {
+    await rm(fixtureRoot, { recursive: true, force: true });
+    await rm(artifactsRoot, { recursive: true, force: true });
+  }
+});
+
+test("[Agent External Checkout Smoke] allowlist된 외부 checkout redirect는 실제 Playwright 경로에서 허용한다", async () => {
+  const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-agent-external-artifacts-"));
+  const fixture = await createAgentExternalCheckoutFixtureServer();
+
+  try {
+    const task = createAgentCheckoutTask(fixture.productUrl);
+    task.allowed_navigation.allowed_checkout_redirect_origins = [fixture.checkoutOrigin];
+
+    const result = await executeRealAgentTask({
+      task,
+      artifactsRoot
+    });
+
+    assert.equal(result.execution.summary.completedStepCount, 4);
+    assert.equal(result.execution.summary.stopped, false);
+    assert.equal(result.execution.trace.outcome.status, "SUCCESS");
+    assert.ok(result.snapshot.finalUrl.startsWith(fixture.checkoutOrigin));
+    assert.deepEqual(result.actionCompletedTargets, [
+      fixture.productUrl,
+      "#add-to-cart",
+      "#cart-link",
+      "#external-checkout-link"
+    ]);
+    assert.ok(!result.actionCompletedTargets.includes("#pay-now"));
+    assert.equal(result.traceArtifacts.length, 1);
+  } finally {
+    await fixture.close();
     await rm(artifactsRoot, { recursive: true, force: true });
   }
 });
@@ -1364,6 +1493,72 @@ async function createImmediateResponseFixtureServer(): Promise<{ formUrl: string
   };
 }
 
+async function executeRealAgentTask({
+  task,
+  artifactsRoot
+}: {
+  task: AgentTask;
+  artifactsRoot: string;
+}) {
+  const config = createPlaywrightConfig(artifactsRoot, { useVisualEnv: true });
+  const browserFactory = createPlaywrightSessionFactory(config);
+  const capturePipeline = createCapturePipeline();
+  const artifactStore = createArtifactStore(config);
+  const traceArtifacts: Artifact[] = [];
+  const agentEvents: AgentEvent[] = [];
+  const agentTraces: AgentTraceCallbackPayload[] = [];
+
+  const worker = registerAgentWorker({
+    config,
+    browserFactory,
+    callbackClient: createStubCallbackClient({
+      sendArtifacts: async (_callbackRunId, payload) => {
+        traceArtifacts.push(...payload.artifacts.filter((artifact) => artifact.artifactType === "TRACE"));
+      },
+      sendAgentEvents: async (_callbackRunId, payload) => {
+        agentEvents.push(...payload.events);
+      },
+      sendAgentTrace: async (_callbackRunId, payload) => {
+        agentTraces.push(payload);
+      }
+    }),
+    capturePipeline,
+    artifactStore
+  });
+
+  const execution = await worker.handleMessage({
+    messageId: "00000000-0000-4000-8000-000000001001",
+    messageType: "agent.execute.request",
+    schemaVersion: "0.1",
+    createdAt: "2026-05-07T00:00:00.000Z",
+    producer: "runner-test",
+    idempotencyKey: task.idempotency_key,
+    payload: {
+      agentTask: task
+    }
+  });
+
+  const actionCompletedTargets = agentEvents
+    .filter((event) => event.eventType === "ACTION_COMPLETED")
+    .map((event) => (event.payload as { targetKey?: string }).targetKey);
+
+  for (const artifact of traceArtifacts) {
+    const traceJson = await readFile(join(artifactsRoot, ...artifact.key.split("/")), "utf8");
+    assert.match(traceJson, /"outcome"/);
+  }
+
+  return {
+    execution,
+    snapshot: {
+      finalUrl: execution.trace.turns.at(-1)?.actionResult?.finalUrl ?? task.start_url
+    },
+    actionCompletedTargets,
+    agentEvents,
+    agentTraces,
+    traceArtifacts
+  };
+}
+
 async function executeRealScenarioPlan({
   runId,
   plan,
@@ -1487,7 +1682,16 @@ function readPositiveNumber(source: unknown, key: string): number {
   const value = (source as Record<string, unknown>)[key];
   assert.equal(typeof value, "number", `Expected ${key} to be numeric`);
   assert.ok(Number.isFinite(value), `Expected ${key} to be finite`);
-  return value;
+  return value as number;
+}
+
+function readString(source: unknown, key: string): string | undefined {
+  if (typeof source !== "object" || source === null || Array.isArray(source)) {
+    return undefined;
+  }
+
+  const value = (source as Record<string, unknown>)[key];
+  return typeof value === "string" ? value : undefined;
 }
 
 function createPlaywrightBrowserFactory(artifactsRoot: string) {
@@ -1672,6 +1876,328 @@ async function createFixtureSite(root: string): Promise<{ formUrl: string; doneU
   return {
     formUrl: pathToFileURL(formFile).toString(),
     doneUrl: pathToFileURL(doneFile).toString()
+  };
+}
+
+async function createAgentCheckoutFixtureSite(root: string): Promise<{ productUrl: string }> {
+  const productFile = join(root, "product.html");
+  const cartFile = join(root, "cart.html");
+  const checkoutFile = join(root, "checkout.html");
+
+  await writeFile(
+    productFile,
+    `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Agent Product Fixture</title>
+  </head>
+  <body>
+    <main>
+      <h1>Agent Checkout Smoke Product</h1>
+      <a id="learn-more" href="#details">Learn more</a>
+      <button id="add-to-cart" type="button">Add to cart</button>
+      <a id="cart-link" href="./cart.html" hidden>View cart</a>
+      <section id="details" style="margin-top: 1200px;">Product details</section>
+    </main>
+    <script>
+      document.getElementById("add-to-cart")?.addEventListener("click", () => {
+        document.body.dataset.addedToCart = "true";
+        document.getElementById("cart-link")?.removeAttribute("hidden");
+      });
+    </script>
+  </body>
+</html>`,
+    "utf8"
+  );
+
+  await writeFile(
+    cartFile,
+    `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Cart</title>
+  </head>
+  <body>
+    <main>
+      <h1>Cart</h1>
+      <p>Smoke product is ready for checkout.</p>
+      <a id="checkout-link" href="./checkout.html">Proceed to checkout</a>
+    </main>
+  </body>
+</html>`,
+    "utf8"
+  );
+
+  await writeFile(
+    checkoutFile,
+    `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Checkout</title>
+  </head>
+  <body>
+    <main>
+      <h1>Checkout</h1>
+      <label for="card-number">Card number</label>
+      <input id="card-number" placeholder="Card number" />
+      <button id="pay-now" type="button">Pay now</button>
+    </main>
+    <script>
+      document.getElementById("pay-now")?.addEventListener("click", () => {
+        document.body.dataset.paymentCommitted = "true";
+      });
+    </script>
+  </body>
+</html>`,
+    "utf8"
+  );
+
+  return {
+    productUrl: pathToFileURL(productFile).toString()
+  };
+}
+
+async function createAgentBlockerFixtureSite(
+  root: string,
+  input: {
+    fileName: string;
+    title: string;
+    heading: string;
+    body: string;
+  }
+): Promise<{ blockerUrl: string }> {
+  const blockerFile = join(root, input.fileName);
+
+  await writeFile(
+    blockerFile,
+    `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>${input.title}</title>
+  </head>
+  <body>
+    <main>
+      <h1>${input.heading}</h1>
+      <p>${input.body}</p>
+      <button id="blocked-action" type="button">Continue</button>
+    </main>
+  </body>
+</html>`,
+    "utf8"
+  );
+
+  return {
+    blockerUrl: pathToFileURL(blockerFile).toString()
+  };
+}
+
+async function createAgentExternalCheckoutFixtureServer(): Promise<{
+  productUrl: string;
+  checkoutOrigin: string;
+  close: () => Promise<void>;
+}> {
+  let checkoutOrigin = "";
+
+  const checkoutServer = createServer((request, response) => {
+    const requestUrl = new URL(request.url ?? "/", "http://127.0.0.1");
+
+    if (requestUrl.pathname === "/session") {
+      response.writeHead(200, {
+        "content-type": "text/html; charset=utf-8"
+      });
+      response.end(`<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Checkout Redirect Session</title>
+  </head>
+  <body>
+    <main>
+      <h1>Checkout</h1>
+      <p>External checkout session is ready.</p>
+      <button id="pay-now" type="button">Pay now</button>
+    </main>
+  </body>
+</html>`);
+      return;
+    }
+
+    response.writeHead(404, {
+      "content-type": "text/plain; charset=utf-8"
+    });
+    response.end("Not found");
+  });
+
+  await listenOnLocalhost(checkoutServer);
+  checkoutOrigin = serverOrigin(checkoutServer);
+
+  const storefrontServer = createServer((request, response) => {
+    const requestUrl = new URL(request.url ?? "/", "http://127.0.0.1");
+
+    if (requestUrl.pathname === "/product") {
+      response.writeHead(200, {
+        "content-type": "text/html; charset=utf-8"
+      });
+      response.end(`<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>External Product Fixture</title>
+  </head>
+  <body>
+    <main>
+      <h1>External product fixture</h1>
+      <button id="add-to-cart" type="button">Add to cart</button>
+      <a id="cart-link" href="/cart" hidden>View cart</a>
+    </main>
+    <script>
+      document.getElementById("add-to-cart")?.addEventListener("click", () => {
+        document.getElementById("cart-link")?.removeAttribute("hidden");
+      });
+    </script>
+  </body>
+</html>`);
+      return;
+    }
+
+    if (requestUrl.pathname === "/cart") {
+      response.writeHead(200, {
+        "content-type": "text/html; charset=utf-8"
+      });
+      response.end(`<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Cart</title>
+  </head>
+  <body>
+    <main>
+      <h1>Cart</h1>
+      <a id="external-checkout-link" href="${checkoutOrigin}/session">Proceed to checkout</a>
+    </main>
+  </body>
+</html>`);
+      return;
+    }
+
+    response.writeHead(404, {
+      "content-type": "text/plain; charset=utf-8"
+    });
+    response.end("Not found");
+  });
+
+  try {
+    await listenOnLocalhost(storefrontServer);
+  } catch (error) {
+    await closeServer(checkoutServer);
+    throw error;
+  }
+
+  return {
+    productUrl: `${serverOrigin(storefrontServer)}/product`,
+    checkoutOrigin,
+    close: async () => {
+      await Promise.all([
+        closeServer(storefrontServer),
+        closeServer(checkoutServer)
+      ]);
+    }
+  };
+}
+
+async function listenOnLocalhost(server: ReturnType<typeof createServer>): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      server.off("error", reject);
+      resolve();
+    });
+  });
+}
+
+function serverOrigin(server: ReturnType<typeof createServer>): string {
+  const address = server.address();
+  if (!address || typeof address === "string") {
+    throw new Error("Unable to resolve fixture server address");
+  }
+
+  return `http://127.0.0.1:${address.port}`;
+}
+
+async function closeServer(server: ReturnType<typeof createServer>): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    server.close((error) => {
+      if (error) {
+        reject(error);
+        return;
+      }
+
+      resolve();
+    });
+  });
+}
+
+function createAgentCheckoutTask(startUrl: string): AgentTask {
+  return {
+    schema_version: "0.1",
+    task_id: "00000000-0000-4000-8000-000000001101",
+    attempt_id: "00000000-0000-4000-8000-000000001102",
+    attempt_index: 1,
+    idempotency_key: "agent-checkout-smoke",
+    run_id: "00000000-0000-4000-8000-000000001103",
+    project_id: "00000000-0000-4000-8000-000000001104",
+    goal_type: "CHECKOUT_ENTRY_VERIFICATION",
+    goal: "Find the checkout entry path without submitting payment or final order.",
+    start_url: startUrl,
+    environment: {
+      device: "desktop",
+      viewport: {
+        width: 1440,
+        height: 900
+      },
+      locale: "ko-KR",
+      timezone: "Asia/Seoul",
+      auth_state: "anonymous"
+    },
+    budget: {
+      max_steps: 6,
+      max_duration_ms: 120_000,
+      max_recovery_attempts: 1,
+      max_same_page_attempts: 2,
+      max_external_redirects: 0
+    },
+    allowed_navigation: {
+      allow_external_navigation: false,
+      allowed_origins: [],
+      allowed_checkout_redirect_origins: []
+    },
+    product_selection_policy: {
+      mode: "PROVIDED_OR_OBVIOUS_ONLY",
+      provided_product_url: startUrl,
+      required_option_strategy: "FIRST_AVAILABLE",
+      allow_quantity_change: false,
+      max_add_to_cart_attempts: 1
+    },
+    risk_policy: {
+      allow_checkout_navigation: true,
+      allow_cart_mutation: true,
+      allow_shipping_form_entry: true,
+      allow_payment_info_entry: false,
+      allow_final_payment_submit: false,
+      allow_final_order_commit: false,
+      allow_destructive_action: false,
+      allow_external_message_send: false
+    },
+    artifact_policy: {
+      capture_screenshots: false,
+      capture_dom_snapshots: false,
+      capture_ax_tree: false,
+      capture_trace: true
+    }
   };
 }
 
