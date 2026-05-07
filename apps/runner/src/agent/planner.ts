@@ -7,7 +7,7 @@ import type {
   SettleStrategy
 } from "../shared/contracts.ts";
 import { candidateText, targetFromComponent, targetKey } from "./component-target.ts";
-import { ADD_TO_CART_PATTERN, CART_NAVIGATION_PATTERN, CHECKOUT_GOAL_PATTERN, CHECKOUT_NAVIGATION_PATTERN, COOKIE_ACCEPT_PATTERN, COOKIE_CONTEXT_PATTERN } from "./semantics.ts";
+import { plannerSemantics } from "./semantics.ts";
 
 export type AgentDecisionKind = "act" | "checkpoint" | "finish";
 
@@ -111,6 +111,31 @@ interface ActionCandidate {
   stage: ScenarioStage;
 }
 
+const CHECKOUT_ACTION_RULES: Array<{
+  pattern: RegExp;
+  reason: string;
+  confidence: number;
+  stage: ScenarioStage;
+}> = [
+  {
+    pattern: plannerSemantics.addToCart,
+    reason: "Checkout verification should add an obvious product to the cart before looking for checkout.",
+    confidence: 0.82,
+    stage: "CTA"
+  },
+  {
+    pattern: plannerSemantics.cartNavigation,
+    reason: "Checkout verification should inspect the cart after a cart-related entrypoint appears.",
+    confidence: 0.78,
+    stage: "CTA"
+  },
+  {
+    pattern: plannerSemantics.checkoutNavigation,
+    reason: "Checkout verification found a checkout or payment-entry navigation candidate.",
+    confidence: 0.84,
+    stage: "COMMIT"
+  }
+];
 
 function selectActionCandidate(input: AgentDecisionInput): ActionCandidate | undefined {
   const untriedComponents = input.observation.snapshot.interactiveComponents.filter((component) =>
@@ -122,7 +147,7 @@ function selectActionCandidate(input: AgentDecisionInput): ActionCandidate | und
     return cookieAction;
   }
 
-  if (CHECKOUT_GOAL_PATTERN.test(input.goal)) {
+  if (plannerSemantics.checkoutGoal.test(input.goal)) {
     const checkoutAction = selectCheckoutAction(untriedComponents);
     if (checkoutAction) {
       return checkoutAction;
@@ -135,7 +160,7 @@ function selectActionCandidate(input: AgentDecisionInput): ActionCandidate | und
 function selectCookieAction(components: InteractiveComponentObservationItem[]): ActionCandidate | undefined {
   const component = components.find((candidate) => {
     const text = candidateText(candidate);
-    return COOKIE_ACCEPT_PATTERN.test(text) && COOKIE_CONTEXT_PATTERN.test(text);
+    return plannerSemantics.cookieAccept.test(text) && plannerSemantics.cookieContext.test(text);
   });
 
   return component
@@ -149,33 +174,7 @@ function selectCookieAction(components: InteractiveComponentObservationItem[]): 
 }
 
 function selectCheckoutAction(components: InteractiveComponentObservationItem[]): ActionCandidate | undefined {
-  const rankedRules: Array<{
-    pattern: RegExp;
-    reason: string;
-    confidence: number;
-    stage: ScenarioStage;
-  }> = [
-    {
-      pattern: ADD_TO_CART_PATTERN,
-      reason: "Checkout verification should add an obvious product to the cart before looking for checkout.",
-      confidence: 0.82,
-      stage: "CTA"
-    },
-    {
-      pattern: CART_NAVIGATION_PATTERN,
-      reason: "Checkout verification should inspect the cart after a cart-related entrypoint appears.",
-      confidence: 0.78,
-      stage: "CTA"
-    },
-    {
-      pattern: CHECKOUT_NAVIGATION_PATTERN,
-      reason: "Checkout verification found a checkout or payment-entry navigation candidate.",
-      confidence: 0.84,
-      stage: "COMMIT"
-    }
-  ];
-
-  for (const rule of rankedRules) {
+  for (const rule of CHECKOUT_ACTION_RULES) {
     const component = components.find((candidate) => rule.pattern.test(candidateText(candidate)));
     if (component) {
       return {

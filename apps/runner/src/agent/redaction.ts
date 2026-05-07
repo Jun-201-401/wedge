@@ -53,7 +53,7 @@ export function redactSensitiveValue<T>(value: T): T {
 }
 
 export function containsSensitiveValue(value: unknown): boolean {
-  return JSON.stringify(value) !== JSON.stringify(redactSensitiveValue(value));
+  return containsRedactableValue(value, null, new WeakSet<object>());
 }
 
 export function redactAgentDecision(decision: AgentDecision): AgentDecision {
@@ -99,6 +99,33 @@ function redactValue(value: unknown, key: string | null): unknown {
   }
 
   return value;
+}
+
+function containsRedactableValue(value: unknown, key: string | null, seen: WeakSet<object>): boolean {
+  if (typeof value === "string") {
+    return isSensitiveKey(key) || redactSensitiveString(value) !== value;
+  }
+
+  if (typeof value === "number") {
+    return isSensitiveKey(key);
+  }
+
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  if (seen.has(value)) {
+    return false;
+  }
+  seen.add(value);
+
+  if (Array.isArray(value)) {
+    return value.some((item) => containsRedactableValue(item, key, seen));
+  }
+
+  return Object.entries(value).some(([entryKey, entryValue]) =>
+    containsRedactableValue(entryValue, entryKey, seen)
+  );
 }
 
 function isSensitiveKey(key: string | null): boolean {

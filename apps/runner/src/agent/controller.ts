@@ -54,11 +54,7 @@ export async function executeAgentRun(input: AgentExecutorInput): Promise<AgentE
       assertAgentDeadline(deadline, "turn start");
       observation = await runWithinAgentDeadline(deadline, "observation", () => observePage(input.session));
     } catch (error) {
-      if (error instanceof AgentBudgetExceededError) {
-        trace.outcome = {
-          status: "EXHAUSTED",
-          reason: error.message
-        };
+      if (markBudgetExceeded(trace, error)) {
         break;
       }
       throw error;
@@ -106,11 +102,7 @@ export async function executeAgentRun(input: AgentExecutorInput): Promise<AgentE
         remainingTimeMs: remainingAgentBudgetMs(deadline)
       }));
     } catch (error) {
-      if (error instanceof AgentBudgetExceededError) {
-        trace.outcome = {
-          status: "EXHAUSTED",
-          reason: error.message
-        };
+      if (markBudgetExceeded(trace, error)) {
         break;
       }
       throw error;
@@ -176,11 +168,7 @@ export async function executeAgentRun(input: AgentExecutorInput): Promise<AgentE
 
         stopRequested = stepResult.stopRequested;
       } catch (error) {
-        if (error instanceof AgentBudgetExceededError) {
-          trace.outcome = {
-            status: "EXHAUSTED",
-            reason: error.message
-          };
+        if (markBudgetExceeded(trace, error)) {
           break;
         }
 
@@ -289,26 +277,12 @@ export async function executeAgentRun(input: AgentExecutorInput): Promise<AgentE
     };
   }
 
-  const traceDelivery = await persistAgentTraceArtifact({
-    task: input.task,
-    runId: input.runId,
-    trace,
-    artifactStore: input.artifactStore,
-    callbackClient: input.callbackClient
-  });
+  const {
+    traceDelivery,
+    scenarioPlanExport,
+    scenarioPlanExportDelivery
+  } = await finalizeAgentTraceArtifacts(input, trace);
   deliveryIssues.push(...traceDelivery.deliveryIssues);
-
-  const scenarioPlanExport = exportAgentTraceToScenarioPlan({
-    task: input.task,
-    trace
-  });
-  const scenarioPlanExportDelivery = await persistAgentScenarioPlanExportArtifact({
-    task: input.task,
-    runId: input.runId,
-    traceExport: scenarioPlanExport,
-    artifactStore: input.artifactStore,
-    callbackClient: input.callbackClient
-  });
   deliveryIssues.push(...scenarioPlanExportDelivery.deliveryIssues);
 
   if (input.task.artifact_policy?.capture_trace !== false) {
@@ -351,6 +325,53 @@ function resolveAgentBudget(task: AgentTask): {
 
 function resolveTaskGoal(task: AgentTask): string {
   return task.goal ?? task.goal_type;
+}
+
+function markBudgetExceeded(trace: AgentTrace, error: unknown): boolean {
+  if (!(error instanceof AgentBudgetExceededError)) {
+    return false;
+  }
+
+  trace.outcome = {
+    status: "EXHAUSTED",
+    reason: error.message
+  };
+  return true;
+}
+
+async function finalizeAgentTraceArtifacts(
+  input: AgentExecutorInput,
+  trace: AgentTrace
+): Promise<{
+  traceDelivery: Awaited<ReturnType<typeof persistAgentTraceArtifact>>;
+  scenarioPlanExport: AgentTraceScenarioPlanExport;
+  scenarioPlanExportDelivery: Awaited<ReturnType<typeof persistAgentScenarioPlanExportArtifact>>;
+}> {
+  const traceDelivery = await persistAgentTraceArtifact({
+    task: input.task,
+    runId: input.runId,
+    trace,
+    artifactStore: input.artifactStore,
+    callbackClient: input.callbackClient
+  });
+
+  const scenarioPlanExport = exportAgentTraceToScenarioPlan({
+    task: input.task,
+    trace
+  });
+  const scenarioPlanExportDelivery = await persistAgentScenarioPlanExportArtifact({
+    task: input.task,
+    runId: input.runId,
+    traceExport: scenarioPlanExport,
+    artifactStore: input.artifactStore,
+    callbackClient: input.callbackClient
+  });
+
+  return {
+    traceDelivery,
+    scenarioPlanExport,
+    scenarioPlanExportDelivery
+  };
 }
 
 function agentDecisionToScenarioStep(decision: AgentDecision, turn: number, checkpoint: boolean): ScenarioStep {

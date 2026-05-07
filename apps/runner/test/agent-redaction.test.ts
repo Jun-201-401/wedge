@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createAgentEventBatch } from "../src/agent/callbacks.ts";
-import { redactSensitiveValue } from "../src/agent/redaction.ts";
+import { containsSensitiveValue, redactSensitiveValue } from "../src/agent/redaction.ts";
 import { createAgentTraceArtifact, type AgentTrace } from "../src/agent/trace.ts";
 import { createAgentScenarioPlanExportArtifact, exportAgentTraceToScenarioPlan } from "../src/agent/trace-export.ts";
 import { cloneAgentMessage, loadAgentExampleMessage } from "./support.ts";
@@ -69,6 +69,18 @@ test("[Agent Redaction] plain token object key도 민감값으로 마스킹한�
     token: "[REDACTED_SECRET]",
     access_token: "[REDACTED_SECRET]"
   });
+});
+
+test("[Agent Redaction] containsSensitiveValue는 stringify 없이 nested 민감값을 감지한다", () => {
+  const circular: { nested: { email: string }; self?: unknown } = {
+    nested: {
+      email: "mvp.tester@example.com"
+    }
+  };
+  circular.self = circular;
+
+  assert.equal(containsSensitiveValue(circular), true);
+  assert.equal(containsSensitiveValue({ safe: "public checkout copy" }), false);
 });
 
 function createSensitiveTrace(): AgentTrace {

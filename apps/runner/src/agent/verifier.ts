@@ -1,6 +1,6 @@
 import type { BrowserPageSnapshot } from "../browser/playwright/index.ts";
 import type { AgentDecision } from "./planner.ts";
-import { CAPTCHA_PATTERN, CHECKOUT_ENTRY_PATTERN, CHECKOUT_GOAL_PATTERN, FINAL_COMMIT_PATTERN, LOGIN_WALL_PATTERN, SUCCESS_URL_PATTERN } from "./semantics.ts";
+import { verifierSemantics } from "./semantics.ts";
 
 export type AgentVerificationOutcome =
   | "CONTINUE"
@@ -61,7 +61,7 @@ export function verifyGoal(input: {
     };
   }
 
-  if (input.decision?.action.type === "click" && (goalKeywordMatched || (urlChanged && SUCCESS_URL_PATTERN.test(finalUrl)))) {
+  if (input.decision?.action.type === "click" && (goalKeywordMatched || (urlChanged && verifierSemantics.successUrl.test(finalUrl)))) {
     return {
       satisfied: true,
       terminal: true,
@@ -94,7 +94,7 @@ export function verifyGoal(input: {
 }
 
 function verifyPreDecisionBlocker(pageText: string): AgentVerificationResult | null {
-  if (CAPTCHA_PATTERN.test(pageText)) {
+  if (verifierSemantics.captcha.test(pageText)) {
     return {
       satisfied: false,
       terminal: true,
@@ -105,7 +105,7 @@ function verifyPreDecisionBlocker(pageText: string): AgentVerificationResult | n
     };
   }
 
-  if (LOGIN_WALL_PATTERN.test(pageText)) {
+  if (verifierSemantics.loginWall.test(pageText)) {
     return {
       satisfied: false,
       terminal: true,
@@ -120,7 +120,7 @@ function verifyPreDecisionBlocker(pageText: string): AgentVerificationResult | n
 }
 
 function verifyPreDecisionFinalCommit(pageText: string): AgentVerificationResult | null {
-  if (!FINAL_COMMIT_PATTERN.test(pageText)) {
+  if (!verifierSemantics.finalCommit.test(pageText)) {
     return null;
   }
 
@@ -146,14 +146,14 @@ function isGoalLikeDestination(input: {
     return false;
   }
 
-  if (input.goalKeywordMatched || SUCCESS_URL_PATTERN.test(input.finalUrl)) {
+  if (input.goalKeywordMatched || verifierSemantics.successUrl.test(input.finalUrl)) {
     return true;
   }
 
-  const checkoutGoal = CHECKOUT_GOAL_PATTERN.test(input.goalText);
+  const checkoutGoal = verifierSemantics.checkoutGoal.test(input.goalText);
   return checkoutGoal && (
-    CHECKOUT_ENTRY_PATTERN.test(input.finalUrl) ||
-    CHECKOUT_ENTRY_PATTERN.test(input.title)
+    verifierSemantics.checkoutEntry.test(input.finalUrl) ||
+    verifierSemantics.checkoutEntry.test(input.title)
   );
 }
 

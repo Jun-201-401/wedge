@@ -1,6 +1,6 @@
 import type { CallbackClient } from "../callback/index.ts";
 import type { DeliveryIssue } from "../delivery/index.ts";
-import type { AgentTask, Artifact } from "../shared/contracts.ts";
+import type { AgentTask, Artifact, ArtifactDraft } from "../shared/contracts.ts";
 import { errorMessage } from "../shared/utils.ts";
 import type { ArtifactStore } from "../storage/index.ts";
 import { createAgentScenarioPlanExportArtifact, type AgentTraceScenarioPlanExport } from "./trace-export.ts";
@@ -19,46 +19,16 @@ export async function persistAgentTraceArtifact({
   artifactStore: ArtifactStore;
   callbackClient: CallbackClient;
 }): Promise<{ artifact?: Artifact; deliveryIssues: DeliveryIssue[] }> {
-  if (task.artifact_policy?.capture_trace === false) {
-    return {
-      deliveryIssues: []
-    };
-  }
-
-  const deliveryIssues: DeliveryIssue[] = [];
-  let storedArtifacts: Artifact[] = [];
-
-  try {
-    storedArtifacts = await artifactStore.persistArtifacts({
-      runId,
-      artifacts: [createAgentTraceArtifact(trace)]
-    });
-  } catch (error) {
-    deliveryIssues.push({
-      scope: "artifact-storage",
-      stepKey: "agent_trace",
-      message: `agent trace artifact storage failed: ${errorMessage(error)}`
-    });
-  }
-
-  if (storedArtifacts.length > 0) {
-    try {
-      await callbackClient.sendArtifacts(runId, {
-        artifacts: storedArtifacts
-      });
-    } catch (error) {
-      deliveryIssues.push({
-        scope: "artifacts-callback",
-        stepKey: "agent_trace",
-        message: `agent trace artifact callback failed: ${errorMessage(error)}`
-      });
-    }
-  }
-
-  return {
-    artifact: storedArtifacts[0],
-    deliveryIssues
-  };
+  return persistAgentArtifact({
+    runId,
+    artifactStore,
+    callbackClient,
+    shouldPersist: task.artifact_policy?.capture_trace !== false,
+    createArtifact: () => createAgentTraceArtifact(trace),
+    stepKey: "agent_trace",
+    storageFailureMessage: "agent trace artifact storage failed",
+    callbackFailureMessage: "agent trace artifact callback failed"
+  });
 }
 
 export async function persistAgentScenarioPlanExportArtifact({
@@ -74,7 +44,38 @@ export async function persistAgentScenarioPlanExportArtifact({
   artifactStore: ArtifactStore;
   callbackClient: CallbackClient;
 }): Promise<{ artifact?: Artifact; deliveryIssues: DeliveryIssue[] }> {
-  if (task.artifact_policy?.capture_trace === false || traceExport.status !== "EXPORTED") {
+  return persistAgentArtifact({
+    runId,
+    artifactStore,
+    callbackClient,
+    shouldPersist: task.artifact_policy?.capture_trace !== false && traceExport.status === "EXPORTED",
+    createArtifact: () => createAgentScenarioPlanExportArtifact(traceExport),
+    stepKey: "agent_scenario_plan_export",
+    storageFailureMessage: "agent scenario plan export artifact storage failed",
+    callbackFailureMessage: "agent scenario plan export artifact callback failed"
+  });
+}
+
+async function persistAgentArtifact({
+  runId,
+  artifactStore,
+  callbackClient,
+  shouldPersist,
+  createArtifact,
+  stepKey,
+  storageFailureMessage,
+  callbackFailureMessage
+}: {
+  runId: string;
+  artifactStore: ArtifactStore;
+  callbackClient: CallbackClient;
+  shouldPersist: boolean;
+  createArtifact: () => ArtifactDraft;
+  stepKey: string;
+  storageFailureMessage: string;
+  callbackFailureMessage: string;
+}): Promise<{ artifact?: Artifact; deliveryIssues: DeliveryIssue[] }> {
+  if (!shouldPersist) {
     return {
       deliveryIssues: []
     };
@@ -86,13 +87,13 @@ export async function persistAgentScenarioPlanExportArtifact({
   try {
     storedArtifacts = await artifactStore.persistArtifacts({
       runId,
-      artifacts: [createAgentScenarioPlanExportArtifact(traceExport)]
+      artifacts: [createArtifact()]
     });
   } catch (error) {
     deliveryIssues.push({
       scope: "artifact-storage",
-      stepKey: "agent_scenario_plan_export",
-      message: `agent scenario plan export artifact storage failed: ${errorMessage(error)}`
+      stepKey,
+      message: `${storageFailureMessage}: ${errorMessage(error)}`
     });
   }
 
@@ -104,8 +105,8 @@ export async function persistAgentScenarioPlanExportArtifact({
     } catch (error) {
       deliveryIssues.push({
         scope: "artifacts-callback",
-        stepKey: "agent_scenario_plan_export",
-        message: `agent scenario plan export artifact callback failed: ${errorMessage(error)}`
+        stepKey,
+        message: `${callbackFailureMessage}: ${errorMessage(error)}`
       });
     }
   }

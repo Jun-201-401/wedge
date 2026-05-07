@@ -1,7 +1,7 @@
 import type { BrowserPageSnapshot } from "../browser/playwright/index.ts";
 import type { AgentTask } from "../shared/contracts.ts";
 import type { AgentDecision } from "./planner.ts";
-import { CART_MUTATION_PATTERN, CHECKOUT_POLICY_NAVIGATION_PATTERN, DESTRUCTIVE_PATTERN, EXTERNAL_MESSAGE_PATTERN, FINAL_COMMIT_PATTERN, PAYMENT_INFO_PATTERN, SHIPPING_FORM_PATTERN } from "./semantics.ts";
+import { policySemantics } from "./semantics.ts";
 
 export interface AgentPolicyResult {
   allowed: boolean;
@@ -26,7 +26,7 @@ export function evaluateAgentPolicy(input: {
 }): AgentPolicyResult {
   const targetText = describeDecisionTarget(input.decision);
 
-  if (input.decision.action.type === "click" && FINAL_COMMIT_PATTERN.test(targetText)) {
+  if (input.decision.action.type === "click" && policySemantics.finalCommit.test(targetText)) {
     const allowed = input.task.risk_policy.allow_final_payment_submit || input.task.risk_policy.allow_final_order_commit;
     return {
       allowed,
@@ -38,7 +38,7 @@ export function evaluateAgentPolicy(input: {
   }
 
   if (input.decision.action.type === "fill" || input.decision.action.type === "select") {
-    if (PAYMENT_INFO_PATTERN.test(targetText)) {
+    if (policySemantics.paymentInfo.test(targetText)) {
       return {
         allowed: input.task.risk_policy.allow_payment_info_entry,
         riskClass: "PAYMENT_INFO_ENTRY",
@@ -48,7 +48,7 @@ export function evaluateAgentPolicy(input: {
       };
     }
 
-    if (SHIPPING_FORM_PATTERN.test(targetText)) {
+    if (policySemantics.shippingForm.test(targetText)) {
       return {
         allowed: input.task.risk_policy.allow_shipping_form_entry,
         riskClass: "SHIPPING_FORM_ENTRY",
@@ -59,7 +59,7 @@ export function evaluateAgentPolicy(input: {
     }
   }
 
-  if (input.decision.action.type === "click" && DESTRUCTIVE_PATTERN.test(targetText)) {
+  if (input.decision.action.type === "click" && policySemantics.destructive.test(targetText)) {
     return {
       allowed: input.task.risk_policy.allow_destructive_action,
       riskClass: "DESTRUCTIVE_ACTION",
@@ -69,7 +69,7 @@ export function evaluateAgentPolicy(input: {
     };
   }
 
-  if (input.decision.action.type === "click" && EXTERNAL_MESSAGE_PATTERN.test(targetText)) {
+  if (input.decision.action.type === "click" && policySemantics.externalMessage.test(targetText)) {
     return {
       allowed: input.task.risk_policy.allow_external_message_send,
       riskClass: "EXTERNAL_MESSAGE_SEND",
@@ -84,7 +84,7 @@ export function evaluateAgentPolicy(input: {
     return navigationPolicy;
   }
 
-  if (input.decision.action.type === "click" && CART_MUTATION_PATTERN.test(targetText)) {
+  if (input.decision.action.type === "click" && policySemantics.cartMutation.test(targetText)) {
     return {
       allowed: input.task.risk_policy.allow_cart_mutation,
       riskClass: "CART_MUTATION",
@@ -94,7 +94,7 @@ export function evaluateAgentPolicy(input: {
     };
   }
 
-  if (input.decision.action.type === "click" && CHECKOUT_POLICY_NAVIGATION_PATTERN.test(targetText)) {
+  if (input.decision.action.type === "click" && policySemantics.checkoutNavigation.test(targetText)) {
     return {
       allowed: input.task.risk_policy.allow_checkout_navigation,
       riskClass: "CHECKOUT_NAVIGATION",
