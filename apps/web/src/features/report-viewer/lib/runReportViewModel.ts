@@ -23,6 +23,7 @@ export interface ReportFinding {
   confidence: number;
   priorityScore: number;
   evidenceRefs: string[];
+  previewImageUrl?: string | null;
   recommendation: string;
   highlight: {
     label: string;

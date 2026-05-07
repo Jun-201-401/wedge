@@ -11,6 +11,7 @@ import static org.mockito.Mockito.when;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.wedge.common.error.BusinessException;
 import com.wedge.run.api.dto.RunCreateRequest;
+import com.wedge.run.api.dto.RunEventResponse;
 import com.wedge.run.api.dto.RunResponse;
 import com.wedge.run.application.RunExecutionRequestSource;
 import com.wedge.run.domain.AnalysisStatus;
@@ -98,6 +99,71 @@ class RunPersistenceAdapterTest {
         assertThat(run).isPresent();
         assertThat(run.orElseThrow().startUrl()).isEqualTo(URI.create(stored.getStartUrl()));
         assertThat(run.orElseThrow().analysisStatus()).isEqualTo(stored.getAnalysisStatus());
+    }
+
+    @Test
+    void listRunStepsMapsStoredStepRowsToApiResponses() {
+        UUID runId = UUID.randomUUID();
+        RunStepRecord failedStep = sampleStepRecord(runId, 2, "step_002_submit", StepStatus.FAILED);
+        failedStep.setErrorCode("RUNNER_TIMEOUT");
+        failedStep.setErrorMessage("locator click timed out");
+        when(runMapper.findStepsByRunId(runId)).thenReturn(List.of(failedStep));
+
+        List<com.wedge.run.api.dto.RunStepResponse> steps = adapter().listRunSteps(runId);
+
+        assertThat(steps).hasSize(1);
+        assertThat(steps.get(0).id()).isEqualTo(failedStep.getId());
+        assertThat(steps.get(0).runId()).isEqualTo(runId);
+        assertThat(steps.get(0).stepOrder()).isEqualTo(2);
+        assertThat(steps.get(0).stepKey()).isEqualTo("step_002_submit");
+        assertThat(steps.get(0).status()).isEqualTo(StepStatus.FAILED);
+        assertThat(steps.get(0).errorCode()).isEqualTo("RUNNER_TIMEOUT");
+        assertThat(steps.get(0).errorMessage()).isEqualTo("locator click timed out");
+    }
+
+    @Test
+    void findRunStepMapsStoredStepRowWhenItBelongsToRun() {
+        UUID runId = UUID.randomUUID();
+        RunStepRecord step = sampleStepRecord(runId, 1, "step_001_goto", StepStatus.PASSED);
+        when(runMapper.findStepByRunIdAndId(runId, step.getId())).thenReturn(Optional.of(step));
+
+        Optional<com.wedge.run.api.dto.RunStepResponse> response = adapter().findRunStep(runId, step.getId());
+
+        assertThat(response).isPresent();
+        assertThat(response.orElseThrow().stepKey()).isEqualTo("step_001_goto");
+        assertThat(response.orElseThrow().status()).isEqualTo(StepStatus.PASSED);
+    }
+
+    @Test
+    void listRunEventsMapsStoredEventRowsToApiResponses() {
+        UUID runId = UUID.randomUUID();
+        UUID stepId = UUID.randomUUID();
+        RunEventRecord event = new RunEventRecord();
+        event.setId(UUID.randomUUID());
+        event.setRunId(runId);
+        event.setStepId(stepId);
+        event.setStepKey("step_002_submit");
+        event.setEventType("STEP_FAILED");
+        event.setSource("RUNNER");
+        event.setPayloadJson("{\"message\":\"locator click timed out\",\"failureCode\":\"RUNNER_TIMEOUT\"}");
+        event.setOccurredAt(OffsetDateTime.parse("2026-04-28T10:00:03+09:00"));
+        UUID cursorEventId = UUID.randomUUID();
+        when(runMapper.findEvents(runId, stepId, "STEP_FAILED", cursorEventId, 21)).thenReturn(List.of(event));
+
+        List<RunEventResponse> events = adapter().listRunEvents(runId, stepId, "STEP_FAILED", cursorEventId, 21);
+
+        assertThat(events).hasSize(1);
+        assertThat(events.get(0).id()).isEqualTo(event.getId());
+        assertThat(events.get(0).runId()).isEqualTo(runId);
+        assertThat(events.get(0).stepId()).isEqualTo(stepId);
+        assertThat(events.get(0).stepKey()).isEqualTo("step_002_submit");
+        assertThat(events.get(0).eventType()).isEqualTo("STEP_FAILED");
+        assertThat(events.get(0).eventSource()).isEqualTo("RUNNER");
+        assertThat(events.get(0).payload())
+                .containsEntry("message", "locator click timed out")
+                .containsEntry("failureCode", "RUNNER_TIMEOUT");
+        assertThat(events.get(0).occurredAt()).isEqualTo(event.getOccurredAt());
+        verify(runMapper).findEvents(runId, stepId, "STEP_FAILED", cursorEventId, 21);
     }
 
     @Test
@@ -252,5 +318,20 @@ class RunPersistenceAdapterTest {
                 null,
                 null
         );
+    }
+
+    private RunStepRecord sampleStepRecord(UUID runId, int stepOrder, String stepKey, StepStatus status) {
+        RunStepRecord record = new RunStepRecord();
+        record.setId(UUID.randomUUID());
+        record.setRunId(runId);
+        record.setStepOrder(stepOrder);
+        record.setStepKey(stepKey);
+        record.setStepName(stepKey + " name");
+        record.setStage("CTA");
+        record.setStepType(stepKey.contains("goto") ? "GOTO" : "CLICK");
+        record.setStatus(status);
+        record.setStartedAt(OffsetDateTime.parse("2026-04-21T10:00:00+09:00"));
+        record.setFinishedAt(status == StepStatus.PENDING ? null : OffsetDateTime.parse("2026-04-21T10:00:03+09:00"));
+        return record;
     }
 }

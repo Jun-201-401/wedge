@@ -11,7 +11,7 @@ import {
   createStubCallbackClient,
   loadExampleMessage
 } from "./support.ts";
-import type { RunnerFailedPayload } from "../src/shared/contracts.ts";
+import type { RunnerFailedPayload, StepEvent } from "../src/shared/contracts.ts";
 
 test("[Worker lifecycle] accepted callback 실패 시 session을 닫고 failed callback을 보낸다", async () => {
   const message = await loadExampleMessage();
@@ -63,6 +63,111 @@ test("[Worker lifecycle] accepted callback 실패 시 session을 닫고 failed c
 
   const capturedFailedPayload = failedPayload as RunnerFailedPayload;
   assert.equal(capturedFailedPayload.resultCompleteness, "NONE");
+});
+
+test("[Worker 관측성] step timeout 실패는 timeout code와 runId/stepKey 로그를 남긴다", async () => {
+  const message = await loadExampleMessage();
+  message.payload.scenarioPlan.steps = [
+    {
+      step_id: "step_001_timeout",
+      stage: "CTA",
+      description: "timeout click",
+      action: {
+        type: "click",
+        target: {
+          selector: "#submit"
+        }
+      },
+      settle_strategy: {
+        type: "fixed_short",
+        timeout_ms: 1
+      },
+      checkpoint: false
+    }
+  ];
+
+  let failedPayload: RunnerFailedPayload | null = null;
+  const stepEvents: StepEvent[] = [];
+  const capturedLogs: string[] = [];
+  const originalError = console.error;
+  console.error = (message?: unknown, ...optional: unknown[]) => {
+    capturedLogs.push(String(message));
+    if (optional.length > 0) {
+      capturedLogs.push(optional.map(String).join(" "));
+    }
+  };
+
+  try {
+    const worker = registerWorker({
+      config: createRunnerTestConfig({
+        artifactsRoot: join(tmpdir(), "runner-test-artifacts"),
+        callbackLogFile: join(tmpdir(), "runner-test-callbacks.jsonl")
+      }),
+      browserFactory: {
+        kind: "simulated-playwright",
+        createSession: async () =>
+          createSimulatedSession(message.payload.scenarioPlan, {
+            execute: async () => {
+              const error = new Error("locator click timed out after 100ms");
+              error.name = "TimeoutError";
+              throw error;
+            },
+            settle: async () => createSettledResult(),
+            snapshot: () => createSimulatedPageSnapshot(message.payload.scenarioPlan),
+            close: async () => {}
+          })
+      },
+      callbackClient: createStubCallbackClient({
+        sendStepEvents: async (_runId, payload) => {
+          stepEvents.push(...payload.events);
+        },
+        sendFailed: async (_runId, payload) => {
+          failedPayload = payload;
+        }
+      }),
+      capturePipeline: {
+        collectCheckpoint: async () => {
+          throw new Error("checkpoint collection should not be called on timeout");
+        }
+      },
+      artifactStore: {
+        persistArtifacts: async () => []
+      }
+    });
+
+    await assert.rejects(() => worker.handleMessage(message), /timed out after 100ms/);
+  } finally {
+    console.error = originalError;
+  }
+
+  if (failedPayload === null) {
+    throw new Error("failed payload was not captured");
+  }
+
+  const capturedFailedPayload = failedPayload as RunnerFailedPayload;
+  assert.equal(capturedFailedPayload.failureCode, "RUNNER_TIMEOUT");
+  assert.deepEqual(capturedFailedPayload.summary, {
+    completedStepCount: 0,
+    failedStepCount: 1,
+    stopped: false
+  });
+  assert.ok(
+    stepEvents.some(
+      (event) =>
+        event.eventType === "STEP_FAILED" &&
+        event.stepKey === "step_001_timeout" &&
+        event.payload.failureCode === "RUNNER_TIMEOUT"
+    )
+  );
+  assert.ok(
+    capturedLogs.some(
+      (line) =>
+        line.includes("\"event\":\"run_failed\"") &&
+        line.includes(`"runId":"${message.payload.runId}"`) &&
+        line.includes("\"failedStepKey\":\"step_001_timeout\"") &&
+        line.includes("\"failureCode\":\"RUNNER_TIMEOUT\"")
+    )
+  );
 });
 
 test("[Worker lifecycle] 실행 자체가 성공했다면 finished callback 실패만으로 실행 실패로 바꾸지 않는다", async () => {

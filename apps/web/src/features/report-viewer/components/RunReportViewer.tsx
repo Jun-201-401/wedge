@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 import { useAuthenticatedResourceUrl } from '../../../shared/lib/authenticatedResourceUrl';
 import { resolveActiveFinding, resolveLinkedFindingId } from '../lib/runReportInteractions';
@@ -13,6 +13,18 @@ function formatIssueCount(issueCount: number) {
   return String(issueCount).padStart(2, '0');
 }
 
+function severityLabel(severity: string) {
+  return {
+    high: 'High',
+    medium: 'Medium',
+    low: 'Low',
+  }[severity] ?? 'Medium';
+}
+
+function formatConfidence(confidence: number) {
+  return `${Math.round(confidence * 100)}%`;
+}
+
 export function RunReportBrand() {
   return (
     <a href="/" className="run-report-brand" aria-label="Wedge home">
@@ -24,14 +36,30 @@ export function RunReportBrand() {
 export function RunReportViewer({ report }: RunReportViewerProps) {
   const [hoveredFindingId, setHoveredFindingId] = useState<string | null>(null);
   const [selectedFindingId, setSelectedFindingId] = useState<string | null>(report.findings[0]?.id ?? null);
-  const evidencePreviewUrl = useAuthenticatedResourceUrl(report.evidencePreviewUrl);
+  const [isFullFindingListOpen, setIsFullFindingListOpen] = useState(false);
+  const topFindings = report.findings.slice(0, 3);
   const recommendations = report.recommendations.slice(0, 3);
+  const hiddenFindingCount = Math.max(0, report.findings.length - topFindings.length);
   const activeFinding = useMemo(() => {
     const activeId = hoveredFindingId ?? selectedFindingId;
     return resolveActiveFinding(report.findings, activeId);
   }, [hoveredFindingId, report.findings, selectedFindingId]);
   const activeFindingId = activeFinding?.id ?? null;
+  const selectedEvidencePreviewUrl = activeFinding?.previewImageUrl ?? report.evidencePreviewUrl;
+  const evidencePreviewUrl = useAuthenticatedResourceUrl(selectedEvidencePreviewUrl);
   const highlightSourceLabel = activeFinding?.highlight.source === 'fallback' ? '추정 영역' : '실측 영역';
+
+  useEffect(() => {
+    if (report.findings.length === 0) {
+      setSelectedFindingId(null);
+      setIsFullFindingListOpen(false);
+      return;
+    }
+
+    if (!selectedFindingId || !report.findings.some((finding) => finding.id === selectedFindingId)) {
+      setSelectedFindingId(report.findings[0].id);
+    }
+  }, [report.findings, selectedFindingId]);
 
   return (
     <div className="run-report-page">
@@ -98,7 +126,7 @@ export function RunReportViewer({ report }: RunReportViewerProps) {
                 </div>
                 <div>
                   <span>Confidence</span>
-                  <strong>{activeFinding ? `${Math.round(activeFinding.confidence * 100)}%` : '0%'}</strong>
+                  <strong>{activeFinding ? formatConfidence(activeFinding.confidence) : '0%'}</strong>
                 </div>
               </div>
 
@@ -142,6 +170,89 @@ export function RunReportViewer({ report }: RunReportViewerProps) {
           </section>
 
           <aside className="run-report-insight-panel" aria-label="Nudge and finding details">
+            <section className="run-report-section run-report-section--top-findings" aria-labelledby="run-report-top-findings-title">
+              <div className="run-report-section-heading">
+                <h2 id="run-report-top-findings-title">Top Priority Findings</h2>
+                <span aria-hidden="true" />
+              </div>
+
+              {topFindings.length > 0 ? (
+                <ol className="run-report-top-finding-list" onMouseLeave={() => setHoveredFindingId(null)}>
+                  {topFindings.map((finding, index) => (
+                    <li key={finding.id} className={`run-report-top-finding-card run-report-top-finding-card--${finding.severity}`}>
+                      <button
+                        type="button"
+                        className="run-report-top-finding-card__button"
+                        aria-pressed={activeFindingId === finding.id}
+                        onClick={() => setSelectedFindingId(finding.id)}
+                        onFocus={() => setHoveredFindingId(finding.id)}
+                        onMouseEnter={() => setHoveredFindingId(finding.id)}
+                      >
+                        <div className="run-report-top-finding-card__meta">
+                          <span>#{String(index + 1).padStart(2, '0')}</span>
+                          <strong>{severityLabel(finding.severity)}</strong>
+                        </div>
+                        <h3>{finding.title}</h3>
+                        <p>{finding.summary}</p>
+                        <dl>
+                          <div>
+                            <dt>Stage</dt>
+                            <dd>{finding.stage}</dd>
+                          </div>
+                          <div>
+                            <dt>Confidence</dt>
+                            <dd>{formatConfidence(finding.confidence)}</dd>
+                          </div>
+                          <div>
+                            <dt>Evidence</dt>
+                            <dd>{finding.evidenceCount}</dd>
+                          </div>
+                        </dl>
+                      </button>
+                    </li>
+                  ))}
+                </ol>
+              ) : (
+                <div className="run-report-top-finding-empty" role="status">
+                  <strong>우선순위 이슈 없음</strong>
+                  <p>이번 분석에서는 상위 3개로 표시할 마찰 지점이 발견되지 않았습니다.</p>
+                </div>
+              )}
+
+              {hiddenFindingCount > 0 ? (
+                <div className="run-report-finding-more">
+                  <button
+                    type="button"
+                    onClick={() => setIsFullFindingListOpen((value) => !value)}
+                    aria-expanded={isFullFindingListOpen}
+                  >
+                    {isFullFindingListOpen ? '전체 문제 접기' : `나머지 ${hiddenFindingCount}개 더보기`}
+                  </button>
+
+                  {isFullFindingListOpen ? (
+                    <ol className="run-report-finding-full-list" aria-label="전체 finding 목록">
+                      {report.findings.map((finding, index) => (
+                        <li key={finding.id}>
+                          <button
+                            type="button"
+                            className="run-report-finding-row"
+                            aria-pressed={activeFindingId === finding.id}
+                            onClick={() => setSelectedFindingId(finding.id)}
+                            onFocus={() => setHoveredFindingId(finding.id)}
+                            onMouseEnter={() => setHoveredFindingId(finding.id)}
+                          >
+                            <span>#{String(index + 1).padStart(2, '0')}</span>
+                            <strong>{finding.title}</strong>
+                            <small>{finding.stage} · {formatConfidence(finding.confidence)}</small>
+                          </button>
+                        </li>
+                      ))}
+                    </ol>
+                  ) : null}
+                </div>
+              ) : null}
+            </section>
+
             <section className="run-report-section run-report-section--priority" aria-labelledby="run-report-nudge-title">
               <div className="run-report-section-heading">
                 <h2 id="run-report-nudge-title">Recommended Nudge</h2>

@@ -16,7 +16,8 @@ import type {
   ScenarioPlan,
   ScenarioStep,
   SettleStrategy,
-  TargetDescriptor
+  TargetDescriptor,
+  InteractiveComponentObservationItem
 } from "../../shared/contracts.ts";
 import {
   assertScenarioActionAllowed,
@@ -55,6 +56,7 @@ export interface BrowserPageSnapshot {
     target: string | null;
     at: string;
   } | null;
+  interactiveComponents: InteractiveComponentObservationItem[];
   consoleErrors: string[];
   networkErrors: string[];
   cdpSession: CdpSessionMetadata;
@@ -126,6 +128,7 @@ interface MutableBrowserState {
   selectedOptions: Record<string, string>;
   scrollY: number;
   lastAction: BrowserPageSnapshot["lastAction"];
+  interactiveComponents: InteractiveComponentObservationItem[];
   consoleErrors: string[];
   networkErrors: string[];
 }
@@ -833,6 +836,7 @@ class RealPlaywrightSession implements BrowserSession {
 
     this.state.title = await safePageTitle(this.page, currentUrl);
     this.state.scrollY = await safeScrollY(this.page, this.state.scrollY);
+    this.state.interactiveComponents = await safeInteractiveComponents(this.page, this.state.lastAction, this.state.interactiveComponents);
     appendVisitedUrl(this.state.visitedUrls, currentUrl);
   }
 
@@ -956,6 +960,7 @@ function createInitialBrowserState(plan: ScenarioPlan): MutableBrowserState {
     selectedOptions: {},
     scrollY: 0,
     lastAction: null,
+    interactiveComponents: [],
     consoleErrors: [],
     networkErrors: []
   };
@@ -978,6 +983,10 @@ function createBrowserPageSnapshot(
     selectedOptions: { ...state.selectedOptions },
     scrollY: state.scrollY,
     lastAction: state.lastAction ? { ...state.lastAction } : null,
+    interactiveComponents: state.interactiveComponents.map((component) => ({
+      ...component,
+      bounds: { ...component.bounds }
+    })),
     consoleErrors: [...state.consoleErrors],
     networkErrors: [...state.networkErrors],
     cdpSession
@@ -1449,6 +1458,149 @@ async function safeScrollY(page: Page, fallbackValue: number): Promise<number> {
       return scope.scrollY ?? 0;
     });
     return typeof scrollY === "number" && Number.isFinite(scrollY) ? scrollY : fallbackValue;
+  } catch {
+    return fallbackValue;
+  }
+}
+
+async function safeInteractiveComponents(
+  page: Page,
+  lastAction: BrowserPageSnapshot["lastAction"],
+  fallbackValue: InteractiveComponentObservationItem[]
+): Promise<InteractiveComponentObservationItem[]> {
+  try {
+    return await page.evaluate((clickedTarget) => {
+      const CTA_TEXT_PATTERN = /무료|시작|가입|신청|구매|결제|문의|상담|체험|다운로드|start|sign\s*up|try|buy|checkout|contact|demo|continue/i;
+      const SELECTOR_ESCAPE_SCOPE = globalThis as typeof globalThis & {
+        CSS?: {
+          escape?: (value: string) => string;
+        };
+      };
+
+      function escapeSelector(value: string): string {
+        return SELECTOR_ESCAPE_SCOPE.CSS?.escape?.(value) ?? value.replace(/[^a-zA-Z0-9_-]/g, "\\$&");
+      }
+
+      function implicitRole(element: Element, tag: string): string | null {
+        if (tag === "a" && element.hasAttribute("href")) {
+          return "link";
+        }
+        if (tag === "button") {
+          return "button";
+        }
+        if (tag === "input") {
+          const type = (element.getAttribute("type") ?? "").toLowerCase();
+          return ["button", "submit", "reset"].includes(type) ? "button" : null;
+        }
+        return null;
+      }
+
+      function textFor(element: Element): string {
+        const inputValue = element instanceof HTMLInputElement ? element.value : "";
+        return [
+          element.textContent,
+          element.getAttribute("aria-label"),
+          element.getAttribute("title"),
+          inputValue
+        ]
+          .find((value) => typeof value === "string" && value.trim().length > 0)
+          ?.trim()
+          .replaceAll(/\\s+/g, " ")
+          .slice(0, 120) ?? "";
+      }
+
+      function selectorFor(element: Element, tag: string): string | null {
+        const id = element.getAttribute("id");
+        if (id) {
+          return `#${escapeSelector(id)}`;
+        }
+
+        const className = Array.from(element.classList).find((entry) => entry.length > 0);
+        if (className) {
+          return `${tag}.${escapeSelector(className)}`;
+        }
+
+        const href = element.getAttribute("href");
+        if (tag === "a" && href) {
+          return `a[href="${href.replace(/"/g, '\\"')}"]`;
+        }
+
+        return tag;
+      }
+
+      function isClickable(element: Element, tag: string, role: string | null): boolean {
+        return Boolean(
+          tag === "a" ||
+          tag === "button" ||
+          role === "button" ||
+          role === "link" ||
+          element.hasAttribute("onclick") ||
+          element.getAttribute("tabindex") === "0"
+        );
+      }
+
+      function isClickedInScenario(input: { text: string; selector: string | null; role: string | null }): boolean {
+        const target = (clickedTarget ?? "").toLowerCase();
+        if (!target) {
+          return false;
+        }
+        return Boolean(
+          (input.selector && target.includes(input.selector.toLowerCase())) ||
+          (input.text && target.includes(input.text.toLowerCase())) ||
+          (input.role && target.includes(`role=${input.role.toLowerCase()}`))
+        );
+      }
+
+      const viewportWidth = globalThis.innerWidth || 0;
+      const viewportHeight = globalThis.innerHeight || 0;
+      const components = Array.from(document.querySelectorAll("a[href], button, input[type='button'], input[type='submit'], [role='button'], [role='link'], [onclick], [tabindex='0']"))
+        .map((element) => {
+          const rect = element.getBoundingClientRect();
+          const tag = element.tagName.toLowerCase();
+          const role = element.getAttribute("role") ?? implicitRole(element, tag);
+          const text = textFor(element);
+          const selector = selectorFor(element, tag);
+          const clickable = isClickable(element, tag, role);
+          const visible = rect.width > 0 && rect.height > 0 && rect.bottom >= 0 && rect.right >= 0 && rect.top <= viewportHeight && rect.left <= viewportWidth;
+          const isCtaCandidate = clickable && Boolean(text.match(CTA_TEXT_PATTERN) || role === "button" || tag === "button");
+
+          return {
+            text,
+            selector,
+            role,
+            tag,
+            clickable,
+            clicked_in_scenario: isClickedInScenario({ text, selector, role }),
+            is_cta_candidate: isCtaCandidate,
+            is_primary_like: false,
+            bounds: {
+              x: Math.round(rect.x),
+              y: Math.round(rect.y),
+              width: Math.round(rect.width),
+              height: Math.round(rect.height),
+              unit: "css_px" as const
+            },
+            visible,
+            score: (isCtaCandidate ? 1000 : 0) + rect.width * rect.height + (text.match(CTA_TEXT_PATTERN) ? 500 : 0)
+          };
+        })
+        .filter((component) => component.visible && component.clickable && component.bounds.width > 0 && component.bounds.height > 0)
+        .sort((left, right) => right.score - left.score)
+        .slice(0, 20);
+
+      const primaryIndex = components.findIndex((component) => component.is_cta_candidate);
+      return components.map((component, index) => ({
+        text: component.text,
+        selector: component.selector,
+        role: component.role,
+        tag: component.tag,
+        clickable: component.clickable,
+        clicked_in_scenario: component.clicked_in_scenario,
+        is_cta_candidate: component.is_cta_candidate,
+        is_primary_like: index === primaryIndex,
+        bounds: component.bounds
+      }));
+    }, lastAction?.type === "click" ? lastAction.target : null);
   } catch {
     return fallbackValue;
   }

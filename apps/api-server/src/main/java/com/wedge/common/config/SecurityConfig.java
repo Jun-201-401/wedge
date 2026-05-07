@@ -6,6 +6,7 @@ import com.wedge.common.security.InternalServiceTokenFilter;
 import com.wedge.common.security.JwtAuthenticationFilter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
@@ -61,6 +62,7 @@ public class SecurityConfig {
                                 "/swagger-ui.html",
                                 "/v3/api-docs/**"
                         ).permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/report-shares/**").permitAll()
                         .requestMatchers(
                                 "/api/auth/logout",
                                 "/api/auth/me",
@@ -74,7 +76,9 @@ public class SecurityConfig {
                                 "/api/scenario-authoring-jobs/**"
                         ).authenticated()
                         .requestMatchers("/internal/runner/**", "/internal/analysis/**").hasRole("INTERNAL_RUNNER")
-                        .requestMatchers("/api/**", "/internal/**", "/mcp/**").denyAll()
+                        // InternalServiceTokenFilter validates the MCP bearer token before Streamable HTTP async dispatch.
+                        .requestMatchers("/mcp", "/mcp/**").permitAll()
+                        .requestMatchers("/api/**", "/internal/**").denyAll()
                         .anyRequest().permitAll()
                 )
                 .addFilterBefore(internalServiceTokenFilter, UsernamePasswordAuthenticationFilter.class)

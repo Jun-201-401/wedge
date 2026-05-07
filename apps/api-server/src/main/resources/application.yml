@@ -1,6 +1,22 @@
 spring:
   application:
     name: wedge-api-server
+  ai:
+    mcp:
+      server:
+        enabled: ${WEDGE_MCP_SERVER_ENABLED:false}
+        name: wedge-mcp-server
+        version: 0.1.0
+        type: SYNC
+        protocol: STREAMABLE
+        instructions: "Read-only MCP adapter for Wedge run, evidence, and report data."
+        capabilities:
+          tool: true
+          resource: false
+          prompt: false
+          completion: false
+        annotation-scanner:
+          enabled: ${WEDGE_MCP_SERVER_ENABLED:false}
 
 aws:
   region: ${AWS_REGION:ap-northeast-2}
@@ -22,9 +38,13 @@ wedge:
   internal:
     runner-callback-signature-secret: ${INTERNAL_RUNNER_CALLBACK_SIGNATURE_SECRET:${RUNNER_CALLBACK_SIGNATURE_SECRET:}}
   report:
+    share-default-expiration-minutes: ${WEDGE_REPORT_SHARE_DEFAULT_EXPIRATION_MINUTES:10}
+    public-base-url: ${WEDGE_PUBLIC_BASE_URL:http://localhost:8080}
     project-access-check-enabled: ${WEDGE_REPORT_PROJECT_ACCESS_CHECK_ENABLED:true}
   analysis:
     project-access-check-enabled: ${WEDGE_ANALYSIS_PROJECT_ACCESS_CHECK_ENABLED:true}
+  mcp:
+    service-token: ${WEDGE_MCP_SERVICE_TOKEN:}
 
 mybatis:
   mapper-locations: classpath*:mapper/**/*.xml

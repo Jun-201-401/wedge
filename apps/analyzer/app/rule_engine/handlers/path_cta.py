@@ -9,14 +9,13 @@ from app.stage.stage_context_builder import StageContext
 
 
 def primary_cta_count(context: StageContext) -> tuple[int | None, float, list[str]]:
-    cluster_records = observations_of_type(context, "cta_cluster")
+    cluster_records = observations_of_type(context, "cta_cluster", "interactive_components")
     best_count: int | None = None
     confidence = 0.75
     refs: list[str] = []
 
     for record in cluster_records:
-        data = record.observation.get("data") or {}
-        count = data.get("primary_like_cta_count")
+        count = _primary_like_count(record.observation)
         if isinstance(count, int) and (best_count is None or count > best_count):
             best_count = count
             confidence = float(record.observation.get("confidence", confidence))
@@ -37,10 +36,9 @@ def primary_cta_count(context: StageContext) -> tuple[int | None, float, list[st
     for checkpoint in context.checkpoints:
         checkpoint_id = str(checkpoint.get("checkpoint_id") or "unknown_checkpoint")
         for observation in checkpoint.get("observations", []):
-            if not isinstance(observation, dict) or observation.get("type") != "cta_cluster":
+            if not isinstance(observation, dict) or observation.get("type") not in {"cta_cluster", "interactive_components"}:
                 continue
-            data = observation.get("data") or {}
-            count = data.get("primary_like_cta_count")
+            count = _primary_like_count(observation)
             if isinstance(count, int) and (best_count is None or count > best_count):
                 best_count = count
                 confidence = float(observation.get("confidence", confidence))
@@ -68,7 +66,7 @@ def evaluate_path_cta_presence(rule: dict[str, Any], context: StageContext) -> R
     if primary_count and primary_count > 0:
         return None
 
-    if context.stage == "FIRST_VIEW" and not observations_of_type(context, "cta_cluster"):
+    if context.stage == "FIRST_VIEW" and not observations_of_type(context, "cta_cluster", "interactive_components"):
         return None
     if primary_count == 0:
         if not count_refs or all(ref.startswith("aggregate.") for ref in count_refs):
@@ -114,3 +112,25 @@ def evaluate_path_cta_competition(rule: dict[str, Any], context: StageContext) -
         ],
         validation_questions=["사용자는 첫 화면에서 어떤 버튼을 눌러야 하는지 바로 이해했는가?"],
     )
+
+
+def _primary_like_count(observation: dict[str, Any]) -> int | None:
+    data = observation.get("data")
+    if not isinstance(data, dict):
+        return None
+
+    if observation.get("type") == "interactive_components":
+        count = data.get("primary_like_component_count")
+        if isinstance(count, int):
+            return count
+        components = data.get("components")
+        if isinstance(components, list):
+            return sum(
+                1
+                for component in components
+                if isinstance(component, dict) and component.get("is_primary_like") is True
+            )
+        return None
+
+    count = data.get("primary_like_cta_count")
+    return count if isinstance(count, int) else None

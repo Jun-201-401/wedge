@@ -1,12 +1,16 @@
 package com.wedge.report.api;
 
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
 import com.wedge.common.error.BusinessException;
 import com.wedge.common.error.ErrorCode;
 import com.wedge.common.error.GlobalExceptionHandler;
@@ -16,10 +20,12 @@ import com.wedge.report.api.dto.DecisionMapItemResponse;
 import com.wedge.report.api.dto.ReportDetailFindingResponse;
 import com.wedge.report.api.dto.ReportDetailNudgeResponse;
 import com.wedge.report.api.dto.ReportDetailResponse;
+import com.wedge.report.api.dto.ReportShareResponse;
 import com.wedge.report.api.dto.ReportSummaryResponse;
 import com.wedge.report.api.dto.RunReportResponse;
 import com.wedge.report.application.ReportDetailQueryService;
 import com.wedge.report.application.ReportGenerationService;
+import com.wedge.report.application.ReportShareService;
 import com.wedge.report.application.ReportSummaryQueryService;
 import com.wedge.report.domain.ReportFormat;
 import com.wedge.run.domain.ReportStatus;
@@ -29,6 +35,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
@@ -45,14 +52,26 @@ class ReportControllerTest {
     private static final BigDecimal FRICTION_SCORE = new BigDecimal("61.0");
     private static final OffsetDateTime CREATED_AT = OffsetDateTime.parse("2026-04-29T12:00:00+09:00");
     private static final int INITIAL_DISPLAY_COUNT = 3;
+    private static final MappingJackson2HttpMessageConverter JSON_CONVERTER = new MappingJackson2HttpMessageConverter(
+            new ObjectMapper()
+                    .findAndRegisterModules()
+                    .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
+    );
 
     private final ReportSummaryQueryService reportSummaryQueryService = mock(ReportSummaryQueryService.class);
     private final ReportDetailQueryService reportDetailQueryService = mock(ReportDetailQueryService.class);
     private final ReportGenerationService reportGenerationService = mock(ReportGenerationService.class);
+    private final ReportShareService reportShareService = mock(ReportShareService.class);
     private final MockMvc mockMvc = MockMvcBuilders.standaloneSetup(
-                    new ReportController(reportSummaryQueryService, reportDetailQueryService, reportGenerationService)
+                    new ReportController(
+                            reportSummaryQueryService,
+                            reportDetailQueryService,
+                            reportGenerationService,
+                            reportShareService
+                    )
             )
             .setControllerAdvice(new GlobalExceptionHandler())
+            .setMessageConverters(JSON_CONVERTER)
             .addFilters(new RequestIdFilter())
             .build();
 
@@ -138,6 +157,80 @@ class ReportControllerTest {
                 .andExpect(jsonPath("$.meta.requestId").value(MISSING_REPORT_REQUEST_ID));
     }
 
+    @Test
+    void listReportSharesReturnsShareEnvelope() throws Exception {
+        UUID reportId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        UUID shareId = UUID.randomUUID();
+        when(reportShareService.listReportShares(reportId, userId)).thenReturn(List.of(share(reportId, shareId)));
+
+        mockMvc.perform(get("/api/reports/{reportId}/shares", reportId)
+                        .principal(authentication(userId))
+                        .header("X-Request-Id", "req_report_shares"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].id").value(shareId.toString()))
+                .andExpect(jsonPath("$.data[0].reportId").value(reportId.toString()))
+                .andExpect(jsonPath("$.data[0].shareUrl").value("https://wedge.example.com/api/report-shares/share-token"))
+                .andExpect(jsonPath("$.meta.requestId").value("req_report_shares"));
+    }
+
+    @Test
+    void createReportShareReturnsCreatedEnvelope() throws Exception {
+        UUID reportId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        UUID shareId = UUID.randomUUID();
+        OffsetDateTime expiresAt = CREATED_AT.plusMinutes(10);
+        ReportShareResponse response = new ReportShareResponse(
+                shareId,
+                reportId,
+                "https://wedge.example.com/api/report-shares/share-token",
+                "VIEW",
+                expiresAt,
+                null,
+                CREATED_AT
+        );
+        when(reportShareService.createReportShare(reportId, userId)).thenReturn(response);
+
+        mockMvc.perform(post("/api/reports/{reportId}/shares", reportId)
+                        .principal(authentication(userId))
+                        .header("X-Request-Id", "req_report_share_create"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.id").value(shareId.toString()))
+                .andExpect(jsonPath("$.data.accessLevel").value("VIEW"))
+                .andExpect(jsonPath("$.data.expiresAt").exists())
+                .andExpect(jsonPath("$.meta.requestId").value("req_report_share_create"));
+    }
+
+    @Test
+    void revokeReportShareReturnsNoDataEnvelope() throws Exception {
+        UUID reportId = UUID.randomUUID();
+        UUID shareId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+
+        mockMvc.perform(delete("/api/reports/{reportId}/shares/{shareId}", reportId, shareId)
+                        .principal(authentication(userId))
+                        .header("X-Request-Id", "req_report_share_revoke"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data").doesNotExist())
+                .andExpect(jsonPath("$.meta.requestId").value("req_report_share_revoke"));
+
+        verify(reportShareService).revokeReportShare(reportId, shareId, userId);
+    }
+
+    @Test
+    void getSharedReportReturnsDetailWithoutPrincipal() throws Exception {
+        UUID reportId = UUID.randomUUID();
+        UUID runId = UUID.randomUUID();
+        when(reportShareService.getSharedReport("share-token")).thenReturn(detail(reportId, runId));
+
+        mockMvc.perform(get("/api/report-shares/{shareToken}", "share-token")
+                        .header("X-Request-Id", "req_shared_report"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.id").value(reportId.toString()))
+                .andExpect(jsonPath("$.data.findings[0].title").value(FINDING_TITLE))
+                .andExpect(jsonPath("$.meta.requestId").value("req_shared_report"));
+    }
+
     private ReportSummaryResponse summary(UUID reportId, UUID runId) {
         return new ReportSummaryResponse(
                 reportId,
@@ -150,6 +243,18 @@ class ReportControllerTest {
                 summaryPayload(),
                 List.of(decisionMapItem()),
                 List.of(),
+                CREATED_AT
+        );
+    }
+
+    private ReportShareResponse share(UUID reportId, UUID shareId) {
+        return new ReportShareResponse(
+                shareId,
+                reportId,
+                "https://wedge.example.com/api/report-shares/share-token",
+                "VIEW",
+                CREATED_AT.plusMinutes(10),
+                null,
                 CREATED_AT
         );
     }

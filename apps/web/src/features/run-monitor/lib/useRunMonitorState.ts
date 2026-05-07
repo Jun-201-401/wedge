@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 
-import { getRun, getRunEvidencePacket, getRunLive } from '../../../api/runs';
-import type { EvidencePacket, Run, RunLive } from '../../../entities/run';
+import { getRun, getRunEvidencePacket, getRunLive, listRunEvents, listRunSteps } from '../../../api/runs';
+import type { EvidencePacket, Run, RunEvent, RunLive, RunStep } from '../../../entities/run';
 import type { MockRunMonitorData } from './runMonitorMock';
 import { RUN_MONITOR_REFRESH_INTERVAL_MS, shouldRefreshRunLive } from './runMonitorViewModel';
 
 const EVIDENCE_LOAD_ERROR_MESSAGE = 'Evidence packet을 아직 불러오지 못했습니다. Runner callback 저장이 완료되면 표시됩니다.';
+const STEP_LOAD_ERROR_MESSAGE = 'Step 목록을 아직 불러오지 못했습니다. Run 상태 스냅샷으로 대신 표시합니다.';
+const EVENT_LOAD_ERROR_MESSAGE = 'Event timeline을 아직 불러오지 못했습니다. Step 상태로 대신 표시합니다.';
 
 export interface RunMonitorState {
   run: Run;
@@ -17,6 +19,12 @@ export interface RunMonitorState {
   evidencePacket: EvidencePacket | null;
   isEvidenceLoading: boolean;
   evidenceLoadError: string;
+  runSteps: RunStep[];
+  isStepLoading: boolean;
+  stepLoadError: string;
+  runEvents: RunEvent[];
+  isEventLoading: boolean;
+  eventLoadError: string;
 }
 
 export function useRunMonitorState(runId: string, mockData: MockRunMonitorData, isMockRun: boolean): RunMonitorState {
@@ -29,6 +37,12 @@ export function useRunMonitorState(runId: string, mockData: MockRunMonitorData, 
   const [evidencePacket, setEvidencePacket] = useState<EvidencePacket | null>(null);
   const [isEvidenceLoading, setIsEvidenceLoading] = useState(false);
   const [evidenceLoadError, setEvidenceLoadError] = useState('');
+  const [runSteps, setRunSteps] = useState<RunStep[]>([]);
+  const [isStepLoading, setIsStepLoading] = useState(false);
+  const [stepLoadError, setStepLoadError] = useState('');
+  const [runEvents, setRunEvents] = useState<RunEvent[]>([]);
+  const [isEventLoading, setIsEventLoading] = useState(false);
+  const [eventLoadError, setEventLoadError] = useState('');
   const liveStatusRef = useRef(live.status);
 
   useEffect(() => {
@@ -52,6 +66,12 @@ export function useRunMonitorState(runId: string, mockData: MockRunMonitorData, 
       setEvidencePacket(null);
       setIsEvidenceLoading(false);
       setEvidenceLoadError('');
+      setRunSteps([]);
+      setIsStepLoading(false);
+      setStepLoadError('');
+      setRunEvents([]);
+      setIsEventLoading(false);
+      setEventLoadError('');
       return;
     }
 
@@ -88,9 +108,16 @@ export function useRunMonitorState(runId: string, mockData: MockRunMonitorData, 
       if (isInitialLoad) {
         setIsRealRunLoading(true);
       }
+      setIsStepLoading(true);
+      setIsEventLoading(true);
 
       try {
-        const [runResponse, liveResponse] = await Promise.all([getRun(runId), getRunLive(runId)]);
+        const [runResponse, liveResponse, stepsResponse, eventsResponse] = await Promise.all([
+          getRun(runId),
+          getRunLive(runId),
+          listRunSteps(runId).catch(() => null),
+          listRunEvents(runId, { limit: 50 }).catch(() => null),
+        ]);
 
         if (!isActive) {
           return;
@@ -103,6 +130,24 @@ export function useRunMonitorState(runId: string, mockData: MockRunMonitorData, 
         setHasRealRunSnapshot(true);
         setApiLoadError('');
         setIsRealRunLoading(false);
+        setIsStepLoading(false);
+        setIsEventLoading(false);
+
+        if (stepsResponse) {
+          setRunSteps(stepsResponse.data);
+          setStepLoadError('');
+        } else {
+          setRunSteps([]);
+          setStepLoadError(STEP_LOAD_ERROR_MESSAGE);
+        }
+
+        if (eventsResponse) {
+          setRunEvents(eventsResponse.data);
+          setEventLoadError('');
+        } else {
+          setRunEvents([]);
+          setEventLoadError(EVENT_LOAD_ERROR_MESSAGE);
+        }
 
         if (shouldRefreshRunLive(liveResponse.data.status)) {
           refreshTimerId = window.setTimeout(() => void loadRunState(false), RUN_MONITOR_REFRESH_INTERVAL_MS);
@@ -121,6 +166,12 @@ export function useRunMonitorState(runId: string, mockData: MockRunMonitorData, 
         setIsApiFallback(false);
         setApiLoadError('Run 상태를 불러오지 못했습니다. URL 또는 접근 권한을 확인한 뒤 다시 시도해주세요.');
         setIsRealRunLoading(false);
+        setRunSteps([]);
+        setIsStepLoading(false);
+        setStepLoadError('');
+        setRunEvents([]);
+        setIsEventLoading(false);
+        setEventLoadError('');
         clearEvidenceState();
 
         if (!isInitialLoad && shouldRefreshRunLive(liveStatusRef.current)) {
@@ -147,5 +198,11 @@ export function useRunMonitorState(runId: string, mockData: MockRunMonitorData, 
     evidencePacket,
     isEvidenceLoading,
     evidenceLoadError,
+    runSteps,
+    isStepLoading,
+    stepLoadError,
+    runEvents,
+    isEventLoading,
+    eventLoadError,
   };
 }

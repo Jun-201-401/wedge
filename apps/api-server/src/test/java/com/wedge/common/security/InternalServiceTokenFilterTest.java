@@ -27,6 +27,7 @@ class InternalServiceTokenFilterTest {
         SecurityContextHolder.clearContext();
         filter = new InternalServiceTokenFilter(new JsonAuthenticationEntryPoint(new ObjectMapper()));
         ReflectionTestUtils.setField(filter, "serviceToken", "internal-token");
+        ReflectionTestUtils.setField(filter, "mcpServiceToken", "mcp-token");
         ReflectionTestUtils.setField(filter, "runnerCallbackSignatureSecret", "signature-secret");
     }
 
@@ -43,6 +44,13 @@ class InternalServiceTokenFilterTest {
         request.addHeader("Authorization", "Bearer internal-token");
 
         assertThat(filter.shouldNotFilter(request)).isTrue();
+    }
+
+    @Test
+    void mcpEndpointRequiresServiceTokenFilter() {
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/mcp");
+
+        assertThat(filter.shouldNotFilter(request)).isFalse();
     }
 
     @Test
@@ -87,6 +95,36 @@ class InternalServiceTokenFilterTest {
 
         assertThat(response.getStatus()).isEqualTo(200);
         assertThat(chainCalled.get()).isTrue();
+    }
+
+    @Test
+    void mcpEndpointAcceptsMcpServiceTokenAndSetsMcpClientRole() throws Exception {
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/mcp");
+        request.addHeader("Authorization", "Bearer mcp-token");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        AtomicBoolean chainCalled = new AtomicBoolean(false);
+
+        filter.doFilter(request, response, (servletRequest, servletResponse) -> chainCalled.set(true));
+
+        assertThat(response.getStatus()).isEqualTo(200);
+        assertThat(chainCalled.get()).isTrue();
+        assertThat(SecurityContextHolder.getContext().getAuthentication().getName()).isEqualTo("mcp-client");
+        assertThat(SecurityContextHolder.getContext().getAuthentication().getAuthorities())
+                .extracting("authority")
+                .containsExactly("ROLE_MCP_CLIENT");
+    }
+
+    @Test
+    void mcpEndpointRejectsInternalRunnerToken() throws Exception {
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/mcp");
+        request.addHeader("Authorization", "Bearer internal-token");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        AtomicBoolean chainCalled = new AtomicBoolean(false);
+
+        filter.doFilter(request, response, (servletRequest, servletResponse) -> chainCalled.set(true));
+
+        assertThat(response.getStatus()).isEqualTo(401);
+        assertThat(chainCalled.get()).isFalse();
     }
 
     private MockHttpServletRequest runnerRequest(String body, String signature) {

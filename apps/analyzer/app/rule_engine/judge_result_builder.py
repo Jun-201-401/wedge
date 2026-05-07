@@ -8,6 +8,7 @@ from app.providers import SemanticProviderPort
 from app.normalization import SemanticLabelResolver
 from app.rule_engine.evaluator import RuleEngine
 from app.rule_engine.models import RuleHit
+from app.rule_engine.observation_priority import legacy_component_priorities, stage_observation_priorities
 from app.rule_engine.registry_loader import load_default_registry
 from app.rule_engine.scoring import friction_score, overall_risk, stage_scores_from_issues
 from app.stage.stage_context_builder import StageContext, StageContextBuilder
@@ -24,6 +25,8 @@ def analyze_evidence_packet(
         contexts = SemanticLabelResolver(semantic_provider).enrich(contexts)
     hits = RuleEngine().evaluate(contexts=contexts, registry=registry)
     issues = _issues_from_hits(hits)
+    issues = _attach_evidence_locations(issues, contexts)
+    observation_priorities = stage_observation_priorities(contexts, issues)
     stage_scores = stage_scores_from_issues(issues)
     friction = friction_score(stage_scores)
 
@@ -41,6 +44,8 @@ def analyze_evidence_packet(
         "stage_scores": stage_scores,
         "issues": issues,
         "decision_map": _decision_map(contexts, issues),
+        "stage_observation_priorities": observation_priorities,
+        "stage_component_priorities": legacy_component_priorities(observation_priorities),
         "scenario_mismatch_report": _scenario_mismatch_report(packet),
         "nudges": _nudges_from_issues(issues),
         "llm_notes": [
@@ -53,6 +58,125 @@ def analyze_evidence_packet(
 
 def _issues_from_hits(hits: list[RuleHit]) -> list[dict[str, Any]]:
     return [hit.to_issue(f"issue_{index:03d}") for index, hit in enumerate(hits, start=1)]
+
+
+def _attach_evidence_locations(
+    issues: list[dict[str, Any]],
+    contexts: dict[DecisionStage, StageContext],
+) -> list[dict[str, Any]]:
+    location_index = _evidence_location_index(contexts)
+    located_issues: list[dict[str, Any]] = []
+    for issue in issues:
+        locations = [
+            location_index[ref]
+            for ref in issue.get("evidence_refs") or []
+            if isinstance(ref, str) and ref in location_index
+        ]
+        if locations:
+            located_issues.append({**issue, "evidence_locations": locations})
+        else:
+            located_issues.append(issue)
+    return located_issues
+
+
+def _evidence_location_index(contexts: dict[DecisionStage, StageContext]) -> dict[str, dict[str, Any]]:
+    checkpoint_by_id: dict[str, dict[str, Any]] = {}
+    for context in contexts.values():
+        for checkpoint in context.checkpoints:
+            checkpoint_id = str(checkpoint.get("checkpoint_id") or "")
+            if checkpoint_id:
+                checkpoint_by_id[checkpoint_id] = checkpoint
+
+    locations: dict[str, dict[str, Any]] = {}
+    for context in contexts.values():
+        for record in context.observations:
+            location = _location_from_observation_record(record, checkpoint_by_id.get(record.checkpoint_id))
+            locations[record.ref] = location
+    return locations
+
+
+def _location_from_observation_record(record: Any, checkpoint: dict[str, Any] | None) -> dict[str, Any]:
+    observation = record.observation
+    data = observation.get("data") if isinstance(observation.get("data"), dict) else {}
+    location: dict[str, Any] = {
+        "evidence_ref": record.ref,
+        "checkpoint_id": record.checkpoint_id,
+        "observation_id": record.observation_id,
+        "type": observation.get("type"),
+        "stage": observation.get("stage") or record.stage,
+        "source": observation.get("source") or [],
+    }
+    if observation.get("confidence") is not None:
+        location["confidence"] = observation.get("confidence")
+    if checkpoint:
+        artifact_refs = checkpoint.get("artifact_refs")
+        if isinstance(artifact_refs, list):
+            location["artifact_refs"] = artifact_refs
+        viewport = _viewport_from_checkpoint(checkpoint)
+        if viewport:
+            location["viewport"] = viewport
+
+    for key in ("text", "visible_text", "selector", "role", "tag", "bounds"):
+        value = data.get(key)
+        if value is not None:
+            location[key] = value
+
+    components = _component_locations(data.get("components"))
+    if components:
+        location["components"] = components
+        problem_components = [
+            component
+            for component in components
+            if component.get("is_primary_like") is True or component.get("clicked_in_scenario") is True
+        ]
+        if problem_components:
+            location["problem_components"] = problem_components
+    items = _component_locations(data.get("items"))
+    if items:
+        location["items"] = items
+    return location
+
+
+def _component_locations(value: Any) -> list[dict[str, Any]]:
+    if not isinstance(value, list):
+        return []
+    components: list[dict[str, Any]] = []
+    for component in value:
+        if not isinstance(component, dict):
+            continue
+        item = {
+            key: component[key]
+            for key in (
+                "text",
+                "selector",
+                "role",
+                "tag",
+                "clickable",
+                "clicked_in_scenario",
+                "is_cta_candidate",
+                "is_primary_like",
+                "bounds",
+            )
+            if key in component
+        }
+        if item:
+            components.append(item)
+    return components
+
+
+def _viewport_from_checkpoint(checkpoint: dict[str, Any]) -> dict[str, Any] | None:
+    state = checkpoint.get("state")
+    if not isinstance(state, dict):
+        return None
+    viewport = state.get("viewport")
+    if isinstance(viewport, dict):
+        return viewport
+    layout_summary = state.get("layout_summary")
+    if isinstance(layout_summary, dict):
+        first_view = layout_summary.get("first_view")
+        if isinstance(first_view, dict):
+            return first_view
+    return None
 
 
 def _task_success(packet: dict[str, Any], issues: list[dict[str, Any]]) -> str:

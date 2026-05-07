@@ -1,6 +1,7 @@
 package com.wedge.analysis.infrastructure;
 
 import com.wedge.analysis.domain.AnalysisJob;
+import java.time.OffsetDateTime;
 import java.util.Optional;
 import java.util.UUID;
 import org.apache.ibatis.annotations.Mapper;
@@ -13,6 +14,12 @@ public interface AnalysisJobMapper {
     Optional<AnalysisJob> findLatestByRunId(@Param("runId") UUID runId);
 
     int insertQueued(AnalysisJob analysisJob);
+
+    int markRunning(
+            @Param("id") UUID id,
+            @Param("runId") UUID runId,
+            @Param("startedAt") OffsetDateTime startedAt
+    );
 
     int upsertCompleted(AnalysisJob analysisJob);
 

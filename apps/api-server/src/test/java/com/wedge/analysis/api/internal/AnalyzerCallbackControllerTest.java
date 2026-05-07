@@ -27,6 +27,26 @@ class AnalyzerCallbackControllerTest {
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Test
+    void startedCallbackReturnsDataEnvelope() throws Exception {
+        UUID analysisJobId = UUID.randomUUID();
+        UUID runId = UUID.randomUUID();
+        when(analyzerCallbackService.handleStarted(eq(analysisJobId), any(), any()))
+                .thenReturn(Map.of("analysisJobId", analysisJobId, "runId", runId, "status", "RUNNING"));
+
+        mockMvc.perform(post("/internal/analysis/jobs/{analysisJobId}/started", analysisJobId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .header("X-Request-Id", "req_analyzer_started")
+                        .header("X-Worker-Id", "analyzer_001")
+                        .header("X-Event-Id", "evt_analyzer_started_001")
+                        .header("X-Signature", "hmac-sha256=sig")
+                        .content(objectMapper.writeValueAsString(startedPayload(analysisJobId, runId))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.analysisJobId").value(analysisJobId.toString()))
+                .andExpect(jsonPath("$.data.status").value("RUNNING"))
+                .andExpect(jsonPath("$.meta.requestId").value("req_analyzer_started"));
+    }
+
+    @Test
     void completedCallbackReturnsDataEnvelope() throws Exception {
         UUID analysisJobId = UUID.randomUUID();
         UUID runId = UUID.randomUUID();
@@ -44,6 +64,14 @@ class AnalyzerCallbackControllerTest {
                 .andExpect(jsonPath("$.data.analysisJobId").value(analysisJobId.toString()))
                 .andExpect(jsonPath("$.data.status").value("COMPLETED"))
                 .andExpect(jsonPath("$.meta.requestId").value("req_analyzer_completed"));
+    }
+
+    private Map<String, Object> startedPayload(UUID analysisJobId, UUID runId) {
+        return Map.of(
+                "analysisJobId", analysisJobId,
+                "runId", runId,
+                "startedAt", "2026-04-28T10:59:00+09:00"
+        );
     }
 
     private Map<String, Object> completedPayload(UUID analysisJobId, UUID runId) {

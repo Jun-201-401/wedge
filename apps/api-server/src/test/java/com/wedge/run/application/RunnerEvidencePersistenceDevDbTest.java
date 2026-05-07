@@ -59,6 +59,9 @@ class RunnerEvidencePersistenceDevDbTest {
     private static final String STEP_COMPLETED_EVENT_ID = "dev-db-runner-step-completed-event";
     private static final String CHECKPOINT_EVENT_ID = "dev-db-runner-checkpoints-event";
     private static final String ARTIFACT_EVENT_ID = "dev-db-runner-artifacts-event";
+    private static final String DUPLICATE_STEP_EVENT_ID = "dev-db-runner-step-duplicate-event";
+    private static final String DUPLICATE_CHECKPOINT_EVENT_ID = "dev-db-runner-checkpoints-duplicate-event";
+    private static final String DUPLICATE_ARTIFACT_EVENT_ID = "dev-db-runner-artifacts-duplicate-event";
 
     @Autowired
     private RunnerCallbackService runnerCallbackService;
@@ -214,6 +217,58 @@ class RunnerEvidencePersistenceDevDbTest {
         assertThat((String) events.get(0).get("payload_jsonb")).contains("dev-db step event");
     }
 
+    @Test
+    void duplicateRunnerCallbacksUseProcessedMessageAndDoNotPersistRowsAgain() {
+        RunnerCallbackAckResponse firstStepResponse = runnerCallbackService.handleStepEvents(
+                RUN_ID,
+                stepEventsCommand("STEP_STARTED", "2026-04-28T00:00:00Z"),
+                context(DUPLICATE_STEP_EVENT_ID)
+        );
+        RunnerCallbackAckResponse duplicateStepResponse = runnerCallbackService.handleStepEvents(
+                RUN_ID,
+                stepEventsCommand("STEP_STARTED", "2026-04-28T00:00:00Z"),
+                context(DUPLICATE_STEP_EVENT_ID)
+        );
+
+        RunnerCallbackAckResponse firstCheckpointResponse = runnerCallbackService.handleCheckpoints(
+                RUN_ID,
+                checkpointCommand(),
+                context(DUPLICATE_CHECKPOINT_EVENT_ID)
+        );
+        RunnerCallbackAckResponse duplicateCheckpointResponse = runnerCallbackService.handleCheckpoints(
+                RUN_ID,
+                checkpointCommand(),
+                context(DUPLICATE_CHECKPOINT_EVENT_ID)
+        );
+
+        RunnerCallbackAckResponse firstArtifactResponse = runnerCallbackService.handleArtifacts(
+                RUN_ID,
+                artifactCommand(),
+                context(DUPLICATE_ARTIFACT_EVENT_ID)
+        );
+        RunnerCallbackAckResponse duplicateArtifactResponse = runnerCallbackService.handleArtifacts(
+                RUN_ID,
+                artifactCommand(),
+                context(DUPLICATE_ARTIFACT_EVENT_ID)
+        );
+
+        assertThat(firstStepResponse.duplicate()).isNull();
+        assertThat(duplicateStepResponse.duplicate()).isTrue();
+        assertThat(firstCheckpointResponse.duplicate()).isNull();
+        assertThat(duplicateCheckpointResponse.duplicate()).isTrue();
+        assertThat(firstArtifactResponse.duplicate()).isNull();
+        assertThat(duplicateArtifactResponse.duplicate()).isTrue();
+
+        assertThat(countRows("SELECT COUNT(*) FROM test_run_event WHERE run_id = ?", RUN_ID)).isEqualTo(1);
+        assertThat(countRows("SELECT COUNT(*) FROM checkpoint WHERE run_id = ?", RUN_ID)).isEqualTo(1);
+        assertThat(countRows("SELECT COUNT(*) FROM observation WHERE run_id = ?", RUN_ID)).isEqualTo(1);
+        assertThat(countRows("SELECT COUNT(*) FROM artifact WHERE run_id = ?", RUN_ID)).isEqualTo(1);
+
+        assertThat(countProcessedMessage("runner.step-events", DUPLICATE_STEP_EVENT_ID)).isEqualTo(1);
+        assertThat(countProcessedMessage("runner.checkpoints", DUPLICATE_CHECKPOINT_EVENT_ID)).isEqualTo(1);
+        assertThat(countProcessedMessage("runner.artifacts", DUPLICATE_ARTIFACT_EVENT_ID)).isEqualTo(1);
+    }
+
     private RunnerCheckpointsCommand checkpointCommand() {
         return new RunnerCheckpointsCommand(List.of(new RunnerCheckpointCommand(
                 "cp_dev_db_001",
@@ -342,14 +397,17 @@ class RunnerEvidencePersistenceDevDbTest {
         jdbcTemplate.update("DELETE FROM artifact WHERE run_id = ?", RUN_ID);
         jdbcTemplate.update("DELETE FROM test_run_event WHERE run_id = ?", RUN_ID);
         jdbcTemplate.update(
-                "DELETE FROM processed_message WHERE consumer_name IN (?, ?, ?) AND message_id IN (?, ?, ?, ?)",
+                "DELETE FROM processed_message WHERE consumer_name IN (?, ?, ?) AND message_id IN (?, ?, ?, ?, ?, ?, ?)",
                 "runner.step-events",
                 "runner.checkpoints",
                 "runner.artifacts",
                 STEP_STARTED_EVENT_ID,
                 STEP_COMPLETED_EVENT_ID,
                 CHECKPOINT_EVENT_ID,
-                ARTIFACT_EVENT_ID
+                ARTIFACT_EVENT_ID,
+                DUPLICATE_STEP_EVENT_ID,
+                DUPLICATE_CHECKPOINT_EVENT_ID,
+                DUPLICATE_ARTIFACT_EVENT_ID
         );
         jdbcTemplate.update("DELETE FROM test_run_step WHERE run_id = ?", RUN_ID);
         jdbcTemplate.update("DELETE FROM test_run WHERE id = ?", RUN_ID);
@@ -365,5 +423,18 @@ class RunnerEvidencePersistenceDevDbTest {
 
     private UUID selectUuid(String sql, Object... arguments) {
         return jdbcTemplate.queryForObject(sql, UUID.class, arguments);
+    }
+
+    private long countRows(String sql, Object... arguments) {
+        Long count = jdbcTemplate.queryForObject(sql, Long.class, arguments);
+        return count == null ? 0L : count;
+    }
+
+    private long countProcessedMessage(String consumerName, String messageId) {
+        return countRows(
+                "SELECT COUNT(*) FROM processed_message WHERE consumer_name = ? AND message_id = ?",
+                consumerName,
+                messageId
+        );
     }
 }

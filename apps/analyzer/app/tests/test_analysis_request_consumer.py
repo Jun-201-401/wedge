@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 from typing import Any
 
-from app.clients import SpringCallbackResponse
+from app.clients import SpringCallbackError, SpringCallbackResponse
 from app.workers import (
     AnalysisConsumerConfig,
     AnalysisRequestConsumer,
@@ -23,8 +23,19 @@ def load_sample_packet() -> dict[str, Any]:
 
 class FakeCallbackClient:
     def __init__(self) -> None:
+        self.started: list[dict[str, Any]] = []
         self.completed: list[dict[str, Any]] = []
         self.failed: list[dict[str, Any]] = []
+
+    def send_started(
+        self,
+        *,
+        analysis_job_id: str,
+        payload: dict[str, Any],
+        event_id: str,
+    ) -> SpringCallbackResponse:
+        self.started.append({"analysisJobId": analysis_job_id, "payload": payload, "eventId": event_id})
+        return SpringCallbackResponse(status_code=200, body={"data": {"status": "RUNNING"}})
 
     def send_completed(
         self,
@@ -45,6 +56,18 @@ class FakeCallbackClient:
     ) -> SpringCallbackResponse:
         self.failed.append({"analysisJobId": analysis_job_id, "payload": payload, "eventId": event_id})
         return SpringCallbackResponse(status_code=200, body={"data": {"status": "FAILED"}})
+
+
+class StartedFailingCallbackClient(FakeCallbackClient):
+    def send_started(
+        self,
+        *,
+        analysis_job_id: str,
+        payload: dict[str, Any],
+        event_id: str,
+    ) -> SpringCallbackResponse:
+        self.started.append({"analysisJobId": analysis_job_id, "payload": payload, "eventId": event_id})
+        raise SpringCallbackError(404, '{"error":"not found"}')
 
 
 class FakeEvidenceClient:
@@ -117,13 +140,47 @@ class AnalysisRequestConsumerTest(unittest.TestCase):
 
         result = consumer.process_raw_message(raw_message)
 
+        self.assertEqual(result["startedCallbackStatusCode"], 200)
+        self.assertIsNone(result["startedCallbackError"])
         self.assertEqual(result["callbackStatusCode"], 200)
         self.assertEqual(evidence_client.packet_ids, ["44444444-4444-4444-4444-444444444444"])
+        self.assertEqual(len(callback_client.started), 1)
+        self.assertEqual(callback_client.started[0]["eventId"], "analysis.request.22222222-2222-2222-2222-222222222222.started")
+        self.assertEqual(callback_client.started[0]["payload"]["analysisJobId"], "22222222-2222-2222-2222-222222222222")
         self.assertEqual(len(callback_client.completed), 1)
         payload = callback_client.completed[0]["payload"]
         self.assertEqual(payload["analysisJobId"], "22222222-2222-2222-2222-222222222222")
         self.assertEqual(payload["runId"], "11111111-1111-1111-1111-111111111111")
         self.assertEqual([issue["criterion_id"] for issue in payload["judgeResult"]["issues"]], ["PATH-CTA-002"])
+
+    def test_started_callback_failure_does_not_block_completed_callback(self) -> None:
+        packet = load_sample_packet()
+        callback_client = StartedFailingCallbackClient()
+        evidence_client = FakeEvidenceClient(packet)
+        consumer = AnalysisRequestConsumer(
+            config=_config(),
+            callback_client=callback_client,  # type: ignore[arg-type]
+            evidence_client=evidence_client,  # type: ignore[arg-type]
+        )
+        raw_message = json.dumps(
+            {
+                "messageType": "analysis.request",
+                "payload": {
+                    "analysisJobId": "22222222-2222-2222-2222-222222222222",
+                    "runId": "11111111-1111-1111-1111-111111111111",
+                    "evidencePacketId": "44444444-4444-4444-4444-444444444444",
+                },
+            }
+        )
+
+        result = consumer.process_raw_message(raw_message)
+
+        self.assertIsNone(result["startedCallbackStatusCode"])
+        self.assertIn("HTTP 404", result["startedCallbackError"])
+        self.assertEqual(result["callbackStatusCode"], 200)
+        self.assertEqual(len(callback_client.started), 1)
+        self.assertEqual(len(callback_client.completed), 1)
+        self.assertEqual(len(callback_client.failed), 0)
 
     def test_inline_evidence_packet_without_id_is_rejected(self) -> None:
         raw_message = json.dumps(

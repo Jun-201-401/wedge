@@ -10,7 +10,7 @@ import { createCapturePipeline } from "../src/capture/index.ts";
 import { executeScenario } from "../src/scenario/executor/index.ts";
 import { executeScenarioStep } from "../src/scenario/executor/step-executor.ts";
 import { createArtifactStore } from "../src/storage/index.ts";
-import type { ScenarioPlan, ScenarioStep } from "../src/shared/contracts.ts";
+import type { Checkpoint, ScenarioPlan, ScenarioStep } from "../src/shared/contracts.ts";
 import { createMinimalPlan, createRunnerTestConfig, createStubCallbackClient } from "./support.ts";
 
 test("[Playwright 실제 실행] goto/fill/select를 수행하고 실제 screenshot과 DOM snapshot을 캡처한다", async () => {
@@ -451,6 +451,23 @@ test("[MVP 랜딩 CTA] 첫 화면 checkpoint 후 CTA 클릭과 도착 화면 che
       "landing_002_first_view_checkpoint",
       "landing_005_cta_destination_checkpoint"
     ]);
+
+    const firstViewCheckpoint = findCheckpoint(result.checkpoints, "landing_002_first_view_checkpoint");
+    const interactiveComponents = findObservation(firstViewCheckpoint, "interactive_components");
+    const components = readRecordArray(interactiveComponents, "components");
+    const primaryComponents = components.filter((component) => component.is_primary_like === true);
+    const startFreeComponent = components.find((component) => component.text === "Start free");
+
+    assert.equal(interactiveComponents.stage, "CTA");
+    assert.equal(interactiveComponents.primary_like_component_count, primaryComponents.length);
+    assert.equal(primaryComponents.length, 1);
+    assert.equal(startFreeComponent?.selector, "#hero-cta");
+    assert.equal(startFreeComponent?.role, "link");
+    assert.equal(startFreeComponent?.is_cta_candidate, true);
+    assert.equal(startFreeComponent?.is_primary_like, true);
+    assert.equal(startFreeComponent?.bounds?.unit, "css_px");
+    assert.ok(readPositiveNumber(startFreeComponent?.bounds, "width") > 0);
+    assert.ok(readPositiveNumber(startFreeComponent?.bounds, "height") > 0);
   } finally {
     await rm(fixtureRoot, { recursive: true, force: true });
     await rm(artifactsRoot, { recursive: true, force: true });
@@ -1361,6 +1378,7 @@ async function executeRealScenarioPlan({
   const capturePipeline = createCapturePipeline();
   const artifactStore = createArtifactStore(config);
   const checkpointStepKeys: string[] = [];
+  const checkpoints: Checkpoint[] = [];
   const domSnapshotKeys: string[] = [];
   const session = await browserFactory.createSession({ runId, plan });
 
@@ -1379,6 +1397,7 @@ async function executeRealScenarioPlan({
         },
         sendCheckpoints: async (_callbackRunId, payload) => {
           checkpointStepKeys.push(...payload.checkpoints.map((checkpoint) => checkpoint.stepKey));
+          checkpoints.push(...payload.checkpoints);
         }
       }),
       capturePipeline,
@@ -1393,6 +1412,7 @@ async function executeRealScenarioPlan({
       execution,
       snapshot,
       checkpointStepKeys,
+      checkpoints,
       domSnapshots
     };
   } finally {
@@ -1442,6 +1462,32 @@ function resolveEnvNumber(value: string | undefined, fallback: number): number {
 
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
+}
+
+function findCheckpoint(checkpoints: Checkpoint[], stepKey: string): Checkpoint {
+  const checkpoint = checkpoints.find((candidate) => candidate.stepKey === stepKey);
+  assert.ok(checkpoint, `Expected checkpoint for stepKey=${stepKey}`);
+  return checkpoint;
+}
+
+function findObservation(checkpoint: Checkpoint, type: string): Record<string, unknown> {
+  const observation = checkpoint.observations.find((candidate) => candidate.type === type);
+  assert.ok(observation, `Expected ${type} observation in checkpoint=${checkpoint.stepKey}`);
+  return observation;
+}
+
+function readRecordArray(source: Record<string, unknown>, key: string): Record<string, unknown>[] {
+  const value = source[key];
+  assert.ok(Array.isArray(value), `Expected ${key} to be an array`);
+  return value.filter((entry): entry is Record<string, unknown> => typeof entry === "object" && entry !== null && !Array.isArray(entry));
+}
+
+function readPositiveNumber(source: unknown, key: string): number {
+  assert.ok(typeof source === "object" && source !== null && !Array.isArray(source), `Expected source for ${key} to be an object`);
+  const value = (source as Record<string, unknown>)[key];
+  assert.equal(typeof value, "number", `Expected ${key} to be numeric`);
+  assert.ok(Number.isFinite(value), `Expected ${key} to be finite`);
+  return value;
 }
 
 function createPlaywrightBrowserFactory(artifactsRoot: string) {
