@@ -5,11 +5,25 @@ import type { AgentDecision } from "./planner.ts";
 export interface AgentPolicyResult {
   allowed: boolean;
   reason: string;
-  riskClass: "LOW" | "PAYMENT_COMMIT" | "DESTRUCTIVE_ACTION";
+  riskClass:
+    | "LOW"
+    | "EXTERNAL_NAVIGATION"
+    | "CHECKOUT_NAVIGATION"
+    | "CART_MUTATION"
+    | "SHIPPING_FORM_ENTRY"
+    | "PAYMENT_INFO_ENTRY"
+    | "PAYMENT_COMMIT"
+    | "DESTRUCTIVE_ACTION"
+    | "EXTERNAL_MESSAGE_SEND";
 }
 
-const FINAL_PAYMENT_PATTERN = /pay now|place order|complete order|submit order|결제하기|주문하기|구매하기|최종 결제/i;
-const DESTRUCTIVE_PATTERN = /delete|remove account|cancel subscription|탈퇴|삭제|구독 취소/i;
+const CHECKOUT_NAVIGATION_PATTERN = /checkout|proceed to checkout|payment|billing|shipping|결제|배송|주문서/i;
+const CART_MUTATION_PATTERN = /add to cart|add to basket|장바구니 담기|카트 담기|담기|cart add|basket add/i;
+const SHIPPING_FORM_PATTERN = /shipping|delivery|address|postal|zip|recipient|phone|배송|주소|우편번호|수령|연락처|전화/i;
+const PAYMENT_INFO_PATTERN = /card|credit|cvc|cvv|expiry|expiration|payment info|카드|신용카드|유효기간|결제정보/i;
+const FINAL_PAYMENT_PATTERN = /pay now|place order|complete order|submit order|confirm purchase|결제하기|주문하기|구매하기|최종 결제|결제 완료/i;
+const DESTRUCTIVE_PATTERN = /delete|remove account|cancel subscription|destroy|탈퇴|삭제|구독 취소|회원 탈퇴/i;
+const EXTERNAL_MESSAGE_PATTERN = /send message|submit inquiry|contact us|문의 보내기|상담 신청|메시지 전송/i;
 
 export function evaluateAgentPolicy(input: {
   task: AgentTask;
@@ -17,6 +31,10 @@ export function evaluateAgentPolicy(input: {
   snapshot: BrowserPageSnapshot;
 }): AgentPolicyResult {
   const targetText = describeDecisionTarget(input.decision);
+  const navigationPolicy = evaluateNavigationPolicy(input.task, input.decision, input.snapshot);
+  if (navigationPolicy) {
+    return navigationPolicy;
+  }
 
   if (input.decision.action.type === "click" && FINAL_PAYMENT_PATTERN.test(targetText)) {
     const allowed = input.task.risk_policy.allow_final_payment_submit || input.task.risk_policy.allow_final_order_commit;
@@ -26,6 +44,48 @@ export function evaluateAgentPolicy(input: {
       reason: allowed
         ? "AgentTask risk policy permits final payment/order commit actions."
         : "AgentTask risk policy blocks final payment/order commit actions."
+    };
+  }
+
+  if (input.decision.action.type === "fill" || input.decision.action.type === "select") {
+    if (PAYMENT_INFO_PATTERN.test(targetText)) {
+      return {
+        allowed: input.task.risk_policy.allow_payment_info_entry,
+        riskClass: "PAYMENT_INFO_ENTRY",
+        reason: input.task.risk_policy.allow_payment_info_entry
+          ? "AgentTask risk policy permits payment information entry."
+          : "AgentTask risk policy blocks payment information entry."
+      };
+    }
+
+    if (SHIPPING_FORM_PATTERN.test(targetText)) {
+      return {
+        allowed: input.task.risk_policy.allow_shipping_form_entry,
+        riskClass: "SHIPPING_FORM_ENTRY",
+        reason: input.task.risk_policy.allow_shipping_form_entry
+          ? "AgentTask risk policy permits shipping/contact form entry."
+          : "AgentTask risk policy blocks shipping/contact form entry."
+      };
+    }
+  }
+
+  if (input.decision.action.type === "click" && CART_MUTATION_PATTERN.test(targetText)) {
+    return {
+      allowed: input.task.risk_policy.allow_cart_mutation,
+      riskClass: "CART_MUTATION",
+      reason: input.task.risk_policy.allow_cart_mutation
+        ? "AgentTask risk policy permits cart mutation actions."
+        : "AgentTask risk policy blocks cart mutation actions."
+    };
+  }
+
+  if (input.decision.action.type === "click" && CHECKOUT_NAVIGATION_PATTERN.test(targetText)) {
+    return {
+      allowed: input.task.risk_policy.allow_checkout_navigation,
+      riskClass: "CHECKOUT_NAVIGATION",
+      reason: input.task.risk_policy.allow_checkout_navigation
+        ? "AgentTask risk policy permits checkout navigation."
+        : "AgentTask risk policy blocks checkout navigation."
     };
   }
 
@@ -39,6 +99,16 @@ export function evaluateAgentPolicy(input: {
     };
   }
 
+  if (input.decision.action.type === "click" && EXTERNAL_MESSAGE_PATTERN.test(targetText)) {
+    return {
+      allowed: input.task.risk_policy.allow_external_message_send,
+      riskClass: "EXTERNAL_MESSAGE_SEND",
+      reason: input.task.risk_policy.allow_external_message_send
+        ? "AgentTask risk policy permits external message sending."
+        : "AgentTask risk policy blocks external message sending."
+    };
+  }
+
   return {
     allowed: true,
     riskClass: "LOW",
@@ -46,8 +116,76 @@ export function evaluateAgentPolicy(input: {
   };
 }
 
+function evaluateNavigationPolicy(
+  task: AgentTask,
+  decision: AgentDecision,
+  snapshot: BrowserPageSnapshot
+): AgentPolicyResult | null {
+  const nextUrl = resolveDecisionNavigationUrl(decision, snapshot.finalUrl);
+  if (!nextUrl) {
+    return null;
+  }
+
+  const currentOrigin = resolveOrigin(snapshot.finalUrl);
+  const nextOrigin = resolveOrigin(nextUrl);
+  if (!currentOrigin || !nextOrigin || currentOrigin === nextOrigin) {
+    return null;
+  }
+
+  const allowedOrigins = new Set([
+    ...task.allowed_navigation.allowed_origins ?? [],
+    ...task.allowed_navigation.allowed_checkout_redirect_origins ?? []
+  ].map((origin) => normalizeOrigin(origin)).filter((origin): origin is string => origin !== null));
+
+  const allowed = task.allowed_navigation.allow_external_navigation || allowedOrigins.has(nextOrigin);
+  return {
+    allowed,
+    riskClass: "EXTERNAL_NAVIGATION",
+    reason: allowed
+      ? `AgentTask navigation policy permits external navigation to ${nextOrigin}.`
+      : `AgentTask navigation policy blocks external navigation from ${currentOrigin} to ${nextOrigin}.`
+  };
+}
+
+function resolveDecisionNavigationUrl(decision: AgentDecision, baseUrl: string): string | null {
+  if (decision.action.type !== "goto" && decision.action.type !== "click") {
+    return null;
+  }
+
+  const target = decision.action.target;
+  if (!target || typeof target !== "object" || !("url" in target) || typeof target.url !== "string") {
+    return null;
+  }
+
+  try {
+    return new URL(target.url, baseUrl).href;
+  } catch {
+    return null;
+  }
+}
+
+function resolveOrigin(url: string): string | null {
+  try {
+    return new URL(url).origin;
+  } catch {
+    return null;
+  }
+}
+
+function normalizeOrigin(value: string): string | null {
+  try {
+    return new URL(value).origin;
+  } catch {
+    return null;
+  }
+}
+
 function describeDecisionTarget(decision: AgentDecision): string {
   const target = decision.action.target;
+
+  if (typeof target === "string") {
+    return target;
+  }
 
   if (!target || typeof target !== "object") {
     return "";
@@ -57,6 +195,10 @@ function describeDecisionTarget(decision: AgentDecision): string {
     "text" in target ? target.text : null,
     "role" in target ? target.role : null,
     "label" in target ? target.label : null,
+    "placeholder" in target ? target.placeholder : null,
+    "name" in target ? target.name : null,
+    "href_contains" in target ? target.href_contains : null,
+    "url" in target ? target.url : null,
     "selector" in target ? target.selector : null
   ]
     .filter((value): value is string => typeof value === "string")
