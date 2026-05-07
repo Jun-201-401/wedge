@@ -18,6 +18,7 @@ public record ReportDetailFindingResponse(
         String impactHypothesis,
         List<Object> evidenceRefs,
         ReportPreviewImageResponse previewImage,
+        ReportFindingHighlightResponse highlight,
         List<ReportDetailNudgeResponse> nudges
 ) {
 }

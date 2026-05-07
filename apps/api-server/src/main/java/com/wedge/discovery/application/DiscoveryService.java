@@ -19,9 +19,11 @@ import com.wedge.project.application.ProjectAccessService;
 import java.net.URI;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -50,12 +52,21 @@ public class DiscoveryService {
             SiteDiscovery existing = siteDiscoveryMapper.findByIdempotencyKey(request.projectId(), userId, normalizedIdempotencyKey)
                     .orElse(null);
             if (existing != null) {
-                return toResponse(existing, scenarioRecommendationMapper.findByDiscoveryId(existing.getId()));
+                return toIdempotentReplayResponse(existing, request);
             }
         }
 
         SiteDiscovery discovery = toQueuedDiscovery(request, userId, normalizedIdempotencyKey);
-        siteDiscoveryMapper.insert(discovery);
+        try {
+            siteDiscoveryMapper.insert(discovery);
+        } catch (DuplicateKeyException exception) {
+            if (normalizedIdempotencyKey == null) {
+                throw exception;
+            }
+            SiteDiscovery existing = siteDiscoveryMapper.findByIdempotencyKey(request.projectId(), userId, normalizedIdempotencyKey)
+                    .orElseThrow(() -> exception);
+            return toIdempotentReplayResponse(existing, request);
+        }
         DiscoveryExecuteRequestMessage message = messageFactory.create(discovery, request);
         UUID outboxMessageId = outboxMessagePersistenceAdapter.appendDiscoveryExecuteMessage(message, discovery.getId());
         applicationEventPublisher.publishEvent(new DiscoveryExecuteOutboxEnqueuedEvent(outboxMessageId));
@@ -91,6 +102,28 @@ public class DiscoveryService {
         return discovery;
     }
 
+    private DiscoveryResponse toIdempotentReplayResponse(SiteDiscovery existing, CreateDiscoveryRequest request) {
+        requireSameDiscoveryRequest(existing, request);
+        return toResponse(existing, scenarioRecommendationMapper.findByDiscoveryId(existing.getId()));
+    }
+
+    private void requireSameDiscoveryRequest(SiteDiscovery existing, CreateDiscoveryRequest request) {
+        if (
+                !Objects.equals(existing.getInputUrl(), request.url().toString())
+                        || !Objects.equals(existing.getDevicePreset(), request.devicePreset())
+                        || !readMap(existing.getViewportJsonb()).equals(toViewportMap(request))
+        ) {
+            throw new BusinessException(ErrorCode.STATE_CONFLICT, "Idempotency-Key was reused with a different discovery request.");
+        }
+    }
+
+    private Map<String, Object> toViewportMap(CreateDiscoveryRequest request) {
+        return Map.of(
+                "width", request.viewport() == null ? messageFactory.defaultWidth(request.devicePreset()) : request.viewport().width(),
+                "height", request.viewport() == null ? messageFactory.defaultHeight(request.devicePreset()) : request.viewport().height()
+        );
+    }
+
     private DiscoveryResponse toResponse(SiteDiscovery discovery, List<ScenarioRecommendation> recommendations) {
         return new DiscoveryResponse(
                 discovery.getId(),
@@ -108,11 +141,13 @@ public class DiscoveryService {
 
     private ScenarioRecommendationResponse toRecommendationResponse(ScenarioRecommendation recommendation) {
         return new ScenarioRecommendationResponse(
+                recommendation.getId(),
                 recommendation.getScenarioType(),
                 recommendation.getRecommendationLevel(),
                 recommendation.getConfidence(),
                 recommendation.getReason(),
                 readStringList(recommendation.getEvidenceRefsJsonb()),
+                readMap(recommendation.getEvidenceSummaryJsonb()),
                 recommendation.getSuggestedStartUrl() == null ? null : URI.create(recommendation.getSuggestedStartUrl()),
                 readMap(recommendation.getSuggestedTargetJsonb())
         );

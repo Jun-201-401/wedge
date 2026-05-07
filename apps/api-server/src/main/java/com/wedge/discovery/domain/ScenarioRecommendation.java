@@ -18,6 +18,7 @@ public class ScenarioRecommendation {
     private BigDecimal confidence;
     private String reason;
     private String evidenceRefsJsonb;
+    private String evidenceSummaryJsonb;
     private String suggestedStartUrl;
     private String suggestedTargetJsonb;
     private OffsetDateTime createdAt;

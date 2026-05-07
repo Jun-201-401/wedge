@@ -71,6 +71,7 @@ export function buildMockRunReportData(runId: string, targetUrl: string, scenari
         recommendation: 'CTA 주변에 결과 중심 혜택 문구를 추가하고 버튼 대비를 한 단계 높이세요.',
         highlight: {
           label: 'FRICTION POINT',
+          source: 'fallback',
           top: '43%',
           left: '37%',
           width: '26%',
@@ -94,6 +95,7 @@ export function buildMockRunReportData(runId: string, targetUrl: string, scenari
         recommendation: '고객 수, 보안, 환불 정책처럼 즉시 판단을 돕는 신뢰 정보를 CTA 근처로 올리세요.',
         highlight: {
           label: 'TRUST GAP',
+          source: 'fallback',
           top: '67%',
           left: '17%',
           width: '31%',
@@ -117,6 +119,7 @@ export function buildMockRunReportData(runId: string, targetUrl: string, scenari
         recommendation: 'CTA 하단에 예상 소요 시간과 필수 입력 항목 수를 짧게 안내하세요.',
         highlight: {
           label: 'NEXT STEP GAP',
+          source: 'fallback',
           top: '31%',
           left: '22%',
           width: '56%',
@@ -127,6 +130,7 @@ export function buildMockRunReportData(runId: string, targetUrl: string, scenari
     recommendations: [
       {
         id: 'primary-copy',
+        findingId: 'cta-contrast',
         priority: 'NUDGE #01',
         title: 'CTA 시각적 대비 및 위계 강화',
         detail: '현재 배경색과 버튼색의 대비가 낮아 첫인상에서 CTA를 놓치기 쉽습니다. 버튼의 채도를 높이거나 배경에 은은한 그라데이션을 추가하여 시선을 유도하세요.',
@@ -135,6 +139,7 @@ export function buildMockRunReportData(runId: string, targetUrl: string, scenari
       },
       {
         id: 'trust-signal',
+        findingId: 'trust-delay',
         priority: 'NUDGE #02',
         title: 'CTA 직전 신뢰 요소 배치',
         detail: '사용자가 버튼을 누르기 전 망설이는 지점에 카드 등록 불필요, 언제든 해지 가능 같은 Micro-copy를 배치하여 신뢰 마찰을 줄이세요.',
@@ -143,6 +148,7 @@ export function buildMockRunReportData(runId: string, targetUrl: string, scenari
       },
       {
         id: 'form-expectation',
+        findingId: 'form-context',
         priority: 'NUDGE #03',
         title: 'Form 진입 전 기대치 안내',
         detail: '클릭 후 입력할 항목 수와 완료 시간을 CTA 보조 문구로 안내합니다.',

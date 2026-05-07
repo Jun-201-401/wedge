@@ -27,15 +27,17 @@ export interface ReportFinding {
   recommendation: string;
   highlight: {
     label: string;
+    source?: 'fallback' | 'artifact-coordinate';
     top: string;
     left: string;
     width: string;
     height: string;
-  };
+  } | null;
 }
 
 export interface ReportRecommendation {
   id: string;
+  findingId?: string | null;
   priority: string;
   title: string;
   detail: string;

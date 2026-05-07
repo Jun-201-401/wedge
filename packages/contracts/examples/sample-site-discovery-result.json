@@ -35,7 +35,12 @@
           "data": {
             "text": "Start free",
             "href": "/signup",
-            "is_primary_like": true
+            "is_primary_like": true,
+            "shallow_navigation": {
+              "status": "verified",
+              "destination_url": "https://example.com/signup",
+              "title": "Example Signup"
+            }
           },
           "confidence": 0.86
         },
@@ -108,6 +113,31 @@
       "evidence_refs": [
         "cp_001.obs_002"
       ],
+      "evidence_summary": {
+        "matched_signals": [
+          {
+            "signal_id": "sig_001",
+            "source": "text",
+            "signal_type": "landing_cta_keyword",
+            "value": "Start free",
+            "evidence_ref": "cp_001.obs_002",
+            "weight": 0.35
+          },
+          {
+            "signal_id": "sig_002",
+            "source": "href",
+            "signal_type": "signup_url",
+            "value": "/signup",
+            "evidence_ref": "cp_001.obs_002",
+            "weight": 0.2
+          }
+        ],
+        "missing_signals": [],
+        "limitations": [
+          "image_text_ocr_not_performed",
+          "authenticated_pages_not_explored"
+        ]
+      },
       "suggested_start_url": "https://example.com",
       "suggested_target": {
         "label": "Start free",
@@ -122,6 +152,16 @@
       "evidence_refs": [
         "cp_001.obs_008"
       ],
+      "evidence_summary": {
+        "matched_signals": [],
+        "missing_signals": [
+          "no_purchase_checkout_entrypoint_detected"
+        ],
+        "limitations": [
+          "image_text_ocr_not_performed",
+          "authenticated_pages_not_explored"
+        ]
+      },
       "suggested_start_url": null,
       "suggested_target": null
     }

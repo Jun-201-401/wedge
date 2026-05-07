@@ -4,13 +4,16 @@ import java.math.BigDecimal;
 import java.net.URI;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 public record ScenarioRecommendationResponse(
+        UUID recommendationId,
         String scenarioType,
         String recommendationLevel,
         BigDecimal confidence,
         String reason,
         List<String> evidenceRefs,
+        Map<String, Object> evidenceSummary,
         URI suggestedStartUrl,
         Map<String, Object> suggestedTarget
 ) {

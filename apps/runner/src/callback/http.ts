@@ -32,7 +32,7 @@ async function postRunnerCallback(
 ): Promise<void> {
   const body = JSON.stringify(payload);
   const endpoint = buildRunnerCallbackUrl(config.callbackBaseUrl as string, runId, callbackType);
-  const eventId = randomUUID();
+  const eventId = readPayloadEventId(payload) ?? randomUUID();
   const controller = new AbortController();
   const timeoutHandle = setTimeout(() => controller.abort(), config.callbackTimeoutMs);
 
@@ -83,6 +83,15 @@ function createRunnerCallbackSignature(body: string, secret: string | undefined)
   }
 
   return `hmac-sha256=${createHmac("sha256", secret).update(body).digest("hex")}`;
+}
+
+function readPayloadEventId(payload: unknown): string | undefined {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return undefined;
+  }
+
+  const eventId = (payload as { eventId?: unknown }).eventId;
+  return typeof eventId === "string" && eventId.length > 0 ? eventId : undefined;
 }
 
 function buildRunnerCallbackUrl(baseUrl: string, resourceId: string, callbackType: CallbackType): string {

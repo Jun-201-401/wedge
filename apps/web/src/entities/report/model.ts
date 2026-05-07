@@ -68,6 +68,32 @@ export interface ReportDetailNudge {
   validationQuestion?: string | null;
 }
 
+export type ReportFindingHighlightUnit = 'css_px' | 'screenshot_px' | 'viewport_ratio';
+export type ReportFindingHighlightCoordinateSpace = 'viewport' | 'screenshot' | 'viewport_ratio';
+
+export interface ReportFindingHighlightBounds {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  unit?: ReportFindingHighlightUnit | null;
+}
+
+export interface ReportFindingHighlightViewport {
+  width: number;
+  height: number;
+}
+
+export interface ReportFindingHighlight {
+  evidenceRef?: string | null;
+  label: string;
+  source: 'artifact-coordinate';
+  coordinateSpace?: ReportFindingHighlightCoordinateSpace | null;
+  bounds: ReportFindingHighlightBounds;
+  viewport?: ReportFindingHighlightViewport | null;
+  screenshotArtifactId: string;
+}
+
 export interface ReportDetailFinding {
   id: string;
   rank: number;
@@ -82,6 +108,7 @@ export interface ReportDetailFinding {
   impactHypothesis?: string | null;
   evidenceRefs: Array<Record<string, unknown>>;
   previewImage?: ReportPreviewImage | null;
+  highlight?: ReportFindingHighlight | null;
   nudges: ReportDetailNudge[];
 }
 

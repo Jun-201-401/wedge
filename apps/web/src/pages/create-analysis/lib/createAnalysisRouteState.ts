@@ -1,6 +1,6 @@
 import { normalizeAnalysisUrl } from './createAnalysisUrl';
 
-export type CreateAnalysisRouteStage = 'input' | 'discovering' | 'recommendations' | 'onboarding' | 'ready';
+export type CreateAnalysisRouteStage = 'input' | 'discovering' | 'recommendations' | 'manual-choice' | 'onboarding' | 'ready';
 
 export interface CreateAnalysisRouteState<TScenarioId extends string = string, TDepthId extends string = string> {
   stage: CreateAnalysisRouteStage;
@@ -34,6 +34,7 @@ const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{
 const STEP_TO_STAGE = {
   preflight: 'discovering',
   recommendations: 'recommendations',
+  manual: 'manual-choice',
   setup: 'onboarding',
   ready: 'ready',
 } as const satisfies Record<string, Exclude<CreateAnalysisRouteStage, 'input'>>;
@@ -41,6 +42,7 @@ const STEP_TO_STAGE = {
 const STAGE_TO_STEP = {
   discovering: 'preflight',
   recommendations: 'recommendations',
+  'manual-choice': 'manual',
   onboarding: 'setup',
   ready: 'ready',
 } as const satisfies Record<Exclude<CreateAnalysisRouteStage, 'input'>, string>;
@@ -125,6 +127,47 @@ export function withCreateRunContextFallback<TScenarioId extends string, TDepthI
   };
 }
 
+export function createScenarioReadyRouteState<TScenarioId extends string, TDepthId extends string>(
+  currentState: CreateAnalysisRouteState<TScenarioId, TDepthId>,
+  submittedUrl: string,
+  scenarioId: TScenarioId,
+  defaultDepthId: TDepthId,
+): CreateAnalysisRouteState<TScenarioId, TDepthId> {
+  return {
+    ...currentState,
+    stage: 'ready',
+    submittedUrl,
+    scenarioId,
+    depthId: defaultDepthId,
+  };
+}
+
+export function createRecommendationChoiceRouteState<TScenarioId extends string, TDepthId extends string>(
+  currentState: CreateAnalysisRouteState<TScenarioId, TDepthId>,
+  submittedUrl: string,
+): CreateAnalysisRouteState<TScenarioId, TDepthId> {
+  return {
+    ...currentState,
+    stage: 'recommendations',
+    submittedUrl,
+    scenarioId: null,
+    depthId: null,
+  };
+}
+
+export function createManualChoiceRouteState<TScenarioId extends string, TDepthId extends string>(
+  currentState: CreateAnalysisRouteState<TScenarioId, TDepthId>,
+  submittedUrl: string,
+): CreateAnalysisRouteState<TScenarioId, TDepthId> {
+  return {
+    ...currentState,
+    stage: 'manual-choice',
+    submittedUrl,
+    scenarioId: null,
+    depthId: null,
+  };
+}
+
 export function parseCreateAnalysisRouteState<TScenarioId extends string, TDepthId extends string>(
   search: string,
   options: CreateAnalysisRouteOptions<TScenarioId, TDepthId>,
@@ -144,7 +187,7 @@ export function parseCreateAnalysisRouteState<TScenarioId extends string, TDepth
     return inputRouteState(createRunContext);
   }
 
-  if (parsedStage === 'discovering' || parsedStage === 'recommendations') {
+  if (parsedStage === 'discovering' || parsedStage === 'recommendations' || parsedStage === 'manual-choice') {
     return {
       stage: parsedStage,
       submittedUrl,

@@ -618,6 +618,81 @@
         "observations"
       ]
     },
+    "DiscoveryEvidenceSignal": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "signal_id": {
+          "type": "string"
+        },
+        "source": {
+          "type": "string",
+          "enum": [
+            "text",
+            "aria_label",
+            "aria_labelled_by_text",
+            "label_text",
+            "alt",
+            "title",
+            "href",
+            "selector",
+            "name",
+            "placeholder",
+            "form_field",
+            "shallow_navigation"
+          ]
+        },
+        "signal_type": {
+          "type": "string"
+        },
+        "value": {
+          "type": "string"
+        },
+        "evidence_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "weight": {
+          "type": "number",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "source",
+        "value"
+      ]
+    },
+    "DiscoveryEvidenceSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "matched_signals": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/DiscoveryEvidenceSignal"
+          }
+        },
+        "missing_signals": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "limitations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "matched_signals",
+        "missing_signals",
+        "limitations"
+      ]
+    },
     "DiscoverySummary": {
       "type": "object",
       "additionalProperties": false,
@@ -706,6 +781,16 @@
                 "items": {
                   "type": "string"
                 }
+              },
+              "evidenceSummary": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/DiscoveryEvidenceSummary"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
               },
               "suggestedStartUrl": {
                 "type": "string",

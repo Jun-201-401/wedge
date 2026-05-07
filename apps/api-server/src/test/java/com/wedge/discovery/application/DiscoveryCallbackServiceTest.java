@@ -13,8 +13,10 @@ import com.wedge.common.internal.InternalCallbackContext;
 import com.wedge.discovery.application.command.DiscoveryAcceptedCommand;
 import com.wedge.discovery.application.command.DiscoveryFailedCommand;
 import com.wedge.discovery.application.command.DiscoveryFinishedCommand;
+import com.wedge.discovery.application.command.DiscoveryRecommendationCommand;
 import com.wedge.discovery.application.command.DiscoverySummaryCommand;
 import com.wedge.discovery.domain.DiscoveryStatus;
+import com.wedge.discovery.domain.ScenarioRecommendation;
 import com.wedge.discovery.domain.SiteDiscovery;
 import com.wedge.discovery.infrastructure.ScenarioRecommendationMapper;
 import com.wedge.discovery.infrastructure.SiteDiscoveryMapper;
@@ -28,6 +30,7 @@ import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -129,6 +132,55 @@ class DiscoveryCallbackServiceTest {
 
         assertThat(response.checkpointCount()).isEqualTo(1);
         verify(checkpointPersistenceService).saveDiscoveryCheckpoints(discoveryId, command);
+    }
+
+    @Test
+    void finishedCallbackPersistsRecommendationEvidenceSummary() {
+        UUID discoveryId = UUID.randomUUID();
+        Map<String, Object> evidenceSummary = Map.of(
+                "matched_signals", List.of(Map.of(
+                        "signal_id", "sig_001",
+                        "source", "aria_label",
+                        "signal_type", "contact_keyword",
+                        "value", "Book a demo",
+                        "evidence_ref", "cp_001.obs_003",
+                        "weight", 0.3
+                )),
+                "missing_signals", List.of("safe_submit_boundary_not_verified"),
+                "limitations", List.of("image_text_ocr_not_performed")
+        );
+        DiscoveryFinishedCommand command = new DiscoveryFinishedCommand(
+                WORKER_ID,
+                OffsetDateTime.parse("2026-04-21T10:05:00+09:00"),
+                "https://example.com",
+                new DiscoverySummaryCommand(
+                        List.of("CONTACT"),
+                        List.of(),
+                        0,
+                        0,
+                        0,
+                        0,
+                        List.of(new DiscoveryRecommendationCommand(
+                                "CONTACT",
+                                "HIGH",
+                                new java.math.BigDecimal("0.86"),
+                                "Contact candidate was found.",
+                                List.of("cp_001.obs_003"),
+                                evidenceSummary,
+                                "https://example.com",
+                                Map.of("text", "Book a demo")
+                        ))
+                )
+        );
+        when(processedMessagePersistenceAdapter.tryMarkProcessed("runner.discovery.finished", "evt_finished_001")).thenReturn(true);
+        when(discoveryService.findDiscovery(discoveryId)).thenReturn(discovery(discoveryId, DiscoveryStatus.RUNNING));
+        when(siteDiscoveryMapper.markCompleted(discoveryId, "https://example.com", "{\"detectedFlowTypes\":[\"CONTACT\"],\"missingFlowTypes\":[],\"primaryCtaCount\":0,\"formCandidateCount\":0,\"pricingEntrypointCount\":0,\"checkoutEntrypointCount\":0}", command.finishedAt())).thenReturn(1);
+
+        discoveryCallbackService.handleFinished(discoveryId, command, headers("evt_finished_001"));
+
+        ArgumentCaptor<ScenarioRecommendation> recommendationCaptor = ArgumentCaptor.forClass(ScenarioRecommendation.class);
+        verify(scenarioRecommendationMapper).insert(recommendationCaptor.capture());
+        assertThat(recommendationCaptor.getValue().getEvidenceSummaryJsonb()).contains("matched_signals", "Book a demo", "image_text_ocr_not_performed");
     }
 
     @Test

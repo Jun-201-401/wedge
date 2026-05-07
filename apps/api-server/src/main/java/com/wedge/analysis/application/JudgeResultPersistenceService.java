@@ -231,8 +231,119 @@ public class JudgeResultPersistenceService {
         finding.setConfidence(readDecimal(issue, "confidence", null));
         finding.setPriorityScore(readDecimal(issue, "priority_score", null));
         finding.setImpactHypothesis(readString(issue, "impact_hypothesis", null));
-        finding.setEvidenceRefsJsonb(toJson(readListValue(issue, "evidence_refs")));
+        finding.setEvidenceRefsJsonb(toJson(enrichedEvidenceRefs(issue)));
         return finding;
+    }
+
+    private List<Object> enrichedEvidenceRefs(Map<String, Object> issue) {
+        List<Object> evidenceRefs = readListValue(issue, "evidence_refs");
+        Map<String, Map<String, Object>> componentsByRef = problemComponentsByRef(issue);
+        if (evidenceRefs.isEmpty() || componentsByRef.isEmpty()) {
+            return evidenceRefs;
+        }
+
+        return evidenceRefs.stream()
+                .map(ref -> enrichEvidenceRef(ref, componentsByRef))
+                .toList();
+    }
+
+    private Map<String, Map<String, Object>> problemComponentsByRef(Map<String, Object> issue) {
+        Map<String, Map<String, Object>> componentsByRef = new LinkedHashMap<>();
+        for (Map<String, Object> component : readList(issue, "problem_components")) {
+            String evidenceRef = readString(component, "evidence_ref", null);
+            if (evidenceRef != null && hasUsableProblemComponent(component)) {
+                componentsByRef.put(evidenceRef, component);
+            }
+        }
+
+        if (!componentsByRef.isEmpty()) {
+            return componentsByRef;
+        }
+
+        for (Map<String, Object> location : readList(issue, "evidence_locations")) {
+            for (Map<String, Object> component : readList(location, "problem_components")) {
+                String evidenceRef = readString(component, "evidence_ref", readString(location, "evidence_ref", null));
+                if (evidenceRef == null) {
+                    continue;
+                }
+                Map<String, Object> canonicalComponent = canonicalProblemComponent(component, location, evidenceRef);
+                if (hasUsableProblemComponent(canonicalComponent)) {
+                    componentsByRef.put(evidenceRef, canonicalComponent);
+                }
+            }
+        }
+        return componentsByRef;
+    }
+
+    private boolean hasUsableProblemComponent(Map<String, Object> component) {
+        return readString(component, "screenshot_artifact_id", null) != null
+                && !readMap(component, "bounding_box").isEmpty();
+    }
+
+    private Map<String, Object> canonicalProblemComponent(
+            Map<String, Object> component,
+            Map<String, Object> location,
+            String evidenceRef
+    ) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("evidence_ref", evidenceRef);
+        result.put("label", readString(component, "label", readString(component, "text", null)));
+        result.put("role", readString(component, "role", null));
+        result.put("text", readString(component, "text", null));
+        result.put("selector", readString(component, "selector", null));
+        result.put("coordinate_space", readString(component, "coordinate_space", "viewport"));
+        result.put("bounding_box", readMap(component, "bounding_box").isEmpty() ? readMap(component, "bounds") : readMap(component, "bounding_box"));
+        result.put("viewport", readMap(component, "viewport").isEmpty() ? readMap(location, "viewport") : readMap(component, "viewport"));
+        String screenshotArtifactId = normalizeArtifactRef(readString(
+                component,
+                "screenshot_artifact_id",
+                readString(location, "screenshot_artifact_id", null)
+        ));
+        if (screenshotArtifactId != null) {
+            result.put("screenshot_artifact_id", screenshotArtifactId);
+        }
+        return result;
+    }
+
+    private String normalizeArtifactRef(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        return value.startsWith("artifact:") ? value.substring("artifact:".length()) : value;
+    }
+
+    private Object enrichEvidenceRef(Object ref, Map<String, Map<String, Object>> componentsByRef) {
+        String refId = evidenceRefId(ref);
+        Map<String, Object> component = refId == null ? null : componentsByRef.get(refId);
+        if (component == null) {
+            return ref;
+        }
+
+        Map<String, Object> enriched = new LinkedHashMap<>();
+        if (ref instanceof Map<?, ?> refMap) {
+            refMap.forEach((key, value) -> enriched.put(String.valueOf(key), value));
+        } else {
+            enriched.put("ref", refId);
+        }
+        enriched.put("problemComponent", component);
+        return enriched;
+    }
+
+    private String evidenceRefId(Object ref) {
+        if (ref instanceof String text && !text.isBlank()) {
+            return text;
+        }
+
+        if (ref instanceof Map<?, ?> map) {
+            for (String key : List.of("ref", "id", "reference", "observationId", "observation_id")) {
+                Object value = map.get(key);
+                if (value instanceof String text && !text.isBlank()) {
+                    return text;
+                }
+            }
+        }
+
+        return null;
     }
 
     private Nudge toNudge(UUID analysisJobId, Map<String, Object> payload, int rankOrder, Map<String, UUID> findingIdsByIssueId) {

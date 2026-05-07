@@ -181,6 +181,7 @@ public class DiscoveryRunnerCallbackController {
                 request.confidence(),
                 request.reason(),
                 request.evidenceRefs(),
+                request.evidenceSummary(),
                 request.suggestedStartUrl() == null ? null : request.suggestedStartUrl().toString(),
                 request.suggestedTarget()
         );

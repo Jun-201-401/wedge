@@ -7,5 +7,5 @@ export function getScenarioLabel(scenario: string | null) {
     return '구매 / 결제 흐름 점검';
   }
 
-  return '첫 화면 CTA 점검';
+  return '랜딩 전환 CTA 점검';
 }

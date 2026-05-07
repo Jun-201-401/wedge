@@ -1,5 +1,5 @@
 import type { ReportDetail, RunReportProjection } from '../../../entities/report';
-import type { Run } from '../../../entities/run';
+import type { Run, RunArtifact } from '../../../entities/run';
 import { getScenarioLabel } from '../../../shared';
 import type { FindingSeverity, ReportDecisionNode, ReportFinding, ReportRecommendation, RunReportViewModel } from './runReportViewModel';
 
@@ -7,6 +7,7 @@ interface BuildRunReportFromApiInput {
   run: Run;
   report: RunReportProjection;
   detail?: ReportDetail | null;
+  fallbackPreviewUrl?: string | null;
   scenarioId: string | null;
 }
 
@@ -16,6 +17,26 @@ function readNumber(value: unknown) {
 
 function readString(value: unknown) {
   return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
+function artifactCreatedTime(artifact: RunArtifact) {
+  if (!artifact.createdAt) {
+    return 0;
+  }
+
+  const time = new Date(artifact.createdAt).getTime();
+  return Number.isFinite(time) ? time : 0;
+}
+
+function artifactPreviewUrl(artifact: RunArtifact) {
+  return artifact.contentUrl ?? artifact.url ?? null;
+}
+
+export function selectLatestScreenshotPreviewUrl(artifacts: RunArtifact[]) {
+  return artifacts
+    .filter((artifact) => artifact.artifactType === 'SCREENSHOT' && artifactPreviewUrl(artifact))
+    .sort((left, right) => artifactCreatedTime(right) - artifactCreatedTime(left))
+    .map(artifactPreviewUrl)[0] ?? null;
 }
 
 function severityFromScore(severity: number | null | undefined): FindingSeverity {
@@ -121,6 +142,74 @@ function getFindingPreviewUrl(finding: ReportDetail['findings'][number]) {
   return artifact?.contentUrl ?? artifact?.url ?? null;
 }
 
+function readBound(value: unknown) {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : null;
+}
+
+function boundsToPercent(value: number, total: number) {
+  return `${Math.max(0, Math.min(100, (value / total) * 100)).toFixed(2)}%`;
+}
+
+function ratioToPercent(value: number) {
+  return `${Math.max(0, Math.min(100, value * 100)).toFixed(2)}%`;
+}
+
+function normalizeArtifactRef(value: string | null) {
+  return value?.startsWith('artifact:') ? value.slice('artifact:'.length) : value;
+}
+
+function hasMatchedHighlightArtifact(finding: ReportDetail['findings'][number]) {
+  const highlightArtifactId = normalizeArtifactRef(readString(finding.highlight?.screenshotArtifactId));
+  const previewArtifactId = normalizeArtifactRef(readString(finding.previewImage?.artifact.id));
+  return Boolean(highlightArtifactId && previewArtifactId && highlightArtifactId === previewArtifactId);
+}
+
+function createArtifactHighlight(finding: ReportDetail['findings'][number]) {
+  const bounds = finding.highlight?.bounds;
+  const viewport = finding.highlight?.viewport;
+  const unit = readString(bounds?.unit) ?? 'css_px';
+  const coordinateSpace = readString(finding.highlight?.coordinateSpace);
+  const x = readBound(bounds?.x);
+  const y = readBound(bounds?.y);
+  const width = readBound(bounds?.width);
+  const height = readBound(bounds?.height);
+
+  if (x === null || y === null || width === null || height === null || !hasMatchedHighlightArtifact(finding)) {
+    return null;
+  }
+
+  if (unit === 'viewport_ratio') {
+    return {
+      label: readString(finding.highlight?.label) ?? 'EVIDENCE TARGET',
+      source: 'artifact-coordinate' as const,
+      top: ratioToPercent(y),
+      left: ratioToPercent(x),
+      width: ratioToPercent(width),
+      height: ratioToPercent(height),
+    };
+  }
+
+  const scaleWidth = unit === 'screenshot_px'
+    ? readBound(finding.previewImage?.artifact.width)
+    : readBound(viewport?.width) ?? readBound(finding.previewImage?.artifact.width);
+  const scaleHeight = unit === 'screenshot_px'
+    ? readBound(finding.previewImage?.artifact.height)
+    : readBound(viewport?.height) ?? readBound(finding.previewImage?.artifact.height);
+
+  if (!scaleWidth || !scaleHeight || (unit !== 'css_px' && unit !== 'screenshot_px' && coordinateSpace !== 'viewport')) {
+    return null;
+  }
+
+  return {
+    label: readString(finding.highlight?.label) ?? 'EVIDENCE TARGET',
+    source: 'artifact-coordinate' as const,
+    top: boundsToPercent(y, scaleHeight),
+    left: boundsToPercent(x, scaleWidth),
+    width: boundsToPercent(width, scaleWidth),
+    height: boundsToPercent(height, scaleHeight),
+  };
+}
+
 function buildFindingsFromDetail(detail: ReportDetail): ReportFinding[] {
   return detail.findings.map((finding, index) => {
     const severity = severityFromScore(finding.severity);
@@ -145,16 +234,16 @@ function buildFindingsFromDetail(detail: ReportDetail): ReportFinding[] {
         ?? firstNudge?.rationale
         ?? finding.impactHypothesis
         ?? '분석 결과의 근거와 추천 nudge를 함께 검토하세요.',
-      highlight: createHighlight(index),
+      highlight: createArtifactHighlight(finding),
     };
   });
 }
 
 function createHighlight(index: number) {
   const highlights = [
-    { label: 'REPORT FINDING', top: '38%', left: '34%', width: '30%', height: '14%' },
-    { label: 'DECISION POINT', top: '58%', left: '18%', width: '36%', height: '15%' },
-    { label: 'NUDGE TARGET', top: '29%', left: '55%', width: '24%', height: '18%' },
+    { label: 'REPORT FINDING', source: 'fallback' as const, top: '38%', left: '34%', width: '30%', height: '14%' },
+    { label: 'DECISION POINT', source: 'fallback' as const, top: '58%', left: '18%', width: '36%', height: '15%' },
+    { label: 'NUDGE TARGET', source: 'fallback' as const, top: '29%', left: '55%', width: '24%', height: '18%' },
   ];
   return highlights[index] ?? highlights[0];
 }
@@ -191,6 +280,7 @@ function buildRecommendations(report: RunReportProjection, findings: ReportFindi
   if (report.nudges.length > 0) {
     return report.nudges.slice(0, 3).map((nudge, index) => ({
       id: nudge.id,
+      findingId: nudge.findingId,
       priority: `NUDGE #${String(nudge.rankOrder ?? index + 1).padStart(2, '0')}`,
       title: nudge.title,
       detail: nudge.recommendation ?? nudge.rationale ?? '분석 결과에 맞춰 전환 마찰을 줄이는 개선안을 검토하세요.',
@@ -201,6 +291,7 @@ function buildRecommendations(report: RunReportProjection, findings: ReportFindi
 
   return findings.slice(0, 3).map((finding, index) => ({
     id: `recommendation-${finding.id}`,
+    findingId: finding.id,
     priority: `NUDGE #${String(index + 1).padStart(2, '0')}`,
     title: finding.title,
     detail: finding.recommendation,
@@ -243,9 +334,10 @@ function getDurationLabel(run: Run) {
   return seconds >= 60 ? `${Math.floor(seconds / 60)}m ${seconds % 60}s` : `${seconds}s`;
 }
 
-export function buildRunReportFromApi({ run, report, detail, scenarioId }: BuildRunReportFromApiInput): RunReportViewModel {
+export function buildRunReportFromApi({ run, report, detail, fallbackPreviewUrl, scenarioId }: BuildRunReportFromApiInput): RunReportViewModel {
   const detailWithFindings = detail && detail.findings.length > 0 ? detail : null;
   const findings = detailWithFindings ? buildFindingsFromDetail(detailWithFindings) : buildFindings(report);
+  const detailPreviewUrl = getDetailPreviewUrl(detailWithFindings);
   const score = readNumber(report.summary.friction_score) ?? readNumber(report.summary.frictionScore) ?? 72;
   const targetUrl = readString(report.summary.targetUrl) ?? readString(report.summary.url) ?? run.startUrl;
 
@@ -264,7 +356,7 @@ export function buildRunReportFromApi({ run, report, detail, scenarioId }: Build
     heroTitle: report.title ?? '전환 마찰 리포트',
     heroSubtitle: `${report.analysisStatus} · ${report.reportStatus}`,
     heroCallToAction: readString(report.summary.primary_cta) ?? readString(report.summary.primaryCta) ?? 'Primary CTA',
-    evidencePreviewUrl: getDetailPreviewUrl(detailWithFindings),
+    evidencePreviewUrl: detailPreviewUrl ?? fallbackPreviewUrl ?? null,
     findings,
     recommendations: detailWithFindings ? buildRecommendationsFromDetail(detailWithFindings, findings) : buildRecommendations(report, findings),
   };

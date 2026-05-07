@@ -291,14 +291,74 @@ export interface DiscoveryFlowCandidate {
   reason: string;
 }
 
+export type DiscoveryEvidenceSignalSource =
+  | "text"
+  | "aria_label"
+  | "aria_labelled_by_text"
+  | "label_text"
+  | "alt"
+  | "title"
+  | "href"
+  | "selector"
+  | "name"
+  | "placeholder"
+  | "form_field"
+  | "shallow_navigation";
+
+export interface DiscoveryEvidenceSignal {
+  signal_id: string;
+  source: DiscoveryEvidenceSignalSource;
+  signal_type: string;
+  value: string;
+  evidence_ref?: string | null;
+  weight?: number;
+}
+
+export interface DiscoveryEvidenceSummary {
+  matched_signals: DiscoveryEvidenceSignal[];
+  missing_signals: string[];
+  limitations: string[];
+}
+
 export interface DiscoveryScenarioRecommendation {
   scenario_type: DiscoveryFlowType;
   recommendation_level: DiscoveryRecommendationLevel;
   confidence: number;
   reason: string;
   evidence_refs: string[];
+  evidence_summary?: DiscoveryEvidenceSummary | null;
   suggested_start_url?: string | null;
   suggested_target?: TargetDescriptorMap | null;
+}
+
+export interface DiscoveryShallowNavigationVerification {
+  status: "verified";
+  destination_url: string;
+  title?: string;
+}
+
+export interface DiscoveryObservationData {
+  shallow_navigation?: DiscoveryShallowNavigationVerification;
+  [key: string]: unknown;
+}
+
+export interface DiscoveryObservation {
+  observation_id?: string;
+  type?: string;
+  stage?: string;
+  source?: string[];
+  data?: DiscoveryObservationData;
+  confidence?: number;
+  [key: string]: unknown;
+}
+
+export interface DiscoveryCheckpoint {
+  checkpoint_id?: string;
+  stage?: string;
+  state?: Record<string, unknown>;
+  observations?: DiscoveryObservation[];
+  artifact_refs?: string[];
+  [key: string]: unknown;
 }
 
 export interface SiteDiscoveryResult {
@@ -316,7 +376,7 @@ export interface SiteDiscoveryResult {
     timezone: string;
     [key: string]: unknown;
   };
-  checkpoints: Record<string, unknown>[];
+  checkpoints: DiscoveryCheckpoint[];
   detected_flow_types: DiscoveryFlowType[];
   missing_flow_types?: DiscoveryFlowType[];
   flow_candidates?: DiscoveryFlowCandidate[];
@@ -342,10 +402,12 @@ export type ScenarioAuthoringProviderType =
   | "OTHER";
 
 export interface ScenarioAuthoringSelectedRecommendation {
+  recommendation_id?: string | null;
   scenario_type: DiscoveryFlowType;
   recommendation_level: DiscoveryRecommendationLevel;
   confidence: number;
   evidence_refs: string[];
+  evidence_summary?: DiscoveryEvidenceSummary | null;
   suggested_start_url?: string | null;
   suggested_target?: TargetDescriptorMap | null;
 }
@@ -450,11 +512,13 @@ export interface DiscoverySummaryPayload {
   pricingEntrypointCount: number;
   checkoutEntrypointCount: number;
   scenarioRecommendations: Array<{
+    recommendationId?: string | null;
     scenarioType: DiscoveryFlowType;
     recommendationLevel: DiscoveryRecommendationLevel;
     confidence: number;
     reason: string;
     evidenceRefs: string[];
+    evidenceSummary?: DiscoveryEvidenceSummary | null;
     suggestedStartUrl?: string | null;
     suggestedTarget?: TargetDescriptorMap | null;
   }>;

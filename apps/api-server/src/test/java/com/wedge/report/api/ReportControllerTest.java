@@ -291,6 +291,7 @@ class ReportControllerTest {
                 "Users may miss the next action.",
                 List.of(Map.of("ref", "cp_001.obs_001")),
                 null,
+                null,
                 List.of(detailNudge())
         );
     }

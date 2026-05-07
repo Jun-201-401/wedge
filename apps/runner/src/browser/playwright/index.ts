@@ -1227,6 +1227,11 @@ function shouldStop(stopCondition: Record<string, unknown> | undefined, finalUrl
     return false;
   }
 
+  const condition = stopCondition.condition;
+  if (condition === "before_real_submit" || condition === "before_payment_commit") {
+    return true;
+  }
+
   const urlIncludes = stopCondition.url_includes;
   if (typeof urlIncludes === "string") {
     return finalUrl.includes(urlIncludes);

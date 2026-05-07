@@ -9,11 +9,15 @@ import com.wedge.common.error.ErrorCode;
 import com.wedge.report.api.dto.ReportDetailFindingResponse;
 import com.wedge.report.api.dto.ReportDetailNudgeResponse;
 import com.wedge.report.api.dto.ReportDetailResponse;
+import com.wedge.report.api.dto.ReportFindingHighlightResponse;
+import com.wedge.report.api.dto.ReportPreviewImageResponse;
 import com.wedge.report.domain.Report;
 import com.wedge.report.infrastructure.ReportMapper;
 import com.wedge.run.api.dto.RunResponse;
 import com.wedge.run.application.RunService;
+import java.math.BigDecimal;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -111,6 +115,17 @@ public class ReportDetailQueryService {
             Map<UUID, List<Nudge>> nudgesByFindingId,
             ReportPreviewImageResolver.DetailPreviewContext previewContext
     ) {
+        List<Object> evidenceRefs = reportJsonReader.readArray(finding.getEvidenceRefsJsonb());
+        ReportFindingHighlightResponse highlight = highlight(evidenceRefs);
+        ReportPreviewImageResponse previewImage = previewImageResolver.resolve(
+                report,
+                finding,
+                previewContext,
+                highlight == null ? null : highlight.screenshotArtifactId()
+        );
+        if (!matchesPreviewArtifact(highlight, previewImage)) {
+            highlight = null;
+        }
         return new ReportDetailFindingResponse(
                 finding.getId(),
                 finding.getRankOrder(),
@@ -123,10 +138,172 @@ public class ReportDetailQueryService {
                 finding.getConfidence(),
                 finding.getPriorityScore(),
                 finding.getImpactHypothesis(),
-                reportJsonReader.readArray(finding.getEvidenceRefsJsonb()),
-                previewImageResolver.resolve(report, finding, previewContext),
+                evidenceRefs,
+                previewImage,
+                highlight,
                 detailNudges(nudgesByFindingId.getOrDefault(finding.getId(), List.of()))
         );
+    }
+
+    private boolean matchesPreviewArtifact(
+            ReportFindingHighlightResponse highlight,
+            ReportPreviewImageResponse previewImage
+    ) {
+        return highlight != null
+                && previewImage != null
+                && previewImage.artifact() != null
+                && previewImage.artifact().id().toString().equals(highlight.screenshotArtifactId());
+    }
+
+    private ReportFindingHighlightResponse highlight(List<Object> evidenceRefs) {
+        for (Object ref : evidenceRefs) {
+            Map<String, Object> component = problemComponent(ref);
+            if (component == null) {
+                continue;
+            }
+
+            ReportFindingHighlightResponse.Bounds bounds = bounds(component);
+            String screenshotArtifactId = normalizeArtifactRef(readString(component, "screenshot_artifact_id", null));
+            if (bounds == null || screenshotArtifactId == null) {
+                continue;
+            }
+
+            return new ReportFindingHighlightResponse(
+                    readString(component, "evidence_ref", null),
+                    highlightLabel(component),
+                    "artifact-coordinate",
+                    readString(component, "coordinate_space", "viewport"),
+                    bounds,
+                    viewport(component),
+                    screenshotArtifactId
+            );
+        }
+
+        return null;
+    }
+
+    private Map<String, Object> problemComponent(Object ref) {
+        Map<String, Object> refMap = asMap(ref);
+        if (refMap == null) {
+            return null;
+        }
+
+        Map<String, Object> problemComponent = readMap(refMap, "problemComponent");
+        if (!problemComponent.isEmpty()) {
+            return problemComponent;
+        }
+
+        problemComponent = readMap(refMap, "problem_component");
+        if (!problemComponent.isEmpty()) {
+            return problemComponent;
+        }
+
+        Map<String, Object> location = readMap(refMap, "evidenceLocation");
+        return firstMap(readList(location, "problem_components"));
+    }
+
+    private String highlightLabel(Map<String, Object> target) {
+        Object label = target.get("label");
+        if (label instanceof String value && !value.isBlank()) {
+            return value;
+        }
+
+        Object text = target.get("text");
+        if (text instanceof String value && !value.isBlank()) {
+            return value;
+        }
+
+        Object selector = target.get("selector");
+        if (selector instanceof String value && !value.isBlank()) {
+            return value;
+        }
+
+        return "EVIDENCE TARGET";
+    }
+
+    private String readString(Map<String, Object> source, String key, String defaultValue) {
+        Object value = source.get(key);
+        return value instanceof String text && !text.isBlank() ? text : defaultValue;
+    }
+
+    private String normalizeArtifactRef(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        return value.startsWith("artifact:") ? value.substring("artifact:".length()) : value;
+    }
+
+    private ReportFindingHighlightResponse.Bounds bounds(Map<String, Object> source) {
+        Map<String, Object> rawBounds = readMap(source, "bounding_box");
+        if (rawBounds.isEmpty()) {
+            rawBounds = readMap(source, "bounds");
+        }
+
+        BigDecimal x = readDecimal(rawBounds, "x");
+        BigDecimal y = readDecimal(rawBounds, "y");
+        BigDecimal width = readDecimal(rawBounds, "width");
+        BigDecimal height = readDecimal(rawBounds, "height");
+        if (x == null || y == null || width == null || height == null) {
+            return null;
+        }
+
+        return new ReportFindingHighlightResponse.Bounds(
+                x,
+                y,
+                width,
+                height,
+                readString(rawBounds, "unit", "css_px")
+        );
+    }
+
+    private ReportFindingHighlightResponse.Viewport viewport(Map<String, Object> source) {
+        Map<String, Object> rawViewport = readMap(source, "viewport");
+        BigDecimal width = readDecimal(rawViewport, "width");
+        BigDecimal height = readDecimal(rawViewport, "height");
+        if (width == null || height == null) {
+            return null;
+        }
+        return new ReportFindingHighlightResponse.Viewport(width, height);
+    }
+
+    private BigDecimal readDecimal(Map<String, Object> source, String key) {
+        Object value = source.get(key);
+        if (value instanceof BigDecimal decimal) {
+            return decimal;
+        }
+        if (value instanceof Number number) {
+            return BigDecimal.valueOf(number.doubleValue());
+        }
+        return null;
+    }
+
+    private Map<String, Object> readMap(Map<String, Object> source, String key) {
+        Object value = source.get(key);
+        Map<String, Object> result = asMap(value);
+        return result == null ? Map.of() : result;
+    }
+
+    private List<Object> readList(Map<String, Object> source, String key) {
+        Object value = source.get(key);
+        return value instanceof List<?> list ? List.copyOf(list) : List.of();
+    }
+
+    private Map<String, Object> firstMap(List<Object> values) {
+        return values.stream()
+                .map(this::asMap)
+                .filter(map -> map != null && !map.isEmpty())
+                .findFirst()
+                .orElse(null);
+    }
+
+    private Map<String, Object> asMap(Object value) {
+        if (!(value instanceof Map<?, ?> map)) {
+            return null;
+        }
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        map.forEach((key, mapValue) -> result.put(String.valueOf(key), mapValue));
+        return result;
     }
 
     private List<ReportDetailNudgeResponse> detailNudges(List<Nudge> nudges) {
