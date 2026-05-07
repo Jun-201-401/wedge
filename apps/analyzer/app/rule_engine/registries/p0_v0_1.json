@@ -77,6 +77,44 @@
       "fix_leverage_default": 1.0,
       "output_template": "사용자 행동 직후 기술 오류가 관찰되어 진행 신뢰성이 낮아질 수 있습니다.",
       "source_refs": ["docs/05_judge_scoring_validation.md#11-나머지-p0-rule-최소-정책"]
+    },
+    {
+      "criterion_id": "JOURNEY-ACTION-RESULT-001",
+      "axis": "Path",
+      "applicableStages": ["VALUE", "CTA", "INPUT", "COMMIT"],
+      "evidence_level": "Operational",
+      "definition": "A clicked journey action should produce a clear success, failure, or state-change result after settle.",
+      "required_observations": ["settle_response", "settle_item_count_change"],
+      "measurement_sources": ["dom", "network", "scenario_log"],
+      "signal_rule": "A click checkpoint has a failed, timeout, or unmet settle result in the same stage context.",
+      "severity_rules": [
+        {"severity": 0, "condition": "clicked action produces the expected settled result"},
+        {"severity": 2, "condition": "clicked action has timeout or missing expected state-change result"},
+        {"severity": 3, "condition": "commit-stage action is blocked or failed"}
+      ],
+      "confidence_rule": "Use direct settle observation confidence; keep lower confidence when only weak state-change evidence exists.",
+      "fix_leverage_default": 1.0,
+      "output_template": "The goal action was attempted, but the expected result was not confirmed.",
+      "source_refs": ["docs/10_rule_journey_observation_strategy.md#rule-scoring"]
+    },
+    {
+      "criterion_id": "JOURNEY-GOAL-CTA-MISMATCH-001",
+      "axis": "Path",
+      "applicableStages": ["VALUE", "CTA", "COMMIT"],
+      "evidence_level": "Operational",
+      "definition": "A selected CTA should be semantically aligned with the scenario goal.",
+      "required_observations": ["cta_candidate"],
+      "measurement_sources": ["dom", "ax", "scenario_log"],
+      "signal_rule": "A clicked CTA receives a low scenario relevance semantic label with sufficient provider confidence.",
+      "severity_rules": [
+        {"severity": 0, "condition": "CTA is directly or reasonably related to the scenario goal"},
+        {"severity": 1, "condition": "CTA is auxiliary or weakly related to the scenario goal"},
+        {"severity": 2, "condition": "CTA is irrelevant to the scenario goal"}
+      ],
+      "confidence_rule": "Use sanitized semantic provider confidence and do not emit an issue below the semantic confidence threshold.",
+      "fix_leverage_default": 1.0,
+      "output_template": "The selected CTA appears weakly related to the scenario goal.",
+      "source_refs": ["docs/10_rule_journey_observation_strategy.md#raw-signal-and-derived-intent"]
     }
   ]
 }
