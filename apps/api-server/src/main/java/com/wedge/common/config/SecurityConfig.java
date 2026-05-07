@@ -72,7 +72,8 @@ public class SecurityConfig {
                                 "/api/discoveries/**"
                         ).authenticated()
                         .requestMatchers("/internal/runner/**", "/internal/analysis/**").hasRole("INTERNAL_RUNNER")
-                        .requestMatchers("/mcp", "/mcp/**").hasRole("MCP_CLIENT")
+                        // InternalServiceTokenFilter validates the MCP bearer token before Streamable HTTP async dispatch.
+                        .requestMatchers("/mcp", "/mcp/**").permitAll()
                         .requestMatchers("/api/**", "/internal/**").denyAll()
                         .anyRequest().permitAll()
                 )
