@@ -24,18 +24,29 @@ RULE_OWNED_FIELDS = {
 }
 
 EXPLANATION_FIELDS = {
+    "title",
     "summary",
     "impact_hypothesis",
     "recommendations",
     "validation_questions",
 }
 
+NUDGE_TEXT_FIELDS = {
+    "title",
+    "rationale",
+    "recommendation",
+    "expected_effect",
+    "validation_question",
+}
+
+VALID_DIFFICULTIES = {"LOW", "MEDIUM", "HIGH"}
+
 
 class GMSReportExplainer:
     """Post-process deterministic JudgeResult text through GMS.
 
     The Rule Engine remains the owner of final judgment fields. GMS is allowed
-    to rewrite explanation text only, then the callback sends the polished
+    to rewrite report copy only, then the callback sends the polished
     JudgeResult.
     """
 
@@ -72,7 +83,7 @@ class GMSReportExplainer:
             _apply_explanation(result, explanation)
             result["llm_provider"] = "gms"
             result["llm_model"] = self._model
-            return _append_llm_note(result, "GMS generated post-judgment explanation text; Rule Engine fields were preserved.")
+            return _append_llm_note(result, "GMS generated post-judgment report copy; Rule Engine fields were preserved.")
         except (GMSClientError, ValueError, TypeError, KeyError) as exc:
             return _append_llm_note(result, f"GMS explanation fallback used deterministic text: {type(exc).__name__}")
 
@@ -90,6 +101,8 @@ def _build_prompt(judge_result: dict[str, Any]) -> str:
                 "confidence": issue.get("confidence"),
                 "priority_score": issue.get("priority_score"),
                 "evidence_refs": issue.get("evidence_refs") or [],
+                "evidence_locations": issue.get("evidence_locations") or [],
+                "title": issue.get("title"),
                 "summary": issue.get("summary"),
                 "impact_hypothesis": issue.get("impact_hypothesis"),
                 "recommendations": issue.get("recommendations") or [],
@@ -99,28 +112,74 @@ def _build_prompt(judge_result: dict[str, Any]) -> str:
             if isinstance(issue, dict)
         ],
         "decision_map": judge_result.get("decision_map") or [],
+        "nudges": judge_result.get("nudges") or [],
         "scenario_mismatch_report": judge_result.get("scenario_mismatch_report"),
     }
     return (
-        "당신은 한국 제품팀을 위한 UX 분석 리포트를 다듬는 역할입니다.\n"
-        "아래 JudgeResult는 deterministic Rule Engine이 만든 결과입니다.\n"
-        "반드시 유효한 JSON만 반환하세요. markdown, 코드블록, 추가 설명은 넣지 마세요.\n"
-        "모든 출력 문장은 자연스러운 한국어로 작성하세요.\n"
-        "Rule Engine이 소유한 판단값은 절대 바꾸지 마세요: issue_id, criterion_id, stage, axis, severity, "
-        "confidence, priority_score, evidence_refs.\n"
-        "당신이 다듬을 수 있는 필드는 설명 문장뿐입니다: summary, impact_hypothesis, "
-        "recommendations, validation_questions.\n"
-        "문장은 짧고 실무적으로 작성하세요. 과장하지 말고 evidence에 근거해 말하세요.\n"
-        "반환 형식은 반드시 아래 JSON 구조를 따르세요:\n"
+        "You write Korean UX analysis report copy for Wedge.\n"
+        "The input JudgeResult was produced by a deterministic Rule Engine.\n"
+        "Return valid JSON only. Do not use markdown, code fences, or extra commentary.\n"
+        "Do not change rule-owned judgment fields: issue_id, criterion_id, stage, axis, severity, confidence, "
+        "priority_score, evidence_refs.\n"
+        "Do not change the analytical result or conclusion. Preserve whether each issue is a problem, what caused it, "
+        "which component or stage it affects, and how serious the original Rule Engine result says it is.\n"
+        "Do not add new issues, remove issues, merge issues, split issues, or change issue order. Return copy only for "
+        "the issue_id values present in the input.\n"
+        "You may rewrite only report copy fields: title, summary, impact_hypothesis, recommendations, "
+        "validation_questions, and nudge text fields.\n"
+        "Use evidence_refs and evidence_locations as grounding. Do not invent claims that are not supported by evidence.\n"
+        "Write concise natural Korean. Use hypothesis tone for impact_hypothesis, such as '~할 수 있습니다'.\n"
+        "User-facing Korean copy must not contain internal UX/system terms such as CTA, primary, primary-like, secondary, "
+        "UX, evidence, evidence_ref, selector, rule, or criterion. Replace them with plain Korean words such as "
+        "'버튼', '가장 중요한 버튼', '보조 버튼', '화면', and '선택지'.\n"
+        "For summary, explicitly include where the issue appears, which observed components or elements are involved, "
+        "and how they compete or create friction. Preserve the original rule cause. For example, if the rule says "
+        "multiple primary-like CTAs compete, do not rewrite it as a simple color/emphasis problem.\n"
+        "For impact_hypothesis, explain the causal chain in one or two sentences: because this specific issue changes "
+        "what the user perceives or decides, it may lead to a specific downstream effect. Include the 'why', not only "
+        "the final business metric. Avoid vague claims like 'conversion may decrease' unless you explain why.\n"
+        "Avoid jargon in report copy when a plain user-behavior phrase is clearer. Prefer concrete phrases like "
+        "'사용자가 어떤 버튼을 먼저 눌러야 할지 망설일 수 있습니다' over abstract phrases like '핵심 CTA를 혼란스럽게 인지합니다'.\n"
+        "Do not expose internal identifiers such as evidence_ref, checkpoint_id, observation_id, selector, or raw rule ids "
+        "in user-facing copy. Use those fields only to understand the evidence, then describe the visible page behavior "
+        "in plain Korean.\n"
+        "When component text is unavailable or garbled, describe the component by visible role or location in plain Korean "
+        "instead of guessing the visible text. Do not expose selector, role, or evidence_ref in the final user-facing copy.\n"
+        "Field intent:\n"
+        "- title: short issue title, 20-35 Korean characters, problem-focused.\n"
+        "- summary: what was observed and why it is a UX problem.\n"
+        "- impact_hypothesis: likely user/business impact, stated as a hypothesis.\n"
+        "- nudge.title: short improvement action title.\n"
+        "- nudge.rationale: why this improvement follows from the evidence.\n"
+        "  Do not write nudge.rationale with phrases like evidence id, evidence_ref, 감지되었습니다, primary-like, CTA, "
+        "or rule hit. Explain the visible page reason in plain Korean, for example "
+        "'첫 화면에서 주요 버튼처럼 보이는 선택지가 여러 개 함께 보여 사용자의 첫 선택이 나뉠 수 있습니다'.\n"
+        "- nudge.recommendation: concrete UI/content change a designer or developer can apply.\n"
+        "  Write nudge.recommendation as a gentle suggestion in plain Korean, not a command. End it with "
+        "'~하는 게 어떤가요?' whenever natural.\n"
+        "- nudge.expected_effect: expected improvement after the change.\n"
+        "  nudge.expected_effect must start exactly with '위 추천을 통해 ' and must end with '~할 것 같아요.' "
+        "Use a soft expectation tone, not firm endings like '~할 가능성이 높아집니다' or '~할 수 있습니다'.\n"
+        "- nudge.validation_question: QA/usability question to verify the fix.\n"
+        "Return this JSON shape exactly:\n"
         "{\n"
         '  "overall_summary": "string",\n'
         '  "issue_explanations": [\n'
         "    {\n"
         '      "issue_id": "issue_001",\n'
+        '      "title": "string",\n'
         '      "summary": "string",\n'
         '      "impact_hypothesis": "string",\n'
         '      "recommendations": ["string"],\n'
-        '      "validation_questions": ["string"]\n'
+        '      "validation_questions": ["string"],\n'
+        '      "nudge": {\n'
+        '        "title": "string",\n'
+        '        "rationale": "string",\n'
+        '        "recommendation": "string",\n'
+        '        "difficulty": "LOW|MEDIUM|HIGH",\n'
+        '        "expected_effect": "string",\n'
+        '        "validation_question": "string"\n'
+        "      }\n"
         "    }\n"
         "  ]\n"
         "}\n"
@@ -166,18 +225,23 @@ def _apply_explanation(result: dict[str, Any], explanation: dict[str, Any]) -> N
     if not isinstance(raw_explanations, list):
         return
 
+    nudge_explanations_by_issue_id: dict[str, dict[str, Any]] = {}
     for raw_item in raw_explanations:
         if not isinstance(raw_item, dict):
             continue
-        issue = issue_by_id.get(str(raw_item.get("issue_id")))
+        issue_id = str(raw_item.get("issue_id"))
+        issue = issue_by_id.get(issue_id)
         if issue is None:
             continue
         before = {field: copy.deepcopy(issue.get(field)) for field in RULE_OWNED_FIELDS}
         _apply_issue_text(issue, raw_item)
         for field, value in before.items():
             issue[field] = value
+        raw_nudge = raw_item.get("nudge")
+        if isinstance(raw_nudge, dict):
+            nudge_explanations_by_issue_id[issue_id] = raw_nudge
 
-    _sync_nudges_from_issues(result)
+    _sync_nudges_from_issues(result, nudge_explanations_by_issue_id)
 
 
 def _apply_issue_text(issue: dict[str, Any], raw_item: dict[str, Any]) -> None:
@@ -192,7 +256,11 @@ def _apply_issue_text(issue: dict[str, Any], raw_item: dict[str, Any]) -> None:
             issue[field] = value
 
 
-def _sync_nudges_from_issues(result: dict[str, Any]) -> None:
+def _sync_nudges_from_issues(
+    result: dict[str, Any],
+    nudge_explanations_by_issue_id: dict[str, dict[str, Any]] | None = None,
+) -> None:
+    nudge_explanations_by_issue_id = nudge_explanations_by_issue_id or {}
     issues = {
         str(issue.get("issue_id")): issue
         for issue in result.get("issues") or []
@@ -204,18 +272,39 @@ def _sync_nudges_from_issues(result: dict[str, Any]) -> None:
     for nudge in nudges:
         if not isinstance(nudge, dict):
             continue
-        issue = issues.get(str(nudge.get("issue_id")))
+        issue_id = str(nudge.get("issue_id"))
+        issue = issues.get(issue_id)
         if issue is None:
             continue
-        summary = _non_empty_string(issue.get("summary"))
+        applied_fields = _apply_nudge_text(nudge, nudge_explanations_by_issue_id.get(issue_id, {}))
+        summary = _non_empty_string(issue.get("title")) or _non_empty_string(issue.get("summary"))
         recommendations = _string_list(issue.get("recommendations"))
         questions = _string_list(issue.get("validation_questions"))
-        if summary:
+        if summary and "title" not in applied_fields:
             nudge["title"] = summary[:80]
-        if recommendations:
+        if recommendations and "recommendation" not in applied_fields:
             nudge["recommendation"] = recommendations[0]
-        if questions:
+        if questions and "validation_question" not in applied_fields:
             nudge["validation_question"] = questions[0]
+
+
+def _apply_nudge_text(nudge: dict[str, Any], raw_item: dict[str, Any]) -> set[str]:
+    applied_fields: set[str] = set()
+    if not isinstance(raw_item, dict):
+        return applied_fields
+
+    for field in NUDGE_TEXT_FIELDS:
+        value = _non_empty_string(raw_item.get(field))
+        if value:
+            nudge[field] = value
+            applied_fields.add(field)
+
+    difficulty = _non_empty_string(raw_item.get("difficulty"))
+    if difficulty in VALID_DIFFICULTIES:
+        nudge["difficulty"] = difficulty
+        applied_fields.add("difficulty")
+
+    return applied_fields
 
 
 def _append_llm_note(result: dict[str, Any], note: str) -> dict[str, Any]:

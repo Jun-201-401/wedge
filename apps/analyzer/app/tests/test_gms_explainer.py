@@ -93,10 +93,19 @@ class GMSReportExplainerTest(unittest.TestCase):
                     "severity": 3,
                     "confidence": 0.1,
                     "evidence_refs": ["unsafe.ref"],
+                    "title": "Competing primary CTAs",
                     "summary": "Several primary CTAs compete in the same decision area.",
                     "impact_hypothesis": "The user may delay the first conversion action.",
                     "recommendations": ["Pick one primary CTA and demote the others."],
                     "validation_questions": ["Can a user identify the main CTA within three seconds?"],
+                    "nudge": {
+                        "title": "Make one CTA primary",
+                        "rationale": "The issue evidence shows multiple primary-looking CTA components.",
+                        "recommendation": "Keep one CTA visually primary and demote the others.",
+                        "difficulty": "LOW",
+                        "expected_effect": "Users can choose the first action faster.",
+                        "validation_question": "Is only one CTA visually dominant after the change?",
+                    },
                 }
             ],
         }
@@ -108,6 +117,7 @@ class GMSReportExplainerTest(unittest.TestCase):
         ).explain(original)
 
         issue = result["issues"][0]
+        self.assertEqual(issue["title"], "Competing primary CTAs")
         self.assertEqual(issue["summary"], "Several primary CTAs compete in the same decision area.")
         self.assertEqual(issue["recommendations"], ["Pick one primary CTA and demote the others."])
         self.assertEqual(issue["stage"], "CTA")
@@ -116,7 +126,12 @@ class GMSReportExplainerTest(unittest.TestCase):
         self.assertEqual(issue["evidence_refs"], ["cp_001.obs_002"])
         self.assertEqual(issue["evidence_locations"][0]["components"][0]["bounds"], {"x": 520, "y": 360, "width": 220, "height": 56})
         self.assertEqual(result["summary"]["llm_overall_summary"], response["overall_summary"])
-        self.assertEqual(result["nudges"][0]["recommendation"], "Pick one primary CTA and demote the others.")
+        self.assertEqual(result["nudges"][0]["title"], "Make one CTA primary")
+        self.assertEqual(result["nudges"][0]["rationale"], "The issue evidence shows multiple primary-looking CTA components.")
+        self.assertEqual(result["nudges"][0]["recommendation"], "Keep one CTA visually primary and demote the others.")
+        self.assertEqual(result["nudges"][0]["difficulty"], "LOW")
+        self.assertEqual(result["nudges"][0]["expected_effect"], "Users can choose the first action faster.")
+        self.assertEqual(result["nudges"][0]["validation_question"], "Is only one CTA visually dominant after the change?")
         self.assertEqual(result["llm_provider"], "gms")
         self.assertEqual(result["llm_model"], "gpt-4.1-nano")
 
@@ -144,6 +159,7 @@ class GMSReportExplainerTest(unittest.TestCase):
         result = sample_judge_result()
         result["llm_provider"] = "gms"
         result["llm_model"] = "gpt-4.1-nano"
+        result["issues"][0]["title"] = "Competing primary CTAs"
 
         payload = build_completed_callback_payload(
             analysis_job_id="job_001",
@@ -152,6 +168,33 @@ class GMSReportExplainerTest(unittest.TestCase):
         )
 
         self.assertEqual(payload["modelInfo"]["llm"], "gpt-4.1-nano")
+        self.assertEqual(payload["topFindings"][0]["title"], "Competing primary CTAs")
+
+    def test_prompt_requires_preserving_analysis_result(self) -> None:
+        client = FakeGMSClient('{"overall_summary":"ok","issue_explanations":[]}')
+
+        GMSReportExplainer(client=client, enabled=True).explain(sample_judge_result())
+
+        self.assertIn("Do not change the analytical result or conclusion.", client.prompts[0])
+        self.assertIn("Do not add new issues, remove issues, merge issues, split issues, or change issue order.", client.prompts[0])
+        self.assertIn("where the issue appears, which observed components or elements are involved", client.prompts[0])
+        self.assertIn("do not rewrite it as a simple color/emphasis problem", client.prompts[0])
+        self.assertIn("explain the causal chain in one or two sentences", client.prompts[0])
+        self.assertIn("Include the 'why', not only the final business metric.", client.prompts[0])
+        self.assertIn("Avoid jargon in report copy", client.prompts[0])
+        self.assertIn("must not contain internal UX/system terms", client.prompts[0])
+        self.assertIn("CTA, primary, primary-like, secondary", client.prompts[0])
+        self.assertIn("'버튼', '가장 중요한 버튼', '보조 버튼'", client.prompts[0])
+        self.assertIn("사용자가 어떤 버튼을 먼저 눌러야 할지 망설일 수 있습니다", client.prompts[0])
+        self.assertIn("Do not expose internal identifiers", client.prompts[0])
+        self.assertIn("describe the visible page behavior in plain Korean", client.prompts[0])
+        self.assertIn("Do not expose selector, role, or evidence_ref in the final user-facing copy", client.prompts[0])
+        self.assertIn("Do not write nudge.rationale with phrases like evidence id, evidence_ref, 감지되었습니다", client.prompts[0])
+        self.assertIn("not a command", client.prompts[0])
+        self.assertIn("~하는 게 어떤가요?", client.prompts[0])
+        self.assertIn("must start exactly with '위 추천을 통해 '", client.prompts[0])
+        self.assertIn("must end with '~할 것 같아요.'", client.prompts[0])
+        self.assertIn("not firm endings like '~할 가능성이 높아집니다'", client.prompts[0])
 
     def test_openai_response_text_extractor_accepts_responses_shape(self) -> None:
         payload = {
