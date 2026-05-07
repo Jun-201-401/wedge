@@ -1,4 +1,4 @@
-import { createAgentDecisionClient, createAgentRuntimePlan, executeAgentRun } from "../agent/index.ts";
+import { createAgentDecisionClient, createAgentRuntimePlan, executeAgentRun, type AgentTraceScenarioPlanExport } from "../agent/index.ts";
 import type { BrowserSessionFactory } from "../browser/playwright/index.ts";
 import type { CallbackClient } from "../callback/index.ts";
 import type { CapturePipeline } from "../capture/index.ts";
@@ -20,6 +20,8 @@ export interface AgentRunnerExecutionResult {
   delivery: DeliverySummary;
   trace: AgentTrace;
   traceArtifact?: Artifact;
+  scenarioPlanExport?: AgentTraceScenarioPlanExport;
+  scenarioPlanExportArtifact?: Artifact;
 }
 
 export interface RegisterAgentWorkerInput {
@@ -175,6 +177,8 @@ async function executeAgentMessage({
       summary: executionResult.summary,
       trace: executionResult.trace,
       traceArtifact: executionResult.traceArtifact,
+      scenarioPlanExport: executionResult.scenarioPlanExport,
+      scenarioPlanExportArtifact: executionResult.scenarioPlanExportArtifact,
       delivery: createDeliverySummary(
         mergeDeliveryIssues(executionResult.delivery.issues, finishedDeliveryIssues)
       )

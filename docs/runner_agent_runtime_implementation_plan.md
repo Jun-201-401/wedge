@@ -1736,9 +1736,11 @@ Completed:
 - Same-process duplicate agent deliveries with the same idempotency key are suppressed.
 - Terminal agent results are persisted under the runner artifact root so duplicate deliveries after a runner process restart do not re-execute the browser flow.
 - MQ poison message requeue is bounded by RUNNER_MQ_MAX_DELIVERY_ATTEMPTS.
+- Successful AgentTrace results are exported to custom_compiled ScenarioPlan candidate artifacts with final checkpoint and stop-before-commit guard steps.
 
 Remaining:
-- Add trace-to-ScenarioPlan export.
+- Add prompt redaction beyond the current minimal observation payload.
+- Add invalid-JSON-only LLM retry and broader heuristic-vs-LLM fixture comparison.
 ```
 
 ## Phase 7: LLM Decision Client
@@ -1781,10 +1783,11 @@ LLM integration tests may be skipped by default unless credentials/config are pr
 Tasks:
 
 ```text
-Add export module that converts successful trace actions into ScenarioPlan candidate.
-Use candidate_fingerprint and locator_recipe.
-Mark generated plan as custom_compiled.
-Include source agent trace ref.
+DONE: Add export module that converts successful completed trace actions into a ScenarioPlan candidate.
+TODO: Add candidate_fingerprint and locator_recipe after replay stability data exists.
+DONE: Mark generated plan as custom_compiled.
+DONE: Include source agent trace provenance in the export wrapper.
+DONE: Append final checkpoint and stop_before_commit guard steps so payment/final-order boundaries remain explicit.
 ```
 
 Acceptance criteria:
@@ -1793,12 +1796,13 @@ Acceptance criteria:
 Exported ScenarioPlan validates against existing schema.
 Exported plan replays on the same fixture with static runner.
 Export skips unsafe/final commit actions.
+Blocked login/CAPTCHA traces are not exported as reusable plans.
 ```
 
 Verification:
 
 ```bash
-cd apps/runner && npm test -- test/agent/trace-export.test.ts test/executor.test.ts
+cd apps/runner && node --experimental-strip-types --test test/agent-trace-export.test.ts test/worker.test.ts
 ```
 
 # 17. Redaction, Idempotency, and Resume

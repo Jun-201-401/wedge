@@ -342,6 +342,20 @@ RUNNER_AGENT_LLM_TIMEOUT_MS=10000
 
 LLM이 활성화되어도 pre-decision verifier, risk policy, fixed browser tool runtime은 그대로 우선 적용된다. LLM 응답이 invalid JSON이거나 관찰되지 않은 target을 선택하면 heuristic으로 fallback한다.
 
+
+## 4.2.2 AgentTrace ScenarioPlan export
+
+성공한 AgentTrace는 TRACE artifact와 별개로 `agent_scenario_plan_export` JSON artifact로 변환될 수 있다. Export 결과는 `custom_compiled` ScenarioPlan 후보이며, Agent가 실제 완료한 replayable action(`goto`, `click`, `scroll`, `checkpoint`)만 step으로 복사한다.
+
+안전 경계:
+
+- `trace.outcome.status=SUCCESS`인 trace만 export한다.
+- login/CAPTCHA/blocker/policy-blocked trace는 reusable ScenarioPlan으로 만들지 않는다.
+- policy가 허용했고 actionResult가 completed인 turn만 export한다.
+- export plan 끝에는 final checkpoint와 `stop_when` guard를 추가해 payment/final order/destructive terminal action 직전 중단을 정적 plan에도 보존한다.
+
+이 export는 Runner가 ScenarioAuthoring provider가 된다는 뜻이 아니다. Agent가 찾은 경로를 후속 검증/승인 단계에서 재사용 가능한 ScenarioPlan 후보로 넘기기 위한 artifact boundary다.
+
 ## 4.3 S3 artifact storage
 
 기본 운영 선택: artifact binary는 S3-compatible storage, DB에는 metadata/key만 저장.

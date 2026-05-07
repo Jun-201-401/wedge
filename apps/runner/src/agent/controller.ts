@@ -13,6 +13,7 @@ import { HeuristicDecisionClient, type AgentDecision, type AgentDecisionClient }
 import { observePage } from "./observation.ts";
 import { evaluateAgentPolicy } from "./policy.ts";
 import { createInitialAgentState } from "./state.ts";
+import { createAgentScenarioPlanExportArtifact, exportAgentTraceToScenarioPlan, type AgentTraceScenarioPlanExport } from "./trace-export.ts";
 import { createAgentTrace, createAgentTraceArtifact, summarizeObservation, type AgentTrace, type AgentTurnTrace } from "./trace.ts";
 import { verifyGoal } from "./verifier.ts";
 
@@ -21,6 +22,8 @@ export interface AgentExecutionResult {
   delivery: DeliverySummary;
   trace: AgentTrace;
   traceArtifact?: Artifact;
+  scenarioPlanExport?: AgentTraceScenarioPlanExport;
+  scenarioPlanExportArtifact?: Artifact;
 }
 
 export interface AgentExecutorInput {
@@ -279,10 +282,26 @@ export async function executeAgentRun(input: AgentExecutorInput): Promise<AgentE
     callbackClient: input.callbackClient
   });
   deliveryIssues.push(...traceDelivery.deliveryIssues);
+
+  const scenarioPlanExport = exportAgentTraceToScenarioPlan({
+    task: input.task,
+    trace
+  });
+  const scenarioPlanExportDelivery = await persistAgentScenarioPlanExportArtifact({
+    task: input.task,
+    runId: input.runId,
+    traceExport: scenarioPlanExport,
+    artifactStore: input.artifactStore,
+    callbackClient: input.callbackClient
+  });
+  deliveryIssues.push(...scenarioPlanExportDelivery.deliveryIssues);
+
   if (input.task.artifact_policy?.capture_trace !== false) {
     deliveryIssues.push(...(await emitAgentEventBestEffort(input.callbackClient, input.runId, input.task, "TRACE_PERSISTED", {
       outcome: trace.outcome.status,
-      traceArtifactId: traceDelivery.artifact?.artifactId
+      traceArtifactId: traceDelivery.artifact?.artifactId,
+      scenarioPlanExportStatus: scenarioPlanExport.status,
+      scenarioPlanExportArtifactId: scenarioPlanExportDelivery.artifact?.artifactId
     })));
     deliveryIssues.push(...(await emitAgentTraceBestEffort(input.callbackClient, input.runId, input.task, trace, traceDelivery.artifact)));
   }
@@ -295,7 +314,9 @@ export async function executeAgentRun(input: AgentExecutorInput): Promise<AgentE
     },
     delivery: createDeliverySummary(mergeDeliveryIssues(deliveryIssues)),
     trace,
-    traceArtifact: traceDelivery.artifact
+    traceArtifact: traceDelivery.artifact,
+    scenarioPlanExport,
+    scenarioPlanExportArtifact: scenarioPlanExportDelivery.artifact
   };
 }
 
@@ -360,6 +381,61 @@ async function persistAgentTraceArtifact({
         scope: "artifacts-callback",
         stepKey: "agent_trace",
         message: `agent trace artifact callback failed: ${errorMessage(error)}`
+      });
+    }
+  }
+
+  return {
+    artifact: storedArtifacts[0],
+    deliveryIssues
+  };
+}
+
+async function persistAgentScenarioPlanExportArtifact({
+  task,
+  runId,
+  traceExport,
+  artifactStore,
+  callbackClient
+}: {
+  task: AgentTask;
+  runId: string;
+  traceExport: AgentTraceScenarioPlanExport;
+  artifactStore: ArtifactStore;
+  callbackClient: CallbackClient;
+}): Promise<{ artifact?: Artifact; deliveryIssues: DeliveryIssue[] }> {
+  if (task.artifact_policy?.capture_trace === false || traceExport.status !== "EXPORTED") {
+    return {
+      deliveryIssues: []
+    };
+  }
+
+  const deliveryIssues: DeliveryIssue[] = [];
+  let storedArtifacts: Artifact[] = [];
+
+  try {
+    storedArtifacts = await artifactStore.persistArtifacts({
+      runId,
+      artifacts: [createAgentScenarioPlanExportArtifact(traceExport)]
+    });
+  } catch (error) {
+    deliveryIssues.push({
+      scope: "artifact-storage",
+      stepKey: "agent_scenario_plan_export",
+      message: `agent scenario plan export artifact storage failed: ${errorMessage(error)}`
+    });
+  }
+
+  if (storedArtifacts.length > 0) {
+    try {
+      await callbackClient.sendArtifacts(runId, {
+        artifacts: storedArtifacts
+      });
+    } catch (error) {
+      deliveryIssues.push({
+        scope: "artifacts-callback",
+        stepKey: "agent_scenario_plan_export",
+        message: `agent scenario plan export artifact callback failed: ${errorMessage(error)}`
       });
     }
   }

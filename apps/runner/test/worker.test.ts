@@ -367,16 +367,27 @@ test("[Agent Worker] AgentTask로 CTA 후보를 관찰해 클릭한다", async (
   assert.equal(result.trace.turns[1].decision?.action.type, "click");
   assert.equal(result.trace.turns[1].policy?.allowed, true);
   assert.equal(result.trace.turns[1].postActionVerification?.satisfied, true);
-  assert.equal(persistedArtifacts.length, 1);
-  assert.equal(persistedArtifacts[0].artifactType, "TRACE");
-  assert.equal(persistedArtifacts[0].stepKey, "agent_trace");
-  assert.match(persistedArtifacts[0].content, /"outcome"/);
+  assert.equal(persistedArtifacts.length, 2);
+  const traceArtifactDraft = persistedArtifacts.find((artifact) => artifact.stepKey === "agent_trace");
+  const scenarioPlanExportDraft = persistedArtifacts.find((artifact) => artifact.stepKey === "agent_scenario_plan_export");
+  assert.equal(traceArtifactDraft?.artifactType, "TRACE");
+  assert.match(traceArtifactDraft?.content ?? "", /"outcome"/);
+  assert.equal(scenarioPlanExportDraft?.artifactType, "OTHER");
+  assert.match(scenarioPlanExportDraft?.content ?? "", /"scenario_plan"/);
+  assert.match(scenarioPlanExportDraft?.content ?? "", /"stop_when"/);
   assert.equal(result.traceArtifact?.artifactType, "TRACE");
-  assert.equal(artifactCallbacks.length, 1);
-  assert.equal(artifactCallbacks[0].artifactType, "TRACE");
+  assert.equal(result.scenarioPlanExport?.status, "EXPORTED");
+  assert.equal(result.scenarioPlanExportArtifact?.artifactType, "OTHER");
+  assert.equal(artifactCallbacks.length, 2);
+  assert.ok(artifactCallbacks.some((artifact) => artifact.artifactType === "TRACE"));
+  assert.ok(artifactCallbacks.some((artifact) => artifact.stepKey === "agent_scenario_plan_export"));
   assert.ok(agentEvents.some((event) => event.eventType === "PRE_DECISION_VERIFIED"));
   assert.ok(agentEvents.some((event) => event.eventType === "DECISION_MADE"));
   assert.ok(agentEvents.some((event) => event.eventType === "TRACE_PERSISTED"));
+  assert.equal(
+    agentEvents.find((event) => event.eventType === "TRACE_PERSISTED")?.payload.scenarioPlanExportStatus,
+    "EXPORTED"
+  );
   assert.equal(agentTraces.length, 1);
   assert.equal(agentTraces[0].taskId, task.task_id);
   assert.equal(agentTraces[0].traceArtifact?.artifactType, "TRACE");

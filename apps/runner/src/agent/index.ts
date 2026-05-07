@@ -10,3 +10,4 @@ export {
   emitAgentTraceBestEffort
 } from "./callbacks.ts";
 export { createAgentTraceArtifact, type AgentTrace, type AgentTurnTrace } from "./trace.ts";
+export { createAgentScenarioPlanExportArtifact, exportAgentTraceToScenarioPlan, type AgentTraceScenarioPlanExport } from "./trace-export.ts";
