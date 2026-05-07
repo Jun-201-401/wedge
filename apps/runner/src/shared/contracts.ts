@@ -18,6 +18,8 @@ export type {
   DiscoveryFailedPayload,
   DiscoverySummaryPayload,
   DiscoveryExecutePayload,
+  DiscoveryEvidenceSignal,
+  DiscoveryEvidenceSummary,
   DiscoveryFlowCandidate,
   DiscoveryFlowType,
   DiscoveryRecommendationLevel,

@@ -20,6 +20,8 @@ import type {
   DiscoveryEntrypointType,
   DiscoveryCheckpointRequest,
   DiscoveryExecuteMessage,
+  DiscoveryEvidenceSignal,
+  DiscoveryEvidenceSummary,
   DiscoveryFlowCandidate,
   DiscoveryFlowType,
   DiscoveryScenarioRecommendation,
@@ -34,6 +36,8 @@ const DEFAULT_DISCOVERY_TIMEZONE = "Asia/Seoul";
 const POST_LOAD_SETTLE_MS = 150;
 const MAX_SHALLOW_NAVIGATION_CANDIDATES = 6;
 const SHALLOW_NAVIGATION_TIMEOUT_MS = 1_500;
+const MAX_RAW_DISCOVERY_ELEMENTS = 1_500;
+const MAX_CLASSIFIED_DISCOVERY_ELEMENTS = 300;
 
 const DISCOVERY_FLOW_ORDER: DiscoveryFlowType[] = [
   "LANDING_CTA",
@@ -53,6 +57,7 @@ interface ExecuteDiscoveryInput {
 }
 
 interface RawDiscoveryElement {
+  domIndex: number;
   tagName: string;
   role: string | null;
   text: string;
@@ -66,6 +71,17 @@ interface RawDiscoveryElement {
   title: string | null;
   alt: string | null;
   labelText: string | null;
+  nearbyText: string | null;
+  formText: string | null;
+  formFieldText: string | null;
+  submitText: string | null;
+  visible: boolean;
+  inViewport: boolean;
+  interactive: boolean;
+  editable: boolean;
+  hiddenInput: boolean;
+  disabled: boolean;
+  rankScore: number;
 }
 
 interface DiscoveryCandidate {
@@ -79,6 +95,7 @@ interface DiscoveryCandidate {
   target: TargetDescriptorMap;
   observationType: string;
   observationData: Record<string, unknown>;
+  signals: DiscoveryCandidateSignal[];
 }
 
 export interface DiscoveryExecutionResult {
@@ -91,6 +108,8 @@ interface DiscoveryCollectionResult {
   result: SiteDiscoveryResult;
   artifactDraftsByCheckpointId: Map<string, ArtifactDraft[]>;
 }
+
+type DiscoveryCandidateSignal = Omit<DiscoveryEvidenceSignal, "signal_id" | "evidence_ref">;
 
 export async function executeDiscovery(input: ExecuteDiscoveryInput): Promise<SiteDiscoveryResult> {
   return (await executeDiscoveryForPersistence(input)).result;
@@ -282,6 +301,7 @@ export function createDiscoverySummaryPayload(result: SiteDiscoveryResult): Disc
     confidence: recommendation.confidence,
     reason: recommendation.reason,
     evidenceRefs: recommendation.evidence_refs,
+    evidenceSummary: recommendation.evidence_summary ?? null,
     suggestedStartUrl: recommendation.suggested_start_url ?? null,
     suggestedTarget: recommendation.suggested_target ?? null
   }));
@@ -419,65 +439,464 @@ export function createDiscoveryResultFilePath(config: RunnerConfig, discoveryId:
 }
 
 async function collectCandidatesFromPage(page: Page): Promise<DiscoveryCandidate[]> {
-  const rawElements = await page.evaluate(() => {
+  const rawElements = await page.evaluate(({ maxRawElements, maxClassifiedElements }) => {
     type BrowserElement = {
       tagName: string;
       innerText?: string;
       textContent?: string;
-      value?: string;
-      href?: string;
-      type?: string;
-      name?: string;
-      placeholder?: string;
+      href?: unknown;
+      type?: unknown;
+      name?: unknown;
+      placeholder?: unknown;
+      disabled?: unknown;
       className?: unknown;
       getAttribute: (name: string) => string | null;
       closest?: (selector: string) => BrowserElement | null;
+      querySelectorAll?: (selector: string) => Iterable<BrowserElement>;
+      cloneNode?: (deep: boolean) => BrowserElement;
+      remove?: () => void;
+      getBoundingClientRect?: () => { x: number; y: number; width: number; height: number; top: number; right: number; bottom: number; left: number };
     };
     const scope = globalThis as typeof globalThis & {
+      innerWidth?: number;
+      innerHeight?: number;
       document: {
         querySelectorAll: (selector: string) => Iterable<BrowserElement>;
         getElementById?: (id: string) => BrowserElement | null;
+      };
+      getComputedStyle?: (element: BrowserElement) => {
+        display?: string;
+        visibility?: string;
+        opacity?: string;
       };
       CSS?: {
         escape?: (nextValue: string) => string;
       };
     };
-    const elements = [
-      ...scope.document.querySelectorAll("a, button, [role='button'], [role='link'], form, input, select, textarea, section, img, label, [aria-label], [aria-labelledby], [title], [id], [class]")
-    ].slice(0, 250);
+    const candidateSelector = [
+      "a",
+      "button",
+      "input",
+      "textarea",
+      "select",
+      "form",
+      "[role='button']",
+      "[role='link']",
+      "[role='textbox']",
+      "[role='searchbox']",
+      "[role='combobox']",
+      "[href]",
+      "[onclick]",
+      "[tabindex]",
+      "header",
+      "main",
+      "section",
+      "nav",
+      "aside",
+      "[role='region']",
+      "img",
+      "label",
+      "[aria-label]",
+      "[aria-labelledby]",
+      "[title]",
+      "[id]"
+    ].join(", ");
+    const elements = collectRankedSeedElements(maxRawElements);
+    const nearbyTextByContainer = new WeakMap<BrowserElement, string | null>();
+    const formTextByForm = new WeakMap<BrowserElement, string | null>();
+    const formFieldTextByForm = new WeakMap<BrowserElement, string | null>();
+    const submitTextByForm = new WeakMap<BrowserElement, string | null>();
 
-    return elements.map((element): RawDiscoveryElement => {
+    return elements.map((element, domIndex): RawDiscoveryElement => {
       const linkedElement = element.closest?.("a");
-      return {
-        tagName: element.tagName.toLowerCase(),
-        role: element.getAttribute("role"),
-        text: normalizeBrowserText(element.innerText || element.textContent || element.value || ""),
-        href: element.href || element.getAttribute("href") || linkedElement?.href || linkedElement?.getAttribute("href") || null,
-        selector: buildSelector(element),
-        inputType: element.type || null,
-        name: element.name || element.getAttribute("name"),
-        placeholder: element.placeholder || element.getAttribute("placeholder"),
-        ariaLabel: normalizeNullableText(element.getAttribute("aria-label")),
-        ariaLabelledByText: readAriaLabelledByText(element),
-        title: normalizeNullableText(element.getAttribute("title")),
-        alt: normalizeNullableText(element.getAttribute("alt")),
-        labelText: readAssociatedLabelText(element)
-      };
-    });
+      const originalTagName = element.tagName.toLowerCase();
+      const targetElement = originalTagName === "img" && linkedElement ? linkedElement : element;
+      const role = targetElement.getAttribute("role");
+      const tagName = targetElement.tagName.toLowerCase();
+      const inputType = readString(targetElement.type);
+      const href = readString(targetElement.href) || targetElement.getAttribute("href") || readString(linkedElement?.href) || linkedElement?.getAttribute("href") || null;
+      const text = readSafeRenderedText(element);
+      const ariaLabel = normalizeNullableText(element.getAttribute("aria-label"));
+      const ariaLabelledByText = readAriaLabelledByText(element);
+      const title = normalizeNullableText(element.getAttribute("title"));
+      const alt = normalizeNullableText(element.getAttribute("alt"));
+      const labelText = readAssociatedLabelText(element);
+      const name = readString(targetElement.name) || targetElement.getAttribute("name");
+      const placeholder = readString(targetElement.placeholder) || targetElement.getAttribute("placeholder");
+      const nearbyText = readNearbyText(element);
+      const form = element.closest?.("form") ?? (tagName === "form" ? element : null);
+      const formText = form ? readFormText(form) : null;
+      const formFieldText = form ? readFormFieldText(form) : null;
+      const submitText = form ? readSubmitText(form) : null;
+      const visibility = readVisibility(element);
+      const interactive = isInteractiveElement(tagName, role, href, targetElement);
+      const editable = tagName === "textarea" || tagName === "select" || (tagName === "input" && inputType !== "hidden");
+      const hiddenInput = tagName === "input" && inputType === "hidden";
+      const disabled = Boolean(element.disabled) || element.getAttribute("aria-disabled") === "true";
+      const searchable = [
+        text,
+        ariaLabel,
+        ariaLabelledByText,
+        labelText,
+        title,
+        alt,
+        name,
+        placeholder,
+        href,
+        nearbyText,
+        formText,
+        formFieldText,
+        submitText
+      ].filter(Boolean).join(" ").toLowerCase();
 
-    function normalizeBrowserText(value: string): string {
+      return {
+        domIndex,
+        tagName,
+        role,
+        text,
+        href,
+        selector: buildSelector(targetElement),
+        inputType,
+        name,
+        placeholder,
+        ariaLabel,
+        ariaLabelledByText,
+        title,
+        alt,
+        labelText,
+        nearbyText,
+        formText,
+        formFieldText,
+        submitText,
+        visible: visibility.visible,
+        inViewport: visibility.inViewport,
+        interactive,
+        editable,
+        hiddenInput,
+        disabled,
+        rankScore: rankElement({
+          tagName,
+          role,
+          searchable,
+          visible: visibility.visible,
+          inViewport: visibility.inViewport,
+          interactive,
+          editable,
+          hiddenInput,
+          disabled,
+          area: visibility.area,
+          domIndex
+        })
+      };
+    })
+      .sort((left, right) => right.rankScore - left.rankScore || left.domIndex - right.domIndex)
+      .slice(0, maxClassifiedElements);
+
+    function normalizeBrowserText(value: unknown): string {
+      if (typeof value !== "string") {
+        return "";
+      }
       return value.replace(/\s+/g, " ").trim().slice(0, 160);
     }
 
-    function normalizeNullableText(value: string | null | undefined): string | null {
+    function normalizeNullableText(value: unknown): string | null {
       const normalized = normalizeBrowserText(value ?? "");
       return normalized || null;
+    }
+
+    function readString(value: unknown): string | null {
+      return typeof value === "string" && value.length > 0 ? value : null;
+    }
+
+    function readVisibility(element: BrowserElement): { visible: boolean; inViewport: boolean; area: number } {
+      const rect = element.getBoundingClientRect?.();
+      if (!rect) {
+        return { visible: false, inViewport: false, area: 0 };
+      }
+
+      const area = rect.width * rect.height;
+      const style = scope.getComputedStyle?.(element);
+      const opacity = Number(style?.opacity ?? "1");
+      const visible = rect.width > 0
+        && rect.height > 0
+        && style?.display !== "none"
+        && style?.visibility !== "hidden"
+        && opacity > 0;
+      const viewportWidth = scope.innerWidth ?? 0;
+      const viewportHeight = scope.innerHeight ?? 0;
+      const inViewport = Boolean(visible && rect
+        && rect.bottom >= 0
+        && rect.right >= 0
+        && rect.top <= viewportHeight
+        && rect.left <= viewportWidth);
+
+      return { visible, inViewport, area };
+    }
+
+    function readNearbyText(element: BrowserElement): string | null {
+      const container = element.closest?.("form, section, header, nav, aside, [role='region']");
+      if (!container || container === element) {
+        return null;
+      }
+
+      const cached = nearbyTextByContainer.get(container);
+      if (cached !== undefined) {
+        return cached;
+      }
+
+      const text = normalizeNullableText(readSafeRenderedText(container));
+      nearbyTextByContainer.set(container, text);
+      return text;
+    }
+
+    function readFormText(form: BrowserElement): string | null {
+      const cached = formTextByForm.get(form);
+      if (cached !== undefined) {
+        return cached;
+      }
+
+      const text = normalizeNullableText(readSafeRenderedText(form));
+      formTextByForm.set(form, text);
+      return text;
+    }
+
+    function readFormFieldText(form: BrowserElement): string | null {
+      const cached = formFieldTextByForm.get(form);
+      if (cached !== undefined) {
+        return cached;
+      }
+
+      const fields = [...(form.querySelectorAll?.("input, textarea, select") ?? [])]
+        .filter((field) => readString(field.type) !== "hidden")
+        .map((field) => [
+          readString(field.type),
+          readString(field.name) || field.getAttribute("name"),
+          readString(field.placeholder) || field.getAttribute("placeholder"),
+          readAssociatedLabelText(field)
+        ].filter(Boolean).join(" "))
+        .filter(Boolean)
+        .join(" ");
+
+      const text = normalizeNullableText(fields);
+      formFieldTextByForm.set(form, text);
+      return text;
+    }
+
+    function readSubmitText(form: BrowserElement): string | null {
+      const cached = submitTextByForm.get(form);
+      if (cached !== undefined) {
+        return cached;
+      }
+
+      const submitControls = [...(form.querySelectorAll?.("button, input[type='submit'], [role='button']") ?? [])]
+        .map((control) => normalizeBrowserText(readSafeRenderedText(control) || control.getAttribute("aria-label") || control.getAttribute("title") || control.getAttribute("name") || ""))
+        .filter(Boolean)
+        .join(" ");
+
+      const text = normalizeNullableText(submitControls);
+      submitTextByForm.set(form, text);
+      return text;
+    }
+
+    function isInteractiveElement(tagName: string, role: string | null, href: string | null, element: BrowserElement): boolean {
+      return isActionSeedElement(tagName, role, href, element);
+    }
+
+    function collectRankedSeedElements(maxElements: number): BrowserElement[] {
+      const flowKeywords = [
+        "get started", "sign up", "signup", "register", "free", "trial", "start",
+        "contact", "demo", "sales", "pricing", "price", "plan", "checkout", "payment", "billing", "purchase", "cart",
+        "시작", "회원가입", "가입", "무료", "체험", "문의", "상담", "데모", "요금", "가격", "플랜", "결제", "구매", "장바구니"
+      ];
+      const priorityBuckets: BrowserElement[][] = [[], [], [], []];
+      const allElements = [...scope.document.querySelectorAll(candidateSelector)];
+
+      for (const element of allElements) {
+        const tagName = element.tagName.toLowerCase();
+        const role = element.getAttribute("role");
+        const href = readString(element.href) || element.getAttribute("href");
+        const seedText = readSeedText(element, tagName);
+        if (hasAnyText(seedText, flowKeywords)) {
+          priorityBuckets[0].push(element);
+        } else if (isActionSeedElement(tagName, role, href, element)) {
+          priorityBuckets[1].push(element);
+        } else if (isStructuralSeedElement(tagName, role)) {
+          priorityBuckets[2].push(element);
+        } else {
+          priorityBuckets[3].push(element);
+        }
+      }
+
+      const selected: BrowserElement[] = [];
+      const seen = new Set<BrowserElement>();
+      const quotas = bucketQuotas(maxElements);
+      for (const [bucketIndex, bucket] of priorityBuckets.entries()) {
+        for (const element of bucket.slice(0, quotas[bucketIndex])) {
+          if (seen.has(element)) {
+            continue;
+          }
+          seen.add(element);
+          selected.push(element);
+          if (selected.length >= maxElements) {
+            return selected;
+          }
+        }
+      }
+
+      for (const bucket of priorityBuckets) {
+        for (const element of bucket) {
+          if (seen.has(element)) {
+            continue;
+          }
+          seen.add(element);
+          selected.push(element);
+          if (selected.length >= maxElements) {
+            return selected;
+          }
+        }
+      }
+
+      return selected;
+    }
+
+    function bucketQuotas(maxElements: number): number[] {
+      const keywordQuota = Math.floor(maxElements * 0.35);
+      const actionQuota = Math.floor(maxElements * 0.35);
+      const structuralQuota = Math.floor(maxElements * 0.2);
+      return [keywordQuota, actionQuota, structuralQuota, maxElements - keywordQuota - actionQuota - structuralQuota];
+    }
+
+    function readSeedText(element: BrowserElement, tagName: string): string {
+      const renderedText = readSafeRenderedText(element);
+      return [
+        renderedText,
+        element.getAttribute("aria-label"),
+        element.getAttribute("aria-labelledby"),
+        element.getAttribute("title"),
+        element.getAttribute("alt"),
+        element.getAttribute("name"),
+        element.getAttribute("placeholder"),
+        readString(element.href) || element.getAttribute("href")
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+    }
+
+    function isActionSeedElement(tagName: string, role: string | null, href: string | null, element: BrowserElement): boolean {
+      return tagName === "a"
+        || tagName === "button"
+        || tagName === "input"
+        || tagName === "textarea"
+        || tagName === "select"
+        || tagName === "form"
+        || role === "button"
+        || role === "link"
+        || role === "textbox"
+        || role === "searchbox"
+        || role === "combobox"
+        || Boolean(href)
+        || element.getAttribute("onclick") !== null;
+    }
+
+    function isEditableSeedElement(tagName: string): boolean {
+      return tagName === "input" || tagName === "textarea" || tagName === "select";
+    }
+
+    function readSafeRenderedText(element: BrowserElement): string {
+      const tagName = element.tagName.toLowerCase();
+      if (isEditableSeedElement(tagName)) {
+        return "";
+      }
+
+      const clone = element.cloneNode?.(true);
+      if (clone) {
+        for (const field of clone.querySelectorAll?.("input, textarea, select") ?? []) {
+          field.remove?.();
+        }
+        return normalizeBrowserText(clone.innerText || clone.textContent || "");
+      }
+
+      return "";
+    }
+
+    function isStructuralSeedElement(tagName: string, role: string | null): boolean {
+      return tagName === "header"
+        || tagName === "main"
+        || tagName === "section"
+        || tagName === "nav"
+        || tagName === "aside"
+        || tagName === "img"
+        || tagName === "label"
+        || role === "region";
+    }
+
+    function rankElement(input: {
+      tagName: string;
+      role: string | null;
+      searchable: string;
+      visible: boolean;
+      inViewport: boolean;
+      interactive: boolean;
+      editable: boolean;
+      hiddenInput: boolean;
+      disabled: boolean;
+      area: number;
+      domIndex: number;
+    }): number {
+      let score = 0;
+      if (input.visible) {
+        score += 30;
+      }
+      if (input.inViewport) {
+        score += 30;
+      }
+      if (input.interactive) {
+        score += 20;
+      }
+      if (input.editable) {
+        score += 15;
+      }
+      if (input.tagName === "form") {
+        score += 12;
+      }
+      if (input.area > 900) {
+        score += 8;
+      }
+      if (hasAnyText(input.searchable, [
+        "get started", "sign up", "signup", "register", "free", "trial", "start",
+        "contact", "demo", "sales", "pricing", "price", "plan", "checkout", "payment", "billing", "purchase", "cart",
+        "시작", "회원가입", "가입", "무료", "체험", "문의", "상담", "데모", "요금", "가격", "플랜", "결제", "구매", "장바구니"
+      ])) {
+        score += 25;
+      }
+      if (input.role === "button" || input.role === "link" || input.role === "textbox" || input.role === "searchbox" || input.role === "combobox") {
+        score += 8;
+      }
+      if (input.hiddenInput) {
+        score -= 80;
+      }
+      if (input.disabled) {
+        score -= 20;
+      }
+      if (hasAnyText(input.searchable, ["바로가기", "skip to", "전체삭제"])) {
+        score -= 20;
+      }
+
+      return score - Math.min(input.domIndex, 1_000) / 10_000;
+    }
+
+    function hasAnyText(value: string, keywords: string[]): boolean {
+      return keywords.some((keyword) => value.includes(keyword));
     }
 
     function readAriaLabelledByText(element: BrowserElement): string | null {
       const ids = (element.getAttribute("aria-labelledby") ?? "").split(/\s+/).filter(Boolean);
       const text = ids
-        .map((id) => scope.document.getElementById?.(id)?.textContent ?? "")
+        .map((id) => {
+          const labelElement = scope.document.getElementById?.(id);
+          return labelElement ? readSafeRenderedText(labelElement) : "";
+        })
         .join(" ");
       return normalizeNullableText(text);
     }
@@ -485,12 +904,12 @@ async function collectCandidatesFromPage(page: Page): Promise<DiscoveryCandidate
     function readAssociatedLabelText(element: BrowserElement): string | null {
       const tagName = element.tagName.toLowerCase();
       if (tagName === "label") {
-        return normalizeNullableText(element.innerText || element.textContent || "");
+        return normalizeNullableText(readSafeRenderedText(element));
       }
 
       const wrappingLabel = element.closest?.("label");
       if (wrappingLabel) {
-        return normalizeNullableText(wrappingLabel.innerText || wrappingLabel.textContent || "");
+        return normalizeNullableText(readSafeRenderedText(wrappingLabel));
       }
 
       const id = element.getAttribute("id");
@@ -499,7 +918,7 @@ async function collectCandidatesFromPage(page: Page): Promise<DiscoveryCandidate
       }
 
       const text = [...scope.document.querySelectorAll(`label[for="${cssStringEscape(id)}"]`)]
-        .map((label) => label.innerText || label.textContent || "")
+        .map((label) => readSafeRenderedText(label))
         .join(" ");
       return normalizeNullableText(text);
     }
@@ -542,6 +961,9 @@ async function collectCandidatesFromPage(page: Page): Promise<DiscoveryCandidate
     function cssStringEscape(value: string): string {
       return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
     }
+  }, {
+    maxRawElements: MAX_RAW_DISCOVERY_ELEMENTS,
+    maxClassifiedElements: MAX_CLASSIFIED_DISCOVERY_ELEMENTS
   });
 
   return rawElements.flatMap(toDiscoveryCandidates);
@@ -744,6 +1166,10 @@ function isFlowVerifiedByDestination(
 function markCandidateShallowVerified(candidate: DiscoveryCandidate, verifiedUrl: string, title: string): void {
   candidate.confidence = Math.min(0.95, candidate.confidence + 0.08);
   candidate.reason = `${candidate.reason} Shallow navigation verified a relevant destination.`;
+  candidate.signals = [
+    ...candidate.signals,
+    signal("shallow_navigation", `${candidate.flowType.toLowerCase()}_destination_verified`, verifiedUrl, 0.2)
+  ];
   candidate.observationData = {
     ...candidate.observationData,
     shallow_navigation: {
@@ -754,7 +1180,115 @@ function markCandidateShallowVerified(candidate: DiscoveryCandidate, verifiedUrl
   };
 }
 
+function matchedSignalsFor(flowType: DiscoveryFlowType, raw: RawDiscoveryElement, searchable: string): DiscoveryCandidateSignal[] {
+  const signals: DiscoveryCandidateSignal[] = [];
+  const textSources: Array<[DiscoveryEvidenceSignal["source"], string | null, boolean?]> = [
+    ["text", raw.text, false],
+    ["text", raw.nearbyText, true],
+    ["text", raw.formText, true],
+    ["aria_label", raw.ariaLabel],
+    ["aria_labelled_by_text", raw.ariaLabelledByText],
+    ["label_text", raw.labelText],
+    ["alt", raw.alt],
+    ["title", raw.title],
+    ["placeholder", raw.placeholder],
+    ["name", raw.name]
+  ];
+  const keywords = keywordsFor(flowType);
+
+  for (const [source, value, snippetOnly = false] of textSources) {
+    const normalized = normalizeSearchText(value ?? "");
+    if (value && hasAny(normalized, keywords)) {
+      signals.push(signal(source, signalTypeFor(flowType, "keyword"), snippetOnly ? matchedSnippet(value, keywords) : value, 0.3));
+    }
+  }
+
+  if (raw.href && hasAny(normalizeSearchText(raw.href), keywords)) {
+    signals.push(signal("href", signalTypeFor(flowType, "url"), toHrefContains(raw.href) ?? raw.href, 0.2));
+  }
+
+  if (raw.selector && hasAny(normalizeSearchText(raw.selector), keywords)) {
+    signals.push(signal("selector", signalTypeFor(flowType, "selector"), raw.selector, 0.1));
+  }
+
+  if (flowType === "SIGNUP_LEAD_FORM" && (raw.inputType === "email" || hasAny(searchable, ["email", "이메일", "company", "회사"]))) {
+    signals.push(signal("form_field", "lead_form_field", raw.formFieldText || raw.placeholder || raw.name || raw.inputType || "form field", 0.25));
+  }
+
+  if ((flowType === "CONTACT" || flowType === "PURCHASE_CHECKOUT") && raw.submitText && hasAny(normalizeSearchText(raw.submitText), keywords)) {
+    signals.push(signal("form_field", signalTypeFor(flowType, "submit"), raw.submitText, 0.2));
+  }
+
+  return dedupeSignals(signals);
+}
+
+function keywordsFor(flowType: DiscoveryFlowType): string[] {
+  switch (flowType) {
+    case "LANDING_CTA":
+      return ["get started", "sign up", "signup", "register", "free", "trial", "start", "시작", "회원가입", "가입", "무료", "체험"];
+    case "SIGNUP_LEAD_FORM":
+      return ["signup", "sign up", "register", "lead", "email", "work email", "company", "organization", "회원가입", "가입", "이메일", "회사"];
+    case "CONTACT":
+      return ["contact", "contact us", "contact sales", "talk to sales", "book a demo", "request demo", "schedule demo", "demo", "sales", "문의", "상담", "데모", "영업"];
+    case "PRICING":
+      return ["pricing", "price", "plan", "starter", "요금", "가격", "플랜"];
+    case "PURCHASE_CHECKOUT":
+      return ["checkout", "payment", "billing", "purchase", "cart", "결제", "구매", "장바구니"];
+    default:
+      return [];
+  }
+}
+
+function signalTypeFor(flowType: DiscoveryFlowType, suffix: string): string {
+  return `${flowType.toLowerCase()}_${suffix}`;
+}
+
+function matchedSnippet(value: string, keywords: string[]): string {
+  const normalizedValue = normalizeSearchText(value);
+  const matchedKeyword = keywords.find((keyword) => normalizedValue.includes(keyword));
+  if (!matchedKeyword) {
+    return normalizeText(value).slice(0, 80);
+  }
+
+  const lowerValue = value.toLowerCase();
+  const keywordIndex = lowerValue.indexOf(matchedKeyword.toLowerCase());
+  if (keywordIndex < 0) {
+    return matchedKeyword;
+  }
+
+  const contextSize = 32;
+  const start = Math.max(0, keywordIndex - contextSize);
+  const end = Math.min(value.length, keywordIndex + matchedKeyword.length + contextSize);
+  const prefix = start > 0 ? "…" : "";
+  const suffix = end < value.length ? "…" : "";
+  return normalizeText(`${prefix}${value.slice(start, end)}${suffix}`).slice(0, 100);
+}
+
+function signal(source: DiscoveryEvidenceSignal["source"], signalType: string, value: string, weight: number): DiscoveryCandidateSignal {
+  return {
+    source,
+    signal_type: signalType,
+    value: normalizeText(value).slice(0, 160),
+    weight
+  };
+}
+
+function dedupeSignals(signals: DiscoveryCandidateSignal[]): DiscoveryCandidateSignal[] {
+  const byKey = new Map<string, DiscoveryCandidateSignal>();
+  for (const nextSignal of signals) {
+    const key = `${nextSignal.source}|${nextSignal.signal_type}|${nextSignal.value}`;
+    if (!byKey.has(key)) {
+      byKey.set(key, nextSignal);
+    }
+  }
+  return [...byKey.values()];
+}
+
 function toDiscoveryCandidates(raw: RawDiscoveryElement): DiscoveryCandidate[] {
+  if (raw.hiddenInput || raw.disabled) {
+    return [];
+  }
+
   const label = normalizeText(
     raw.text
       || raw.ariaLabel
@@ -782,7 +1316,11 @@ function toDiscoveryCandidates(raw: RawDiscoveryElement): DiscoveryCandidate[] {
     raw.ariaLabelledByText,
     raw.labelText,
     raw.alt,
-    raw.title
+    raw.title,
+    raw.nearbyText,
+    raw.formText,
+    raw.formFieldText,
+    raw.submitText
   ].filter(isString).join(" "));
   const candidates: DiscoveryCandidate[] = [];
 
@@ -791,9 +1329,10 @@ function toDiscoveryCandidates(raw: RawDiscoveryElement): DiscoveryCandidate[] {
       entrypointType: isSignupLike(searchable) ? "signup" : "cta",
       flowType: "LANDING_CTA",
       label,
-      confidence: isPrimaryLike(searchable) ? 0.86 : 0.72,
+      confidence: landingCtaConfidence(raw, searchable),
       reason: "Primary-like CTA candidate was found.",
-      observationType: "cta_candidate"
+      observationType: "cta_candidate",
+      signals: matchedSignalsFor("LANDING_CTA", raw, searchable)
     }));
   }
 
@@ -802,9 +1341,10 @@ function toDiscoveryCandidates(raw: RawDiscoveryElement): DiscoveryCandidate[] {
       entrypointType: "form",
       flowType: "SIGNUP_LEAD_FORM",
       label,
-      confidence: raw.inputType === "email" || searchable.includes("email") || searchable.includes("이메일") ? 0.84 : 0.7,
+      confidence: signupFormConfidence(raw, searchable),
       reason: "Signup or lead form candidate was found.",
-      observationType: "form_candidate"
+      observationType: "form_candidate",
+      signals: matchedSignalsFor("SIGNUP_LEAD_FORM", raw, searchable)
     }));
   }
 
@@ -815,7 +1355,8 @@ function toDiscoveryCandidates(raw: RawDiscoveryElement): DiscoveryCandidate[] {
       label,
       confidence: isDemoOrSalesLike(searchable) ? 0.86 : 0.74,
       reason: "Contact, consultation, or demo request candidate was found.",
-      observationType: "contact_candidate"
+      observationType: "contact_candidate",
+      signals: matchedSignalsFor("CONTACT", raw, searchable)
     }));
   }
 
@@ -826,7 +1367,8 @@ function toDiscoveryCandidates(raw: RawDiscoveryElement): DiscoveryCandidate[] {
       label,
       confidence: searchable.includes("pricing") || searchable.includes("요금") || searchable.includes("가격") ? 0.82 : 0.68,
       reason: "Pricing entrypoint candidate was found.",
-      observationType: "pricing_candidate"
+      observationType: "pricing_candidate",
+      signals: matchedSignalsFor("PRICING", raw, searchable)
     }));
   }
 
@@ -837,7 +1379,8 @@ function toDiscoveryCandidates(raw: RawDiscoveryElement): DiscoveryCandidate[] {
       label,
       confidence: searchable.includes("checkout") || searchable.includes("결제") || searchable.includes("payment") ? 0.8 : 0.66,
       reason: "Checkout or payment entrypoint candidate was found.",
-      observationType: "checkout_candidate"
+      observationType: "checkout_candidate",
+      signals: matchedSignalsFor("PURCHASE_CHECKOUT", raw, searchable)
     }));
   }
 
@@ -853,6 +1396,7 @@ function createCandidate(
     confidence: number;
     reason: string;
     observationType: string;
+    signals: DiscoveryCandidateSignal[];
   }
 ): DiscoveryCandidate {
   const role = resolveTargetRole(raw, input.entrypointType);
@@ -887,6 +1431,7 @@ function createCandidate(
     reason: input.reason,
     target,
     observationType: input.observationType,
+    signals: input.signals,
     observationData: {
       text: input.label,
       href: raw.href,
@@ -968,6 +1513,7 @@ function createScenarioRecommendations(
       confidence: primaryCandidate?.confidence ?? 0,
       reason: primaryCandidate?.reason ?? `${flowType} candidate was detected.`,
       evidence_refs: evidenceRefsFor(flowCandidates.slice(0, 3), evidenceRefByCandidate),
+      evidence_summary: evidenceSummaryFor(flowType, flowCandidates.slice(0, 3), evidenceRefByCandidate),
       suggested_start_url: finalUrl,
       suggested_target: primaryCandidate?.target ?? null
     };
@@ -979,6 +1525,7 @@ function createScenarioRecommendations(
     confidence: 0,
     reason: `No ${flowType.toLowerCase()} entrypoint was detected.`,
     evidence_refs: [],
+    evidence_summary: evidenceSummaryFor(flowType, [], evidenceRefByCandidate),
     suggested_start_url: null,
     suggested_target: null
   }));
@@ -1000,6 +1547,47 @@ function toEntrypointCandidate(
   };
 }
 
+function evidenceSummaryFor(
+  flowType: DiscoveryFlowType,
+  candidates: DiscoveryCandidate[],
+  evidenceRefByCandidate: Map<DiscoveryCandidate, string>
+): DiscoveryEvidenceSummary {
+  let signalIndex = 0;
+  const matchedSignals = candidates.flatMap((candidate) => {
+    const evidenceRef = evidenceRefByCandidate.get(candidate) ?? null;
+    return candidate.signals.map((candidateSignal) => ({
+      ...candidateSignal,
+      signal_id: `sig_${String((signalIndex += 1)).padStart(3, "0")}`,
+      evidence_ref: evidenceRef
+    }));
+  });
+
+  return {
+    matched_signals: matchedSignals,
+    missing_signals: missingSignalsFor(flowType, candidates),
+    limitations: [
+      "image_text_ocr_not_performed",
+      "authenticated_pages_not_explored"
+    ]
+  };
+}
+
+function missingSignalsFor(flowType: DiscoveryFlowType, candidates: DiscoveryCandidate[]): string[] {
+  if (candidates.length === 0) {
+    return [`no_${flowType.toLowerCase()}_entrypoint_detected`];
+  }
+
+  if (flowType === "SIGNUP_LEAD_FORM" || flowType === "CONTACT") {
+    return ["safe_submit_boundary_not_verified"];
+  }
+
+  if (flowType === "PURCHASE_CHECKOUT") {
+    return ["safe_payment_boundary_not_verified"];
+  }
+
+  return [];
+}
+
 function collectUniqueCandidates(
   candidatesByKey: Map<string, DiscoveryCandidate>,
   nextCandidates: DiscoveryCandidate[]
@@ -1017,8 +1605,36 @@ function sortCandidates(left: DiscoveryCandidate, right: DiscoveryCandidate): nu
   return right.confidence - left.confidence || left.label.localeCompare(right.label);
 }
 
+function landingCtaConfidence(raw: RawDiscoveryElement, searchable: string): number {
+  if (raw.href && isPrimaryLike(searchable)) {
+    return 0.88;
+  }
+
+  if (raw.href) {
+    return 0.78;
+  }
+
+  return isPrimaryLike(searchable) ? 0.76 : 0.68;
+}
+
+function signupFormConfidence(raw: RawDiscoveryElement, searchable: string): number {
+  if (raw.inputType === "email") {
+    return 0.88;
+  }
+
+  if (searchable.includes("email") || searchable.includes("이메일")) {
+    return raw.tagName === "form" ? 0.82 : 0.84;
+  }
+
+  if (hasAny(searchable, ["company", "organization", "phone", "회사", "연락처"])) {
+    return raw.tagName === "form" ? 0.76 : 0.74;
+  }
+
+  return 0.7;
+}
+
 function isLandingCta(raw: RawDiscoveryElement, searchable: string): boolean {
-  if (!isInteractive(raw)) {
+  if (!isCtaAction(raw)) {
     return false;
   }
 
@@ -1028,11 +1644,11 @@ function isLandingCta(raw: RawDiscoveryElement, searchable: string): boolean {
 
 function isSignupForm(raw: RawDiscoveryElement, searchable: string): boolean {
   if (raw.tagName === "form") {
-    return hasAny(searchable, ["signup", "sign up", "register", "lead", "email", "회원가입", "가입", "이메일"]);
+    return hasAny(searchable, ["signup", "sign up", "register", "lead", "email", "company", "organization", "phone", "contact", "회원가입", "가입", "이메일", "회사", "연락처"]);
   }
 
   if (raw.tagName === "input" || raw.tagName === "textarea") {
-    return raw.inputType === "email" || hasAny(searchable, ["email", "work email", "company", "organization", "이메일", "회사"]);
+    return raw.inputType === "email" || hasAny(searchable, ["email", "work email", "company", "organization", "phone", "이메일", "회사", "연락처"]);
   }
 
   return false;
@@ -1056,17 +1672,17 @@ function isContactCandidate(raw: RawDiscoveryElement, searchable: string): boole
     "데모",
     "데모 신청",
     "영업 문의"
-  ]) && (isInteractive(raw) || raw.tagName === "section" || raw.tagName === "form");
+  ]) && isInteractive(raw);
 }
 
 function isPricingCandidate(raw: RawDiscoveryElement, searchable: string): boolean {
   return hasAny(searchable, ["pricing", "price", "plan", "starter", "요금", "가격", "플랜"])
-    && (isInteractive(raw) || raw.tagName === "section");
+    && isInteractive(raw);
 }
 
 function isCheckoutCandidate(raw: RawDiscoveryElement, searchable: string): boolean {
-  return hasAny(searchable, ["checkout", "payment", "billing", "purchase", "결제", "구매"])
-    && (isInteractive(raw) || raw.tagName === "section");
+  return hasAny(searchable, ["checkout", "payment", "billing", "purchase", "cart", "order", "결제", "구매", "장바구니", "주문"])
+    && isInteractive(raw);
 }
 
 function isUnsafeNavigationText(text: string): boolean {
@@ -1118,7 +1734,15 @@ function candidateElementKey(candidate: DiscoveryCandidate): string {
 }
 
 function isInteractive(raw: RawDiscoveryElement): boolean {
-  return raw.tagName === "a" || raw.tagName === "button" || raw.role === "button" || raw.role === "link" || Boolean(raw.href);
+  return raw.interactive;
+}
+
+function isCtaAction(raw: RawDiscoveryElement): boolean {
+  return raw.tagName === "a"
+    || raw.tagName === "button"
+    || raw.role === "button"
+    || raw.role === "link"
+    || Boolean(raw.href);
 }
 
 function isSignupLike(searchable: string): boolean {
