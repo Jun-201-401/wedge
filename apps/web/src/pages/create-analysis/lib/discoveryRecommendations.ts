@@ -12,6 +12,7 @@ export interface ScenarioRecommendationViewModel {
   summary: string;
   evidence: string;
   actionLabel: string;
+  levelLabel: string;
   confidenceLabel: string;
   confidence: number;
   isRunnable: boolean;
@@ -26,6 +27,7 @@ export interface ScenarioRecommendationViewModel {
 }
 
 export const CREATE_ANALYSIS_SCENARIO_IDS = ['landing-cta', 'signup-form', 'contact', 'pricing', 'checkout'] as const satisfies readonly CreateAnalysisScenarioId[];
+const MANUAL_SCENARIO_TYPES = ['LANDING_CTA', 'SIGNUP_LEAD_FORM', 'CONTACT', 'PRICING', 'PURCHASE_CHECKOUT'] as const satisfies readonly DiscoveryScenarioType[];
 
 const SCENARIO_COPY = {
   LANDING_CTA: {
@@ -91,6 +93,36 @@ function toneFor(level: ScenarioRecommendationLevel): ScenarioTone {
   }
 
   return 'unavailable';
+}
+
+function recommendationLevelLabel(level: ScenarioRecommendationLevel) {
+  switch (level) {
+    case 'HIGH':
+      return '추천';
+    case 'MEDIUM':
+      return '검토 가능';
+    case 'LOW':
+      return '약한 신호';
+    case 'NOT_AVAILABLE':
+      return '탐지 안 됨';
+  }
+}
+
+function recommendationLevelRank(level: ScenarioRecommendationLevel) {
+  switch (level) {
+    case 'HIGH':
+      return 0;
+    case 'MEDIUM':
+      return 1;
+    case 'LOW':
+      return 2;
+    case 'NOT_AVAILABLE':
+      return 3;
+  }
+}
+
+function isDetectedRecommendation(recommendation: ApiScenarioRecommendation) {
+  return recommendation.recommendationLevel !== 'NOT_AVAILABLE';
 }
 
 function detectionSignalLabel(confidence: number) {
@@ -179,11 +211,27 @@ function limitationLabel(limitation: string) {
   }
 }
 
+function manualSummaryFor(scenarioType: DiscoveryScenarioType) {
+  switch (scenarioType) {
+    case 'LANDING_CTA':
+      return '첫 화면에서 사용자가 다음 행동을 바로 이해하고 이동할 수 있는지 직접 확인합니다.';
+    case 'SIGNUP_LEAD_FORM':
+      return '가입 또는 리드 Form까지 이동하며 입력 부담과 제출 전 신뢰 요소를 확인합니다.';
+    case 'CONTACT':
+      return '문의, 상담, 데모 신청으로 이어지는 흐름을 사용자가 지정한 목표 기준으로 확인합니다.';
+    case 'PRICING':
+      return '가격, 요금제, 플랜 비교 진입점을 직접 따라가며 이해와 다음 행동을 확인합니다.';
+    case 'PURCHASE_CHECKOUT':
+      return '구매, 장바구니, 결제 전 단계까지 안전하게 이동하며 마찰을 확인합니다.';
+    default:
+      return '사용자가 지정한 목표 기준으로 첫 화면부터 흐름을 확인합니다.';
+  }
+}
+
 export function toScenarioRecommendationViewModel(recommendation: ApiScenarioRecommendation, sourceDiscoveryId?: string): ScenarioRecommendationViewModel {
   const copy = SCENARIO_COPY[recommendation.scenarioType] ?? SCENARIO_COPY.CUSTOM_GUIDED;
-  const isRunnable = recommendation.recommendationLevel === 'HIGH' || recommendation.recommendationLevel === 'MEDIUM';
+  const isRunnable = recommendation.recommendationLevel !== 'NOT_AVAILABLE';
   const summaryPrefix = isRunnable ? copy.availableSummary : copy.unavailableSummary;
-  const reason = recommendation.reason?.trim();
 
   return {
     id: copy.id,
@@ -191,9 +239,10 @@ export function toScenarioRecommendationViewModel(recommendation: ApiScenarioRec
     level: recommendation.recommendationLevel,
     tone: toneFor(recommendation.recommendationLevel),
     title: copy.title,
-    summary: reason ? `${summaryPrefix} ${reason}` : summaryPrefix,
+    summary: summaryPrefix,
     evidence: evidenceLabel(recommendation),
-    actionLabel: isRunnable ? '이 흐름으로 진단' : '직접 설정 필요',
+    actionLabel: recommendation.recommendationLevel === 'LOW' ? '확인하며 시작하기' : isRunnable ? '이 흐름으로 시작하기' : '직접 설정 필요',
+    levelLabel: recommendationLevelLabel(recommendation.recommendationLevel),
     confidenceLabel: detectionSignalLabel(recommendation.confidence),
     confidence: recommendation.confidence,
     isRunnable,
@@ -208,8 +257,49 @@ export function toScenarioRecommendationViewModel(recommendation: ApiScenarioRec
   };
 }
 
+export function toManualScenarioRecommendationViewModels(excludedScenarioIds: readonly CreateAnalysisScenarioId[] = []): ScenarioRecommendationViewModel[] {
+  const excludedIds = new Set<CreateAnalysisScenarioId>(excludedScenarioIds);
+
+  return MANUAL_SCENARIO_TYPES
+    .map((scenarioType) => {
+      const copy = SCENARIO_COPY[scenarioType];
+      return {
+        id: copy.id,
+        scenarioType,
+        level: 'LOW',
+        tone: 'low',
+        title: copy.title,
+        summary: manualSummaryFor(scenarioType),
+        evidence: '직접 선택한 흐름',
+        actionLabel: '이 흐름 직접 선택',
+        levelLabel: '직접 선택',
+        confidenceLabel: '수동',
+        confidence: 0,
+        isRunnable: true,
+        recommendationId: null,
+        evidenceRefs: [],
+        evidenceSummary: null,
+        signalLabels: [],
+        limitationLabels: [],
+        suggestedStartUrl: null,
+        suggestedTarget: null,
+      } satisfies ScenarioRecommendationViewModel;
+    })
+    .filter((scenario) => !excludedIds.has(scenario.id));
+}
+
 export function toScenarioRecommendationViewModels(discovery: Discovery): ScenarioRecommendationViewModel[] {
-  return (discovery.scenarioRecommendations ?? []).map((recommendation) =>
-    toScenarioRecommendationViewModel(recommendation, discovery.discoveryId),
-  );
+  return (discovery.scenarioRecommendations ?? [])
+    .filter(isDetectedRecommendation)
+    .sort((left, right) => {
+      const levelDelta = recommendationLevelRank(left.recommendationLevel) - recommendationLevelRank(right.recommendationLevel);
+      if (levelDelta !== 0) {
+        return levelDelta;
+      }
+
+      return right.confidence - left.confidence;
+    })
+    .map((recommendation) =>
+      toScenarioRecommendationViewModel(recommendation, discovery.discoveryId),
+    );
 }

@@ -8,6 +8,9 @@ import { pushAppPath } from '../../shared/lib/navigation';
 import { buildRunMonitorPath } from '../run-monitor/lib/runMonitorRoute';
 import {
   buildCreateAnalysisPath,
+  createManualChoiceRouteState,
+  createRecommendationChoiceRouteState,
+  createScenarioReadyRouteState,
   MVP_SMOKE_CREATE_RUN_CONTEXT,
   parseCreateAnalysisRouteState,
   readCreateRunContextFromEnv,
@@ -18,6 +21,7 @@ import {
 import { normalizeAnalysisUrl } from './lib/createAnalysisUrl';
 import {
   CREATE_ANALYSIS_SCENARIO_IDS,
+  toManualScenarioRecommendationViewModels,
   toScenarioRecommendationViewModels,
   type CreateAnalysisScenarioId,
   type ScenarioRecommendationViewModel,
@@ -65,28 +69,28 @@ const DISCOVERY_TIMEOUT_MS = 90000;
 const DISCOVERY_VIEWPORT = { width: 1440, height: 900 } as const;
 const PREFLIGHT_DISCOVERY_STEPS: DiscoveryStep[] = [
   {
-    label: 'Discovery 요청',
-    detail: '입력한 URL로 사전 탐색 작업을 생성합니다',
+    label: '탐색 준비',
+    detail: '입력한 URL로 사이트 확인 작업을 준비합니다',
     status: 'active',
   },
   {
-    label: '사이트 열기',
-    detail: 'Runner가 페이지에 연결하고 기본 응답을 확인합니다',
+    label: '첫 화면 열기',
+    detail: '페이지에 연결해 첫 화면과 주요 링크를 확인합니다',
     status: 'pending',
   },
   {
-    label: 'CTA / Form / Contact 후보 탐색',
+    label: '전환 후보 탐색',
     detail: '사용자가 다음 행동으로 이동하는 버튼, 링크, 입력 후보를 찾습니다',
     status: 'pending',
   },
   {
-    label: 'Pricing / Checkout 후보 확인',
-    detail: '요금제, 구매, 결제 전환 흐름 후보를 좁힙니다',
+    label: '구매·문의 흐름 확인',
+    detail: '요금제, 구매, 문의처럼 이어질 수 있는 흐름을 좁힙니다',
     status: 'pending',
   },
   {
-    label: '추천 시나리오 정리',
-    detail: '사이트에 맞는 진단 흐름을 우선순위로 정리합니다',
+    label: '추천 흐름 정리',
+    detail: '지금 바로 실행할 만한 진단 흐름을 우선순위로 정리합니다',
     status: 'pending',
   },
 ];
@@ -223,22 +227,6 @@ function getPollingSteps(status: string): DiscoveryStep[] {
   }));
 }
 
-function getPreflightStateMessage(discoveryState: DiscoveryUiState) {
-  if (discoveryState.kind === 'creating') {
-    return 'Discovery request creating';
-  }
-
-  if (discoveryState.kind === 'polling') {
-    return `Discovery ${discoveryState.status.toLowerCase()}`;
-  }
-
-  if (discoveryState.kind === 'failed') {
-    return 'Discovery failed';
-  }
-
-  return 'Site trace active';
-}
-
 interface PreflightAgentProps {
   submittedUrl: string;
   discoveryState: DiscoveryUiState;
@@ -251,6 +239,14 @@ interface RecommendationAgentProps {
   scenarios: ScenarioRecommendation[];
   emptyMessage?: string;
   onChooseScenario: (scenario: ScenarioRecommendation) => void;
+  onOpenManualChoice: () => void;
+}
+
+interface ManualChoiceAgentProps {
+  submittedUrl: string;
+  scenarios: ScenarioRecommendation[];
+  onChooseScenario: (scenario: ScenarioRecommendation) => void;
+  onBackToRecommendations: () => void;
 }
 
 interface ScenarioSetupAgentProps {
@@ -263,10 +259,9 @@ interface ScenarioSetupAgentProps {
 interface ReadyAgentProps {
   submittedUrl: string;
   selectedScenario: ScenarioRecommendation;
-  selectedDepth: ScenarioDepthOption;
   isCreatingRun: boolean;
   runStartError: string;
-  onEditScope: () => void;
+  onChooseDifferentScenario: () => void;
   onStartRun: () => void;
 }
 
@@ -296,7 +291,6 @@ function PreflightNode({ status }: { status: DiscoveryStepStatus }) {
 function PreflightAgent({ submittedUrl, discoveryState, onRetry, onEditUrl }: PreflightAgentProps) {
   const steps = discoveryState.kind === 'polling' ? discoveryState.progressSteps : PREFLIGHT_DISCOVERY_STEPS;
   const progressPercent = getDiscoveryProgressPercent(steps);
-  const stateMessage = getPreflightStateMessage(discoveryState);
   const isFailed = discoveryState.kind === 'failed';
 
   return (
@@ -304,18 +298,9 @@ function PreflightAgent({ submittedUrl, discoveryState, onRetry, onEditUrl }: Pr
       <div className="preflight-agent" aria-live="polite">
         <div className="preflight-agent__header">
           <div className="preflight-agent__header-main">
-            <div className="preflight-agent__header-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24" fill="none">
-                <path d="M12 3 4 7.5v9L12 21l8-4.5v-9L12 3Z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
-              </svg>
-            </div>
             <div className="preflight-agent__header-copy">
-              <p>Preflight</p>
-              <h2 id="discovery-progress-title">사이트를 살펴보고 있어요</h2>
-              <div className={`preflight-agent__header-status ${isFailed ? 'preflight-agent__header-status--failed' : ''}`}>
-                <span className="preflight-agent__header-status-dot" aria-hidden="true" />
-                <span>{stateMessage}</span>
-              </div>
+              <p>사전 탐색</p>
+              <h2 id="discovery-progress-title">분석할 흐름을 찾고 있어요</h2>
             </div>
           </div>
 
@@ -326,6 +311,11 @@ function PreflightAgent({ submittedUrl, discoveryState, onRetry, onEditUrl }: Pr
         </div>
 
         <p className="preflight-agent__url">{submittedUrl}</p>
+        <div className="preflight-agent__scope" aria-label="사전 탐색 범위">
+          <span>전체 분석 전 확인</span>
+          <span>첫 화면과 주요 진입점 중심</span>
+          <span>추천 흐름 자동 정리</span>
+        </div>
         <div className="preflight-agent__divider" aria-hidden="true" />
 
         <ol className="preflight-agent__timeline" aria-label="Discovery 진행 상태">
@@ -372,72 +362,56 @@ function PreflightAgent({ submittedUrl, discoveryState, onRetry, onEditUrl }: Pr
             </div>
           </div>
         ) : (
-          <p className="preflight-agent__note">전체 분석 전, 실제 Discovery로 가능한 사용자 흐름을 찾고 있습니다.</p>
+          <p className="preflight-agent__note">이 단계가 끝나면 바로 실행할 수 있는 점검 흐름을 추천해드릴게요.</p>
         )}
       </div>
     </section>
   );
 }
 
-function RecommendationAgent({ submittedUrl, scenarios, emptyMessage, onChooseScenario }: RecommendationAgentProps) {
-  const authorableScenarioCount = scenarios.filter((scenario) => scenario.isRunnable).length;
+function RecommendationAgent({ submittedUrl, scenarios, emptyMessage, onChooseScenario, onOpenManualChoice }: RecommendationAgentProps) {
+  const visibleScenarios = scenarios.filter((scenario) => scenario.isRunnable);
+  const detectedScenarioCount = visibleScenarios.length;
+  const hasManualScenarios = toManualScenarioRecommendationViewModels(visibleScenarios.map((scenario) => scenario.id)).length > 0;
 
   return (
     <section className="create-analysis-panel create-analysis-panel--recommendations" aria-labelledby="recommendations-title">
       <div className="recommendation-agent">
         <div className="recommendation-agent__header">
           <div className="recommendation-agent__header-main">
-            <div className="recommendation-agent__header-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24" fill="none">
-                <path d="m12 4 8 4-8 4-8-4 8-4Z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
-                <path d="m4 12 8 4 8-4" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
-                <path d="m4 16 8 4 8-4" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
-              </svg>
-            </div>
-
             <div className="recommendation-agent__header-copy">
-              <p>Recommendations</p>
-              <h2 id="recommendations-title">이 사이트에서 가능한 진단 흐름을 찾았어요</h2>
-              <div className="recommendation-agent__header-status">
-                <span className="recommendation-agent__header-status-dot" aria-hidden="true" />
-                <span>Discovery signals ready</span>
-              </div>
+              <p>진단 흐름 추천</p>
+              <h2 id="recommendations-title">이 사이트에서 점검해볼 만한 흐름을 찾았어요</h2>
             </div>
           </div>
 
-          <div className="recommendation-agent__count" aria-label={`실행 가능한 추천 흐름 ${authorableScenarioCount}개`}>
-            <span className="recommendation-agent__count-value">{authorableScenarioCount}</span>
-            <span className="recommendation-agent__count-label">found</span>
+          <div className="recommendation-agent__count" aria-label={`탐지된 추천 흐름 ${detectedScenarioCount}개`}>
+            <span className="recommendation-agent__count-value">{detectedScenarioCount}</span>
+            <span className="recommendation-agent__count-label">탐지됨</span>
           </div>
         </div>
 
         <p className="recommendation-agent__url">{submittedUrl}</p>
         <p className="recommendation-agent__limitation">
-          DOM 기반 사전 탐색 결과입니다. 이미지 안 텍스트, 숨겨진 메뉴, 로그인 뒤 흐름은 놓칠 수 있어요.
+          사이트 화면에서 확인한 버튼, 링크, 폼 신호를 기준으로 추천했어요. 이미지 텍스트, 숨겨진 메뉴, 로그인 뒤 화면은 제외될 수 있어요.
         </p>
         <div className="recommendation-agent__divider" aria-hidden="true" />
 
-        {scenarios.length === 0 ? (
+        {visibleScenarios.length === 0 ? (
           <div className="recommendation-agent__empty" role="status">
             <strong>추천 가능한 흐름을 찾지 못했어요</strong>
-            <p>{emptyMessage ?? 'URL을 바꾸거나 잠시 후 다시 시도해주세요.'}</p>
+            <p>{emptyMessage ?? '자동으로 찾은 흐름은 없지만, 직접 점검할 흐름을 선택할 수 있어요.'}</p>
           </div>
         ) : (
           <div className="scenario-grid">
-            {scenarios.map((scenario) => (
+            {visibleScenarios.map((scenario) => (
               <article key={`${scenario.scenarioType}-${scenario.id}`} className={`scenario-card scenario-card--${scenario.tone}`}>
-                <span className="scenario-card__level">{scenario.level}</span>
+                <span className="scenario-card__level">{scenario.levelLabel}</span>
                 <h3>{scenario.title}</h3>
                 <p>{scenario.summary}</p>
-                <p className="scenario-card__confidence">탐지 신호: {scenario.confidenceLabel}</p>
-                <p className="scenario-card__evidence">근거: {scenario.evidence}</p>
-                {scenario.limitationLabels.length > 0 ? (
-                  <p className="scenario-card__limitations">한계: {scenario.limitationLabels.join(', ')}</p>
-                ) : null}
                 <button
                   type="button"
                   aria-label={`${scenario.title} 흐름으로 진단`}
-                  disabled={!scenario.isRunnable}
                   onClick={() => onChooseScenario(scenario)}
                 >
                   {scenario.actionLabel}
@@ -446,6 +420,58 @@ function RecommendationAgent({ submittedUrl, scenarios, emptyMessage, onChooseSc
             ))}
           </div>
         )}
+
+        {hasManualScenarios ? (
+          <div className="recommendation-agent__manual-entry">
+            <div>
+              <strong>원하는 흐름이 없나요?</strong>
+              <p>자동 추천에 없는 흐름은 다음 화면에서 직접 선택할 수 있어요.</p>
+            </div>
+            <button className="create-analysis-secondary-action" type="button" onClick={onOpenManualChoice}>
+              다른 흐름 선택
+            </button>
+          </div>
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
+function ManualChoiceAgent({ submittedUrl, scenarios, onChooseScenario, onBackToRecommendations }: ManualChoiceAgentProps) {
+  return (
+    <section className="create-analysis-panel create-analysis-panel--manual-choice" aria-labelledby="manual-choice-title">
+      <div className="manual-choice-agent">
+        <div className="manual-choice-agent__header">
+          <div className="manual-choice-agent__header-main">
+            <div className="manual-choice-agent__header-copy">
+              <p>직접 선택</p>
+              <h2 id="manual-choice-title">점검할 흐름을 직접 고르세요</h2>
+            </div>
+          </div>
+        </div>
+
+        <p className="manual-choice-agent__url">{submittedUrl}</p>
+        <p className="manual-choice-agent__note">자동 탐지 근거가 약한 흐름은 사용자가 선택한 목표를 기준으로 안전하게 탐색합니다.</p>
+        <div className="manual-choice-agent__divider" aria-hidden="true" />
+
+        <div className="manual-choice-agent__grid">
+          {scenarios.map((scenario) => (
+            <button
+              key={`manual-${scenario.id}`}
+              className="manual-choice-agent__option"
+              type="button"
+              onClick={() => onChooseScenario(scenario)}
+            >
+              <span>{scenario.levelLabel}</span>
+              <strong>{scenario.title}</strong>
+              <small>{scenario.summary}</small>
+            </button>
+          ))}
+        </div>
+
+        <button className="create-analysis-secondary-action manual-choice-agent__back" type="button" onClick={onBackToRecommendations}>
+          추천 흐름으로 돌아가기
+        </button>
       </div>
     </section>
   );
@@ -509,7 +535,7 @@ function ScenarioSetupAgent({ selectedScenario, selectedDepthId, onDepthChange, 
   );
 }
 
-function ReadyAgent({ submittedUrl, selectedScenario, selectedDepth, isCreatingRun, runStartError, onEditScope, onStartRun }: ReadyAgentProps) {
+function ReadyAgent({ submittedUrl, selectedScenario, isCreatingRun, runStartError, onChooseDifferentScenario, onStartRun }: ReadyAgentProps) {
   return (
     <section className="create-analysis-panel create-analysis-panel--ready" aria-labelledby="ready-title">
       <div className="ready-agent">
@@ -523,16 +549,16 @@ function ReadyAgent({ submittedUrl, selectedScenario, selectedDepth, isCreatingR
             </div>
 
             <div className="ready-agent__header-copy">
-              <p>Ready</p>
-              <h2 id="ready-title">이 설정으로 분석을 시작할게요</h2>
+              <p>분석 시작</p>
+              <h2 id="ready-title">분석 시작 준비 완료</h2>
               <div className="ready-agent__header-status">
                 <span className="ready-agent__header-status-dot" aria-hidden="true" />
-                <span>Run 생성 준비 완료</span>
+                <span>선택한 흐름으로 바로 진단을 시작할 수 있어요</span>
               </div>
             </div>
           </div>
 
-          <span className="ready-agent__badge">실행 전 확인</span>
+          <span className="ready-agent__badge">준비 완료</span>
         </div>
 
         <div className="ready-agent__url-card">
@@ -542,36 +568,31 @@ function ReadyAgent({ submittedUrl, selectedScenario, selectedDepth, isCreatingR
 
         <div className="ready-agent__summary-grid" aria-label="진단 시작 전 요약">
           <article className="ready-agent__summary-card">
-            <span>선택한 흐름</span>
+            <span>진단 흐름</span>
             <strong>{selectedScenario.title}</strong>
             <p>{selectedScenario.summary}</p>
-          </article>
-          <article className="ready-agent__summary-card">
-            <span>확인 범위</span>
-            <strong>{selectedDepth.title}</strong>
-            <p>{selectedDepth.detail}</p>
           </article>
         </div>
 
         <div className="ready-agent__launch-plan" aria-label="분석 시작 후 진행 단계">
           <div>
             <span className="ready-agent__launch-step">1</span>
-            <p>Run 생성</p>
+            <p>화면 탐색</p>
           </div>
           <div>
             <span className="ready-agent__launch-step">2</span>
-            <p>실시간 Trace 확인</p>
+            <p>마찰 기록</p>
           </div>
           <div>
             <span className="ready-agent__launch-step">3</span>
-            <p>마찰 리포트 작성</p>
+            <p>리포트 생성</p>
           </div>
         </div>
 
         <div className="ready-agent__notice">
           <span>안전 설정</span>
-          <strong>위험 행동 없이 탐색합니다</strong>
-          <p>실제 결제, 삭제·변경 같은 위험 행동, OAuth 우회는 수행하지 않습니다.</p>
+          <strong>안전하게 탐색합니다</strong>
+          <p>실제 결제, 삭제, 변경 같은 위험 행동은 수행하지 않아요.</p>
         </div>
 
         {runStartError && (
@@ -582,14 +603,12 @@ function ReadyAgent({ submittedUrl, selectedScenario, selectedDepth, isCreatingR
 
         <div className="ready-agent__actions">
           <button className="create-analysis-panel__action ready-agent__primary-action" type="button" onClick={onStartRun} disabled={isCreatingRun}>
-            {isCreatingRun ? 'Run 생성 중…' : '분석 시작'}
+            {isCreatingRun ? '분석 시작 중…' : '분석 시작하기'}
           </button>
-          <button className="ready-agent__secondary-action" type="button" onClick={onEditScope} disabled={isCreatingRun}>
-            범위 다시 조정
+          <button className="create-analysis-secondary-action" type="button" onClick={onChooseDifferentScenario} disabled={isCreatingRun}>
+            다른 흐름 선택
           </button>
         </div>
-
-        <p className="ready-agent__note">분석 시작 후 실시간 Trace 화면에서 진행률, 체크포인트, 화면 미리보기를 확인할 수 있습니다.</p>
       </div>
     </section>
   );
@@ -610,9 +629,17 @@ export function CreateAnalysisPage() {
     () => discoveryState.kind === 'completed' ? discoveryState.scenarios : [],
     [discoveryState],
   );
+  const manualChoiceScenarios = useMemo(
+    () => toManualScenarioRecommendationViewModels(recommendationScenarios.map((scenario) => scenario.id)),
+    [recommendationScenarios],
+  );
+  const selectableScenarios = useMemo(
+    () => [...recommendationScenarios, ...manualChoiceScenarios],
+    [recommendationScenarios, manualChoiceScenarios],
+  );
   const selectedScenario = useMemo(
-    () => findScenarioById(routeState.scenarioId, recommendationScenarios),
-    [routeState.scenarioId, recommendationScenarios],
+    () => findScenarioById(routeState.scenarioId, selectableScenarios),
+    [routeState.scenarioId, selectableScenarios],
   );
   const selectedDepthId = routeState.depthId ?? DEFAULT_SCENARIO_DEPTH_ID;
   const selectedDepth = useMemo(() => findDepthById(selectedDepthId), [selectedDepthId]);
@@ -783,7 +810,7 @@ export function CreateAnalysisPage() {
       if (discoveryRequestSeq.current === requestSeq) {
         setDiscoveryState({
           kind: 'failed',
-          message: 'Discovery 요청에 실패했습니다. 네트워크와 로그인 상태를 확인한 뒤 다시 시도해주세요.',
+          message: '사이트 확인을 시작하지 못했습니다. 네트워크와 로그인 상태를 확인한 뒤 다시 시도해주세요.',
         });
       }
     }
@@ -835,13 +862,15 @@ export function CreateAnalysisPage() {
       return;
     }
 
-    navigateToRouteState({
-      ...routeState,
-      stage: 'onboarding',
-      submittedUrl,
-      scenarioId: scenario.id,
-      depthId: DEFAULT_SCENARIO_DEPTH_ID,
-    });
+    navigateToRouteState(createScenarioReadyRouteState(routeState, submittedUrl, scenario.id, DEFAULT_SCENARIO_DEPTH_ID));
+  };
+
+  const openManualChoice = () => {
+    if (!submittedUrl) {
+      return;
+    }
+
+    navigateToRouteState(createManualChoiceRouteState(routeState, submittedUrl));
   };
 
   const chooseDepth = (depthId: ScenarioDepthId) => {
@@ -875,18 +904,12 @@ export function CreateAnalysisPage() {
     });
   };
 
-  const editScope = () => {
-    if (!submittedUrl || !selectedScenario || isCreatingRun) {
+  const chooseDifferentScenario = () => {
+    if (!submittedUrl || isCreatingRun) {
       return;
     }
 
-    navigateToRouteState({
-      ...routeState,
-      stage: 'onboarding',
-      submittedUrl,
-      scenarioId: selectedScenario.id,
-      depthId: selectedDepthId,
-    });
+    navigateToRouteState(createRecommendationChoiceRouteState(routeState, submittedUrl));
   };
 
   const startAnalysisRun = async () => {
@@ -898,7 +921,7 @@ export function CreateAnalysisPage() {
     setRunStartError('');
 
     if (!createRunIds) {
-      setRunStartError('Run 생성에 필요한 project/scenario UUID가 없습니다. MVP 기본 설정 또는 create-analysis URL을 확인해주세요.');
+      setRunStartError('분석 실행에 필요한 project/scenario UUID가 없습니다. MVP 기본 설정 또는 create-analysis URL을 확인해주세요.');
       setIsCreatingRun(false);
       return;
     }
@@ -988,7 +1011,7 @@ export function CreateAnalysisPage() {
       });
       createdRunId = response.data.id;
     } catch {
-      setRunStartError('Run 생성에 실패했습니다. 프로젝트와 시나리오 설정을 확인한 뒤 다시 시도해주세요.');
+      setRunStartError('분석 실행 준비에 실패했습니다. 프로젝트와 시나리오 설정을 확인한 뒤 다시 시도해주세요.');
       setIsCreatingRun(false);
       return;
     }
@@ -996,7 +1019,7 @@ export function CreateAnalysisPage() {
     try {
       await startRun(createdRunId);
     } catch {
-      setRunStartError('Run은 생성됐지만 시작 요청에 실패했습니다. 실시간 Trace에서 현재 상태를 확인합니다.');
+      setRunStartError('분석 준비는 완료됐지만 시작 요청에 실패했습니다. 실시간 Trace에서 현재 상태를 확인합니다.');
     } finally {
       pushAppPath(buildRunMonitorPath(createdRunId, {
         submittedUrl,
@@ -1097,6 +1120,16 @@ export function CreateAnalysisPage() {
             scenarios={recommendationScenarios}
             emptyMessage={discoveryState.kind === 'empty' ? discoveryState.message : undefined}
             onChooseScenario={chooseScenario}
+            onOpenManualChoice={openManualChoice}
+          />
+        )}
+
+        {stage === 'manual-choice' && (
+          <ManualChoiceAgent
+            submittedUrl={submittedUrl}
+            scenarios={manualChoiceScenarios}
+            onChooseScenario={chooseScenario}
+            onBackToRecommendations={() => navigateToRouteState(createRecommendationChoiceRouteState(routeState, submittedUrl))}
           />
         )}
 
@@ -1108,10 +1141,9 @@ export function CreateAnalysisPage() {
           <ReadyAgent
             submittedUrl={submittedUrl}
             selectedScenario={selectedScenario}
-            selectedDepth={selectedDepth}
             isCreatingRun={isCreatingRun}
             runStartError={runStartError}
-            onEditScope={editScope}
+            onChooseDifferentScenario={chooseDifferentScenario}
             onStartRun={startAnalysisRun}
           />
         )}
