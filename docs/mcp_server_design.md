@@ -214,7 +214,7 @@ V1 read-only tool은 기존 application service를 재사용한다.
 
 MCP endpoint는 public anonymous endpoint가 아니다.
 
-현재 `SecurityConfig`는 `/mcp/**`를 denyAll로 막고 있다. 이 상태는 MCP 전용 인증/권한이 준비되기 전까지 유지한다.
+현재 spike 구현에서는 `InternalServiceTokenFilter`가 `/mcp`, `/mcp/**` 요청의 bearer token을 검증한다. `SecurityConfig`의 `/mcp` matcher는 Spring AI Streamable HTTP transport의 async dispatch를 막지 않기 위해 `permitAll`로 둔다. 이 설정은 anonymous 공개를 의미하지 않는다. token 검증은 security authorization 단계가 아니라 MCP 전용 filter 단계에서 수행한다.
 
 V1 최소 정책:
 
@@ -330,6 +330,38 @@ MCP endpoint는 인증/권한 정책 확정 전까지 운영 공개하지 않음
 MCP client 또는 inspector 기반 `tools/list`, `tools/call` 검증과 `mcp_invocation_log` 기록 확인은 MCP endpoint 접근 정책을 정한 뒤 진행한다.
 
 초기 검증은 dev DB와 seed run을 사용한다. 운영 데이터와 운영 MCP 공개는 별도 보안 검토 후 진행한다.
+
+현재 로컬 검증 결과:
+
+```text
+MCP server enabled: true
+MCP endpoint: /mcp
+MCP access policy: Authorization: Bearer <WEDGE_MCP_SERVICE_TOKEN>
+MCP protocol version verified with Spring AI server: 2025-06-18
+health: UP
+initialize: HTTP 200
+tools/list: HTTP 200, get_run_status 확인
+tools/call get_run_status: HTTP 200, isError=false
+```
+
+검증에 사용한 run:
+
+```text
+runId: ed1e0dcc-b595-40d8-914f-d1cb4d69bfdc
+name: Real Run E2E Smoke
+status: COMPLETED
+resultCompleteness: FINAL
+analysisStatus: NOT_STARTED
+currentStepOrder: 2
+```
+
+주의:
+
+```text
+mcp_invocation_log 기록은 아직 구현하지 않았다.
+OAuth/OIDC 기반 정식 MCP resource server도 아직 구현하지 않았다.
+현재 service token 방식은 내부 검증용 spike 정책이다.
+```
 
 ## 13. 단계별 작업 계획
 
