@@ -1,4 +1,4 @@
-import type { RunReportProjection } from '../../../entities/report';
+import type { ReportDetail, RunReportProjection } from '../../../entities/report';
 import type { Run } from '../../../entities/run';
 import { getScenarioLabel } from '../../../shared';
 import type { FindingSeverity, ReportDecisionNode, ReportFinding, ReportRecommendation, RunReportViewModel } from './runReportViewModel';
@@ -6,6 +6,7 @@ import type { FindingSeverity, ReportDecisionNode, ReportFinding, ReportRecommen
 interface BuildRunReportFromApiInput {
   run: Run;
   report: RunReportProjection;
+  detail?: ReportDetail | null;
   scenarioId: string | null;
 }
 
@@ -80,6 +81,7 @@ function normalizeEvidenceRefs(value: unknown): string[] {
       const record = ref as Record<string, unknown>;
       return readString(record.id)
         ?? readString(record.reference)
+        ?? readString(record.ref)
         ?? readString(record.checkpointId)
         ?? readString(record.observationId)
         ?? `evidence-${index + 1}`;
@@ -107,7 +109,42 @@ function buildFindings(report: RunReportProjection): ReportFinding[] {
       confidence: finding.confidence ?? 0.72,
       priorityScore: finding.priorityScore ?? Math.max(50, 86 - index * 8),
       evidenceRefs,
+      previewImageUrl: null,
       recommendation: finding.impactHypothesis ?? '분석 결과의 근거와 추천 nudge를 함께 검토하세요.',
+      highlight: createHighlight(index),
+    };
+  });
+}
+
+function getFindingPreviewUrl(finding: ReportDetail['findings'][number]) {
+  const artifact = finding.previewImage?.artifact;
+  return artifact?.contentUrl ?? artifact?.url ?? null;
+}
+
+function buildFindingsFromDetail(detail: ReportDetail): ReportFinding[] {
+  return detail.findings.map((finding, index) => {
+    const severity = severityFromScore(finding.severity);
+    const evidenceRefs = normalizeEvidenceRefs(finding.evidenceRefs);
+    const firstNudge = finding.nudges[0] ?? null;
+
+    return {
+      id: finding.id,
+      issueId: `DETAIL-${String(index + 1).padStart(3, '0')}`,
+      order: finding.rank,
+      severity,
+      stage: finding.stage ?? 'Report',
+      title: finding.title,
+      summary: finding.summary,
+      evidenceLabel: evidenceRefs[0] ?? finding.stage ?? 'Report evidence',
+      evidenceCount: evidenceRefs.length,
+      confidence: finding.confidence ?? 0.72,
+      priorityScore: finding.priorityScore ?? Math.max(50, 86 - index * 8),
+      evidenceRefs,
+      previewImageUrl: getFindingPreviewUrl(finding),
+      recommendation: firstNudge?.recommendation
+        ?? firstNudge?.rationale
+        ?? finding.impactHypothesis
+        ?? '분석 결과의 근거와 추천 nudge를 함께 검토하세요.',
       highlight: createHighlight(index),
     };
   });
@@ -120,6 +157,34 @@ function createHighlight(index: number) {
     { label: 'NUDGE TARGET', top: '29%', left: '55%', width: '24%', height: '18%' },
   ];
   return highlights[index] ?? highlights[0];
+}
+
+function buildRecommendationsFromDetail(detail: ReportDetail, findings: ReportFinding[]): ReportRecommendation[] {
+  const recommendations = detail.findings
+    .flatMap((finding, findingIndex) => (
+      finding.nudges.map((nudge, nudgeIndex) => ({
+        id: nudge.id,
+        priority: `NUDGE #${String(nudge.rank ?? nudgeIndex + 1).padStart(2, '0')}`,
+        title: nudge.title,
+        detail: nudge.recommendation ?? nudge.rationale ?? findings[findingIndex]?.recommendation ?? '분석 결과에 맞춰 전환 마찰을 줄이는 개선안을 검토하세요.',
+        expectedImpact: nudge.expectedEffect ?? '전환 판단 근거 강화',
+        effort: nudge.difficulty ?? 'Low',
+      }))
+    ))
+    .slice(0, 3);
+
+  if (recommendations.length > 0) {
+    return recommendations;
+  }
+
+  return findings.slice(0, 3).map((finding, index) => ({
+    id: `recommendation-${finding.id}`,
+    priority: `NUDGE #${String(index + 1).padStart(2, '0')}`,
+    title: finding.title,
+    detail: finding.recommendation,
+    expectedImpact: '전환 판단 근거 강화',
+    effort: finding.severity === 'high' ? 'Medium' : 'Low',
+  }));
 }
 
 function buildRecommendations(report: RunReportProjection, findings: ReportFinding[]): ReportRecommendation[] {
@@ -142,6 +207,11 @@ function buildRecommendations(report: RunReportProjection, findings: ReportFindi
     expectedImpact: '전환 판단 근거 강화',
     effort: finding.severity === 'high' ? 'Medium' : 'Low',
   }));
+}
+
+function getDetailPreviewUrl(detail: ReportDetail | null | undefined) {
+  const firstFinding = detail?.findings[0];
+  return firstFinding ? getFindingPreviewUrl(firstFinding) : null;
 }
 
 function getCompletedAt(run: Run, report: RunReportProjection) {
@@ -173,8 +243,9 @@ function getDurationLabel(run: Run) {
   return seconds >= 60 ? `${Math.floor(seconds / 60)}m ${seconds % 60}s` : `${seconds}s`;
 }
 
-export function buildRunReportFromApi({ run, report, scenarioId }: BuildRunReportFromApiInput): RunReportViewModel {
-  const findings = buildFindings(report);
+export function buildRunReportFromApi({ run, report, detail, scenarioId }: BuildRunReportFromApiInput): RunReportViewModel {
+  const detailWithFindings = detail && detail.findings.length > 0 ? detail : null;
+  const findings = detailWithFindings ? buildFindingsFromDetail(detailWithFindings) : buildFindings(report);
   const score = readNumber(report.summary.friction_score) ?? readNumber(report.summary.frictionScore) ?? 72;
   const targetUrl = readString(report.summary.targetUrl) ?? readString(report.summary.url) ?? run.startUrl;
 
@@ -193,8 +264,8 @@ export function buildRunReportFromApi({ run, report, scenarioId }: BuildRunRepor
     heroTitle: report.title ?? '전환 마찰 리포트',
     heroSubtitle: `${report.analysisStatus} · ${report.reportStatus}`,
     heroCallToAction: readString(report.summary.primary_cta) ?? readString(report.summary.primaryCta) ?? 'Primary CTA',
-    evidencePreviewUrl: null,
+    evidencePreviewUrl: getDetailPreviewUrl(detailWithFindings),
     findings,
-    recommendations: buildRecommendations(report, findings),
+    recommendations: detailWithFindings ? buildRecommendationsFromDetail(detailWithFindings, findings) : buildRecommendations(report, findings),
   };
 }
