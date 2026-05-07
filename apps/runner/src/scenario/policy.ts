@@ -83,7 +83,7 @@ function resolveOrigin(candidateUrl: string, baseUrl: string): string | null {
 }
 
 function looksLikePaymentTarget(targetSummary: string): boolean {
-  return containsAny(targetSummary, ["pay", "purchase", "checkout", "buy", "order", "결제", "구매", "주문"]);
+  return containsAny(targetSummary, ["pay", "purchase", "buy", "order", "결제", "구매", "주문"]);
 }
 
 function looksLikeDestructiveTarget(targetSummary: string): boolean {
