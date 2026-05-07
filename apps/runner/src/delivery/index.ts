@@ -6,7 +6,9 @@ export interface DeliveryIssue {
     | "artifact-storage"
     | "artifacts-callback"
     | "checkpoints-callback"
-    | "finished-callback";
+    | "finished-callback"
+    | "agent-events-callback"
+    | "agent-trace-callback";
   stepKey?: string;
   message: string;
 }

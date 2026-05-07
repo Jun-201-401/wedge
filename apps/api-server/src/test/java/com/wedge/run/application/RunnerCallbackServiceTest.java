@@ -20,6 +20,9 @@ import com.wedge.evidence.application.command.SaveRunCheckpointsCommand;
 import com.wedge.evidence.domain.ArtifactType;
 import com.wedge.run.api.dto.RunResponse;
 import com.wedge.run.application.command.RunnerAcceptedCommand;
+import com.wedge.run.application.command.RunnerAgentEventCommand;
+import com.wedge.run.application.command.RunnerAgentEventsCommand;
+import com.wedge.run.application.command.RunnerAgentTraceCommand;
 import com.wedge.run.application.command.RunnerArtifactCommand;
 import com.wedge.run.application.command.RunnerArtifactsCommand;
 import com.wedge.common.internal.InternalCallbackContext;
@@ -131,6 +134,72 @@ class RunnerCallbackServiceTest {
         verify(runPersistenceAdapter).updateCurrentStepOrder(runId, 1);
         verify(runPersistenceAdapter).appendRunEvent(runId, stepId, "STEP_STARTED", Map.of("message", "started"), occurredAt);
         verify(runPersistenceAdapter).updateStepState(stepId, StepStatus.RUNNING, occurredAt, null, null);
+    }
+
+    @Test
+    void agentEventsCallbackAppendsRunEventWithoutStepResolution() {
+        UUID runId = UUID.randomUUID();
+        OffsetDateTime occurredAt = OffsetDateTime.parse("2026-05-07T10:01:00+09:00");
+        RunResponse running = sampleRun(runId, RunStatus.RUNNING, ResultCompleteness.NONE);
+        when(processedMessagePersistenceAdapter.tryMarkProcessed("runner.agent-events", "evt_agent_batch_001")).thenReturn(true);
+        when(runService.markRunningIfStarting(runId)).thenReturn(running);
+
+        RunnerCallbackAckResponse result = runnerCallbackService.handleAgentEvents(
+                runId,
+                new RunnerAgentEventsCommand(List.of(new RunnerAgentEventCommand(
+                        UUID.randomUUID(),
+                        "task-1",
+                        "attempt-1",
+                        2,
+                        "DECISION_MADE",
+                        occurredAt,
+                        Map.of("actionType", "click")
+                ))),
+                headers("evt_agent_batch_001")
+        );
+
+        assertThat(result.status()).isEqualTo(RunStatus.RUNNING);
+        assertThat(result.eventCount()).isEqualTo(1);
+        verify(runPersistenceAdapter).appendRunEvent(
+                eq(runId),
+                eq(null),
+                eq("AGENT_DECISION_MADE"),
+                any(),
+                eq(occurredAt)
+        );
+        verify(runPersistenceAdapter, never()).resolveStep(eq(runId), any());
+    }
+
+    @Test
+    void agentTraceCallbackAppendsTraceEventWithoutStepResolution() {
+        UUID runId = UUID.randomUUID();
+        UUID artifactId = UUID.randomUUID();
+        OffsetDateTime occurredAt = OffsetDateTime.parse("2026-05-07T10:02:00+09:00");
+        RunResponse running = sampleRun(runId, RunStatus.RUNNING, ResultCompleteness.NONE);
+        when(processedMessagePersistenceAdapter.tryMarkProcessed("runner.agent-traces", "evt_agent_trace_001")).thenReturn(true);
+        when(runService.markRunningIfStarting(runId)).thenReturn(running);
+
+        RunnerCallbackAckResponse result = runnerCallbackService.handleAgentTrace(
+                runId,
+                new RunnerAgentTraceCommand(
+                        "task-1",
+                        "attempt-1",
+                        occurredAt,
+                        Map.of("outcome", Map.of("status", "SUCCESS")),
+                        artifactId
+                ),
+                headers("evt_agent_trace_001")
+        );
+
+        assertThat(result.eventCount()).isEqualTo(1);
+        verify(runPersistenceAdapter).appendRunEvent(
+                eq(runId),
+                eq(null),
+                eq("AGENT_TRACE_PERSISTED"),
+                any(),
+                eq(occurredAt)
+        );
+        verify(runPersistenceAdapter, never()).resolveStep(eq(runId), any());
     }
 
     @Test

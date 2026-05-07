@@ -11,6 +11,9 @@ import com.wedge.evidence.application.command.SaveRunCheckpointsCommand;
 import com.wedge.evidence.domain.ArtifactType;
 import com.wedge.run.api.dto.RunResponse;
 import com.wedge.run.application.command.RunnerAcceptedCommand;
+import com.wedge.run.application.command.RunnerAgentEventCommand;
+import com.wedge.run.application.command.RunnerAgentEventsCommand;
+import com.wedge.run.application.command.RunnerAgentTraceCommand;
 import com.wedge.run.application.command.RunnerArtifactCommand;
 import com.wedge.run.application.command.RunnerArtifactsCommand;
 import com.wedge.common.internal.InternalCallbackContext;
@@ -35,6 +38,8 @@ import org.springframework.transaction.annotation.Transactional;
 public class RunnerCallbackService {
     private static final String ACCEPTED_CONSUMER = "runner.accepted";
     private static final String STEP_EVENTS_CONSUMER = "runner.step-events";
+    private static final String AGENT_EVENTS_CONSUMER = "runner.agent-events";
+    private static final String AGENT_TRACES_CONSUMER = "runner.agent-traces";
     private static final String CHECKPOINTS_CONSUMER = "runner.checkpoints";
     private static final String ARTIFACTS_CONSUMER = "runner.artifacts";
     private static final String FINISHED_CONSUMER = "runner.finished";
@@ -74,6 +79,44 @@ public class RunnerCallbackService {
             command.events().forEach(event -> applyStepEvent(runId, event));
         }
         return RunnerCallbackAckResponse.stepEvents(run, command.events().size());
+    }
+
+
+    @Transactional
+    public RunnerCallbackAckResponse handleAgentEvents(UUID runId, RunnerAgentEventsCommand command, InternalCallbackContext context) {
+        context.validateRequired();
+
+        RunnerCallbackAckResponse duplicateResponse = duplicateStatusResponse(AGENT_EVENTS_CONSUMER, context.eventId(), runId);
+        if (duplicateResponse != null) {
+            return duplicateResponse.withEventCount(command.events().size());
+        }
+
+        RunResponse run = runService.markRunningIfStarting(runId);
+        if (!isTerminalStatus(run.status())) {
+            command.events().forEach(event -> appendAgentRunEvent(runId, event));
+        }
+        return RunnerCallbackAckResponse.stepEvents(run, command.events().size());
+    }
+
+    @Transactional
+    public RunnerCallbackAckResponse handleAgentTrace(UUID runId, RunnerAgentTraceCommand command, InternalCallbackContext context) {
+        context.validateRequired();
+
+        RunnerCallbackAckResponse duplicateResponse = duplicateStatusResponse(AGENT_TRACES_CONSUMER, context.eventId(), runId);
+        if (duplicateResponse != null) {
+            return duplicateResponse.withEventCount(1);
+        }
+
+        RunResponse run = runService.markRunningIfStarting(runId);
+        if (!isTerminalStatus(run.status())) {
+            Map<String, Object> payload = new LinkedHashMap<>();
+            payload.put("taskId", command.taskId());
+            payload.put("attemptId", command.attemptId());
+            payload.put("traceArtifactId", command.traceArtifactId());
+            payload.put("trace", command.trace());
+            runPersistenceAdapter.appendRunEvent(runId, null, "AGENT_TRACE_PERSISTED", payload, command.occurredAt());
+        }
+        return RunnerCallbackAckResponse.stepEvents(run, 1);
     }
 
     @Transactional
@@ -140,6 +183,16 @@ public class RunnerCallbackService {
 
         RunResponse run = runService.failRun(runId, command.failureCode(), command.failureMessage(), command.resultCompleteness());
         return RunnerCallbackAckResponse.terminal(run);
+    }
+
+
+    private void appendAgentRunEvent(UUID runId, RunnerAgentEventCommand event) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("taskId", event.taskId());
+        payload.put("attemptId", event.attemptId());
+        payload.put("turn", event.turn());
+        payload.put("payload", event.payload());
+        runPersistenceAdapter.appendRunEvent(runId, null, "AGENT_" + event.eventType(), payload, event.occurredAt());
     }
 
     private void applyStepEvent(UUID runId, RunnerStepEventCommand event) {

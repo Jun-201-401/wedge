@@ -76,6 +76,12 @@ test("[계약 동기화] runner callback literal이 packages/contracts callback 
   const callbackSchema = await readJson(resolve(repoRoot, "packages/contracts/internal/runner-callback.schema.json"));
 
   assertPropertyMatchesSchemaEnum(runnerTypesSource, "eventType", callbackSchema, callbackSchema.$defs.StepEvent.properties.eventType);
+  assertTypeAliasMatchesSchemaEnum(
+    runnerTypesSource,
+    "AgentCallbackEventType",
+    callbackSchema,
+    callbackSchema.$defs.AgentEvent.properties.eventType
+  );
   assertPropertyMatchesSchemaEnum(runnerTypesSource, "artifactType", callbackSchema, callbackSchema.$defs.Artifact.properties.artifactType);
   assertPropertyMatchesSchemaEnum(
     runnerTypesSource,

@@ -8,6 +8,7 @@ import { executeScenarioStep } from "../scenario/executor/step-executor.ts";
 import type { ArtifactStore } from "../storage/index.ts";
 import type { AgentTask, Artifact, ScenarioPlan, ScenarioStep } from "../shared/contracts.ts";
 import { classifyRunnerFailure, errorMessage, logOperationalEvent } from "../shared/utils.ts";
+import { emitAgentEventBestEffort, emitAgentTraceBestEffort } from "./callbacks.ts";
 import { HeuristicDecisionClient, type AgentDecision, type AgentDecisionClient } from "./planner.ts";
 import { observePage } from "./observation.ts";
 import { evaluateAgentPolicy } from "./policy.ts";
@@ -68,6 +69,13 @@ export async function executeAgentRun(input: AgentExecutorInput): Promise<AgentE
       reason: preDecisionVerification.reason,
       confidence: preDecisionVerification.confidence
     })));
+    deliveryIssues.push(...(await emitAgentEventBestEffort(input.callbackClient, input.runId, input.task, "PRE_DECISION_VERIFIED", {
+      outcome: preDecisionVerification.outcome,
+      terminal: preDecisionVerification.terminal,
+      satisfied: preDecisionVerification.satisfied,
+      reason: preDecisionVerification.reason,
+      confidence: preDecisionVerification.confidence
+    }, turn)));
 
     if (preDecisionVerification.terminal) {
       trace.outcome = {
@@ -96,6 +104,12 @@ export async function executeAgentRun(input: AgentExecutorInput): Promise<AgentE
       actionType: decision.action.type,
       targetKey: decision.targetKey
     })));
+    deliveryIssues.push(...(await emitAgentEventBestEffort(input.callbackClient, input.runId, input.task, "DECISION_MADE", {
+      decisionReason: decision.reason,
+      confidence: decision.confidence,
+      actionType: decision.action.type,
+      targetKey: decision.targetKey
+    }, turn)));
 
     const policy = evaluateAgentPolicy({
       task: input.task,
@@ -111,6 +125,11 @@ export async function executeAgentRun(input: AgentExecutorInput): Promise<AgentE
       riskClass: policy.riskClass,
       reason: policy.reason
     })));
+    deliveryIssues.push(...(await emitAgentEventBestEffort(input.callbackClient, input.runId, input.task, "POLICY_CHECKED", {
+      allowed: policy.allowed,
+      riskClass: policy.riskClass,
+      reason: policy.reason
+    }, turn)));
 
     if (!policy.allowed) {
       trace.outcome = {
@@ -138,6 +157,11 @@ export async function executeAgentRun(input: AgentExecutorInput): Promise<AgentE
         finalUrl: input.session.snapshot().finalUrl,
         completed: true
       };
+      deliveryIssues.push(...(await emitAgentEventBestEffort(input.callbackClient, input.runId, input.task, "ACTION_COMPLETED", {
+        actionType: decision.action.type,
+        finalUrl: input.session.snapshot().finalUrl,
+        targetKey: decision.targetKey
+      }, turn)));
     } catch (error) {
       const failureCode = classifyRunnerFailure(error);
       const failureMessage = errorMessage(error);
@@ -164,6 +188,13 @@ export async function executeAgentRun(input: AgentExecutorInput): Promise<AgentE
         failureCode,
         failureMessage
       })));
+      deliveryIssues.push(...(await emitAgentEventBestEffort(input.callbackClient, input.runId, input.task, "ACTION_FAILED", {
+        description: step.description,
+        stage: step.stage,
+        actionType: step.action.type,
+        failureCode,
+        failureMessage
+      }, turn)));
 
       throw new ScenarioExecutionError({
         cause: error,
@@ -215,6 +246,13 @@ export async function executeAgentRun(input: AgentExecutorInput): Promise<AgentE
       reason: verification.reason,
       confidence: verification.confidence
     })));
+    deliveryIssues.push(...(await emitAgentEventBestEffort(input.callbackClient, input.runId, input.task, "GOAL_VERIFIED", {
+      outcome: verification.outcome,
+      terminal: verification.terminal,
+      satisfied: verification.satisfied,
+      reason: verification.reason,
+      confidence: verification.confidence
+    }, turn)));
 
     if (verification.satisfied || decision.kind === "finish") {
       trace.outcome = {
@@ -241,6 +279,13 @@ export async function executeAgentRun(input: AgentExecutorInput): Promise<AgentE
     callbackClient: input.callbackClient
   });
   deliveryIssues.push(...traceDelivery.deliveryIssues);
+  if (input.task.artifact_policy?.capture_trace !== false) {
+    deliveryIssues.push(...(await emitAgentEventBestEffort(input.callbackClient, input.runId, input.task, "TRACE_PERSISTED", {
+      outcome: trace.outcome.status,
+      traceArtifactId: traceDelivery.artifact?.artifactId
+    })));
+    deliveryIssues.push(...(await emitAgentTraceBestEffort(input.callbackClient, input.runId, input.task, trace, traceDelivery.artifact)));
+  }
 
   return {
     summary: {

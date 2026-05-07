@@ -1,4 +1,6 @@
 import type {
+  AgentEventBatch,
+  AgentTraceCallbackPayload,
   ArtifactBatch,
   DiscoveryAcceptedPayload,
   DiscoveryCheckpointRequest,
@@ -18,6 +20,8 @@ export type CallbackPayloadMap = {
   checkpoints: RunnerCheckpointsRequest;
   finished: RunnerFinishedPayload;
   failed: RunnerFailedPayload;
+  "agent-events": AgentEventBatch;
+  "agent-traces": AgentTraceCallbackPayload;
   "discovery-accepted": DiscoveryAcceptedPayload;
   "discovery-checkpoints": DiscoveryCheckpointRequest;
   "discovery-finished": DiscoveryFinishedPayload;
@@ -33,6 +37,8 @@ export interface CallbackClient {
   sendCheckpoints: (runId: string, payload: RunnerCheckpointsRequest) => Promise<void>;
   sendFinished: (runId: string, payload: RunnerFinishedPayload) => Promise<void>;
   sendFailed: (runId: string, payload: RunnerFailedPayload) => Promise<void>;
+  sendAgentEvents: (runId: string, payload: AgentEventBatch) => Promise<void>;
+  sendAgentTrace: (runId: string, payload: AgentTraceCallbackPayload) => Promise<void>;
   sendDiscoveryAccepted?: (discoveryId: string, payload: DiscoveryAcceptedPayload) => Promise<void>;
   sendDiscoveryCheckpoints?: (discoveryId: string, payload: DiscoveryCheckpointRequest) => Promise<void>;
   sendDiscoveryFinished?: (discoveryId: string, payload: DiscoveryFinishedPayload) => Promise<void>;
@@ -46,6 +52,8 @@ const CALLBACK_METHOD_NAMES = {
   checkpoints: "sendCheckpoints",
   finished: "sendFinished",
   failed: "sendFailed",
+  "agent-events": "sendAgentEvents",
+  "agent-traces": "sendAgentTrace",
   "discovery-accepted": "sendDiscoveryAccepted",
   "discovery-checkpoints": "sendDiscoveryCheckpoints",
   "discovery-finished": "sendDiscoveryFinished",
@@ -62,6 +70,8 @@ export function createCallbackClientFromHandler(
     sendCheckpoints: (runId, payload) => handler("checkpoints", runId, payload),
     sendFinished: (runId, payload) => handler("finished", runId, payload),
     sendFailed: (runId, payload) => handler("failed", runId, payload),
+    sendAgentEvents: (runId, payload) => handler("agent-events", runId, payload),
+    sendAgentTrace: (runId, payload) => handler("agent-traces", runId, payload),
     sendDiscoveryAccepted: (discoveryId, payload) => handler("discovery-accepted", discoveryId, payload),
     sendDiscoveryCheckpoints: (discoveryId, payload) => handler("discovery-checkpoints", discoveryId, payload),
     sendDiscoveryFinished: (discoveryId, payload) => handler("discovery-finished", discoveryId, payload),

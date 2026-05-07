@@ -461,6 +461,37 @@ export interface ArtifactBatch {
   artifacts: Artifact[];
 }
 
+export type AgentCallbackEventType =
+  | "PRE_DECISION_VERIFIED"
+  | "DECISION_MADE"
+  | "POLICY_CHECKED"
+  | "ACTION_COMPLETED"
+  | "ACTION_FAILED"
+  | "GOAL_VERIFIED"
+  | "TRACE_PERSISTED";
+
+export interface AgentEvent {
+  eventId: string;
+  taskId: string;
+  attemptId: string;
+  turn?: number;
+  eventType: AgentCallbackEventType;
+  occurredAt: string;
+  payload: Record<string, unknown>;
+}
+
+export interface AgentEventBatch {
+  events: AgentEvent[];
+}
+
+export interface AgentTraceCallbackPayload {
+  taskId: string;
+  attemptId: string;
+  occurredAt: string;
+  trace: Record<string, unknown>;
+  traceArtifact?: Artifact;
+}
+
 export interface Checkpoint {
   checkpointId: string;
   stepKey: string;

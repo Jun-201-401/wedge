@@ -1701,7 +1701,7 @@ DONE: Update RabbitMQ consumer to consume agent.execute.request from separate qu
 DONE: Add agent-specific concurrency configuration.
 DONE: Persist AgentTrace as TRACE artifact.
 DONE: Emit accepted/finished/failed through existing run lifecycle callbacks.
-Emit agent-events/agent-traces through the agent-specific callback endpoints.
+DONE: Emit agent-events/agent-traces through the agent-specific callback endpoints.
 ```
 
 Acceptance criteria:
@@ -1731,9 +1731,9 @@ Completed:
 - Policy evaluation honors AgentTask risk_policy for navigation, cart mutation, checkout navigation, shipping form entry, payment info entry, final payment/order commit, destructive action, and external message send.
 - Checkout heuristic prioritizes add-to-cart, cart navigation, and checkout entry before generic CTA clicks.
 - Agent queue concurrency is isolated with RUNNER_AGENT_CONCURRENCY.
+- Agent event/trace callbacks are emitted to dedicated `agent-events` and `agent-traces` endpoints.
 
 Remaining:
-- Emit agent-events/agent-traces through agent-specific callback endpoints.
 - Add broader fixture/e2e smoke coverage for the agent checkout path.
 - Add LLM decision client behind config.
 - Add trace-to-ScenarioPlan export.

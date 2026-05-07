@@ -14,7 +14,7 @@ import {
   loadAgentExampleMessage,
   loadExampleMessage
 } from "./support.ts";
-import type { Artifact, ArtifactDraft, InteractiveComponentObservationItem, RunnerFailedPayload, StepEvent } from "../src/shared/contracts.ts";
+import type { AgentEvent, AgentTraceCallbackPayload, Artifact, ArtifactDraft, InteractiveComponentObservationItem, RunnerFailedPayload, StepEvent } from "../src/shared/contracts.ts";
 
 test("[Worker lifecycle] accepted callback 실패 시 session을 닫고 failed callback을 보낸다", async () => {
   const message = await loadExampleMessage();
@@ -256,6 +256,8 @@ test("[Agent Worker] AgentTask로 CTA 후보를 관찰해 클릭한다", async (
   const executedActions: string[] = [];
   const persistedArtifacts: ArtifactDraft[] = [];
   const artifactCallbacks: Artifact[] = [];
+  const agentEvents: AgentEvent[] = [];
+  const agentTraces: AgentTraceCallbackPayload[] = [];
   let currentUrl = task.start_url;
   let loaded = false;
   let closed = false;
@@ -323,6 +325,12 @@ test("[Agent Worker] AgentTask로 CTA 후보를 관찰해 클릭한다", async (
     callbackClient: createStubCallbackClient({
       sendArtifacts: async (_runId, payload) => {
         artifactCallbacks.push(...payload.artifacts);
+      },
+      sendAgentEvents: async (_runId, payload) => {
+        agentEvents.push(...payload.events);
+      },
+      sendAgentTrace: async (_runId, payload) => {
+        agentTraces.push(payload);
       }
     }),
     capturePipeline: {
@@ -366,6 +374,13 @@ test("[Agent Worker] AgentTask로 CTA 후보를 관찰해 클릭한다", async (
   assert.equal(result.traceArtifact?.artifactType, "TRACE");
   assert.equal(artifactCallbacks.length, 1);
   assert.equal(artifactCallbacks[0].artifactType, "TRACE");
+  assert.ok(agentEvents.some((event) => event.eventType === "PRE_DECISION_VERIFIED"));
+  assert.ok(agentEvents.some((event) => event.eventType === "DECISION_MADE"));
+  assert.ok(agentEvents.some((event) => event.eventType === "TRACE_PERSISTED"));
+  assert.equal(agentTraces.length, 1);
+  assert.equal(agentTraces[0].taskId, task.task_id);
+  assert.equal(agentTraces[0].traceArtifact?.artifactType, "TRACE");
+  assert.equal((agentTraces[0].trace as { outcome?: { status?: string } }).outcome?.status, "SUCCESS");
   assert.equal(closed, true);
 });
 
