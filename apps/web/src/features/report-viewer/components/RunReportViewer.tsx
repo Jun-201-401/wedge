@@ -10,6 +10,18 @@ function formatIssueCount(issueCount: number) {
   return String(issueCount).padStart(2, '0');
 }
 
+function severityLabel(severity: string) {
+  return {
+    high: 'High',
+    medium: 'Medium',
+    low: 'Low',
+  }[severity] ?? 'Medium';
+}
+
+function formatConfidence(confidence: number) {
+  return `${Math.round(confidence * 100)}%`;
+}
+
 export function RunReportBrand() {
   return (
     <a href="/" className="run-report-brand" aria-label="Wedge home">
@@ -20,6 +32,7 @@ export function RunReportBrand() {
 
 export function RunReportViewer({ report }: RunReportViewerProps) {
   const primaryFinding = report.findings[0] ?? null;
+  const topFindings = report.findings.slice(0, 3);
   const evidencePreviewUrl = useAuthenticatedResourceUrl(report.evidencePreviewUrl);
 
   return (
@@ -75,6 +88,49 @@ export function RunReportViewer({ report }: RunReportViewerProps) {
 
         <div className="run-report-layout">
           <div className="run-report-main-column">
+            <section className="run-report-section run-report-section--top-findings" aria-labelledby="run-report-top-findings-title">
+              <div className="run-report-section-heading">
+                <h2 id="run-report-top-findings-title">Top Priority Findings</h2>
+                <span aria-hidden="true" />
+              </div>
+
+              {topFindings.length > 0 ? (
+                <ol className="run-report-top-finding-list">
+                  {topFindings.map((finding, index) => (
+                    <li key={finding.id} className={`run-report-top-finding-card run-report-top-finding-card--${finding.severity}`}>
+                      <article>
+                        <div className="run-report-top-finding-card__meta">
+                          <span>#{String(index + 1).padStart(2, '0')}</span>
+                          <strong>{severityLabel(finding.severity)}</strong>
+                        </div>
+                        <h3>{finding.title}</h3>
+                        <p>{finding.summary}</p>
+                        <dl>
+                          <div>
+                            <dt>Stage</dt>
+                            <dd>{finding.stage}</dd>
+                          </div>
+                          <div>
+                            <dt>Confidence</dt>
+                            <dd>{formatConfidence(finding.confidence)}</dd>
+                          </div>
+                          <div>
+                            <dt>Evidence</dt>
+                            <dd>{finding.evidenceCount}</dd>
+                          </div>
+                        </dl>
+                      </article>
+                    </li>
+                  ))}
+                </ol>
+              ) : (
+                <div className="run-report-top-finding-empty" role="status">
+                  <strong>우선순위 이슈 없음</strong>
+                  <p>이번 분석에서는 상위 3개로 표시할 마찰 지점이 발견되지 않았습니다.</p>
+                </div>
+              )}
+            </section>
+
             <section className="run-report-section run-report-section--priority" aria-labelledby="run-report-nudge-title">
               <div className="run-report-section-heading">
                 <h2 id="run-report-nudge-title">Recommended Nudge</h2>
@@ -142,7 +198,7 @@ export function RunReportViewer({ report }: RunReportViewerProps) {
                   </div>
                   <div>
                     <span>Confidence</span>
-                    <strong>{primaryFinding ? `${Math.round(primaryFinding.confidence * 100)}%` : '0%'}</strong>
+                    <strong>{primaryFinding ? formatConfidence(primaryFinding.confidence) : '0%'}</strong>
                   </div>
                 </div>
 
