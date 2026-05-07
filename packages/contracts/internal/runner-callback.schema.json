@@ -162,6 +162,7 @@
           "format": "date-time"
         },
         "stepKey": {
+          "description": "Scenario step key for step-scoped artifacts. Reserved agent run-scoped keys such as agent_trace and agent_scenario_plan_export are persisted without resolving a ScenarioPlan step.",
           "type": "string",
           "minLength": 1
         }

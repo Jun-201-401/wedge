@@ -28,6 +28,7 @@ import com.wedge.run.domain.StepStatus;
 import com.wedge.run.infrastructure.RunPersistenceAdapter;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -44,6 +45,10 @@ public class RunnerCallbackService {
     private static final String ARTIFACTS_CONSUMER = "runner.artifacts";
     private static final String FINISHED_CONSUMER = "runner.finished";
     private static final String FAILED_CONSUMER = "runner.failed";
+    private static final Set<String> RUN_SCOPED_AGENT_ARTIFACT_KEYS = Set.of(
+            "agent_trace",
+            "agent_scenario_plan_export"
+    );
 
     private final RunService runService;
     private final RunPersistenceAdapter runPersistenceAdapter;
@@ -273,11 +278,18 @@ public class RunnerCallbackService {
     private Map<String, UUID> resolveArtifactSteps(UUID runId, SaveRunArtifactsCommand command) {
         Map<String, UUID> stepIdsByKey = new LinkedHashMap<>();
         for (SaveRunArtifactCommand artifact : command.artifacts()) {
+            if (isRunScopedAgentArtifact(artifact)) {
+                continue;
+            }
             RunPersistenceAdapter.ResolvedStep step = runPersistenceAdapter.resolveStep(runId, artifact.stepKey());
             runPersistenceAdapter.updateCurrentStepOrder(runId, step.stepOrder());
             stepIdsByKey.put(artifact.stepKey(), step.id());
         }
         return stepIdsByKey;
+    }
+
+    private boolean isRunScopedAgentArtifact(SaveRunArtifactCommand artifact) {
+        return RUN_SCOPED_AGENT_ARTIFACT_KEYS.contains(artifact.stepKey());
     }
 
     private StepStatus mapStepStatus(String eventType) {

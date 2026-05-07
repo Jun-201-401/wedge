@@ -408,6 +408,58 @@ class RunnerCallbackServiceTest {
     }
 
     @Test
+    void agentRunScopedArtifactsPersistWithoutScenarioStepResolution() {
+        UUID runId = UUID.randomUUID();
+        UUID traceArtifactId = UUID.randomUUID();
+        UUID exportArtifactId = UUID.randomUUID();
+        OffsetDateTime occurredAt = OffsetDateTime.parse("2026-05-07T10:02:00+09:00");
+        RunnerArtifactsCommand command = new RunnerArtifactsCommand(List.of(
+                new RunnerArtifactCommand(
+                        traceArtifactId,
+                        "agent_trace",
+                        "TRACE",
+                        "bucket-a",
+                        "runs/a/agent_trace/trace.json",
+                        "application/json",
+                        null,
+                        null,
+                        42L,
+                        "abc123",
+                        occurredAt
+                ),
+                new RunnerArtifactCommand(
+                        exportArtifactId,
+                        "agent_scenario_plan_export",
+                        "OTHER",
+                        "bucket-a",
+                        "runs/a/agent_scenario_plan_export/export.json",
+                        "application/json",
+                        null,
+                        null,
+                        84L,
+                        "def456",
+                        occurredAt
+                )
+        ));
+
+        when(processedMessagePersistenceAdapter.tryMarkProcessed("runner.artifacts", "evt_agent_artifacts_001")).thenReturn(true);
+        when(runService.getRun(runId)).thenReturn(sampleRun(runId, RunStatus.RUNNING, ResultCompleteness.NONE));
+        when(artifactPersistenceService.saveRunArtifacts(eq(runId), any(SaveRunArtifactsCommand.class), eq(Map.of())))
+                .thenReturn(2);
+
+        RunnerCallbackAckResponse result = runnerCallbackService.handleArtifacts(
+                runId,
+                command,
+                headers("evt_agent_artifacts_001")
+        );
+
+        assertThat(result.artifactCount()).isEqualTo(2);
+        verify(runPersistenceAdapter, never()).resolveStep(eq(runId), any());
+        verify(artifactPersistenceService).saveRunArtifacts(eq(runId), any(SaveRunArtifactsCommand.class), eq(Map.of()));
+        verify(runPersistenceAdapter).updateLatestArtifact(runId, exportArtifactId);
+    }
+
+    @Test
     void checkpointCallbackDoesNotMoveLatestPointerWhenOnlyDuplicatesWereSeen() {
         UUID runId = UUID.randomUUID();
         UUID stepId = UUID.randomUUID();
