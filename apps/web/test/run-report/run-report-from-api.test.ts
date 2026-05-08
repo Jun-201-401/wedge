@@ -249,6 +249,9 @@ test('buildRunReportFromApi prefers report detail finding preview image when ava
   assert.equal(report.findings[0].highlight?.label, 'Start free');
   assert.equal(report.findings[0].highlight?.left, '36.11%');
   assert.equal(report.findings[0].highlight?.top, '40.00%');
+  assert.equal(report.findings[0].highlight?.width, '15.28%');
+  assert.equal(report.findings[0].highlight?.height, '6.22%');
+  assert.equal(report.recommendations[0].findingId, 'detail-finding-1');
   assert.equal(report.recommendations[0].detail, '상세 CTA 아래에 기대 결과를 한 문장으로 설명하세요.');
 });
 
@@ -348,6 +351,114 @@ test('buildRunReportFromApi converts viewport ratio highlight coordinates direct
   assert.equal(report.findings[0].highlight?.top, '50.00%');
   assert.equal(report.findings[0].highlight?.width, '20.00%');
   assert.equal(report.findings[0].highlight?.height, '10.00%');
+});
+
+test('buildRunReportFromApi scales screenshot pixel highlight coordinates against the preview artifact', () => {
+  const screenshotPixelDetail: ReportDetail = {
+    ...reportDetail,
+    findings: [{
+      ...reportDetail.findings[0],
+      highlight: {
+        evidenceRef: 'cp-detail.obs-1',
+        label: 'Screenshot target',
+        source: 'artifact-coordinate',
+        coordinateSpace: 'screenshot',
+        bounds: {
+          x: 720,
+          y: 225,
+          width: 360,
+          height: 90,
+          unit: 'screenshot_px',
+        },
+        viewport: null,
+        screenshotArtifactId: '66666666-6666-4666-8666-666666666666',
+      },
+    }],
+  };
+  const report = buildRunReportFromApi({
+    run: completedRun,
+    report: readyReport,
+    detail: screenshotPixelDetail,
+    scenarioId: 'landing-cta',
+  });
+
+  assert.equal(report.findings[0].highlight?.left, '50.00%');
+  assert.equal(report.findings[0].highlight?.top, '25.00%');
+  assert.equal(report.findings[0].highlight?.width, '25.00%');
+  assert.equal(report.findings[0].highlight?.height, '10.00%');
+});
+
+test('buildRunReportFromApi accepts explicit screenshot pixel units when coordinate space is absent', () => {
+  const screenshotPixelDetail: ReportDetail = {
+    ...reportDetail,
+    findings: [{
+      ...reportDetail.findings[0],
+      highlight: {
+        ...reportDetail.findings[0].highlight!,
+        coordinateSpace: null,
+        bounds: {
+          x: 720,
+          y: 225,
+          width: 360,
+          height: 90,
+          unit: 'screenshot_px',
+        },
+      },
+    }],
+  };
+  const report = buildRunReportFromApi({
+    run: completedRun,
+    report: readyReport,
+    detail: screenshotPixelDetail,
+    scenarioId: 'landing-cta',
+  });
+
+  assert.equal(report.findings[0].highlight?.left, '50.00%');
+  assert.equal(report.findings[0].highlight?.top, '25.00%');
+});
+
+test('buildRunReportFromApi ignores highlight coordinates with unsupported units', () => {
+  const invalidUnitDetail: ReportDetail = {
+    ...reportDetail,
+    findings: [{
+      ...reportDetail.findings[0],
+      highlight: {
+        ...reportDetail.findings[0].highlight!,
+        coordinateSpace: 'screenshot',
+        bounds: {
+          ...reportDetail.findings[0].highlight!.bounds,
+          unit: 'document_px' as never,
+        },
+      },
+    }],
+  };
+  const report = buildRunReportFromApi({
+    run: completedRun,
+    report: readyReport,
+    detail: invalidUnitDetail,
+    scenarioId: 'landing-cta',
+  });
+
+  assert.equal(report.findings[0].highlight, null);
+});
+
+test('buildRunReportFromApi links detail fallback recommendations back to their findings', () => {
+  const detailWithoutNudges: ReportDetail = {
+    ...reportDetail,
+    findings: [{
+      ...reportDetail.findings[0],
+      nudges: [],
+    }],
+  };
+  const report = buildRunReportFromApi({
+    run: completedRun,
+    report: readyReport,
+    detail: detailWithoutNudges,
+    scenarioId: 'landing-cta',
+  });
+
+  assert.equal(report.recommendations[0].findingId, 'detail-finding-1');
+  assert.equal(report.recommendations[0].title, '상세 CTA 문맥 부족');
 });
 
 test('selectLatestScreenshotPreviewUrl picks the latest screenshot artifact', () => {

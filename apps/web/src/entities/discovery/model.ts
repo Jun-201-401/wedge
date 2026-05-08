@@ -48,7 +48,7 @@ export interface DiscoveryViewport {
 }
 
 export interface CreateDiscoveryRequest {
-  projectId: string;
+  projectId?: string;
   url: string;
   devicePreset: DevicePreset;
   viewport?: DiscoveryViewport;
@@ -78,6 +78,7 @@ export interface ScenarioRecommendation {
 
 export interface Discovery {
   discoveryId: string;
+  projectId: string;
   status: DiscoveryStatus;
   inputUrl?: string | null;
   finalUrl?: string | null;

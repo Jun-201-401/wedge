@@ -69,6 +69,8 @@ class AuthControllerTest {
                 .andExpect(jsonPath("$.data.refreshToken").doesNotExist())
                 .andExpect(jsonPath("$.data.tokenType").value("Bearer"))
                 .andExpect(jsonPath("$.data.user.id").value(userId.toString()))
+                .andExpect(jsonPath("$.data.user.defaultProjectId").value("8f06dca8-9c4d-4f20-b1a8-1d5ee40a9923"))
+                .andExpect(jsonPath("$.data.user.defaultScenarioTemplateVersionId").value("5c5f4c77-0c32-4ab3-9841-2b6f6cc07a40"))
                 .andExpect(jsonPath("$.meta.requestId").value("req_test"));
     }
 
@@ -209,7 +211,14 @@ class AuthControllerTest {
                         "access-token",
                         "Bearer",
                         3600,
-                        new UserResponse(userId, "user@example.com", "User", "ACTIVE")
+                        new UserResponse(
+                                userId,
+                                "user@example.com",
+                                "User",
+                                "ACTIVE",
+                                UUID.fromString("8f06dca8-9c4d-4f20-b1a8-1d5ee40a9923"),
+                                UUID.fromString("5c5f4c77-0c32-4ab3-9841-2b6f6cc07a40")
+                        )
                 ),
                 refreshToken,
                 604800

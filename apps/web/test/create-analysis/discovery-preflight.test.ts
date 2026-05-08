@@ -6,9 +6,9 @@ import { createDiscoveryIdempotencyKey, isDiscoveryBusy } from '../../src/pages/
 const projectId = '8f06dca8-9c4d-4f20-b1a8-1d5ee40a9923';
 
 test('createDiscoveryIdempotencyKey creates a fresh bounded key for each explicit discovery submit', () => {
-  const firstKey = createDiscoveryIdempotencyKey(projectId, 'https://example.com/pricing?utm=demo');
-  const secondKey = createDiscoveryIdempotencyKey(projectId, 'https://example.com/pricing?utm=demo');
-  const otherUrlKey = createDiscoveryIdempotencyKey(projectId, 'https://example.com/contact');
+  const firstKey = createDiscoveryIdempotencyKey('https://example.com/pricing?utm=demo', projectId);
+  const secondKey = createDiscoveryIdempotencyKey('https://example.com/pricing?utm=demo', projectId);
+  const otherUrlKey = createDiscoveryIdempotencyKey('https://example.com/contact', projectId);
 
   assert.notEqual(firstKey, secondKey);
   assert.notEqual(firstKey, otherUrlKey);

@@ -1,6 +1,6 @@
 import type { ApiResponse, RequestOptions } from './http';
 import { requestJson } from './http';
-import { clearAuthToken, readAccessToken, saveAuthToken } from './authSession';
+import { clearAuthToken, hasRefreshCookieHint, readAccessToken, saveAuthToken } from './authSession';
 import type { AuthToken, LoginRequest, SignupRequest, User } from '../entities/auth';
 
 async function requestAuthToken(path: string, options: RequestOptions) {
@@ -37,6 +37,10 @@ let ensureAuthSessionPromise: Promise<boolean> | null = null;
 export async function ensureAuthSession(options?: RequestOptions) {
   if (readAccessToken()) {
     return true;
+  }
+
+  if (!hasRefreshCookieHint()) {
+    return false;
   }
 
   ensureAuthSessionPromise ??= refreshToken(options)

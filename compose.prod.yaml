@@ -54,12 +54,16 @@ services:
 
   rabbitmq:
     image: rabbitmq:4.2-management
+    hostname: rabbitmq
     restart: unless-stopped
     environment:
+      RABBITMQ_NODENAME: rabbit@rabbitmq
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
+      - ./infra/rabbitmq/rabbitmq-prod.conf:/etc/rabbitmq/rabbitmq.conf:ro
+      - ./infra/rabbitmq/rabbitmq-definitions-prod.json:/etc/rabbitmq/rabbitmq-definitions-prod.json:ro
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "ping"]
       interval: 10s
@@ -112,6 +116,7 @@ services:
       RUNNER_MQ_CONSUMER_ENABLED: "true"
       RUNNER_MQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672/%2F
       RUNNER_MQ_QUEUE_RUN_EXECUTE: ${WEDGE_RUN_EXECUTE_QUEUE}
+      RUNNER_MQ_QUEUE_AGENT_EXECUTE: ${WEDGE_AGENT_EXECUTE_QUEUE:-agent.execute.request}
       RUNNER_MQ_QUEUE_DISCOVERY_EXECUTE: ${WEDGE_DISCOVERY_EXECUTE_QUEUE:-discovery.execute.request}
       RUNNER_MQ_PREFETCH: 1
       RUNNER_MQ_REQUEUE_ON_FAILURE: "false"

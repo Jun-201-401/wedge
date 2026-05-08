@@ -4,7 +4,7 @@ export function isDiscoveryBusy(status: DiscoveryUiStatus) {
   return status === 'creating' || status === 'polling';
 }
 
-export function createDiscoveryIdempotencyKey(projectId: string, targetUrl: string) {
+export function createDiscoveryIdempotencyKey(targetUrl: string, projectId = 'default-project') {
   const input = `${projectId}:${targetUrl}`;
   let hash = 0;
 

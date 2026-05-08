@@ -3,6 +3,8 @@ export interface User {
   email: string;
   displayName: string;
   status: 'ACTIVE' | 'INACTIVE' | string;
+  defaultProjectId?: string | null;
+  defaultScenarioTemplateVersionId?: string | null;
 }
 
 export interface AuthToken {

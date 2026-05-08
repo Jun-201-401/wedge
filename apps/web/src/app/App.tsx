@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 
 import { ensureAuthSession, getCurrentUser, logout } from '../api/auth';
-import { readCurrentUser } from '../api/authSession';
+import { readCurrentUser, saveCurrentUser } from '../api/authSession';
 import type { User } from '../entities';
 import { CreateAnalysisPage, LandingPage, LoginPage, RunMonitorPage, RunReportPage, RunsListPage, SignupPage } from '../pages';
 import { replaceAppPath } from '../shared/lib/navigation';
@@ -39,6 +39,7 @@ export function App() {
 
       try {
         const response = await getCurrentUser();
+        saveCurrentUser(response.data);
         if (!isCancelled) {
           setCurrentUser(response.data);
           setAuthState('authenticated');

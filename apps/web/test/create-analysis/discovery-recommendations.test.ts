@@ -82,6 +82,7 @@ test('discovery recommendation mapper keeps LOW as a selectable weak signal', ()
 test('discovery recommendation mapper converts completed discovery payloads', () => {
   const discovery = {
     discoveryId: '20000000-0000-4000-8000-000000000011',
+    projectId: '8f06dca8-9c4d-4f20-b1a8-1d5ee40a9923',
     status: 'COMPLETED',
     scenarioRecommendations: [contactRecommendation],
   } satisfies Discovery;
@@ -95,6 +96,7 @@ test('discovery recommendation mapper converts completed discovery payloads', ()
 test('discovery recommendation mapper hides unavailable flows and sorts detected recommendations', () => {
   const discovery = {
     discoveryId: '20000000-0000-4000-8000-000000000012',
+    projectId: '8f06dca8-9c4d-4f20-b1a8-1d5ee40a9923',
     status: 'COMPLETED',
     scenarioRecommendations: [
       {

@@ -1,6 +1,8 @@
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { createDiscovery, getDiscovery } from '../../api/discoveries';
+import { readCurrentUser } from '../../api/authSession';
+import { readApiValidationFields, WedgeApiError } from '../../api/http';
 import { createRun, startRun } from '../../api/runs';
 import { confirmScenarioAuthoringCandidate, createScenarioAuthoringJob } from '../../api/scenario-authoring';
 import { FIRST_WORD_DELAY_MS, WORD_ROTATION_INTERVAL_MS } from '../../features/landing-vision';
@@ -16,6 +18,7 @@ import {
   readCreateRunContextFromEnv,
   type CreateAnalysisRouteOptions,
   type CreateAnalysisRouteState,
+  type CreateRunContext,
   withCreateRunContextFallback,
 } from './lib/createAnalysisRouteState';
 import { normalizeAnalysisUrl } from './lib/createAnalysisUrl';
@@ -49,6 +52,35 @@ function SendIcon() {
       <path d="M12 19V5M5 12l7-7 7 7" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
+}
+
+function createDiscoveryFailureMessage(error: unknown) {
+  if (!(error instanceof WedgeApiError)) {
+    return '사이트 확인을 시작하지 못했습니다. 로그인 상태와 프로젝트 자동 생성 상태를 확인한 뒤 다시 시도해주세요.';
+  }
+
+  const validationFields = readApiValidationFields(error.details);
+  if (error.status === 422 && validationFields.some((fieldError) => fieldError.field === 'projectId')) {
+    return 'Discovery API가 아직 projectId 필수 계약으로 동작 중입니다. API 서버를 최신 코드로 재시작한 뒤 다시 시도해주세요.';
+  }
+
+  if (error.status === 422 && validationFields.some((fieldError) => fieldError.field === 'url')) {
+    return '입력한 URL 형식이 API 검증을 통과하지 못했습니다. http 또는 https로 열 수 있는 공개 사이트 URL을 입력해주세요.';
+  }
+
+  if (error.status === 400 && error.code === 'invalid_request') {
+    return '입력한 URL이 Discovery 검증을 통과하지 못했습니다. localhost, 사설망 주소가 아닌 공개 사이트 URL을 입력해주세요.';
+  }
+
+  if (error.status === 401) {
+    return '로그인 세션이 만료되었습니다. 다시 로그인한 뒤 URL 확인을 시작해주세요.';
+  }
+
+  if (error.status === 403) {
+    return '현재 계정으로 접근할 수 없는 프로젝트입니다. URL 확인을 다시 시작해 자동 프로젝트를 새로 연결해주세요.';
+  }
+
+  return '사이트 확인을 시작하지 못했습니다. 로그인 상태와 프로젝트 자동 생성 상태를 확인한 뒤 다시 시도해주세요.';
 }
 
 interface DiscoveryStep {
@@ -121,16 +153,37 @@ const CREATE_ANALYSIS_ROUTE_OPTIONS: CreateAnalysisRouteOptions<ScenarioId, Scen
   validDepthIds: SCENARIO_DEPTH_IDS,
   validScenarioIds: SCENARIO_IDS,
 };
+const EXPLICIT_DEV_CREATE_RUN_CONTEXT = readCreateRunContextFromEnv(import.meta.env);
 const DEV_CREATE_RUN_CONTEXT = import.meta.env.DEV
   ? {
-      ...MVP_SMOKE_CREATE_RUN_CONTEXT,
-      ...readCreateRunContextFromEnv(import.meta.env),
+      scenarioTemplateVersionId: MVP_SMOKE_CREATE_RUN_CONTEXT.scenarioTemplateVersionId,
+      ...EXPLICIT_DEV_CREATE_RUN_CONTEXT,
     }
-  : readCreateRunContextFromEnv(import.meta.env);
+  : EXPLICIT_DEV_CREATE_RUN_CONTEXT;
 
 interface CreateRunIds {
   projectId: string;
   scenarioTemplateVersionId: string;
+}
+
+function readUserCreateRunContext(): Partial<CreateRunContext> {
+  const currentUser = readCurrentUser();
+
+  if (!currentUser?.defaultProjectId || !currentUser.defaultScenarioTemplateVersionId) {
+    return {};
+  }
+
+  return {
+    projectId: currentUser.defaultProjectId,
+    scenarioTemplateVersionId: currentUser.defaultScenarioTemplateVersionId,
+  };
+}
+
+function getCreateRunContextFallback(): Partial<CreateRunContext> {
+  return {
+    ...DEV_CREATE_RUN_CONTEXT,
+    ...readUserCreateRunContext(),
+  };
 }
 
 function getStepStatusLabel(status: DiscoveryStepStatus) {
@@ -171,7 +224,7 @@ function getInitialRouteState(): CreateAnalysisPageRouteState {
 
   return withCreateRunContextFallback(
     parseCreateAnalysisRouteState(window.location.search, CREATE_ANALYSIS_ROUTE_OPTIONS),
-    DEV_CREATE_RUN_CONTEXT,
+    getCreateRunContextFallback(),
   );
 }
 
@@ -350,13 +403,15 @@ function PreflightAgent({ submittedUrl, discoveryState, onRetry, onEditUrl }: Pr
         </ol>
 
         {isFailed ? (
-          <div className="preflight-agent__error" role="alert">
+          <div className="preflight-agent__state preflight-agent__state--error" role="alert">
+            <span>확인 실패</span>
+            <strong>사이트 확인을 시작하지 못했습니다</strong>
             <p>{discoveryState.message}</p>
             <div className="preflight-agent__actions">
               <button className="create-analysis-panel__action preflight-agent__action" type="button" onClick={onRetry}>
                 다시 시도
               </button>
-              <button className="preflight-agent__secondary-action" type="button" onClick={onEditUrl}>
+              <button className="create-analysis-secondary-action preflight-agent__secondary-action" type="button" onClick={onEditUrl}>
                 URL 수정
               </button>
             </div>
@@ -675,7 +730,7 @@ export function CreateAnalysisPage() {
   const discoveryBusy = isDiscoveryBusy(discoveryState.kind);
   const canSubmit = urlInput.trim().length > 0 && !discoveryBusy;
   const navigateToRouteState = useCallback((nextRouteState: CreateAnalysisPageRouteState, historyMode: 'push' | 'replace' = 'push') => {
-    const routeStateWithDevContext = withCreateRunContextFallback(nextRouteState, DEV_CREATE_RUN_CONTEXT);
+    const routeStateWithDevContext = withCreateRunContextFallback(nextRouteState, getCreateRunContextFallback());
     const nextPath = buildCreateAnalysisPath(routeStateWithDevContext, CREATE_ANALYSIS_ROUTE_OPTIONS);
 
     if (historyMode === 'replace') {
@@ -692,7 +747,7 @@ export function CreateAnalysisPage() {
       discoveryRequestSeq.current += 1;
       setRouteState(withCreateRunContextFallback(
         parseCreateAnalysisRouteState(window.location.search, CREATE_ANALYSIS_ROUTE_OPTIONS),
-        DEV_CREATE_RUN_CONTEXT,
+        getCreateRunContextFallback(),
       ));
     };
 
@@ -706,14 +761,7 @@ export function CreateAnalysisPage() {
   }, [routeState.submittedUrl]);
 
   const runDiscovery = useCallback(async (targetUrl: string, currentRouteState: CreateAnalysisPageRouteState) => {
-    const projectId = getProjectId(currentRouteState);
-
-    if (!projectId) {
-      setUrlError('Discovery 실행에 필요한 project UUID가 없습니다. MVP 기본 설정 또는 create-analysis URL을 확인해주세요.');
-      setDiscoveryState({ kind: 'idle' });
-      return;
-    }
-
+    const explicitProjectId = getProjectId(currentRouteState);
     const requestSeq = discoveryRequestSeq.current + 1;
     discoveryRequestSeq.current = requestSeq;
     setDiscoveryState({ kind: 'creating' });
@@ -721,11 +769,13 @@ export function CreateAnalysisPage() {
 
     const discoveryRouteState: CreateAnalysisPageRouteState = {
       ...currentRouteState,
+      projectId: explicitProjectId ?? undefined,
       stage: 'discovering',
       submittedUrl: targetUrl,
       scenarioId: null,
       depthId: null,
     };
+    let resolvedDiscoveryRouteState = discoveryRouteState;
     navigateToRouteState(discoveryRouteState);
 
     const completeDiscovery = (discoveryId: string, scenarios: ScenarioRecommendation[]) => {
@@ -744,19 +794,19 @@ export function CreateAnalysisPage() {
       }
 
       navigateToRouteState({
-        ...discoveryRouteState,
+        ...resolvedDiscoveryRouteState,
         stage: 'recommendations',
       });
     };
 
     try {
       const created = await createDiscovery({
-        projectId,
+        ...(explicitProjectId ? { projectId: explicitProjectId } : {}),
         url: targetUrl,
         devicePreset: 'desktop',
         viewport: DISCOVERY_VIEWPORT,
       }, {
-        idempotencyKey: createDiscoveryIdempotencyKey(projectId, targetUrl),
+        idempotencyKey: createDiscoveryIdempotencyKey(targetUrl, explicitProjectId ?? undefined),
       });
 
       if (discoveryRequestSeq.current !== requestSeq) {
@@ -765,6 +815,15 @@ export function CreateAnalysisPage() {
 
       let discovery = created.data;
       const discoveryId = discovery.discoveryId;
+      if (!isUuid(discovery.projectId)) {
+        setDiscoveryState({
+          kind: 'failed',
+          message: 'Discovery는 시작됐지만 연결된 프로젝트를 확인하지 못했습니다. 잠시 후 다시 시도해주세요.',
+        });
+        return;
+      }
+      resolvedDiscoveryRouteState = { ...discoveryRouteState, projectId: discovery.projectId };
+      navigateToRouteState(resolvedDiscoveryRouteState, 'replace');
       setDiscoveryState({
         kind: 'polling',
         discoveryId,
@@ -794,6 +853,10 @@ export function CreateAnalysisPage() {
 
         const polled = await getDiscovery(discoveryId);
         discovery = polled.data;
+        if (isUuid(discovery.projectId) && discovery.projectId !== resolvedDiscoveryRouteState.projectId) {
+          resolvedDiscoveryRouteState = { ...resolvedDiscoveryRouteState, projectId: discovery.projectId };
+          navigateToRouteState(resolvedDiscoveryRouteState, 'replace');
+        }
         setDiscoveryState({
           kind: 'polling',
           discoveryId,
@@ -806,11 +869,11 @@ export function CreateAnalysisPage() {
         kind: 'failed',
         message: 'Discovery 응답 시간이 초과됐습니다. 잠시 후 다시 시도해주세요.',
       });
-    } catch {
+    } catch (error) {
       if (discoveryRequestSeq.current === requestSeq) {
         setDiscoveryState({
           kind: 'failed',
-          message: '사이트 확인을 시작하지 못했습니다. 네트워크와 로그인 상태를 확인한 뒤 다시 시도해주세요.',
+          message: createDiscoveryFailureMessage(error),
         });
       }
     }
@@ -921,7 +984,7 @@ export function CreateAnalysisPage() {
     setRunStartError('');
 
     if (!createRunIds) {
-      setRunStartError('분석 실행에 필요한 project/scenario UUID가 없습니다. MVP 기본 설정 또는 create-analysis URL을 확인해주세요.');
+      setRunStartError('분석 실행에 필요한 프로젝트 또는 시나리오 설정을 확인하지 못했습니다. URL 사전 탐색을 다시 진행해주세요.');
       setIsCreatingRun(false);
       return;
     }
