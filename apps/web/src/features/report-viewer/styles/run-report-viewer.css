@@ -190,6 +190,16 @@
   color: #a16207;
 }
 
+.run-report-loading-status {
+  width: fit-content;
+  margin-top: 0.7rem;
+  border: 1px solid rgba(14, 165, 233, 0.12);
+  border-radius: 999px;
+  background: rgba(240, 249, 255, 0.78);
+  padding: 0.45rem 0.7rem;
+  color: #0284c7;
+}
+
 .run-report-hero-stats {
   display: grid;
   flex: 0 0 auto;
@@ -230,6 +240,21 @@
 
 .run-report-hero-stats dd.run-report-hero-stats__danger {
   color: #0ea5e9;
+}
+
+.run-report-hero-stats--skeleton dd {
+  overflow: hidden;
+  width: 3.2rem;
+  border-radius: 999px;
+  color: transparent;
+}
+
+.run-report-hero-stats--skeleton dd,
+.run-report-skeleton-line,
+.run-report-evidence-preview--skeleton {
+  background: linear-gradient(90deg, #e2e8f0 0%, #f8fafc 42%, #e2e8f0 100%);
+  background-size: 220% 100%;
+  animation: runReportSkeletonPulse 1.45s ease-in-out infinite;
 }
 
 .run-report-layout {
@@ -719,7 +744,7 @@
   aspect-ratio: 16 / 10;
   border: 1px solid #e5e7eb;
   border-radius: 1rem;
-  background: #020617;
+  background: #f8fafc;
 }
 
 .run-report-evidence-preview__image {
@@ -731,9 +756,37 @@
   object-position: top center;
 }
 
+.run-report-evidence-preview--resolving {
+  background: linear-gradient(120deg, #e2e8f0 0%, #f8fafc 42%, #e2e8f0 100%);
+  background-size: 220% 100%;
+  animation: runReportSkeletonPulse 1.45s ease-in-out infinite;
+}
+
+.run-report-evidence-preview--resolving::before,
+.run-report-evidence-preview--resolving::after {
+  content: '';
+  position: absolute;
+  left: 8%;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.78);
+}
+
+.run-report-evidence-preview--resolving::before {
+  top: 22%;
+  width: min(60%, 34rem);
+  height: 2.4rem;
+}
+
+.run-report-evidence-preview--resolving::after {
+  top: 34%;
+  width: min(42%, 24rem);
+  height: 0.8rem;
+}
+
 .run-report-evidence-preview__site {
   position: absolute;
   inset: 0;
+  background: #fff;
   padding: 1rem;
 }
 
@@ -833,6 +886,41 @@
   font-size: 0.66rem;
   font-weight: 800;
   line-height: 1.55;
+}
+
+.run-report-skeleton-line {
+  display: block;
+  width: 100%;
+  height: 0.72rem;
+  border-radius: 999px;
+}
+
+.run-report-skeleton-line + .run-report-skeleton-line {
+  margin-top: 0.65rem;
+}
+
+.run-report-skeleton-line--title {
+  width: min(100%, 14rem);
+  height: 1rem;
+}
+
+.run-report-skeleton-line--short {
+  width: min(68%, 9rem);
+}
+
+.run-report-skeleton-line--score {
+  width: 3rem;
+  margin-left: auto;
+}
+
+.run-report-top-finding-card__button--skeleton {
+  display: grid;
+  gap: 0.7rem;
+  cursor: default;
+}
+
+.run-report-nudge-card--skeleton {
+  cursor: default;
 }
 
 .run-report-nudge-list {
@@ -1113,4 +1201,35 @@
 
 .run-report-state-card__actions a + a {
   background: #0284c7;
+}
+
+.run-report-sr-only {
+  position: absolute;
+  overflow: hidden;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  border: 0;
+  margin: -1px;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+}
+
+@keyframes runReportSkeletonPulse {
+  0% {
+    background-position: 120% 0;
+  }
+
+  100% {
+    background-position: -120% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .run-report-hero-stats--skeleton dd,
+  .run-report-skeleton-line,
+  .run-report-evidence-preview--skeleton,
+  .run-report-evidence-preview--resolving {
+    animation: none;
+  }
 }

@@ -7,7 +7,7 @@ test('app routes /runs/:runId to the run monitor page', () => {
   const pages = fs.readFileSync(new URL('../../src/pages/index.ts', import.meta.url), 'utf8');
 
   assert.match(pages, /pathPrefix: RUN_MONITOR_PATH_PREFIX/);
-  assert.match(source, /import \{ resolveAppRoute \}/);
+  assert.match(source, /import \{ resolveAppRoute, resolveProtectedRouteGate/);
   assert.match(source, /<RunMonitorPage runId=\{route\.runId\} \/>/);
 });
 
@@ -58,6 +58,11 @@ test('run monitor page exposes Sprint 2 live cockpit essentials with Korean-faci
   assert.match(source, /src=\{authenticatedSnapshotUrl\}/);
   assert.match(stateHook, /Run 상태를 불러오지 못했습니다/);
   assert.match(source, /RunMonitorStatePage/);
+  assert.match(source, /function RunMonitorLoadingShell/);
+  assert.match(source, /if \(isRealRunLoading\) \{[\s\S]*?<RunMonitorLoadingShell runId=\{runId\} targetUrl=\{fallbackUrl\} \/>/);
+  assert.match(source, /run-monitor-page run-monitor-page--loading/);
+  assert.match(source, /role="status">실제 실행 데이터를 연결하고 있습니다\./);
+  assert.doesNotMatch(source, /title="Run 상태를 불러오는 중입니다"/);
   assert.match(source, /role="progressbar"/);
   assert.match(source, /aria-valuenow=\{progressPercent\}/);
   assert.match(source, /run-monitor-agent-pointer/);
@@ -78,6 +83,7 @@ test('run monitor page exposes Sprint 2 live cockpit essentials with Korean-faci
   assert.match(source, /generateRunReport\(requestedRunId\)/);
   assert.match(source, /requestRunAnalysis\(requestedRunId\)/);
   assert.match(source, /replaceAppPath\(RUNS_PATH\)/);
+  assert.match(source, /handleSpaNavigationClick\(event, reportPath\)/);
   assert.match(source, /resolveRunMonitorReportCtaState/);
   assert.match(source, /shouldRefreshRunReport\(reportProjection\)/);
   assert.match(source, /RUN_MONITOR_REFRESH_INTERVAL_MS/);
@@ -119,6 +125,9 @@ test('run monitor css follows the live cockpit visual language', () => {
   assert.match(css, /\.run-monitor-lifecycle-actions button\s*\{[\s\S]*?border: 1px solid #e2e8f0/);
   assert.match(css, /\.run-monitor-action-message--error\s*\{[\s\S]*?color: #c2410c/);
   assert.match(css, /\.run-monitor-browser__empty-state\s*\{[\s\S]*?text-align: center/);
+  assert.match(css, /\.run-monitor-browser__stage--skeleton\s*\{[\s\S]*?animation: runMonitorSkeletonPulse/);
+  assert.match(css, /\.run-monitor-skeleton-line\s*\{[\s\S]*?border-radius: 999px/);
+  assert.match(css, /@keyframes runMonitorSkeletonPulse/);
   assert.doesNotMatch(css, /\.run-monitor-step--(?:complete|pending)\s*\{[\s\S]*?opacity:/);
   assert.match(css, /\.run-monitor-step--complete \.run-monitor-step__head h3,\s*\n\.run-monitor-step--pending \.run-monitor-step__head h3\s*\{[\s\S]*?color: #64748b/);
   assert.match(css, /\.run-monitor-step--complete \.run-monitor-step__content p,\s*\n\.run-monitor-step--pending \.run-monitor-step__content p\s*\{[\s\S]*?color: #94a3b8/);

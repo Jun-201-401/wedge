@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from 'react';
 
 import { generateRunReport, getRunReport } from '../../api/reports';
-import { replaceAppPath } from '../../shared/lib/navigation';
+import { handleSpaNavigationClick, replaceAppPath } from '../../shared/lib/navigation';
 import { useAuthenticatedResourceUrl } from '../../shared/lib/authenticatedResourceUrl';
 import { deleteRun, requestRunAnalysis, stopRun } from '../../api/runs';
 import type { RunReportProjection } from '../../entities/report';
@@ -188,6 +188,111 @@ function RunMonitorStatePage({ title, message }: { title: string; message: strin
           <p>{message}</p>
           <a href="/create-analysis">새 분석 만들기</a>
         </section>
+      </main>
+    </div>
+  );
+}
+
+function RunMonitorSkeletonLine({ className = '' }: { className?: string }) {
+  const skeletonClassName = className ? `run-monitor-skeleton-line ${className}` : 'run-monitor-skeleton-line';
+  return <span className={skeletonClassName} aria-hidden="true" />;
+}
+
+function RunMonitorLoadingShell({ runId, targetUrl }: { runId: string; targetUrl: string }) {
+  return (
+    <div className="run-monitor-page run-monitor-page--loading" aria-busy="true">
+      <div className="run-monitor-grid-bg" aria-hidden="true" />
+
+      <RunMonitorTopbar />
+
+      <main className="run-monitor-workspace" aria-labelledby="run-monitor-title">
+        <RunContextBar
+          runId={runId}
+          targetUrl={targetUrl}
+          deviceLabel="확인 중"
+        />
+
+        <div className="run-monitor-cockpit">
+          <section className="run-monitor-simulation" aria-labelledby="run-monitor-title">
+            <span className="run-monitor-sr-only" role="status">실제 실행 데이터를 연결하고 있습니다.</span>
+
+            <div className="run-monitor-simulation__header">
+              <div className="run-monitor-section-title">
+                <h1 id="run-monitor-title">실시간 시뮬레이션</h1>
+                <span aria-hidden="true" />
+                <RunMonitorSkeletonLine className="run-monitor-skeleton-line--checkpoint" />
+              </div>
+              <span className="run-monitor-viewport-label">1440px 뷰포트</span>
+            </div>
+
+            <div className="run-monitor-browser" aria-hidden="true">
+              <div className="run-monitor-browser__bar">
+                <div className="run-monitor-browser__dots">
+                  <span />
+                  <span />
+                  <span />
+                </div>
+                <div className="run-monitor-browser__address">{targetUrl}</div>
+                <span className="run-monitor-browser__mode-pill">실제 캡처</span>
+              </div>
+
+              <div className="run-monitor-browser__stage run-monitor-browser__stage--skeleton" />
+            </div>
+          </section>
+
+          <aside className="run-monitor-analysis-panel" aria-hidden="true">
+            <section className="run-monitor-progress-panel">
+              <div className="run-monitor-panel-heading">
+                <h2>전체 진행률</h2>
+                <RunMonitorSkeletonLine className="run-monitor-skeleton-line--metric" />
+              </div>
+              <div className="run-monitor-progress__track run-monitor-progress__track--skeleton">
+                <span />
+              </div>
+            </section>
+
+            <section className="run-monitor-live-insight">
+              <div className="run-monitor-live-insight__label">
+                <span />
+                <h2>분석 상태</h2>
+              </div>
+              <div className="run-monitor-live-insight__card run-monitor-live-insight__card--skeleton">
+                <RunMonitorSkeletonLine className="run-monitor-skeleton-line--title" />
+                <RunMonitorSkeletonLine />
+                <RunMonitorSkeletonLine className="run-monitor-skeleton-line--short" />
+              </div>
+            </section>
+
+            <div className="run-monitor-panel-scroll">
+              <section className="run-monitor-context run-monitor-context--skeleton">
+                <h2>실행 정보</h2>
+                <dl>
+                  {[0, 1, 2, 3].map((item) => (
+                    <div key={item}>
+                      <dt><RunMonitorSkeletonLine className="run-monitor-skeleton-line--label" /></dt>
+                      <dd><RunMonitorSkeletonLine /></dd>
+                    </div>
+                  ))}
+                </dl>
+              </section>
+
+              <section className="run-monitor-timeline">
+                <h2>시나리오 경로</h2>
+                <ol className="run-monitor-timeline__list">
+                  {[0, 1, 2].map((item) => (
+                    <li key={item} className="run-monitor-step run-monitor-step--skeleton">
+                      <div className="run-monitor-step__node" />
+                      <div className="run-monitor-step__content">
+                        <RunMonitorSkeletonLine className="run-monitor-skeleton-line--title" />
+                        <RunMonitorSkeletonLine />
+                      </div>
+                    </li>
+                  ))}
+                </ol>
+              </section>
+            </div>
+          </aside>
+        </div>
       </main>
     </div>
   );
@@ -392,12 +497,7 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
   const authenticatedSnapshotUrl = useAuthenticatedResourceUrl(snapshotUrl);
 
   if (isRealRunLoading) {
-    return (
-      <RunMonitorStatePage
-        title="Run 상태를 불러오는 중입니다"
-        message="실제 실행 데이터와 최신 화면 캡처를 연결하고 있습니다."
-      />
-    );
+    return <RunMonitorLoadingShell runId={runId} targetUrl={fallbackUrl} />;
   }
 
   if (apiLoadError && !isApiFallback && !hasRealRunSnapshot) {
@@ -441,6 +541,14 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
   const isReportActionPending = reportActionState.kind === 'pending';
   const canGenerateReport = !isMockRun && reportCtaState.kind === 'generate';
   const canRequestAnalysis = !isMockRun && reportCtaState.kind === 'request-analysis';
+
+  const openReport = (event: MouseEvent<HTMLAnchorElement>) => {
+    if (!reportPath) {
+      return;
+    }
+
+    handleSpaNavigationClick(event, reportPath);
+  };
 
   const requestStopRun = () => {
     if (!canStopCurrentRun || isRunActionPending) {
@@ -687,7 +795,7 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
                   errorMessage={evidenceLoadError}
                 />
                 {reportActionMessage}
-                {reportPath ? <a href={reportPath}>리포트 보기</a> : null}
+                {reportPath ? <a href={reportPath} onClick={openReport}>리포트 보기</a> : null}
                 {canGenerateReport ? (
                   <button type="button" onClick={requestGenerateReport} disabled={isReportActionPending}>
                     {isReportActionPending ? '생성 중' : '리포트 생성'}
