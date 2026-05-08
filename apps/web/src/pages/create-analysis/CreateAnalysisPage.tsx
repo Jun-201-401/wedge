@@ -350,13 +350,15 @@ function PreflightAgent({ submittedUrl, discoveryState, onRetry, onEditUrl }: Pr
         </ol>
 
         {isFailed ? (
-          <div className="preflight-agent__error" role="alert">
+          <div className="preflight-agent__state preflight-agent__state--error" role="alert">
+            <span>확인 실패</span>
+            <strong>사이트 확인을 시작하지 못했습니다</strong>
             <p>{discoveryState.message}</p>
             <div className="preflight-agent__actions">
               <button className="create-analysis-panel__action preflight-agent__action" type="button" onClick={onRetry}>
                 다시 시도
               </button>
-              <button className="preflight-agent__secondary-action" type="button" onClick={onEditUrl}>
+              <button className="create-analysis-secondary-action preflight-agent__secondary-action" type="button" onClick={onEditUrl}>
                 URL 수정
               </button>
             </div>
