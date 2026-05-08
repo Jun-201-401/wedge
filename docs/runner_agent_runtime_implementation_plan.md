@@ -1763,6 +1763,7 @@ Completed:
 - LLM invalid-JSON-only retry and broader heuristic-vs-LLM checkout fixture comparison are covered by Runner tests.
 - Agent decisions now carry redacted trace-safe metadata: decision id, source, optional model, and prompt shape summary without raw prompt content.
 - Iframe candidates are observed with frame ids, and iframe payment/final-order commit candidates are blocked before the next Agent decision.
+- Static Runner replay resolves `replay_hint.locator_recipe[].frame_id` to the matching Playwright iframe before locator execution.
 
 Remaining:
 - Promote local terminal idempotency records to API/DB-backed global idempotency when multiple runner replicas share a queue.

@@ -1260,29 +1260,30 @@ function buildReplayRecipeLocator(page: Page, entry: unknown): Locator[] {
   }
 
   const recipe = entry as Partial<ReplayHintLocatorRecipeEntry>;
-  if (typeof recipe.frame_id === "string" && recipe.frame_id.length > 0) {
+  const scope = resolveReplayRecipeScope(page, recipe.frame_id);
+  if (!scope) {
     return [];
   }
 
   switch (recipe.strategy) {
     case "selector": {
       return typeof recipe.selector === "string" && recipe.selector.length > 0
-        ? [page.locator(recipe.selector)]
+        ? [scope.locator(recipe.selector)]
         : [];
     }
     case "role_text": {
       return typeof recipe.role === "string" && recipe.role.length > 0 && typeof recipe.text === "string" && recipe.text.length > 0
-        ? [page.getByRole(recipe.role as Parameters<Page["getByRole"]>[0], { name: recipe.text })]
+        ? [scope.getByRole(recipe.role as Parameters<Page["getByRole"]>[0], { name: recipe.text })]
         : [];
     }
     case "href": {
       return typeof recipe.href === "string" && recipe.href.length > 0
-        ? hrefLocators(page, recipe.href)
+        ? hrefLocators(scope, recipe.href)
         : [];
     }
     case "tag_text": {
       return typeof recipe.tag === "string" && recipe.tag.length > 0 && typeof recipe.text === "string" && recipe.text.length > 0
-        ? [page.locator(recipe.tag).filter({ hasText: recipe.text })]
+        ? [scope.locator(recipe.tag).filter({ hasText: recipe.text })]
         : [];
     }
     default:
@@ -1290,7 +1291,25 @@ function buildReplayRecipeLocator(page: Page, entry: unknown): Locator[] {
   }
 }
 
-function hrefLocators(page: Page, href: string): Locator[] {
+function resolveReplayRecipeScope(page: Page, frameId: string | undefined): Page | Frame | null {
+  if (!frameId) {
+    return page;
+  }
+
+  const match = /^frame:(\d+)$/.exec(frameId);
+  if (!match) {
+    return null;
+  }
+
+  const frameIndex = Number(match[1]) - 1;
+  if (!Number.isInteger(frameIndex) || frameIndex < 0) {
+    return null;
+  }
+
+  return page.frames().filter((frame) => frame !== page.mainFrame())[frameIndex] ?? null;
+}
+
+function hrefLocators(scope: Page | Frame, href: string): Locator[] {
   const hrefCandidates = new Set([href]);
   try {
     const parsed = new URL(href);
@@ -1306,7 +1325,7 @@ function hrefLocators(page: Page, href: string): Locator[] {
 
   return [...hrefCandidates]
     .filter((candidate) => candidate.length > 0)
-    .map((candidate) => page.locator(`a[href*="${escapeCssString(candidate)}"]`));
+    .map((candidate) => scope.locator(`a[href*="${escapeCssString(candidate)}"]`));
 }
 
 function escapeCssString(value: string): string {
