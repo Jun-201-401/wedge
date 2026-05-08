@@ -560,6 +560,19 @@ tools/list: HTTP 200, get_run_status 확인
 tools/call get_run_status: HTTP 200, isError=false
 ```
 
+MCP Sampling spike 로컬 검증 결과:
+
+```text
+Client / Host: MCP Inspector v0.21.2
+tool: mcp_sampling_decision_spike
+samplingSupported: true
+sampling/createMessage: success
+AgentDecision JSON parse: success
+AgentDecision validation: success
+result: SUCCESS
+detail: docs/mcp_sampling_spike_plan.md#105-로컬-inspector-검증-결과
+```
+
 위 검증 결과의 `2025-06-18`은 문서 기준 버전이 아니라 현재 Spring AI MCP server와 initialize 과정에서 확인된 runtime protocolVersion이다. 설계 기준은 MCP 공식 latest인 `2025-11-25`로 잡되, 구현 전 Spring AI `1.1.5`가 실제로 협상하는 protocolVersion과 Sampling 지원 범위를 별도 spike로 재확인한다.
 
 검증에 사용한 run:
@@ -634,4 +647,3 @@ V2의 핵심은 `MCP Decision Gateway`다. 이 단계에서는 `heuristic`, `llm
 Run 생성/시작/분석 요청/write-back은 보안과 승인 정책을 확정한 뒤 V2 execute/write-back tool로 추가한다. 이때도 MCP Server는 브라우저 원격 조종기가 아니며, Runner의 policy와 fixed tool execution 경계를 침범하지 않는다.
 
 Spring AI 1.1.5와 MCP 2025-11-25 기준을 따르기 위해 Spring Boot는 3.5.x latest patch로 upgrade spike를 진행한다. 이 선택은 안정성, 지원 범위, 최신 공식 문서 정합성을 함께 고려한 기준이다.
-

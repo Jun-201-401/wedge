@@ -562,6 +562,105 @@ Next action:
   proceedToMcpProvider | keepReadOnlyOnly | redesignBridge | keepExperimental
 ```
 
+### 10.5 로컬 Inspector 검증 결과
+
+검증 일시: 2026-05-08
+
+```text
+Decision:
+  SUCCESS
+
+Environment:
+  Spring Boot: 3.5.14
+  Spring AI: 1.1.5
+  MCP Java SDK: 0.17.0
+  MCP protocolVersion: 2025-06-18
+  Transport: Streamable HTTP
+  Server type: Spring AI MCP Server WebMVC
+  Client / Host: MCP Inspector v0.21.2
+
+Observed capabilities:
+  sampling: true
+  sampling.tools: mcp_sampling_decision_spike
+  sampling.context: none
+
+Round-trip result:
+  sampleEnabled: true
+  createMessage: success
+  responseContentType: text
+  jsonParsed: true
+  schemaValid: true
+  candidateAllowed: true
+  typedFailureOnUnsupported: implemented
+
+Security check:
+  noFullDom: true
+  noScreenshotBase64: true
+  noTokenOrSecret: true
+  noRawSelector: true
+  noArbitraryJavaScript: true
+
+Next action:
+  proceedToMcpProvider
+```
+
+검증에 사용한 MCP tool 응답:
+
+```json
+{
+  "success": true,
+  "samplingSupported": true,
+  "sessionId": "7cd3e2a1-8499-4ed2-a295-f6317570abce",
+  "clientName": "inspector-client",
+  "model": "stub-model",
+  "stopReason": "END_TURN",
+  "decision": {
+    "decisionType": "ACT",
+    "tool": "click",
+    "candidateId": "candidate_1",
+    "reason": "The fixture primary CTA is visible and should be selected.",
+    "confidence": 0.82
+  },
+  "validation": {
+    "jsonParsed": true,
+    "schemaValid": true,
+    "candidateAllowed": true,
+    "safetyValid": true
+  },
+  "errorCode": null,
+  "errorMessage": null
+}
+```
+
+이번 검증으로 확인한 범위:
+
+```text
+MCP Inspector가 Wedge MCP Server에 연결했다.
+Authorization: Bearer <WEDGE_MCP_SERVICE_TOKEN> 기반 내부 검증 토큰이 통과했다.
+tools/list에서 mcp_sampling_decision_spike tool이 노출됐다.
+Wedge MCP Server가 sampling/createMessage 요청을 MCP Host 쪽으로 보냈다.
+MCP Inspector가 Sampling approval UI를 통해 assistant text 응답을 반환했다.
+Wedge MCP Server가 AgentDecision JSON을 파싱하고 schema / candidate allow-list / safety 검증을 통과시켰다.
+```
+
+이번 검증으로 아직 확인하지 않은 범위:
+
+```text
+실제 Runner Agent Runtime의 decision provider로 연결하지 않았다.
+실제 run observation / evidence / screenshot artifact를 Sampling payload로 넘기지 않았다.
+Claude Desktop, Codex, 기타 실제 LLM Host의 자동 Sampling 응답은 검증하지 않았다.
+Inspector의 stub-model과 수동 승인 JSON을 사용했다.
+운영 공개 인증 모델, OAuth/OIDC, 사용자별 권한 scope는 검증하지 않았다.
+```
+
+결론:
+
+```text
+MCP Sampling은 Wedge MCP Decision Gateway의 기술적 기반으로 사용할 수 있다.
+GMS/Gemini provider를 제거하지 않고, mcp provider를 대체 선택지로 추가하는 다음 구현 단계로 진행한다.
+단, 실제 provider 승격 전에는 Runner 계약, payload 축소, Host별 capability matrix, timeout/approval UX 정책을 별도 검증한다.
+```
+
 ## References
 
 - [MCP Sampling Spec](https://modelcontextprotocol.io/specification/2025-11-25/client/sampling)
