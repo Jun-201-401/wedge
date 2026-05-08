@@ -1,4 +1,4 @@
-import type { ReportDetail, RunReportProjection } from '../../../entities/report';
+import type { ReportDetail, ReportFindingHighlightUnit, RunReportProjection } from '../../../entities/report';
 import type { Run, RunArtifact } from '../../../entities/run';
 import { getScenarioLabel } from '../../../shared';
 import type { FindingSeverity, ReportDecisionNode, ReportFinding, ReportRecommendation, RunReportViewModel } from './runReportViewModel';
@@ -158,6 +158,43 @@ function normalizeArtifactRef(value: string | null) {
   return value?.startsWith('artifact:') ? value.slice('artifact:'.length) : value;
 }
 
+function unitFromCoordinateSpace(coordinateSpace: string | null) {
+  if (coordinateSpace === null || coordinateSpace === 'viewport') {
+    return 'css_px';
+  }
+
+  if (coordinateSpace === 'screenshot') {
+    return 'screenshot_px';
+  }
+
+  if (coordinateSpace === 'viewport_ratio') {
+    return 'viewport_ratio';
+  }
+
+  return null;
+}
+
+function isHighlightUnit(unit: string | null): unit is ReportFindingHighlightUnit {
+  return unit === 'css_px' || unit === 'screenshot_px' || unit === 'viewport_ratio';
+}
+
+function resolveHighlightUnit(unit: string | null, coordinateSpace: string | null) {
+  if (unit === null) {
+    return unitFromCoordinateSpace(coordinateSpace);
+  }
+
+  if (!isHighlightUnit(unit)) {
+    return null;
+  }
+
+  if (coordinateSpace === null) {
+    return unit;
+  }
+
+  const coordinateUnit = unitFromCoordinateSpace(coordinateSpace);
+  return coordinateUnit === unit ? unit : null;
+}
+
 function hasMatchedHighlightArtifact(finding: ReportDetail['findings'][number]) {
   const highlightArtifactId = normalizeArtifactRef(readString(finding.highlight?.screenshotArtifactId));
   const previewArtifactId = normalizeArtifactRef(readString(finding.previewImage?.artifact.id));
@@ -167,14 +204,14 @@ function hasMatchedHighlightArtifact(finding: ReportDetail['findings'][number]) 
 function createArtifactHighlight(finding: ReportDetail['findings'][number]) {
   const bounds = finding.highlight?.bounds;
   const viewport = finding.highlight?.viewport;
-  const unit = readString(bounds?.unit) ?? 'css_px';
   const coordinateSpace = readString(finding.highlight?.coordinateSpace);
+  const unit = resolveHighlightUnit(readString(bounds?.unit), coordinateSpace);
   const x = readBound(bounds?.x);
   const y = readBound(bounds?.y);
   const width = readBound(bounds?.width);
   const height = readBound(bounds?.height);
 
-  if (x === null || y === null || width === null || height === null || !hasMatchedHighlightArtifact(finding)) {
+  if (x === null || y === null || width === null || height === null || unit === null || !hasMatchedHighlightArtifact(finding)) {
     return null;
   }
 
@@ -196,7 +233,7 @@ function createArtifactHighlight(finding: ReportDetail['findings'][number]) {
     ? readBound(finding.previewImage?.artifact.height)
     : readBound(viewport?.height) ?? readBound(finding.previewImage?.artifact.height);
 
-  if (!scaleWidth || !scaleHeight || (unit !== 'css_px' && unit !== 'screenshot_px' && coordinateSpace !== 'viewport')) {
+  if (!scaleWidth || !scaleHeight) {
     return null;
   }
 
@@ -253,6 +290,7 @@ function buildRecommendationsFromDetail(detail: ReportDetail, findings: ReportFi
     .flatMap((finding, findingIndex) => (
       finding.nudges.map((nudge, nudgeIndex) => ({
         id: nudge.id,
+        findingId: finding.id,
         priority: `NUDGE #${String(nudge.rank ?? nudgeIndex + 1).padStart(2, '0')}`,
         title: nudge.title,
         detail: nudge.recommendation ?? nudge.rationale ?? findings[findingIndex]?.recommendation ?? '분석 결과에 맞춰 전환 마찰을 줄이는 개선안을 검토하세요.',
@@ -268,6 +306,7 @@ function buildRecommendationsFromDetail(detail: ReportDetail, findings: ReportFi
 
   return findings.slice(0, 3).map((finding, index) => ({
     id: `recommendation-${finding.id}`,
+    findingId: finding.id,
     priority: `NUDGE #${String(index + 1).padStart(2, '0')}`,
     title: finding.title,
     detail: finding.recommendation,
