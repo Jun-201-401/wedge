@@ -18,12 +18,23 @@ Therefore, Runner-side MCP mode cannot be implemented as a direct LLM API call f
 Runner Agent Runtime
   -> AgentMcpDecisionClient
   -> API Server MCP Decision Gateway
+  -> runId-based MCP decision session registry
   -> active MCP Host session
   -> sampling/createMessage
   -> AgentDecision JSON
   -> Runner parser / candidate allow-list / policy
   -> fixed browser tool execution
 ```
+
+Before Runner can use MCP mode, an MCP Host must explicitly register the current MCP session for the target run:
+
+```text
+MCP Host
+  -> tools/call register_mcp_decision_session(runId)
+  -> API Server stores runId -> MCP session lease
+```
+
+The lease is in-memory and time-limited. It is a routing boundary, not durable workflow state.
 
 ## Runner Contract
 
@@ -79,6 +90,25 @@ The API Server currently exposes the internal gateway entrypoint:
 POST /internal/agent/mcp/decision
 ```
 
-This endpoint is protected by the internal service token and accepts the constrained Runner observation contract. It intentionally returns a typed `mcp_session_unavailable` failure until MCP Host session selection and sampling routing are implemented.
+This endpoint is protected by the internal service token and accepts the constrained Runner observation contract.
 
-MCP session selection is still not implemented. It must be designed before enabling MCP mode in production.
+The API Server also exposes the MCP registration tool:
+
+```text
+register_mcp_decision_session(runId)
+```
+
+This tool records the current MCP Host session as the decision session for the run and captures whether the client declared sampling support. The registry currently stores only routing metadata:
+
+```text
+runId
+sessionId
+clientName
+samplingSupported
+registeredAt
+expiresAt
+```
+
+It intentionally does not persist SDK request context or execute sampling from the internal HTTP request yet. Therefore, `/internal/agent/mcp/decision` still returns a typed `mcp_session_unavailable` failure after resolving the route until the actual server-to-client sampling bridge is implemented.
+
+MCP session selection now has a first in-memory boundary. Production MCP mode must remain disabled until the actual sampling bridge, response parser, audit log, and failure policy are implemented.
