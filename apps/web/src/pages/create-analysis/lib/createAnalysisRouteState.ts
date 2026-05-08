@@ -116,14 +116,14 @@ export function withCreateRunContextFallback<TScenarioId extends string, TDepthI
   const projectId = readUuidValue(fallbackContext.projectId);
   const scenarioTemplateVersionId = readUuidValue(fallbackContext.scenarioTemplateVersionId);
 
-  if (hasCreateRunContext(state) || !projectId || !scenarioTemplateVersionId) {
+  if (hasCreateRunContext(state) || (!projectId && !scenarioTemplateVersionId)) {
     return state;
   }
 
   return {
     ...state,
-    projectId,
-    scenarioTemplateVersionId,
+    projectId: readUuidValue(state.projectId) ?? projectId ?? undefined,
+    scenarioTemplateVersionId: readUuidValue(state.scenarioTemplateVersionId) ?? scenarioTemplateVersionId ?? undefined,
   };
 }
 

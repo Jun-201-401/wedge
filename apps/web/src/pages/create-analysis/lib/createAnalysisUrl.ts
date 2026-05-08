@@ -1,4 +1,6 @@
 const HTTP_URL_PATTERN = /^https?:\/\//i;
+const LOCALHOST = 'localhost';
+const LOCALHOST_SUFFIX = '.localhost';
 
 export function normalizeAnalysisUrl(value: string) {
   const trimmed = value.trim();
@@ -12,9 +14,11 @@ export function normalizeAnalysisUrl(value: string) {
   try {
     const parsed = new URL(candidate);
     const isHttpUrl = parsed.protocol === 'http:' || parsed.protocol === 'https:';
-    const isLikelyHost = parsed.hostname === 'localhost' || parsed.hostname.includes('.');
+    const normalizedHost = parsed.hostname.toLowerCase();
+    const isLocalhost = normalizedHost === LOCALHOST || normalizedHost.endsWith(LOCALHOST_SUFFIX);
+    const isLikelyHost = normalizedHost.includes('.');
 
-    if (!isHttpUrl || !isLikelyHost) {
+    if (!isHttpUrl || isLocalhost || !isLikelyHost) {
       return null;
     }
 

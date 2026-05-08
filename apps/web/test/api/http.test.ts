@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
-import { requestBlob, requestJson, type ApiResponse } from '../../src/api/http';
+import { readApiValidationFields, requestBlob, requestJson, WedgeApiError, type ApiResponse } from '../../src/api/http';
 import { clearAuthToken, readAccessToken, saveAuthToken } from '../../src/api/authSession';
 import type { AuthToken } from '../../src/entities/auth';
 
@@ -27,6 +27,17 @@ function apiResponse<T>(data: T, status = 200) {
   return new Response(JSON.stringify({ data, meta: { requestId: 'req_test' } }), {
     status,
     statusText: status === 200 ? 'OK' : 'Unauthorized',
+    headers: { 'Content-Type': 'application/json' },
+  });
+}
+
+function apiErrorResponse(status: number, statusText: string, code: string, message: string, details?: unknown) {
+  return new Response(JSON.stringify({
+    error: { code, message, details },
+    meta: { requestId: 'req_test' },
+  }), {
+    status,
+    statusText,
     headers: { 'Content-Type': 'application/json' },
   });
 }
@@ -226,4 +237,75 @@ test('requestBlob refreshes once and retries protected artifact content after 40
     globalThis.fetch = originalFetch;
     clearAuthToken();
   }
+});
+
+
+test('requestJson exposes structured API error details', async () => {
+  const originalFetch = globalThis.fetch;
+  const details = { fields: [{ field: 'projectId', code: 'invalid', message: 'must not be null' }] };
+
+  clearAuthToken();
+  globalThis.fetch = (async () => apiErrorResponse(
+    422,
+    'Unprocessable Entity',
+    'validation_failed',
+    'Request validation failed.',
+    details,
+  )) as typeof fetch;
+
+  try {
+    await assert.rejects(
+      () => requestJson<ApiResponse<null>>('/discoveries', { method: 'POST' }),
+      (error) => {
+        assert.ok(error instanceof WedgeApiError);
+        assert.equal(error.status, 422);
+        assert.equal(error.code, 'validation_failed');
+        assert.deepEqual(error.details, details);
+        assert.match(error.message, /validation_failed: Request validation failed\./);
+        return true;
+      },
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+    clearAuthToken();
+  }
+});
+
+test('requestBlob exposes structured API error details', async () => {
+  const originalFetch = globalThis.fetch;
+
+  clearAuthToken();
+  globalThis.fetch = (async () => apiErrorResponse(
+    403,
+    'Forbidden',
+    'forbidden',
+    'Permission is denied.',
+  )) as typeof fetch;
+
+  try {
+    await assert.rejects(
+      () => requestBlob('/runs/run-1/artifacts/artifact-1/content'),
+      (error) => {
+        assert.ok(error instanceof WedgeApiError);
+        assert.equal(error.status, 403);
+        assert.equal(error.code, 'forbidden');
+        return true;
+      },
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+    clearAuthToken();
+  }
+});
+
+
+test('readApiValidationFields keeps only named validation fields', () => {
+  assert.deepEqual(readApiValidationFields({
+    fields: [
+      { field: 'projectId', message: 'must not be null' },
+      { message: 'missing field name' },
+      null,
+    ],
+  }), [{ field: 'projectId' }]);
+  assert.deepEqual(readApiValidationFields(null), []);
 });

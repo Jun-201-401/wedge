@@ -211,8 +211,9 @@ test('create analysis ready run controls remain wired', () => {
   assert.match(source, /getCreateRunIds/);
   assert.match(source, /const createRunIds = useMemo/);
   assert.match(source, /MVP_SMOKE_CREATE_RUN_CONTEXT/);
+  assert.match(source, /const EXPLICIT_DEV_CREATE_RUN_CONTEXT = readCreateRunContextFromEnv\(import\.meta\.env\)/);
   assert.match(source, /const DEV_CREATE_RUN_CONTEXT = import\.meta\.env\.DEV/);
-  assert.match(source, /readCreateRunContextFromEnv\(import\.meta\.env\)/);
+  assert.match(source, /scenarioTemplateVersionId: MVP_SMOKE_CREATE_RUN_CONTEXT\.scenarioTemplateVersionId/);
   assert.match(source, /withCreateRunContextFallback/);
   assert.match(source, /projectId: createRunIds\.projectId/);
   assert.match(source, /scenarioTemplateVersionId: createRunIds\.scenarioTemplateVersionId/);
@@ -229,7 +230,9 @@ test('create analysis ready run controls remain wired', () => {
   assert.match(source, /void runDiscovery\(normalizedUrl, routeState\)/);
   assert.match(source, /isDiscoveryBusy\(discoveryState\.kind\)/);
   assert.match(source, /discoveryRequestSeq\.current \+= 1/);
-  assert.match(source, /createDiscoveryIdempotencyKey\(projectId, targetUrl\)/);
+  assert.match(source, /const explicitProjectId = getProjectId\(currentRouteState\)/);
+  assert.match(source, /\.\.\.\(explicitProjectId \? \{ projectId: explicitProjectId \} : \{\}\)/);
+  assert.match(source, /createDiscoveryIdempotencyKey\(targetUrl, explicitProjectId \?\? undefined\)/);
   assert.match(source, /await createDiscovery/);
   assert.match(source, /await getDiscovery\(discoveryId\)/);
   assert.match(source, /createdRunId = response\.data\.id/);

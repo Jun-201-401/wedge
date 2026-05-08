@@ -18,6 +18,7 @@ function response<T>(payload: ApiResponse<T>) {
 const discoveryResponse = {
   data: {
     discoveryId,
+    projectId,
     status: 'COMPLETED',
     inputUrl: 'https://example.com',
     finalUrl: 'https://example.com',
@@ -56,7 +57,6 @@ test('discovery api client creates and polls public discovery endpoints', async 
 
   try {
     const created = await createDiscovery({
-      projectId,
       url: 'https://example.com',
       devicePreset: 'desktop',
       viewport: { width: 1440, height: 900 },
@@ -71,7 +71,6 @@ test('discovery api client creates and polls public discovery endpoints', async 
       ['GET', `/api/discoveries/${discoveryId}`],
     ]);
     assert.deepEqual(JSON.parse(calls[0].body ?? '{}'), {
-      projectId,
       url: 'https://example.com',
       devicePreset: 'desktop',
       viewport: { width: 1440, height: 900 },

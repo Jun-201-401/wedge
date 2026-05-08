@@ -22,6 +22,39 @@ export interface RequestOptions extends RequestInit {
   idempotencyKey?: string;
 }
 
+interface ApiErrorEnvelope {
+  error?: {
+    code?: unknown;
+    message?: unknown;
+    details?: unknown;
+  };
+}
+
+export interface ApiFieldValidationError {
+  field: string;
+}
+
+export class WedgeApiError extends Error {
+  readonly status: number;
+  readonly statusText: string;
+  readonly code: string | null;
+  readonly details: unknown;
+  readonly responseBody: unknown;
+
+  constructor(response: Response, apiError: ApiErrorEnvelope['error'] | null, responseBody: unknown) {
+    const code = typeof apiError?.code === 'string' ? apiError.code : null;
+    const apiMessage = typeof apiError?.message === 'string' ? apiError.message : null;
+    const codeSuffix = code ? ` (${code}${apiMessage ? `: ${apiMessage}` : ''})` : '';
+    super(`Wedge API request failed: ${response.status} ${response.statusText}${codeSuffix}`);
+    this.name = 'WedgeApiError';
+    this.status = response.status;
+    this.statusText = response.statusText;
+    this.code = code;
+    this.details = apiError?.details;
+    this.responseBody = responseBody;
+  }
+}
+
 const DEFAULT_API_BASE_URL = '/api';
 const AUTH_REFRESH_PATH = '/auth/refresh';
 const AUTH_PUBLIC_PATHS = new Set(['/auth/signup', '/auth/login', AUTH_REFRESH_PATH]);
@@ -93,9 +126,46 @@ async function requestWithRefresh(
   return response;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function readApiError(body: unknown) {
+  if (!isRecord(body) || !isRecord(body.error)) {
+    return null;
+  }
+  return body.error as ApiErrorEnvelope['error'];
+}
+
+export function readApiValidationFields(details: unknown): ApiFieldValidationError[] {
+  if (!isRecord(details) || !Array.isArray(details.fields)) {
+    return [];
+  }
+
+  return details.fields.flatMap((fieldError) => {
+    if (!isRecord(fieldError) || typeof fieldError.field !== 'string') {
+      return [];
+    }
+
+    return [{ field: fieldError.field }];
+  });
+}
+
+async function createApiError(response: Response) {
+  let responseBody: unknown = null;
+
+  try {
+    responseBody = await response.json();
+  } catch {
+    responseBody = null;
+  }
+
+  return new WedgeApiError(response, readApiError(responseBody), responseBody);
+}
+
 async function parseJsonResponse<T>(response: Response): Promise<T> {
   if (!response.ok) {
-    throw new Error(`Wedge API request failed: ${response.status} ${response.statusText}`);
+    throw await createApiError(response);
   }
 
   if (response.status === 204) {
@@ -131,7 +201,7 @@ export async function requestBlob(path: string, options: RequestOptions = {}): P
   const response = await requestWithRefresh(path, request, headers, body, idempotencyKey);
 
   if (!response.ok) {
-    throw new Error(`Wedge API request failed: ${response.status} ${response.statusText}`);
+    throw await createApiError(response);
   }
 
   return response.blob();
