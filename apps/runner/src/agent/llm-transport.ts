@@ -1,3 +1,5 @@
+import { LlmDecisionInvalidJsonError } from "./llm-decision-parser.ts";
+
 export interface AgentLlmDecisionTransport {
   complete: (request: AgentLlmDecisionRequest) => Promise<unknown>;
 }
@@ -31,7 +33,11 @@ export function createFetchLlmDecisionTransport(): AgentLlmDecisionTransport {
           throw new Error(`LLM decision request failed with status ${response.status}`);
         }
 
-        return await response.json();
+        try {
+          return await response.json();
+        } catch {
+          throw new LlmDecisionInvalidJsonError("LLM decision response body must be valid JSON");
+        }
       } finally {
         clearTimeout(timeout);
       }

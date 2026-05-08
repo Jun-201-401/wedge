@@ -6,6 +6,28 @@ import { redactSensitiveString } from "./redaction.ts";
 
 const SCENARIO_STAGES = new Set<ScenarioStage>(["FIRST_VIEW", "VALUE", "CTA", "INPUT", "COMMIT"]);
 
+export class LlmDecisionInvalidJsonError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "LlmDecisionInvalidJsonError";
+  }
+}
+
+export class LlmDecisionUnsafeError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "LlmDecisionUnsafeError";
+  }
+}
+
+export function isRetryableLlmDecisionError(error: unknown): boolean {
+  return error instanceof LlmDecisionInvalidJsonError;
+}
+
+export function isUnsafeLlmDecisionError(error: unknown): boolean {
+  return error instanceof LlmDecisionUnsafeError;
+}
+
 export function parseLlmDecision(
   rawResponse: unknown,
   input: AgentDecisionInput,
@@ -61,7 +83,7 @@ export function parseLlmDecision(
 
   if (actionType === "goto") {
     if (input.state.started) {
-      throw new Error("LLM goto is allowed only before the agent has started");
+      throw new LlmDecisionUnsafeError("LLM goto is allowed only before the agent has started");
     }
 
     return {
@@ -93,7 +115,7 @@ export function parseLlmDecision(
     );
 
     if (!selectedTargetKey || !selectedCandidate) {
-      throw new Error("LLM click targetKey must match an observed component");
+      throw new LlmDecisionUnsafeError("LLM click targetKey must match an observed component");
     }
 
     return {
@@ -133,7 +155,11 @@ export function parseLlmDecision(
     };
   }
 
-  throw new Error(`LLM actionType is not allowed: ${actionType ?? "missing"}`);
+  if (actionType) {
+    throw new LlmDecisionUnsafeError(`LLM actionType is not allowed: ${actionType}`);
+  }
+
+  throw new Error("LLM actionType is missing");
 }
 
 function extractDecisionCandidate(rawResponse: unknown): unknown {
@@ -148,7 +174,12 @@ function extractDecisionCandidate(rawResponse: unknown): unknown {
     const firstChoice = choices[0] as { message?: { content?: unknown } } | undefined;
     const content = firstChoice?.message?.content;
     if (typeof content === "string") {
-      const parsed = JSON.parse(content) as unknown;
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(content) as unknown;
+      } catch {
+        throw new LlmDecisionInvalidJsonError("LLM decision content must be valid JSON");
+      }
       return (parsed && typeof parsed === "object" && "decision" in parsed)
         ? (parsed as { decision: unknown }).decision
         : parsed;

@@ -56,7 +56,7 @@ RUNNER_AGENT_LLM_MODEL=agent-model
 RUNNER_AGENT_LLM_TIMEOUT_MS=10000
 ```
 
-If the LLM endpoint is missing, times out, returns invalid JSON, or selects a target that was not observed, the runner falls back to the heuristic decision client.
+If the LLM endpoint is missing or times out, the runner falls back to the heuristic decision client. Invalid JSON responses are retried once before fallback. Unsafe structured decisions, such as unobserved click targets or unsupported action types, are rejected without retry or heuristic fallback so they cannot be hidden by a safer local decision.
 
 For a reproducible discovery smoke against a real URL, run from the repo root:
 

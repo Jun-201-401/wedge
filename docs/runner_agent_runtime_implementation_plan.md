@@ -1777,7 +1777,7 @@ DONE: Keep heuristic as the default decision client.
 DONE: Validate LLM output against observed target keys and constrained action types.
 DONE: Fall back to heuristic when LLM output is invalid or the endpoint fails.
 TODO: Add prompt redaction beyond the current minimal observation payload.
-TODO: Add retry for invalid JSON only, not unsafe decisions.
+DONE: Add invalid-JSON-only retry; unsafe structured decisions are rejected without retry or heuristic fallback.
 TODO: Compare LLM against heuristic on broader fixtures.
 ```
 
