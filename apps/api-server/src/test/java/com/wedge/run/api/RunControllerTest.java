@@ -1,14 +1,17 @@
 package com.wedge.run.api;
 
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.wedge.common.error.GlobalExceptionHandler;
+import com.wedge.common.security.WedgePrincipal;
 import com.wedge.common.web.RequestIdFilter;
 import com.wedge.evidence.api.dto.ArtifactResponse;
 import com.wedge.evidence.api.dto.EvidenceCountsResponse;
@@ -16,6 +19,8 @@ import com.wedge.evidence.api.dto.LatestCheckpointResponse;
 import com.wedge.evidence.api.dto.RunEvidenceSummaryResponse;
 import com.wedge.evidence.application.EvidenceService;
 import com.wedge.evidence.domain.ArtifactType;
+import com.wedge.project.application.ProjectAccessService;
+import com.wedge.run.api.dto.RunCreateRequest;
 import com.wedge.run.api.dto.RunEventResponse;
 import com.wedge.run.api.dto.RunResponse;
 import com.wedge.run.api.dto.RunStepResponse;
@@ -31,11 +36,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import org.springframework.http.MediaType;
 import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 class RunControllerTest {
+    private static final UUID USER_ID = UUID.fromString("11111111-1111-4111-8111-111111111111");
     private static final MappingJackson2HttpMessageConverter JSON_CONVERTER = new MappingJackson2HttpMessageConverter(
             new ObjectMapper()
                     .findAndRegisterModules()
@@ -44,11 +52,57 @@ class RunControllerTest {
 
     private final RunService runService = org.mockito.Mockito.mock(RunService.class);
     private final EvidenceService evidenceService = org.mockito.Mockito.mock(EvidenceService.class);
-    private final MockMvc mockMvc = MockMvcBuilders.standaloneSetup(new RunController(runService, evidenceService))
+    private final ProjectAccessService projectAccessService = org.mockito.Mockito.mock(ProjectAccessService.class);
+    private final MockMvc mockMvc = MockMvcBuilders.standaloneSetup(new RunController(runService, evidenceService, projectAccessService))
             .setControllerAdvice(new GlobalExceptionHandler())
             .setMessageConverters(JSON_CONVERTER)
             .addFilters(new RequestIdFilter())
             .build();
+
+    @Test
+    void createRunChecksProjectAccessBeforePersisting() throws Exception {
+        UUID projectId = UUID.randomUUID();
+        UUID runId = UUID.randomUUID();
+        RunResponse created = sampleRun(runId, projectId);
+        when(runService.createRun(any(RunCreateRequest.class))).thenReturn(created);
+
+        mockMvc.perform(post("/api/runs")
+                        .principal(authentication())
+                        .header("X-Request-Id", "req_run_create")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "projectId": "%s",
+                                  "name": "Landing CTA audit",
+                                  "startUrl": "https://example.com/",
+                                  "goal": "CTA flow",
+                                  "devicePreset": "desktop"
+                                }
+                                """.formatted(projectId)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.id").value(runId.toString()))
+                .andExpect(jsonPath("$.data.projectId").value(projectId.toString()))
+                .andExpect(jsonPath("$.meta.requestId").value("req_run_create"));
+
+        verify(projectAccessService).ensureProjectAccessible(projectId, USER_ID);
+    }
+
+    @Test
+    void listRunsFiltersOutProjectsTheUserCannotAccess() throws Exception {
+        RunResponse accessibleRun = sampleRun(UUID.randomUUID(), UUID.randomUUID());
+        RunResponse inaccessibleRun = sampleRun(UUID.randomUUID(), UUID.randomUUID());
+        when(runService.listRuns(null, null)).thenReturn(List.of(accessibleRun, inaccessibleRun));
+        when(projectAccessService.isProjectMember(accessibleRun.projectId(), USER_ID)).thenReturn(true);
+        when(projectAccessService.isProjectMember(inaccessibleRun.projectId(), USER_ID)).thenReturn(false);
+
+        mockMvc.perform(get("/api/runs")
+                        .principal(authentication())
+                        .header("X-Request-Id", "req_run_list"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].id").value(accessibleRun.id().toString()))
+                .andExpect(jsonPath("$.meta.requestId").value("req_run_list"));
+    }
 
     @Test
     void liveReturnsLatestEvidenceSummary() throws Exception {
@@ -75,6 +129,7 @@ class RunControllerTest {
         ));
 
         mockMvc.perform(get("/api/runs/{runId}/live", runId)
+                        .principal(authentication())
                         .header("X-Request-Id", "req_run_live"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.runId").value(runId.toString()))
@@ -91,12 +146,14 @@ class RunControllerTest {
                 .andExpect(jsonPath("$.data.evidenceCounts.observationCount").value(1))
                 .andExpect(jsonPath("$.data.evidenceCounts.artifactCount").value(1))
                 .andExpect(jsonPath("$.meta.requestId").value("req_run_live"));
+        verify(projectAccessService).ensureProjectAccessible(run.projectId(), USER_ID);
     }
 
     @Test
     void stepsReturnsPersistedRunStepList() throws Exception {
         UUID runId = UUID.randomUUID();
         UUID stepId = UUID.randomUUID();
+        when(runService.getRun(runId)).thenReturn(sampleRun(runId));
         when(runService.listRunSteps(runId)).thenReturn(List.of(new RunStepResponse(
                 stepId,
                 runId,
@@ -112,6 +169,7 @@ class RunControllerTest {
         )));
 
         mockMvc.perform(get("/api/runs/{runId}/steps", runId)
+                        .principal(authentication())
                         .header("X-Request-Id", "req_run_steps"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data[0].id").value(stepId.toString()))
@@ -130,6 +188,7 @@ class RunControllerTest {
     void stepDetailReturnsPersistedRunStep() throws Exception {
         UUID runId = UUID.randomUUID();
         UUID stepId = UUID.randomUUID();
+        when(runService.getRun(runId)).thenReturn(sampleRun(runId));
         when(runService.getRunStep(runId, stepId)).thenReturn(new RunStepResponse(
                 stepId,
                 runId,
@@ -145,6 +204,7 @@ class RunControllerTest {
         ));
 
         mockMvc.perform(get("/api/runs/{runId}/steps/{stepId}", runId, stepId)
+                        .principal(authentication())
                         .header("X-Request-Id", "req_run_step_detail"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.id").value(stepId.toString()))
@@ -158,6 +218,7 @@ class RunControllerTest {
         UUID runId = UUID.randomUUID();
         UUID stepId = UUID.randomUUID();
         UUID eventId = UUID.randomUUID();
+        when(runService.getRun(runId)).thenReturn(sampleRun(runId));
         when(runService.listRunEvents(runId, null, null, null, null)).thenReturn(new RunEventListResult(List.of(new RunEventResponse(
                 eventId,
                 runId,
@@ -173,6 +234,7 @@ class RunControllerTest {
         )), null, false));
 
         mockMvc.perform(get("/api/runs/{runId}/events", runId)
+                        .principal(authentication())
                         .header("X-Request-Id", "req_run_events"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data[0].id").value(eventId.toString()))
@@ -194,6 +256,7 @@ class RunControllerTest {
         UUID stepId = UUID.randomUUID();
         UUID cursor = UUID.randomUUID();
         UUID eventId = UUID.randomUUID();
+        when(runService.getRun(runId)).thenReturn(sampleRun(runId));
         RunEventResponse event = new RunEventResponse(
                 eventId,
                 runId,
@@ -208,6 +271,7 @@ class RunControllerTest {
                 .thenReturn(new RunEventListResult(List.of(event), eventId.toString(), true));
 
         mockMvc.perform(get("/api/runs/{runId}/events", runId)
+                        .principal(authentication())
                         .param("stepId", stepId.toString())
                         .param("eventType", "STEP_FAILED")
                         .param("cursor", cursor.toString())
@@ -225,11 +289,13 @@ class RunControllerTest {
     void artifactsReturnsPersistedArtifactList() throws Exception {
         UUID runId = UUID.randomUUID();
         UUID artifactId = UUID.randomUUID();
+        when(runService.getRun(runId)).thenReturn(sampleRun(runId));
         when(evidenceService.listRunArtifacts(runId)).thenReturn(List.of(
                 sampleArtifact(runId, null, artifactId, ArtifactType.DOM_SNAPSHOT)
         ));
 
         mockMvc.perform(get("/api/runs/{runId}/artifacts", runId)
+                        .principal(authentication())
                         .header("X-Request-Id", "req_run_artifacts"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data[0].id").value(artifactId.toString()))
@@ -241,6 +307,7 @@ class RunControllerTest {
     @Test
     void evidencePacketReturnsPersistedEvidencePacket() throws Exception {
         UUID runId = UUID.randomUUID();
+        when(runService.getRun(runId)).thenReturn(sampleRun(runId));
         when(evidenceService.getRunEvidencePacket(runId)).thenReturn(Map.of(
                 "run_id", runId.toString(),
                 "checkpoints", List.of(Map.of(
@@ -252,6 +319,7 @@ class RunControllerTest {
         ));
 
         mockMvc.perform(get("/api/runs/{runId}/evidence-packet", runId)
+                        .principal(authentication())
                         .header("X-Request-Id", "req_evidence_packet"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.run_id").value(runId.toString()))
@@ -282,10 +350,14 @@ class RunControllerTest {
     }
 
     private RunResponse sampleRun(UUID runId) {
+        return sampleRun(runId, UUID.randomUUID());
+    }
+
+    private RunResponse sampleRun(UUID runId, UUID projectId) {
         return new RunResponse(
                 runId,
                 "run",
-                UUID.randomUUID(),
+                projectId,
                 "Landing CTA audit",
                 "WEB",
                 URI.create("https://example.com"),
@@ -302,5 +374,10 @@ class RunControllerTest {
                 null,
                 null
         );
+    }
+
+    private UsernamePasswordAuthenticationToken authentication() {
+        WedgePrincipal principal = new WedgePrincipal(USER_ID, "tester@example.com", "Tester");
+        return new UsernamePasswordAuthenticationToken(principal, null, principal.getAuthorities());
     }
 }

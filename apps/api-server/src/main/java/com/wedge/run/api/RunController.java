@@ -3,9 +3,11 @@ package com.wedge.run.api;
 import com.wedge.common.response.ApiMeta;
 import com.wedge.common.response.ApiResponse;
 import com.wedge.common.response.RequestMetadata;
+import com.wedge.common.security.WedgePrincipal;
 import com.wedge.evidence.api.dto.ArtifactResponse;
 import com.wedge.evidence.api.dto.RunEvidenceSummaryResponse;
 import com.wedge.evidence.application.EvidenceService;
+import com.wedge.project.application.ProjectAccessService;
 import com.wedge.run.api.dto.RunActionRequest;
 import com.wedge.run.api.dto.RunActionResponse;
 import com.wedge.run.api.dto.RunCreateRequest;
@@ -27,6 +29,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.core.io.Resource;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -43,14 +46,21 @@ import org.springframework.web.bind.annotation.RestController;
 public class RunController {
     private final RunService runService;
     private final EvidenceService evidenceService;
+    private final ProjectAccessService projectAccessService;
 
     @GetMapping
     public ResponseEntity<ApiResponse<List<RunResponse>>> listRuns(
             @RequestParam(required = false) UUID projectId,
             @RequestParam(required = false) RunStatus status,
-            @RequestParam(required = false) AnalysisStatus analysisStatus
+            @RequestParam(required = false) AnalysisStatus analysisStatus,
+            Authentication authentication
     ) {
+        UUID userId = principal(authentication).userId();
+        if (projectId != null) {
+            projectAccessService.ensureProjectAccessible(projectId, userId);
+        }
         return ApiResponse.ok(runService.listRuns(projectId, status).stream()
+                .filter(run -> projectId != null || projectAccessService.isProjectMember(run.projectId(), userId))
                 .filter(run -> analysisStatus == null || run.analysisStatus() == analysisStatus)
                 .toList());
     }
@@ -58,18 +68,21 @@ public class RunController {
     @PostMapping
     public ResponseEntity<ApiResponse<RunResponse>> createRun(
             @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
-            @Valid @RequestBody RunCreateRequest request
+            @Valid @RequestBody RunCreateRequest request,
+            Authentication authentication
     ) {
+        projectAccessService.ensureProjectAccessible(request.projectId(), principal(authentication).userId());
         return ApiResponse.created(runService.createRun(request));
     }
 
     @GetMapping("/{runId}")
-    public ResponseEntity<ApiResponse<RunResponse>> getRun(@PathVariable UUID runId) {
-        return ApiResponse.ok(runService.getRun(runId));
+    public ResponseEntity<ApiResponse<RunResponse>> getRun(@PathVariable UUID runId, Authentication authentication) {
+        return ApiResponse.ok(getAccessibleRun(runId, authentication));
     }
 
     @DeleteMapping("/{runId}")
-    public ResponseEntity<Void> deleteRun(@PathVariable UUID runId) {
+    public ResponseEntity<Void> deleteRun(@PathVariable UUID runId, Authentication authentication) {
+        ensureRunAccessible(runId, authentication);
         runService.deleteRun(runId);
         return ResponseEntity.noContent().build();
     }
@@ -77,8 +90,10 @@ public class RunController {
     @PostMapping("/{runId}/start")
     public ResponseEntity<ApiResponse<RunActionResponse>> startRun(
             @PathVariable UUID runId,
-            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey
+            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
+            Authentication authentication
     ) {
+        ensureRunAccessible(runId, authentication);
         RunResponse run = runService.startRun(runId);
         return ApiResponse.accepted(RunActionResponse.from(run));
     }
@@ -87,15 +102,17 @@ public class RunController {
     public ResponseEntity<ApiResponse<RunActionResponse>> stopRun(
             @PathVariable UUID runId,
             @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
-            @RequestBody(required = false) RunActionRequest request
+            @RequestBody(required = false) RunActionRequest request,
+            Authentication authentication
     ) {
+        ensureRunAccessible(runId, authentication);
         RunResponse run = runService.stopRun(runId);
         return ApiResponse.accepted(RunActionResponse.from(run));
     }
 
     @GetMapping("/{runId}/live")
-    public ResponseEntity<ApiResponse<RunLiveResponse>> getRunLive(@PathVariable UUID runId) {
-        RunResponse run = runService.getRun(runId);
+    public ResponseEntity<ApiResponse<RunLiveResponse>> getRunLive(@PathVariable UUID runId, Authentication authentication) {
+        RunResponse run = getAccessibleRun(runId, authentication);
         RunEvidenceSummaryResponse evidenceSummary = evidenceService.getRunEvidenceSummary(run);
         return ApiResponse.ok(new RunLiveResponse(
                 run.id(),
@@ -122,12 +139,18 @@ public class RunController {
     }
 
     @GetMapping("/{runId}/steps")
-    public ResponseEntity<ApiResponse<List<RunStepResponse>>> listRunSteps(@PathVariable UUID runId) {
+    public ResponseEntity<ApiResponse<List<RunStepResponse>>> listRunSteps(@PathVariable UUID runId, Authentication authentication) {
+        ensureRunAccessible(runId, authentication);
         return ApiResponse.ok(runService.listRunSteps(runId));
     }
 
     @GetMapping("/{runId}/steps/{stepId}")
-    public ResponseEntity<ApiResponse<RunStepResponse>> getRunStep(@PathVariable UUID runId, @PathVariable UUID stepId) {
+    public ResponseEntity<ApiResponse<RunStepResponse>> getRunStep(
+            @PathVariable UUID runId,
+            @PathVariable UUID stepId,
+            Authentication authentication
+    ) {
+        ensureRunAccessible(runId, authentication);
         return ApiResponse.ok(runService.getRunStep(runId, stepId));
     }
 
@@ -137,8 +160,10 @@ public class RunController {
             @RequestParam(required = false) String cursor,
             @RequestParam(required = false) Integer limit,
             @RequestParam(required = false) UUID stepId,
-            @RequestParam(required = false) String eventType
+            @RequestParam(required = false) String eventType,
+            Authentication authentication
     ) {
+        ensureRunAccessible(runId, authentication);
         RunEventListResult result = runService.listRunEvents(runId, stepId, eventType, cursor, limit);
         ApiMeta currentMeta = RequestMetadata.current();
         return ResponseEntity.ok(new ApiResponse<>(
@@ -148,12 +173,18 @@ public class RunController {
     }
 
     @GetMapping("/{runId}/artifacts")
-    public ResponseEntity<ApiResponse<List<ArtifactResponse>>> listRunArtifacts(@PathVariable UUID runId) {
+    public ResponseEntity<ApiResponse<List<ArtifactResponse>>> listRunArtifacts(@PathVariable UUID runId, Authentication authentication) {
+        ensureRunAccessible(runId, authentication);
         return ApiResponse.ok(evidenceService.listRunArtifacts(runId));
     }
 
     @GetMapping("/{runId}/artifacts/{artifactId}/content")
-    public ResponseEntity<Resource> getRunArtifactContent(@PathVariable UUID runId, @PathVariable UUID artifactId) {
+    public ResponseEntity<Resource> getRunArtifactContent(
+            @PathVariable UUID runId,
+            @PathVariable UUID artifactId,
+            Authentication authentication
+    ) {
+        ensureRunAccessible(runId, authentication);
         EvidenceService.ArtifactContent artifactContent = evidenceService.getRunArtifactContent(runId, artifactId);
         return ResponseEntity.ok()
                 .contentType(MediaType.parseMediaType(artifactContent.mimeType()))
@@ -161,13 +192,28 @@ public class RunController {
     }
 
     @GetMapping("/{runId}/signals")
-    public ResponseEntity<ApiResponse<List<Object>>> listRunSignals(@PathVariable UUID runId) {
-        runService.getRun(runId);
+    public ResponseEntity<ApiResponse<List<Object>>> listRunSignals(@PathVariable UUID runId, Authentication authentication) {
+        ensureRunAccessible(runId, authentication);
         return ApiResponse.ok(List.of());
     }
 
     @GetMapping("/{runId}/evidence-packet")
-    public ResponseEntity<ApiResponse<Map<String, Object>>> getEvidencePacket(@PathVariable UUID runId) {
+    public ResponseEntity<ApiResponse<Map<String, Object>>> getEvidencePacket(@PathVariable UUID runId, Authentication authentication) {
+        ensureRunAccessible(runId, authentication);
         return ApiResponse.ok(evidenceService.getRunEvidencePacket(runId));
+    }
+
+    private RunResponse getAccessibleRun(UUID runId, Authentication authentication) {
+        RunResponse run = runService.getRun(runId);
+        projectAccessService.ensureProjectAccessible(run.projectId(), principal(authentication).userId());
+        return run;
+    }
+
+    private void ensureRunAccessible(UUID runId, Authentication authentication) {
+        getAccessibleRun(runId, authentication);
+    }
+
+    private WedgePrincipal principal(Authentication authentication) {
+        return (WedgePrincipal) authentication.getPrincipal();
     }
 }
