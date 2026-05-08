@@ -342,15 +342,15 @@ function EvidenceCollectionSummary({
 
   return (
     <div className="run-monitor-evidence-summary" aria-label="수집 상태 요약">
-      <span>수집 상태</span>
+      <span>수집</span>
       {stats ? (
         <dl>
           <div>
-            <dt>체크포인트</dt>
+            <dt>체크</dt>
             <dd>{stats.checkpointCount}</dd>
           </div>
           <div>
-            <dt>관찰 신호</dt>
+            <dt>신호</dt>
             <dd>{stats.observationCount}</dd>
           </div>
           <div>
@@ -844,9 +844,7 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
             ) : (
               <div className="run-monitor-live-insight__card">
                 <strong>{currentCheckpoint}</strong>
-                <p>
-                  선택한 <span>{run.goal ?? run.name}</span> 흐름에서 화면 위계와 전환 마찰 근거를 수집하고 있습니다.
-                </p>
+                <p>선택한 흐름을 준비하고 있습니다. 곧 근거 수집을 시작합니다.</p>
                 <EvidenceCollectionSummary
                   stats={evidenceStats}
                   isLoading={isEvidenceLoading}

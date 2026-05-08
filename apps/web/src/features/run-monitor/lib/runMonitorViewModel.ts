@@ -252,7 +252,7 @@ export function getApiCheckpoint(live: RunLive) {
   }
 
   if (live.status === 'QUEUED' || live.status === 'CREATED') {
-    return '실행 대기열에서 준비 중입니다';
+    return '실행 대기열 준비 중';
   }
 
   return '최신 체크포인트를 기다리는 중입니다';

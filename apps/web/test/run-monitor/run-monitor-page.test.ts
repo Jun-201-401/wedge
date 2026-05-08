@@ -2,6 +2,18 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
+function cssRule(css: string, selector: string) {
+  const start = css.indexOf(`${selector} {`);
+
+  assert.notEqual(start, -1, `Missing CSS rule for ${selector}`);
+
+  const end = css.indexOf('\n}', start);
+
+  assert.notEqual(end, -1, `Missing CSS rule close for ${selector}`);
+
+  return css.slice(start, end);
+}
+
 test('app routes /runs/:runId to the run monitor page', () => {
   const source = fs.readFileSync(new URL('../../src/app/App.tsx', import.meta.url), 'utf8');
   const pages = fs.readFileSync(new URL('../../src/pages/index.ts', import.meta.url), 'utf8');
@@ -108,9 +120,19 @@ test('run monitor css follows the live cockpit visual language', () => {
   const css = fs.readFileSync(new URL('../../src/pages/run-monitor/RunMonitorPage.css', import.meta.url), 'utf8');
 
   assert.match(css, /\.run-monitor-page\s*\{[\s\S]*?background: #fff/);
-  assert.match(css, /\.run-monitor-workspace\s*\{[\s\S]*?flex-direction: column/);
+  assert.match(cssRule(css, '.run-monitor-workspace'), /display: grid/);
+  assert.match(cssRule(css, '.run-monitor-workspace'), /grid-template-rows: auto minmax\(0, 1fr\)/);
   assert.match(css, /\.run-monitor-run-context\s*\{[\s\S]*?border-bottom: 1px solid #f1f5f9/);
   assert.match(css, /\.run-monitor-cockpit\s*\{[\s\S]*?grid-template-columns: minmax\(0, 1fr\) 25rem/);
+  assert.match(cssRule(css, '.run-monitor-cockpit'), /align-self: stretch/);
+  assert.match(cssRule(css, '.run-monitor-simulation'), /min-height: 0/);
+  assert.match(cssRule(css, '.run-monitor-simulation'), /overflow: hidden/);
+  assert.match(cssRule(css, '.run-monitor-analysis-panel'), /display: flex/);
+  assert.match(cssRule(css, '.run-monitor-analysis-panel'), /align-self: stretch/);
+  assert.match(cssRule(css, '.run-monitor-analysis-panel'), /overflow: hidden/);
+  assert.match(cssRule(css, '.run-monitor-panel-scroll'), /height: 0/);
+  assert.match(cssRule(css, '.run-monitor-panel-scroll'), /flex: 1 1 0/);
+  assert.match(cssRule(css, '.run-monitor-panel-scroll'), /overflow-y: auto/);
   assert.match(css, /\.run-monitor-browser\s*\{[\s\S]*?box-shadow: 0 20px 54px/);
   assert.match(css, /\.run-monitor-browser__mode-pill\s*\{[\s\S]*?background: rgba\(240, 249, 255, 0\.86\)/);
   assert.match(css, /\.run-monitor-target-inline span\s*\{[\s\S]*?color: #64748b/);
