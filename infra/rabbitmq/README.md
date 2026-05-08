@@ -1,10 +1,12 @@
 # Wedge RabbitMQ Topology
 
-로컬/개발용 RabbitMQ 토폴로지 초안. `rabbitmq-definitions-dev.json`을 부팅 시 일괄 import한다.
+RabbitMQ 토폴로지 정의. dev/prod compose는 각각 환경별 definitions 파일을 부팅 시 일괄 import한다.
 
 - 큐 소유권: [queue-ownership.md](./queue-ownership.md)
-- 토폴로지 정의: [rabbitmq-definitions-dev.json](./rabbitmq-definitions-dev.json)
-- 브로커 설정: [rabbitmq.conf](./rabbitmq.conf)
+- dev 토폴로지 정의: [rabbitmq-definitions-dev.json](./rabbitmq-definitions-dev.json)
+- prod 토폴로지 정의: [rabbitmq-definitions-prod.json](./rabbitmq-definitions-prod.json)
+- dev 브로커 설정: [rabbitmq.conf](./rabbitmq.conf)
+- prod 브로커 설정: [rabbitmq-prod.conf](./rabbitmq-prod.conf)
 - Management UI: http://localhost:15672 (compose 기동 후)
 
 기본 dev 로그인 계정:
@@ -34,7 +36,7 @@ exchange            : wedge.direct | wedge.dlq
 
 ## 운영 전환 시 TODO (V1 초안에서는 의도적으로 제외)
 
-아래 항목은 현재 "로컬/개발 초안" 범위 밖이며, 운영 진입 전 반드시 재검토한다.
+아래 항목은 현재 기본 prod compose 토폴로지 범위 밖이며, 운영 고도화 전 반드시 재검토한다.
 WDAY-025(dummy publish/consume) 검증 후 실증 데이터로 값 결정 권장.
 
 | 항목 | 현재 상태 | 운영 전 필요 작업 | 우선순위 |
@@ -45,19 +47,26 @@ WDAY-025(dummy publish/consume) 검증 후 실증 데이터로 값 결정 권장
 | Queue type | 기본 `classic` | `x-queue-type: quorum` 검토 (3.8+ 권장, classic mirrored deprecated) | 中 |
 | DLQ 보관 한도 | 무제한 | DLQ에 `x-message-ttl`(예: 7d) 또는 `x-max-length` policy 적용 | 高 |
 | Unroutable 방어 | 없음 | `wedge.direct`에 `alternate-exchange` → `wedge.unroutable` 큐 | 低 |
-| 사용자/권한 | `RABBITMQ_DEFAULT_USER` env (dev guest 대체) | definitions에 `users` / `permissions` 정의 또는 외부 주입 | 中 |
+| 사용자/권한 | `RABBITMQ_DEFAULT_USER` env (dev guest 대체, prod는 `.env.prod` 주입) | 전용 vhost 분리 시 definitions 또는 외부 secret provisioning으로 권한 범위 제한 | 中 |
 | Consumer 튜닝 | `prefetch` 미지정 | 워크로드별 `prefetch_count` 결정 (Runner vs Analyzer 부하 특성 다름) | 中 |
+
+## prod definitions 주의
+
+`rabbitmq-definitions-prod.json`은 topology(vhost/exchange/queue/binding)만 포함하고 사용자/권한은 포함하지 않는다.
+운영 계정은 `compose.prod.yaml`의 `RABBITMQ_DEFAULT_USER` / `RABBITMQ_DEFAULT_PASS` 환경변수로 주입한다.
+비밀번호 hash나 운영 secret을 definitions 파일에 커밋하지 않는다.
 
 ## 변경 절차
 
-`rabbitmq-definitions-dev.json` 수정 시:
+`rabbitmq-definitions-*.json` 수정 시:
 
 1. 관련 문서/계약 동기화 (publisher/consumer 코드가 생기면 routing_key 상수도 포함)
-2. RabbitMQ 컨테이너 재생성 — `management.load_definitions`는 부팅 시에만 로드되므로 `up -d`만으로는 반영 안 됨:
+2. RabbitMQ 컨테이너 재생성 — definitions import는 부팅 시에만 로드되므로 단순 `up -d`만으로는 반영 안 될 수 있음:
    ```bash
    docker compose -f compose.dev.yaml up -d --force-recreate rabbitmq
+   docker compose -f compose.prod.yaml up -d --force-recreate rabbitmq
    ```
-   (또는 `docker compose ... restart rabbitmq`)
+   대상 환경에 맞는 compose 파일만 실행한다. 기존 볼륨이 유지되는 경우 RabbitMQ는 새 definitions를 import해 누락 topology를 보강한다.
 3. Management UI에서 exchange/queue/binding 반영 확인
 4. Publisher/consumer 재시작
 
