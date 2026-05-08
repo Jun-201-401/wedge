@@ -121,7 +121,6 @@ test('create-analysis route state preserves valid run creation context', () => {
 test('create-analysis route state exposes MVP smoke run context defaults', () => {
   assert.deepEqual(MVP_SMOKE_CREATE_RUN_CONTEXT, {
     projectId: '8f06dca8-9c4d-4f20-b1a8-1d5ee40a9923',
-    scenarioTemplateVersionId: '5c5f4c77-0c32-4ab3-9841-2b6f6cc07a40',
   });
 });
 

@@ -204,8 +204,6 @@ test('create analysis ready run controls remain wired', () => {
 
   assert.match(source, /import \{ createDiscovery, getDiscovery \} from '..\/..\/api\/discoveries'/);
   assert.match(source, /import \{ createRun, startRun \} from '..\/..\/api\/runs'/);
-  assert.match(source, /createScenarioAuthoringJob/);
-  assert.match(source, /confirmScenarioAuthoringCandidate/);
   assert.match(source, /import \{ buildRunMonitorPath \}/);
   assert.doesNotMatch(source, /buildMockRunId/);
   assert.match(source, /getCreateRunIds/);
@@ -213,18 +211,15 @@ test('create analysis ready run controls remain wired', () => {
   assert.match(source, /MVP_SMOKE_CREATE_RUN_CONTEXT/);
   assert.match(source, /const EXPLICIT_DEV_CREATE_RUN_CONTEXT = readCreateRunContextFromEnv\(import\.meta\.env\)/);
   assert.match(source, /const DEV_CREATE_RUN_CONTEXT = import\.meta\.env\.DEV/);
-  assert.match(source, /scenarioTemplateVersionId: MVP_SMOKE_CREATE_RUN_CONTEXT\.scenarioTemplateVersionId/);
   assert.match(source, /withCreateRunContextFallback/);
   assert.match(source, /projectId: createRunIds\.projectId/);
-  assert.match(source, /scenarioTemplateVersionId: createRunIds\.scenarioTemplateVersionId/);
-  assert.match(source, /import \{ buildPrototypeScenarioPlan \} from '\.\/lib\/prototypeScenarioPlan'/);
-  assert.match(source, /let scenarioPlan(?::[^=]+)? = buildPrototypeScenarioPlan/);
-  assert.match(source, /scenarioPlan = confirmed\.data\.confirmedCandidate\.scenario_plan/);
-  assert.match(source, /requireConfirmedScenarioPlanStartUrl\(scenarioPlan\)/);
-  assert.match(source, /sourceAuthoringJobId/);
-  assert.match(source, /selectedScenario\.isRunnable/);
+  assert.doesNotMatch(source, /scenarioTemplateVersionId: createRunIds\.scenarioTemplateVersionId/);
+  assert.doesNotMatch(source, /import \{ buildPrototypeScenarioPlan \}/);
+  assert.doesNotMatch(source, /scenarioPlan,/);
+  assert.doesNotMatch(source, /sourceAuthoringJobId/);
   assert.match(source, /selectedDepthId/);
-  assert.match(source, /scenarioPlan,/);
+  assert.match(source, /source: 'create-analysis-agent-ready'/);
+  assert.match(source, /const runStartUrl = selectedScenario\.suggestedStartUrl \?\? submittedUrl/);
   assert.match(source, /sourceDiscoveryId: selectedScenario\.sourceDiscoveryId/);
   assert.match(source, /suggestedTarget: selectedScenario\.suggestedTarget/);
   assert.match(source, /void runDiscovery\(normalizedUrl, routeState\)/);
