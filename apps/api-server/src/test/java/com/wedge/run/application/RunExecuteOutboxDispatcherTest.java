@@ -58,13 +58,13 @@ class RunExecuteOutboxDispatcherTest {
     void handlePublishesOnlyWhenMessageCanBeClaimed() {
         UUID outboxMessageId = UUID.randomUUID();
         RunExecuteRequestMessage message = sampleMessage();
-        when(outboxMessagePersistenceAdapter.findRunExecuteMessageForPublish(outboxMessageId))
+        when(outboxMessagePersistenceAdapter.findRunnerRequestMessageForPublish(outboxMessageId))
                 .thenReturn(Optional.of(message));
 
         dispatcher.handle(new RunExecuteOutboxEnqueuedEvent(outboxMessageId));
 
         InOrder inOrder = inOrder(runRequestPublisher, outboxMessagePersistenceAdapter);
-        inOrder.verify(outboxMessagePersistenceAdapter).findRunExecuteMessageForPublish(outboxMessageId);
+        inOrder.verify(outboxMessagePersistenceAdapter).findRunnerRequestMessageForPublish(outboxMessageId);
         inOrder.verify(runRequestPublisher).publish(message);
         inOrder.verify(outboxMessagePersistenceAdapter).markPublished(outboxMessageId);
     }
@@ -72,7 +72,7 @@ class RunExecuteOutboxDispatcherTest {
     @Test
     void handleSkipsPublishWhenMessageCannotBeClaimed() {
         UUID outboxMessageId = UUID.randomUUID();
-        when(outboxMessagePersistenceAdapter.findRunExecuteMessageForPublish(outboxMessageId))
+        when(outboxMessagePersistenceAdapter.findRunnerRequestMessageForPublish(outboxMessageId))
                 .thenReturn(Optional.empty());
 
         dispatcher.handle(new RunExecuteOutboxEnqueuedEvent(outboxMessageId));
@@ -102,6 +102,7 @@ class RunExecuteOutboxDispatcherTest {
                         outboxMessageId,
                         message
                 )));
+        when(outboxMessagePersistenceAdapter.findDueAgentExecuteMessages(50)).thenReturn(List.of());
 
         dispatcher.retryDueMessages();
 
@@ -109,6 +110,29 @@ class RunExecuteOutboxDispatcherTest {
         inOrder.verify(outboxMessagePersistenceAdapter).findDueRunExecuteMessages(50);
         inOrder.verify(runRequestPublisher).publish(message);
         inOrder.verify(outboxMessagePersistenceAdapter).markPublished(outboxMessageId);
+    }
+
+    @Test
+    void retryDueMessagesAlsoPublishesAgentExecuteMessages() {
+        UUID outboxMessageId = UUID.randomUUID();
+        RunExecuteRequestMessage message = new RunExecuteRequestMessage(
+                UUID.randomUUID().toString(),
+                "agent.execute.request",
+                "0.1",
+                "2026-05-08T00:00:00Z",
+                "spring-api",
+                UUID.randomUUID().toString(),
+                "agent:" + UUID.randomUUID(),
+                Map.of("agentTask", Map.of("run_id", UUID.randomUUID().toString()))
+        );
+        when(outboxMessagePersistenceAdapter.findDueRunExecuteMessages(50)).thenReturn(List.of());
+        when(outboxMessagePersistenceAdapter.findDueAgentExecuteMessages(50))
+                .thenReturn(List.of(new OutboxMessagePersistenceAdapter.RunExecuteOutboxMessage(outboxMessageId, message)));
+
+        dispatcher.retryDueMessages();
+
+        verify(runRequestPublisher).publish(message);
+        verify(outboxMessagePersistenceAdapter).markPublished(outboxMessageId);
     }
 
     @Test
@@ -120,6 +144,7 @@ class RunExecuteOutboxDispatcherTest {
                         outboxMessageId,
                         message
                 )));
+        when(outboxMessagePersistenceAdapter.findDueAgentExecuteMessages(50)).thenReturn(List.of());
         doThrow(new IllegalStateException("broker unavailable")).when(runRequestPublisher).publish(message);
 
         dispatcher.retryDueMessages();

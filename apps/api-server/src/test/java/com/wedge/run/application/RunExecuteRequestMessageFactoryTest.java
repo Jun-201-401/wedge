@@ -1,7 +1,6 @@
 package com.wedge.run.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.net.URI;
 import java.util.List;
@@ -68,18 +67,35 @@ class RunExecuteRequestMessageFactoryTest {
     }
 
     @Test
-    void createRejectsMissingMaterializedScenarioPlan() {
-        assertThatThrownBy(() -> factory.create(new RunExecutionRequestSource(
-                UUID.randomUUID(),
-                UUID.randomUUID(),
+    void createUsesAgentExecuteRequestWhenScenarioPlanIsMissing() {
+        UUID runId = UUID.randomUUID();
+        UUID projectId = UUID.randomUUID();
+
+        RunExecuteRequestMessage message = factory.create(new RunExecutionRequestSource(
+                runId,
+                projectId,
                 "WEB",
-                URI.create("https://example.com"),
-                "무료 체험 CTA까지의 흐름 점검",
+                URI.create("https://example.com/product/sample"),
+                "결제 없이 checkout 진입 경로 확인",
                 "desktop",
-                UUID.randomUUID(),
+                null,
                 Map.of()
-        )))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("materialized scenarioPlan");
+        ));
+
+        assertThat(message.messageType()).isEqualTo("agent.execute.request");
+        assertThat(message.schemaVersion()).isEqualTo("0.1");
+        assertThat(message.correlationId()).isEqualTo(runId.toString());
+        assertThat(message.idempotencyKey()).isEqualTo("agent:" + runId);
+        assertThat(message.payload()).containsKey("agentTask");
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> agentTask = (Map<String, Object>) message.payload().get("agentTask");
+        assertThat(agentTask)
+                .containsEntry("run_id", runId.toString())
+                .containsEntry("project_id", projectId.toString())
+                .containsEntry("goal_type", "CHECKOUT_ENTRY_VERIFICATION")
+                .containsEntry("start_url", "https://example.com/product/sample");
+        assertThat(agentTask).containsKey("allowed_navigation");
+        assertThat(agentTask).doesNotContainKey("scenarioPlan");
     }
 }
