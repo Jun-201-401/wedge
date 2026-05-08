@@ -169,6 +169,27 @@ Agent runtime:
 - optionally export stable path to ScenarioPlan candidate
 ```
 
+
+## 4.0 Official execution routing decision
+
+Decision: `agent.execute.request` is the official Runner Agent MQ path. `run.execute.request` remains the deterministic `ScenarioPlan` scripted/replay path.
+
+```text
+User-facing AI UX check
+-> API server builds AgentTask
+-> agent.execute.request
+-> Agent Runtime
+
+Saved/replay/regression path
+-> API server selects ScenarioPlan
+-> run.execute.request
+-> deterministic ScenarioPlan executor
+```
+
+Do not merge agent behavior back into `run.execute.request` through an `executionMode` switch. The separate message keeps validation, callback semantics, queue concurrency, idempotency, and operational failure handling clear.
+
+Successful AgentTrace exports may create a `ScenarioPlan` candidate. Replaying that candidate is intentionally a `run.execute.request` concern, not an Agent Runtime resume mode.
+
 ## 4.1 Dependency Boundaries
 
 Keep dependency direction explicit:
@@ -253,7 +274,7 @@ Implemented in apps/runner:
 
 Create new contracts before application wiring.
 
-Add new contract files:
+Contract files:
 
 ```text
 packages/contracts/schemas/agent-task.schema.json
@@ -293,7 +314,7 @@ packages/contracts/types/runner.ts
 Do not remove or break:
 
 ```text
-run.execute.request
+run.execute.request as the scripted/replay ScenarioPlan path
 ScenarioPlan
 runner callback payloads
 existing sample ScenarioPlan examples

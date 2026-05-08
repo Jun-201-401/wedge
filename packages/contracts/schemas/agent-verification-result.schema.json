@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wedge.example.com/contracts/schemas/agent-verification-result.schema.json",
+  "title": "Runner Agent Verification Result",
+  "description": "Verifier result produced before a decision and after an action. Success and blockers must be supported by structured observation evidence, not LLM claims alone.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "satisfied": {
+      "type": "boolean"
+    },
+    "terminal": {
+      "type": "boolean"
+    },
+    "outcome": {
+      "type": "string",
+      "enum": ["CONTINUE", "SUCCESS", "BLOCKED_LOGIN", "BLOCKED_CAPTCHA", "POLICY_BLOCKED", "EXHAUSTED"]
+    },
+    "reason": {
+      "type": "string",
+      "minLength": 1
+    },
+    "confidence": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "phase": {
+      "type": "string",
+      "enum": ["pre_decision", "post_action"]
+    }
+  },
+  "required": ["satisfied", "terminal", "outcome", "reason", "confidence", "phase"]
+}

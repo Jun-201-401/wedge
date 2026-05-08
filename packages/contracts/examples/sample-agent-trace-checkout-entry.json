@@ -1,0 +1,118 @@
+{
+  "schema_version": "0.1",
+  "task_id": "00000000-0000-4000-8000-000000000903",
+  "attempt_id": "00000000-0000-4000-8000-000000000904",
+  "run_id": "00000000-0000-4000-8000-000000000905",
+  "turns": [
+    {
+      "turn": 1,
+      "observation": {
+        "finalUrl": "about:blank",
+        "title": "",
+        "candidateCount": 0
+      },
+      "preDecisionVerification": {
+        "satisfied": false,
+        "terminal": false,
+        "outcome": "CONTINUE",
+        "reason": "Goal has not been satisfied yet.",
+        "confidence": 0.5,
+        "phase": "pre_decision"
+      },
+      "decision": {
+        "kind": "act",
+        "description": "Open the start URL before observing the service flow.",
+        "reason": "Agent mode begins by loading the provided service URL.",
+        "confidence": 1,
+        "action": {
+          "type": "goto",
+          "target": {
+            "url": "https://example.com/product/sample"
+          }
+        },
+        "settleStrategy": {
+          "type": "network_idle",
+          "timeout_ms": 1000
+        },
+        "stage": "FIRST_VIEW",
+        "targetKey": "https://example.com/product/sample"
+      },
+      "policy": {
+        "allowed": true,
+        "reason": "No high-risk agent policy rule matched for about:blank.",
+        "riskClass": "LOW"
+      },
+      "actionResult": {
+        "actionType": "goto",
+        "finalUrl": "https://example.com/product/sample",
+        "completed": true
+      },
+      "postActionVerification": {
+        "satisfied": false,
+        "terminal": false,
+        "outcome": "CONTINUE",
+        "reason": "Goal has not been satisfied yet.",
+        "confidence": 0.5,
+        "phase": "post_action"
+      }
+    },
+    {
+      "turn": 2,
+      "observation": {
+        "finalUrl": "https://example.com/product/sample",
+        "title": "Sample product",
+        "candidateCount": 3
+      },
+      "preDecisionVerification": {
+        "satisfied": false,
+        "terminal": false,
+        "outcome": "CONTINUE",
+        "reason": "Goal has not been satisfied yet.",
+        "confidence": 0.5,
+        "phase": "pre_decision"
+      },
+      "decision": {
+        "kind": "act",
+        "description": "Click candidate: Add to cart",
+        "reason": "Checkout verification should add an obvious product to the cart before looking for checkout.",
+        "confidence": 0.82,
+        "action": {
+          "type": "click",
+          "target": {
+            "selector": "#add-to-cart",
+            "role": "button",
+            "text": "Add to cart"
+          }
+        },
+        "settleStrategy": {
+          "type": "fixed_short",
+          "timeout_ms": 500
+        },
+        "stage": "CTA",
+        "targetKey": "#add-to-cart"
+      },
+      "policy": {
+        "allowed": true,
+        "reason": "AgentTask risk policy permits cart mutation actions.",
+        "riskClass": "CART_MUTATION"
+      },
+      "actionResult": {
+        "actionType": "click",
+        "finalUrl": "https://example.com/cart",
+        "completed": true
+      },
+      "postActionVerification": {
+        "satisfied": true,
+        "terminal": true,
+        "outcome": "SUCCESS",
+        "reason": "A CTA click moved the browser to a goal-like destination.",
+        "confidence": 0.8,
+        "phase": "post_action"
+      }
+    }
+  ],
+  "outcome": {
+    "status": "SUCCESS",
+    "reason": "A CTA click moved the browser to a goal-like destination."
+  }
+}

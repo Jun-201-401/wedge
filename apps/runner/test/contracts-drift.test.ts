@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import test from "node:test";
+import { parseAgentExecuteMessage } from "../src/messaging/index.ts";
 import { fileURLToPath } from "node:url";
 
 const currentDir = dirname(fileURLToPath(import.meta.url));
@@ -72,6 +73,44 @@ test("[계약 동기화] ScenarioAuthoring TS mirror가 packages/contracts autho
     authoringSchema,
     authoringSchema.$defs.provider_type
   );
+});
+
+
+test("[계약 동기화] agent.execute 공식 contract entrypoint와 예제가 유지된다", async () => {
+  const agentSchemaFiles = [
+    "schemas/agent-task.schema.json",
+    "schemas/agent-observation.schema.json",
+    "schemas/agent-decision.schema.json",
+    "schemas/agent-policy-result.schema.json",
+    "schemas/agent-verification-result.schema.json",
+    "schemas/agent-event.schema.json",
+    "schemas/agent-outcome.schema.json",
+    "schemas/agent-trace.schema.json",
+    "mq/agent.execute.request.schema.json"
+  ];
+
+  for (const relativePath of agentSchemaFiles) {
+    const schema = await readJson(resolve(repoRoot, "packages/contracts", relativePath));
+    assert.equal(schema.$schema, "https://json-schema.org/draft/2020-12/schema");
+    assert.ok(schema.$id.endsWith(relativePath));
+  }
+
+  const agentMqEntrypoint = await readJson(resolve(repoRoot, "packages/contracts/mq/agent.execute.request.schema.json"));
+  assert.equal(agentMqEntrypoint.$ref, "./messages.schema.json#/$defs/AgentExecutePayload");
+
+  const agentRequestRaw = await readFile(
+    resolve(repoRoot, "packages/contracts/examples/sample-agent-execute-checkout-entry.request.json"),
+    "utf8"
+  );
+  const parsedAgentRequest = parseAgentExecuteMessage(agentRequestRaw);
+  assert.equal(parsedAgentRequest.messageType, "agent.execute.request");
+  assert.equal(parsedAgentRequest.payload.agentTask.goal_type, "CHECKOUT_ENTRY_VERIFICATION");
+
+  const agentTrace = await readJson(resolve(repoRoot, "packages/contracts/examples/sample-agent-trace-checkout-entry.json"));
+  assert.equal(agentTrace.schema_version, "0.1");
+  assert.equal(agentTrace.outcome.status, "SUCCESS");
+  assert.ok(Array.isArray(agentTrace.turns));
+  assert.ok(agentTrace.turns.length > 0);
 });
 
 test("[계약 동기화] runner callback literal이 packages/contracts callback schema와 어긋나지 않는다", async () => {

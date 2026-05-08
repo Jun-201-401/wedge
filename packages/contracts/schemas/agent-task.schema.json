@@ -1,0 +1,7 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wedge.example.com/contracts/schemas/agent-task.schema.json",
+  "title": "Runner Agent Task",
+  "description": "Official Runner Agent task contract carried by agent.execute.request.",
+  "$ref": "../mq/messages.schema.json#/$defs/AgentTask"
+}
