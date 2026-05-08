@@ -4,6 +4,27 @@ set -euo pipefail
 COMPOSE_FILE="${COMPOSE_FILE:-compose.prod.yaml}"
 ENV_FILE="${ENV_FILE:-.env.prod}"
 
+wait_for_rabbitmq() {
+  local attempts="${1:-60}"
+  local delay_seconds="${2:-2}"
+  local attempt
+
+  for attempt in $(seq 1 "$attempts"); do
+    if docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" exec -T rabbitmq rabbitmqctl await_startup --timeout 5 >/dev/null 2>&1 \
+      && docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" exec -T rabbitmq rabbitmq-diagnostics -q ping >/dev/null 2>&1; then
+      return 0
+    fi
+
+    echo "Waiting for RabbitMQ startup... (${attempt}/${attempts})"
+    sleep "$delay_seconds"
+  done
+
+  docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" logs --tail=100 rabbitmq
+  return 1
+}
+
+wait_for_rabbitmq
+
 docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" exec -T rabbitmq sh -lc '
 set -eu
 
