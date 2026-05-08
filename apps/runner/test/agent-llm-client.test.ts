@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { AgentLlmDecisionClient, createAgentDecisionClient, type AgentLlmDecisionTransport } from "../src/agent/llm-client.ts";
+import { HeuristicDecisionClient, type AgentDecisionInput } from "../src/agent/planner.ts";
 import { createInitialAgentState } from "../src/agent/state.ts";
+import type { InteractiveComponentObservationItem, ScenarioStage } from "../src/shared/contracts.ts";
 import { createMinimalPlan, createRunnerTestConfig, createSimulatedPageSnapshot } from "./support.ts";
 
 test("[Agent LLM Decision] config가 heuristic이면 LLM endpoint가 있어도 heuristic client를 사용한다", () => {
@@ -209,6 +211,81 @@ test("[Agent LLM Decision] transport 실패는 heuristic으로 fallback한다", 
 
   assert.equal(decision.action.type, "click");
   assert.equal(decision.targetKey, "#real-checkout");
+});
+
+test("[Agent LLM Decision] broader checkout fixture에서 LLM 선택은 heuristic 기준선과 일치한다", async () => {
+  const heuristic = new HeuristicDecisionClient();
+  const fixtures: Array<{
+    name: string;
+    clickedTargetKeys?: string[];
+    expectedText: string;
+    expectedTargetKey: string;
+    expectedStage: ScenarioStage;
+    components: InteractiveComponentObservationItem[];
+  }> = [
+    {
+      name: "product page add-to-cart beats generic CTA",
+      expectedText: "Add to cart",
+      expectedTargetKey: "#add-to-cart",
+      expectedStage: "CTA",
+      components: [
+        component({ text: "Learn more", selector: "#learn-more", role: "link", href: "https://example.com/product#details", tag: "a" }),
+        component({ text: "Add to cart", selector: "#add-to-cart", role: "button", tag: "button", primary: true })
+      ]
+    },
+    {
+      name: "cart link follows completed add-to-cart",
+      clickedTargetKeys: ["#add-to-cart"],
+      expectedText: "View cart",
+      expectedTargetKey: "#cart-link",
+      expectedStage: "CTA",
+      components: [
+        component({ text: "Add to cart", selector: "#add-to-cart", role: "button", tag: "button" }),
+        component({ text: "View cart", selector: "#cart-link", role: "link", href: "https://example.com/cart", tag: "a", primary: true })
+      ]
+    },
+    {
+      name: "checkout link is the terminal checkout-entry candidate",
+      clickedTargetKeys: ["#add-to-cart", "#cart-link"],
+      expectedText: "Proceed to checkout",
+      expectedTargetKey: "#checkout-link",
+      expectedStage: "COMMIT",
+      components: [
+        component({ text: "Continue shopping", selector: "#continue-shopping", role: "link", href: "https://example.com/product", tag: "a" }),
+        component({ text: "Proceed to checkout", selector: "#checkout-link", role: "link", href: "https://example.com/checkout", tag: "a", primary: true })
+      ]
+    }
+  ];
+
+  for (const fixture of fixtures) {
+    const input = createFixtureDecisionInput(fixture.components, fixture.clickedTargetKeys);
+    const llm = new AgentLlmDecisionClient({
+      endpoint: "https://llm.example/decision",
+      model: "agent-model",
+      timeoutMs: 1_000,
+      transport: {
+        complete: async (request) => ({
+          decision: {
+            kind: "act",
+            actionType: "click",
+            targetKey: selectPromptCandidateId(request.payload, fixture.expectedText),
+            stage: fixture.expectedStage,
+            reason: `Fixture ${fixture.name}`,
+            confidence: 0.9
+          }
+        })
+      }
+    });
+
+    const heuristicDecision = heuristic.decide(input);
+    const llmDecision = await llm.decide(input);
+
+    assert.equal(heuristicDecision.action.type, "click", fixture.name);
+    assert.equal(llmDecision.action.type, "click", fixture.name);
+    assert.equal(heuristicDecision.targetKey, fixture.expectedTargetKey, fixture.name);
+    assert.equal(llmDecision.targetKey, heuristicDecision.targetKey, fixture.name);
+    assert.equal(llmDecision.stage, heuristicDecision.stage, fixture.name);
+  }
 });
 
 
@@ -470,3 +547,76 @@ test("[Agent LLM Decision] prompt payload는 민감 문자열을 redaction 후 �
   assert.match(serializedPayload, /REDACTED_COUPON/);
   assert.match(serializedPayload, /selectorHint/);
 });
+
+function createFixtureDecisionInput(
+  components: InteractiveComponentObservationItem[],
+  clickedTargetKeys: string[] = []
+): AgentDecisionInput {
+  return {
+    goal: "Find the checkout entry path without submitting payment or final order.",
+    startUrl: "https://example.com/product",
+    state: {
+      ...createInitialAgentState(),
+      started: true,
+      clickedTargetKeys: new Set(clickedTargetKeys)
+    },
+    maxScrolls: 1,
+    observation: {
+      snapshot: createSimulatedPageSnapshot(createMinimalPlan(), {
+        finalUrl: "https://example.com/product",
+        interactiveComponents: components
+      })
+    }
+  };
+}
+
+function component(input: {
+  text: string;
+  selector: string;
+  role: string;
+  tag: string;
+  href?: string;
+  primary?: boolean;
+}): InteractiveComponentObservationItem {
+  return {
+    text: input.text,
+    selector: input.selector,
+    role: input.role,
+    href: input.href,
+    tag: input.tag,
+    clickable: true,
+    clicked_in_scenario: false,
+    is_cta_candidate: true,
+    is_primary_like: input.primary ?? false,
+    bounds: {
+      x: 0,
+      y: 0,
+      width: 100,
+      height: 40,
+      unit: "css_px"
+    }
+  };
+}
+
+function selectPromptCandidateId(payload: Record<string, unknown>, expectedText: string): string {
+  const messages = payload.messages;
+  assert.ok(Array.isArray(messages));
+  const userMessage = messages.find((message) =>
+    typeof message === "object" &&
+    message !== null &&
+    (message as Record<string, unknown>).role === "user"
+  ) as { content?: unknown } | undefined;
+  assert.equal(typeof userMessage?.content, "string");
+
+  const parsed = JSON.parse(userMessage.content) as {
+    page?: {
+      candidates?: Array<{
+        targetKey?: string;
+        text?: string;
+      }>;
+    };
+  };
+  const candidate = parsed.page?.candidates?.find((entry) => entry.text === expectedText);
+  assert.equal(typeof candidate?.targetKey, "string");
+  return candidate.targetKey;
+}
