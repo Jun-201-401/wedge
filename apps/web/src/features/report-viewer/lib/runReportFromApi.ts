@@ -83,6 +83,25 @@ function buildUserFacingDecisionTags(issueIds: unknown[], evidenceRefs: unknown[
   return tags;
 }
 
+function userFacingDecisionSummary(status: string, summary: string | null) {
+  if (status === 'PASS') {
+    return '해당 단계에서 필요한 정보가 관찰되었고, 이슈는 감지되지 않았습니다.';
+  }
+
+  if (status === 'NOT_OBSERVED') {
+    return '해당 단계에서 필요한 정보가 아직 관찰되지 않았습니다.';
+  }
+
+  if (summary) {
+    return summary
+      .replace(/evidence/g, '정보')
+      .replace(/P0 issue/g, '이슈')
+      .replace(/CTA/g, '행동 선택');
+  }
+
+  return '해당 단계의 분석 결과를 확인해 주세요.';
+}
+
 function evidenceLabelFor(stage: string | null | undefined, evidenceCount: number) {
   const stageLabel = stageDisplayName(stage);
   return evidenceCount > 0 ? `${stageLabel} 단계 근거 ${evidenceCount}개` : `${stageLabel} 단계`;
@@ -111,7 +130,7 @@ function buildDecisionNodes(report: RunReportProjection): ReportDecisionNode[] {
       code: stage.slice(0, 3).toUpperCase() || `D${index + 1}`,
       tone: decisionTone(status),
       title: readString(item.displayName) ?? stage,
-      summary: readString(item.summary) ?? `${status} 상태로 분석된 결정 지점입니다.`,
+      summary: userFacingDecisionSummary(status, readString(item.summary)),
       tags: buildUserFacingDecisionTags(issueIds, evidenceRefs),
     };
   });
