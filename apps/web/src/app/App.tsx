@@ -107,6 +107,16 @@ export function App() {
     }
   }, []);
 
+  const handleCreateAnalysisLogout = useCallback(async () => {
+    try {
+      await logout();
+    } finally {
+      setCurrentUser(null);
+      setAuthState('anonymous');
+      replaceAppPath('/create-analysis');
+    }
+  }, []);
+
   const route = resolveAppRoute(currentPath);
   const isAuthenticated = authState === 'authenticated';
   const isAuthChecking = authState === 'checking';
@@ -118,13 +128,7 @@ export function App() {
   }
 
   if (protectedRouteGate === 'blocked') {
-    return (
-      <LandingPage
-        isAuthenticated={false}
-        isAuthChecking={false}
-        onLogout={handleLogout}
-      />
-    );
+    return <LandingPage />;
   }
 
   if (route.kind === 'run-report') {
@@ -144,18 +148,18 @@ export function App() {
   }
 
   if (route.kind === 'create-analysis') {
-    return <CreateAnalysisPage />;
+    return (
+      <CreateAnalysisPage
+        isAuthenticated={isAuthenticated}
+        isAuthChecking={isAuthChecking}
+        onLogout={handleCreateAnalysisLogout}
+      />
+    );
   }
 
   if (route.kind === 'runs-list') {
     return <RunsListPage currentUser={currentUser} onLogout={handleLogout} />;
   }
 
-  return (
-    <LandingPage
-      isAuthenticated={isAuthenticated}
-      isAuthChecking={isAuthChecking}
-      onLogout={handleLogout}
-    />
-  );
+  return <LandingPage />;
 }

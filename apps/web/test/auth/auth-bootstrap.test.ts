@@ -5,6 +5,7 @@ import fs from 'node:fs';
 test('app bootstraps memory auth from refresh cookie and shares auth state with routes', () => {
   const app = fs.readFileSync(new URL('../../src/app/App.tsx', import.meta.url), 'utf8');
   const landing = fs.readFileSync(new URL('../../src/pages/landing/LandingPage.tsx', import.meta.url), 'utf8');
+  const createAnalysis = fs.readFileSync(new URL('../../src/pages/create-analysis/CreateAnalysisPage.tsx', import.meta.url), 'utf8');
   const appCss = fs.readFileSync(new URL('../../src/app/App.css', import.meta.url), 'utf8');
   const navigation = fs.readFileSync(new URL('../../src/shared/lib/navigation.ts', import.meta.url), 'utf8');
   const globals = fs.readFileSync(new URL('../../src/app/styles/globals.css', import.meta.url), 'utf8');
@@ -29,12 +30,15 @@ test('app bootstraps memory auth from refresh cookie and shares auth state with 
   assert.match(app, /const shouldShowProtectedRouteLoading = useDelayedProtectedRouteLoading\(protectedRouteGate === 'loading'\)/);
   assert.match(app, /if \(protectedRouteGate === 'loading'\) \{[\s\S]*?shouldShowProtectedRouteLoading \? <ProtectedRouteLoadingPage \/> : null/);
   assert.match(app, /if \(protectedRouteGate === 'blocked'\)/);
-  assert.match(app, /onLogout=\{handleLogout\}/);
+  assert.match(app, /onLogout=\{handleCreateAnalysisLogout\}/);
   assert.match(app, /<RunsListPage currentUser=\{currentUser\} onLogout=\{handleLogout\} \/>/);
 
-  assert.match(landing, /interface LandingPageProps/);
-  assert.match(landing, /!isAuthenticated && !isAuthChecking \? <a href=\{LOGIN_PATH\}>Login<\/a> : null/);
-  assert.match(landing, /onLogout \? <button type="button" onClick=\{onLogout\}>Logout<\/button> : null/);
+  assert.doesNotMatch(landing, /LOGIN_PATH/);
+  assert.doesNotMatch(landing, />Login<\/a>/);
+  assert.doesNotMatch(landing, />Logout<\/button>/);
+  assert.match(createAnalysis, /interface CreateAnalysisPageProps/);
+  assert.match(createAnalysis, /!isAuthenticated && !isAuthChecking \? \(\s*<a href=\{getLoginPathForCurrentCreateAnalysisState\(\)\}>Login<\/a>/);
+  assert.match(createAnalysis, /isAuthenticated && onLogout \? \(\s*<button type="button" onClick=\{onLogout\}>Logout<\/button>/);
   assert.match(appCss, /\.app-route-loading\s*\{[\s\S]*?background: #fff/);
   assert.match(globals, /body \{[\s\S]*?background: #fff/);
   assert.match(globals, /#root \{[\s\S]*?background: #fff/);

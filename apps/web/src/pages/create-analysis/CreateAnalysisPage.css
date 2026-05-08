@@ -59,6 +59,8 @@
   z-index: 1100;
   display: flex;
   align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
   width: 100%;
   padding: 2rem 3rem;
   pointer-events: none;
@@ -75,6 +77,54 @@
 
 .create-analysis-nav__brand:focus-visible {
   outline: none;
+}
+
+.create-analysis-nav__actions {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  pointer-events: auto;
+}
+
+.create-analysis-nav__actions a,
+.create-analysis-nav__actions button {
+  display: inline-flex;
+  box-sizing: border-box;
+  min-width: 5.35rem;
+  height: 2.2rem;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(125, 211, 252, 0.48);
+  border-radius: 999px;
+  padding: 0 1rem;
+  color: #0284c7;
+  background: rgba(240, 249, 255, 0.82);
+  box-shadow: 0 12px 28px rgba(14, 165, 233, 0.12);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.625rem;
+  font-weight: 900;
+  letter-spacing: 0.16em;
+  line-height: 1;
+  text-decoration: none;
+  text-transform: uppercase;
+  transition: border-color 0.2s ease, background 0.2s ease, color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+  white-space: nowrap;
+}
+
+.create-analysis-nav__actions a:hover,
+.create-analysis-nav__actions button:hover {
+  border-color: rgba(14, 165, 233, 0.52);
+  background: rgba(224, 242, 254, 0.92);
+  color: #0369a1;
+  transform: translateY(-1px);
+  box-shadow: 0 16px 34px rgba(14, 165, 233, 0.18);
+}
+
+.create-analysis-nav__actions a:focus-visible,
+.create-analysis-nav__actions button:focus-visible {
+  outline: 2px solid rgba(125, 211, 252, 0.72);
+  outline-offset: 4px;
 }
 
 .create-analysis-page__main {
@@ -1340,6 +1390,15 @@
 @media (max-width: 640px) {
   .create-analysis-nav {
     padding: 1.5rem;
+  }
+
+  .create-analysis-nav__actions a,
+  .create-analysis-nav__actions button {
+    min-width: 4.95rem;
+    height: 2.05rem;
+    padding-inline: 0.86rem;
+    font-size: 0.5625rem;
+    letter-spacing: 0.12em;
   }
 
   .create-analysis-page__main {

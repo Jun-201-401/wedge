@@ -5,6 +5,7 @@ import { readApiValidationFields, WedgeApiError } from '../../api/http';
 import { createRun, startRun } from '../../api/runs';
 import { confirmScenarioAuthoringCandidate, createScenarioAuthoringJob } from '../../api/scenario-authoring';
 import { FIRST_WORD_DELAY_MS, WORD_ROTATION_INTERVAL_MS } from '../../features/landing-vision';
+import { LOGIN_PATH } from '../../shared/lib/appPaths';
 import { pushAppPath } from '../../shared/lib/navigation';
 import { buildRunMonitorPath } from '../run-monitor/lib/runMonitorRoute';
 import {
@@ -36,6 +37,13 @@ type DiscoveryStepStatus = 'complete' | 'active' | 'pending';
 type ScenarioId = CreateAnalysisScenarioId;
 type ScenarioRecommendation = ScenarioRecommendationViewModel;
 type ScenarioDepthId = 'hero-only' | 'next-screen' | 'form-depth';
+
+interface CreateAnalysisPageProps {
+  isAuthenticated?: boolean;
+  isAuthChecking?: boolean;
+  onLogout?: () => void;
+}
+
 type DiscoveryUiState =
   | { kind: 'idle' }
   | { kind: 'creating' }
@@ -204,6 +212,11 @@ function getInitialRouteState(): CreateAnalysisPageRouteState {
     parseCreateAnalysisRouteState(window.location.search, CREATE_ANALYSIS_ROUTE_OPTIONS),
     DEV_CREATE_RUN_CONTEXT,
   );
+}
+
+function getLoginPathForCurrentCreateAnalysisState() {
+  const nextPath = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+  return `${LOGIN_PATH}?${new URLSearchParams({ next: nextPath }).toString()}`;
 }
 
 function findScenarioById(scenarioId: ScenarioId | null, scenarios: ScenarioRecommendation[]) {
@@ -647,7 +660,7 @@ function ReadyAgent({ submittedUrl, selectedScenario, isCreatingRun, runStartErr
   );
 }
 
-export function CreateAnalysisPage() {
+export function CreateAnalysisPage({ isAuthenticated = false, isAuthChecking = false, onLogout }: CreateAnalysisPageProps) {
   const [routeState, setRouteState] = useState<CreateAnalysisPageRouteState>(getInitialRouteState);
   const [headlineIndex, setHeadlineIndex] = useState(0);
   const [urlInput, setUrlInput] = useState(routeState.submittedUrl ?? '');
@@ -1086,6 +1099,14 @@ export function CreateAnalysisPage() {
         <a href="/" className="create-analysis-nav__brand">
           Wedge
         </a>
+        <div className="create-analysis-nav__actions" aria-label="계정">
+          {!isAuthenticated && !isAuthChecking ? (
+            <a href={getLoginPathForCurrentCreateAnalysisState()}>Login</a>
+          ) : null}
+          {isAuthenticated && onLogout ? (
+            <button type="button" onClick={onLogout}>Logout</button>
+          ) : null}
+        </div>
       </header>
 
       <main className="create-analysis-page__main">
