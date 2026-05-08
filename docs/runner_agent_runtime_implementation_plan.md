@@ -1742,7 +1742,7 @@ Verification:
 cd apps/runner && npm test -- test/app.test.ts test/messaging.test.ts test/rabbitmq-consumer.test.ts test/agent/agent-worker.test.ts
 ```
 
-Implementation status as of 2026-05-07:
+Implementation status as of 2026-05-08:
 
 ```text
 Completed:
@@ -1758,10 +1758,12 @@ Completed:
 - Terminal agent results are persisted under the runner artifact root so duplicate deliveries after a runner process restart do not re-execute the browser flow.
 - MQ poison message requeue is bounded by RUNNER_MQ_MAX_DELIVERY_ATTEMPTS.
 - Successful AgentTrace results are exported to custom_compiled ScenarioPlan candidate artifacts with final checkpoint and stop-before-commit guard steps.
+- Static Runner replay consumes exported `action.options.replay_hint.locator_recipe` as locator fallback so stale selectors do not block same-fixture replay.
+- LLM prompt payloads use opaque candidate ids plus redacted semantic selector/href hints instead of raw selector/href values.
+- LLM invalid-JSON-only retry and broader heuristic-vs-LLM checkout fixture comparison are covered by Runner tests.
 
 Remaining:
-- Add prompt redaction beyond the current minimal observation payload.
-- Add invalid-JSON-only LLM retry and broader heuristic-vs-LLM fixture comparison.
+- Promote local terminal idempotency records to API/DB-backed global idempotency when multiple runner replicas share a queue.
 ```
 
 ## Phase 7: LLM Decision Client
@@ -1776,9 +1778,9 @@ DONE: Add LLMDecisionClient behind RUNNER_AGENT_DECISION_MODE=llm.
 DONE: Keep heuristic as the default decision client.
 DONE: Validate LLM output against observed target keys and constrained action types.
 DONE: Fall back to heuristic when LLM output is invalid or the endpoint fails.
-TODO: Add prompt redaction beyond the current minimal observation payload.
+DONE: Add prompt redaction beyond the current minimal observation payload.
 DONE: Add invalid-JSON-only retry; unsafe structured decisions are rejected without retry or heuristic fallback.
-TODO: Compare LLM against heuristic on broader fixtures.
+DONE: Compare LLM against heuristic on broader fixtures.
 ```
 
 Acceptance criteria:
@@ -1794,7 +1796,7 @@ Trace records prompt metadata, model, and decision IDs without leaking sensitive
 Verification:
 
 ```bash
-cd apps/runner && npm test -- test/agent/llm-decision.test.ts
+cd apps/runner && node --experimental-strip-types --test test/agent-llm-client.test.ts
 ```
 
 LLM integration tests may be skipped by default unless credentials/config are present.
