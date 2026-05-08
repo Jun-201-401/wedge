@@ -101,7 +101,7 @@ Artifacts are written under `.runner-artifacts/{runId}/{stepKey}/...`; callback 
 - `RUNNER_CALLBACK_SIGNATURE_SECRET` must match `wedge.internal.runner-callback-signature-secret`; the runner sends `X-Signature: hmac-sha256=<digest>` over the raw JSON callback body.
 - `RUNNER_ARTIFACTS_ROOT` points at the mounted `.runner-artifacts` volume so API artifact content URLs can resolve local files.
 
-Run `node infra/scripts/seed-real-run-smoke.mjs` once to create the local smoke project/scenario rows, then run `node infra/scripts/real-run-e2e-smoke.mjs` from the repository root after the API and runner are both up to verify create/start/MQ/callback/evidence packet behavior.
+Run `node infra/scripts/seed-real-run-smoke.mjs` once to create the local smoke project/scenario rows, then run `node infra/scripts/real-run-e2e-smoke.mjs` from the repository root after the API and runner are both up to verify scripted ScenarioPlan create/start/MQ/callback/evidence packet behavior. For the official Runner Agent path, run `node infra/scripts/real-agent-run-e2e-smoke.mjs`; it creates the Run without `scenarioTemplateVersionId` or `scenarioPlan` and verifies the `agent.execute.request` path through the same terminal/evidence checks.
 
 To verify the failure branch, run the same script with an unreachable target and expected terminal status:
 
