@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wedge.example.com/contracts/internal/runner-agent-idempotency.schema.json",
+  "title": "Runner Agent Idempotency Internal API",
+  "description": "Internal API payloads for DB-backed agent.execute terminal idempotency shared by Runner replicas.",
+  "$defs": {
+    "KeyHash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "RecordRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "runId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "taskId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "attemptId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "attemptIndex": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "result": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "required": ["runId", "taskId", "attemptId", "attemptIndex", "result"]
+    },
+    "RecordResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "idempotencyKeyHash": {
+          "$ref": "#/$defs/KeyHash"
+        },
+        "found": {
+          "type": "boolean"
+        },
+        "runId": {
+          "type": ["string", "null"],
+          "format": "uuid"
+        },
+        "taskId": {
+          "type": ["string", "null"]
+        },
+        "attemptId": {
+          "type": ["string", "null"]
+        },
+        "attemptIndex": {
+          "type": ["integer", "null"],
+          "minimum": 1
+        },
+        "result": {
+          "type": ["object", "null"],
+          "additionalProperties": true
+        },
+        "completedAt": {
+          "type": ["string", "null"],
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "idempotencyKeyHash",
+        "found",
+        "runId",
+        "taskId",
+        "attemptId",
+        "attemptIndex",
+        "result",
+        "completedAt"
+      ]
+    }
+  }
+}

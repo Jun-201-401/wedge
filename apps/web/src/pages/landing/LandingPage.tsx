@@ -1,7 +1,6 @@
 import type { CSSProperties } from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
-import { LOGIN_PATH } from '../../shared/lib/appPaths';
 import {
   FIRST_WORD_DELAY_MS,
   getVisionScrollState,
@@ -13,13 +12,7 @@ import {
 } from '../../features/landing-vision';
 import './LandingPage.css';
 
-interface LandingPageProps {
-  isAuthenticated?: boolean;
-  isAuthChecking?: boolean;
-  onLogout?: () => void;
-}
-
-export function LandingPage({ isAuthenticated = false, isAuthChecking = false, onLogout }: LandingPageProps) {
+export function LandingPage() {
   const [index, setIndex] = useState(0);
   const [isNavHidden, setIsNavHidden] = useState(false);
   const [scrollProgress, setScrollProgress] = useState(0);
@@ -184,9 +177,7 @@ export function LandingPage({ isAuthenticated = false, isAuthChecking = false, o
 
         <div className="site-nav__links" aria-label="Section shortcuts">
           <a href="#vision">Vision</a>
-          {!isAuthenticated && !isAuthChecking ? <a href={LOGIN_PATH}>Login</a> : null}
-          <a href="/create-analysis">Start</a>
-          {isAuthenticated && onLogout ? <button type="button" onClick={onLogout}>Logout</button> : null}
+          <a href="/create-analysis" className="site-nav__cta">Start</a>
         </div>
       </nav>
 

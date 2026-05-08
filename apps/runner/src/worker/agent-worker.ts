@@ -10,6 +10,7 @@ import { classifyRunnerFailure, errorMessage, logOperationalEvent } from "../sha
 import type { ArtifactStore } from "../storage/index.ts";
 import type { AgentTrace } from "../agent/trace.ts";
 import {
+  createApiAgentIdempotencyStore,
   createLocalAgentIdempotencyStore,
   resolveAgentIdempotencyKey,
   type AgentIdempotencyStore
@@ -52,7 +53,7 @@ export function registerAgentWorker({
 }: RegisterAgentWorkerInput): AgentRunnerWorker {
   const idempotentExecutions = new Map<string, Promise<AgentRunnerExecutionResult>>();
   const terminalIdempotencyStore = config.agentIdempotencyStoreEnabled
-    ? agentIdempotencyStore ?? createLocalAgentIdempotencyStore(config)
+    ? agentIdempotencyStore ?? createConfiguredAgentIdempotencyStore(config)
     : null;
 
   return {
@@ -128,6 +129,12 @@ export function registerAgentWorker({
       });
     }
   };
+}
+
+function createConfiguredAgentIdempotencyStore(config: RunnerConfig): AgentIdempotencyStore {
+  return config.agentIdempotencyStoreMode === "api"
+    ? createApiAgentIdempotencyStore(config)
+    : createLocalAgentIdempotencyStore(config);
 }
 
 async function executeAgentMessage({

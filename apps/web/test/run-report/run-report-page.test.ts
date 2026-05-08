@@ -7,7 +7,7 @@ test('app routes /runs/:runId/report to the run report page before monitor match
   const appRoute = fs.readFileSync(new URL('../../src/app/appRoute.ts', import.meta.url), 'utf8');
   const pages = fs.readFileSync(new URL('../../src/pages/index.ts', import.meta.url), 'utf8');
 
-  assert.match(source, /import \{ resolveAppRoute \}/);
+  assert.match(source, /import \{ resolveAppRoute, resolveProtectedRouteGate/);
   assert.match(source, /<RunReportPage runId=\{route\.runId\} \/>/);
   assert.match(appRoute, /const reportRunId = getRunReportIdFromPath\(pathname\);[\s\S]*const runId = getRunIdFromPath\(pathname\);/);
   assert.match(pages, /runReport/);
@@ -25,6 +25,13 @@ test('run report page follows the report.html result-first layout', () => {
   assert.match(source, /랜딩 페이지/);
   assert.match(source, /CTA 전환 마찰 리포트/);
   assert.match(source, /function RunReportStatePage/);
+  assert.match(source, /리포트 준비 중/);
+  assert.match(source, /run-report-state-card__meta/);
+  assert.doesNotMatch(source, /새 분석 만들기/);
+  assert.match(source, /function RunReportLoadingShell/);
+  assert.match(source, /if \(reportState\.kind === 'loading'\) \{[\s\S]*?<RunReportLoadingShell runId=\{runId\} title=\{reportState\.title\} \/>/);
+  assert.match(source, /run-report-page run-report-page--loading/);
+  assert.match(source, /run-report-hero-stats run-report-hero-stats--skeleton" aria-hidden="true"/);
   assert.match(source, /getRun\(runId\)/);
   assert.match(source, /getRunReport\(runId\)/);
   assert.match(source, /getReport\(reportProjection\.reportId\)/);
@@ -46,6 +53,9 @@ test('run report page follows the report.html result-first layout', () => {
   assert.match(source, /sourceNotice: reportLoadError/);
   assert.match(source, /fallbackPreviewUrl: reportPreviewUrl/);
   assert.match(source, /useAuthenticatedResourceUrl\(selectedEvidencePreviewUrl\)/);
+  assert.match(source, /const isEvidencePreviewResolving = Boolean\(selectedEvidencePreviewUrl && !evidencePreviewUrl\)/);
+  assert.match(source, /run-report-evidence-preview--resolving/);
+  assert.match(source, /activeFinding\?\.highlight && !isEvidencePreviewResolving/);
   assert.match(source, /role="status"/);
   assert.match(source, /if \(isMockRun\)/);
   assert.match(source, /리포트 준비 중입니다/);
@@ -136,9 +146,18 @@ test('run report css keeps result-first content in the live simulation cockpit t
   assert.match(css, /\.run-report-finding-row\s*\{[\s\S]*?grid-template-columns: 3rem minmax\(0, 1fr\) max-content/);
   assert.match(css, /\.run-report-nudge-card:hover,\s*\n\.run-report-nudge-card:focus-visible,\s*\n\.run-report-nudge-card--active\s*\{[\s\S]*?background: rgba\(240, 249, 255, 0\.72\)/);
   assert.match(css, /\.run-report-decision-map::before\s*\{[\s\S]*?background: #f1f5f9/);
-  assert.match(css, /\.run-report-evidence-preview\s*\{[\s\S]*?aspect-ratio: 16 \/ 10/);
+  assert.match(css, /\.run-report-evidence-preview\s*\{[\s\S]*?aspect-ratio: 16 \/ 10[\s\S]*?background: #f8fafc/);
+  assert.match(css, /\.run-report-evidence-preview__site\s*\{[\s\S]*?background: #fff/);
+  assert.match(css, /\.run-report-evidence-preview--resolving\s*\{[\s\S]*?background: linear-gradient/);
   assert.match(css, /\.run-report-evidence-preview__hero button\s*\{[\s\S]*?background: #111827/);
+  assert.match(css, /\.run-report-topbar__link\s*\{[\s\S]*?background: #334155/);
   assert.match(css, /\.run-report-state-card a,\s*\n\.run-report-state-card button\s*\{[\s\S]*?background: #334155/);
+  assert.match(css, /\.run-report-state-card__actions a\s*\{[\s\S]*?background: rgba\(240, 249, 255, 0\.88\)/);
+  assert.match(css, /\.run-report-state-card__meta\s*\{[\s\S]*?border-top: 1px solid #f1f5f9/);
+  assert.match(css, /\.run-report-loading-status\s*\{[\s\S]*?background: rgba\(240, 249, 255, 0\.78\)/);
+  assert.match(css, /\.run-report-skeleton-line\s*\{[\s\S]*?border-radius: 999px/);
+  assert.match(css, /@keyframes runReportSkeletonPulse/);
+  assert.match(css, /@media \(prefers-reduced-motion: reduce\)/);
   assert.doesNotMatch(css, /run-report-side-column/);
   assert.match(css, /@media \(max-width: 1080px\)/);
   assert.match(css, /@media \(max-width: 760px\)/);
@@ -161,6 +180,7 @@ test('run monitor exposes a report CTA into /runs/:runId/report', () => {
   const source = fs.readFileSync(new URL('../../src/pages/run-monitor/RunMonitorPage.tsx', import.meta.url), 'utf8');
   const css = fs.readFileSync(new URL('../../src/pages/run-monitor/RunMonitorPage.css', import.meta.url), 'utf8');
 
+  assert.match(source, /import \{ handleSpaNavigationClick, replaceAppPath \}/);
   assert.match(source, /import \{ buildRunReportPath \}/);
   assert.match(source, /const reportCtaState = resolveRunMonitorReportCtaState/);
   assert.match(source, /const reportPath = reportCtaState\.canOpenReport[\s\S]*buildRunReportPath\(run\.id/);
@@ -170,11 +190,13 @@ test('run monitor exposes a report CTA into /runs/:runId/report', () => {
   assert.match(source, /reportCtaState\.titleLabel/);
   assert.match(source, /reportCtaState\.kind !== 'hidden'/);
   assert.match(source, /분석 결과 리포트/);
-  assert.match(source, /리포트 보기/);
+  assert.match(source, /handleSpaNavigationClick\(event, reportPath\)/);
+  assert.match(source, /<a href=\{reportPath\} onClick=\{openReport\}>\{reportCtaActionLabel\}<\/a>/);
   assert.match(source, /리포트 생성/);
   assert.match(source, /분석 시작/);
   assert.doesNotMatch(source, /모의 리포트 보기/);
-  assert.match(css, /\.run-monitor-report-cta\s*\{[\s\S]*?background: rgba\(240, 249, 255, 0\.62\)/);
-  assert.match(css, /\.run-monitor-report-cta a,\s*\n\.run-monitor-report-cta button\s*\{[\s\S]*?background: #334155/);
-  assert.match(css, /\.run-monitor-report-cta button:disabled\s*\{[\s\S]*?cursor: not-allowed/);
+  assert.match(css, /\.run-monitor-report-cta\s*\{[\s\S]*?background: rgba\(240, 249, 255, 0\.58\)/);
+  assert.match(css, /\.run-monitor-report-cta__actions a,\s*\n\.run-monitor-report-cta__actions button\s*\{[\s\S]*?background: #475569/);
+  assert.match(css, /\.run-monitor-report-cta__actions a,\s*\n\.run-monitor-report-cta__actions button\s*\{[\s\S]*?width: 100%/);
+  assert.match(css, /\.run-monitor-report-cta__actions button:disabled\s*\{[\s\S]*?cursor: not-allowed/);
 });

@@ -28,6 +28,7 @@ export interface AgentTrace {
   schema_version: "0.1";
   task_id: string;
   attempt_id: string;
+  attempt_index: number;
   run_id: string;
   turns: AgentTurnTrace[];
   outcome: {
@@ -41,6 +42,7 @@ export function createAgentTrace(task: AgentTask): AgentTrace {
     schema_version: "0.1",
     task_id: task.task_id,
     attempt_id: task.attempt_id,
+    attempt_index: task.attempt_index,
     run_id: task.run_id,
     turns: [],
     outcome: {

@@ -134,11 +134,11 @@ export function buildMockRunMonitorData(runId: string, startUrl: string, scenari
       },
     ],
     logs: [
-      { id: 'log-1', time: '10:41:02', message: `${startUrl} 열기 완료`, tone: 'info' },
-      { id: 'log-2', time: '10:41:06', message: '첫 화면 캡처 완료', tone: 'success' },
-      { id: 'log-3', time: '10:41:09', message: 'Hero와 navigation에서 CTA 후보 2개 감지', tone: 'success' },
-      { id: 'log-4', time: '10:41:13', message: '선택한 시나리오 목표와 CTA 문구 비교 중', tone: 'info' },
-      { id: 'log-5', time: '10:41:16', message: '다음 체크포인트 근거 대기 중', tone: 'warning' },
+      { id: 'log-1', time: '10:41:02', message: '대상 페이지를 열고 있습니다', tone: 'info' },
+      { id: 'log-2', time: '10:41:06', message: '첫 화면을 캡처했습니다', tone: 'success' },
+      { id: 'log-3', time: '10:41:09', message: '주요 CTA 후보를 확인했습니다', tone: 'success' },
+      { id: 'log-4', time: '10:41:13', message: '선택한 목표와 CTA 흐름을 비교하고 있습니다', tone: 'info' },
+      { id: 'log-5', time: '10:41:16', message: '다음 근거 수집을 기다리고 있습니다', tone: 'warning' },
     ],
   };
 }

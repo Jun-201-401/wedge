@@ -2,12 +2,24 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
+function cssRule(css: string, selector: string) {
+  const start = css.indexOf(`${selector} {`);
+
+  assert.notEqual(start, -1, `Missing CSS rule for ${selector}`);
+
+  const end = css.indexOf('\n}', start);
+
+  assert.notEqual(end, -1, `Missing CSS rule close for ${selector}`);
+
+  return css.slice(start, end);
+}
+
 test('app routes /runs/:runId to the run monitor page', () => {
   const source = fs.readFileSync(new URL('../../src/app/App.tsx', import.meta.url), 'utf8');
   const pages = fs.readFileSync(new URL('../../src/pages/index.ts', import.meta.url), 'utf8');
 
   assert.match(pages, /pathPrefix: RUN_MONITOR_PATH_PREFIX/);
-  assert.match(source, /import \{ resolveAppRoute \}/);
+  assert.match(source, /import \{ resolveAppRoute, resolveProtectedRouteGate/);
   assert.match(source, /<RunMonitorPage runId=\{route\.runId\} \/>/);
 });
 
@@ -23,7 +35,7 @@ test('run monitor page exposes Sprint 2 live cockpit essentials with Korean-faci
   assert.match(source, /실행 ID/);
   assert.match(source, /디바이스/);
   assert.match(source, /시나리오 경로/);
-  assert.match(source, /작업 로그/);
+  assert.match(source, /진행 요약/);
   assert.match(source, /전체 진행률/);
   assert.match(viewModel, /현재 체크포인트/);
   assert.match(viewModel, /리포트 준비 완료/);
@@ -40,12 +52,15 @@ test('run monitor page exposes Sprint 2 live cockpit essentials with Korean-faci
   assert.match(stateHook, /shouldRefreshRunLive\(liveResponse\.data\.status\)/);
   assert.match(source, /visibleSteps\.map/);
   assert.match(source, /visibleLogs\.map/);
-  assert.match(source, /API 상태 스냅샷/);
+  assert.match(source, /run-monitor-log__dot/);
+  assert.match(source, /run-monitor-log__message/);
+  assert.match(source, /run-monitor-step__status/);
+  assert.match(source, /실제 실행 상태/);
   assert.match(source, /buildApiEventTimeline/);
   assert.match(source, /buildApiEventLogs/);
   assert.match(source, /buildApiStepTimeline/);
   assert.match(source, /buildApiSnapshotLogs/);
-  assert.match(source, /API event timeline/);
+  assert.match(source, /실제 실행 이벤트를 바탕으로 확인한 경로입니다/);
   assert.match(source, /화면 캡처 대기 중/);
   assert.match(source, /수집 상태/);
   assert.match(source, /RunContextBar/);
@@ -58,6 +73,11 @@ test('run monitor page exposes Sprint 2 live cockpit essentials with Korean-faci
   assert.match(source, /src=\{authenticatedSnapshotUrl\}/);
   assert.match(stateHook, /Run 상태를 불러오지 못했습니다/);
   assert.match(source, /RunMonitorStatePage/);
+  assert.match(source, /function RunMonitorLoadingShell/);
+  assert.match(source, /if \(isRealRunLoading\) \{[\s\S]*?<RunMonitorLoadingShell runId=\{runId\} targetUrl=\{fallbackUrl\} \/>/);
+  assert.match(source, /run-monitor-page run-monitor-page--loading/);
+  assert.match(source, /role="status">실제 실행 데이터를 연결하고 있습니다\./);
+  assert.doesNotMatch(source, /title="Run 상태를 불러오는 중입니다"/);
   assert.match(source, /role="progressbar"/);
   assert.match(source, /aria-valuenow=\{progressPercent\}/);
   assert.match(source, /run-monitor-agent-pointer/);
@@ -78,6 +98,7 @@ test('run monitor page exposes Sprint 2 live cockpit essentials with Korean-faci
   assert.match(source, /generateRunReport\(requestedRunId\)/);
   assert.match(source, /requestRunAnalysis\(requestedRunId\)/);
   assert.match(source, /replaceAppPath\(RUNS_PATH\)/);
+  assert.match(source, /handleSpaNavigationClick\(event, reportPath\)/);
   assert.match(source, /resolveRunMonitorReportCtaState/);
   assert.match(source, /shouldRefreshRunReport\(reportProjection\)/);
   assert.match(source, /RUN_MONITOR_REFRESH_INTERVAL_MS/);
@@ -86,6 +107,8 @@ test('run monitor page exposes Sprint 2 live cockpit essentials with Korean-faci
   assert.match(source, /canApplyReportResponse\(requestedRunId\)/);
   assert.match(source, /reportCtaState\.kind === 'generate'/);
   assert.match(source, /reportCtaState\.kind === 'request-analysis'/);
+  assert.match(source, /reportCtaStatusLabel/);
+  assert.match(source, /run-monitor-report-cta__actions/);
   assert.match(source, /리포트 생성/);
   assert.match(source, /분석 시작/);
   assert.match(source, /RunLifecycleActions/);
@@ -97,28 +120,60 @@ test('run monitor css follows the live cockpit visual language', () => {
   const css = fs.readFileSync(new URL('../../src/pages/run-monitor/RunMonitorPage.css', import.meta.url), 'utf8');
 
   assert.match(css, /\.run-monitor-page\s*\{[\s\S]*?background: #fff/);
-  assert.match(css, /\.run-monitor-workspace\s*\{[\s\S]*?flex-direction: column/);
+  assert.match(cssRule(css, '.run-monitor-workspace'), /display: grid/);
+  assert.match(cssRule(css, '.run-monitor-workspace'), /grid-template-rows: auto minmax\(0, 1fr\)/);
   assert.match(css, /\.run-monitor-run-context\s*\{[\s\S]*?border-bottom: 1px solid #f1f5f9/);
-  assert.match(css, /\.run-monitor-cockpit\s*\{[\s\S]*?grid-template-columns: minmax\(0, 1fr\) 26\.25rem/);
-  assert.match(css, /\.run-monitor-browser\s*\{[\s\S]*?box-shadow: 0 28px 80px/);
-  assert.match(css, /\.run-monitor-browser__mode-pill\s*\{[\s\S]*?background: rgba\(240, 249, 255, 0\.78\)/);
+  assert.match(css, /\.run-monitor-cockpit\s*\{[\s\S]*?grid-template-columns: minmax\(0, 1fr\) 25rem/);
+  assert.match(cssRule(css, '.run-monitor-cockpit'), /align-self: stretch/);
+  assert.match(cssRule(css, '.run-monitor-simulation'), /min-height: 0/);
+  assert.match(cssRule(css, '.run-monitor-simulation'), /overflow: hidden/);
+  assert.match(cssRule(css, '.run-monitor-analysis-panel'), /display: flex/);
+  assert.match(cssRule(css, '.run-monitor-analysis-panel'), /align-self: stretch/);
+  assert.match(cssRule(css, '.run-monitor-analysis-panel'), /overflow: hidden/);
+  assert.match(cssRule(css, '.run-monitor-panel-scroll'), /height: 0/);
+  assert.match(cssRule(css, '.run-monitor-panel-scroll'), /flex: 1 1 0/);
+  assert.match(cssRule(css, '.run-monitor-panel-scroll'), /overflow-y: auto/);
+  assert.match(css, /\.run-monitor-browser\s*\{[\s\S]*?box-shadow: 0 20px 54px/);
+  assert.match(css, /\.run-monitor-browser__mode-pill\s*\{[\s\S]*?background: rgba\(240, 249, 255, 0\.86\)/);
   assert.match(css, /\.run-monitor-target-inline span\s*\{[\s\S]*?color: #64748b/);
-  assert.match(css, /\.run-monitor-stop-link\s*\{[\s\S]*?color: #64748b/);
+  assert.match(css, /\.run-monitor-topbar__link--secondary\s*\{[\s\S]*?color: #475569/);
+  assert.match(css, /\.run-monitor-topbar__link--primary\s*\{[\s\S]*?background: #334155/);
   assert.match(css, /\.run-monitor-target-inline strong\s*\{[\s\S]*?font-weight: 800/);
   assert.match(css, /\.run-monitor-section-title h1,[\s\S]*?\.run-monitor-log h2\s*\{[\s\S]*?color: #475569/);
-  assert.match(css, /\.run-monitor-evidence-summary\s*\{[\s\S]*?border-top: 1px solid #e2e8f0/);
-  assert.match(css, /\.run-monitor-evidence-summary dl\s*\{[\s\S]*?grid-template-columns: repeat\(3, minmax\(0, 1fr\)\)/);
+  assert.match(css, /\.run-monitor-step\s*\{[\s\S]*?border-radius: 0\.72rem/);
+  assert.match(css, /\.run-monitor-step__head h3\s*\{[\s\S]*?text-overflow: ellipsis/);
+  assert.match(css, /\.run-monitor-step__status\s*\{[\s\S]*?border-radius: 999px/);
+  assert.match(css, /\.run-monitor-step__content time\s*\{[\s\S]*?color: #cbd5e1/);
+  assert.match(css, /\.run-monitor-log__item\s*\{[\s\S]*?grid-template-columns: 0\.42rem minmax\(0, 1fr\) auto/);
+  assert.match(css, /\.run-monitor-log__dot\s*\{[\s\S]*?background: #cbd5e1/);
+  assert.match(css, /\.run-monitor-log__message\s*\{[\s\S]*?font-size: 0\.66rem/);
+  assert.match(css, /\.run-monitor-evidence-summary\s*\{[\s\S]*?display: flex/);
+  assert.match(css, /\.run-monitor-evidence-summary\s*\{[\s\S]*?border-top: 0/);
+  assert.match(css, /\.run-monitor-evidence-summary dl\s*\{[\s\S]*?display: flex/);
   assert.match(css, /\.run-monitor-agent-pointer\s*\{[\s\S]*?animation: runMonitorPointerMove/);
   assert.match(css, /\.run-monitor-scan-line\s*\{[\s\S]*?animation: runMonitorScanning/);
   assert.match(css, /\.run-monitor-detection-box\s*\{[\s\S]*?border: 1px dashed #0ea5e9/);
   assert.match(css, /\.run-monitor-state-card\s*\{[\s\S]*?box-shadow: 0 28px 80px/);
   assert.match(css, /\.run-monitor-mock-cta\s*\{[\s\S]*?background: #111827/);
-  assert.match(css, /\.run-monitor-report-cta a,\s*\n\.run-monitor-report-cta button\s*\{[\s\S]*?background: #334155/);
+  assert.match(css, /\.run-monitor-report-cta\s*\{[\s\S]*?background: rgba\(240, 249, 255, 0\.58\)/);
+  assert.match(css, /\.run-monitor-report-cta__state\s*\{[\s\S]*?justify-content: space-between/);
+  assert.match(css, /\.run-monitor-report-cta__state b\s*\{[\s\S]*?color: #94a3b8/);
+  assert.match(css, /\.run-monitor-report-cta > p\s*\{[\s\S]*?min-height: 0/);
+  assert.match(css, /\.run-monitor-report-cta__footer\s*\{[\s\S]*?display: grid/);
+  assert.match(css, /\.run-monitor-report-cta__footer\s*\{[\s\S]*?border-top: 1px solid rgba\(226, 232, 240, 0\.8\)/);
+  assert.match(css, /\.run-monitor-report-cta__actions\s*\{[\s\S]*?width: 100%/);
+  assert.match(css, /\.run-monitor-report-cta__actions a,\s*\n\.run-monitor-report-cta__actions button\s*\{[\s\S]*?background: #475569/);
+  assert.match(css, /\.run-monitor-report-cta__actions a,\s*\n\.run-monitor-report-cta__actions button\s*\{[\s\S]*?width: 100%/);
+  assert.match(css, /\.run-monitor-report-cta__actions a,\s*\n\.run-monitor-report-cta__actions button\s*\{[\s\S]*?justify-content: center/);
+  assert.match(css, /\.run-monitor-report-cta__actions a,\s*\n\.run-monitor-report-cta__actions button\s*\{[\s\S]*?min-height: 1\.92rem/);
   assert.match(css, /\.run-monitor-report-cta__status--error\s*\{[\s\S]*?color: #c2410c/);
-  assert.match(css, /\.run-monitor-report-cta button:disabled\s*\{[\s\S]*?cursor: not-allowed/);
+  assert.match(css, /\.run-monitor-report-cta__actions button:disabled\s*\{[\s\S]*?cursor: not-allowed/);
   assert.match(css, /\.run-monitor-lifecycle-actions button\s*\{[\s\S]*?border: 1px solid #e2e8f0/);
   assert.match(css, /\.run-monitor-action-message--error\s*\{[\s\S]*?color: #c2410c/);
   assert.match(css, /\.run-monitor-browser__empty-state\s*\{[\s\S]*?text-align: center/);
+  assert.match(css, /\.run-monitor-browser__stage--skeleton\s*\{[\s\S]*?animation: runMonitorSkeletonPulse/);
+  assert.match(css, /\.run-monitor-skeleton-line\s*\{[\s\S]*?border-radius: 999px/);
+  assert.match(css, /@keyframes runMonitorSkeletonPulse/);
   assert.doesNotMatch(css, /\.run-monitor-step--(?:complete|pending)\s*\{[\s\S]*?opacity:/);
   assert.match(css, /\.run-monitor-step--complete \.run-monitor-step__head h3,\s*\n\.run-monitor-step--pending \.run-monitor-step__head h3\s*\{[\s\S]*?color: #64748b/);
   assert.match(css, /\.run-monitor-step--complete \.run-monitor-step__content p,\s*\n\.run-monitor-step--pending \.run-monitor-step__content p\s*\{[\s\S]*?color: #94a3b8/);

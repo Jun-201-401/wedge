@@ -47,6 +47,7 @@ export function RunReportViewer({ report }: RunReportViewerProps) {
   const activeFindingId = activeFinding?.id ?? null;
   const selectedEvidencePreviewUrl = activeFinding?.previewImageUrl ?? report.evidencePreviewUrl;
   const evidencePreviewUrl = useAuthenticatedResourceUrl(selectedEvidencePreviewUrl);
+  const isEvidencePreviewResolving = Boolean(selectedEvidencePreviewUrl && !evidencePreviewUrl);
   const highlightSourceLabel = !activeFinding?.highlight
     ? '영역 없음'
     : activeFinding.highlight.source === 'fallback' ? '추정 영역' : '실측 영역';
@@ -132,9 +133,14 @@ export function RunReportViewer({ report }: RunReportViewerProps) {
                 </div>
               </div>
 
-              <div className="run-report-evidence-preview" aria-label="분석 근거 화면 미리보기">
+              <div
+                className={`run-report-evidence-preview${isEvidencePreviewResolving ? ' run-report-evidence-preview--resolving' : ''}`}
+                aria-label="분석 근거 화면 미리보기"
+              >
                 {evidencePreviewUrl ? (
                   <img className="run-report-evidence-preview__image" src={evidencePreviewUrl} alt="실제 실행에서 수집된 evidence 화면" />
+                ) : isEvidencePreviewResolving ? (
+                  <div className="run-report-sr-only" role="status">근거 화면을 불러오는 중입니다.</div>
                 ) : (
                   <div className="run-report-evidence-preview__site">
                     <div className="run-report-evidence-preview__nav" aria-hidden="true">
@@ -149,7 +155,7 @@ export function RunReportViewer({ report }: RunReportViewerProps) {
                     </div>
                   </div>
                 )}
-                {activeFinding?.highlight ? (
+                {activeFinding?.highlight && !isEvidencePreviewResolving ? (
                   <div
                     className={`run-report-friction-marker run-report-friction-marker--${activeFinding.severity}`}
                     style={{

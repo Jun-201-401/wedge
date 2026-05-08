@@ -97,8 +97,13 @@ test("[Playwright 실제 실행] goto/fill/select를 수행하고 실제 screens
     assert.equal(capturedArtifacts.screenshot?.mimeType, "image/png");
     assert.equal(capturedArtifacts.screenshot?.fileExtension, "png");
     assert.ok((capturedArtifacts.screenshot?.contentBase64.length ?? 0) > 0);
+    const screenshotBuffer = Buffer.from(capturedArtifacts.screenshot?.contentBase64 ?? "", "base64");
+    const screenshotDimensions = readPngDimensions(screenshotBuffer);
+    assert.equal(capturedArtifacts.screenshot?.width, screenshotDimensions.width);
+    assert.equal(capturedArtifacts.screenshot?.height, screenshotDimensions.height);
+    assert.ok((capturedArtifacts.screenshot?.height ?? 0) > plan.environment.viewport.height);
     assert.deepEqual(
-      Buffer.from(capturedArtifacts.screenshot?.contentBase64 ?? "", "base64").subarray(0, 8),
+      screenshotBuffer.subarray(0, 8),
       Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
     );
     assert.equal(capturedArtifacts.domSnapshot?.mimeType, "text/html");
@@ -2339,6 +2344,18 @@ function serverOrigin(server: ReturnType<typeof createServer>): string {
   return `http://127.0.0.1:${address.port}`;
 }
 
+function readPngDimensions(buffer: Buffer): { width: number; height: number } {
+  assert.deepEqual(
+    buffer.subarray(0, 8),
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
+  );
+
+  return {
+    width: buffer.readUInt32BE(16),
+    height: buffer.readUInt32BE(20)
+  };
+}
+
 async function closeServer(server: ReturnType<typeof createServer>): Promise<void> {
   await new Promise<void>((resolve, reject) => {
     server.close((error) => {
@@ -2360,6 +2377,7 @@ function createReplayHintOnlyCheckoutTrace(task: AgentTask, productUrl: string):
     schema_version: "0.1",
     task_id: task.task_id,
     attempt_id: task.attempt_id,
+    attempt_index: task.attempt_index,
     run_id: task.run_id,
     outcome: {
       status: "SUCCESS",

@@ -32,26 +32,67 @@ const EVIDENCE_ARTIFACT_LABELS: Record<string, string> = {
   screenshot: '스크린샷',
 };
 
-const RUN_EVENT_LABELS: Record<string, string> = {
-  STEP_STARTED: 'Step 시작',
-  ACTION_EXECUTED: 'Action 실행',
-  STEP_COMPLETED: 'Step 완료',
-  STEP_FAILED: 'Step 실패',
-  CONSOLE_ERROR: '콘솔 오류',
-  NETWORK_ERROR: '네트워크 오류',
-  ISSUE_SIGNAL_DETECTED: '이슈 신호 감지',
+const RUN_EVENT_USER_SUMMARIES: Record<string, string> = {
+  STEP_STARTED: '다음 화면 흐름을 확인하고 있습니다',
+  ACTION_EXECUTED: '화면에서 필요한 동작을 실행했습니다',
+  STEP_COMPLETED: '확인을 마쳤습니다',
+  STEP_FAILED: '확인이 막혔습니다',
+  CONSOLE_ERROR: '페이지 스크립트 오류를 감지했습니다',
+  NETWORK_ERROR: '페이지 요청 실패를 감지했습니다',
+  ISSUE_SIGNAL_DETECTED: '개선이 필요한 신호를 발견했습니다',
+  AGENT_PRE_DECISION_VERIFIED: '다음 판단에 필요한 조건을 확인했습니다',
+  AGENT_DECISION_MADE: '다음 행동 방향을 정했습니다',
+  AGENT_POLICY_CHECKED: '실행 전 안전 조건을 확인했습니다',
+  AGENT_ACTION_COMPLETED: '계획한 동작을 완료했습니다',
+  AGENT_ACTION_FAILED: '계획한 동작이 완료되지 않았습니다',
+  AGENT_GOAL_VERIFIED: '목표 달성 여부를 확인했습니다',
+  AGENT_TRACE_PERSISTED: '실행 근거를 저장했습니다',
 };
 
-function getRunEventLabel(eventType: string) {
-  return RUN_EVENT_LABELS[eventType] ?? eventType;
-}
+const RUN_EVENT_ACTION_SUMMARIES: Record<string, string> = {
+  click: '버튼이나 링크 반응을 확인했습니다',
+  fill: '입력 흐름을 확인했습니다',
+  goto: '다음 화면으로 이동했습니다',
+  navigate: '다음 화면으로 이동했습니다',
+};
+
+const RUN_EVENT_TIMELINE_LABELS: Record<string, string> = {
+  STEP_STARTED: '화면 흐름 확인 중',
+  ACTION_EXECUTED: '화면 동작 확인',
+  STEP_COMPLETED: '확인 완료',
+  STEP_FAILED: '확인 막힘',
+  CONSOLE_ERROR: '스크립트 오류 감지',
+  NETWORK_ERROR: '요청 실패 감지',
+  ISSUE_SIGNAL_DETECTED: '개선 신호 발견',
+  AGENT_PRE_DECISION_VERIFIED: '조건 확인',
+  AGENT_DECISION_MADE: '다음 행동 결정',
+  AGENT_POLICY_CHECKED: '안전 조건 확인',
+  AGENT_ACTION_COMPLETED: '동작 완료',
+  AGENT_ACTION_FAILED: '동작 막힘',
+  AGENT_GOAL_VERIFIED: '목표 확인',
+  AGENT_TRACE_PERSISTED: '근거 저장',
+};
+
+const RUN_STEP_TYPE_DETAILS: Record<string, string> = {
+  GOTO: '대상 화면을 열고 있습니다',
+  CLICK: '버튼이나 링크 반응을 확인하고 있습니다',
+  FILL: '입력 흐름을 확인하고 있습니다',
+  ASSERT: '화면 상태를 확인하고 있습니다',
+  WAIT: '화면 응답을 기다리고 있습니다',
+};
 
 function getRunEventStatus(eventType: string): StepStatus {
-  if (eventType === 'STEP_FAILED' || eventType === 'CONSOLE_ERROR' || eventType === 'NETWORK_ERROR') {
+  if (eventType === 'STEP_FAILED' || eventType === 'CONSOLE_ERROR' || eventType === 'NETWORK_ERROR' || eventType === 'AGENT_ACTION_FAILED') {
     return 'failed';
   }
 
-  if (eventType === 'STEP_STARTED' || eventType === 'STEP_COMPLETED' || eventType === 'ACTION_EXECUTED' || eventType === 'ISSUE_SIGNAL_DETECTED') {
+  if (
+    eventType === 'STEP_STARTED' ||
+    eventType === 'STEP_COMPLETED' ||
+    eventType === 'ACTION_EXECUTED' ||
+    eventType === 'ISSUE_SIGNAL_DETECTED' ||
+    eventType.startsWith('AGENT_')
+  ) {
     return 'complete';
   }
 
@@ -73,35 +114,23 @@ function readPayloadString(payload: Record<string, unknown>, key: string) {
   return text || null;
 }
 
-function getRunEventSubject(event: RunEvent) {
-  return event.stepKey ?? event.stepId ?? 'run';
+function getRunEventUserSummary(event: RunEvent) {
+  const failureCode = readPayloadString(event.payload, 'failureCode');
+  const actionType = readPayloadString(event.payload, 'actionType')?.toLowerCase();
+
+  if (event.eventType === 'STEP_FAILED' && failureCode === 'RUNNER_TIMEOUT') {
+    return '응답이 지연되어 확인이 막혔습니다';
+  }
+
+  if (event.eventType === 'ACTION_EXECUTED' && actionType && RUN_EVENT_ACTION_SUMMARIES[actionType]) {
+    return RUN_EVENT_ACTION_SUMMARIES[actionType];
+  }
+
+  return RUN_EVENT_USER_SUMMARIES[event.eventType] ?? '실행 상태가 업데이트되었습니다';
 }
 
-function getRunEventDetail(event: RunEvent) {
-  const failureCode = readPayloadString(event.payload, 'failureCode');
-  const failureMessage = readPayloadString(event.payload, 'failureMessage') ?? readPayloadString(event.payload, 'errorMessage');
-  const message = readPayloadString(event.payload, 'message') ?? readPayloadString(event.payload, 'description');
-  const actionType = readPayloadString(event.payload, 'actionType');
-  const stage = readPayloadString(event.payload, 'stage');
-
-  if (failureCode || failureMessage) {
-    const failureLabel = getFailureCodeLabel(failureCode);
-    return failureMessage ? `${failureLabel}: ${failureMessage}` : `${failureLabel}가 감지되었습니다.`;
-  }
-
-  if (message) {
-    return message;
-  }
-
-  if (actionType) {
-    return `${actionType} action이 실행되었습니다.`;
-  }
-
-  if (stage) {
-    return `${stage} 단계 이벤트입니다.`;
-  }
-
-  return `${getRunEventSubject(event)}에서 ${getRunEventLabel(event.eventType)} 이벤트가 발생했습니다.`;
+function getRunEventTimelineLabel(event: RunEvent) {
+  return RUN_EVENT_TIMELINE_LABELS[event.eventType] ?? '상태 업데이트';
 }
 
 function getRunEventTimestamp(event: RunEvent) {
@@ -223,7 +252,7 @@ export function getApiCheckpoint(live: RunLive) {
   }
 
   if (live.status === 'QUEUED' || live.status === 'CREATED') {
-    return '실행 대기열에서 준비 중입니다';
+    return '실행 대기열 준비 중';
   }
 
   return '최신 체크포인트를 기다리는 중입니다';
@@ -284,18 +313,20 @@ function getRunStepTimestamp(step: RunStep) {
 function getRunStepDetail(step: RunStep) {
   if (step.status === 'FAILED') {
     const failureLabel = getFailureCodeLabel(step.errorCode);
-    return step.errorMessage ? `${failureLabel}: ${step.errorMessage}` : `${failureLabel}로 step이 실패했습니다.`;
+    return step.errorCode === 'RUNNER_TIMEOUT'
+      ? '응답이 지연되어 확인이 막혔습니다.'
+      : `${failureLabel}로 확인이 막혔습니다.`;
   }
 
   if (step.status === 'RUNNING') {
-    return `${step.stepType} 실행 중입니다.`;
+    return RUN_STEP_TYPE_DETAILS[step.stepType] ?? '화면 흐름을 확인하고 있습니다.';
   }
 
   if (step.status === 'PASSED') {
-    return `${step.stepType} 실행이 완료되었습니다.`;
+    return '확인을 마쳤습니다.';
   }
 
-  return `${step.stepType} 실행 대기 중입니다.`;
+  return '곧 확인할 예정입니다.';
 }
 
 export function formatRunStartedAt(startedAt?: string | null) {
@@ -315,8 +346,8 @@ export function buildApiSnapshotSteps(run: Run, live: RunLive): RunStepItem[] {
   return [
     {
       id: 'api-run-state',
-      label: 'Run 상태 확인',
-      detail: `API에서 ${RUN_STATUS_LABEL[live.status]} 상태를 확인했습니다.`,
+      label: '실행 상태 확인',
+      detail: `${RUN_STATUS_LABEL[live.status]} 상태를 확인했습니다.`,
       status: live.status === 'FAILED' ? 'failed' : 'complete',
       timestamp: formatRunStartedAt(run.startedAt),
     },
@@ -325,12 +356,12 @@ export function buildApiSnapshotSteps(run: Run, live: RunLive): RunStepItem[] {
       label: currentOrder ? `체크포인트 ${currentOrder}` : '체크포인트 대기',
       detail: getApiCheckpoint(live),
       status: getApiCheckpointStatus(live.status),
-      timestamp: 'API 스냅샷',
+      timestamp: '상태 확인',
     },
     {
       id: 'api-step-adapter',
-      label: 'Step 타임라인 준비',
-      detail: '실제 step/log API 연동 전까지 run/live 스냅샷만 표시합니다.',
+      label: '확인 경로 준비',
+      detail: '실행 단계가 저장되면 확인 경로를 표시합니다.',
       status: live.status === 'COMPLETED' || live.status === 'FAILED' || live.status === 'STOPPED' ? 'complete' : 'pending',
       timestamp: '대기 중',
     },
@@ -347,7 +378,7 @@ export function buildApiStepTimeline(run: Run, live: RunLive, steps: RunStep[]):
     .sort((left, right) => left.stepOrder - right.stepOrder)
     .map((step) => ({
       id: step.id,
-      label: `${step.stepOrder}. ${step.stepName}`,
+      label: step.stepName,
       detail: getRunStepDetail(step),
       status: getRunStepStatus(step.status),
       timestamp: getRunStepTimestamp(step),
@@ -361,8 +392,8 @@ export function buildApiEventTimeline(run: Run, live: RunLive, events: RunEvent[
 
   return sortRunEvents(events).map((event) => ({
     id: event.id,
-    label: `${getRunEventSubject(event)} · ${getRunEventLabel(event.eventType)}`,
-    detail: getRunEventDetail(event),
+    label: getRunEventTimelineLabel(event),
+    detail: getRunEventUserSummary(event),
     status: getRunEventStatus(event.eventType),
     timestamp: getRunEventTimestamp(event),
   }));
@@ -376,7 +407,7 @@ export function buildApiEventLogs(run: Run, live: RunLive, events: RunEvent[]): 
   return sortRunEvents(events).map((event) => ({
     id: `event-log-${event.id}`,
     time: getRunEventTimestamp(event),
-    message: `${getRunEventSubject(event)} · ${getRunEventLabel(event.eventType)} — ${getRunEventDetail(event)}`,
+    message: getRunEventUserSummary(event),
     tone: getRunEventLogTone(event.eventType),
   }));
 }
@@ -386,7 +417,7 @@ export function buildApiSnapshotLogs(run: Run, live: RunLive): RunActionLog[] {
     {
       id: 'api-log-run',
       time: formatRunStartedAt(run.startedAt),
-      message: `Run ${run.id} 상태를 API에서 불러왔습니다.`,
+      message: '실행 상태를 불러왔습니다',
       tone: 'success',
     },
     {

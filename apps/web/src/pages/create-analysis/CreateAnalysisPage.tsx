@@ -5,6 +5,7 @@ import { readCurrentUser } from '../../api/authSession';
 import { readApiValidationFields, WedgeApiError } from '../../api/http';
 import { createRun, startRun } from '../../api/runs';
 import { FIRST_WORD_DELAY_MS, WORD_ROTATION_INTERVAL_MS } from '../../features/landing-vision';
+import { LOGIN_PATH } from '../../shared/lib/appPaths';
 import { pushAppPath } from '../../shared/lib/navigation';
 import { buildRunMonitorPath } from '../run-monitor/lib/runMonitorRoute';
 import {
@@ -12,13 +13,13 @@ import {
   createManualChoiceRouteState,
   createRecommendationChoiceRouteState,
   createScenarioReadyRouteState,
-  MVP_SMOKE_CREATE_RUN_CONTEXT,
   parseCreateAnalysisRouteState,
   readCreateRunContextFromEnv,
   type CreateAnalysisRouteOptions,
   type CreateAnalysisRouteState,
   type CreateRunContext,
   withCreateRunContextFallback,
+  withoutCreateRunContext,
 } from './lib/createAnalysisRouteState';
 import { normalizeAnalysisUrl } from './lib/createAnalysisUrl';
 import {
@@ -35,6 +36,13 @@ type DiscoveryStepStatus = 'complete' | 'active' | 'pending';
 type ScenarioId = CreateAnalysisScenarioId;
 type ScenarioRecommendation = ScenarioRecommendationViewModel;
 type ScenarioDepthId = 'hero-only' | 'next-screen' | 'form-depth';
+
+interface CreateAnalysisPageProps {
+  isAuthenticated?: boolean;
+  isAuthChecking?: boolean;
+  onLogout?: () => void;
+}
+
 type DiscoveryUiState =
   | { kind: 'idle' }
   | { kind: 'creating' }
@@ -150,13 +158,7 @@ const CREATE_ANALYSIS_ROUTE_OPTIONS: CreateAnalysisRouteOptions<ScenarioId, Scen
   validDepthIds: SCENARIO_DEPTH_IDS,
   validScenarioIds: SCENARIO_IDS,
 };
-const EXPLICIT_DEV_CREATE_RUN_CONTEXT = readCreateRunContextFromEnv(import.meta.env);
-const DEV_CREATE_RUN_CONTEXT = import.meta.env.DEV
-  ? {
-      ...MVP_SMOKE_CREATE_RUN_CONTEXT,
-      ...EXPLICIT_DEV_CREATE_RUN_CONTEXT,
-    }
-  : EXPLICIT_DEV_CREATE_RUN_CONTEXT;
+const ENV_CREATE_RUN_CONTEXT = readCreateRunContextFromEnv(import.meta.env);
 
 interface CreateRunIds {
   projectId: string;
@@ -177,7 +179,7 @@ function readUserCreateRunContext(): Partial<CreateRunContext> {
 
 function getCreateRunContextFallback(): Partial<CreateRunContext> {
   return {
-    ...DEV_CREATE_RUN_CONTEXT,
+    ...ENV_CREATE_RUN_CONTEXT,
     ...readUserCreateRunContext(),
   };
 }
@@ -224,6 +226,11 @@ function getInitialRouteState(): CreateAnalysisPageRouteState {
   );
 }
 
+function getLoginPathForCurrentCreateAnalysisState() {
+  const nextPath = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+  return `${LOGIN_PATH}?${new URLSearchParams({ next: nextPath }).toString()}`;
+}
+
 function findScenarioById(scenarioId: ScenarioId | null, scenarios: ScenarioRecommendation[]) {
   return scenarios.find((scenario) => scenario.id === scenarioId) ?? null;
 }
@@ -248,10 +255,8 @@ function getCreateRunIds(routeState: CreateAnalysisPageRouteState): CreateRunIds
   };
 }
 
-
-function getProjectId(routeState: CreateAnalysisPageRouteState) {
-  const projectId = routeState.projectId ?? null;
-  return isUuid(projectId) ? projectId : null;
+function clearCreateRunContext(routeState: CreateAnalysisPageRouteState): CreateAnalysisPageRouteState {
+  return withoutCreateRunContext(routeState);
 }
 
 function wait(ms: number) {
@@ -663,7 +668,7 @@ function ReadyAgent({ submittedUrl, selectedScenario, isCreatingRun, runStartErr
   );
 }
 
-export function CreateAnalysisPage() {
+export function CreateAnalysisPage({ isAuthenticated = false, isAuthChecking = false, onLogout }: CreateAnalysisPageProps) {
   const [routeState, setRouteState] = useState<CreateAnalysisPageRouteState>(getInitialRouteState);
   const [headlineIndex, setHeadlineIndex] = useState(0);
   const [urlInput, setUrlInput] = useState(routeState.submittedUrl ?? '');
@@ -755,20 +760,18 @@ export function CreateAnalysisPage() {
   }, [routeState.submittedUrl]);
 
   const runDiscovery = useCallback(async (targetUrl: string, currentRouteState: CreateAnalysisPageRouteState) => {
-    const explicitProjectId = getProjectId(currentRouteState);
     const requestSeq = discoveryRequestSeq.current + 1;
     discoveryRequestSeq.current = requestSeq;
     setDiscoveryState({ kind: 'creating' });
     setRunStartError('');
 
-    const discoveryRouteState: CreateAnalysisPageRouteState = {
+    const discoveryRouteState = clearCreateRunContext({
       ...currentRouteState,
-      projectId: explicitProjectId ?? undefined,
       stage: 'discovering',
       submittedUrl: targetUrl,
       scenarioId: null,
       depthId: null,
-    };
+    });
     let resolvedDiscoveryRouteState = discoveryRouteState;
     navigateToRouteState(discoveryRouteState);
 
@@ -795,12 +798,11 @@ export function CreateAnalysisPage() {
 
     try {
       const created = await createDiscovery({
-        ...(explicitProjectId ? { projectId: explicitProjectId } : {}),
         url: targetUrl,
         devicePreset: 'desktop',
         viewport: DISCOVERY_VIEWPORT,
       }, {
-        idempotencyKey: createDiscoveryIdempotencyKey(targetUrl, explicitProjectId ?? undefined),
+        idempotencyKey: createDiscoveryIdempotencyKey(targetUrl),
       });
 
       if (discoveryRequestSeq.current !== requestSeq) {
@@ -899,19 +901,19 @@ export function CreateAnalysisPage() {
       return;
     }
 
-    void runDiscovery(submittedUrl, routeState);
+    void runDiscovery(submittedUrl, clearCreateRunContext(routeState));
   };
 
   const editUrl = () => {
     discoveryRequestSeq.current += 1;
     setDiscoveryState({ kind: 'idle' });
-    navigateToRouteState({
+    navigateToRouteState(clearCreateRunContext({
       ...routeState,
       stage: 'input',
       submittedUrl: null,
       scenarioId: null,
       depthId: null,
-    });
+    }));
   };
 
   const chooseScenario = (scenario: ScenarioRecommendation) => {
@@ -1044,6 +1046,14 @@ export function CreateAnalysisPage() {
         <a href="/" className="create-analysis-nav__brand">
           Wedge
         </a>
+        <div className="create-analysis-nav__actions" aria-label="계정">
+          {!isAuthenticated && !isAuthChecking ? (
+            <a href={getLoginPathForCurrentCreateAnalysisState()}>Login</a>
+          ) : null}
+          {isAuthenticated && onLogout ? (
+            <button type="button" onClick={onLogout}>Logout</button>
+          ) : null}
+        </div>
       </header>
 
       <main className="create-analysis-page__main">

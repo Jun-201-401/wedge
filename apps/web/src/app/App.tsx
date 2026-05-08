@@ -5,17 +5,52 @@ import { readCurrentUser, saveCurrentUser } from '../api/authSession';
 import type { User } from '../entities';
 import { CreateAnalysisPage, LandingPage, LoginPage, RunMonitorPage, RunReportPage, RunsListPage, SignupPage } from '../pages';
 import { replaceAppPath } from '../shared/lib/navigation';
-import { resolveAppRoute } from './appRoute';
+import { resolveAppRoute, resolveProtectedRouteGate, type AppAuthState } from './appRoute';
+import './App.css';
+
+const PROTECTED_ROUTE_LOADING_DELAY_MS = 220;
 
 function getCurrentPath() {
   return window.location.pathname;
 }
 
-type AuthState = 'checking' | 'authenticated' | 'anonymous';
+function useDelayedProtectedRouteLoading(isLoading: boolean) {
+  const [isVisible, setIsVisible] = useState(false);
+
+  useEffect(() => {
+    if (!isLoading) {
+      setIsVisible(false);
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setIsVisible(true);
+    }, PROTECTED_ROUTE_LOADING_DELAY_MS);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [isLoading]);
+
+  return isVisible;
+}
+
+function ProtectedRouteLoadingPage() {
+  return (
+    <main className="app-route-loading" aria-labelledby="app-route-loading-title">
+      <section className="app-route-loading__card" role="status" aria-live="polite">
+        <span className="app-route-loading__eyebrow">
+          <span className="app-route-loading__dot" aria-hidden="true" />
+          Session check
+        </span>
+        <h1 id="app-route-loading-title">접근 권한을 확인하고 있습니다</h1>
+        <p>Run 화면을 열기 전에 로그인 세션을 확인하는 중입니다.</p>
+      </section>
+    </main>
+  );
+}
 
 export function App() {
   const [currentPath, setCurrentPath] = useState(getCurrentPath);
-  const [authState, setAuthState] = useState<AuthState>('checking');
+  const [authState, setAuthState] = useState<AppAuthState>('checking');
   const [currentUser, setCurrentUser] = useState<User | null>(null);
 
   useEffect(() => {
@@ -73,20 +108,28 @@ export function App() {
     }
   }, []);
 
+  const handleCreateAnalysisLogout = useCallback(async () => {
+    try {
+      await logout();
+    } finally {
+      setCurrentUser(null);
+      setAuthState('anonymous');
+      replaceAppPath('/create-analysis');
+    }
+  }, []);
+
   const route = resolveAppRoute(currentPath);
   const isAuthenticated = authState === 'authenticated';
   const isAuthChecking = authState === 'checking';
-  const isRealRunRoute = (route.kind === 'run-report' || route.kind === 'run-monitor') && !route.runId.startsWith('mock-');
-  const isProtectedRoute = isRealRunRoute || route.kind === 'runs-list';
+  const protectedRouteGate = resolveProtectedRouteGate(route, authState);
+  const shouldShowProtectedRouteLoading = useDelayedProtectedRouteLoading(protectedRouteGate === 'loading');
 
-  if (isProtectedRoute && !isAuthenticated) {
-    return (
-      <LandingPage
-        isAuthenticated={false}
-        isAuthChecking={isAuthChecking}
-        onLogout={handleLogout}
-      />
-    );
+  if (protectedRouteGate === 'loading') {
+    return shouldShowProtectedRouteLoading ? <ProtectedRouteLoadingPage /> : null;
+  }
+
+  if (protectedRouteGate === 'blocked') {
+    return <LandingPage />;
   }
 
   if (route.kind === 'run-report') {
@@ -106,18 +149,18 @@ export function App() {
   }
 
   if (route.kind === 'create-analysis') {
-    return <CreateAnalysisPage />;
+    return (
+      <CreateAnalysisPage
+        isAuthenticated={isAuthenticated}
+        isAuthChecking={isAuthChecking}
+        onLogout={handleCreateAnalysisLogout}
+      />
+    );
   }
 
   if (route.kind === 'runs-list') {
     return <RunsListPage currentUser={currentUser} onLogout={handleLogout} />;
   }
 
-  return (
-    <LandingPage
-      isAuthenticated={isAuthenticated}
-      isAuthChecking={isAuthChecking}
-      onLogout={handleLogout}
-    />
-  );
+  return <LandingPage />;
 }

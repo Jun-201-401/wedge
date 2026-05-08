@@ -2,6 +2,10 @@ import { getRunReportIdFromPath } from '../pages/run-report/lib/runReportRoute';
 import { getRunIdFromPath } from '../pages/run-monitor/lib/runMonitorRoute';
 import { CREATE_ANALYSIS_PATH, LOGIN_PATH, RUNS_PATH, SIGNUP_PATH } from '../shared/lib/appPaths';
 
+export type AppAuthState = 'checking' | 'authenticated' | 'anonymous';
+
+export type ProtectedRouteGate = 'open' | 'loading' | 'blocked';
+
 export type AppRoute =
   | { kind: 'landing' }
   | { kind: 'login' }
@@ -41,4 +45,21 @@ export function resolveAppRoute(pathname: string): AppRoute {
   }
 
   return { kind: 'landing' };
+}
+
+export function isProtectedAppRoute(route: AppRoute) {
+  const isRealRunRoute = (route.kind === 'run-report' || route.kind === 'run-monitor') && !route.runId.startsWith('mock-');
+  return isRealRunRoute || route.kind === 'runs-list';
+}
+
+export function resolveProtectedRouteGate(route: AppRoute, authState: AppAuthState): ProtectedRouteGate {
+  if (!isProtectedAppRoute(route)) {
+    return 'open';
+  }
+
+  if (authState === 'checking') {
+    return 'loading';
+  }
+
+  return authState === 'authenticated' ? 'open' : 'blocked';
 }
