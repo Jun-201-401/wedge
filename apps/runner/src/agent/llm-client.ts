@@ -3,6 +3,7 @@ import { errorMessage, logOperationalEvent } from "../shared/utils.ts";
 import { parseLlmDecision } from "./llm-decision-parser.ts";
 import { createLlmCandidateReferences, createLlmRequestPayload } from "./llm-prompt.ts";
 import { createFetchLlmDecisionTransport, type AgentLlmDecisionTransport } from "./llm-transport.ts";
+import { AgentMcpDecisionClient } from "./mcp-decision-gateway.ts";
 import { HeuristicDecisionClient, type AgentDecision, type AgentDecisionClient, type AgentDecisionInput } from "./planner.ts";
 
 export type { AgentLlmDecisionRequest, AgentLlmDecisionTransport } from "./llm-transport.ts";
@@ -59,8 +60,23 @@ export class AgentLlmDecisionClient implements AgentDecisionClient {
 
 export function createAgentDecisionClient(config: Pick<
   RunnerConfig,
-  "agentDecisionMode" | "agentLlmEndpoint" | "agentLlmApiKey" | "agentLlmModel" | "agentLlmTimeoutMs"
+  | "agentDecisionMode"
+  | "agentLlmEndpoint"
+  | "agentLlmApiKey"
+  | "agentLlmModel"
+  | "agentLlmTimeoutMs"
+  | "agentMcpGatewayUrl"
+  | "agentMcpServiceToken"
+  | "agentMcpGatewayTimeoutMs"
 >): AgentDecisionClient {
+  if (config.agentDecisionMode === "mcp") {
+    return new AgentMcpDecisionClient({
+      gatewayUrl: config.agentMcpGatewayUrl,
+      serviceToken: config.agentMcpServiceToken,
+      timeoutMs: config.agentMcpGatewayTimeoutMs
+    });
+  }
+
   if (config.agentDecisionMode !== "llm") {
     return new HeuristicDecisionClient();
   }
