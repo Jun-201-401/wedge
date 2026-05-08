@@ -45,25 +45,6 @@ public class RunnerMqConfig {
     }
 
     @Bean
-    public Queue agentExecuteQueue(
-            @Value("${wedge.runner.mq.agent-execute-queue:agent.execute.request}") String queueName,
-            @Value("${wedge.runner.mq.dead-letter-exchange:wedge.dlq}") String deadLetterExchange,
-            @Value("${wedge.runner.mq.agent-execute-dead-letter-routing-key:agent.execute.dlq}") String deadLetterRoutingKey
-    ) {
-        return QueueBuilder.durable(queueName)
-                .deadLetterExchange(deadLetterExchange)
-                .deadLetterRoutingKey(deadLetterRoutingKey)
-                .build();
-    }
-
-    @Bean
-    public Queue agentExecuteDeadLetterQueue(
-            @Value("${wedge.runner.mq.agent-execute-dead-letter-queue:agent.execute.dlq}") String queueName
-    ) {
-        return QueueBuilder.durable(queueName).build();
-    }
-
-    @Bean
     public Queue discoveryExecuteQueue(
             @Value("${wedge.runner.mq.discovery-execute-queue:discovery.execute.request}") String queueName,
             @Value("${wedge.runner.mq.dead-letter-exchange:wedge.dlq}") String deadLetterExchange,
@@ -90,16 +71,6 @@ public class RunnerMqConfig {
     @Bean
     public Binding runExecuteDeadLetterBinding(DirectExchange wedgeDeadLetterExchange, Queue runExecuteDeadLetterQueue) {
         return BindingBuilder.bind(runExecuteDeadLetterQueue).to(wedgeDeadLetterExchange).with(runExecuteDeadLetterQueue.getName());
-    }
-
-    @Bean
-    public Binding agentExecuteBinding(DirectExchange wedgeDirectExchange, Queue agentExecuteQueue) {
-        return BindingBuilder.bind(agentExecuteQueue).to(wedgeDirectExchange).with(agentExecuteQueue.getName());
-    }
-
-    @Bean
-    public Binding agentExecuteDeadLetterBinding(DirectExchange wedgeDeadLetterExchange, Queue agentExecuteDeadLetterQueue) {
-        return BindingBuilder.bind(agentExecuteDeadLetterQueue).to(wedgeDeadLetterExchange).with(agentExecuteDeadLetterQueue.getName());
     }
 
     @Bean

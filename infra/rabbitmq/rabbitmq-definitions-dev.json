@@ -49,16 +49,6 @@
       }
     },
     {
-      "name": "agent.execute.request",
-      "vhost": "/",
-      "durable": true,
-      "auto_delete": false,
-      "arguments": {
-        "x-dead-letter-exchange": "wedge.dlq",
-        "x-dead-letter-routing-key": "agent.execute.dlq"
-      }
-    },
-    {
       "name": "discovery.execute.request",
       "vhost": "/",
       "durable": true,
@@ -120,13 +110,6 @@
       "arguments": {}
     },
     {
-      "name": "agent.execute.dlq",
-      "vhost": "/",
-      "durable": true,
-      "auto_delete": false,
-      "arguments": {}
-    },
-    {
       "name": "analysis.dlq",
       "vhost": "/",
       "durable": true,
@@ -148,14 +131,6 @@
       "destination": "run.execute.request",
       "destination_type": "queue",
       "routing_key": "run.execute.request",
-      "arguments": {}
-    },
-    {
-      "source": "wedge.direct",
-      "vhost": "/",
-      "destination": "agent.execute.request",
-      "destination_type": "queue",
-      "routing_key": "agent.execute.request",
       "arguments": {}
     },
     {
@@ -212,14 +187,6 @@
       "destination": "run.execute.dlq",
       "destination_type": "queue",
       "routing_key": "run.execute.dlq",
-      "arguments": {}
-    },
-    {
-      "source": "wedge.dlq",
-      "vhost": "/",
-      "destination": "agent.execute.dlq",
-      "destination_type": "queue",
-      "routing_key": "agent.execute.dlq",
       "arguments": {}
     },
     {
