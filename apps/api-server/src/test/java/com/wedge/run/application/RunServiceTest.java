@@ -107,6 +107,36 @@ class RunServiceTest {
     }
 
     @Test
+    void plannedScenarioStopCompletesRunningRun() {
+        RunResponse running = sampleRun(RunStatus.RUNNING, ResultCompleteness.NONE);
+        RunResponse completed = sampleRun(running.id(), RunStatus.COMPLETED, ResultCompleteness.FINAL);
+
+        when(runPersistenceAdapter.findRun(running.id())).thenReturn(Optional.of(running));
+        when(runPersistenceAdapter.updateExecutionState(running, RunStatus.COMPLETED, ResultCompleteness.FINAL))
+                .thenReturn(completed);
+
+        RunResponse result = runService.finishRun(running.id(), true);
+
+        assertThat(result.status()).isEqualTo(RunStatus.COMPLETED);
+        assertThat(result.resultCompleteness()).isEqualTo(ResultCompleteness.FINAL);
+    }
+
+    @Test
+    void explicitStopRequestEndsAsStoppedWhenRunnerReportsStopped() {
+        RunResponse stopRequested = sampleRun(RunStatus.STOP_REQUESTED, ResultCompleteness.PARTIAL);
+        RunResponse stopped = sampleRun(stopRequested.id(), RunStatus.STOPPED, ResultCompleteness.PARTIAL);
+
+        when(runPersistenceAdapter.findRun(stopRequested.id())).thenReturn(Optional.of(stopRequested));
+        when(runPersistenceAdapter.updateExecutionState(stopRequested, RunStatus.STOPPED, ResultCompleteness.PARTIAL))
+                .thenReturn(stopped);
+
+        RunResponse result = runService.finishRun(stopRequested.id(), true);
+
+        assertThat(result.status()).isEqualTo(RunStatus.STOPPED);
+        assertThat(result.resultCompleteness()).isEqualTo(ResultCompleteness.PARTIAL);
+    }
+
+    @Test
     void listRunEventsReturnsLimitedPageAndNextCursor() {
         UUID runId = UUID.randomUUID();
         UUID stepId = UUID.randomUUID();

@@ -262,7 +262,8 @@ test('create analysis page wires stages to browser history query state', () => {
   );
 
   assert.match(source, /parseCreateAnalysisRouteState\(window\.location\.search, CREATE_ANALYSIS_ROUTE_OPTIONS\)/);
-  assert.match(source, /routeStateWithDevContext = withCreateRunContextFallback\(nextRouteState, DEV_CREATE_RUN_CONTEXT\)/);
+  assert.match(source, /readCurrentUser\(\)/);
+  assert.match(source, /routeStateWithDevContext = withCreateRunContextFallback\(nextRouteState, getCreateRunContextFallback\(\)\)/);
   assert.match(source, /buildCreateAnalysisPath\(routeStateWithDevContext, CREATE_ANALYSIS_ROUTE_OPTIONS\)/);
   assert.match(source, /setRouteState\(routeStateWithDevContext\)/);
   assert.match(source, /window\.history\.pushState\(null, '', nextPath\)/);

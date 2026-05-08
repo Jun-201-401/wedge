@@ -97,6 +97,10 @@ export function saveAuthToken(token: AuthToken) {
   rememberRefreshCookieIssued();
 }
 
+export function saveCurrentUser(user: User) {
+  userInMemory = user;
+}
+
 export function clearAuthToken() {
   accessTokenInMemory = null;
   userInMemory = null;

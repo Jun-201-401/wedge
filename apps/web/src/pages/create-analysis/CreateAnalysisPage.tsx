@@ -1,6 +1,7 @@
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { createDiscovery, getDiscovery } from '../../api/discoveries';
+import { readCurrentUser } from '../../api/authSession';
 import { readApiValidationFields, WedgeApiError } from '../../api/http';
 import { createRun, startRun } from '../../api/runs';
 import { confirmScenarioAuthoringCandidate, createScenarioAuthoringJob } from '../../api/scenario-authoring';
@@ -17,6 +18,7 @@ import {
   readCreateRunContextFromEnv,
   type CreateAnalysisRouteOptions,
   type CreateAnalysisRouteState,
+  type CreateRunContext,
   withCreateRunContextFallback,
 } from './lib/createAnalysisRouteState';
 import { normalizeAnalysisUrl } from './lib/createAnalysisUrl';
@@ -164,6 +166,26 @@ interface CreateRunIds {
   scenarioTemplateVersionId: string;
 }
 
+function readUserCreateRunContext(): Partial<CreateRunContext> {
+  const currentUser = readCurrentUser();
+
+  if (!currentUser?.defaultProjectId || !currentUser.defaultScenarioTemplateVersionId) {
+    return {};
+  }
+
+  return {
+    projectId: currentUser.defaultProjectId,
+    scenarioTemplateVersionId: currentUser.defaultScenarioTemplateVersionId,
+  };
+}
+
+function getCreateRunContextFallback(): Partial<CreateRunContext> {
+  return {
+    ...DEV_CREATE_RUN_CONTEXT,
+    ...readUserCreateRunContext(),
+  };
+}
+
 function getStepStatusLabel(status: DiscoveryStepStatus) {
   if (status === 'complete') {
     return '완료';
@@ -202,7 +224,7 @@ function getInitialRouteState(): CreateAnalysisPageRouteState {
 
   return withCreateRunContextFallback(
     parseCreateAnalysisRouteState(window.location.search, CREATE_ANALYSIS_ROUTE_OPTIONS),
-    DEV_CREATE_RUN_CONTEXT,
+    getCreateRunContextFallback(),
   );
 }
 
@@ -708,7 +730,7 @@ export function CreateAnalysisPage() {
   const discoveryBusy = isDiscoveryBusy(discoveryState.kind);
   const canSubmit = urlInput.trim().length > 0 && !discoveryBusy;
   const navigateToRouteState = useCallback((nextRouteState: CreateAnalysisPageRouteState, historyMode: 'push' | 'replace' = 'push') => {
-    const routeStateWithDevContext = withCreateRunContextFallback(nextRouteState, DEV_CREATE_RUN_CONTEXT);
+    const routeStateWithDevContext = withCreateRunContextFallback(nextRouteState, getCreateRunContextFallback());
     const nextPath = buildCreateAnalysisPath(routeStateWithDevContext, CREATE_ANALYSIS_ROUTE_OPTIONS);
 
     if (historyMode === 'replace') {
@@ -725,7 +747,7 @@ export function CreateAnalysisPage() {
       discoveryRequestSeq.current += 1;
       setRouteState(withCreateRunContextFallback(
         parseCreateAnalysisRouteState(window.location.search, CREATE_ANALYSIS_ROUTE_OPTIONS),
-        DEV_CREATE_RUN_CONTEXT,
+        getCreateRunContextFallback(),
       ));
     };
 

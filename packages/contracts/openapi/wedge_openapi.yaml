@@ -2608,11 +2608,21 @@ components:
           enum:
           - ACTIVE
           - INACTIVE
+        defaultProjectId:
+          type: string
+          format: uuid
+          description: Web analysis default project owned by or accessible to the authenticated user.
+        defaultScenarioTemplateVersionId:
+          type: string
+          format: uuid
+          description: Default scenario template version used when web analysis creates a Run from Discovery.
       required:
       - id
       - email
       - displayName
       - status
+      - defaultProjectId
+      - defaultScenarioTemplateVersionId
     AuthToken:
       type: object
       properties:
@@ -4745,6 +4755,7 @@ components:
               minimum: 0
             stopped:
               type: boolean
+              description: True when runner execution stopped at a planned safety stop condition or after an explicit stop request. Planned scenario stops still complete the run; only a prior STOP_REQUESTED run becomes STOPPED.
           required:
           - completedStepCount
           - failedStepCount

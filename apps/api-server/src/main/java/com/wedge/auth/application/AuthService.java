@@ -13,6 +13,8 @@ import com.wedge.common.error.BusinessException;
 import com.wedge.common.error.ErrorCode;
 import com.wedge.common.error.UnauthorizedException;
 import com.wedge.common.security.JwtTokenProvider;
+import com.wedge.project.application.ProjectBootstrapContext;
+import com.wedge.project.application.ProjectBootstrapService;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -31,19 +33,22 @@ public class AuthService {
     private final RefreshTokenRepository refreshTokenRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtTokenProvider jwtTokenProvider;
+    private final ProjectBootstrapService projectBootstrapService;
 
     public AuthService(
             UserAccountMapper userAccountMapper,
             UserCredentialMapper userCredentialMapper,
             RefreshTokenRepository refreshTokenRepository,
             PasswordEncoder passwordEncoder,
-            JwtTokenProvider jwtTokenProvider
+            JwtTokenProvider jwtTokenProvider,
+            ProjectBootstrapService projectBootstrapService
     ) {
         this.userAccountMapper = userAccountMapper;
         this.userCredentialMapper = userCredentialMapper;
         this.refreshTokenRepository = refreshTokenRepository;
         this.passwordEncoder = passwordEncoder;
         this.jwtTokenProvider = jwtTokenProvider;
+        this.projectBootstrapService = projectBootstrapService;
     }
 
     @Transactional
@@ -94,14 +99,16 @@ public class AuthService {
         refreshTokenRepository.deleteByUserId(userId);
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     public UserResponse me(UUID userId) {
         UserAccount user = getUser(userId);
         ensureActive(user);
-        return UserResponse.from(user);
+        ProjectBootstrapContext context = projectBootstrapService.ensureDefaultContext(user);
+        return UserResponse.from(user, context.projectId(), context.scenarioTemplateVersionId());
     }
 
     private AuthTokenIssue issueTokens(UserAccount user, String previousRefreshToken) {
+        ProjectBootstrapContext context = projectBootstrapService.ensureDefaultContext(user);
         String accessToken = jwtTokenProvider.createAccessToken(user.getId(), user.getEmail(), user.getDisplayName());
         String refreshToken = jwtTokenProvider.createRefreshToken(user.getId(), user.getEmail());
         if (previousRefreshToken == null) {
@@ -119,7 +126,7 @@ public class AuthService {
                         accessToken,
                         TOKEN_TYPE,
                         jwtTokenProvider.accessExpirationSeconds(),
-                        UserResponse.from(user)
+                        UserResponse.from(user, context.projectId(), context.scenarioTemplateVersionId())
                 ),
                 refreshToken,
                 jwtTokenProvider.refreshExpirationMillis() / 1000
