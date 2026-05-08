@@ -1765,9 +1765,10 @@ Completed:
 - Iframe candidates are observed with frame ids, and iframe payment/final-order commit candidates are blocked before the next Agent decision.
 - Static Runner replay resolves `replay_hint.locator_recipe[].frame_id` to the matching Playwright iframe before locator execution.
 - Open shadow-root candidates are observed for verification, but excluded from click decision/replay execution until a safe shadow locator contract is defined.
+- Agent worker can receive an injected `AgentIdempotencyStore`, so API/DB-backed global idempotency can be shared across runner instances instead of relying only on local artifact files.
 
 Remaining:
-- Promote local terminal idempotency records to API/DB-backed global idempotency when multiple runner replicas share a queue.
+- Wire the injected `AgentIdempotencyStore` to the API/DB adapter once the API service exposes the backing endpoint/table.
 ```
 
 ## Phase 7: LLM Decision Client
@@ -1865,12 +1866,13 @@ MVP idempotency:
 DONE: Use message idempotencyKey or AgentTask.idempotency_key at task start.
 DONE: Suppress duplicate same-process agent delivery by reusing the existing execution promise/result.
 DONE: Suppress duplicate post-restart agent delivery with a local terminal idempotency record.
+DONE: Add an injectable AgentIdempotencyStore boundary so multiple worker instances can share global terminal idempotency through API/DB-backed hosting code.
 Use attempt_id and attempt_index for every execution attempt.
 Persist terminal AgentTrace once.
 Do not resume mid-action in MVP.
 On worker crash, retry should start a new browser session and produce a new trace attempt.
 Never replay final commit actions because policy blocks them.
-TODO: Promote local terminal idempotency records to API/DB-backed global idempotency when multiple runner replicas share a queue.
+TODO: Implement the API/DB-backed store adapter after the API service owns the durable idempotency record.
 ```
 
 Future resume policy can be designed later:
