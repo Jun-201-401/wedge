@@ -256,6 +256,7 @@ test("[Agent LLM Decision] invalid JSON 응답만 재시도한다", async () => 
   });
 
   const decision = await client.decide({
+    runId: "00000000-0000-4000-8000-000000000406",
     goal: "Find checkout",
     startUrl: "https://example.com/product",
     state: {
@@ -307,6 +308,7 @@ test("[Agent LLM Decision] unsafe decision은 재시도나 heuristic fallback �
 
   await assert.rejects(
     () => client.decide({
+      runId: "00000000-0000-4000-8000-000000000407",
       goal: "Find checkout",
       startUrl: "https://example.com/product",
       state: {
