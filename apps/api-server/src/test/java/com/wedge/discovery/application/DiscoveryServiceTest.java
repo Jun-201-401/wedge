@@ -21,6 +21,7 @@ import com.wedge.discovery.domain.DiscoveryStatus;
 import com.wedge.discovery.domain.SiteDiscovery;
 import com.wedge.discovery.infrastructure.ScenarioRecommendationMapper;
 import com.wedge.discovery.infrastructure.SiteDiscoveryMapper;
+import com.wedge.project.application.DefaultProjectService;
 import com.wedge.project.application.ProjectAccessService;
 import java.net.URI;
 import java.util.List;
@@ -55,6 +56,9 @@ class DiscoveryServiceTest {
     @Mock
     private ProjectAccessService projectAccessService;
 
+    @Mock
+    private DefaultProjectService defaultProjectService;
+
     private DiscoveryService discoveryService;
 
     @BeforeEach
@@ -67,6 +71,7 @@ class DiscoveryServiceTest {
                 outboxMessagePersistenceAdapter,
                 applicationEventPublisher,
                 projectAccessService,
+                defaultProjectService,
                 new DiscoveryUrlValidator()
         );
     }
@@ -142,9 +147,49 @@ class DiscoveryServiceTest {
         assertThat(discoveryCaptor.getValue().getIdempotencyKey()).isEqualTo("idem-trimmed");
     }
 
+
+    @Test
+    void createDiscoveryUsesDefaultProjectWhenProjectIdIsOmitted() {
+        when(defaultProjectService.resolveDefaultProject(USER_ID, URI.create("https://example.com"))).thenReturn(PROJECT_ID);
+        when(siteDiscoveryMapper.findByIdempotencyKey(PROJECT_ID, USER_ID, "idem-default-project")).thenReturn(Optional.<SiteDiscovery>empty());
+        when(outboxMessagePersistenceAdapter.appendDiscoveryExecuteMessage(any(DiscoveryExecuteRequestMessage.class), any(UUID.class)))
+                .thenReturn(UUID.randomUUID());
+        ArgumentCaptor<SiteDiscovery> discoveryCaptor = ArgumentCaptor.forClass(SiteDiscovery.class);
+
+        DiscoveryResponse response = discoveryService.createDiscovery(requestWithoutProject("https://example.com"), USER_ID, "idem-default-project");
+
+        assertThat(response.projectId()).isEqualTo(PROJECT_ID);
+        verify(defaultProjectService).resolveDefaultProject(USER_ID, URI.create("https://example.com"));
+        verify(projectAccessService, never()).ensureProjectAccessible(any(), any());
+        verify(siteDiscoveryMapper).insert(discoveryCaptor.capture());
+        assertThat(discoveryCaptor.getValue().getProjectId()).isEqualTo(PROJECT_ID);
+    }
+
+    @Test
+    void createDiscoveryWithExplicitProjectKeepsAccessCheckAndSkipsDefaultProject() {
+        when(siteDiscoveryMapper.findByIdempotencyKey(eq(PROJECT_ID), eq(USER_ID), anyString())).thenReturn(Optional.<SiteDiscovery>empty());
+        when(outboxMessagePersistenceAdapter.appendDiscoveryExecuteMessage(any(DiscoveryExecuteRequestMessage.class), any(UUID.class)))
+                .thenReturn(UUID.randomUUID());
+
+        DiscoveryResponse response = discoveryService.createDiscovery(request("https://example.com"), USER_ID, "idem-explicit-project");
+
+        assertThat(response.projectId()).isEqualTo(PROJECT_ID);
+        verify(projectAccessService).ensureProjectAccessible(PROJECT_ID, USER_ID);
+        verify(defaultProjectService, never()).resolveDefaultProject(any(), any());
+    }
+
     private CreateDiscoveryRequest request(String url) {
         return new CreateDiscoveryRequest(
                 PROJECT_ID,
+                URI.create(url),
+                "desktop",
+                new DiscoveryViewportRequest(1440, 900)
+        );
+    }
+
+    private CreateDiscoveryRequest requestWithoutProject(String url) {
+        return new CreateDiscoveryRequest(
+                null,
                 URI.create(url),
                 "desktop",
                 new DiscoveryViewportRequest(1440, 900)

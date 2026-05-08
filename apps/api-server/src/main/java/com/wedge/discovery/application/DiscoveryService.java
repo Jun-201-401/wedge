@@ -15,6 +15,7 @@ import com.wedge.discovery.domain.ScenarioRecommendation;
 import com.wedge.discovery.domain.SiteDiscovery;
 import com.wedge.discovery.infrastructure.ScenarioRecommendationMapper;
 import com.wedge.discovery.infrastructure.SiteDiscoveryMapper;
+import com.wedge.project.application.DefaultProjectService;
 import com.wedge.project.application.ProjectAccessService;
 import java.net.URI;
 import java.util.List;
@@ -41,29 +42,30 @@ public class DiscoveryService {
     private final OutboxMessagePersistenceAdapter outboxMessagePersistenceAdapter;
     private final ApplicationEventPublisher applicationEventPublisher;
     private final ProjectAccessService projectAccessService;
+    private final DefaultProjectService defaultProjectService;
     private final DiscoveryUrlValidator discoveryUrlValidator;
 
     @Transactional
     public DiscoveryResponse createDiscovery(CreateDiscoveryRequest request, UUID userId, String idempotencyKey) {
         validate(request);
-        projectAccessService.ensureProjectAccessible(request.projectId(), userId);
+        UUID projectId = resolveProjectId(request, userId);
         String normalizedIdempotencyKey = normalizeIdempotencyKey(idempotencyKey);
         if (normalizedIdempotencyKey != null) {
-            SiteDiscovery existing = siteDiscoveryMapper.findByIdempotencyKey(request.projectId(), userId, normalizedIdempotencyKey)
+            SiteDiscovery existing = siteDiscoveryMapper.findByIdempotencyKey(projectId, userId, normalizedIdempotencyKey)
                     .orElse(null);
             if (existing != null) {
                 return toIdempotentReplayResponse(existing, request);
             }
         }
 
-        SiteDiscovery discovery = toQueuedDiscovery(request, userId, normalizedIdempotencyKey);
+        SiteDiscovery discovery = toQueuedDiscovery(request, userId, projectId, normalizedIdempotencyKey);
         try {
             siteDiscoveryMapper.insert(discovery);
         } catch (DuplicateKeyException exception) {
             if (normalizedIdempotencyKey == null) {
                 throw exception;
             }
-            SiteDiscovery existing = siteDiscoveryMapper.findByIdempotencyKey(request.projectId(), userId, normalizedIdempotencyKey)
+            SiteDiscovery existing = siteDiscoveryMapper.findByIdempotencyKey(projectId, userId, normalizedIdempotencyKey)
                     .orElseThrow(() -> exception);
             return toIdempotentReplayResponse(existing, request);
         }
@@ -85,10 +87,18 @@ public class DiscoveryService {
                 .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_REQUEST, "Discovery was not found."));
     }
 
-    private SiteDiscovery toQueuedDiscovery(CreateDiscoveryRequest request, UUID userId, String idempotencyKey) {
+    private UUID resolveProjectId(CreateDiscoveryRequest request, UUID userId) {
+        if (request.projectId() != null) {
+            projectAccessService.ensureProjectAccessible(request.projectId(), userId);
+            return request.projectId();
+        }
+        return defaultProjectService.resolveDefaultProject(userId, request.url());
+    }
+
+    private SiteDiscovery toQueuedDiscovery(CreateDiscoveryRequest request, UUID userId, UUID projectId, String idempotencyKey) {
         SiteDiscovery discovery = new SiteDiscovery();
         discovery.setId(UUID.randomUUID());
-        discovery.setProjectId(request.projectId());
+        discovery.setProjectId(projectId);
         discovery.setInputUrl(request.url().toString());
         discovery.setDevicePreset(request.devicePreset());
         discovery.setViewportJsonb(toJson(Map.of(
@@ -127,6 +137,7 @@ public class DiscoveryService {
     private DiscoveryResponse toResponse(SiteDiscovery discovery, List<ScenarioRecommendation> recommendations) {
         return new DiscoveryResponse(
                 discovery.getId(),
+                discovery.getProjectId(),
                 discovery.getStatus(),
                 URI.create(discovery.getInputUrl()),
                 discovery.getFinalUrl() == null ? null : URI.create(discovery.getFinalUrl()),

@@ -7,7 +7,7 @@ import java.net.URI;
 import java.util.UUID;
 
 public record CreateDiscoveryRequest(
-        @NotNull UUID projectId,
+        UUID projectId,
         @NotNull URI url,
         @NotBlank String devicePreset,
         @Valid DiscoveryViewportRequest viewport

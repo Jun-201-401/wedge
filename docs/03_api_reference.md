@@ -343,9 +343,10 @@ POST /api/discoveries
 Idempotency-Key: idem_create_discovery_001
 ```
 
+`projectId`를 생략하면 현재 사용자 default Project를 자동 생성하거나 재사용한다. 명시하면 기존처럼 해당 Project 권한을 검사한다.
+
 ```json
 {
-  "projectId": "uuid",
   "url": "https://example.com",
   "devicePreset": "desktop",
   "viewport": {
@@ -361,6 +362,7 @@ Response:
 {
   "data": {
     "discoveryId": "uuid",
+    "projectId": "uuid",
     "status": "QUEUED"
   },
   "meta": {
@@ -381,6 +383,7 @@ Response:
 {
   "data": {
     "discoveryId": "uuid",
+    "projectId": "uuid",
     "status": "COMPLETED",
     "inputUrl": "https://example.com",
     "finalUrl": "https://example.com",
