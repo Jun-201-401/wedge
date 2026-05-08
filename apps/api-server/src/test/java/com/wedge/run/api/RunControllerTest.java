@@ -3,6 +3,7 @@ package com.wedge.run.api;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -10,6 +11,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.wedge.common.error.GlobalExceptionHandler;
 import com.wedge.common.web.RequestIdFilter;
+import com.wedge.evidence.api.dto.ArtifactPresignedUrlItemResponse;
+import com.wedge.evidence.api.dto.ArtifactPresignedUrlsResponse;
 import com.wedge.evidence.api.dto.ArtifactResponse;
 import com.wedge.evidence.api.dto.EvidenceCountsResponse;
 import com.wedge.evidence.api.dto.LatestCheckpointResponse;
@@ -31,6 +34,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import org.springframework.http.MediaType;
 import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
@@ -236,6 +240,32 @@ class RunControllerTest {
                 .andExpect(jsonPath("$.data[0].artifactType").value("DOM_SNAPSHOT"))
                 .andExpect(jsonPath("$.data[0].contentUrl").value("/api/runs/" + runId + "/artifacts/" + artifactId + "/content"))
                 .andExpect(jsonPath("$.meta.requestId").value("req_run_artifacts"));
+    }
+
+    @Test
+    void artifactPresignedUrlsReturnsTimeLimitedImageUrls() throws Exception {
+        UUID runId = UUID.randomUUID();
+        UUID artifactId = UUID.randomUUID();
+        when(evidenceService.createRunArtifactPresignedUrls(runId, List.of(artifactId))).thenReturn(
+                new ArtifactPresignedUrlsResponse(List.of(new ArtifactPresignedUrlItemResponse(
+                        artifactId,
+                        ArtifactType.SCREENSHOT,
+                        "image/png",
+                        "https://wedge-artifacts-prod.s3.ap-northeast-2.amazonaws.com/runs/a.png?X-Amz-Signature=test",
+                        java.time.Instant.parse("2026-05-08T07:10:00Z")
+                )))
+        );
+
+        mockMvc.perform(post("/api/runs/{runId}/artifacts/presigned-urls", runId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"artifactIds\":[\"" + artifactId + "\"]}")
+                        .header("X-Request-Id", "req_run_artifact_presigned_urls"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.urls[0].artifactId").value(artifactId.toString()))
+                .andExpect(jsonPath("$.data.urls[0].mimeType").value("image/png"))
+                .andExpect(jsonPath("$.data.urls[0].url").value("https://wedge-artifacts-prod.s3.ap-northeast-2.amazonaws.com/runs/a.png?X-Amz-Signature=test"))
+                .andExpect(jsonPath("$.data.urls[0].expiresAt").value("2026-05-08T07:10:00Z"))
+                .andExpect(jsonPath("$.meta.requestId").value("req_run_artifact_presigned_urls"));
     }
 
     @Test

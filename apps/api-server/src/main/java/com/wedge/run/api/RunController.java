@@ -4,6 +4,8 @@ import com.wedge.common.response.ApiMeta;
 import com.wedge.common.response.ApiResponse;
 import com.wedge.common.response.RequestMetadata;
 import com.wedge.evidence.api.dto.ArtifactResponse;
+import com.wedge.evidence.api.dto.ArtifactPresignedUrlRequest;
+import com.wedge.evidence.api.dto.ArtifactPresignedUrlsResponse;
 import com.wedge.evidence.api.dto.RunEvidenceSummaryResponse;
 import com.wedge.evidence.application.EvidenceService;
 import com.wedge.run.api.dto.RunActionRequest;
@@ -150,6 +152,14 @@ public class RunController {
     @GetMapping("/{runId}/artifacts")
     public ResponseEntity<ApiResponse<List<ArtifactResponse>>> listRunArtifacts(@PathVariable UUID runId) {
         return ApiResponse.ok(evidenceService.listRunArtifacts(runId));
+    }
+
+    @PostMapping("/{runId}/artifacts/presigned-urls")
+    public ResponseEntity<ApiResponse<ArtifactPresignedUrlsResponse>> createRunArtifactPresignedUrls(
+            @PathVariable UUID runId,
+            @Valid @RequestBody ArtifactPresignedUrlRequest request
+    ) {
+        return ApiResponse.ok(evidenceService.createRunArtifactPresignedUrls(runId, request.artifactIds()));
     }
 
     @GetMapping("/{runId}/artifacts/{artifactId}/content")

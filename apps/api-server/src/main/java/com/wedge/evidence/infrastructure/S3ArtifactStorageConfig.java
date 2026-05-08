@@ -14,6 +14,8 @@ import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Configuration;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.S3ClientBuilder;
+import software.amazon.awssdk.services.s3.presigner.S3Presigner;
+import software.amazon.awssdk.services.s3.presigner.S3Presigner.Builder;
 
 @Configuration
 @ConditionalOnProperty(name = "wedge.artifacts.storage", havingValue = "s3")
@@ -46,6 +48,27 @@ public class S3ArtifactStorageConfig {
             @Value("${wedge.artifacts.s3.force-path-style:false}") boolean forcePathStyle
     ) {
         S3ClientBuilder builder = S3Client.builder()
+                .credentialsProvider(credentialsProvider.getObject())
+                .region(Region.of(region))
+                .serviceConfiguration(S3Configuration.builder()
+                        .pathStyleAccessEnabled(forcePathStyle)
+                        .build());
+
+        if (endpoint != null && !endpoint.isBlank()) {
+            builder.endpointOverride(URI.create(endpoint));
+        }
+
+        return builder.build();
+    }
+
+    @Bean
+    public S3Presigner s3Presigner(
+            ObjectProvider<AwsCredentialsProvider> credentialsProvider,
+            @Value("${wedge.artifacts.s3.region:${aws.region}}") String region,
+            @Value("${wedge.artifacts.s3.endpoint:}") String endpoint,
+            @Value("${wedge.artifacts.s3.force-path-style:false}") boolean forcePathStyle
+    ) {
+        Builder builder = S3Presigner.builder()
                 .credentialsProvider(credentialsProvider.getObject())
                 .region(Region.of(region))
                 .serviceConfiguration(S3Configuration.builder()
