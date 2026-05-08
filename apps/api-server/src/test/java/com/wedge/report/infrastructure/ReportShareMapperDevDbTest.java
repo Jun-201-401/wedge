@@ -91,6 +91,9 @@ class ReportShareMapperDevDbTest {
         Optional<ReportShare> foundByReport = reportShareMapper.findActiveByReportId(REPORT_ID, NOW);
         assertThat(foundByReport).isPresent();
         assertThat(foundByReport.get().getId()).isEqualTo(ACTIVE_SHARE_ID);
+        assertThat(reportShareMapper.findActiveByReportId(DELETED_REPORT_ID, NOW)).isEmpty();
+        assertThat(reportShareMapper.lockReportForShare(REPORT_ID)).contains(REPORT_ID);
+        assertThat(reportShareMapper.lockReportForShare(DELETED_REPORT_ID)).isEmpty();
 
         assertThat(reportShareMapper.findActiveByToken("expired-token", NOW)).isEmpty();
         assertThat(reportShareMapper.findActiveByToken("revoked-token", NOW)).isEmpty();

@@ -41,12 +41,14 @@ public class ReportShareService {
     }
 
     @Transactional
-    public ReportShareResponse createReportShare(UUID reportId, UUID userId) {
+    public ReportShareCreationResult createReportShare(UUID reportId, UUID userId) {
         ensureReportAccessible(reportId, userId);
+        lockReportForShare(reportId);
         OffsetDateTime now = now();
         return reportShareMapper.findActiveByReportId(reportId, now)
                 .map(this::toResponse)
-                .orElseGet(() -> createNewReportShare(reportId, userId, now));
+                .map(ReportShareCreationResult::reused)
+                .orElseGet(() -> ReportShareCreationResult.created(createNewReportShare(reportId, userId, now)));
     }
 
     private ReportShareResponse createNewReportShare(UUID reportId, UUID userId, OffsetDateTime now) {
@@ -60,6 +62,11 @@ public class ReportShareService {
         share.setCreatedAt(now);
         reportShareMapper.insert(share);
         return toResponse(share);
+    }
+
+    private void lockReportForShare(UUID reportId) {
+        reportShareMapper.lockReportForShare(reportId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.REPORT_NOT_FOUND));
     }
 
     @Transactional

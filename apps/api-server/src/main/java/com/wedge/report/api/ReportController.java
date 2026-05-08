@@ -8,6 +8,7 @@ import com.wedge.report.api.dto.ReportSummaryResponse;
 import com.wedge.report.api.dto.RunReportResponse;
 import com.wedge.report.application.ReportGenerationService;
 import com.wedge.report.application.ReportDetailQueryService;
+import com.wedge.report.application.ReportShareCreationResult;
 import com.wedge.report.application.ReportSummaryQueryService;
 import com.wedge.report.application.ReportShareService;
 import java.util.List;
@@ -74,7 +75,11 @@ public class ReportController {
             @PathVariable UUID reportId,
             Authentication authentication
     ) {
-        return ApiResponse.created(reportShareService.createReportShare(reportId, principal(authentication).userId()));
+        ReportShareCreationResult result = reportShareService.createReportShare(reportId, principal(authentication).userId());
+        if (result.created()) {
+            return ApiResponse.created(result.response());
+        }
+        return ApiResponse.ok(result.response());
     }
 
     @DeleteMapping("/api/reports/{reportId}/shares/{shareId}")

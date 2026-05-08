@@ -13,6 +13,7 @@ public interface ReportShareMapper {
     List<ReportShare> findByReportId(@Param("reportId") UUID reportId);
     Optional<ReportShare> findActiveByToken(@Param("shareToken") String shareToken, @Param("now") OffsetDateTime now);
     Optional<ReportShare> findActiveByReportId(@Param("reportId") UUID reportId, @Param("now") OffsetDateTime now);
+    Optional<UUID> lockReportForShare(@Param("reportId") UUID reportId);
     int insert(ReportShare share);
     int revoke(@Param("id") UUID id, @Param("reportId") UUID reportId, @Param("revokedAt") OffsetDateTime revokedAt);
 }

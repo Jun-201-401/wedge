@@ -2,6 +2,7 @@ package com.wedge.report.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -35,6 +36,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -85,14 +87,17 @@ class ReportShareServiceTest {
         UUID userId = UUID.randomUUID();
         when(reportMapper.findById(reportId)).thenReturn(Optional.of(report(reportId, runId)));
         when(runService.getRun(runId)).thenReturn(runResponse(runId, projectId));
+        when(reportShareMapper.lockReportForShare(reportId)).thenReturn(Optional.of(reportId));
         when(reportShareMapper.findActiveByReportId(reportId, NOW)).thenReturn(Optional.empty());
         when(tokenGenerator.generate()).thenReturn(SHARE_TOKEN);
 
-        ReportShareResponse response = reportShareService.createReportShare(reportId, userId);
+        ReportShareCreationResult result = reportShareService.createReportShare(reportId, userId);
 
         ArgumentCaptor<ReportShare> shareCaptor = ArgumentCaptor.forClass(ReportShare.class);
         verify(reportShareMapper).insert(shareCaptor.capture());
         ReportShare inserted = shareCaptor.getValue();
+        ReportShareResponse response = result.response();
+        assertThat(result.created()).isTrue();
         assertThat(inserted.getReportId()).isEqualTo(reportId);
         assertThat(inserted.getShareToken()).isEqualTo(SHARE_TOKEN);
         assertThat(inserted.getAccessLevel()).isEqualTo("VIEW");
@@ -103,6 +108,10 @@ class ReportShareServiceTest {
         assertThat(response.expiresAt()).isEqualTo(NOW.plusMinutes(10));
         assertThat(response.createdAt()).isEqualTo(NOW);
         verify(reportAccessGuard).ensureProjectAccessible(projectId, userId);
+        InOrder inOrder = inOrder(reportShareMapper);
+        inOrder.verify(reportShareMapper).lockReportForShare(reportId);
+        inOrder.verify(reportShareMapper).findActiveByReportId(reportId, NOW);
+        inOrder.verify(reportShareMapper).insert(org.mockito.ArgumentMatchers.any());
     }
 
     @Test
@@ -114,10 +123,13 @@ class ReportShareServiceTest {
         ReportShare activeShare = share(reportId);
         when(reportMapper.findById(reportId)).thenReturn(Optional.of(report(reportId, runId)));
         when(runService.getRun(runId)).thenReturn(runResponse(runId, projectId));
+        when(reportShareMapper.lockReportForShare(reportId)).thenReturn(Optional.of(reportId));
         when(reportShareMapper.findActiveByReportId(reportId, NOW)).thenReturn(Optional.of(activeShare));
 
-        ReportShareResponse response = reportShareService.createReportShare(reportId, userId);
+        ReportShareCreationResult result = reportShareService.createReportShare(reportId, userId);
 
+        ReportShareResponse response = result.response();
+        assertThat(result.created()).isFalse();
         assertThat(response.id()).isEqualTo(activeShare.getId());
         assertThat(response.reportId()).isEqualTo(reportId);
         assertThat(response.shareUrl()).isEqualTo("https://wedge.example.com/api/report-shares/" + SHARE_TOKEN);
@@ -125,6 +137,9 @@ class ReportShareServiceTest {
         verify(tokenGenerator, never()).generate();
         verify(reportShareMapper, never()).insert(org.mockito.ArgumentMatchers.any());
         verify(reportAccessGuard).ensureProjectAccessible(projectId, userId);
+        InOrder inOrder = inOrder(reportShareMapper);
+        inOrder.verify(reportShareMapper).lockReportForShare(reportId);
+        inOrder.verify(reportShareMapper).findActiveByReportId(reportId, NOW);
     }
 
     @Test
