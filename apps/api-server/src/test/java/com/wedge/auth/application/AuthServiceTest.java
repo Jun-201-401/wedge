@@ -8,6 +8,8 @@ import com.wedge.auth.infrastructure.UserAccountMapper;
 import com.wedge.auth.infrastructure.UserCredentialMapper;
 import com.wedge.common.error.UnauthorizedException;
 import com.wedge.common.security.JwtTokenProvider;
+import com.wedge.project.application.ProjectBootstrapContext;
+import com.wedge.project.application.ProjectBootstrapService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
@@ -32,6 +34,9 @@ class AuthServiceTest {
     private final RefreshTokenRepository refreshTokenRepository = mock(RefreshTokenRepository.class);
     private final PasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
     private final JwtTokenProvider jwtTokenProvider = new JwtTokenProvider();
+    private final ProjectBootstrapService projectBootstrapService = mock(ProjectBootstrapService.class);
+    private final UUID defaultProjectId = UUID.randomUUID();
+    private final UUID defaultScenarioTemplateVersionId = UUID.randomUUID();
     private AuthService authService;
 
     @BeforeEach
@@ -40,12 +45,15 @@ class AuthServiceTest {
         ReflectionTestUtils.setField(jwtTokenProvider, "accessExpirationMillis", 3_600_000L);
         ReflectionTestUtils.setField(jwtTokenProvider, "refreshExpirationMillis", 604_800_000L);
         jwtTokenProvider.initialize();
+        when(projectBootstrapService.ensureDefaultContext(any(UserAccount.class)))
+                .thenReturn(new ProjectBootstrapContext(defaultProjectId, defaultScenarioTemplateVersionId));
         authService = new AuthService(
                 userAccountMapper,
                 userCredentialMapper,
                 refreshTokenRepository,
                 passwordEncoder,
-                jwtTokenProvider
+                jwtTokenProvider,
+                projectBootstrapService
         );
     }
 
@@ -57,7 +65,10 @@ class AuthServiceTest {
         assertThat(response.refreshToken()).isNotBlank();
         assertThat(response.response().tokenType()).isEqualTo("Bearer");
         assertThat(response.response().user().email()).isEqualTo("user@example.com");
+        assertThat(response.response().user().defaultProjectId()).isEqualTo(defaultProjectId);
+        assertThat(response.response().user().defaultScenarioTemplateVersionId()).isEqualTo(defaultScenarioTemplateVersionId);
         verify(userAccountMapper).insert(any(UserAccount.class));
+        verify(projectBootstrapService).ensureDefaultContext(any(UserAccount.class));
         verify(refreshTokenRepository).save(any(UUID.class), eq(response.refreshToken()), anyLong());
     }
 

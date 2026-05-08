@@ -204,7 +204,8 @@
               "minimum": 0
             },
             "stopped": {
-              "type": "boolean"
+              "type": "boolean",
+              "description": "True when runner execution stopped at a planned safety stop condition or after an explicit stop request. API status remains COMPLETED for planned scenario stops and becomes STOPPED only when the run was already STOP_REQUESTED."
             }
           },
           "required": [

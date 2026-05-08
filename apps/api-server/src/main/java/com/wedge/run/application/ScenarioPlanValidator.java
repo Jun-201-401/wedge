@@ -25,6 +25,13 @@ public class ScenarioPlanValidator {
     private static final Set<String> STEP_KEYS = Set.of("step_id", "stage", "description", "action", "settle_strategy", "checkpoint", "stop_condition");
 
     public void validateCreateRequest(RunCreateRequest request) {
+        validateDevicePreset(request.devicePreset());
+        if (request.scenarioPlan() == null || request.scenarioPlan().isEmpty()) {
+            return;
+        }
+        if (request.scenarioTemplateVersionId() == null) {
+            throw new BusinessException(ErrorCode.INVALID_REQUEST, "scenarioTemplateVersionId is required when scenarioPlan is provided.");
+        }
         validateScenarioPlan(request.scenarioPlan(), request.startUrl(), request.devicePreset());
     }
 
@@ -66,6 +73,12 @@ public class ScenarioPlanValidator {
             @SuppressWarnings("unchecked")
             Map<String, Object> stepMap = (Map<String, Object>) rawStep;
             validateStep(stepMap);
+        }
+    }
+
+    private void validateDevicePreset(String devicePreset) {
+        if (!DEVICES.contains(devicePreset)) {
+            throw new BusinessException(ErrorCode.INVALID_REQUEST, "devicePreset is unsupported: " + devicePreset);
         }
     }
 

@@ -2,7 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  buildCreateRunRequestBody,
   buildPrototypeScenarioPlan,
+  hasExpectedEvidence,
   isFatalPollError,
   isUuid,
   normalizeBaseUrl,
@@ -33,6 +35,7 @@ test('smoke script reads config from existing web dev env names', () => {
     WEDGE_SMOKE_TIMEOUT_MS: '12345',
     WEDGE_SMOKE_HEALTH_PATH: 'actuator/health',
     WEDGE_SMOKE_EXPECTED_STATUS: 'failed',
+    WEDGE_SMOKE_EXECUTION_MODE: 'agent',
   });
 
   assert.equal(config.projectId, '11111111-1111-4111-8111-111111111111');
@@ -42,6 +45,57 @@ test('smoke script reads config from existing web dev env names', () => {
   assert.equal(config.timeoutMs, 12345);
   assert.equal(config.healthPath, '/actuator/health');
   assert.equal(config.expectedStatus, 'FAILED');
+  assert.equal(config.executionMode, 'agent');
+});
+
+
+test('agent smoke create payload omits ScenarioPlan and template version', () => {
+  const body = buildCreateRunRequestBody({
+    executionMode: 'agent',
+    projectId: '11111111-1111-4111-8111-111111111111',
+    targetUrl: 'https://example.com/product/sample',
+  });
+
+  assert.equal(body.name, 'Real Agent Run E2E Smoke');
+  assert.equal(body.projectId, '11111111-1111-4111-8111-111111111111');
+  assert.equal(body.startUrl, 'https://example.com/product/sample');
+  assert.equal(body.devicePreset, 'desktop');
+  assert.equal(body.scenarioOverrides.source, 'infra-real-agent-run-e2e-smoke');
+  assert.equal('scenarioTemplateVersionId' in body, false);
+  assert.equal('scenarioPlan' in body, false);
+});
+
+test('scenario smoke create payload keeps scripted replay contract', () => {
+  const body = buildCreateRunRequestBody({
+    executionMode: 'scenario',
+    projectId: '11111111-1111-4111-8111-111111111111',
+    scenarioTemplateVersionId: '22222222-2222-4222-8222-222222222222',
+    targetUrl: 'https://example.com/',
+  });
+
+  assert.equal(body.name, 'Real Run E2E Smoke');
+  assert.equal(body.scenarioTemplateVersionId, '22222222-2222-4222-8222-222222222222');
+  assert.equal(body.scenarioPlan.start_url, 'https://example.com/');
+});
+
+
+test('smoke evidence readiness follows execution mode', () => {
+  assert.equal(hasExpectedEvidence({ checkpoints: [{}], artifacts: [] }, {
+    executionMode: 'scenario',
+    requireEvidenceArtifacts: false,
+  }), true);
+  assert.equal(hasExpectedEvidence({ checkpoints: [], artifacts: [{}] }, {
+    executionMode: 'scenario',
+    requireEvidenceArtifacts: false,
+  }), false);
+  assert.equal(hasExpectedEvidence({ checkpoints: [], artifacts: [{}] }, {
+    executionMode: 'agent',
+    requireEvidenceArtifacts: false,
+  }), true);
+  assert.equal(hasExpectedEvidence({ checkpoints: [{}], artifacts: [] }, {
+    executionMode: 'agent',
+    requireEvidenceArtifacts: false,
+  }), false);
 });
 
 test('smoke script helpers validate UUIDs and normalize base URLs', () => {

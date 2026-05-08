@@ -700,6 +700,11 @@ export interface RunnerFinishedPayload {
   summary: {
     completedStepCount: number;
     failedStepCount: number;
+    /**
+     * True when runner execution stopped at a planned safety stop condition or
+     * after an explicit stop request. Planned scenario stops still complete the
+     * run; only a prior STOP_REQUESTED run becomes STOPPED.
+     */
     stopped: boolean;
   };
 }

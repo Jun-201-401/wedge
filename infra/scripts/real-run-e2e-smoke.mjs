@@ -12,6 +12,7 @@ const DEFAULT_TARGET_URL = 'https://example.com/';
 const DEFAULT_SMOKE_EMAIL = 'e2e-smoke@wedge.local';
 const DEFAULT_SMOKE_PASSWORD = 'wedge-smoke-password';
 const DEFAULT_EXPECTED_STATUS = 'COMPLETED';
+const EXECUTION_MODES = new Set(['scenario', 'agent']);
 
 export function normalizeBaseUrl(value) {
   return String(value).replace(/\/+$/, '');
@@ -109,6 +110,7 @@ export function readConfig(env = process.env) {
     requireEvidenceArtifacts: readBoolean(env.WEDGE_SMOKE_REQUIRE_ARTIFACTS, false),
     expectedStatus: normalizeExpectedStatus(env.WEDGE_SMOKE_EXPECTED_STATUS ?? DEFAULT_EXPECTED_STATUS),
     healthPath: normalizePath(env.WEDGE_SMOKE_HEALTH_PATH ?? '/actuator/health'),
+    executionMode: normalizeExecutionMode(env.WEDGE_SMOKE_EXECUTION_MODE ?? 'scenario'),
   };
 }
 
@@ -129,10 +131,13 @@ export async function runSmoke(config = readConfig()) {
   const evidencePacket = run.status === 'COMPLETED'
     ? await pollEvidencePacket(config, accessToken, runId)
     : { checkpoints: [], artifacts: [] };
+  const agentTraceEvents = run.status === 'COMPLETED' && config.executionMode === 'agent'
+    ? await pollAgentTraceEvents(config, accessToken, runId)
+    : [];
   const monitorUrl = `${config.webBaseUrl}/runs/${encodeURIComponent(runId)}?${new URLSearchParams({
     url: config.targetUrl,
-    scenario: 'landing-cta',
-    depth: 'hero-only',
+    scenario: config.executionMode === 'agent' ? 'agent' : 'landing-cta',
+    depth: config.executionMode === 'agent' ? 'agent-default' : 'hero-only',
   })}`;
 
   return {
@@ -143,6 +148,7 @@ export async function runSmoke(config = readConfig()) {
     failureMessage: run.failureMessage,
     checkpointCount: evidencePacket.checkpoints.length,
     artifactCount: evidencePacket.artifacts.length,
+    agentTraceEventCount: agentTraceEvents.length,
     monitorUrl,
   };
 }
@@ -152,8 +158,12 @@ function validateConfig(config) {
     throw new Error('WEDGE_SMOKE_PROJECT_ID or VITE_DEV_PROJECT_ID must be a valid project UUID.');
   }
 
-  if (!isUuid(config.scenarioTemplateVersionId)) {
-    throw new Error('WEDGE_SMOKE_SCENARIO_TEMPLATE_VERSION_ID or VITE_DEV_SCENARIO_TEMPLATE_VERSION_ID must be a valid scenario template version UUID.');
+  if (!EXECUTION_MODES.has(config.executionMode)) {
+    throw new Error('WEDGE_SMOKE_EXECUTION_MODE must be scenario or agent.');
+  }
+
+  if (config.executionMode === 'scenario' && !isUuid(config.scenarioTemplateVersionId)) {
+    throw new Error('WEDGE_SMOKE_SCENARIO_TEMPLATE_VERSION_ID or VITE_DEV_SCENARIO_TEMPLATE_VERSION_ID must be a valid scenario template version UUID for scenario mode.');
   }
 
   try {
@@ -205,25 +215,44 @@ async function authenticate(config) {
 }
 
 async function createRun(config, accessToken) {
-  const scenarioPlan = buildPrototypeScenarioPlan({ targetUrl: config.targetUrl });
   const response = await requestJson(config, '/api/runs', {
     method: 'POST',
     accessToken,
-    body: {
-      projectId: config.projectId,
-      name: 'Real Run E2E Smoke',
-      startUrl: config.targetUrl,
-      goal: scenarioPlan.goal,
-      devicePreset: 'desktop',
-      scenarioTemplateVersionId: config.scenarioTemplateVersionId,
-      scenarioOverrides: {
-        source: 'infra-real-run-e2e-smoke',
-        depthId: 'hero-only',
-      },
-      scenarioPlan,
-    },
+    body: buildCreateRunRequestBody(config),
   });
   return response.data;
+}
+
+export function buildCreateRunRequestBody(config) {
+  if (config.executionMode === 'agent') {
+    return {
+      projectId: config.projectId,
+      name: 'Real Agent Run E2E Smoke',
+      startUrl: config.targetUrl,
+      goal: 'Real agent run end-to-end smoke: open URL, let Runner Agent choose bounded actions, callback trace/evidence to API.',
+      devicePreset: 'desktop',
+      scenarioOverrides: {
+        source: 'infra-real-agent-run-e2e-smoke',
+        mode: 'agent',
+      },
+    };
+  }
+
+  const scenarioPlan = buildPrototypeScenarioPlan({ targetUrl: config.targetUrl });
+  return {
+    projectId: config.projectId,
+    name: 'Real Run E2E Smoke',
+    startUrl: config.targetUrl,
+    goal: scenarioPlan.goal,
+    devicePreset: 'desktop',
+    scenarioTemplateVersionId: config.scenarioTemplateVersionId,
+    scenarioOverrides: {
+      source: 'infra-real-run-e2e-smoke',
+      depthId: 'hero-only',
+      mode: 'scenario',
+    },
+    scenarioPlan,
+  };
 }
 
 async function startRun(config, accessToken, runId) {
@@ -266,7 +295,7 @@ async function pollEvidencePacket(config, accessToken, runId) {
     const artifacts = Array.isArray(packet.artifacts) ? packet.artifacts : [];
     logStep('poll.evidence', { runId, checkpoints: checkpoints.length, artifacts: artifacts.length });
 
-    if (checkpoints.length > 0 && (!config.requireEvidenceArtifacts || artifacts.length > 0)) {
+    if (hasExpectedEvidence({ ...packet, checkpoints, artifacts }, config)) {
       return {
         ...packet,
         checkpoints,
@@ -276,6 +305,31 @@ async function pollEvidencePacket(config, accessToken, runId) {
 
     return null;
   }, `evidence packet for run ${runId}`);
+}
+
+export function hasExpectedEvidence(packet, config) {
+  const checkpoints = Array.isArray(packet.checkpoints) ? packet.checkpoints : [];
+  const artifacts = Array.isArray(packet.artifacts) ? packet.artifacts : [];
+  const hasArtifactsWhenRequired = !config.requireEvidenceArtifacts || artifacts.length > 0;
+
+  if (config.executionMode === 'agent') {
+    return artifacts.length > 0 && hasArtifactsWhenRequired;
+  }
+
+  return checkpoints.length > 0 && hasArtifactsWhenRequired;
+}
+
+async function pollAgentTraceEvents(config, accessToken, runId) {
+  return pollUntil(config, async () => {
+    const search = new URLSearchParams({
+      eventType: 'AGENT_TRACE_PERSISTED',
+      limit: '100',
+    });
+    const response = await requestJson(config, `/api/runs/${runId}/events?${search}`, { accessToken });
+    const events = Array.isArray(response.data) ? response.data : [];
+    logStep('poll.agent-trace-event', { runId, events: events.length });
+    return events.length > 0 ? events : null;
+  }, `agent trace event for run ${runId}`);
 }
 
 async function pollUntil(config, probe, label) {
@@ -377,6 +431,10 @@ function readBoolean(value, fallback) {
 
 function normalizeExpectedStatus(value) {
   return String(value ?? DEFAULT_EXPECTED_STATUS).trim().toUpperCase();
+}
+
+function normalizeExecutionMode(value) {
+  return String(value ?? 'scenario').trim().toLowerCase();
 }
 
 function sleep(durationMs) {

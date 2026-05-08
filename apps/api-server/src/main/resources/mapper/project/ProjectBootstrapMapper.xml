@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.wedge.project.infrastructure.ProjectBootstrapMapper">
+    <select id="findFirstAccessibleProjectId" resultType="java.util.UUID">
+        SELECT p.id
+        FROM project_member pm
+        JOIN project p ON p.id = pm.project_id
+        WHERE pm.user_id = #{userId}
+          AND p.status = 'ACTIVE'
+          AND p.deleted_at IS NULL
+        ORDER BY p.created_at ASC, p.id ASC
+        LIMIT 1
+    </select>
+
+    <select id="findDefaultScenarioTemplateVersionId" resultType="java.util.UUID">
+        SELECT stv.id
+        FROM scenario_template_version stv
+        JOIN scenario_template st ON st.id = stv.template_id
+        WHERE st.template_key = #{templateKey}
+          AND st.status = 'ACTIVE'
+          AND stv.is_default = TRUE
+        ORDER BY stv.created_at DESC, stv.id ASC
+        LIMIT 1
+    </select>
+
+    <insert id="upsertWorkspace">
+        INSERT INTO workspace (id, name, slug, created_by)
+        VALUES (#{workspaceId}, #{name}, #{slug}, #{createdBy,jdbcType=OTHER})
+        ON CONFLICT (slug) DO UPDATE SET
+            name = EXCLUDED.name,
+            created_by = COALESCE(workspace.created_by, EXCLUDED.created_by),
+            deleted_at = NULL,
+            updated_at = NOW()
+    </insert>
+
+    <insert id="upsertWorkspaceMember">
+        INSERT INTO workspace_member (workspace_id, user_id, role, status)
+        VALUES (#{workspaceId}, #{userId,jdbcType=OTHER}, #{role}, #{status})
+        ON CONFLICT (workspace_id, user_id) DO UPDATE SET
+            role = EXCLUDED.role,
+            status = EXCLUDED.status,
+            updated_at = NOW()
+    </insert>
+
+    <insert id="upsertProject">
+        INSERT INTO project (id, workspace_id, name, project_key, base_url, description, status, created_by)
+        VALUES (#{projectId}, #{workspaceId}, #{name}, #{projectKey}, #{baseUrl}, #{description}, 'ACTIVE', #{createdBy,jdbcType=OTHER})
+        ON CONFLICT (workspace_id, project_key) DO UPDATE SET
+            name = EXCLUDED.name,
+            base_url = EXCLUDED.base_url,
+            description = EXCLUDED.description,
+            status = 'ACTIVE',
+            deleted_at = NULL,
+            updated_at = NOW()
+    </insert>
+
+    <insert id="upsertProjectMember">
+        INSERT INTO project_member (project_id, user_id, role)
+        VALUES (#{projectId}, #{userId,jdbcType=OTHER}, #{role})
+        ON CONFLICT (project_id, user_id) DO UPDATE SET
+            role = EXCLUDED.role,
+            updated_at = NOW()
+    </insert>
+
+    <insert id="upsertScenarioTemplate">
+        INSERT INTO scenario_template (id, template_key, name, description, category, status)
+        VALUES (#{templateId}, #{templateKey}, #{name}, #{description}, #{category}, #{status})
+        ON CONFLICT (template_key) DO UPDATE SET
+            name = EXCLUDED.name,
+            description = EXCLUDED.description,
+            category = EXCLUDED.category,
+            status = EXCLUDED.status,
+            updated_at = NOW()
+    </insert>
+
+    <insert id="upsertScenarioTemplateVersion">
+        INSERT INTO scenario_template_version (
+            id, template_id, version_label, scenario_schema_version, definition_jsonb, is_default
+        )
+        VALUES (
+            #{versionId}, #{templateId}, #{versionLabel}, #{schemaVersion}, CAST(#{definitionJsonb} AS jsonb), #{isDefault}
+        )
+        ON CONFLICT (template_id, version_label) DO UPDATE SET
+            scenario_schema_version = EXCLUDED.scenario_schema_version,
+            definition_jsonb = EXCLUDED.definition_jsonb,
+            is_default = EXCLUDED.is_default
+    </insert>
+</mapper>

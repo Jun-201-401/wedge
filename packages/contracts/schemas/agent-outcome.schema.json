@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wedge.example.com/contracts/schemas/agent-outcome.schema.json",
+  "title": "Runner Agent Outcome",
+  "description": "Terminal or in-progress AgentTrace outcome summary.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "status": {
+      "type": "string",
+      "enum": ["RUNNING", "SUCCESS", "POLICY_BLOCKED", "BLOCKED", "FAILED", "EXHAUSTED"]
+    },
+    "reason": {
+      "type": "string",
+      "minLength": 1
+    }
+  },
+  "required": ["status", "reason"]
+}

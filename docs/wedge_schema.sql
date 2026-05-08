@@ -188,7 +188,7 @@ CREATE TABLE test_run (
     goal                TEXT,
     device_preset       VARCHAR(32) NOT NULL CHECK (device_preset IN ('desktop', 'mobile', 'tablet')),
     environment_jsonb   JSONB NOT NULL DEFAULT '{}'::jsonb,
-    scenario_template_version_id UUID NOT NULL REFERENCES scenario_template_version(id),
+    scenario_template_version_id UUID REFERENCES scenario_template_version(id),
     source_discovery_id UUID REFERENCES site_discovery(id) ON DELETE SET NULL,
     scenario_plan_schema_version VARCHAR(32),
     scenario_plan_jsonb JSONB NOT NULL,

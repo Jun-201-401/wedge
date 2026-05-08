@@ -2,8 +2,6 @@ package com.wedge.run.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -107,6 +105,36 @@ class RunServiceTest {
     }
 
     @Test
+    void plannedScenarioStopCompletesRunningRun() {
+        RunResponse running = sampleRun(RunStatus.RUNNING, ResultCompleteness.NONE);
+        RunResponse completed = sampleRun(running.id(), RunStatus.COMPLETED, ResultCompleteness.FINAL);
+
+        when(runPersistenceAdapter.findRun(running.id())).thenReturn(Optional.of(running));
+        when(runPersistenceAdapter.updateExecutionState(running, RunStatus.COMPLETED, ResultCompleteness.FINAL))
+                .thenReturn(completed);
+
+        RunResponse result = runService.finishRun(running.id(), true);
+
+        assertThat(result.status()).isEqualTo(RunStatus.COMPLETED);
+        assertThat(result.resultCompleteness()).isEqualTo(ResultCompleteness.FINAL);
+    }
+
+    @Test
+    void explicitStopRequestEndsAsStoppedWhenRunnerReportsStopped() {
+        RunResponse stopRequested = sampleRun(RunStatus.STOP_REQUESTED, ResultCompleteness.PARTIAL);
+        RunResponse stopped = sampleRun(stopRequested.id(), RunStatus.STOPPED, ResultCompleteness.PARTIAL);
+
+        when(runPersistenceAdapter.findRun(stopRequested.id())).thenReturn(Optional.of(stopRequested));
+        when(runPersistenceAdapter.updateExecutionState(stopRequested, RunStatus.STOPPED, ResultCompleteness.PARTIAL))
+                .thenReturn(stopped);
+
+        RunResponse result = runService.finishRun(stopRequested.id(), true);
+
+        assertThat(result.status()).isEqualTo(RunStatus.STOPPED);
+        assertThat(result.resultCompleteness()).isEqualTo(ResultCompleteness.PARTIAL);
+    }
+
+    @Test
     void listRunEventsReturnsLimitedPageAndNextCursor() {
         UUID runId = UUID.randomUUID();
         UUID stepId = UUID.randomUUID();
@@ -163,8 +191,9 @@ class RunServiceTest {
     }
 
     @Test
-    void startRunFailsWhenMaterializedScenarioPlanIsMissing() {
+    void startRunQueuesAgentExecuteWhenScenarioPlanIsMissing() {
         RunResponse created = sampleRun(RunStatus.CREATED, ResultCompleteness.NONE);
+        RunResponse queued = sampleRun(created.id(), RunStatus.QUEUED, ResultCompleteness.NONE);
         RunExecutionRequestSource executionRequestSource = new RunExecutionRequestSource(
                 created.id(),
                 created.projectId(),
@@ -172,39 +201,50 @@ class RunServiceTest {
                 created.startUrl(),
                 created.goal(),
                 created.devicePreset(),
-                created.scenarioTemplateVersionId(),
-                Map.of()
-        );
-
-        when(runPersistenceAdapter.findRun(created.id())).thenReturn(Optional.of(created));
-        when(runPersistenceAdapter.findExecutionRequestSource(created.id())).thenReturn(Optional.of(executionRequestSource));
-        when(runPersistenceAdapter.updateExecutionState(created, RunStatus.QUEUED, ResultCompleteness.NONE))
-                .thenReturn(sampleRun(created.id(), RunStatus.QUEUED, ResultCompleteness.NONE));
-        when(runExecuteRequestMessageFactory.create(executionRequestSource))
-                .thenThrow(new IllegalStateException("Cannot publish run.execute.request without a materialized scenarioPlan"));
-
-        assertThatThrownBy(() -> runService.startRun(created.id()))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("materialized scenarioPlan");
-        verify(outboxMessagePersistenceAdapter, never()).appendRunExecuteMessage(any());
-    }
-
-    @Test
-    void createRunRejectsMissingScenarioPlan() {
-        RunCreateRequest request = new RunCreateRequest(
-                UUID.randomUUID(),
-                "Landing CTA audit",
-                URI.create("https://example.com"),
-                "무료 체험 CTA까지의 흐름 점검",
-                "desktop",
-                UUID.randomUUID(),
                 null,
                 Map.of()
         );
+        RunExecuteRequestMessage message = new RunExecuteRequestMessage(
+                UUID.randomUUID().toString(),
+                "agent.execute.request",
+                "0.1",
+                "2026-05-08T00:00:00Z",
+                "spring-api",
+                created.id().toString(),
+                "agent:" + created.id(),
+                Map.of("agentTask", Map.of("run_id", created.id().toString()))
+        );
+        UUID outboxMessageId = UUID.randomUUID();
 
-        assertThatThrownBy(() -> runService.createRun(request))
-                .isInstanceOf(BusinessException.class)
-                .hasMessage("scenarioPlan is required.");
+        when(runPersistenceAdapter.findRun(created.id())).thenReturn(Optional.of(created));
+        when(runPersistenceAdapter.findExecutionRequestSource(created.id())).thenReturn(Optional.of(executionRequestSource));
+        when(runPersistenceAdapter.updateExecutionState(created, RunStatus.QUEUED, ResultCompleteness.NONE)).thenReturn(queued);
+        when(runExecuteRequestMessageFactory.create(executionRequestSource)).thenReturn(message);
+        when(outboxMessagePersistenceAdapter.appendRunExecuteMessage(message)).thenReturn(outboxMessageId);
+
+        RunResponse started = runService.startRun(created.id());
+
+        assertThat(started.status()).isEqualTo(RunStatus.QUEUED);
+        verify(outboxMessagePersistenceAdapter).appendRunExecuteMessage(message);
+    }
+
+    @Test
+    void createRunAcceptsMissingScenarioPlanForAgentExecution() {
+        RunCreateRequest request = new RunCreateRequest(
+                UUID.randomUUID(),
+                "Checkout Agent audit",
+                URI.create("https://example.com/product/sample"),
+                "결제 없이 checkout 진입 경로 확인",
+                "desktop",
+                null,
+                null,
+                Map.of()
+        );
+        RunResponse created = sampleRun(RunStatus.CREATED, ResultCompleteness.NONE);
+
+        when(runPersistenceAdapter.createRun(request)).thenReturn(created);
+
+        assertThat(runService.createRun(request)).isEqualTo(created);
     }
 
     @Test

@@ -1,9 +1,9 @@
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { createDiscovery, getDiscovery } from '../../api/discoveries';
+import { readCurrentUser } from '../../api/authSession';
 import { readApiValidationFields, WedgeApiError } from '../../api/http';
 import { createRun, startRun } from '../../api/runs';
-import { confirmScenarioAuthoringCandidate, createScenarioAuthoringJob } from '../../api/scenario-authoring';
 import { FIRST_WORD_DELAY_MS, WORD_ROTATION_INTERVAL_MS } from '../../features/landing-vision';
 import { LOGIN_PATH } from '../../shared/lib/appPaths';
 import { pushAppPath } from '../../shared/lib/navigation';
@@ -18,6 +18,7 @@ import {
   readCreateRunContextFromEnv,
   type CreateAnalysisRouteOptions,
   type CreateAnalysisRouteState,
+  type CreateRunContext,
   withCreateRunContextFallback,
 } from './lib/createAnalysisRouteState';
 import { normalizeAnalysisUrl } from './lib/createAnalysisUrl';
@@ -29,8 +30,6 @@ import {
   type ScenarioRecommendationViewModel,
 } from './lib/discoveryRecommendations';
 import { createDiscoveryIdempotencyKey, isDiscoveryBusy } from './lib/discoveryPreflight';
-import { buildPrototypeScenarioPlan } from './lib/prototypeScenarioPlan';
-import { createScenarioAuthoringIdempotencyKey, isScenarioAuthoringSupportedType, readScenarioPlanString, requireConfirmedScenarioPlanStartUrl, selectScenarioAuthoringCandidate } from './lib/scenarioAuthoring';
 import './CreateAnalysisPage.css';
 
 type DiscoveryStepStatus = 'complete' | 'active' | 'pending';
@@ -162,14 +161,33 @@ const CREATE_ANALYSIS_ROUTE_OPTIONS: CreateAnalysisRouteOptions<ScenarioId, Scen
 const EXPLICIT_DEV_CREATE_RUN_CONTEXT = readCreateRunContextFromEnv(import.meta.env);
 const DEV_CREATE_RUN_CONTEXT = import.meta.env.DEV
   ? {
-      scenarioTemplateVersionId: MVP_SMOKE_CREATE_RUN_CONTEXT.scenarioTemplateVersionId,
+      ...MVP_SMOKE_CREATE_RUN_CONTEXT,
       ...EXPLICIT_DEV_CREATE_RUN_CONTEXT,
     }
   : EXPLICIT_DEV_CREATE_RUN_CONTEXT;
 
 interface CreateRunIds {
   projectId: string;
-  scenarioTemplateVersionId: string;
+}
+
+function readUserCreateRunContext(): Partial<CreateRunContext> {
+  const currentUser = readCurrentUser();
+
+  if (!currentUser?.defaultProjectId) {
+    return {};
+  }
+
+  return {
+    projectId: currentUser.defaultProjectId,
+    ...(currentUser.defaultScenarioTemplateVersionId ? { scenarioTemplateVersionId: currentUser.defaultScenarioTemplateVersionId } : {}),
+  };
+}
+
+function getCreateRunContextFallback(): Partial<CreateRunContext> {
+  return {
+    ...DEV_CREATE_RUN_CONTEXT,
+    ...readUserCreateRunContext(),
+  };
 }
 
 function getStepStatusLabel(status: DiscoveryStepStatus) {
@@ -210,7 +228,7 @@ function getInitialRouteState(): CreateAnalysisPageRouteState {
 
   return withCreateRunContextFallback(
     parseCreateAnalysisRouteState(window.location.search, CREATE_ANALYSIS_ROUTE_OPTIONS),
-    DEV_CREATE_RUN_CONTEXT,
+    getCreateRunContextFallback(),
   );
 }
 
@@ -233,15 +251,13 @@ function isUuid(value: string | null): value is string {
 
 function getCreateRunIds(routeState: CreateAnalysisPageRouteState): CreateRunIds | null {
   const projectId = routeState.projectId ?? null;
-  const scenarioTemplateVersionId = routeState.scenarioTemplateVersionId ?? null;
 
-  if (!isUuid(projectId) || !isUuid(scenarioTemplateVersionId)) {
+  if (!isUuid(projectId)) {
     return null;
   }
 
   return {
     projectId,
-    scenarioTemplateVersionId,
   };
 }
 
@@ -721,7 +737,7 @@ export function CreateAnalysisPage({ isAuthenticated = false, isAuthChecking = f
   const discoveryBusy = isDiscoveryBusy(discoveryState.kind);
   const canSubmit = urlInput.trim().length > 0 && !discoveryBusy;
   const navigateToRouteState = useCallback((nextRouteState: CreateAnalysisPageRouteState, historyMode: 'push' | 'replace' = 'push') => {
-    const routeStateWithDevContext = withCreateRunContextFallback(nextRouteState, DEV_CREATE_RUN_CONTEXT);
+    const routeStateWithDevContext = withCreateRunContextFallback(nextRouteState, getCreateRunContextFallback());
     const nextPath = buildCreateAnalysisPath(routeStateWithDevContext, CREATE_ANALYSIS_ROUTE_OPTIONS);
 
     if (historyMode === 'replace') {
@@ -738,7 +754,7 @@ export function CreateAnalysisPage({ isAuthenticated = false, isAuthChecking = f
       discoveryRequestSeq.current += 1;
       setRouteState(withCreateRunContextFallback(
         parseCreateAnalysisRouteState(window.location.search, CREATE_ANALYSIS_ROUTE_OPTIONS),
-        DEV_CREATE_RUN_CONTEXT,
+        getCreateRunContextFallback(),
       ));
     };
 
@@ -975,7 +991,7 @@ export function CreateAnalysisPage({ isAuthenticated = false, isAuthChecking = f
     setRunStartError('');
 
     if (!createRunIds) {
-      setRunStartError('분석 실행에 필요한 프로젝트 또는 시나리오 설정을 확인하지 못했습니다. URL 사전 탐색을 다시 진행해주세요.');
+      setRunStartError('분석 실행에 필요한 프로젝트 설정을 확인하지 못했습니다. URL 사전 탐색을 다시 진행해주세요.');
       setIsCreatingRun(false);
       return;
     }
@@ -983,12 +999,11 @@ export function CreateAnalysisPage({ isAuthenticated = false, isAuthChecking = f
     let createdRunId = '';
 
     try {
-      let scenarioPlan: Record<string, unknown> = buildPrototypeScenarioPlan({ submittedUrl, selectedScenario, selectedDepth });
-      let runStartUrl = submittedUrl;
-      let runGoal = selectedScenario.summary;
+      const runStartUrl = selectedScenario.suggestedStartUrl ?? submittedUrl;
+      const runGoal = selectedScenario.summary;
       const scenarioOverrides: Record<string, unknown> = {
         depthId: selectedDepthId,
-        source: 'create-analysis-ready',
+        source: 'create-analysis-agent-ready',
         sourceDiscoveryId: selectedScenario.sourceDiscoveryId ?? null,
         recommendationId: selectedScenario.recommendationId ?? null,
         scenarioType: selectedScenario.scenarioType,
@@ -998,74 +1013,17 @@ export function CreateAnalysisPage({ isAuthenticated = false, isAuthChecking = f
         suggestedTarget: selectedScenario.suggestedTarget ?? null,
       };
 
-      if (selectedScenario.isRunnable && selectedScenario.sourceDiscoveryId && isScenarioAuthoringSupportedType(selectedScenario.scenarioType)) {
-        const authoring = await createScenarioAuthoringJob({
-          projectId: createRunIds.projectId,
-          sourceDiscoveryId: selectedScenario.sourceDiscoveryId,
-          selectedRecommendationId: selectedScenario.recommendationId ?? null,
-          requestedGoal: selectedScenario.summary,
-          preferredScenarioType: selectedScenario.scenarioType,
-          selectedRecommendation: {
-            recommendationId: selectedScenario.recommendationId ?? null,
-            scenarioType: selectedScenario.scenarioType,
-            recommendationLevel: selectedScenario.level,
-            confidence: selectedScenario.confidence,
-            evidenceRefs: selectedScenario.evidenceRefs,
-            evidenceSummary: selectedScenario.evidenceSummary ?? null,
-            suggestedStartUrl: selectedScenario.suggestedStartUrl ?? null,
-            suggestedTarget: selectedScenario.suggestedTarget ?? null,
-          },
-          constraints: {
-            depthId: selectedDepthId,
-            depthTitle: selectedDepth.title,
-            depthDetail: selectedDepth.detail,
-          },
-          providerPolicy: {
-            providerOrder: ['RULE_BASED'],
-            timeoutMs: 10000,
-            fallbackAllowed: true,
-            approvalRequired: true,
-          },
-        }, {
-          idempotencyKey: createScenarioAuthoringIdempotencyKey(
-            createRunIds.projectId,
-            selectedScenario.sourceDiscoveryId,
-            selectedScenario.scenarioType,
-            selectedDepthId,
-          ),
-        });
-
-        const candidate = selectScenarioAuthoringCandidate(authoring.data);
-        if (!candidate || authoring.data.status !== 'SUCCEEDED') {
-          throw new Error('ScenarioAuthoring did not produce a valid ScenarioPlan candidate.');
-        }
-
-        const confirmed = await confirmScenarioAuthoringCandidate(authoring.data.authoringJobId, {
-          candidateId: candidate.candidate_id,
-        });
-        scenarioPlan = confirmed.data.confirmedCandidate.scenario_plan;
-        runStartUrl = requireConfirmedScenarioPlanStartUrl(scenarioPlan);
-        runGoal = readScenarioPlanString(scenarioPlan, 'goal') ?? selectedScenario.summary;
-        scenarioOverrides.source = 'scenario-authoring-confirm';
-        scenarioOverrides.sourceAuthoringJobId = confirmed.data.authoringJob.authoringJobId;
-        scenarioOverrides.sourceAuthoringCandidateId = confirmed.data.confirmedCandidate.candidate_id;
-        scenarioOverrides.providerOrder = confirmed.data.authoringJob.providerOrder;
-        scenarioOverrides.authoringValidation = confirmed.data.confirmedCandidate.validation;
-      }
-
       const response = await createRun({
         projectId: createRunIds.projectId,
         name: selectedScenario.title,
         startUrl: runStartUrl,
         goal: runGoal,
         devicePreset: 'desktop',
-        scenarioTemplateVersionId: createRunIds.scenarioTemplateVersionId,
         scenarioOverrides,
-        scenarioPlan,
       });
       createdRunId = response.data.id;
     } catch {
-      setRunStartError('분석 실행 준비에 실패했습니다. 프로젝트와 시나리오 설정을 확인한 뒤 다시 시도해주세요.');
+      setRunStartError('분석 실행 준비에 실패했습니다. 프로젝트 설정과 URL을 확인한 뒤 다시 시도해주세요.');
       setIsCreatingRun(false);
       return;
     }

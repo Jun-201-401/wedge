@@ -20,6 +20,7 @@ public class OutboxMessagePersistenceAdapter {
     private static final String ANALYSIS_JOB_AGGREGATE_TYPE = "ANALYSIS_JOB";
     private static final String DISCOVERY_AGGREGATE_TYPE = "DISCOVERY";
     private static final String RUN_EXECUTE_EVENT_TYPE = "run.execute.request";
+    private static final String AGENT_EXECUTE_EVENT_TYPE = "agent.execute.request";
     private static final String DISCOVERY_EXECUTE_EVENT_TYPE = "discovery.execute.request";
     private static final String ANALYSIS_REQUEST_EVENT_TYPE = "analysis.request";
     private static final long PENDING_RETRY_GRACE_SECONDS = 5;
@@ -71,7 +72,16 @@ public class OutboxMessagePersistenceAdapter {
     }
 
     public Optional<RunExecuteRequestMessage> findRunExecuteMessageForPublish(UUID outboxMessageId) {
-        return outboxMessageMapper.findById(outboxMessageId, RUN_EXECUTE_EVENT_TYPE, MAX_PUBLISH_ATTEMPTS)
+        return findRunnerRequestMessageForPublish(outboxMessageId);
+    }
+
+    public Optional<RunExecuteRequestMessage> findRunnerRequestMessageForPublish(UUID outboxMessageId) {
+        Optional<RunExecuteRequestMessage> runExecuteMessage = outboxMessageMapper.findById(outboxMessageId, RUN_EXECUTE_EVENT_TYPE, MAX_PUBLISH_ATTEMPTS)
+                .map(this::toRunExecuteRequestMessage);
+        if (runExecuteMessage.isPresent()) {
+            return runExecuteMessage;
+        }
+        return outboxMessageMapper.findById(outboxMessageId, AGENT_EXECUTE_EVENT_TYPE, MAX_PUBLISH_ATTEMPTS)
                 .map(this::toRunExecuteRequestMessage);
     }
 
@@ -86,10 +96,18 @@ public class OutboxMessagePersistenceAdapter {
     }
 
     public List<RunExecuteOutboxMessage> findDueRunExecuteMessages(int limit) {
+        return findDueMessages(RUN_EXECUTE_EVENT_TYPE, limit);
+    }
+
+    public List<RunExecuteOutboxMessage> findDueAgentExecuteMessages(int limit) {
+        return findDueMessages(AGENT_EXECUTE_EVENT_TYPE, limit);
+    }
+
+    private List<RunExecuteOutboxMessage> findDueMessages(String eventType, int limit) {
         OffsetDateTime now = OffsetDateTime.now();
         OffsetDateTime pendingBefore = now.minusSeconds(PENDING_RETRY_GRACE_SECONDS);
         return outboxMessageMapper.findDueMessages(
-                        RUN_EXECUTE_EVENT_TYPE,
+                        eventType,
                         now,
                         pendingBefore,
                         MAX_PUBLISH_ATTEMPTS,

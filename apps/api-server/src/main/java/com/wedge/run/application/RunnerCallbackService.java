@@ -268,7 +268,7 @@ public class RunnerCallbackService {
     private Map<String, UUID> resolveCheckpointSteps(UUID runId, SaveRunCheckpointsCommand command) {
         Map<String, UUID> stepIdsByKey = new LinkedHashMap<>();
         for (SaveRunCheckpointCommand checkpoint : command.checkpoints()) {
-            RunPersistenceAdapter.ResolvedStep step = runPersistenceAdapter.resolveStep(runId, checkpoint.stepKey());
+            RunPersistenceAdapter.ResolvedStep step = runPersistenceAdapter.resolveOrCreateAgentStep(runId, checkpoint.stepKey(), checkpoint.stage());
             runPersistenceAdapter.updateCurrentStepOrder(runId, step.stepOrder());
             stepIdsByKey.put(checkpoint.stepKey(), step.id());
         }
@@ -281,7 +281,7 @@ public class RunnerCallbackService {
             if (isRunScopedAgentArtifact(artifact)) {
                 continue;
             }
-            RunPersistenceAdapter.ResolvedStep step = runPersistenceAdapter.resolveStep(runId, artifact.stepKey());
+            RunPersistenceAdapter.ResolvedStep step = runPersistenceAdapter.resolveOrCreateAgentStep(runId, artifact.stepKey(), "VALUE");
             runPersistenceAdapter.updateCurrentStepOrder(runId, step.stepOrder());
             stepIdsByKey.put(artifact.stepKey(), step.id());
         }

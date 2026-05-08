@@ -74,10 +74,13 @@ public class RunPersistenceAdapter {
 
     public RunResponse createRun(RunCreateRequest request) {
         RunRecord record = RunRecord.created(request);
-        record.setScenarioPlanSchemaVersion(resolveScenarioPlanSchemaVersion(request.scenarioPlan()));
-        record.setScenarioPlanJson(writeJsonOrEmpty(request.scenarioPlan()));
+        Map<String, Object> scenarioPlan = request.scenarioPlan();
+        record.setScenarioPlanSchemaVersion(resolveScenarioPlanSchemaVersion(scenarioPlan));
+        record.setScenarioPlanJson(writeJsonOrEmpty(scenarioPlan));
         runMapper.insert(record);
-        insertScenarioSteps(record.getId(), request.scenarioPlan());
+        if (hasScenarioPlan(scenarioPlan)) {
+            insertScenarioSteps(record.getId(), scenarioPlan);
+        }
         return toResponse(record);
     }
 
@@ -128,11 +131,60 @@ public class RunPersistenceAdapter {
 
     public ResolvedStep resolveStep(UUID runId, String stepKey) {
         return runMapper.findStepByRunIdAndStepKey(runId, stepKey)
-                .map(step -> new ResolvedStep(step.getId(), step.getStepOrder(), step.getStepKey(), step.getStatus()))
-                .orElseThrow(() -> new BusinessException(
-                        ErrorCode.INVALID_REQUEST,
-                        "Runner callback step key was not found for the run: " + stepKey
-                ));
+                .map(this::toResolvedStep)
+                .orElseThrow(() -> missingStep(stepKey));
+    }
+
+    public ResolvedStep resolveOrCreateAgentStep(UUID runId, String stepKey, String stage) {
+        return runMapper.findStepByRunIdAndStepKey(runId, stepKey)
+                .map(this::toResolvedStep)
+                .orElseGet(() -> createAgentStep(runId, stepKey, stage));
+    }
+
+    private ResolvedStep createAgentStep(UUID runId, String stepKey, String stage) {
+        if (!stepKey.startsWith("agent_turn_")) {
+            throw missingStep(stepKey);
+        }
+
+        RunStepRecord record = new RunStepRecord();
+        record.setId(UUID.randomUUID());
+        record.setRunId(runId);
+        record.setStepOrder(resolveAgentStepOrder(stepKey));
+        record.setStepKey(stepKey);
+        record.setStepName("Agent turn " + record.getStepOrder());
+        record.setStage(resolveAgentStage(stage));
+        record.setStepType("CHECKPOINT");
+        record.setStatus(StepStatus.PENDING);
+        runMapper.insertStep(record);
+        return toResolvedStep(record);
+    }
+
+    private ResolvedStep toResolvedStep(RunStepRecord step) {
+        return new ResolvedStep(step.getId(), step.getStepOrder(), step.getStepKey(), step.getStatus());
+    }
+
+    private BusinessException missingStep(String stepKey) {
+        return new BusinessException(
+                ErrorCode.INVALID_REQUEST,
+                "Runner callback step key was not found for the run: " + stepKey
+        );
+    }
+
+    private int resolveAgentStepOrder(String stepKey) {
+        String rawOrder = stepKey.substring("agent_turn_".length());
+        try {
+            int order = Integer.parseInt(rawOrder);
+            return order > 0 ? order : 1;
+        } catch (NumberFormatException ignored) {
+            return 1;
+        }
+    }
+
+    private String resolveAgentStage(String stage) {
+        return switch (stage == null ? "" : stage) {
+            case "FIRST_VIEW", "VALUE", "CTA", "INPUT", "COMMIT" -> stage;
+            default -> "VALUE";
+        };
     }
 
     public void updateCurrentStepOrder(UUID runId, int stepOrder) {
@@ -176,6 +228,10 @@ public class RunPersistenceAdapter {
                 writeJson(payload),
                 occurredAt
         );
+    }
+
+    private boolean hasScenarioPlan(Map<String, Object> scenarioPlan) {
+        return scenarioPlan != null && !scenarioPlan.isEmpty();
     }
 
     private void insertScenarioSteps(UUID runId, Map<String, Object> scenarioPlan) {

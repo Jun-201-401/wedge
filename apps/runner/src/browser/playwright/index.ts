@@ -110,6 +110,30 @@ interface SettleAttempt {
   timeoutDetails: SettleTimeoutDetails;
 }
 
+type ReplayHintLocatorRecipeEntry =
+  | {
+      strategy: "selector";
+      selector: string;
+      confidence?: number;
+    }
+  | {
+      strategy: "role_text";
+      role: string;
+      text: string;
+      confidence?: number;
+    }
+  | {
+      strategy: "href";
+      href: string;
+      confidence?: number;
+    }
+  | {
+      strategy: "tag_text";
+      tag: string;
+      text: string;
+      confidence?: number;
+    };
+
 class SettleTimeoutError extends Error {
   readonly details: Record<string, unknown>;
 
@@ -330,7 +354,7 @@ class RealPlaywrightSession implements BrowserSession {
       }
       case "click": {
         assertScenarioActionAllowed(this.plan, this.state.currentUrl, action);
-        const clicked = await this.tryClickTarget(action.target);
+        const clicked = await this.tryClickTarget(action);
         if (!clicked) {
           const nextUrl = inferNavigationUrl(this.state.currentUrl, action.target);
           assertScenarioActionAllowed(this.plan, this.state.currentUrl, action, nextUrl);
@@ -596,8 +620,8 @@ class RealPlaywrightSession implements BrowserSession {
     });
   }
 
-  private async tryClickTarget(target: TargetDescriptor | undefined): Promise<boolean> {
-    const clicked = await tryCandidateLocators(this.page, target, async (locator) => {
+  private async tryClickTarget(action: ScenarioAction): Promise<boolean> {
+    const clicked = await tryCandidateLocators(this.page, action.target, action.options, async (locator) => {
       await locator.click({
         timeout: DEFAULT_LOCATOR_TIMEOUT_MS
       });
@@ -612,7 +636,7 @@ class RealPlaywrightSession implements BrowserSession {
 
   private async tryFillTarget(target: TargetDescriptor | undefined, value: unknown, fallbackKey: string): Promise<boolean> {
     const nextValue = stringifyValue(value);
-    const filled = await tryCandidateLocators(this.page, target, async (locator) => {
+    const filled = await tryCandidateLocators(this.page, target, undefined, async (locator) => {
       await locator.fill(nextValue, {
         timeout: DEFAULT_LOCATOR_TIMEOUT_MS
       });
@@ -628,7 +652,7 @@ class RealPlaywrightSession implements BrowserSession {
 
   private async trySelectTarget(target: TargetDescriptor | undefined, value: unknown, fallbackKey: string): Promise<boolean> {
     const nextValue = stringifyValue(value);
-    const selected = await tryCandidateLocators(this.page, target, async (locator) => {
+    const selected = await tryCandidateLocators(this.page, target, undefined, async (locator) => {
       try {
         await locator.selectOption(nextValue, {
           timeout: DEFAULT_LOCATOR_TIMEOUT_MS
@@ -654,7 +678,7 @@ class RealPlaywrightSession implements BrowserSession {
   }
 
   private async tryHoverTarget(target: TargetDescriptor | undefined): Promise<boolean> {
-    const hovered = await tryCandidateLocators(this.page, target, async (locator) => {
+    const hovered = await tryCandidateLocators(this.page, target, undefined, async (locator) => {
       await locator.hover({
         timeout: DEFAULT_LOCATOR_TIMEOUT_MS
       });
@@ -670,7 +694,7 @@ class RealPlaywrightSession implements BrowserSession {
   private async waitForAction(action: ScenarioAction): Promise<void> {
     const timeoutMs = resolveWaitForTimeoutMs(action);
     const locatorState = resolveWaitForLocatorState(action);
-    const matched = await tryCandidateLocators(this.page, action.target, async (locator) => {
+    const matched = await tryCandidateLocators(this.page, action.target, undefined, async (locator) => {
       await locator.waitFor({
         state: locatorState,
         timeout: timeoutMs
@@ -704,7 +728,7 @@ class RealPlaywrightSession implements BrowserSession {
     state: "visible" | "hidden",
     timeoutMs: number
   ): Promise<void> {
-    const settled = await tryCandidateLocators(this.page, target, async (locator) => {
+    const settled = await tryCandidateLocators(this.page, target, undefined, async (locator) => {
       await locator.waitFor({
         state,
         timeout: timeoutMs
@@ -1123,13 +1147,20 @@ function inferNavigationUrl(currentUrl: string, target: TargetDescriptor | undef
   return null;
 }
 
-function buildCandidateLocators(page: Page, target: TargetDescriptor | undefined): Locator[] {
+function buildCandidateLocators(
+  page: Page,
+  target: TargetDescriptor | undefined,
+  options?: Record<string, unknown>
+): Locator[] {
   if (!target) {
-    return [];
+    return buildReplayHintLocators(page, options);
   }
 
   if (typeof target === "string") {
-    return [page.getByText(target)];
+    return [
+      page.getByText(target),
+      ...buildReplayHintLocators(page, options)
+    ];
   }
 
   const candidates: Locator[] = [];
@@ -1212,7 +1243,75 @@ function buildCandidateLocators(page: Page, target: TargetDescriptor | undefined
     }
   }
 
-  return candidates;
+  return [
+    ...candidates,
+    ...buildReplayHintLocators(page, options)
+  ];
+}
+
+function buildReplayHintLocators(page: Page, options?: Record<string, unknown>): Locator[] {
+  const replayHint = options?.replay_hint;
+  if (!replayHint || typeof replayHint !== "object" || Array.isArray(replayHint)) {
+    return [];
+  }
+
+  const locatorRecipe = (replayHint as Record<string, unknown>).locator_recipe;
+  if (!Array.isArray(locatorRecipe)) {
+    return [];
+  }
+
+  return locatorRecipe.flatMap((entry) => buildReplayRecipeLocator(page, entry));
+}
+
+function buildReplayRecipeLocator(page: Page, entry: unknown): Locator[] {
+  if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+    return [];
+  }
+
+  const recipe = entry as Partial<ReplayHintLocatorRecipeEntry>;
+  switch (recipe.strategy) {
+    case "selector": {
+      return typeof recipe.selector === "string" && recipe.selector.length > 0
+        ? [page.locator(recipe.selector)]
+        : [];
+    }
+    case "role_text": {
+      return typeof recipe.role === "string" && recipe.role.length > 0 && typeof recipe.text === "string" && recipe.text.length > 0
+        ? [page.getByRole(recipe.role as Parameters<Page["getByRole"]>[0], { name: recipe.text })]
+        : [];
+    }
+    case "href": {
+      return typeof recipe.href === "string" && recipe.href.length > 0
+        ? hrefLocators(page, recipe.href)
+        : [];
+    }
+    case "tag_text": {
+      return typeof recipe.tag === "string" && recipe.tag.length > 0 && typeof recipe.text === "string" && recipe.text.length > 0
+        ? [page.locator(recipe.tag).filter({ hasText: recipe.text })]
+        : [];
+    }
+    default:
+      return [];
+  }
+}
+
+function hrefLocators(page: Page, href: string): Locator[] {
+  const hrefCandidates = new Set([href]);
+  try {
+    const parsed = new URL(href);
+    hrefCandidates.add(parsed.pathname);
+    hrefCandidates.add(`${parsed.pathname}${parsed.search}`);
+    const fileName = parsed.pathname.split("/").filter(Boolean).at(-1);
+    if (fileName) {
+      hrefCandidates.add(fileName);
+    }
+  } catch {
+    // The original href may already be relative; use it as-is.
+  }
+
+  return [...hrefCandidates]
+    .filter((candidate) => candidate.length > 0)
+    .map((candidate) => page.locator(`a[href*="${escapeCssString(candidate)}"]`));
 }
 
 function escapeCssString(value: string): string {
@@ -1222,9 +1321,10 @@ function escapeCssString(value: string): string {
 async function tryCandidateLocators(
   page: Page,
   target: TargetDescriptor | undefined,
+  options: Record<string, unknown> | undefined,
   run: (locator: Locator) => Promise<void>
 ): Promise<boolean> {
-  for (const locator of buildCandidateLocators(page, target)) {
+  for (const locator of buildCandidateLocators(page, target, options)) {
     try {
       await run(locator.first());
       return true;

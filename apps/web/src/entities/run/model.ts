@@ -29,7 +29,7 @@ export interface Run {
   startUrl: string;
   goal?: string | null;
   devicePreset: DevicePreset;
-  scenarioTemplateVersionId: string;
+  scenarioTemplateVersionId?: string | null;
   status: RunStatus;
   resultCompleteness: ResultCompleteness;
   analysisStatus: AnalysisStatus;
@@ -75,9 +75,9 @@ export interface RunCreateRequest {
   startUrl: string;
   goal?: string | null;
   devicePreset: DevicePreset;
-  scenarioTemplateVersionId: string;
+  scenarioTemplateVersionId?: string | null;
   scenarioOverrides?: Record<string, unknown>;
-  scenarioPlan: Record<string, unknown>;
+  scenarioPlan?: Record<string, unknown>;
 }
 
 export interface RunActionRequest {

@@ -734,8 +734,7 @@ paths:
       - Runs
       operationId: createRun
       summary: 실행 생성
-      description: 분석 실행 단위를 생성한다. Swagger 예시는 회원가입 CTA 점검용 scenarioPlan을 포함하며, projectId와 scenarioTemplateVersionId는 로컬 DB/seed
-        값으로 교체해야 실제 테스트가 가능하다.
+      description: 분석 실행 단위를 생성한다. scenarioPlan을 생략하면 기본 사용자 실행으로 agent.execute.request를 발행하고, scenarioPlan을 포함하면 scripted/replay 실행으로 run.execute.request를 발행한다. Swagger의 replay 예시는 projectId와 scenarioTemplateVersionId를 로컬 DB/seed 값으로 교체해야 실제 테스트가 가능하다.
       security:
       - HumanBearer: []
       parameters:
@@ -751,6 +750,17 @@ paths:
             schema:
               $ref: '#/components/schemas/RunCreateRequest'
             examples:
+              agentDefault:
+                summary: Runner Agent 기본 실행 생성
+                description: scenarioPlan 없이 생성하면 Run 시작 시 agent.execute.request 공식 경로로 발행된다.
+                value:
+                  projectId: 8f06dca8-9c4d-4f20-b1a8-1d5ee40a9923
+                  name: Checkout entry Agent 실행
+                  startUrl: https://example.com/product/sample
+                  goal: 결제나 최종 주문 제출 없이 checkout 진입 경로를 확인한다.
+                  devicePreset: desktop
+                  scenarioOverrides:
+                    source: swagger-agent-default
               signupBasicMvp:
                 summary: Runner smoke 실행 생성
                 description: infra/scripts/seed-real-run-smoke.mjs가 생성하는 projectId/scenarioTemplateVersionId를 사용하는 최소 Runner
@@ -2608,11 +2618,21 @@ components:
           enum:
           - ACTIVE
           - INACTIVE
+        defaultProjectId:
+          type: string
+          format: uuid
+          description: Web analysis default project owned by or accessible to the authenticated user.
+        defaultScenarioTemplateVersionId:
+          type: string
+          format: uuid
+          description: Default scenario template version used when web analysis creates a Run from Discovery.
       required:
       - id
       - email
       - displayName
       - status
+      - defaultProjectId
+      - defaultScenarioTemplateVersionId
     AuthToken:
       type: object
       properties:
@@ -3478,6 +3498,7 @@ components:
         scenarioTemplateVersionId:
           type: string
           format: uuid
+          nullable: true
         status:
           type: string
           enum:
@@ -3539,7 +3560,6 @@ components:
       - startUrl
       - devicePreset
       - scenarioTemplateVersionId
-      - scenarioPlan
       - status
       - resultCompleteness
       - analysisStatus
@@ -3581,6 +3601,7 @@ components:
         scenarioTemplateVersionId:
           type: string
           format: uuid
+          nullable: true
         scenarioOverrides:
           type: object
           additionalProperties: true
@@ -3592,8 +3613,6 @@ components:
       - name
       - startUrl
       - devicePreset
-      - scenarioTemplateVersionId
-      - scenarioPlan
     RunActionRequest:
       type: object
       properties:
@@ -4745,6 +4764,7 @@ components:
               minimum: 0
             stopped:
               type: boolean
+              description: True when runner execution stopped at a planned safety stop condition or after an explicit stop request. Planned scenario stops still complete the run; only a prior STOP_REQUESTED run becomes STOPPED.
           required:
           - completedStepCount
           - failedStepCount

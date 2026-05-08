@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wedge.example.com/contracts/schemas/agent-policy-result.schema.json",
+  "title": "Runner Agent Policy Result",
+  "description": "Result of evaluating a constrained AgentDecision against AgentTask risk and navigation policy.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "allowed": {
+      "type": "boolean"
+    },
+    "reason": {
+      "type": "string",
+      "minLength": 1
+    },
+    "riskClass": {
+      "type": "string",
+      "enum": [
+        "LOW",
+        "EXTERNAL_NAVIGATION",
+        "CHECKOUT_NAVIGATION",
+        "CART_MUTATION",
+        "SHIPPING_FORM_ENTRY",
+        "PAYMENT_INFO_ENTRY",
+        "PAYMENT_COMMIT",
+        "DESTRUCTIVE_ACTION",
+        "EXTERNAL_MESSAGE_SEND"
+      ]
+    }
+  },
+  "required": ["allowed", "reason", "riskClass"]
+}

@@ -38,6 +38,12 @@ test("[Agent Planner] checkout 목표에서는 일반 CTA보다 장바구니 담
     role: "button",
     text: "장바구니 담기"
   });
+  assert.match(decision.replayHint?.candidate_fingerprint ?? "", /^candidate:[a-f0-9]{16}$/);
+  assert.deepEqual(decision.replayHint?.locator_recipe[0], {
+    strategy: "selector",
+    selector: "#add-to-cart",
+    confidence: 0.9
+  });
   assert.match(decision.reason, /cart/);
 });
 

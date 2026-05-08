@@ -11,13 +11,17 @@ import { executeScenario } from "../src/scenario/executor/index.ts";
 import { executeScenarioStep } from "../src/scenario/executor/step-executor.ts";
 import { createArtifactStore } from "../src/storage/index.ts";
 import { registerAgentWorker } from "../src/worker/agent-worker.ts";
+import { exportAgentTraceToScenarioPlan } from "../src/agent/trace-export.ts";
+import type { AgentTrace } from "../src/agent/trace.ts";
 import type {
   AgentEvent,
   AgentTask,
   AgentTraceCallbackPayload,
   Artifact,
   Checkpoint,
+  ScenarioAction,
   ScenarioPlan,
+  ScenarioStage,
   ScenarioStep
 } from "../src/shared/contracts.ts";
 import { createMinimalPlan, createRunnerTestConfig, createStubCallbackClient } from "./support.ts";
@@ -540,6 +544,43 @@ test("[Agent Checkout Smoke] 실제 Playwright 경로에서 장바구니, 카트
     assert.equal(result.traceArtifacts.length, 1);
     assert.equal(result.traceArtifacts[0].artifactType, "TRACE");
     assert.ok(!result.actionCompletedTargets.includes("#pay-now"));
+  } finally {
+    await rm(fixtureRoot, { recursive: true, force: true });
+    await rm(artifactsRoot, { recursive: true, force: true });
+  }
+});
+
+test("[Agent Trace Export Replay] export된 ScenarioPlan은 replay_hint locator로 static Runner에서 재생된다", async () => {
+  const fixtureRoot = await mkdtemp(join(tmpdir(), "wedge-runner-agent-export-replay-site-"));
+  const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-agent-export-replay-artifacts-"));
+
+  try {
+    const { productUrl } = await createAgentCheckoutFixtureSite(fixtureRoot);
+    const task = createAgentCheckoutTask(productUrl);
+    const traceExport = exportAgentTraceToScenarioPlan({
+      task,
+      trace: createReplayHintOnlyCheckoutTrace(task, productUrl),
+      exportedAt: "2026-05-08T00:00:00.000Z"
+    });
+
+    assert.equal(traceExport.status, "EXPORTED");
+    assert.ok(traceExport.scenario_plan);
+    assert.ok(
+      traceExport.scenario_plan.steps
+        .filter((step) => step.action.type === "click")
+        .every((step) => typeof step.action.options?.replay_hint === "object")
+    );
+
+    const result = await executeRealScenarioPlan({
+      runId: "run-agent-export-replay",
+      plan: traceExport.scenario_plan,
+      artifactsRoot
+    });
+
+    assert.equal(result.execution.summary.failedStepCount, 0);
+    assert.equal(result.execution.summary.stopped, true);
+    assert.ok(result.snapshot.finalUrl.endsWith("/checkout.html"));
+    assert.ok(!result.domSnapshots.some((snapshot) => snapshot.includes('data-payment-committed="true"')));
   } finally {
     await rm(fixtureRoot, { recursive: true, force: true });
     await rm(artifactsRoot, { recursive: true, force: true });
@@ -2156,6 +2197,190 @@ async function closeServer(server: ReturnType<typeof createServer>): Promise<voi
       resolve();
     });
   });
+}
+
+function createReplayHintOnlyCheckoutTrace(task: AgentTask, productUrl: string): AgentTrace {
+  const cartUrl = new URL("./cart.html", productUrl).toString();
+  const checkoutUrl = new URL("./checkout.html", productUrl).toString();
+
+  return {
+    schema_version: "0.1",
+    task_id: task.task_id,
+    attempt_id: task.attempt_id,
+    run_id: task.run_id,
+    outcome: {
+      status: "SUCCESS",
+      reason: "Checkout entry reached before payment commit."
+    },
+    turns: [
+      replayTurn({
+        turn: 1,
+        description: "Open product page",
+        targetKey: productUrl,
+        action: {
+          type: "goto",
+          target: {
+            url: productUrl
+          }
+        },
+        finalUrl: productUrl,
+        stage: "FIRST_VIEW"
+      }),
+      replayTurn({
+        turn: 2,
+        description: "Click add to cart via replay hint",
+        targetKey: "stale:add-to-cart",
+        action: {
+          type: "click",
+          target: {
+            selector: "#stale-add-to-cart"
+          },
+          options: {
+            replay_hint: {
+              candidate_fingerprint: "candidate:addtocart000001",
+              locator_recipe: [
+                {
+                  strategy: "role_text",
+                  role: "button",
+                  text: "Add to cart",
+                  confidence: 0.84
+                },
+                {
+                  strategy: "tag_text",
+                  tag: "button",
+                  text: "Add to cart",
+                  confidence: 0.62
+                }
+              ]
+            }
+          }
+        },
+        finalUrl: productUrl,
+        stage: "CTA"
+      }),
+      replayTurn({
+        turn: 3,
+        description: "Open cart via replay hint",
+        targetKey: "stale:cart-link",
+        action: {
+          type: "click",
+          target: {
+            selector: "#stale-cart-link"
+          },
+          options: {
+            replay_hint: {
+              candidate_fingerprint: "candidate:cartlink000000",
+              locator_recipe: [
+                {
+                  strategy: "role_text",
+                  role: "link",
+                  text: "View cart",
+                  confidence: 0.84
+                },
+                {
+                  strategy: "href",
+                  href: cartUrl,
+                  confidence: 0.72
+                }
+              ]
+            }
+          }
+        },
+        finalUrl: cartUrl,
+        stage: "CTA"
+      }),
+      replayTurn({
+        turn: 4,
+        description: "Open checkout via replay hint",
+        targetKey: "stale:checkout-link",
+        action: {
+          type: "click",
+          target: {
+            selector: "#stale-checkout-link"
+          },
+          options: {
+            replay_hint: {
+              candidate_fingerprint: "candidate:checkout000000",
+              locator_recipe: [
+                {
+                  strategy: "role_text",
+                  role: "link",
+                  text: "Proceed to checkout",
+                  confidence: 0.84
+                },
+                {
+                  strategy: "href",
+                  href: checkoutUrl,
+                  confidence: 0.72
+                }
+              ]
+            }
+          }
+        },
+        finalUrl: checkoutUrl,
+        stage: "COMMIT",
+        terminal: true
+      })
+    ]
+  };
+}
+
+function replayTurn(input: {
+  turn: number;
+  description: string;
+  targetKey: string;
+  action: ScenarioAction;
+  finalUrl: string;
+  stage: ScenarioStage;
+  terminal?: boolean;
+}): AgentTrace["turns"][number] {
+  return {
+    turn: input.turn,
+    observation: {
+      finalUrl: input.finalUrl,
+      title: "Agent export replay fixture",
+      candidateCount: 1
+    },
+    preDecisionVerification: {
+      satisfied: false,
+      terminal: false,
+      outcome: "CONTINUE",
+      reason: "continue",
+      confidence: 0.5,
+      phase: "pre_decision"
+    },
+    decision: {
+      kind: "act",
+      description: input.description,
+      reason: "replay hint fallback smoke",
+      confidence: 0.9,
+      action: input.action,
+      settleStrategy: {
+        type: "fixed_short",
+        timeout_ms: 100
+      },
+      stage: input.stage,
+      targetKey: input.targetKey
+    },
+    policy: {
+      allowed: true,
+      riskClass: input.stage === "COMMIT" ? "CHECKOUT_NAVIGATION" : "LOW",
+      reason: "allowed"
+    },
+    actionResult: {
+      actionType: input.action.type,
+      finalUrl: input.finalUrl,
+      completed: true
+    },
+    postActionVerification: {
+      satisfied: input.terminal === true,
+      terminal: input.terminal === true,
+      outcome: input.terminal === true ? "SUCCESS" : "CONTINUE",
+      reason: input.terminal === true ? "checkout reached" : "continue",
+      confidence: 0.8,
+      phase: "post_action"
+    }
+  };
 }
 
 function createAgentCheckoutTask(startUrl: string): AgentTask {

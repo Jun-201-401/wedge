@@ -269,6 +269,7 @@
             "first_view_message",
             "cta_candidate",
             "cta_cluster",
+            "interactive_components",
             "form_field",
             "form_error",
             "trust_signal",
