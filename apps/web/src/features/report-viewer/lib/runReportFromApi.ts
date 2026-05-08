@@ -59,6 +59,35 @@ function decisionTone(status: string): ReportDecisionNode['tone'] {
   return /fail|risk|warning|blocked|issue/i.test(status) ? 'friction' : 'neutral';
 }
 
+function stageDisplayName(stage: string | null | undefined) {
+  return {
+    FIRST_VIEW: '첫 화면',
+    VALUE: '가치 판단',
+    CTA: '행동/CTA',
+    INPUT: '입력',
+    COMMIT: '최종 전환',
+  }[stage ?? ''] ?? stage ?? 'Report';
+}
+
+function buildUserFacingDecisionTags(issueIds: unknown[], evidenceRefs: unknown[]) {
+  const tags: string[] = [];
+
+  if (issueIds.length > 0) {
+    tags.push(`이슈 ${issueIds.length}개`);
+  }
+
+  if (evidenceRefs.length > 0) {
+    tags.push(`근거 ${evidenceRefs.length}개`);
+  }
+
+  return tags;
+}
+
+function evidenceLabelFor(stage: string | null | undefined, evidenceCount: number) {
+  const stageLabel = stageDisplayName(stage);
+  return evidenceCount > 0 ? `${stageLabel} 단계 근거 ${evidenceCount}개` : `${stageLabel} 단계`;
+}
+
 function buildDecisionNodes(report: RunReportProjection): ReportDecisionNode[] {
   if (!Array.isArray(report.decisionMap) || report.decisionMap.length === 0) {
     return [{
@@ -67,7 +96,7 @@ function buildDecisionNodes(report: RunReportProjection): ReportDecisionNode[] {
       tone: report.findings.length > 0 ? 'friction' : 'neutral',
       title: '분석 결과 요약',
       summary: readString(report.summary.summary) ?? '백엔드 분석 결과를 바탕으로 리포트를 구성했습니다.',
-      tags: [`Findings x${report.findings.length}`],
+      tags: report.findings.length > 0 ? [`이슈 ${report.findings.length}개`] : [],
     }];
   }
 
@@ -83,7 +112,7 @@ function buildDecisionNodes(report: RunReportProjection): ReportDecisionNode[] {
       tone: decisionTone(status),
       title: readString(item.displayName) ?? stage,
       summary: readString(item.summary) ?? `${status} 상태로 분석된 결정 지점입니다.`,
-      tags: [...issueIds, ...evidenceRefs].slice(0, 3),
+      tags: buildUserFacingDecisionTags(issueIds, evidenceRefs),
     };
   });
 }
@@ -122,10 +151,10 @@ function buildFindings(report: RunReportProjection): ReportFinding[] {
       issueId: `API-${String(index + 1).padStart(3, '0')}`,
       order: finding.rankOrder ?? index + 1,
       severity,
-      stage: finding.stage ?? 'Report',
+      stage: stageDisplayName(finding.stage),
       title: finding.title,
       summary: finding.summary,
-      evidenceLabel: evidenceRefs[0] ?? finding.stage ?? 'Report evidence',
+      evidenceLabel: evidenceLabelFor(finding.stage, evidenceRefs.length),
       evidenceCount: evidenceRefs.length,
       confidence: finding.confidence ?? 0.72,
       priorityScore: finding.priorityScore ?? Math.max(50, 86 - index * 8),
@@ -258,10 +287,10 @@ function buildFindingsFromDetail(detail: ReportDetail): ReportFinding[] {
       issueId: `DETAIL-${String(index + 1).padStart(3, '0')}`,
       order: finding.rank,
       severity,
-      stage: finding.stage ?? 'Report',
+      stage: stageDisplayName(finding.stage),
       title: finding.title,
       summary: finding.summary,
-      evidenceLabel: evidenceRefs[0] ?? finding.stage ?? 'Report evidence',
+      evidenceLabel: evidenceLabelFor(finding.stage, evidenceRefs.length),
       evidenceCount: evidenceRefs.length,
       confidence: finding.confidence ?? 0.72,
       priorityScore: finding.priorityScore ?? Math.max(50, 86 - index * 8),
