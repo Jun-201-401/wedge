@@ -73,10 +73,13 @@ public class EvidencePacketAssembler {
 
     private Map<String, Object> createScenario(RunResponse run) {
         Map<String, Object> scenario = new LinkedHashMap<>();
-        scenario.put("scenario_id", run.scenarioTemplateVersionId().toString());
-        scenario.put("scenario_type", "template");
+        String scenarioId = run.scenarioTemplateVersionId() == null
+                ? "agent:" + run.id()
+                : run.scenarioTemplateVersionId().toString();
+        scenario.put("scenario_id", scenarioId);
+        scenario.put("scenario_type", run.scenarioTemplateVersionId() == null ? "agent" : "template");
         scenario.put("goal", run.goal());
-        scenario.put("plan_id", run.scenarioTemplateVersionId().toString());
+        scenario.put("plan_id", scenarioId);
         return scenario;
     }
 

@@ -46,7 +46,9 @@ step list
 따라서 target architecture는 다음과 같다.
 
 ```text
-RunGoal(startUrl, goal, constraints)
+UserRunGoal(startUrl, goal, constraints)
+→ API server creates an AgentTask
+→ agent.execute.request
 → Runner Agent observe/decide/act/verify loop
 → checkpoints/artifacts/turn trace
 → UX 분석용 evidence
@@ -94,30 +96,40 @@ Agent 실행이 성공하면, 그 실행 trace에서 replay 가능한 경로를 
 경로 실패: agent 탐색으로 복구
 ```
 
-# 3. 현재 코드 기준 문제점
+# 3. 현재 코드 기준 경로 분리
 
-현재 Runner 주요 경로:
+현재 Runner는 두 실행 경로를 분리한다.
 
 ```text
-apps/runner/src/messaging/index.ts
-→ RunExecuteMessage validation
-→ payload.scenarioPlan 필수 검증
-
-apps/runner/src/worker/index.ts
-→ browserFactory.createSession({ plan: message.payload.scenarioPlan })
-→ executeScenario(plan.steps)
-
-apps/runner/src/scenario/executor/index.ts
-→ for (step of plan.steps) executeScenarioStep(...)
+agent.execute.request
+→ AgentExecuteMessage validation
+→ AgentTask(start_url, goal_type, budget, risk_policy)
+→ agent worker
+→ observe/decide/act/verify loop
+→ agent-events / agent-traces / TRACE artifact
 ```
 
-문제는 다음이다.
+```text
+run.execute.request
+→ RunExecuteMessage validation
+→ payload.scenarioPlan 필수 검증
+→ worker
+→ executeScenario(plan.steps)
+```
 
-1. `RunExecuteMessage.payload.scenarioPlan`이 필수다.
-2. `scenarioTemplateVersionId`도 필수라서 사용자의 실행 의도가 template/materialized plan에 묶인다.
-3. `executeScenario`는 동적 판단 없이 `steps[]`를 순서대로 실행한다.
-4. `stop_when`은 step action이지 독립적인 goal verifier가 아니다.
-5. Discovery는 후보를 찾지만 Runner의 기본 실행은 여전히 고정 plan을 요구한다.
+결정:
+
+1. `agent.execute.request`를 공식 Runner Agent 실행 경로로 둔다.
+2. `run.execute.request`는 기존 `ScenarioPlan` 기반 scripted/replay 실행 전용으로 유지한다.
+3. 사용자-facing API/UI는 `agent.execute`나 `run.execute`라는 MQ 용어를 노출하지 않는다. API 서버가 사용자의 실행 의도에 따라 내부 MQ message를 선택한다.
+4. Agent 실행이 성공하면 replay 가능한 `ScenarioPlan` 후보를 산출물로 저장할 수 있지만, 그 후보의 재실행은 `run.execute.request`가 담당한다.
+
+이 분리를 유지하는 이유는 다음이다.
+
+- Agent job은 observe/decide loop, LLM fallback, trace, idempotency, risk policy 때문에 static replay보다 무겁다.
+- 별도 queue/concurrency 설정으로 agent job이 deterministic run queue를 굶기지 않게 해야 한다.
+- 기존 `run.execute.request`의 `scenarioPlan` 필수 계약과 회귀 테스트를 깨지 않는다.
+- callback/event 의미가 scripted step event와 exploratory agent turn event로 섞이지 않는다.
 
 반대로 이미 재사용 가능한 자산도 있다.
 
@@ -129,18 +141,19 @@ apps/runner/src/scenario/executor/index.ts
 
 # 4. Target execution model
 
-## 4.1 실행 모드
+## 4.1 실행 경로
 
-Runner는 장기적으로 두 모드를 지원한다.
+Runner는 장기적으로 두 실행 경로를 지원한다. 이 둘은 하나의 `RunExecutionMode` field로 합치지 않고 MQ message type으로 분리한다.
 
-```ts
-export type RunExecutionMode = "agent" | "scripted";
+```text
+agent.execute.request = 기본 사용자-facing AI UX 점검 경로
+run.execute.request   = 저장된 ScenarioPlan scripted/replay 경로
 ```
 
-- `agent`: 기본값. `startUrl`과 `goal`만으로 observe/decide/act/verify loop를 수행한다.
-- `scripted`: 기존 `ScenarioPlan.steps[]`를 그대로 실행한다. 내부 replay, regression, 운영 재점검에 사용한다.
+- `agent.execute.request`: `start_url`, `goal_type`, optional `goal`, budget, risk policy만으로 observe/decide/act/verify loop를 수행한다.
+- `run.execute.request`: 기존 `ScenarioPlan.steps[]`를 그대로 실행한다. 내부 replay, regression, 운영 재점검에 사용한다.
 
-사용자-facing 기본값은 항상 `agent`다. `scripted`는 고급/내부 기능이다.
+사용자-facing 기본값은 항상 Agent 실행이다. `scripted` replay는 고급/내부 기능이며, API 서버가 내부적으로 `run.execute.request`를 발행할 때만 사용한다.
 
 ## 4.2 Agent loop
 
@@ -197,98 +210,114 @@ for (let turn = 1; turn <= maxTurns; turn += 1) {
 
 # 5. Contract change plan
 
-계약은 항상 `packages/contracts`를 먼저 바꾼다. 이 문서는 방향만 제안하며, 실제 schema/type 변경은 구현 PR에서 수행한다.
+계약은 항상 `packages/contracts`를 먼저 바꾼다. Runner Agent의 공식 MQ 경로는 `agent.execute.request`다. `run.execute.request`는 scripted/replay용 `ScenarioPlan` 실행 계약으로 유지한다.
 
-## 5.1 `RunExecuteMessage.payload`
+## 5.1 `AgentExecuteMessage.payload`
 
-현재 필수:
-
-```ts
-scenarioTemplateVersionId: string;
-scenarioPlan: ScenarioPlan;
-```
-
-목표:
+Agent 실행 입력은 `AgentTask` 하나로 고정한다. 사용자-facing API는 URL/goal/constraints를 받아 API 서버 내부에서 이 task를 만든다.
 
 ```ts
-export interface AgentRunConfig {
-  maxTurns: number;
-  maxScrolls?: number;
-  autonomyLevel: "low" | "medium" | "high";
-  allowReplayHints?: boolean;
-  captureEveryTurn?: boolean;
+export interface AgentExecuteMessage {
+  messageType: "agent.execute.request";
+  payload: {
+    agentTask: AgentTask;
+  };
 }
 
-export interface RunExecutePayload {
-  runId: string;
-  projectId: string;
-  triggerSource?: "WEB" | "MCP" | "INTERNAL_AGENT" | "API";
-  startUrl: string;
-  goal: string;
-  devicePreset: "desktop" | "tablet" | "mobile";
-  executionMode?: "agent" | "scripted";
-  agentConfig?: AgentRunConfig;
-  scenarioTemplateVersionId?: string;
-  scenarioOverrides?: Record<string, unknown>;
-  scenarioPlan?: ScenarioPlan;
-  artifactPolicy?: Record<string, unknown>;
+export interface AgentTask {
+  schema_version: "0.1";
+  task_id: string;
+  attempt_id: string;
+  attempt_index: number;
+  run_id: string;
+  project_id: string;
+  goal_type: "CHECKOUT_ENTRY_VERIFICATION";
+  goal?: string;
+  start_url: string;
+  environment: ScenarioPlan["environment"];
+  budget: AgentBudget;
+  allowed_navigation: AgentAllowedNavigation;
+  risk_policy: AgentRiskPolicy;
+  observation_budget?: AgentObservationBudget;
+  product_selection_policy?: AgentProductSelectionPolicy;
+  test_data?: AgentTestData;
+  artifact_policy?: AgentArtifactPolicy;
 }
 ```
 
 Validation rule:
 
 ```text
-executionMode absent → agent
-agent mode → startUrl, goal, devicePreset required; scenarioPlan optional
-scripted mode → scenarioPlan required; scenarioPlan consistency required
+agent.execute.request → agentTask required
+AgentTask.goal_type initially supports CHECKOUT_ENTRY_VERIFICATION
+AgentTask.start_url, environment, budget, allowed_navigation, risk_policy required
+LLM/provider config does not belong in the message; it stays Runner runtime config
 ```
 
-## 5.2 Agent turn event contract
+## 5.2 `RunExecuteMessage.payload`
 
-현재 callback은 step event 중심이다. Agent mode는 turn 개념이 있어야 실행이 agent처럼 설명된다.
+`run.execute.request`는 agent mode와 합치지 않는다. 이 message는 replay/scripted 실행 전용이다.
 
-추가 후보:
+현재 유지되는 필수 필드:
 
 ```ts
-export interface AgentTurnEvent {
-  eventId: string;
-  turnOrder: number;
-  eventType:
-    | "TURN_STARTED"
-    | "OBSERVATION_CAPTURED"
-    | "DECISION_MADE"
-    | "ACTION_EXECUTED"
-    | "GOAL_VERIFIED"
-    | "TURN_FAILED";
-  occurredAt: string;
-  payload: Record<string, unknown>;
-}
+scenarioTemplateVersionId: string;
+scenarioPlan: ScenarioPlan;
 ```
 
-MVP에서는 기존 `StepEvent`를 재사용하되, payload에 `agentTurn`, `decisionReason`, `confidence`, `goalVerification`을 넣을 수 있다. 다만 장기적으로는 `AgentTurnEvent`를 별도 callback contract로 승격한다.
+Validation rule:
 
-## 5.3 Agent trace artifact
+```text
+run.execute.request → scenarioPlan required
+run.execute.request → scenarioTemplateVersionId required
+run.execute.request → envelope와 scenarioPlan consistency validation 유지
+scenarioPlan 없는 사용자 목표 실행은 run.execute가 아니라 agent.execute로 보낸다
+```
 
-Agent 실행 결과는 분석과 replay에 필요하다.
+## 5.3 Agent turn event contract
 
-추가 후보:
+Agent mode는 turn 개념이 있어야 실행이 agent처럼 설명된다. 현재 공식 callback surface는 `agent-events`와 `agent-traces`다.
+
+현재 MVP event type:
+
+```ts
+type AgentCallbackEventType =
+  | "PRE_DECISION_VERIFIED"
+  | "DECISION_MADE"
+  | "POLICY_CHECKED"
+  | "ACTION_COMPLETED"
+  | "ACTION_FAILED"
+  | "GOAL_VERIFIED"
+  | "TRACE_PERSISTED";
+```
+
+장기적으로 richer `AGENT_*` event taxonomy가 필요하면 `packages/contracts/internal/runner-callback.schema.json`과 `packages/contracts/schemas/agent-event.schema.json`을 먼저 확장한다.
+
+## 5.4 Agent trace artifact
+
+Agent 실행 결과는 분석과 replay에 필요하다. TRACE artifact에는 LLM chain-of-thought를 저장하지 않고, observation summary, selected action, decision reason, policy result, verification result 같은 설명 가능한 metadata만 저장한다.
+
+현재 MVP trace shape:
 
 ```ts
 export interface AgentTrace {
   schema_version: "0.1";
+  task_id: string;
+  attempt_id: string;
   run_id: string;
-  start_url: string;
-  goal: string;
-  status: "SUCCEEDED" | "FAILED" | "MAX_TURNS";
-  turns: AgentTraceTurn[];
-  generated_scenario_plan?: ScenarioPlan | null;
+  turns: AgentTurnTrace[];
+  outcome: {
+    status: "RUNNING" | "SUCCESS" | "POLICY_BLOCKED" | "BLOCKED" | "FAILED" | "EXHAUSTED";
+    reason: string;
+  };
 }
 ```
 
 주의:
 
 - LLM chain-of-thought를 저장하지 않는다.
-- 저장하는 것은 `decisionReason`, `evidenceRefs`, `confidence`, `selectedAction` 같은 설명 가능한 실행 metadata다.
+- 저장 전 redaction을 적용한다.
+- 성공 trace에서 생성된 replay 후보는 `ScenarioPlan` artifact로 저장하고, 재실행은 `run.execute.request`로 수행한다.
 
 # 6. Runner module changes
 
@@ -320,44 +349,27 @@ apps/runner/src/agent/
 
 ## 6.2 `messaging/index.ts`
 
-변경:
+변경/유지:
 
-- `executionMode` optional validation 추가
-- agent mode에서 `scenarioPlan` 필수 제거
-- scripted mode에서만 `assertScenarioPlanConsistency()` 수행
-- `agentConfig.maxTurns` 기본값과 상한 검증 추가
+- `parseAgentExecuteMessage()`가 `agent.execute.request`와 `AgentTask`를 검증한다.
+- `parseRunExecuteMessage()`는 기존대로 `scenarioPlan` 필수와 consistency validation을 유지한다.
+- `run.execute.request`에 `executionMode`를 추가하지 않는다. Agent 실행은 별도 `agent.execute.request`로 보낸다.
 
-기본값 후보:
+## 6.3 `worker/index.ts` and `worker/agent-worker.ts`
 
-```text
-executionMode = agent
-maxTurns = 8
-maxTurns upper bound = 20
-captureEveryTurn = true for MVP evidence
-```
-
-## 6.3 `worker/index.ts`
-
-변경 전:
+분리된 dispatch:
 
 ```ts
-executeScenario({ plan: message.payload.scenarioPlan })
+if (messageType === "agent.execute.request") {
+  return agentWorker.handleMessage(parseAgentExecuteMessage(rawMessage));
+}
+
+if (messageType === "run.execute.request") {
+  return runWorker.handleMessage(parseRunExecuteMessage(rawMessage));
+}
 ```
 
-변경 후:
-
-```ts
-const mode = message.payload.executionMode ?? "agent";
-const plan = mode === "scripted"
-  ? message.payload.scenarioPlan
-  : createAgentRuntimePlan(message.payload);
-
-const executionResult = mode === "scripted"
-  ? await executeScenario({ plan, ... })
-  : await executeAgentRun({ runtimePlan: plan, ... });
-```
-
-Worker의 책임은 계속 lifecycle orchestration에만 둔다. Agent 판단 로직을 worker에 넣지 않는다.
+Worker의 책임은 계속 lifecycle orchestration에만 둔다. Agent 판단 로직은 `worker/index.ts`가 아니라 `apps/runner/src/agent/*`와 `worker/agent-worker.ts` 경계 안에 둔다.
 
 ## 6.4 `browser/playwright/index.ts`
 
@@ -551,21 +563,23 @@ UX 문제 해석
 
 # 11. Implementation sequence
 
-## Phase 1 — Contract-first agent mode skeleton
+## Phase 1 — Contract-first agent execute skeleton
 
 변경:
 
 1. `packages/contracts/types/runner.ts`
-   - `RunExecutionMode`, `AgentRunConfig` 추가
-   - `scenarioPlan`, `scenarioTemplateVersionId` optional 처리
+   - `AgentTask`, `AgentExecuteMessage` 추가
+   - `RunExecuteMessage`는 scripted/replay 전용으로 유지
 2. `packages/contracts/mq/messages.schema.json`
-   - `executionMode`, `agentConfig` 추가
-   - agent mode에서 `scenarioPlan` optional 허용
-3. `apps/runner/src/messaging/index.ts`
-   - mode별 validation
-4. 테스트
-   - scenarioPlan 없는 agent request parse 성공
-   - scripted mode에서 scenarioPlan 누락 실패
+   - `AgentExecuteMessage`를 `oneOf`에 추가
+   - `run.execute.request`의 `scenarioPlan` 필수 규칙 유지
+3. `packages/contracts/schemas/agent-*.schema.json`
+   - AgentTask/Observation/Decision/PolicyResult/VerificationResult/Event/Outcome/Trace contract 추가
+4. `apps/runner/src/messaging/index.ts`
+   - `parseAgentExecuteMessage()` 추가
+5. 테스트
+   - `agent.execute.request` parse 성공
+   - `run.execute.request`에서 `scenarioPlan` 누락 실패 유지
    - scripted consistency validation 유지
 
 ## Phase 2 — Agent controller MVP
@@ -670,12 +684,12 @@ Runner Agent는 "실행과 evidence 수집"을 담당한다. 최종 UX 판단과
 
 Runner Agent 전환이 최소 성공했다고 볼 수 있는 기준:
 
-1. `run.execute.request`가 `scenarioPlan` 없이도 agent mode로 실행된다.
-2. 사용자는 URL과 goal만 제공해도 Runner가 최소 1개 이상의 행동을 선택한다.
+1. `agent.execute.request`가 `AgentTask`만으로 Agent Runtime을 실행한다.
+2. 사용자-facing API는 URL과 goal만 받아 내부적으로 `agent.execute.request`를 발행할 수 있다.
 3. Runner는 각 turn의 observation, decision, action result, verification evidence를 남긴다.
-4. 기존 scripted `ScenarioPlan` 실행은 깨지지 않는다.
+4. 기존 scripted `run.execute.request` + `ScenarioPlan` 실행은 깨지지 않는다.
 5. safety default가 irreversible/payment/external 위험 행동을 차단한다.
-6. 성공한 agent 실행은 replay/generation 가능한 trace를 남긴다.
+6. 성공한 agent 실행은 replay/generation 가능한 trace와 optional `ScenarioPlan` 후보를 남긴다.
 7. 실패해도 "어디서 왜 막혔는지"를 evidence로 설명할 수 있다.
 
 # 15. 문서 상태
@@ -684,15 +698,17 @@ Runner Agent 전환이 최소 성공했다고 볼 수 있는 기준:
 
 현재 구현된 작업:
 
-- `packages/contracts`에 `executionMode`, `agentConfig`, optional `scenarioPlan` 방향 반영
+- `packages/contracts`에 `AgentTask`, `AgentExecuteMessage`, `agent.execute.request` 방향 반영
 - `apps/runner/src/agent` MVP controller/runtime-plan/rule-based planner/verifier 추가
-- `worker`에서 `agent` / `scripted` mode dispatch 추가
-- `scenarioPlan` 없는 agent request 파싱 및 worker regression test 추가
+- `worker/agent-worker.ts`와 MQ consumer에서 `agent.execute.request` dispatch 추가
+- `run.execute.request`는 `ScenarioPlan` 필수 scripted/replay 경로로 유지
+- agent event/trace callback, TRACE artifact, successful trace의 ScenarioPlan export MVP 추가
+- LLM decision client를 config-gated optional path로 추가하고 heuristic fallback 유지
 
 아직 수행하지 않은 작업:
 
-- callback contract에 정식 `AgentTurnEvent` 추가
-- agent trace artifact와 generated replay path 구현
-- LLM planner 및 replay-hint planner 구현
+- AgentObservation/Decision/Trace schema를 richer candidate/locator/iframe evidence 구조로 확장
+- replay-hint planner 구현
+- broader fixture suite와 heuristic-vs-LLM 비교 강화
 
 구현을 시작할 때는 이 문서를 기준으로 contract-first 순서를 따른다.

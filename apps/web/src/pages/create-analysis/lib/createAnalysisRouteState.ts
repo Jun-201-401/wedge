@@ -20,12 +20,11 @@ export interface CreateAnalysisRouteOptions<TScenarioId extends string = string,
 
 export interface CreateRunContext {
   projectId: string;
-  scenarioTemplateVersionId: string;
+  scenarioTemplateVersionId?: string;
 }
 
 export const MVP_SMOKE_CREATE_RUN_CONTEXT: CreateRunContext = {
   projectId: '8f06dca8-9c4d-4f20-b1a8-1d5ee40a9923',
-  scenarioTemplateVersionId: '5c5f4c77-0c32-4ab3-9841-2b6f6cc07a40',
 };
 
 const DEFAULT_BASE_PATH = '/create-analysis';
@@ -67,20 +66,20 @@ function readCreateRunContext(params: URLSearchParams) {
   const projectId = readUuidParam(params, 'projectId');
   const scenarioTemplateVersionId = readUuidParam(params, 'scenarioTemplateVersionId');
 
-  if (!projectId || !scenarioTemplateVersionId) {
+  if (!projectId) {
     return {};
   }
 
   return {
     projectId,
-    scenarioTemplateVersionId,
+    ...(scenarioTemplateVersionId ? { scenarioTemplateVersionId } : {}),
   };
 }
 
 function hasCreateRunContext<TScenarioId extends string, TDepthId extends string>(
   state: CreateAnalysisRouteState<TScenarioId, TDepthId>,
-): state is CreateAnalysisRouteState<TScenarioId, TDepthId> & { projectId: string; scenarioTemplateVersionId: string } {
-  return UUID_PATTERN.test(state.projectId ?? '') && UUID_PATTERN.test(state.scenarioTemplateVersionId ?? '');
+): state is CreateAnalysisRouteState<TScenarioId, TDepthId> & { projectId: string } {
+  return UUID_PATTERN.test(state.projectId ?? '');
 }
 
 function inputRouteState<TScenarioId extends string, TDepthId extends string>(
@@ -99,13 +98,13 @@ export function readCreateRunContextFromEnv(env: Record<string, string | undefin
   const projectId = readUuidValue(env.VITE_DEV_PROJECT_ID);
   const scenarioTemplateVersionId = readUuidValue(env.VITE_DEV_SCENARIO_TEMPLATE_VERSION_ID);
 
-  if (!projectId || !scenarioTemplateVersionId) {
+  if (!projectId) {
     return {};
   }
 
   return {
     projectId,
-    scenarioTemplateVersionId,
+    ...(scenarioTemplateVersionId ? { scenarioTemplateVersionId } : {}),
   };
 }
 
@@ -116,13 +115,16 @@ export function withCreateRunContextFallback<TScenarioId extends string, TDepthI
   const projectId = readUuidValue(fallbackContext.projectId);
   const scenarioTemplateVersionId = readUuidValue(fallbackContext.scenarioTemplateVersionId);
 
-  if (hasCreateRunContext(state) || (!projectId && !scenarioTemplateVersionId)) {
-    return state;
+  if (hasCreateRunContext(state) || !projectId) {
+    return {
+      ...state,
+      scenarioTemplateVersionId: readUuidValue(state.scenarioTemplateVersionId) ?? scenarioTemplateVersionId ?? undefined,
+    };
   }
 
   return {
     ...state,
-    projectId: readUuidValue(state.projectId) ?? projectId ?? undefined,
+    projectId,
     scenarioTemplateVersionId: readUuidValue(state.scenarioTemplateVersionId) ?? scenarioTemplateVersionId ?? undefined,
   };
 }
@@ -231,8 +233,11 @@ export function buildCreateAnalysisPath<TScenarioId extends string, TDepthId ext
     if (hasCreateRunContext(state)) {
       const inputParams = new URLSearchParams({
         projectId: state.projectId,
-        scenarioTemplateVersionId: state.scenarioTemplateVersionId,
       });
+      const scenarioTemplateVersionId = readUuidValue(state.scenarioTemplateVersionId);
+      if (scenarioTemplateVersionId) {
+        inputParams.set('scenarioTemplateVersionId', scenarioTemplateVersionId);
+      }
 
       return `${basePath}?${inputParams.toString()}`;
     }
@@ -270,7 +275,10 @@ export function buildCreateAnalysisPath<TScenarioId extends string, TDepthId ext
 
   if (hasCreateRunContext(state)) {
     params.set('projectId', state.projectId);
-    params.set('scenarioTemplateVersionId', state.scenarioTemplateVersionId);
+    const scenarioTemplateVersionId = readUuidValue(state.scenarioTemplateVersionId);
+    if (scenarioTemplateVersionId) {
+      params.set('scenarioTemplateVersionId', scenarioTemplateVersionId);
+    }
   }
 
   return `${basePath}?${params.toString()}`;

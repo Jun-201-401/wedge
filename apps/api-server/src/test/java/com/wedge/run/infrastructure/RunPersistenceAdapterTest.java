@@ -74,6 +74,32 @@ class RunPersistenceAdapterTest {
         assertThat(created.startUrl()).isEqualTo(request.startUrl());
     }
 
+
+    @Test
+    void createRunWithoutScenarioPlanStoresAgentReadyRunWithoutSteps() {
+        RunPersistenceAdapter runPersistenceAdapter = adapter();
+        RunCreateRequest request = new RunCreateRequest(
+                UUID.randomUUID(),
+                "Checkout Agent audit",
+                URI.create("https://example.com/product/sample"),
+                "결제 없이 checkout 진입 경로 확인",
+                "desktop",
+                null,
+                null,
+                Map.of()
+        );
+
+        RunResponse created = runPersistenceAdapter.createRun(request);
+
+        verify(runMapper).insert(runRecordCaptor.capture());
+        RunRecord persisted = runRecordCaptor.getValue();
+        assertThat(persisted.getScenarioTemplateVersionId()).isNull();
+        assertThat(persisted.getScenarioPlanSchemaVersion()).isNull();
+        assertThat(persisted.getScenarioPlanJson()).isEqualTo("{}");
+        verify(runMapper, times(0)).insertStep(org.mockito.ArgumentMatchers.any());
+        assertThat(created.scenarioTemplateVersionId()).isNull();
+    }
+
     @Test
     void listRunsMapsStoredRowsToApiResponses() {
         RunPersistenceAdapter runPersistenceAdapter = adapter();
@@ -219,6 +245,35 @@ class RunPersistenceAdapterTest {
         ))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("RUNNING -> FAILED");
+    }
+
+
+    @Test
+    void resolveOrCreateAgentStepCreatesSyntheticTurnStepWhenMissing() {
+        UUID runId = UUID.randomUUID();
+        when(runMapper.findStepByRunIdAndStepKey(runId, "agent_turn_003")).thenReturn(Optional.empty());
+
+        RunPersistenceAdapter.ResolvedStep resolved = adapter().resolveOrCreateAgentStep(runId, "agent_turn_003", "CTA");
+
+        verify(runMapper).insertStep(runStepRecordCaptor.capture());
+        RunStepRecord inserted = runStepRecordCaptor.getValue();
+        assertThat(inserted.getRunId()).isEqualTo(runId);
+        assertThat(inserted.getStepOrder()).isEqualTo(3);
+        assertThat(inserted.getStepKey()).isEqualTo("agent_turn_003");
+        assertThat(inserted.getStage()).isEqualTo("CTA");
+        assertThat(inserted.getStepType()).isEqualTo("CHECKPOINT");
+        assertThat(resolved.id()).isEqualTo(inserted.getId());
+        assertThat(resolved.stepOrder()).isEqualTo(3);
+    }
+
+    @Test
+    void resolveOrCreateAgentStepRejectsUnknownNonAgentStepWhenMissing() {
+        UUID runId = UUID.randomUUID();
+        when(runMapper.findStepByRunIdAndStepKey(runId, "step_missing")).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> adapter().resolveOrCreateAgentStep(runId, "step_missing", "CTA"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("step_missing");
     }
 
     @Test

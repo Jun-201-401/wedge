@@ -1,0 +1,7 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wedge.example.com/contracts/schemas/agent-event.schema.json",
+  "title": "Runner Agent Event",
+  "description": "Agent turn event contract shared by AgentTrace event projections and runner agent-events callbacks.",
+  "$ref": "../internal/runner-callback.schema.json#/$defs/AgentEvent"
+}

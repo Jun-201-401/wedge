@@ -170,7 +170,7 @@ function turnToScenarioStep(
     step_id: `agent_export_turn_${String(turn.turn).padStart(3, "0")}`,
     stage: turn.decision.stage,
     description: turn.decision.description,
-    action: cloneAction(turn.decision.action),
+    action: cloneActionWithReplayHint(turn.decision),
     settle_strategy: cloneSettleStrategy(turn.decision.settleStrategy),
     checkpoint: turn.decision.action.type === "checkpoint" || turn.postActionVerification?.satisfied === true
   };
@@ -227,6 +227,23 @@ function findFinalUrl(trace: AgentTrace): string | null {
 
 function cloneAction(action: ScenarioAction): ScenarioAction {
   return JSON.parse(JSON.stringify(action)) as ScenarioAction;
+}
+
+function cloneActionWithReplayHint(decision: AgentTurnTrace["decision"]): ScenarioAction {
+  if (!decision) {
+    throw new Error("decision is required to clone action");
+  }
+
+  const action = cloneAction(decision.action);
+  if (!decision.replayHint) {
+    return action;
+  }
+
+  action.options = {
+    ...action.options,
+    replay_hint: JSON.parse(JSON.stringify(decision.replayHint))
+  };
+  return action;
 }
 
 function cloneSettleStrategy(settleStrategy: SettleStrategy): SettleStrategy {

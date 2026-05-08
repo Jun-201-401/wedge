@@ -1,6 +1,10 @@
 import type { RunnerConfig } from "../config/index.ts";
 import { errorMessage, logOperationalEvent } from "../shared/utils.ts";
-import { parseLlmDecision } from "./llm-decision-parser.ts";
+import {
+  isRetryableLlmDecisionError,
+  isUnsafeLlmDecisionError,
+  parseLlmDecision
+} from "./llm-decision-parser.ts";
 import { createLlmCandidateReferences, createLlmRequestPayload } from "./llm-prompt.ts";
 import { createFetchLlmDecisionTransport, type AgentLlmDecisionTransport } from "./llm-transport.ts";
 import { AgentMcpDecisionClient } from "./mcp-decision-gateway.ts";
@@ -8,11 +12,14 @@ import { HeuristicDecisionClient, type AgentDecision, type AgentDecisionClient, 
 
 export type { AgentLlmDecisionRequest, AgentLlmDecisionTransport } from "./llm-transport.ts";
 
+const DEFAULT_INVALID_JSON_RETRY_COUNT = 1;
+
 export interface AgentLlmDecisionClientOptions {
   endpoint?: string;
   apiKey?: string;
   model: string;
   timeoutMs: number;
+  invalidJsonRetryCount?: number;
   fallbackClient?: AgentDecisionClient;
   transport?: AgentLlmDecisionTransport;
 }
@@ -33,28 +40,60 @@ export class AgentLlmDecisionClient implements AgentDecisionClient {
       return this.fallbackClient.decide(input);
     }
 
-    try {
-      const candidateReferences = createLlmCandidateReferences(input.observation.snapshot.interactiveComponents);
-      const rawResponse = await this.transport.complete({
-        endpoint: this.options.endpoint,
-        apiKey: this.options.apiKey,
-        model: this.options.model,
-        timeoutMs: resolveLlmTimeoutMs(this.options.timeoutMs, input.remainingTimeMs),
-        payload: createLlmRequestPayload(input, this.options.model, candidateReferences)
-      });
+    const candidateReferences = createLlmCandidateReferences(input.observation.snapshot.interactiveComponents);
+    const retryCount = resolveInvalidJsonRetryCount(this.options.invalidJsonRetryCount);
 
-      return parseLlmDecision(rawResponse, input, candidateReferences);
-    } catch (error) {
-      logOperationalEvent(
-        "agent-llm-decision",
-        "fallback_to_heuristic",
-        {
-          reason: errorMessage(error)
-        },
-        "warn"
-      );
-      return this.fallbackClient.decide(input);
+    for (let attemptIndex = 0; attemptIndex <= retryCount; attemptIndex += 1) {
+      try {
+        const rawResponse = await this.transport.complete({
+          endpoint: this.options.endpoint,
+          apiKey: this.options.apiKey,
+          model: this.options.model,
+          timeoutMs: resolveLlmTimeoutMs(this.options.timeoutMs, input.remainingTimeMs),
+          payload: createLlmRequestPayload(input, this.options.model, candidateReferences)
+        });
+
+        return parseLlmDecision(rawResponse, input, candidateReferences);
+      } catch (error) {
+        if (isRetryableLlmDecisionError(error) && attemptIndex < retryCount) {
+          logOperationalEvent(
+            "agent-llm-decision",
+            "retry_invalid_json",
+            {
+              attempt: attemptIndex + 1,
+              maxAttempts: retryCount + 1,
+              reason: errorMessage(error)
+            },
+            "warn"
+          );
+          continue;
+        }
+
+        if (isUnsafeLlmDecisionError(error)) {
+          logOperationalEvent(
+            "agent-llm-decision",
+            "unsafe_decision_rejected",
+            {
+              reason: errorMessage(error)
+            },
+            "warn"
+          );
+          throw error;
+        }
+
+        logOperationalEvent(
+          "agent-llm-decision",
+          "fallback_to_heuristic",
+          {
+            reason: errorMessage(error)
+          },
+          "warn"
+        );
+        return this.fallbackClient.decide(input);
+      }
     }
+
+    return this.fallbackClient.decide(input);
   }
 }
 
@@ -89,6 +128,14 @@ export function createAgentDecisionClient(config: Pick<
   });
 }
 
+function resolveInvalidJsonRetryCount(value: number | undefined): number {
+  if (value === undefined) {
+    return DEFAULT_INVALID_JSON_RETRY_COUNT;
+  }
+
+  return Number.isInteger(value) && value > 0 ? value : 0;
+}
+
 function resolveLlmTimeoutMs(configuredTimeoutMs: number, remainingTimeMs: number | undefined): number {
   if (remainingTimeMs === undefined) {
     return configuredTimeoutMs;
@@ -96,3 +143,4 @@ function resolveLlmTimeoutMs(configuredTimeoutMs: number, remainingTimeMs: numbe
 
   return Math.max(1, Math.min(configuredTimeoutMs, Math.floor(remainingTimeMs)));
 }
+

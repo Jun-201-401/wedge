@@ -84,6 +84,12 @@ test("[Agent LLM Decision] LLM 응답 targetKey를 관찰된 click target으로�
   });
   assert.equal(decision.targetKey, "#checkout");
   assert.equal(decision.stage, "COMMIT");
+  assert.match(decision.replayHint?.candidate_fingerprint ?? "", /^candidate:[a-f0-9]{16}$/);
+  assert.deepEqual(decision.replayHint?.locator_recipe[0], {
+    strategy: "selector",
+    selector: "#checkout",
+    confidence: 0.9
+  });
 });
 
 test("[Agent LLM Decision] selector 없는 민감 텍스트 후보는 opaque candidate id로 선택한다", async () => {
@@ -157,17 +163,11 @@ test("[Agent LLM Decision] selector 없는 민감 텍스트 후보는 opaque can
   assert.equal(decision.targetKey, "link:Checkout for mvp.tester@example.com");
 });
 
-test("[Agent LLM Decision] 유효하지 않은 LLM action은 heuristic으로 fallback한다", async () => {
+test("[Agent LLM Decision] transport 실패는 heuristic으로 fallback한다", async () => {
   const transport: AgentLlmDecisionTransport = {
-    complete: async () => ({
-      decision: {
-        kind: "act",
-        actionType: "click",
-        targetKey: "#invented",
-        reason: "Invented target",
-        confidence: 0.9
-      }
-    })
+    complete: async () => {
+      throw new Error("LLM timeout");
+    }
   };
   const client = new AgentLlmDecisionClient({
     endpoint: "https://llm.example/decision",
@@ -212,6 +212,136 @@ test("[Agent LLM Decision] 유효하지 않은 LLM action은 heuristic으로 fal
 
   assert.equal(decision.action.type, "click");
   assert.equal(decision.targetKey, "#real-checkout");
+});
+
+
+test("[Agent LLM Decision] invalid JSON 응답만 재시도한다", async () => {
+  let callCount = 0;
+  const transport: AgentLlmDecisionTransport = {
+    complete: async () => {
+      callCount += 1;
+      return callCount === 1
+        ? {
+            choices: [
+              {
+                message: {
+                  content: "{not-json"
+                }
+              }
+            ]
+          }
+        : {
+            choices: [
+              {
+                message: {
+                  content: JSON.stringify({
+                    decision: {
+                      kind: "checkpoint",
+                      actionType: "checkpoint",
+                      reason: "Retry returned parseable JSON.",
+                      confidence: 0.7
+                    }
+                  })
+                }
+              }
+            ]
+          };
+    }
+  };
+  const client = new AgentLlmDecisionClient({
+    endpoint: "https://llm.example/decision",
+    model: "agent-model",
+    timeoutMs: 1_000,
+    transport
+  });
+
+  const decision = await client.decide({
+    goal: "Find checkout",
+    startUrl: "https://example.com/product",
+    state: {
+      ...createInitialAgentState(),
+      started: true
+    },
+    maxScrolls: 1,
+    observation: {
+      snapshot: createSimulatedPageSnapshot(createMinimalPlan())
+    }
+  });
+
+  assert.equal(callCount, 2);
+  assert.equal(decision.kind, "checkpoint");
+  assert.equal(decision.action.type, "checkpoint");
+});
+
+test("[Agent LLM Decision] unsafe decision은 재시도나 heuristic fallback 없이 거부한다", async () => {
+  let callCount = 0;
+  const transport: AgentLlmDecisionTransport = {
+    complete: async () => {
+      callCount += 1;
+      return callCount === 1
+        ? {
+            decision: {
+              kind: "act",
+              actionType: "click",
+              targetKey: "#invented",
+              reason: "Invented target",
+              confidence: 0.9
+            }
+          }
+        : {
+            decision: {
+              kind: "checkpoint",
+              actionType: "checkpoint",
+              reason: "Should not be used",
+              confidence: 0.5
+            }
+          };
+    }
+  };
+  const client = new AgentLlmDecisionClient({
+    endpoint: "https://llm.example/decision",
+    model: "agent-model",
+    timeoutMs: 1_000,
+    transport
+  });
+
+  await assert.rejects(
+    () => client.decide({
+      goal: "Find checkout",
+      startUrl: "https://example.com/product",
+      state: {
+        ...createInitialAgentState(),
+        started: true
+      },
+      maxScrolls: 1,
+      observation: {
+        snapshot: createSimulatedPageSnapshot(createMinimalPlan(), {
+          interactiveComponents: [
+            {
+              text: "Proceed to checkout",
+              selector: "#real-checkout",
+              role: "link",
+              tag: "a",
+              clickable: true,
+              clicked_in_scenario: false,
+              is_cta_candidate: true,
+              is_primary_like: true,
+              bounds: {
+                x: 0,
+                y: 0,
+                width: 100,
+                height: 40,
+                unit: "css_px"
+              }
+            }
+          ]
+        })
+      }
+    }),
+    /targetKey must match an observed component/
+  );
+
+  assert.equal(callCount, 1);
 });
 
 test("[Agent LLM Decision] checkpoint 응답은 heuristic click으로 변환하지 않는다", async () => {

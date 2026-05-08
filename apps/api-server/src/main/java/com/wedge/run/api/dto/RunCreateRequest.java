@@ -1,7 +1,6 @@
 package com.wedge.run.api.dto;
 
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import java.net.URI;
 import java.util.Map;
@@ -13,8 +12,8 @@ public record RunCreateRequest(
         @NotNull URI startUrl,
         String goal,
         @NotBlank String devicePreset,
-        @NotNull UUID scenarioTemplateVersionId,
+        UUID scenarioTemplateVersionId,
         Map<String, Object> scenarioOverrides,
-        @NotEmpty Map<String, Object> scenarioPlan
+        Map<String, Object> scenarioPlan
 ) {
 }
