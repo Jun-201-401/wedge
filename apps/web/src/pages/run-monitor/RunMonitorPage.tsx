@@ -644,6 +644,43 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
       {reportActionState.message}
     </p>
   ) : null;
+  let reportCtaStatusLabel = '준비 중';
+  if (reportPath) {
+    reportCtaStatusLabel = '준비됨';
+  } else if (isReportActionPending) {
+    reportCtaStatusLabel = canRequestAnalysis ? '요청 중' : '생성 중';
+  } else if (canGenerateReport) {
+    reportCtaStatusLabel = '생성 가능';
+  } else if (canRequestAnalysis) {
+    reportCtaStatusLabel = '분석 필요';
+  } else if (reportCtaState.kind === 'waiting' || reportCtaState.kind === 'loading') {
+    reportCtaStatusLabel = '대기 중';
+  } else if (reportCtaState.kind === 'failed' || reportCtaState.kind === 'error') {
+    reportCtaStatusLabel = '확인 필요';
+  }
+
+  let reportCtaActionLabel = '대기 중';
+  if (reportPath) {
+    reportCtaActionLabel = '리포트 보기';
+  } else if (canGenerateReport) {
+    reportCtaActionLabel = isReportActionPending ? '생성 중' : '리포트 생성';
+  } else if (canRequestAnalysis) {
+    reportCtaActionLabel = isReportActionPending ? '요청 중' : '분석 시작';
+  }
+
+  const reportCtaAction = reportPath ? (
+    <a href={reportPath} onClick={openReport}>{reportCtaActionLabel}</a>
+  ) : canGenerateReport ? (
+    <button type="button" onClick={requestGenerateReport} disabled={isReportActionPending}>
+      {reportCtaActionLabel}
+    </button>
+  ) : canRequestAnalysis ? (
+    <button type="button" onClick={requestAnalysisForReport} disabled={isReportActionPending}>
+      {reportCtaActionLabel}
+    </button>
+  ) : (
+    <button type="button" disabled>{reportCtaActionLabel}</button>
+  );
 
   return (
     <div className="run-monitor-page">
@@ -786,26 +823,23 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
             </div>
             {reportCtaState.kind !== 'hidden' ? (
               <div className="run-monitor-live-insight__card run-monitor-live-insight__card--report run-monitor-report-cta">
-                <span>{reportCtaState.eyebrow}</span>
+                <div className="run-monitor-report-cta__state">
+                  <span>{reportCtaState.eyebrow}</span>
+                  <b>{reportCtaStatusLabel}</b>
+                </div>
                 <strong>분석 결과 리포트</strong>
                 <p>{reportCtaState.message}</p>
-                <EvidenceCollectionSummary
-                  stats={evidenceStats}
-                  isLoading={isEvidenceLoading}
-                  errorMessage={evidenceLoadError}
-                />
-                {reportActionMessage}
-                {reportPath ? <a href={reportPath} onClick={openReport}>리포트 보기</a> : null}
-                {canGenerateReport ? (
-                  <button type="button" onClick={requestGenerateReport} disabled={isReportActionPending}>
-                    {isReportActionPending ? '생성 중' : '리포트 생성'}
-                  </button>
-                ) : null}
-                {canRequestAnalysis ? (
-                  <button type="button" onClick={requestAnalysisForReport} disabled={isReportActionPending}>
-                    {isReportActionPending ? '요청 중' : '분석 시작'}
-                  </button>
-                ) : null}
+                <div className="run-monitor-report-cta__footer">
+                  <EvidenceCollectionSummary
+                    stats={evidenceStats}
+                    isLoading={isEvidenceLoading}
+                    errorMessage={evidenceLoadError}
+                  />
+                  {reportActionMessage}
+                  <div className="run-monitor-report-cta__actions">
+                    {reportCtaAction}
+                  </div>
+                </div>
               </div>
             ) : (
               <div className="run-monitor-live-insight__card">

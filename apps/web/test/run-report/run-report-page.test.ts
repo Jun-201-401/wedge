@@ -191,11 +191,12 @@ test('run monitor exposes a report CTA into /runs/:runId/report', () => {
   assert.match(source, /reportCtaState\.kind !== 'hidden'/);
   assert.match(source, /분석 결과 리포트/);
   assert.match(source, /handleSpaNavigationClick\(event, reportPath\)/);
-  assert.match(source, /<a href=\{reportPath\} onClick=\{openReport\}>리포트 보기<\/a>/);
+  assert.match(source, /<a href=\{reportPath\} onClick=\{openReport\}>\{reportCtaActionLabel\}<\/a>/);
   assert.match(source, /리포트 생성/);
   assert.match(source, /분석 시작/);
   assert.doesNotMatch(source, /모의 리포트 보기/);
-  assert.match(css, /\.run-monitor-report-cta\s*\{[\s\S]*?background: rgba\(240, 249, 255, 0\.78\)/);
-  assert.match(css, /\.run-monitor-report-cta a,\s*\n\.run-monitor-report-cta button\s*\{[\s\S]*?background: #334155/);
-  assert.match(css, /\.run-monitor-report-cta button:disabled\s*\{[\s\S]*?cursor: not-allowed/);
+  assert.match(css, /\.run-monitor-report-cta\s*\{[\s\S]*?background: rgba\(240, 249, 255, 0\.58\)/);
+  assert.match(css, /\.run-monitor-report-cta__actions a,\s*\n\.run-monitor-report-cta__actions button\s*\{[\s\S]*?background: #475569/);
+  assert.match(css, /\.run-monitor-report-cta__actions a,\s*\n\.run-monitor-report-cta__actions button\s*\{[\s\S]*?width: 100%/);
+  assert.match(css, /\.run-monitor-report-cta__actions button:disabled\s*\{[\s\S]*?cursor: not-allowed/);
 });
