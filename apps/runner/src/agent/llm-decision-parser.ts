@@ -1,5 +1,5 @@
 import type { ScenarioAction, ScenarioStage } from "../shared/contracts.ts";
-import { targetFromComponent } from "./component-target.ts";
+import { replayHintFromComponent, targetFromComponent } from "./component-target.ts";
 import type { LlmCandidateReference } from "./llm-prompt.ts";
 import type { AgentDecision, AgentDecisionInput } from "./planner.ts";
 import { redactSensitiveString } from "./redaction.ts";
@@ -132,7 +132,8 @@ export function parseLlmDecision(
         timeout_ms: 500
       },
       stage,
-      targetKey: selectedCandidate.rawTargetKey
+      targetKey: selectedCandidate.rawTargetKey,
+      replayHint: replayHintFromComponent(selectedCandidate.component)
     };
   }
 

@@ -1805,7 +1805,7 @@ Tasks:
 
 ```text
 DONE: Add export module that converts successful completed trace actions into a ScenarioPlan candidate.
-TODO: Add candidate_fingerprint and locator_recipe after replay stability data exists.
+DONE: Add candidate_fingerprint and locator_recipe replay hints to click AgentDecision traces and ScenarioPlan export action options.
 DONE: Mark generated plan as custom_compiled.
 DONE: Include source agent trace provenance in the export wrapper.
 DONE: Append final checkpoint and stop_before_commit guard steps so payment/final-order boundaries remain explicit.

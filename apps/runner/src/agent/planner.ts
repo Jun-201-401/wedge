@@ -6,7 +6,13 @@ import type {
   ScenarioStage,
   SettleStrategy
 } from "../shared/contracts.ts";
-import { candidateText, targetFromComponent, targetKey } from "./component-target.ts";
+import {
+  candidateText,
+  replayHintFromComponent,
+  targetFromComponent,
+  targetKey,
+  type AgentReplayTargetHint
+} from "./component-target.ts";
 import { plannerSemantics } from "./semantics.ts";
 
 export type AgentDecisionKind = "act" | "checkpoint" | "finish";
@@ -20,6 +26,7 @@ export interface AgentDecision {
   settleStrategy: SettleStrategy;
   stage: ScenarioStage;
   targetKey: string | null;
+  replayHint?: AgentReplayTargetHint;
 }
 
 export interface AgentDecisionInput {
@@ -224,6 +231,7 @@ function componentToDecision(candidate: ActionCandidate): AgentDecision {
       timeout_ms: 500
     },
     stage: candidate.stage,
-    targetKey: targetKey(candidate.component)
+    targetKey: targetKey(candidate.component),
+    replayHint: replayHintFromComponent(candidate.component)
   };
 }
