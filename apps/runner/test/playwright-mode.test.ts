@@ -643,6 +643,76 @@ test("[Agent CAPTCHA Blocker Smoke] 실제 Playwright 경로에서 CAPTCHA 벽�
   }
 });
 
+test("[Agent Iframe Payment Blocker Smoke] iframe 내부 최종 결제 후보를 decision 전에 감지한다", async () => {
+  const fixtureRoot = await mkdtemp(join(tmpdir(), "wedge-runner-agent-iframe-payment-site-"));
+  const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-agent-iframe-payment-artifacts-"));
+
+  try {
+    const { checkoutUrl } = await createAgentIframePaymentFixtureSite(fixtureRoot);
+    const result = await executeRealAgentTask({
+      task: createAgentCheckoutTask(checkoutUrl),
+      artifactsRoot
+    });
+
+    assert.equal(result.execution.summary.completedStepCount, 1);
+    assert.equal(result.execution.summary.stopped, true);
+    assert.equal(result.execution.trace.outcome.status, "POLICY_BLOCKED");
+    assert.equal(result.execution.trace.turns.at(-1)?.preDecisionVerification?.outcome, "POLICY_BLOCKED");
+    assert.match(result.execution.trace.turns.at(-1)?.preDecisionVerification?.reason ?? "", /iframe frame:1/);
+    assert.deepEqual(result.actionCompletedTargets, [checkoutUrl]);
+    assert.ok(!result.actionCompletedTargets.includes("#pay-now"));
+    assert.equal(result.traceArtifacts.length, 1);
+  } finally {
+    await rm(fixtureRoot, { recursive: true, force: true });
+    await rm(artifactsRoot, { recursive: true, force: true });
+  }
+});
+
+test("[Agent Shadow Payment Blocker Smoke] open shadow DOM 최종 결제 후보를 decision 전에 감지한다", async () => {
+  const fixtureRoot = await mkdtemp(join(tmpdir(), "wedge-runner-agent-shadow-payment-site-"));
+  const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-agent-shadow-payment-artifacts-"));
+
+  try {
+    const { checkoutUrl } = await createAgentShadowPaymentFixtureSite(fixtureRoot);
+    const result = await executeRealAgentTask({
+      task: createAgentCheckoutTask(checkoutUrl),
+      artifactsRoot
+    });
+
+    assert.equal(result.execution.summary.completedStepCount, 1);
+    assert.equal(result.execution.summary.stopped, true);
+    assert.equal(result.execution.trace.outcome.status, "POLICY_BLOCKED");
+    assert.equal(result.execution.trace.turns.at(-1)?.preDecisionVerification?.outcome, "POLICY_BLOCKED");
+    assert.match(result.execution.trace.turns.at(-1)?.preDecisionVerification?.reason ?? "", /shadow root/);
+    assert.deepEqual(result.actionCompletedTargets, [checkoutUrl]);
+    assert.equal(result.traceArtifacts.length, 1);
+  } finally {
+    await rm(fixtureRoot, { recursive: true, force: true });
+    await rm(artifactsRoot, { recursive: true, force: true });
+  }
+});
+
+test("[Agent Frame Replay] replay_hint frame_id로 iframe 내부 후보를 static Runner가 클릭한다", async () => {
+  const fixtureRoot = await mkdtemp(join(tmpdir(), "wedge-runner-agent-frame-replay-site-"));
+  const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-agent-frame-replay-artifacts-"));
+
+  try {
+    const { frameUrl } = await createAgentIframeReplayFixtureSite(fixtureRoot);
+    const result = await executeRealScenarioPlan({
+      runId: "run-agent-frame-replay",
+      plan: createAgentIframeReplayPlan(frameUrl),
+      artifactsRoot
+    });
+
+    assert.equal(result.execution.summary.failedStepCount, 0);
+    assert.equal(result.execution.summary.completedStepCount, 4);
+    assert.equal(result.execution.summary.stopped, true);
+  } finally {
+    await rm(fixtureRoot, { recursive: true, force: true });
+    await rm(artifactsRoot, { recursive: true, force: true });
+  }
+});
+
 test("[Agent External Checkout Smoke] allowlist된 외부 checkout redirect는 실제 Playwright 경로에서 허용한다", async () => {
   const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-agent-external-artifacts-"));
   const fixture = await createAgentExternalCheckoutFixtureServer();
@@ -2041,6 +2111,106 @@ async function createAgentBlockerFixtureSite(
   };
 }
 
+async function createAgentIframePaymentFixtureSite(root: string): Promise<{ checkoutUrl: string }> {
+  const checkoutFile = join(root, "iframe-checkout.html");
+
+  await writeFile(
+    checkoutFile,
+    `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Checkout with iframe payment</title>
+  </head>
+  <body>
+    <main>
+      <h1>Checkout</h1>
+      <p>Payment is embedded below.</p>
+      <iframe
+        id="payment-frame"
+        title="Payment frame"
+        srcdoc='<!doctype html><html lang="en"><body><main><h2>Payment</h2><button id="pay-now" type="button">Pay now</button></main><script>document.getElementById("pay-now")?.addEventListener("click", () => { document.body.dataset.paymentCommitted = "true"; });</script></body></html>'>
+      </iframe>
+    </main>
+  </body>
+</html>`,
+    "utf8"
+  );
+
+  return {
+    checkoutUrl: pathToFileURL(checkoutFile).toString()
+  };
+}
+
+async function createAgentShadowPaymentFixtureSite(root: string): Promise<{ checkoutUrl: string }> {
+  const checkoutFile = join(root, "shadow-checkout.html");
+
+  await writeFile(
+    checkoutFile,
+    `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Checkout with shadow payment</title>
+  </head>
+  <body>
+    <main>
+      <h1>Checkout</h1>
+      <p>Payment is rendered by a web component.</p>
+      <payment-panel></payment-panel>
+    </main>
+    <script>
+      customElements.define("payment-panel", class extends HTMLElement {
+        connectedCallback() {
+          const root = this.attachShadow({ mode: "open" });
+          root.innerHTML = '<section><h2>Payment</h2><button id="pay-now" type="button">Pay now</button></section>';
+          root.getElementById("pay-now")?.addEventListener("click", () => {
+            document.body.dataset.paymentCommitted = "true";
+          });
+        }
+      });
+    </script>
+  </body>
+</html>`,
+    "utf8"
+  );
+
+  return {
+    checkoutUrl: pathToFileURL(checkoutFile).toString()
+  };
+}
+
+async function createAgentIframeReplayFixtureSite(root: string): Promise<{ frameUrl: string }> {
+  const frameFile = join(root, "iframe-replay.html");
+
+  await writeFile(
+    frameFile,
+    `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Iframe replay fixture</title>
+  </head>
+  <body>
+    <main>
+      <h1>Support flow</h1>
+      <p>The safe continuation button is embedded in an iframe.</p>
+      <iframe
+        id="support-frame"
+        title="Support frame"
+        srcdoc='<!doctype html><html lang="en"><body><main><h2>Support</h2><button id="continue-frame" type="button">Continue in frame</button><script>document.getElementById("continue-frame")?.addEventListener("click", () => { document.body.dataset.frameContinued = "true"; });</script></main></body></html>'>
+      </iframe>
+    </main>
+  </body>
+</html>`,
+    "utf8"
+  );
+
+  return {
+    frameUrl: pathToFileURL(frameFile).toString()
+  };
+}
+
 async function createAgentExternalCheckoutFixtureServer(): Promise<{
   productUrl: string;
   checkoutOrigin: string;
@@ -2560,6 +2730,78 @@ function createMvpPlan(startUrl: string, templateKey: string, goal: string, step
     },
     steps
   };
+}
+
+function createAgentIframeReplayPlan(startUrl: string): ScenarioPlan {
+  return createMvpPlan(startUrl, "agent-frame-replay", "iframe 내부 replay 후보를 안전하게 실행", [
+    createStep({
+      step_id: "agent_frame_replay_001_goto",
+      stage: "FIRST_VIEW",
+      description: "iframe replay fixture 진입",
+      action: {
+        type: "goto",
+        target: {
+          url: startUrl
+        }
+      },
+      checkpoint: true
+    }),
+    createStep({
+      step_id: "agent_frame_replay_002_click",
+      stage: "NAVIGATION",
+      description: "replay_hint frame_id 후보 클릭",
+      action: {
+        type: "click",
+        target: {
+          selector: "#missing-frame-button"
+        },
+        options: {
+          replay_hint: {
+            selected_index: 0,
+            locator_recipe: [
+              {
+                strategy: "selector",
+                selector: "#continue-frame",
+                confidence: 0.95,
+                frame_id: "frame:1"
+              },
+              {
+                strategy: "role_text",
+                role: "button",
+                text: "Continue in frame",
+                confidence: 0.9,
+                frame_id: "frame:1"
+              }
+            ]
+          }
+        }
+      },
+      settle_strategy: {
+        type: "fixed_short",
+        timeout_ms: 100
+      }
+    }),
+    createStep({
+      step_id: "agent_frame_replay_003_checkpoint",
+      stage: "ASSERT",
+      description: "frame replay checkpoint",
+      action: {
+        type: "checkpoint"
+      },
+      checkpoint: true
+    }),
+    createStep({
+      step_id: "agent_frame_replay_004_stop",
+      stage: "COMMIT",
+      description: "before_real_submit",
+      action: {
+        type: "stop_when"
+      },
+      stop_condition: {
+        condition: "before_real_submit"
+      }
+    })
+  ]);
 }
 
 function createMvpLandingCtaPlan(startUrl: string): ScenarioPlan {

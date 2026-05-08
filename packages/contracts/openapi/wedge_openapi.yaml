@@ -2177,14 +2177,20 @@ paths:
       - Reports
       operationId: createReportShare
       summary: 리포트 공유 링크 생성
-      description: 외부 공유용 링크를 생성한다. 만료 시간은 클라이언트가 지정하지 않으며 서버 기본값으로 생성 후 10분을 사용한다.
+      description: 외부 공유용 링크를 생성하거나, 만료 전 유효한 공유 링크가 이미 있으면 기존 링크를 반환한다. 만료 시간은 클라이언트가 지정하지 않으며 새로 생성되는 링크는 서버 기본값으로 생성 후 10분을 사용한다.
       security:
       - HumanBearer: []
       parameters:
       - $ref: '#/components/parameters/ReportId'
       responses:
+        '200':
+          description: Existing active report share reused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SingleReportShareResponse'
         '201':
-          description: Report share created
+          description: New report share created
           content:
             application/json:
               schema:

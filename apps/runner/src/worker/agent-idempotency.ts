@@ -16,6 +16,20 @@ export interface AgentIdempotencyRecord {
   result: AgentRunnerExecutionResult;
 }
 
+export interface AgentIdempotencyStore {
+  read(idempotencyKey: string): Promise<AgentRunnerExecutionResult | null>;
+  persist(idempotencyKey: string, result: AgentRunnerExecutionResult): Promise<void>;
+}
+
+export function createLocalAgentIdempotencyStore(
+  config: Pick<RunnerConfig, "artifactsRoot" | "workerId">
+): AgentIdempotencyStore {
+  return {
+    read: (idempotencyKey) => readAgentIdempotencyResult(config, idempotencyKey),
+    persist: (idempotencyKey, result) => persistAgentIdempotencyResult(config, idempotencyKey, result)
+  };
+}
+
 export function resolveAgentIdempotencyKey(input: {
   envelopeIdempotencyKey?: string;
   taskIdempotencyKey?: string | null;

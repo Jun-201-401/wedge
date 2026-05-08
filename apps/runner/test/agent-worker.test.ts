@@ -6,6 +6,8 @@ import { setTimeout as delay } from "node:timers/promises";
 import { createAgentRuntimePlan, executeAgentRun, type AgentDecisionClient } from "../src/agent/index.ts";
 import { createAgentWorkerHarness, createCheckoutHeuristicComponents } from "./agent-support.ts";
 import { registerAgentWorker } from "../src/worker/agent-worker.ts";
+import type { AgentRunnerExecutionResult } from "../src/worker/agent-worker.ts";
+import type { AgentIdempotencyStore } from "../src/worker/agent-idempotency.ts";
 import {
   cloneMessage,
   createRunnerTestConfig,
@@ -146,6 +148,8 @@ test("[Agent Worker] AgentTask로 CTA 후보를 관찰해 클릭한다", async (
   assert.equal(result.trace.turns.length, 2);
   assert.equal(result.trace.turns[0].preDecisionVerification.phase, "pre_decision");
   assert.equal(result.trace.turns[1].decision?.action.type, "click");
+  assert.equal(result.trace.turns[1].decision?.metadata?.decisionSource, "heuristic");
+  assert.match(result.trace.turns[1].decision?.metadata?.decisionId ?? "", /^[0-9a-f-]{36}$/);
   assert.equal(result.trace.turns[1].policy?.allowed, true);
   assert.equal(result.trace.turns[1].postActionVerification?.satisfied, true);
   assert.equal(persistedArtifacts.length, 2);
@@ -153,6 +157,9 @@ test("[Agent Worker] AgentTask로 CTA 후보를 관찰해 클릭한다", async (
   const scenarioPlanExportDraft = persistedArtifacts.find((artifact) => artifact.stepKey === "agent_scenario_plan_export");
   assert.equal(traceArtifactDraft?.artifactType, "TRACE");
   assert.match(traceArtifactDraft?.content ?? "", /"outcome"/);
+  assert.match(traceArtifactDraft?.content ?? "", /"decisionSource": "heuristic"/);
+  assert.match(traceArtifactDraft?.content ?? "", /"decisionId":/);
+  assert.doesNotMatch(traceArtifactDraft?.content ?? "", /rawPrompt|messages|outputSchema/);
   assert.equal(scenarioPlanExportDraft?.artifactType, "OTHER");
   assert.match(scenarioPlanExportDraft?.content ?? "", /"scenario_plan"/);
   assert.match(scenarioPlanExportDraft?.content ?? "", /"stop_when"/);
@@ -612,6 +619,86 @@ test("[Agent Worker] terminal idempotency record가 있으면 새 worker process
   assert.equal(duplicateResult.runId, firstResult.runId);
 });
 
+test("[Agent Worker] 주입된 idempotency store로 worker 인스턴스 간 중복 실행을 막는다", async () => {
+  const message = await loadAgentExampleMessage();
+  const task = message.payload.agentTask;
+  task.goal = "checkout 진입 여부를 확인한다";
+  task.idempotency_key = "agent-idempotency-shared-store";
+  const sharedStore = createInMemoryAgentIdempotencyStore();
+  const artifactsRoot = join(tmpdir(), `runner-test-agent-idempotency-shared-${Date.now()}`);
+
+  let firstCreateSessionCount = 0;
+  const firstWorker = registerAgentWorker({
+    config: createRunnerTestConfig({
+      artifactsRoot,
+      callbackLogFile: join(artifactsRoot, "first-shared-callbacks.jsonl"),
+      agentIdempotencyStoreEnabled: true
+    }),
+    browserFactory: {
+      kind: "simulated-playwright",
+      createSession: async ({ plan }) => {
+        firstCreateSessionCount += 1;
+
+        return createSimulatedSession(plan, {
+          execute: async () => {
+            throw new Error("shared idempotency store test should stop before action");
+          },
+          settle: async () => createSettledResult(),
+          snapshot: () => createSimulatedPageSnapshot(plan, {
+            currentUrl: "https://example.com/checkout",
+            finalUrl: "https://example.com/checkout",
+            title: "Checkout"
+          })
+        });
+      }
+    },
+    callbackClient: createStubCallbackClient(),
+    capturePipeline: {
+      collectCheckpoint: async () => {
+        throw new Error("checkpoint collection should not run when pre-decision verification succeeds");
+      }
+    },
+    artifactStore: {
+      persistArtifacts: async () => []
+    },
+    agentIdempotencyStore: sharedStore
+  });
+
+  const firstResult = await firstWorker.handleMessage(message);
+  assert.equal(firstCreateSessionCount, 1);
+  assert.equal(firstResult.trace.outcome.status, "SUCCESS");
+
+  const secondWorker = registerAgentWorker({
+    config: createRunnerTestConfig({
+      artifactsRoot: join(artifactsRoot, "second"),
+      callbackLogFile: join(artifactsRoot, "second-shared-callbacks.jsonl"),
+      agentIdempotencyStoreEnabled: true
+    }),
+    browserFactory: {
+      kind: "simulated-playwright",
+      createSession: async () => {
+        throw new Error("shared idempotency store should prevent a new browser session");
+      }
+    },
+    callbackClient: createStubCallbackClient(),
+    capturePipeline: {
+      collectCheckpoint: async () => {
+        throw new Error("checkpoint collection should not run for shared-store duplicate");
+      }
+    },
+    artifactStore: {
+      persistArtifacts: async () => []
+    },
+    agentIdempotencyStore: sharedStore
+  });
+
+  const duplicateResult = await secondWorker.handleMessage(message);
+  assert.deepEqual(duplicateResult.summary, firstResult.summary);
+  assert.deepEqual(duplicateResult.trace, firstResult.trace);
+  assert.deepEqual(duplicateResult.delivery, firstResult.delivery);
+  assert.equal(duplicateResult.runId, firstResult.runId);
+});
+
 test("[Agent Worker] 로그인 벽을 감지하면 decision 전에 중단한다", async () => {
   const message = await loadAgentExampleMessage();
   const task = message.payload.agentTask;
@@ -845,3 +932,14 @@ test("[Agent Worker] checkout 휴리스틱은 장바구니 담기, 카트, check
   assert.equal(result.trace.outcome.status, "SUCCESS");
   assert.equal(result.trace.turns.at(-1)?.postActionVerification?.satisfied, true);
 });
+
+function createInMemoryAgentIdempotencyStore(): AgentIdempotencyStore {
+  const records = new Map<string, AgentRunnerExecutionResult>();
+
+  return {
+    read: async (idempotencyKey) => records.get(idempotencyKey) ?? null,
+    persist: async (idempotencyKey, result) => {
+      records.set(idempotencyKey, result);
+    }
+  };
+}

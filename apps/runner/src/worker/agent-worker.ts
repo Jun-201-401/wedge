@@ -9,7 +9,11 @@ import type { AgentExecuteMessage, Artifact } from "../shared/contracts.ts";
 import { classifyRunnerFailure, errorMessage, logOperationalEvent } from "../shared/utils.ts";
 import type { ArtifactStore } from "../storage/index.ts";
 import type { AgentTrace } from "../agent/trace.ts";
-import { persistAgentIdempotencyResult, readAgentIdempotencyResult, resolveAgentIdempotencyKey } from "./agent-idempotency.ts";
+import {
+  createLocalAgentIdempotencyStore,
+  resolveAgentIdempotencyKey,
+  type AgentIdempotencyStore
+} from "./agent-idempotency.ts";
 import { emitAcceptedCallback, emitFailedCallback, emitFinishedCallback } from "./callback-policy.ts";
 
 export interface AgentRunnerExecutionResult {
@@ -30,6 +34,7 @@ export interface RegisterAgentWorkerInput {
   callbackClient: CallbackClient;
   capturePipeline: CapturePipeline;
   artifactStore: ArtifactStore;
+  agentIdempotencyStore?: AgentIdempotencyStore;
 }
 
 export interface AgentRunnerWorker {
@@ -42,9 +47,13 @@ export function registerAgentWorker({
   browserFactory,
   callbackClient,
   capturePipeline,
-  artifactStore
+  artifactStore,
+  agentIdempotencyStore
 }: RegisterAgentWorkerInput): AgentRunnerWorker {
   const idempotentExecutions = new Map<string, Promise<AgentRunnerExecutionResult>>();
+  const terminalIdempotencyStore = config.agentIdempotencyStoreEnabled
+    ? agentIdempotencyStore ?? createLocalAgentIdempotencyStore(config)
+    : null;
 
   return {
     workerId: config.workerId,
@@ -69,8 +78,8 @@ export function registerAgentWorker({
           return existingExecution;
         }
 
-        if (config.agentIdempotencyStoreEnabled) {
-          const persistedResult = await readAgentIdempotencyResult(config, idempotencyKey);
+        if (terminalIdempotencyStore) {
+          const persistedResult = await terminalIdempotencyStore.read(idempotencyKey);
           if (persistedResult) {
             logOperationalEvent(
               "agent-worker",
@@ -96,8 +105,8 @@ export function registerAgentWorker({
           artifactStore
         })
           .then(async (result) => {
-            if (config.agentIdempotencyStoreEnabled) {
-              await persistAgentIdempotencyResult(config, idempotencyKey, result);
+            if (terminalIdempotencyStore) {
+              await terminalIdempotencyStore.persist(idempotencyKey, result);
             }
             return result;
           })

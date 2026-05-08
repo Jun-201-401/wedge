@@ -34,6 +34,30 @@
           AND report.deleted_at IS NULL
     </select>
 
+    <select id="findActiveByReportId" resultMap="ReportShareResultMap">
+        SELECT <include refid="ReportShareColumns"/>
+        FROM report_share
+        WHERE report_id = #{reportId}
+          AND revoked_at IS NULL
+          AND (expires_at IS NULL OR expires_at &gt; #{now})
+          AND EXISTS (
+              SELECT 1
+              FROM report
+              WHERE report.id = report_share.report_id
+                AND report.deleted_at IS NULL
+          )
+        ORDER BY created_at DESC
+        LIMIT 1
+    </select>
+
+    <select id="lockReportForShare" resultType="java.util.UUID">
+        SELECT id
+        FROM report
+        WHERE id = #{reportId}
+          AND deleted_at IS NULL
+        FOR UPDATE
+    </select>
+
     <insert id="insert" parameterType="com.wedge.report.domain.ReportShare">
         INSERT INTO report_share (
             id, report_id, share_token, access_level, expires_at, created_by, created_at

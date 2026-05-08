@@ -672,6 +672,8 @@ export interface InteractiveComponentObservationItem {
   selector: string | null;
   role: string | null;
   href?: string | null;
+  frame_id?: string | null;
+  shadow_root?: boolean;
   tag: string;
   clickable: boolean;
   clicked_in_scenario: boolean;

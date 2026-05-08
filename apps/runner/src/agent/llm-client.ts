@@ -5,7 +5,7 @@ import {
   isUnsafeLlmDecisionError,
   parseLlmDecision
 } from "./llm-decision-parser.ts";
-import { createLlmCandidateReferences, createLlmRequestPayload } from "./llm-prompt.ts";
+import { createLlmCandidateReferences, createLlmPromptMetadata, createLlmRequestPayload } from "./llm-prompt.ts";
 import { createFetchLlmDecisionTransport, type AgentLlmDecisionTransport } from "./llm-transport.ts";
 import { HeuristicDecisionClient, type AgentDecision, type AgentDecisionClient, type AgentDecisionInput } from "./planner.ts";
 
@@ -40,6 +40,7 @@ export class AgentLlmDecisionClient implements AgentDecisionClient {
     }
 
     const candidateReferences = createLlmCandidateReferences(input.observation.snapshot.interactiveComponents);
+    const promptMetadata = createLlmPromptMetadata(candidateReferences);
     const retryCount = resolveInvalidJsonRetryCount(this.options.invalidJsonRetryCount);
 
     for (let attemptIndex = 0; attemptIndex <= retryCount; attemptIndex += 1) {
@@ -52,7 +53,10 @@ export class AgentLlmDecisionClient implements AgentDecisionClient {
           payload: createLlmRequestPayload(input, this.options.model, candidateReferences)
         });
 
-        return parseLlmDecision(rawResponse, input, candidateReferences);
+        return parseLlmDecision(rawResponse, input, candidateReferences, {
+          model: this.options.model,
+          promptMetadata
+        });
       } catch (error) {
         if (isRetryableLlmDecisionError(error) && attemptIndex < retryCount) {
           logOperationalEvent(
@@ -127,4 +131,3 @@ function resolveLlmTimeoutMs(configuredTimeoutMs: number, remainingTimeMs: numbe
 
   return Math.max(1, Math.min(configuredTimeoutMs, Math.floor(remainingTimeMs)));
 }
-

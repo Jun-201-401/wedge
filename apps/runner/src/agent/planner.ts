@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type { AgentObservation } from "./observation.ts";
 import type { AgentExecutionState } from "./state.ts";
 import type {
@@ -16,6 +17,23 @@ import {
 import { plannerSemantics } from "./semantics.ts";
 
 export type AgentDecisionKind = "act" | "checkpoint" | "finish";
+export type AgentDecisionSource = "heuristic" | "llm";
+
+export interface AgentDecisionPromptMetadata {
+  payloadShapeVersion: string;
+  candidateCount: number;
+  redacted: boolean;
+  rawPromptStored: false;
+  rawCandidateSelectorsIncluded: false;
+  rawCandidateHrefsIncluded: false;
+}
+
+export interface AgentDecisionMetadata {
+  decisionId: string;
+  decisionSource: AgentDecisionSource;
+  model?: string;
+  promptMetadata?: AgentDecisionPromptMetadata;
+}
 
 export interface AgentDecision {
   kind: AgentDecisionKind;
@@ -27,6 +45,7 @@ export interface AgentDecision {
   stage: ScenarioStage;
   targetKey: string | null;
   replayHint?: AgentReplayTargetHint;
+  metadata?: AgentDecisionMetadata;
 }
 
 export interface AgentDecisionInput {
@@ -49,6 +68,44 @@ export class HeuristicDecisionClient implements AgentDecisionClient {
 }
 
 export function decideNextAction(input: AgentDecisionInput): AgentDecision {
+  return withAgentDecisionMetadata(decideNextActionWithoutMetadata(input), {
+    decisionSource: "heuristic"
+  });
+}
+
+export function withAgentDecisionMetadata(
+  decision: AgentDecision,
+  input: {
+    decisionSource: AgentDecisionSource;
+    model?: string;
+    promptMetadata?: AgentDecisionPromptMetadata;
+  }
+): AgentDecision {
+  if (decision.metadata) {
+    return decision;
+  }
+
+  return {
+    ...decision,
+    metadata: {
+      decisionId: randomUUID(),
+      decisionSource: input.decisionSource,
+      model: input.model,
+      promptMetadata: input.promptMetadata
+    }
+  };
+}
+
+export function ensureAgentDecisionMetadata(
+  decision: AgentDecision,
+  fallbackSource: AgentDecisionSource = "heuristic"
+): AgentDecision {
+  return withAgentDecisionMetadata(decision, {
+    decisionSource: fallbackSource
+  });
+}
+
+function decideNextActionWithoutMetadata(input: AgentDecisionInput): AgentDecision {
   if (!input.state.started) {
     return {
       kind: "act",
@@ -146,7 +203,7 @@ const CHECKOUT_ACTION_RULES: Array<{
 
 function selectActionCandidate(input: AgentDecisionInput): ActionCandidate | undefined {
   const untriedComponents = input.observation.snapshot.interactiveComponents.filter((component) =>
-    component.clickable && !input.state.clickedTargetKeys.has(targetKey(component))
+    component.clickable && !component.shadow_root && !input.state.clickedTargetKeys.has(targetKey(component))
   );
 
   const cookieAction = selectCookieAction(untriedComponents);

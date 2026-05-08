@@ -11,23 +11,27 @@ export type AgentLocatorRecipeEntry =
       strategy: "selector";
       selector: string;
       confidence: number;
+      frame_id?: string;
     }
   | {
       strategy: "role_text";
       role: string;
       text: string;
       confidence: number;
+      frame_id?: string;
     }
   | {
       strategy: "href";
       href: string;
       confidence: number;
+      frame_id?: string;
     }
   | {
       strategy: "tag_text";
       tag: string;
       text: string;
       confidence: number;
+      frame_id?: string;
     };
 
 export function targetFromComponent(component: InteractiveComponentObservationItem): TargetDescriptorMap {
@@ -80,6 +84,8 @@ export function candidateFingerprint(component: InteractiveComponentObservationI
     text: normalizeText(component.text),
     href: normalizeUrl(component.href),
     tag: normalizeText(component.tag),
+    frame_id: normalizeText(component.frame_id),
+    shadow_root: component.shadow_root === true,
     bounds: normalizeBounds(component.bounds)
   };
 
@@ -92,11 +98,16 @@ export function candidateFingerprint(component: InteractiveComponentObservationI
 export function locatorRecipeFromComponent(component: InteractiveComponentObservationItem): AgentLocatorRecipeEntry[] {
   const recipe: AgentLocatorRecipeEntry[] = [];
 
+  if (component.shadow_root) {
+    return recipe;
+  }
+
   if (component.selector) {
     recipe.push({
       strategy: "selector",
       selector: component.selector,
-      confidence: 0.9
+      confidence: 0.9,
+      ...frameRecipe(component)
     });
   }
 
@@ -105,7 +116,8 @@ export function locatorRecipeFromComponent(component: InteractiveComponentObserv
       strategy: "role_text",
       role: component.role,
       text: component.text,
-      confidence: component.selector ? 0.78 : 0.84
+      confidence: component.selector ? 0.78 : 0.84,
+      ...frameRecipe(component)
     });
   }
 
@@ -113,7 +125,8 @@ export function locatorRecipeFromComponent(component: InteractiveComponentObserv
     recipe.push({
       strategy: "href",
       href: component.href,
-      confidence: 0.72
+      confidence: 0.72,
+      ...frameRecipe(component)
     });
   }
 
@@ -122,11 +135,16 @@ export function locatorRecipeFromComponent(component: InteractiveComponentObserv
       strategy: "tag_text",
       tag: component.tag,
       text: component.text,
-      confidence: 0.62
+      confidence: 0.62,
+      ...frameRecipe(component)
     });
   }
 
   return recipe;
+}
+
+function frameRecipe(component: InteractiveComponentObservationItem): { frame_id?: string } {
+  return component.frame_id ? { frame_id: component.frame_id } : {};
 }
 
 function normalizeText(value: string | null | undefined): string | null {
