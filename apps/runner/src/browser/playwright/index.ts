@@ -5,6 +5,7 @@ import {
   webkit,
   type Browser,
   type BrowserContext,
+  type Frame,
   type Locator,
   type BrowserType,
   type Page
@@ -114,23 +115,27 @@ type ReplayHintLocatorRecipeEntry =
       strategy: "selector";
       selector: string;
       confidence?: number;
+      frame_id?: string;
     }
   | {
       strategy: "role_text";
       role: string;
       text: string;
       confidence?: number;
+      frame_id?: string;
     }
   | {
       strategy: "href";
       href: string;
       confidence?: number;
+      frame_id?: string;
     }
   | {
       strategy: "tag_text";
       tag: string;
       text: string;
       confidence?: number;
+      frame_id?: string;
     };
 
 class SettleTimeoutError extends Error {
@@ -1255,6 +1260,10 @@ function buildReplayRecipeLocator(page: Page, entry: unknown): Locator[] {
   }
 
   const recipe = entry as Partial<ReplayHintLocatorRecipeEntry>;
+  if (typeof recipe.frame_id === "string" && recipe.frame_id.length > 0) {
+    return [];
+  }
+
   switch (recipe.strategy) {
     case "selector": {
       return typeof recipe.selector === "string" && recipe.selector.length > 0
@@ -1568,8 +1577,39 @@ async function safeInteractiveComponents(
   lastAction: BrowserPageSnapshot["lastAction"],
   fallbackValue: InteractiveComponentObservationItem[]
 ): Promise<InteractiveComponentObservationItem[]> {
+  const clickedTarget = lastAction?.type === "click" ? lastAction.target : null;
   try {
-    return await page.evaluate((clickedTarget) => {
+    const mainComponents = await extractInteractiveComponentsFromFrame(page.mainFrame(), clickedTarget, null);
+    const frameComponents: InteractiveComponentObservationItem[] = [];
+
+    for (const [index, frame] of page.frames().filter((frame) => frame !== page.mainFrame()).entries()) {
+      try {
+        frameComponents.push(...await extractInteractiveComponentsFromFrame(frame, clickedTarget, `frame:${index + 1}`));
+      } catch {
+        continue;
+      }
+    }
+
+    const components = [...mainComponents, ...frameComponents]
+      .sort((left, right) => componentScore(right) - componentScore(left))
+      .slice(0, 20);
+    const primaryIndex = components.findIndex((component) => component.is_cta_candidate);
+
+    return components.map((component, index) => ({
+      ...component,
+      is_primary_like: index === primaryIndex
+    }));
+  } catch {
+    return fallbackValue;
+  }
+}
+
+async function extractInteractiveComponentsFromFrame(
+  frame: Frame,
+  clickedTarget: string | null,
+  frameId: string | null
+): Promise<InteractiveComponentObservationItem[]> {
+  return frame.evaluate(({ clickedTarget, frameId }) => {
       const CTA_TEXT_PATTERN = /무료|시작|가입|신청|구매|결제|문의|상담|체험|다운로드|start|sign\s*up|try|buy|checkout|contact|demo|continue/i;
       const SELECTOR_ESCAPE_SCOPE = globalThis as typeof globalThis & {
         CSS?: {
@@ -1687,6 +1727,7 @@ async function safeInteractiveComponents(
             selector,
             role,
             href,
+            frame_id: frameId,
             tag,
             clickable,
             clicked_in_scenario: isClickedInScenario({ text, selector, role }),
@@ -1707,21 +1748,24 @@ async function safeInteractiveComponents(
         .sort((left, right) => right.score - left.score)
         .slice(0, 20);
 
-      const primaryIndex = components.findIndex((component) => component.is_cta_candidate);
-      return components.map((component, index) => ({
+      return components.map((component) => ({
         text: component.text,
         selector: component.selector,
         role: component.role,
         href: component.href,
+        frame_id: component.frame_id,
         tag: component.tag,
         clickable: component.clickable,
         clicked_in_scenario: component.clicked_in_scenario,
         is_cta_candidate: component.is_cta_candidate,
-        is_primary_like: index === primaryIndex,
+        is_primary_like: false,
         bounds: component.bounds
       }));
-    }, lastAction?.type === "click" ? lastAction.target : null);
-  } catch {
-    return fallbackValue;
-  }
+    }, { clickedTarget, frameId });
+}
+
+function componentScore(component: InteractiveComponentObservationItem): number {
+  return (component.is_cta_candidate ? 1_000_000 : 0) +
+    component.bounds.width * component.bounds.height +
+    (component.frame_id ? 100 : 0);
 }

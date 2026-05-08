@@ -1167,7 +1167,7 @@ Frame and shadow DOM rules:
 locator_recipe must include frame_id for iframe candidates.
 tools.ts must resolve frame_id to the correct Playwright Frame or frameLocator before executing.
 main-frame and child-frame candidate IDs must not collide.
-MVP must at least observe iframe risky candidates and block final commit/payment actions inside iframes.
+DONE: MVP observes iframe risky candidates and blocks final commit/payment actions inside iframes before requesting another decision.
 Shadow DOM support may be observation-only in MVP unless locator_recipe can safely resolve it.
 ```
 
@@ -1762,6 +1762,7 @@ Completed:
 - LLM prompt payloads use opaque candidate ids plus redacted semantic selector/href hints instead of raw selector/href values.
 - LLM invalid-JSON-only retry and broader heuristic-vs-LLM checkout fixture comparison are covered by Runner tests.
 - Agent decisions now carry redacted trace-safe metadata: decision id, source, optional model, and prompt shape summary without raw prompt content.
+- Iframe candidates are observed with frame ids, and iframe payment/final-order commit candidates are blocked before the next Agent decision.
 
 Remaining:
 - Promote local terminal idempotency records to API/DB-backed global idempotency when multiple runner replicas share a queue.

@@ -638,6 +638,31 @@ test("[Agent CAPTCHA Blocker Smoke] 실제 Playwright 경로에서 CAPTCHA 벽�
   }
 });
 
+test("[Agent Iframe Payment Blocker Smoke] iframe 내부 최종 결제 후보를 decision 전에 감지한다", async () => {
+  const fixtureRoot = await mkdtemp(join(tmpdir(), "wedge-runner-agent-iframe-payment-site-"));
+  const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-agent-iframe-payment-artifacts-"));
+
+  try {
+    const { checkoutUrl } = await createAgentIframePaymentFixtureSite(fixtureRoot);
+    const result = await executeRealAgentTask({
+      task: createAgentCheckoutTask(checkoutUrl),
+      artifactsRoot
+    });
+
+    assert.equal(result.execution.summary.completedStepCount, 1);
+    assert.equal(result.execution.summary.stopped, true);
+    assert.equal(result.execution.trace.outcome.status, "POLICY_BLOCKED");
+    assert.equal(result.execution.trace.turns.at(-1)?.preDecisionVerification?.outcome, "POLICY_BLOCKED");
+    assert.match(result.execution.trace.turns.at(-1)?.preDecisionVerification?.reason ?? "", /iframe frame:1/);
+    assert.deepEqual(result.actionCompletedTargets, [checkoutUrl]);
+    assert.ok(!result.actionCompletedTargets.includes("#pay-now"));
+    assert.equal(result.traceArtifacts.length, 1);
+  } finally {
+    await rm(fixtureRoot, { recursive: true, force: true });
+    await rm(artifactsRoot, { recursive: true, force: true });
+  }
+});
+
 test("[Agent External Checkout Smoke] allowlist된 외부 checkout redirect는 실제 Playwright 경로에서 허용한다", async () => {
   const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-agent-external-artifacts-"));
   const fixture = await createAgentExternalCheckoutFixtureServer();
@@ -2033,6 +2058,37 @@ async function createAgentBlockerFixtureSite(
 
   return {
     blockerUrl: pathToFileURL(blockerFile).toString()
+  };
+}
+
+async function createAgentIframePaymentFixtureSite(root: string): Promise<{ checkoutUrl: string }> {
+  const checkoutFile = join(root, "iframe-checkout.html");
+
+  await writeFile(
+    checkoutFile,
+    `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Checkout with iframe payment</title>
+  </head>
+  <body>
+    <main>
+      <h1>Checkout</h1>
+      <p>Payment is embedded below.</p>
+      <iframe
+        id="payment-frame"
+        title="Payment frame"
+        srcdoc='<!doctype html><html lang="en"><body><main><h2>Payment</h2><button id="pay-now" type="button">Pay now</button></main><script>document.getElementById("pay-now")?.addEventListener("click", () => { document.body.dataset.paymentCommitted = "true"; });</script></body></html>'>
+      </iframe>
+    </main>
+  </body>
+</html>`,
+    "utf8"
+  );
+
+  return {
+    checkoutUrl: pathToFileURL(checkoutFile).toString()
   };
 }
 

@@ -91,6 +91,7 @@ function candidatePromptSummary(candidate: LlmCandidateReference): Record<string
     text: redactSensitiveString(candidate.component.text),
     role: candidate.component.role,
     tag: candidate.component.tag,
+    frameId: candidate.component.frame_id ?? null,
     hrefHint: hrefPromptHint(candidate.component.href),
     selectorHint: selectorPromptHint(candidate.component.selector),
     isPrimaryLike: candidate.component.is_primary_like,
