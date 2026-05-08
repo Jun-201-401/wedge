@@ -85,6 +85,7 @@ export function candidateFingerprint(component: InteractiveComponentObservationI
     href: normalizeUrl(component.href),
     tag: normalizeText(component.tag),
     frame_id: normalizeText(component.frame_id),
+    shadow_root: component.shadow_root === true,
     bounds: normalizeBounds(component.bounds)
   };
 
@@ -96,6 +97,10 @@ export function candidateFingerprint(component: InteractiveComponentObservationI
 
 export function locatorRecipeFromComponent(component: InteractiveComponentObservationItem): AgentLocatorRecipeEntry[] {
   const recipe: AgentLocatorRecipeEntry[] = [];
+
+  if (component.shadow_root) {
+    return recipe;
+  }
 
   if (component.selector) {
     recipe.push({

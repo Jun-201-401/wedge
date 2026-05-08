@@ -1727,10 +1727,25 @@ async function extractInteractiveComponentsFromFrame(
         );
       }
 
+      const INTERACTIVE_SELECTOR = "a[href], button, input[type='button'], input[type='submit'], [role='button'], [role='link'], [onclick], [tabindex='0']";
+
+      function collectInteractiveElements(root: Document | ShadowRoot, shadowRoot: boolean): Array<{ element: Element; shadowRoot: boolean }> {
+        const direct = Array.from(root.querySelectorAll(INTERACTIVE_SELECTOR)).map((element) => ({
+          element,
+          shadowRoot
+        }));
+        const nested = Array.from(root.querySelectorAll("*")).flatMap((element) => {
+          const openShadowRoot = (element as HTMLElement).shadowRoot;
+          return openShadowRoot ? collectInteractiveElements(openShadowRoot, true) : [];
+        });
+
+        return [...direct, ...nested];
+      }
+
       const viewportWidth = globalThis.innerWidth || 0;
       const viewportHeight = globalThis.innerHeight || 0;
-      const components = Array.from(document.querySelectorAll("a[href], button, input[type='button'], input[type='submit'], [role='button'], [role='link'], [onclick], [tabindex='0']"))
-        .map((element) => {
+      const components = collectInteractiveElements(document, false)
+        .map(({ element, shadowRoot }) => {
           const rect = element.getBoundingClientRect();
           const tag = element.tagName.toLowerCase();
           const role = element.getAttribute("role") ?? implicitRole(element, tag);
@@ -1747,6 +1762,7 @@ async function extractInteractiveComponentsFromFrame(
             role,
             href,
             frame_id: frameId,
+            shadow_root: shadowRoot,
             tag,
             clickable,
             clicked_in_scenario: isClickedInScenario({ text, selector, role }),
@@ -1773,6 +1789,7 @@ async function extractInteractiveComponentsFromFrame(
         role: component.role,
         href: component.href,
         frame_id: component.frame_id,
+        shadow_root: component.shadow_root,
         tag: component.tag,
         clickable: component.clickable,
         clicked_in_scenario: component.clicked_in_scenario,

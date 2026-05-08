@@ -12,7 +12,7 @@ export interface LlmCandidateReference {
 export const LLM_PROMPT_PAYLOAD_SHAPE_VERSION = "llm-prompt-v1";
 
 export function createLlmCandidateReferences(components: InteractiveComponentObservationItem[]): LlmCandidateReference[] {
-  return components.map((component, index) => ({
+  return components.filter((component) => !component.shadow_root).map((component, index) => ({
     id: `candidate_${String(index + 1).padStart(3, "0")}`,
     rawTargetKey: targetKey(component),
     component

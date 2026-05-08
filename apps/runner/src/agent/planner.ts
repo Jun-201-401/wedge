@@ -203,7 +203,7 @@ const CHECKOUT_ACTION_RULES: Array<{
 
 function selectActionCandidate(input: AgentDecisionInput): ActionCandidate | undefined {
   const untriedComponents = input.observation.snapshot.interactiveComponents.filter((component) =>
-    component.clickable && !input.state.clickedTargetKeys.has(targetKey(component))
+    component.clickable && !component.shadow_root && !input.state.clickedTargetKeys.has(targetKey(component))
   );
 
   const cookieAction = selectCookieAction(untriedComponents);
