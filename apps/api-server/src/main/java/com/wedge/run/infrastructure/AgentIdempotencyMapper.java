@@ -8,5 +8,11 @@ import org.apache.ibatis.annotations.Param;
 public interface AgentIdempotencyMapper {
     Optional<AgentIdempotencyRecord> findByKeyHash(@Param("idempotencyKeyHash") String idempotencyKeyHash);
 
-    int insertIgnoreDuplicate(AgentIdempotencyRecord record);
+    int insertClaimIgnoreDuplicate(AgentIdempotencyRecord record);
+
+    int claimExpired(AgentIdempotencyRecord record);
+
+    int completeClaimed(AgentIdempotencyRecord record);
+
+    int insertCompletedIgnoreDuplicate(AgentIdempotencyRecord record);
 }

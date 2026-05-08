@@ -7,10 +7,14 @@ import java.util.UUID;
 public record RunnerAgentIdempotencyRecordResponse(
         String idempotencyKeyHash,
         boolean found,
+        String status,
         UUID runId,
         String taskId,
         String attemptId,
         Integer attemptIndex,
+        String claimedBy,
+        OffsetDateTime claimedAt,
+        OffsetDateTime leaseExpiresAt,
         Map<String, Object> result,
         OffsetDateTime completedAt
 ) {
@@ -18,6 +22,10 @@ public record RunnerAgentIdempotencyRecordResponse(
         return new RunnerAgentIdempotencyRecordResponse(
                 idempotencyKeyHash,
                 false,
+                null,
+                null,
+                null,
+                null,
                 null,
                 null,
                 null,

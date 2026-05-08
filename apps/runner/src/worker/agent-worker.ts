@@ -10,6 +10,7 @@ import { classifyRunnerFailure, errorMessage, logOperationalEvent } from "../sha
 import type { ArtifactStore } from "../storage/index.ts";
 import type { AgentTrace } from "../agent/trace.ts";
 import {
+  AgentIdempotencyInProgressError,
   createApiAgentIdempotencyStore,
   createLocalAgentIdempotencyStore,
   resolveAgentIdempotencyKey,
@@ -79,7 +80,45 @@ export function registerAgentWorker({
           return existingExecution;
         }
 
-        if (terminalIdempotencyStore) {
+        if (terminalIdempotencyStore?.claim) {
+          const claim = await terminalIdempotencyStore.claim(idempotencyKey, {
+            runId: message.payload.agentTask.run_id,
+            taskId: message.payload.agentTask.task_id,
+            attemptId: message.payload.agentTask.attempt_id,
+            attemptIndex: message.payload.agentTask.attempt_index
+          });
+
+          if (claim.status === "COMPLETED") {
+            logOperationalEvent(
+              "agent-worker",
+              "duplicate_message_replayed",
+              {
+                runId: message.payload.agentTask.run_id,
+                taskId: message.payload.agentTask.task_id,
+                idempotencyKey,
+                originalRunId: claim.result.runId
+              },
+              "warn"
+            );
+            return claim.result;
+          }
+
+          if (claim.status === "IN_PROGRESS") {
+            logOperationalEvent(
+              "agent-worker",
+              "duplicate_message_in_progress",
+              {
+                runId: message.payload.agentTask.run_id,
+                taskId: message.payload.agentTask.task_id,
+                idempotencyKey,
+                claimedBy: claim.claimedBy,
+                leaseExpiresAt: claim.leaseExpiresAt
+              },
+              "warn"
+            );
+            throw new AgentIdempotencyInProgressError(idempotencyKey, claim.claimedBy, claim.leaseExpiresAt);
+          }
+        } else if (terminalIdempotencyStore) {
           const persistedResult = await terminalIdempotencyStore.read(idempotencyKey);
           if (persistedResult) {
             logOperationalEvent(

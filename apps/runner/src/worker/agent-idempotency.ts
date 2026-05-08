@@ -20,6 +20,40 @@ export interface AgentIdempotencyRecord {
 export interface AgentIdempotencyStore {
   read(idempotencyKey: string): Promise<AgentRunnerExecutionResult | null>;
   persist(idempotencyKey: string, result: AgentRunnerExecutionResult): Promise<void>;
+  claim?(
+    idempotencyKey: string,
+    input: AgentIdempotencyClaimInput
+  ): Promise<AgentIdempotencyClaimResult>;
+}
+
+export interface AgentIdempotencyClaimInput {
+  runId: string;
+  taskId: string;
+  attemptId: string;
+  attemptIndex: number;
+}
+
+export type AgentIdempotencyClaimResult =
+  | { status: "CLAIMED" }
+  | { status: "COMPLETED"; result: AgentRunnerExecutionResult }
+  | { status: "IN_PROGRESS"; claimedBy?: string | null; leaseExpiresAt?: string | null };
+
+export class AgentIdempotencyInProgressError extends Error {
+  readonly idempotencyKey: string;
+  readonly claimedBy?: string | null;
+  readonly leaseExpiresAt?: string | null;
+
+  constructor(
+    idempotencyKey: string,
+    claimedBy?: string | null,
+    leaseExpiresAt?: string | null
+  ) {
+    super("Agent execution with the same idempotency key is already claimed by another runner.");
+    this.name = "AgentIdempotencyInProgressError";
+    this.idempotencyKey = idempotencyKey;
+    this.claimedBy = claimedBy;
+    this.leaseExpiresAt = leaseExpiresAt;
+  }
 }
 
 export function createLocalAgentIdempotencyStore(
@@ -34,7 +68,7 @@ export function createLocalAgentIdempotencyStore(
 export function createApiAgentIdempotencyStore(
   config: Pick<
     RunnerConfig,
-    "workerId" | "callbackBaseUrl" | "callbackTimeoutMs" | "callbackAuthToken" | "callbackSignatureSecret"
+    "workerId" | "callbackBaseUrl" | "callbackTimeoutMs" | "callbackAuthToken" | "callbackSignatureSecret" | "agentIdempotencyLeaseTtlMs"
   >
 ): AgentIdempotencyStore {
   if (!config.callbackBaseUrl) {
@@ -42,6 +76,7 @@ export function createApiAgentIdempotencyStore(
   }
 
   return {
+    claim: (idempotencyKey, input) => claimApiAgentIdempotencyResult(config, idempotencyKey, input),
     read: (idempotencyKey) => readApiAgentIdempotencyResult(config, idempotencyKey),
     persist: (idempotencyKey, result) => persistApiAgentIdempotencyResult(config, idempotencyKey, result)
   };
@@ -157,6 +192,45 @@ async function readApiAgentIdempotencyResult(
   }
 }
 
+async function claimApiAgentIdempotencyResult(
+  config: Pick<RunnerConfig, "workerId" | "callbackBaseUrl" | "callbackTimeoutMs" | "callbackAuthToken" | "callbackSignatureSecret" | "agentIdempotencyLeaseTtlMs">,
+  idempotencyKey: string,
+  input: AgentIdempotencyClaimInput
+): Promise<AgentIdempotencyClaimResult> {
+  const idempotencyKeyHash = agentIdempotencyKeyHash(idempotencyKey);
+  const body = JSON.stringify({
+    runId: input.runId,
+    taskId: input.taskId,
+    attemptId: input.attemptId,
+    attemptIndex: input.attemptIndex,
+    leaseTtlMs: config.agentIdempotencyLeaseTtlMs
+  });
+  const response = await requestApiAgentIdempotencyRecord(config, idempotencyKeyHash, "POST", body, "/claim");
+  const envelope = await response.json() as { data?: ApiAgentIdempotencyRecord };
+  const record = envelope.data;
+
+  if (!record?.found) {
+    throw new Error("agent idempotency claim API returned an empty record");
+  }
+
+  if (record.status === "COMPLETED" && record.result) {
+    return {
+      status: "COMPLETED",
+      result: record.result as AgentRunnerExecutionResult
+    };
+  }
+
+  if (record.status === "CLAIMED" && record.claimedBy === config.workerId) {
+    return { status: "CLAIMED" };
+  }
+
+  return {
+    status: "IN_PROGRESS",
+    claimedBy: record.claimedBy,
+    leaseExpiresAt: record.leaseExpiresAt
+  };
+}
+
 async function persistApiAgentIdempotencyResult(
   config: Pick<RunnerConfig, "workerId" | "callbackBaseUrl" | "callbackTimeoutMs" | "callbackAuthToken" | "callbackSignatureSecret">,
   idempotencyKey: string,
@@ -195,10 +269,11 @@ async function persistApiAgentIdempotencyResult(
 async function requestApiAgentIdempotencyRecord(
   config: Pick<RunnerConfig, "workerId" | "callbackBaseUrl" | "callbackTimeoutMs" | "callbackAuthToken" | "callbackSignatureSecret">,
   idempotencyKeyHash: string,
-  method: "GET" | "PUT",
-  body: string = ""
+  method: "GET" | "PUT" | "POST",
+  body: string = "",
+  pathSuffix: string = ""
 ): Promise<Response> {
-  const endpoint = apiAgentIdempotencyEndpoint(config.callbackBaseUrl as string, idempotencyKeyHash);
+  const endpoint = `${apiAgentIdempotencyEndpoint(config.callbackBaseUrl as string, idempotencyKeyHash)}${pathSuffix}`;
   const controller = new AbortController();
   const timeoutHandle = setTimeout(() => controller.abort(), config.callbackTimeoutMs);
 
@@ -206,7 +281,7 @@ async function requestApiAgentIdempotencyRecord(
     const response = await fetch(endpoint, {
       method,
       headers: createApiAgentIdempotencyHeaders(config, body),
-      body: method === "PUT" ? body : undefined,
+      body: method === "PUT" || method === "POST" ? body : undefined,
       signal: controller.signal
     });
 
@@ -224,6 +299,14 @@ async function requestApiAgentIdempotencyRecord(
   } finally {
     clearTimeout(timeoutHandle);
   }
+}
+
+interface ApiAgentIdempotencyRecord {
+  found?: boolean;
+  status?: string | null;
+  claimedBy?: string | null;
+  leaseExpiresAt?: string | null;
+  result?: unknown;
 }
 
 function createApiAgentIdempotencyHeaders(

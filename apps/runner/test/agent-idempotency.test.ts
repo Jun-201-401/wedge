@@ -107,6 +107,130 @@ test("[Agent Idempotency] API store는 key hash로 terminal result를 저장하�
   }
 });
 
+test("[Agent Idempotency] API store claim은 lease 소유권을 판정한다", async () => {
+  const result = createSensitiveAgentResult();
+  const idempotencyKey = "api-claim-idempotency-key";
+  const expectedKeyHash = createHash("sha256").update(idempotencyKey).digest("hex");
+  const signatureSecret = "runner-signature-secret";
+  const requests: Array<{ method: string; path: string; body: string }> = [];
+  const server = createServer(async (request, response) => {
+    const body = await readRequestBody(request);
+    requests.push({
+      method: request.method ?? "",
+      path: request.url ?? "",
+      body
+    });
+
+    assert.equal(request.headers["x-worker-id"], "runner-test-worker");
+    assert.equal(request.headers["x-signature"], signatureFor(body, signatureSecret));
+
+    if (request.method === "POST" && request.url === `/internal/runner/agent-idempotency/${expectedKeyHash}/claim`) {
+      const payload = JSON.parse(body) as { leaseTtlMs: number };
+      assert.equal(payload.leaseTtlMs, 300_000);
+      sendJson(response, {
+        data: {
+          idempotencyKeyHash: expectedKeyHash,
+          found: true,
+          status: "CLAIMED",
+          runId: result.runId,
+          taskId: result.trace.task_id,
+          attemptId: result.trace.attempt_id,
+          attemptIndex: result.trace.attempt_index,
+          claimedBy: "runner-test-worker",
+          claimedAt: "2026-05-08T10:00:00+09:00",
+          leaseExpiresAt: "2026-05-08T10:05:00+09:00",
+          result: null,
+          completedAt: null
+        }
+      });
+      return;
+    }
+
+    response.statusCode = 404;
+    response.end();
+  });
+
+  await listen(server);
+
+  try {
+    const address = server.address();
+    assert.ok(address && typeof address === "object");
+    const store = createApiAgentIdempotencyStore(createRunnerTestConfig({
+      callbackBaseUrl: `http://127.0.0.1:${address.port}`,
+      callbackSignatureSecret: signatureSecret,
+      callbackTimeoutMs: 1_000
+    }));
+
+    const claim = await store.claim?.(idempotencyKey, {
+      runId: result.runId,
+      taskId: result.trace.task_id,
+      attemptId: result.trace.attempt_id,
+      attemptIndex: result.trace.attempt_index
+    });
+
+    assert.deepEqual(claim, { status: "CLAIMED" });
+    assert.equal(requests[0]?.method, "POST");
+    assert.equal(requests[0]?.path, `/internal/runner/agent-idempotency/${expectedKeyHash}/claim`);
+  } finally {
+    await closeServer(server);
+  }
+});
+
+test("[Agent Idempotency] API store claim은 다른 worker lease를 in-progress로 반환한다", async () => {
+  const result = createSensitiveAgentResult();
+  const idempotencyKey = "api-claim-busy-idempotency-key";
+  const expectedKeyHash = createHash("sha256").update(idempotencyKey).digest("hex");
+  const server = createServer(async (request, response) => {
+    await readRequestBody(request);
+
+    if (request.method === "POST" && request.url === `/internal/runner/agent-idempotency/${expectedKeyHash}/claim`) {
+      sendJson(response, {
+        data: {
+          idempotencyKeyHash: expectedKeyHash,
+          found: true,
+          status: "CLAIMED",
+          runId: result.runId,
+          taskId: result.trace.task_id,
+          attemptId: result.trace.attempt_id,
+          attemptIndex: result.trace.attempt_index,
+          claimedBy: "runner-other",
+          leaseExpiresAt: "2026-05-08T10:05:00+09:00"
+        }
+      });
+      return;
+    }
+
+    response.statusCode = 404;
+    response.end();
+  });
+
+  await listen(server);
+
+  try {
+    const address = server.address();
+    assert.ok(address && typeof address === "object");
+    const store = createApiAgentIdempotencyStore(createRunnerTestConfig({
+      callbackBaseUrl: `http://127.0.0.1:${address.port}`,
+      callbackTimeoutMs: 1_000
+    }));
+
+    const claim = await store.claim?.(idempotencyKey, {
+      runId: result.runId,
+      taskId: result.trace.task_id,
+      attemptId: result.trace.attempt_id,
+      attemptIndex: result.trace.attempt_index
+    });
+
+    assert.deepEqual(claim, {
+      status: "IN_PROGRESS",
+      claimedBy: "runner-other",
+      leaseExpiresAt: "2026-05-08T10:05:00+09:00"
+    });
+  } finally {
+    await closeServer(server);
+  }
+});
+
 function createSensitiveAgentResult(): AgentRunnerExecutionResult {
   return {
     runId: "00000000-0000-4000-8000-000000000905",
@@ -195,10 +319,14 @@ function recordResponse(idempotencyKeyHash: string, result: AgentRunnerExecution
   return {
     idempotencyKeyHash,
     found: true,
+    status: "COMPLETED",
     runId: result.runId,
     taskId: result.trace.task_id,
     attemptId: result.trace.attempt_id,
     attemptIndex: result.trace.attempt_index,
+    claimedBy: "runner-test-worker",
+    claimedAt: new Date().toISOString(),
+    leaseExpiresAt: new Date(Date.now() + 300_000).toISOString(),
     result,
     completedAt: new Date().toISOString()
   };

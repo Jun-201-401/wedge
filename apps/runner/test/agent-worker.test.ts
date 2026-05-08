@@ -699,6 +699,55 @@ test("[Agent Worker] 주입된 idempotency store로 worker 인스턴스 간 중�
   assert.equal(duplicateResult.runId, firstResult.runId);
 });
 
+test("[Agent Worker] 다른 runner가 idempotency lease를 보유하면 새 실행을 시작하지 않는다", async () => {
+  const message = await loadAgentExampleMessage();
+  const task = message.payload.agentTask;
+  task.goal = "checkout 진입 여부를 확인한다";
+  task.idempotency_key = "agent-idempotency-lease-busy";
+  const busyStore: AgentIdempotencyStore = {
+    claim: async () => ({
+      status: "IN_PROGRESS",
+      claimedBy: "runner-other",
+      leaseExpiresAt: "2026-05-08T10:05:00+09:00"
+    }),
+    read: async () => null,
+    persist: async () => {}
+  };
+
+  let createSessionCount = 0;
+  const worker = registerAgentWorker({
+    config: createRunnerTestConfig({
+      agentIdempotencyStoreEnabled: true
+    }),
+    browserFactory: {
+      kind: "simulated-playwright",
+      createSession: async ({ plan }) => {
+        createSessionCount += 1;
+        return createSimulatedSession(plan);
+      }
+    },
+    callbackClient: createStubCallbackClient(),
+    capturePipeline: {
+      collectCheckpoint: async () => {
+        throw new Error("checkpoint collection should not run when idempotency lease is busy");
+      }
+    },
+    artifactStore: {
+      persistArtifacts: async () => []
+    },
+    agentIdempotencyStore: busyStore
+  });
+
+  await assert.rejects(
+    () => worker.handleMessage(message),
+    {
+      name: "AgentIdempotencyInProgressError",
+      message: /already claimed/
+    }
+  );
+  assert.equal(createSessionCount, 0);
+});
+
 test("[Agent Worker] 로그인 벽을 감지하면 decision 전에 중단한다", async () => {
   const message = await loadAgentExampleMessage();
   const task = message.payload.agentTask;

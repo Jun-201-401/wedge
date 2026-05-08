@@ -1774,6 +1774,54 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '422':
           $ref: '#/components/responses/ValidationError'
+  /internal/runner/agent-idempotency/{idempotencyKeyHash}/claim:
+    post:
+      tags:
+      - InternalRunner
+      operationId: claimRunnerAgentIdempotencyRecord
+      summary: Agent idempotency lease claim
+      description: Runner replica가 agent.execute 시작 전 같은 idempotency key hash의 진행 중 lease를 선점한다. 완료 record가 있으면 terminal result를 반환하고, 다른 worker의 유효 lease가 있으면 CLAIMED record를 반환한다.
+      security:
+      - InternalBearer: []
+      parameters:
+      - name: idempotencyKeyHash
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: ^[0-9a-f]{64}$
+      - name: X-Worker-Id
+        in: header
+        required: true
+        schema:
+          type: string
+      - name: X-Event-Id
+        in: header
+        required: true
+        schema:
+          type: string
+      - name: X-Signature
+        in: header
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RunnerAgentIdempotencyClaimRequest'
+      responses:
+        '200':
+          description: Claimed, in-progress, or pre-existing completed Agent idempotency record
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RunnerAgentIdempotencyRecordEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
   /internal/runner/runs/{runId}/artifacts:
     post:
       tags:
@@ -4776,6 +4824,30 @@ components:
       - attemptId
       - occurredAt
       - trace
+    RunnerAgentIdempotencyClaimRequest:
+      type: object
+      properties:
+        runId:
+          type: string
+          format: uuid
+        taskId:
+          type: string
+        attemptId:
+          type: string
+        attemptIndex:
+          type: integer
+          minimum: 1
+        leaseTtlMs:
+          type: integer
+          minimum: 1000
+          maximum: 86400000
+          nullable: true
+          default: 300000
+      required:
+      - runId
+      - taskId
+      - attemptId
+      - attemptIndex
     RunnerAgentIdempotencyRecordRequest:
       type: object
       properties:
@@ -4806,6 +4878,12 @@ components:
           pattern: ^[0-9a-f]{64}$
         found:
           type: boolean
+        status:
+          type: string
+          enum:
+          - CLAIMED
+          - COMPLETED
+          nullable: true
         runId:
           type: string
           format: uuid
@@ -4820,6 +4898,17 @@ components:
           type: integer
           minimum: 1
           nullable: true
+        claimedBy:
+          type: string
+          nullable: true
+        claimedAt:
+          type: string
+          format: date-time
+          nullable: true
+        leaseExpiresAt:
+          type: string
+          format: date-time
+          nullable: true
         result:
           type: object
           additionalProperties: true
@@ -4831,10 +4920,14 @@ components:
       required:
       - idempotencyKeyHash
       - found
+      - status
       - runId
       - taskId
       - attemptId
       - attemptIndex
+      - claimedBy
+      - claimedAt
+      - leaseExpiresAt
       - result
       - completedAt
     RunnerAgentIdempotencyRecordEnvelope:

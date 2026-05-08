@@ -15,6 +15,10 @@ public class AgentIdempotencyRecord {
     private String taskId;
     private String attemptId;
     private Integer attemptIndex;
+    private String status;
+    private String claimedBy;
+    private OffsetDateTime claimedAt;
+    private OffsetDateTime leaseExpiresAt;
     private String resultJson;
     private String outcomeStatus;
     private OffsetDateTime completedAt;

@@ -1768,9 +1768,10 @@ Completed:
 - Agent worker can receive an injected `AgentIdempotencyStore`, so API/DB-backed global idempotency can be shared across runner instances instead of relying only on local artifact files.
 - AgentTrace contract and artifacts include `attempt_index` alongside `attempt_id` for retry debugging.
 - API server exposes DB-backed Agent idempotency records, and Runner can use them with `RUNNER_AGENT_IDEMPOTENCY_STORE_MODE=api`.
+- API-backed Agent idempotency uses a `CLAIMED` lease before browser execution, so concurrent duplicate deliveries on different Runner replicas do not start parallel browser sessions.
 
 Remaining:
-- Add a reservation/lease phase if concurrent duplicate deliveries must be prevented before either Runner reaches a terminal result.
+- Decide whether failed/exhausted agent attempts should renew or release claims explicitly, or continue relying on MQ retry plus lease expiry.
 ```
 
 ## Phase 7: LLM Decision Client
@@ -1870,12 +1871,13 @@ DONE: Suppress duplicate same-process agent delivery by reusing the existing exe
 DONE: Suppress duplicate post-restart agent delivery with a local terminal idempotency record.
 DONE: Add an injectable AgentIdempotencyStore boundary so multiple worker instances can share global terminal idempotency through API/DB-backed hosting code.
 DONE: Implement API/DB-backed terminal idempotency record endpoint/table and Runner API store adapter.
+DONE: Add API-backed in-progress reservation/lease claims for concurrent duplicate deliveries across Runner replicas.
 Use attempt_id and attempt_index for every execution attempt.
 Persist terminal AgentTrace once.
 Do not resume mid-action in MVP.
 On worker crash, retry should start a new browser session and produce a new trace attempt.
 Never replay final commit actions because policy blocks them.
-TODO: Add an in-progress reservation/lease only if the queue can deliver the same idempotency key concurrently to multiple Runner replicas.
+TODO: Define explicit claim release/renewal semantics if long-running agent attempts exceed the default lease.
 ```
 
 Future resume policy can be designed later:

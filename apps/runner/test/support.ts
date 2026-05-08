@@ -119,6 +119,7 @@ export function createRunnerTestConfig(overrides: Partial<RunnerConfig> = {}): R
     agentConcurrency: 1,
     agentIdempotencyStoreEnabled: false,
     agentIdempotencyStoreMode: "local",
+    agentIdempotencyLeaseTtlMs: 300_000,
     mqRequeueOnFailure: false,
     mqCallbackOutboxWorkerEnabled: true,
     mqArtifactOutboxWorkerEnabled: true,
