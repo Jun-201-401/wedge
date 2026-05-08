@@ -420,8 +420,8 @@ test("[Agent LLM Decision] prompt payload는 민감 문자열을 redaction 후 �
   });
 
   await client.decide({
-    goal: "Find checkout for mvp.tester@example.com and 010-1234-5678",
-    startUrl: "https://example.com/product?email=mvp.tester@example.com&token=secret-token",
+    goal: "Find checkout for mvp.tester@example.com and 010-1234-5678 near 123 Main Street coupon code SAVE-SECRET-50",
+    startUrl: "https://example.com/product?email=mvp.tester@example.com&token=secret-token&session_id=session-secret&coupon_code=SAVE-SECRET-50",
     state: {
       ...createInitialAgentState(),
       started: true
@@ -433,10 +433,10 @@ test("[Agent LLM Decision] prompt payload는 민감 문자열을 redaction 후 �
         title: "Account mvp.tester@example.com",
         interactiveComponents: [
           {
-            text: "Checkout with card 4242 4242 4242 4242",
-            selector: "#checkout",
+            text: "Checkout with card 4242 4242 4242 4242 at 123 Main Street coupon code SAVE-SECRET-50",
+            selector: "#checkout-session-secret-SAVE-SECRET-50",
             role: "link",
-            href: "https://checkout.example/session?token=checkout-secret&email=mvp.tester@example.com",
+            href: "https://checkout.example/session/checkout-secret?token=checkout-secret&email=mvp.tester@example.com&coupon_code=SAVE-SECRET-50",
             tag: "a",
             clickable: true,
             clicked_in_scenario: false,
@@ -460,8 +460,13 @@ test("[Agent LLM Decision] prompt payload는 민감 문자열을 redaction 후 �
   assert.doesNotMatch(serializedPayload, /010-?1234-?5678/);
   assert.doesNotMatch(serializedPayload, /4242 4242 4242 4242/);
   assert.doesNotMatch(serializedPayload, /checkout-secret|secret-token/);
+  assert.doesNotMatch(serializedPayload, /session-secret|SAVE-SECRET-50|123 Main Street/);
+  assert.doesNotMatch(serializedPayload, /checkout-session-secret-SAVE-SECRET-50/);
   assert.match(serializedPayload, /REDACTED_EMAIL/);
   assert.match(serializedPayload, /REDACTED_PHONE/);
   assert.match(serializedPayload, /REDACTED_CARD/);
   assert.match(serializedPayload, /REDACTED_SECRET/);
+  assert.match(serializedPayload, /REDACTED_ADDRESS/);
+  assert.match(serializedPayload, /REDACTED_COUPON/);
+  assert.match(serializedPayload, /selectorHint/);
 });
