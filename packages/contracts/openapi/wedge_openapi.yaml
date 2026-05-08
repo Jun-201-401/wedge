@@ -1685,6 +1685,95 @@ paths:
           $ref: '#/components/responses/Conflict'
         '422':
           $ref: '#/components/responses/ValidationError'
+  /internal/runner/agent-idempotency/{idempotencyKeyHash}:
+    get:
+      tags:
+      - InternalRunner
+      operationId: getRunnerAgentIdempotencyRecord
+      summary: Agent terminal idempotency record 조회
+      description: Runner replica가 agent.execute 중복 실행 전 DB-backed terminal result를 조회한다. idempotencyKey 원문 대신 SHA-256 hex digest를 사용한다.
+      security:
+      - InternalBearer: []
+      parameters:
+      - name: idempotencyKeyHash
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: ^[0-9a-f]{64}$
+      - name: X-Worker-Id
+        in: header
+        required: true
+        schema:
+          type: string
+      - name: X-Event-Id
+        in: header
+        required: true
+        schema:
+          type: string
+      - name: X-Signature
+        in: header
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Agent idempotency lookup result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RunnerAgentIdempotencyRecordEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+    put:
+      tags:
+      - InternalRunner
+      operationId: putRunnerAgentIdempotencyRecord
+      summary: Agent terminal idempotency record 저장
+      description: Runner가 terminal agent.execute 결과를 first-writer-wins 방식으로 저장한다. 이미 같은 key hash가 있으면 기존 record를 반환한다.
+      security:
+      - InternalBearer: []
+      parameters:
+      - name: idempotencyKeyHash
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: ^[0-9a-f]{64}$
+      - name: X-Worker-Id
+        in: header
+        required: true
+        schema:
+          type: string
+      - name: X-Event-Id
+        in: header
+        required: true
+        schema:
+          type: string
+      - name: X-Signature
+        in: header
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RunnerAgentIdempotencyRecordRequest'
+      responses:
+        '200':
+          description: Stored or pre-existing Agent idempotency record
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RunnerAgentIdempotencyRecordEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
   /internal/runner/runs/{runId}/artifacts:
     post:
       tags:
@@ -4687,6 +4776,77 @@ components:
       - attemptId
       - occurredAt
       - trace
+    RunnerAgentIdempotencyRecordRequest:
+      type: object
+      properties:
+        runId:
+          type: string
+          format: uuid
+        taskId:
+          type: string
+        attemptId:
+          type: string
+        attemptIndex:
+          type: integer
+          minimum: 1
+        result:
+          type: object
+          additionalProperties: true
+      required:
+      - runId
+      - taskId
+      - attemptId
+      - attemptIndex
+      - result
+    RunnerAgentIdempotencyRecord:
+      type: object
+      properties:
+        idempotencyKeyHash:
+          type: string
+          pattern: ^[0-9a-f]{64}$
+        found:
+          type: boolean
+        runId:
+          type: string
+          format: uuid
+          nullable: true
+        taskId:
+          type: string
+          nullable: true
+        attemptId:
+          type: string
+          nullable: true
+        attemptIndex:
+          type: integer
+          minimum: 1
+          nullable: true
+        result:
+          type: object
+          additionalProperties: true
+          nullable: true
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+      required:
+      - idempotencyKeyHash
+      - found
+      - runId
+      - taskId
+      - attemptId
+      - attemptIndex
+      - result
+      - completedAt
+    RunnerAgentIdempotencyRecordEnvelope:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/RunnerAgentIdempotencyRecord'
+        meta:
+          $ref: '#/components/schemas/ApiMeta'
+      required:
+      - data
+      - meta
     RunnerArtifactsRequest:
       type: object
       properties:

@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.wedge.run.infrastructure.AgentIdempotencyMapper">
+    <resultMap id="AgentIdempotencyRecordResultMap" type="com.wedge.run.infrastructure.AgentIdempotencyRecord">
+        <id property="idempotencyKeyHash" column="idempotency_key_hash"/>
+        <result property="runId" column="run_id"/>
+        <result property="taskId" column="task_id"/>
+        <result property="attemptId" column="attempt_id"/>
+        <result property="attemptIndex" column="attempt_index"/>
+        <result property="resultJson" column="result_jsonb"/>
+        <result property="outcomeStatus" column="outcome_status"/>
+        <result property="completedAt" column="completed_at"/>
+    </resultMap>
+
+    <select id="findByKeyHash" resultMap="AgentIdempotencyRecordResultMap">
+        SELECT
+            idempotency_key_hash,
+            run_id,
+            task_id,
+            attempt_id,
+            attempt_index,
+            CAST(result_jsonb AS TEXT) AS result_jsonb,
+            outcome_status,
+            completed_at
+        FROM agent_idempotency_record
+        WHERE idempotency_key_hash = #{idempotencyKeyHash}
+    </select>
+
+    <insert id="insertIgnoreDuplicate" parameterType="com.wedge.run.infrastructure.AgentIdempotencyRecord">
+        INSERT INTO agent_idempotency_record (
+            idempotency_key_hash,
+            run_id,
+            task_id,
+            attempt_id,
+            attempt_index,
+            result_jsonb,
+            outcome_status
+        ) VALUES (
+            #{idempotencyKeyHash},
+            #{runId},
+            #{taskId},
+            #{attemptId},
+            #{attemptIndex},
+            CAST(#{resultJson} AS jsonb),
+            #{outcomeStatus}
+        )
+        ON CONFLICT (idempotency_key_hash) DO NOTHING
+    </insert>
+</mapper>

@@ -25,6 +25,7 @@ const MQ_RUNTIME_ENV_KEYS = [
   "RUNNER_MQ_PREFETCH",
   "RUNNER_AGENT_CONCURRENCY",
   "RUNNER_AGENT_IDEMPOTENCY_STORE_ENABLED",
+  "RUNNER_AGENT_IDEMPOTENCY_STORE_MODE",
   "RUNNER_MQ_MAX_DELIVERY_ATTEMPTS"
 ] as const;
 
@@ -168,6 +169,7 @@ test("[설정] Agent idempotency store는 기본 활성화되고 환경변수로
     const config = loadRunnerConfig({ serviceName: "runner-test" });
 
     assert.equal(config.agentIdempotencyStoreEnabled, true);
+    assert.equal(config.agentIdempotencyStoreMode, "local");
   });
 
   withMqRuntimeEnv(
@@ -178,6 +180,19 @@ test("[설정] Agent idempotency store는 기본 활성화되고 환경변수로
       const config = loadRunnerConfig({ serviceName: "runner-test" });
 
       assert.equal(config.agentIdempotencyStoreEnabled, false);
+    }
+  );
+});
+
+test("[설정] Agent idempotency store mode는 API 저장소 모드를 읽는다", () => {
+  withMqRuntimeEnv(
+    {
+      RUNNER_AGENT_IDEMPOTENCY_STORE_MODE: "api"
+    },
+    () => {
+      const config = loadRunnerConfig({ serviceName: "runner-test" });
+
+      assert.equal(config.agentIdempotencyStoreMode, "api");
     }
   );
 });

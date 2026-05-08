@@ -1767,9 +1767,10 @@ Completed:
 - Open shadow-root candidates are observed for verification, but excluded from click decision/replay execution until a safe shadow locator contract is defined.
 - Agent worker can receive an injected `AgentIdempotencyStore`, so API/DB-backed global idempotency can be shared across runner instances instead of relying only on local artifact files.
 - AgentTrace contract and artifacts include `attempt_index` alongside `attempt_id` for retry debugging.
+- API server exposes DB-backed Agent idempotency records, and Runner can use them with `RUNNER_AGENT_IDEMPOTENCY_STORE_MODE=api`.
 
 Remaining:
-- Wire the injected `AgentIdempotencyStore` to the API/DB adapter once the API service exposes the backing endpoint/table.
+- Add a reservation/lease phase if concurrent duplicate deliveries must be prevented before either Runner reaches a terminal result.
 ```
 
 ## Phase 7: LLM Decision Client
@@ -1868,12 +1869,13 @@ DONE: Use message idempotencyKey or AgentTask.idempotency_key at task start.
 DONE: Suppress duplicate same-process agent delivery by reusing the existing execution promise/result.
 DONE: Suppress duplicate post-restart agent delivery with a local terminal idempotency record.
 DONE: Add an injectable AgentIdempotencyStore boundary so multiple worker instances can share global terminal idempotency through API/DB-backed hosting code.
+DONE: Implement API/DB-backed terminal idempotency record endpoint/table and Runner API store adapter.
 Use attempt_id and attempt_index for every execution attempt.
 Persist terminal AgentTrace once.
 Do not resume mid-action in MVP.
 On worker crash, retry should start a new browser session and produce a new trace attempt.
 Never replay final commit actions because policy blocks them.
-TODO: Implement the API/DB-backed store adapter after the API service owns the durable idempotency record.
+TODO: Add an in-progress reservation/lease only if the queue can deliver the same idempotency key concurrently to multiple Runner replicas.
 ```
 
 Future resume policy can be designed later:

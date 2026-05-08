@@ -1,9 +1,15 @@
 import assert from "node:assert/strict";
+import { createHmac, createHash } from "node:crypto";
 import { mkdtemp, readdir, readFile } from "node:fs/promises";
+import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { persistAgentIdempotencyResult, readAgentIdempotencyResult } from "../src/worker/agent-idempotency.ts";
+import {
+  createApiAgentIdempotencyStore,
+  persistAgentIdempotencyResult,
+  readAgentIdempotencyResult
+} from "../src/worker/agent-idempotency.ts";
 import type { AgentRunnerExecutionResult } from "../src/worker/agent-worker.ts";
 import { createRunnerTestConfig } from "./support.ts";
 
@@ -30,6 +36,75 @@ test("[Agent Idempotency] terminal result record는 raw AgentTrace 민감값을 
   assert.ok(replayedResult);
   assert.doesNotMatch(JSON.stringify(replayedResult), /mvp\.tester@example\.com|raw-secret|result-secret/);
   assert.equal(replayedResult.trace.outcome.status, "SUCCESS");
+});
+
+test("[Agent Idempotency] API store는 key hash로 terminal result를 저장하고 조회한다", async () => {
+  const result = createSensitiveAgentResult();
+  const idempotencyKey = "api-shared-idempotency-key";
+  const expectedKeyHash = createHash("sha256").update(idempotencyKey).digest("hex");
+  const signatureSecret = "runner-signature-secret";
+  const requests: Array<{ method: string; path: string; body: string; signature: string | undefined }> = [];
+  let storedResult: AgentRunnerExecutionResult | null = null;
+  const server = createServer(async (request, response) => {
+    const body = await readRequestBody(request);
+    requests.push({
+      method: request.method ?? "",
+      path: request.url ?? "",
+      body,
+      signature: request.headers["x-signature"]?.toString()
+    });
+
+    assert.equal(request.headers.authorization, "Bearer internal-token");
+    assert.equal(request.headers["x-worker-id"], "runner-test-worker");
+    assert.equal(request.url, `/internal/runner/agent-idempotency/${expectedKeyHash}`);
+    assert.equal(request.headers["x-signature"], signatureFor(body, signatureSecret));
+
+    if (request.method === "GET") {
+      sendJson(response, {
+        data: storedResult
+          ? recordResponse(expectedKeyHash, storedResult)
+          : { idempotencyKeyHash: expectedKeyHash, found: false }
+      });
+      return;
+    }
+
+    if (request.method === "PUT") {
+      const payload = JSON.parse(body) as { result: AgentRunnerExecutionResult };
+      storedResult = payload.result;
+      sendJson(response, {
+        data: recordResponse(expectedKeyHash, storedResult)
+      });
+      return;
+    }
+
+    response.statusCode = 405;
+    response.end();
+  });
+
+  await listen(server);
+
+  try {
+    const address = server.address();
+    assert.ok(address && typeof address === "object");
+    const store = createApiAgentIdempotencyStore(createRunnerTestConfig({
+      callbackBaseUrl: `http://127.0.0.1:${address.port}`,
+      callbackAuthToken: "internal-token",
+      callbackSignatureSecret: signatureSecret,
+      callbackTimeoutMs: 1_000
+    }));
+
+    assert.equal(await store.read(idempotencyKey), null);
+    await store.persist(idempotencyKey, result);
+    const replayed = await store.read(idempotencyKey);
+
+    assert.ok(replayed);
+    assert.equal(replayed.trace.outcome.status, "SUCCESS");
+    assert.equal(replayed.trace.attempt_index, 1);
+    assert.doesNotMatch(JSON.stringify(replayed), /mvp\.tester@example\.com|raw-secret|result-secret/);
+    assert.deepEqual(requests.map((request) => request.method), ["GET", "PUT", "GET"]);
+  } finally {
+    await closeServer(server);
+  }
 });
 
 function createSensitiveAgentResult(): AgentRunnerExecutionResult {
@@ -114,4 +189,55 @@ function createSensitiveAgentResult(): AgentRunnerExecutionResult {
       ]
     }
   };
+}
+
+function recordResponse(idempotencyKeyHash: string, result: AgentRunnerExecutionResult): Record<string, unknown> {
+  return {
+    idempotencyKeyHash,
+    found: true,
+    runId: result.runId,
+    taskId: result.trace.task_id,
+    attemptId: result.trace.attempt_id,
+    attemptIndex: result.trace.attempt_index,
+    result,
+    completedAt: new Date().toISOString()
+  };
+}
+
+function signatureFor(body: string, secret: string): string {
+  return `hmac-sha256=${createHmac("sha256", secret).update(body).digest("hex")}`;
+}
+
+async function readRequestBody(request: IncomingMessage): Promise<string> {
+  const chunks: Buffer[] = [];
+
+  for await (const chunk of request) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  }
+
+  return Buffer.concat(chunks).toString("utf8");
+}
+
+function sendJson(response: ServerResponse, body: unknown): void {
+  response.statusCode = 200;
+  response.setHeader("content-type", "application/json");
+  response.end(JSON.stringify(body));
+}
+
+async function listen(server: ReturnType<typeof createServer>): Promise<void> {
+  await new Promise<void>((resolve) => {
+    server.listen(0, "127.0.0.1", resolve);
+  });
+}
+
+async function closeServer(server: ReturnType<typeof createServer>): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    server.close((error) => {
+      if (error) {
+        reject(error);
+        return;
+      }
+      resolve();
+    });
+  });
 }
