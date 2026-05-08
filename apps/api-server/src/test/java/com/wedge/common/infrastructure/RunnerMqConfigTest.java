@@ -27,4 +27,24 @@ class RunnerMqConfigTest {
         assertThat(queue.isDurable()).isTrue();
         assertThat(queue.getArguments()).isEmpty();
     }
+
+    @Test
+    void agentExecuteQueueKeepsDeadLetterArgumentsAlignedWithRunnerConsumer() {
+        Queue queue = config.agentExecuteQueue("agent.execute.request", "wedge.dlq", "agent.execute.dlq");
+
+        assertThat(queue.getName()).isEqualTo("agent.execute.request");
+        assertThat(queue.isDurable()).isTrue();
+        assertThat(queue.getArguments())
+                .containsEntry("x-dead-letter-exchange", "wedge.dlq")
+                .containsEntry("x-dead-letter-routing-key", "agent.execute.dlq");
+    }
+
+    @Test
+    void agentExecuteDeadLetterQueueIsDurable() {
+        Queue queue = config.agentExecuteDeadLetterQueue("agent.execute.dlq");
+
+        assertThat(queue.getName()).isEqualTo("agent.execute.dlq");
+        assertThat(queue.isDurable()).isTrue();
+        assertThat(queue.getArguments()).isEmpty();
+    }
 }
