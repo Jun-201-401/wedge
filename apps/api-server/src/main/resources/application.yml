@@ -34,7 +34,7 @@ wedge:
       force-path-style: ${WEDGE_ARTIFACT_S3_FORCE_PATH_STYLE:false}
     presigned-url:
       max-count: ${WEDGE_ARTIFACT_PRESIGNED_URL_MAX_COUNT:20}
-      ttl-seconds: ${WEDGE_ARTIFACT_PRESIGNED_URL_TTL_SECONDS:600}
+      ttl-seconds: ${WEDGE_ARTIFACT_PRESIGNED_URL_TTL_SECONDS:3600}
   auth:
     refresh-cookie:
       secure: ${WEDGE_REFRESH_COOKIE_SECURE:true}

@@ -69,7 +69,7 @@ public class EvidenceService {
             ArtifactPresignedUrlGenerator artifactPresignedUrlGenerator,
             ObjectMapper objectMapper,
             @Value("${wedge.artifacts.presigned-url.max-count:20}") int presignedUrlMaxCount,
-            @Value("${wedge.artifacts.presigned-url.ttl-seconds:600}") long presignedUrlTtlSeconds
+            @Value("${wedge.artifacts.presigned-url.ttl-seconds:3600}") long presignedUrlTtlSeconds
     ) {
         this(
                 runService,

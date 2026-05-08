@@ -159,7 +159,7 @@ class EvidenceServiceTest {
         Artifact artifact = sampleArtifact(runId, artifactId);
         when(runService.getRun(runId)).thenReturn(sampleRun(runId));
         when(artifactMapper.findByRunId(runId)).thenReturn(List.of(artifact));
-        when(artifactPresignedUrlGenerator.generateGetUrl(artifact, Duration.ofSeconds(600)))
+        when(artifactPresignedUrlGenerator.generateGetUrl(artifact, Duration.ofSeconds(3600)))
                 .thenReturn(new URL("https://wedge-artifacts-prod.s3.ap-northeast-2.amazonaws.com/runs/a.png?X-Amz-Signature=test"));
         EvidenceService evidenceService = newService();
 
@@ -168,7 +168,7 @@ class EvidenceServiceTest {
         assertThat(response.urls()).hasSize(1);
         assertThat(response.urls().get(0).artifactId()).isEqualTo(artifactId);
         assertThat(response.urls().get(0).mimeType()).isEqualTo("image/png");
-        assertThat(response.urls().get(0).expiresAt()).isEqualTo(Instant.parse("2026-05-08T07:10:00Z"));
+        assertThat(response.urls().get(0).expiresAt()).isEqualTo(Instant.parse("2026-05-08T08:00:00Z"));
         assertThat(response.urls().get(0).url()).contains("X-Amz-Signature=test");
     }
 
@@ -246,7 +246,7 @@ class EvidenceServiceTest {
                 new ObjectMapper(),
                 Clock.fixed(Instant.parse("2026-05-08T07:00:00Z"), ZoneOffset.UTC),
                 20,
-                Duration.ofSeconds(600)
+                Duration.ofSeconds(3600)
         );
     }
 

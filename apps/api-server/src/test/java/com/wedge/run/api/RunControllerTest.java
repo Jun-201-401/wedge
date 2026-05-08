@@ -252,7 +252,7 @@ class RunControllerTest {
                         ArtifactType.SCREENSHOT,
                         "image/png",
                         "https://wedge-artifacts-prod.s3.ap-northeast-2.amazonaws.com/runs/a.png?X-Amz-Signature=test",
-                        java.time.Instant.parse("2026-05-08T07:10:00Z")
+                        java.time.Instant.parse("2026-05-08T08:00:00Z")
                 )))
         );
 
@@ -264,7 +264,7 @@ class RunControllerTest {
                 .andExpect(jsonPath("$.data.urls[0].artifactId").value(artifactId.toString()))
                 .andExpect(jsonPath("$.data.urls[0].mimeType").value("image/png"))
                 .andExpect(jsonPath("$.data.urls[0].url").value("https://wedge-artifacts-prod.s3.ap-northeast-2.amazonaws.com/runs/a.png?X-Amz-Signature=test"))
-                .andExpect(jsonPath("$.data.urls[0].expiresAt").value("2026-05-08T07:10:00Z"))
+                .andExpect(jsonPath("$.data.urls[0].expiresAt").value("2026-05-08T08:00:00Z"))
                 .andExpect(jsonPath("$.meta.requestId").value("req_run_artifact_presigned_urls"));
     }
 
