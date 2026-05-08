@@ -184,16 +184,35 @@ set -e
 
 cd /srv/wedge
 
+PREVIOUS_HEAD="$(git rev-parse HEAD 2>/dev/null || true)"
 git remote set-url origin "$GIT_URL"
 git remote set-url --push origin "$GIT_URL"
 git -c credential.helper= -c "http.extraHeader=Authorization: Basic ${GIT_AUTH_HEADER}" fetch --prune origin "$GIT_BRANCH"
 unset GIT_AUTH_HEADER
 git reset --hard "origin/$GIT_BRANCH"
+CURRENT_HEAD="$(git rev-parse HEAD)"
+RABBITMQ_RECREATE_REQUIRED=false
+if [ -z "$PREVIOUS_HEAD" ] || git diff --name-only "$PREVIOUS_HEAD" "$CURRENT_HEAD" -- compose.prod.yaml infra/rabbitmq/rabbitmq-prod.conf infra/rabbitmq/rabbitmq-definitions-prod.json | grep -q .; then
+    RABBITMQ_RECREATE_REQUIRED=true
+fi
 
 docker build -f apps/api-server/Dockerfile -t wedge-api-server:deploy-local apps/api-server
 docker build -f apps/web/Dockerfile -t wedge-web:deploy-local apps/web
 docker build -f apps/runner/Dockerfile -t wedge-runner:deploy-local .
 docker build -f apps/analyzer/Dockerfile -t wedge-analyzer:deploy-local .
+if [ "$RABBITMQ_RECREATE_REQUIRED" = "true" ] && docker compose --env-file .env.prod -f compose.prod.yaml ps --status running --services rabbitmq | grep -qx rabbitmq; then
+    mkdir -p backups/rabbitmq
+    RABBITMQ_BACKUP_FILE="rabbitmq-definitions-$(date -u +%Y%m%dT%H%M%SZ).json"
+    docker compose --env-file .env.prod -f compose.prod.yaml exec -T rabbitmq rabbitmqctl export_definitions "/tmp/${RABBITMQ_BACKUP_FILE}"
+    docker compose --env-file .env.prod -f compose.prod.yaml cp "rabbitmq:/tmp/${RABBITMQ_BACKUP_FILE}" "backups/rabbitmq/${RABBITMQ_BACKUP_FILE}"
+fi
+if [ "$RABBITMQ_RECREATE_REQUIRED" = "true" ]; then
+    docker compose --env-file .env.prod -f compose.prod.yaml up -d --force-recreate rabbitmq
+else
+    docker compose --env-file .env.prod -f compose.prod.yaml up -d rabbitmq
+fi
+docker compose --env-file .env.prod -f compose.prod.yaml exec -T rabbitmq rabbitmqctl await_startup --timeout 300
+bash infra/rabbitmq/provision-prod-user.sh
 docker compose --env-file .env.prod -f compose.prod.yaml up -d api-server web runner analyzer-worker
 docker compose --env-file .env.prod -f compose.prod.yaml up -d --force-recreate nginx
 
@@ -211,7 +230,7 @@ for i in 1 2 3 4 5 6 7 8 9 10; do
 done
 
 echo "Health check failed"
-docker compose --env-file .env.prod -f compose.prod.yaml logs --tail=100 api-server web runner analyzer-worker nginx
+docker compose --env-file .env.prod -f compose.prod.yaml logs --tail=100 rabbitmq api-server web runner analyzer-worker nginx
 exit 1
 EOF
                         ''')

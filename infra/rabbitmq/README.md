@@ -53,8 +53,14 @@ WDAY-025(dummy publish/consume) 검증 후 실증 데이터로 값 결정 권장
 ## prod definitions 주의
 
 `rabbitmq-definitions-prod.json`은 topology(vhost/exchange/queue/binding)만 포함하고 사용자/권한은 포함하지 않는다.
-운영 계정은 `compose.prod.yaml`의 `RABBITMQ_DEFAULT_USER` / `RABBITMQ_DEFAULT_PASS` 환경변수로 주입한다.
+운영 계정은 `compose.prod.yaml`의 `RABBITMQ_DEFAULT_USER` / `RABBITMQ_DEFAULT_PASS` 환경변수로 주입하고,
+배포 시 [provision-prod-user.sh](./provision-prod-user.sh)가 `.env.prod` 기준으로 사용자/비밀번호/권한을 보장한다.
 비밀번호 hash나 운영 secret을 definitions 파일에 커밋하지 않는다.
+
+`compose.prod.yaml`은 RabbitMQ 컨테이너 재생성 시에도 같은 노드 데이터 디렉터리를 사용하도록 `hostname`과
+`RABBITMQ_NODENAME`을 고정한다. 기존 운영 브로커에서 처음 적용할 때는 현재 definitions 백업을 먼저 확보한다.
+Jenkins 운영 배포는 `compose.prod.yaml`, `rabbitmq-prod.conf`, `rabbitmq-definitions-prod.json` 변경이 있을 때만
+RabbitMQ definitions 백업 후 RabbitMQ 컨테이너를 재생성한다.
 
 ## 변경 절차
 
@@ -66,9 +72,11 @@ WDAY-025(dummy publish/consume) 검증 후 실증 데이터로 값 결정 권장
    docker compose -f compose.dev.yaml up -d --force-recreate rabbitmq
    docker compose -f compose.prod.yaml up -d --force-recreate rabbitmq
    ```
-   대상 환경에 맞는 compose 파일만 실행한다. 기존 볼륨이 유지되는 경우 RabbitMQ는 새 definitions를 import해 누락 topology를 보강한다.
-3. Management UI에서 exchange/queue/binding 반영 확인
-4. Publisher/consumer 재시작
+   대상 환경에 맞는 compose 파일만 실행한다. 운영 Jenkins 배포는 prod RabbitMQ 관련 파일 변경 시 이 단계를 자동 수행한다.
+   기존 볼륨이 유지되는 경우 RabbitMQ는 새 definitions를 import해 누락 topology를 보강한다.
+3. prod는 RabbitMQ 기동 후 `bash infra/rabbitmq/provision-prod-user.sh`로 운영 사용자/권한을 보장
+4. Management UI에서 exchange/queue/binding 반영 확인
+5. Publisher/consumer 재시작
 
 Breaking change (큐 이름/arguments 변경)는 기존 큐 삭제 필요. dev에서 RabbitMQ volume만 초기화하려면:
 
