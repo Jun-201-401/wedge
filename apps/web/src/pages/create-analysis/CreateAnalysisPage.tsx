@@ -13,13 +13,13 @@ import {
   createManualChoiceRouteState,
   createRecommendationChoiceRouteState,
   createScenarioReadyRouteState,
-  MVP_SMOKE_CREATE_RUN_CONTEXT,
   parseCreateAnalysisRouteState,
   readCreateRunContextFromEnv,
   type CreateAnalysisRouteOptions,
   type CreateAnalysisRouteState,
   type CreateRunContext,
   withCreateRunContextFallback,
+  withoutCreateRunContext,
 } from './lib/createAnalysisRouteState';
 import { normalizeAnalysisUrl } from './lib/createAnalysisUrl';
 import {
@@ -158,13 +158,7 @@ const CREATE_ANALYSIS_ROUTE_OPTIONS: CreateAnalysisRouteOptions<ScenarioId, Scen
   validDepthIds: SCENARIO_DEPTH_IDS,
   validScenarioIds: SCENARIO_IDS,
 };
-const EXPLICIT_DEV_CREATE_RUN_CONTEXT = readCreateRunContextFromEnv(import.meta.env);
-const DEV_CREATE_RUN_CONTEXT = import.meta.env.DEV
-  ? {
-      ...MVP_SMOKE_CREATE_RUN_CONTEXT,
-      ...EXPLICIT_DEV_CREATE_RUN_CONTEXT,
-    }
-  : EXPLICIT_DEV_CREATE_RUN_CONTEXT;
+const ENV_CREATE_RUN_CONTEXT = readCreateRunContextFromEnv(import.meta.env);
 
 interface CreateRunIds {
   projectId: string;
@@ -185,7 +179,7 @@ function readUserCreateRunContext(): Partial<CreateRunContext> {
 
 function getCreateRunContextFallback(): Partial<CreateRunContext> {
   return {
-    ...DEV_CREATE_RUN_CONTEXT,
+    ...ENV_CREATE_RUN_CONTEXT,
     ...readUserCreateRunContext(),
   };
 }
@@ -261,10 +255,8 @@ function getCreateRunIds(routeState: CreateAnalysisPageRouteState): CreateRunIds
   };
 }
 
-
-function getProjectId(routeState: CreateAnalysisPageRouteState) {
-  const projectId = routeState.projectId ?? null;
-  return isUuid(projectId) ? projectId : null;
+function clearCreateRunContext(routeState: CreateAnalysisPageRouteState): CreateAnalysisPageRouteState {
+  return withoutCreateRunContext(routeState);
 }
 
 function wait(ms: number) {
@@ -768,20 +760,18 @@ export function CreateAnalysisPage({ isAuthenticated = false, isAuthChecking = f
   }, [routeState.submittedUrl]);
 
   const runDiscovery = useCallback(async (targetUrl: string, currentRouteState: CreateAnalysisPageRouteState) => {
-    const explicitProjectId = getProjectId(currentRouteState);
     const requestSeq = discoveryRequestSeq.current + 1;
     discoveryRequestSeq.current = requestSeq;
     setDiscoveryState({ kind: 'creating' });
     setRunStartError('');
 
-    const discoveryRouteState: CreateAnalysisPageRouteState = {
+    const discoveryRouteState = clearCreateRunContext({
       ...currentRouteState,
-      projectId: explicitProjectId ?? undefined,
       stage: 'discovering',
       submittedUrl: targetUrl,
       scenarioId: null,
       depthId: null,
-    };
+    });
     let resolvedDiscoveryRouteState = discoveryRouteState;
     navigateToRouteState(discoveryRouteState);
 
@@ -808,12 +798,11 @@ export function CreateAnalysisPage({ isAuthenticated = false, isAuthChecking = f
 
     try {
       const created = await createDiscovery({
-        ...(explicitProjectId ? { projectId: explicitProjectId } : {}),
         url: targetUrl,
         devicePreset: 'desktop',
         viewport: DISCOVERY_VIEWPORT,
       }, {
-        idempotencyKey: createDiscoveryIdempotencyKey(targetUrl, explicitProjectId ?? undefined),
+        idempotencyKey: createDiscoveryIdempotencyKey(targetUrl),
       });
 
       if (discoveryRequestSeq.current !== requestSeq) {
@@ -912,19 +901,19 @@ export function CreateAnalysisPage({ isAuthenticated = false, isAuthChecking = f
       return;
     }
 
-    void runDiscovery(submittedUrl, routeState);
+    void runDiscovery(submittedUrl, clearCreateRunContext(routeState));
   };
 
   const editUrl = () => {
     discoveryRequestSeq.current += 1;
     setDiscoveryState({ kind: 'idle' });
-    navigateToRouteState({
+    navigateToRouteState(clearCreateRunContext({
       ...routeState,
       stage: 'input',
       submittedUrl: null,
       scenarioId: null,
       depthId: null,
-    });
+    }));
   };
 
   const chooseScenario = (scenario: ScenarioRecommendation) => {

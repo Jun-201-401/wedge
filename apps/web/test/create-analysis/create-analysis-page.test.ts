@@ -208,10 +208,11 @@ test('create analysis ready run controls remain wired', () => {
   assert.doesNotMatch(source, /buildMockRunId/);
   assert.match(source, /getCreateRunIds/);
   assert.match(source, /const createRunIds = useMemo/);
-  assert.match(source, /MVP_SMOKE_CREATE_RUN_CONTEXT/);
-  assert.match(source, /const EXPLICIT_DEV_CREATE_RUN_CONTEXT = readCreateRunContextFromEnv\(import\.meta\.env\)/);
-  assert.match(source, /const DEV_CREATE_RUN_CONTEXT = import\.meta\.env\.DEV/);
+  assert.doesNotMatch(source, /MVP_SMOKE_CREATE_RUN_CONTEXT/);
+  assert.match(source, /const ENV_CREATE_RUN_CONTEXT = readCreateRunContextFromEnv\(import\.meta\.env\)/);
   assert.match(source, /withCreateRunContextFallback/);
+  assert.match(source, /withoutCreateRunContext/);
+  assert.match(source, /function clearCreateRunContext/);
   assert.match(source, /projectId: createRunIds\.projectId/);
   assert.doesNotMatch(source, /scenarioTemplateVersionId: createRunIds\.scenarioTemplateVersionId/);
   assert.doesNotMatch(source, /import \{ buildPrototypeScenarioPlan \}/);
@@ -225,9 +226,10 @@ test('create analysis ready run controls remain wired', () => {
   assert.match(source, /void runDiscovery\(normalizedUrl, routeState\)/);
   assert.match(source, /isDiscoveryBusy\(discoveryState\.kind\)/);
   assert.match(source, /discoveryRequestSeq\.current \+= 1/);
-  assert.match(source, /const explicitProjectId = getProjectId\(currentRouteState\)/);
-  assert.match(source, /\.\.\.\(explicitProjectId \? \{ projectId: explicitProjectId \} : \{\}\)/);
-  assert.match(source, /createDiscoveryIdempotencyKey\(targetUrl, explicitProjectId \?\? undefined\)/);
+  assert.doesNotMatch(source, /const explicitProjectId = getProjectId\(currentRouteState\)/);
+  assert.doesNotMatch(source, /\.\.\.\(explicitProjectId \? \{ projectId: explicitProjectId \} : \{\}\)/);
+  assert.match(source, /const discoveryRouteState = clearCreateRunContext/);
+  assert.match(source, /createDiscoveryIdempotencyKey\(targetUrl\)/);
   assert.match(source, /await createDiscovery/);
   assert.match(source, /await getDiscovery\(discoveryId\)/);
   assert.match(source, /createdRunId = response\.data\.id/);

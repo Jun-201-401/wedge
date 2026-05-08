@@ -6,10 +6,10 @@ import {
   createManualChoiceRouteState,
   createRecommendationChoiceRouteState,
   createScenarioReadyRouteState,
-  MVP_SMOKE_CREATE_RUN_CONTEXT,
   parseCreateAnalysisRouteState,
   readCreateRunContextFromEnv,
   withCreateRunContextFallback,
+  withoutCreateRunContext,
   type CreateAnalysisRouteOptions,
 } from '../../src/pages/create-analysis/lib/createAnalysisRouteState';
 
@@ -118,12 +118,6 @@ test('create-analysis route state preserves valid run creation context', () => {
   );
 });
 
-test('create-analysis route state exposes MVP smoke run context defaults', () => {
-  assert.deepEqual(MVP_SMOKE_CREATE_RUN_CONTEXT, {
-    projectId: '8f06dca8-9c4d-4f20-b1a8-1d5ee40a9923',
-  });
-});
-
 test('create-analysis route state can use dev env run context as fallback', () => {
   const fallbackContext = readCreateRunContextFromEnv({
     VITE_DEV_PROJECT_ID: projectId,
@@ -183,6 +177,40 @@ test('create-analysis route state can use dev env run context as fallback', () =
       projectId: '33333333-3333-4333-8333-333333333333',
       scenarioTemplateVersionId: '44444444-4444-4444-8444-444444444444',
     },
+  );
+});
+
+test('create-analysis route state can drop stale run context before automatic discovery', () => {
+  assert.deepEqual(
+    withoutCreateRunContext({
+      stage: 'discovering',
+      submittedUrl: 'https://example.com/',
+      scenarioId: null,
+      depthId: null,
+      projectId,
+      scenarioTemplateVersionId,
+    }),
+    {
+      stage: 'discovering',
+      submittedUrl: 'https://example.com/',
+      scenarioId: null,
+      depthId: null,
+    },
+  );
+
+  assert.equal(
+    buildCreateAnalysisPath(
+      withoutCreateRunContext({
+        stage: 'input',
+        submittedUrl: null,
+        scenarioId: null,
+        depthId: null,
+        projectId,
+        scenarioTemplateVersionId,
+      }),
+      options,
+    ),
+    '/create-analysis',
   );
 });
 
