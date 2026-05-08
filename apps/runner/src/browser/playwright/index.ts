@@ -101,6 +101,7 @@ export interface BrowserSessionFactory {
 const DEFAULT_LOCATOR_TIMEOUT_MS = 1_500;
 const DEFAULT_WAIT_FOR_TIMEOUT_MS = 1_500;
 const ITEM_COUNT_POLL_INTERVAL_MS = 50;
+const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
 type SettleTimeoutDetails = Record<string, unknown> | ((error: unknown) => Record<string, unknown>);
 
@@ -131,6 +132,17 @@ interface MutableBrowserState {
   interactiveComponents: InteractiveComponentObservationItem[];
   consoleErrors: string[];
   networkErrors: string[];
+}
+
+function readPngDimensions(buffer: Buffer) {
+  if (buffer.length < 24 || !buffer.subarray(0, 8).equals(PNG_SIGNATURE)) {
+    return null;
+  }
+
+  return {
+    width: buffer.readUInt32BE(16),
+    height: buffer.readUInt32BE(20)
+  };
 }
 
 class SimulatedPlaywrightSession implements BrowserSession {
@@ -528,8 +540,10 @@ class RealPlaywrightSession implements BrowserSession {
 
   async captureArtifacts(): Promise<BrowserCapturedArtifacts> {
     const screenshotBuffer = await this.page.screenshot({
-      type: "png"
+      type: "png",
+      fullPage: true
     });
+    const screenshotDimensions = readPngDimensions(screenshotBuffer) ?? this.plan.environment.viewport;
     const domSnapshot = await this.page.content();
 
     return {
@@ -537,8 +551,8 @@ class RealPlaywrightSession implements BrowserSession {
         contentBase64: screenshotBuffer.toString("base64"),
         mimeType: "image/png",
         fileExtension: "png",
-        width: this.plan.environment.viewport.width,
-        height: this.plan.environment.viewport.height
+        width: screenshotDimensions.width,
+        height: screenshotDimensions.height
       },
       domSnapshot: {
         content: domSnapshot,

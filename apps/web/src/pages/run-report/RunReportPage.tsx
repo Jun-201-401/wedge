@@ -71,11 +71,6 @@ function RunReportStatePage({
       <header className="run-report-topbar" aria-label="Wedge run report">
         <div className="run-report-topbar__left">
           <RunReportBrand />
-          <span className="run-report-topbar__divider" aria-hidden="true" />
-          <div className="run-report-target-inline run-report-target-inline--optional">
-            <span>Run</span>
-            <strong>{runId}</strong>
-          </div>
         </div>
         <div className="run-report-topbar__right">
           <a href="/create-analysis" className="run-report-topbar__link">새 분석</a>
@@ -84,14 +79,19 @@ function RunReportStatePage({
 
       <main className="run-report-state-screen" aria-labelledby="run-report-state-title">
         <section className="run-report-state-card">
-          <span>Report</span>
+          <span>리포트</span>
           <h1 id="run-report-state-title">{title}</h1>
           <p>{message}</p>
           <div className="run-report-state-card__actions">
             {action}
             <a href={`/runs/${encodeURIComponent(runId)}`}>실시간 상태로 돌아가기</a>
-            <a href="/create-analysis">새 분석 만들기</a>
           </div>
+          <dl className="run-report-state-card__meta">
+            <div>
+              <dt>Run ID</dt>
+              <dd>{runId}</dd>
+            </div>
+          </dl>
         </section>
       </main>
     </div>

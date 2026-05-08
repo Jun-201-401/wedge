@@ -95,8 +95,8 @@ function RunMonitorTopbar() {
       </div>
 
       <nav className="run-monitor-topbar__right" aria-label="주요 이동">
-        <a href={RUNS_PATH} className="run-monitor-stop-link">실행 목록</a>
-        <a href="/create-analysis" className="run-monitor-stop-link">새 분석</a>
+        <a href={RUNS_PATH} className="run-monitor-topbar__link run-monitor-topbar__link--secondary">실행 목록</a>
+        <a href="/create-analysis" className="run-monitor-topbar__link run-monitor-topbar__link--primary">새 분석</a>
       </nav>
     </header>
   );
@@ -120,12 +120,12 @@ function RunContextBar({ runId, targetUrl, statusTone, statusLabel, deviceLabel,
           <strong>{targetUrl}</strong>
         </div>
         <div className="run-monitor-target-inline run-monitor-target-inline--optional">
-          <span>실행 ID</span>
-          <strong>{runId}</strong>
-        </div>
-        <div className="run-monitor-target-inline run-monitor-target-inline--optional">
           <span>디바이스</span>
           <strong>{deviceLabel}</strong>
+        </div>
+        <div className="run-monitor-target-inline run-monitor-target-inline--id">
+          <span>실행 ID</span>
+          <strong>{runId}</strong>
         </div>
       </div>
 
@@ -508,7 +508,7 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
   const statusLabel = RUN_STATUS_LABEL[live.status];
   const progressPercent = isApiFallback ? mockData.progressPercent : getApiProgressPercent(live);
   const currentCheckpoint = isApiFallback ? (live.currentAction ?? mockData.currentCheckpoint) : getApiCheckpoint(live);
-  const traceModeLabel = isApiFallback ? '모의 실행' : 'API 상태 스냅샷';
+  const traceModeLabel = isApiFallback ? '모의 실행' : '실제 실행 상태';
   const reportCtaState = resolveRunMonitorReportCtaState({
     isMockRun,
     report: reportProjection,
@@ -527,14 +527,14 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
   const deviceLabel = getDevicePresetLabel(run.devicePreset);
   const evidenceStats = getEvidenceSummaryStats(evidencePacket, live.evidenceCounts);
   const timelineNote = isApiFallback
-    ? '모의 실행 화면 · 실제 event API 연동 시 교체됩니다.'
+    ? '예시 실행 경로입니다. 실제 실행이 시작되면 수집한 단계로 교체됩니다.'
     : eventLoadError || (isEventLoading && runEvents.length === 0)
-      ? (eventLoadError || '실제 event timeline을 불러오는 중입니다.')
+      ? (eventLoadError || '확인 경로를 불러오는 중입니다.')
       : runEvents.length > 0
-        ? 'API event timeline · Runner callback으로 저장된 실제 이벤트를 표시합니다.'
+        ? '실제 실행 이벤트를 바탕으로 확인한 경로입니다.'
         : stepLoadError || (isStepLoading && runSteps.length === 0)
-          ? (stepLoadError || '실제 step timeline을 불러오는 중입니다.')
-          : 'API step timeline · Runner callback으로 저장된 실제 step 상태를 표시합니다.';
+          ? (stepLoadError || '확인 단계를 불러오는 중입니다.')
+          : '실제 실행 단계 상태를 바탕으로 확인한 경로입니다.';
   const isRunActionPending = runActionState.kind === 'pending';
   const canStopCurrentRun = !isMockRun && canRequestRunStop(live.status);
   const canDeleteCurrentRun = !isMockRun && canRequestRunDelete(live.status);
@@ -700,10 +700,10 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
                   <span />
                 </div>
                 <div className="run-monitor-browser__address">{run.startUrl}</div>
-                <span className="run-monitor-browser__mode-pill">{isApiFallback ? '모의 프리뷰' : '실제 캡처'}</span>
+                <span className="run-monitor-browser__mode-pill">{isApiFallback ? '모의 프리뷰' : '페이지 캡처'}</span>
               </div>
 
-              <div className="run-monitor-browser__stage">
+              <div className={authenticatedSnapshotUrl ? 'run-monitor-browser__stage run-monitor-browser__stage--snapshot' : 'run-monitor-browser__stage'}>
                 {authenticatedSnapshotUrl ? (
                   <img className="run-monitor-browser__image" src={authenticatedSnapshotUrl} alt="최근 캡처된 분석 화면" />
                 ) : isApiFallback ? (
@@ -754,7 +754,7 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
                   <div className="run-monitor-browser__empty-state">
                     <span aria-hidden="true" />
                     <strong>화면 캡처 대기 중</strong>
-                    <p>실제 run에서 latestFrame 또는 latestSnapshot이 도착하면 이 영역에 표시됩니다.</p>
+                    <p>분석 화면이 준비되면 이 영역에서 바로 확인할 수 있습니다.</p>
                   </div>
                 )}
               </div>
@@ -858,9 +858,10 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
                       <span className="run-monitor-sr-only">{getStepStatusLabel(step.status)}</span>
                       <div className="run-monitor-step__head">
                         <h3>{step.label}</h3>
-                        <time>{step.timestamp}</time>
+                        <span className="run-monitor-step__status">{getStepStatusLabel(step.status)}</span>
                       </div>
                       <p>{step.detail}</p>
+                      <time>{step.timestamp}</time>
                     </div>
                   </li>
                 ))}
@@ -868,12 +869,13 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
             </section>
 
             <section className="run-monitor-log" aria-labelledby="action-log-title">
-              <h2 id="action-log-title">작업 로그</h2>
+              <h2 id="action-log-title">진행 요약</h2>
               <ul className="run-monitor-log__list">
                 {visibleLogs.map((log) => (
                   <li key={log.id} className={`run-monitor-log__item run-monitor-log__item--${log.tone}`}>
+                    <span className="run-monitor-log__dot" aria-hidden="true" />
+                    <span className="run-monitor-log__message">{log.message}</span>
                     <time>{log.time}</time>
-                    <span>{log.message}</span>
                   </li>
                 ))}
               </ul>

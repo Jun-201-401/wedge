@@ -93,8 +93,6 @@
 .run-report-topbar__link,
 .run-report-topbar__ghost,
 .run-report-topbar__share {
-  border: 0;
-  background: transparent;
   color: #64748b;
   cursor: pointer;
   font-size: 0.62rem;
@@ -103,6 +101,34 @@
   text-decoration: none;
   text-transform: uppercase;
   transition: color 0.18s ease, opacity 0.18s ease;
+}
+
+.run-report-topbar__link {
+  display: inline-flex;
+  box-sizing: border-box;
+  min-width: 4.95rem;
+  height: 2.05rem;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #334155;
+  border-radius: 999px;
+  background: #334155;
+  padding: 0 0.86rem;
+  color: #fff;
+  line-height: 1;
+  transition: border-color 0.18s ease, background 0.18s ease;
+  white-space: nowrap;
+}
+
+.run-report-topbar__link:hover {
+  border-color: #1e293b;
+  background: #1e293b;
+}
+
+.run-report-topbar__ghost,
+.run-report-topbar__share {
+  border: 0;
+  background: transparent;
 }
 
 .run-report-topbar__ghost:disabled,
@@ -1042,15 +1068,15 @@
 }
 
 .run-report-state-card {
-  width: min(100%, 32rem);
-  padding: 2rem;
+  width: min(100%, 38rem);
+  padding: 2.3rem 2.2rem 1.45rem;
   text-align: center;
-  box-shadow: 0 28px 80px rgba(148, 163, 184, 0.2);
+  box-shadow: 0 28px 80px rgba(148, 163, 184, 0.16);
 }
 
 .run-report-state-card > span {
   display: inline-flex;
-  margin-bottom: 1.25rem;
+  margin-bottom: 1.15rem;
   border: 1px solid rgba(14, 165, 233, 0.12);
   border-radius: 999px;
   background: rgba(240, 249, 255, 0.78);
@@ -1058,25 +1084,26 @@
   color: #0284c7;
   font-size: 0.56rem;
   font-weight: 900;
-  letter-spacing: 0.16em;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
 }
 
 .run-report-state-card h1 {
   margin: 0;
   color: #020617;
-  font-size: clamp(1.8rem, 5vw, 3rem);
+  font-size: clamp(2rem, 4vw, 3.25rem);
   font-weight: 900;
   line-height: 0.98;
   letter-spacing: -0.07em;
 }
 
 .run-report-state-card p {
-  margin: 1rem 0 1.5rem;
+  max-width: 28rem;
+  margin: 0.9rem auto 1.55rem;
   color: #64748b;
-  font-size: 0.88rem;
-  font-weight: 700;
-  line-height: 1.7;
+  font-size: 0.86rem;
+  font-weight: 800;
+  line-height: 1.65;
 }
 
 .run-report-state-card a,
@@ -1087,13 +1114,15 @@
   border: 0;
   border-radius: 999px;
   background: #334155;
-  padding: 0.85rem 1.15rem;
+  min-height: 2.35rem;
+  padding: 0 1rem;
   color: #fff;
   cursor: pointer;
-  font-size: 0.78rem;
+  font-size: 0.68rem;
   font-weight: 900;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.08em;
   text-decoration: none;
+  text-transform: uppercase;
 }
 
 .run-report-state-card button:disabled {
@@ -1199,8 +1228,51 @@
   gap: 0.6rem;
 }
 
-.run-report-state-card__actions a + a {
-  background: #0284c7;
+.run-report-state-card__actions a {
+  border: 1px solid rgba(125, 211, 252, 0.44);
+  background: rgba(240, 249, 255, 0.88);
+  color: #0284c7;
+}
+
+.run-report-state-card__actions a:hover {
+  border-color: rgba(14, 165, 233, 0.5);
+  background: rgba(224, 242, 254, 0.94);
+  color: #0369a1;
+}
+
+.run-report-state-card__meta {
+  margin: 1.35rem 0 0;
+  border-top: 1px solid #f1f5f9;
+  padding-top: 0.95rem;
+}
+
+.run-report-state-card__meta div {
+  display: flex;
+  min-width: 0;
+  justify-content: center;
+  gap: 0.5rem;
+}
+
+.run-report-state-card__meta dt,
+.run-report-state-card__meta dd {
+  margin: 0;
+}
+
+.run-report-state-card__meta dt {
+  color: #94a3b8;
+  font-size: 0.56rem;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.run-report-state-card__meta dd {
+  overflow: hidden;
+  color: #64748b;
+  font-size: 0.62rem;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .run-report-sr-only {

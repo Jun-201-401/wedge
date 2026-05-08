@@ -105,9 +105,9 @@ export function resolveRunReportState({
   if (report?.reportStatus === 'NOT_READY') {
     return {
       kind: 'api-pending',
-      title: '분석 결과를 기다리는 중입니다',
+      title: '리포트 준비 중',
       message: report.analysisStatus === 'NOT_STARTED'
-        ? 'Run은 완료됐지만 아직 분석 요청이 시작되지 않았습니다.'
+        ? '실행은 완료됐지만 아직 분석이 시작되지 않았습니다. 분석을 시작하면 수집된 근거를 바탕으로 리포트를 생성합니다.'
         : `현재 분석 상태는 ${report.analysisStatus}입니다. 분석 완료 후 리포트를 생성할 수 있습니다.`,
     };
   }

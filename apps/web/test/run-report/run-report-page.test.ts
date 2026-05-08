@@ -25,6 +25,9 @@ test('run report page follows the report.html result-first layout', () => {
   assert.match(source, /랜딩 페이지/);
   assert.match(source, /CTA 전환 마찰 리포트/);
   assert.match(source, /function RunReportStatePage/);
+  assert.match(source, /리포트 준비 중/);
+  assert.match(source, /run-report-state-card__meta/);
+  assert.doesNotMatch(source, /새 분석 만들기/);
   assert.match(source, /function RunReportLoadingShell/);
   assert.match(source, /if \(reportState\.kind === 'loading'\) \{[\s\S]*?<RunReportLoadingShell runId=\{runId\} title=\{reportState\.title\} \/>/);
   assert.match(source, /run-report-page run-report-page--loading/);
@@ -147,7 +150,10 @@ test('run report css keeps result-first content in the live simulation cockpit t
   assert.match(css, /\.run-report-evidence-preview__site\s*\{[\s\S]*?background: #fff/);
   assert.match(css, /\.run-report-evidence-preview--resolving\s*\{[\s\S]*?background: linear-gradient/);
   assert.match(css, /\.run-report-evidence-preview__hero button\s*\{[\s\S]*?background: #111827/);
+  assert.match(css, /\.run-report-topbar__link\s*\{[\s\S]*?background: #334155/);
   assert.match(css, /\.run-report-state-card a,\s*\n\.run-report-state-card button\s*\{[\s\S]*?background: #334155/);
+  assert.match(css, /\.run-report-state-card__actions a\s*\{[\s\S]*?background: rgba\(240, 249, 255, 0\.88\)/);
+  assert.match(css, /\.run-report-state-card__meta\s*\{[\s\S]*?border-top: 1px solid #f1f5f9/);
   assert.match(css, /\.run-report-loading-status\s*\{[\s\S]*?background: rgba\(240, 249, 255, 0\.78\)/);
   assert.match(css, /\.run-report-skeleton-line\s*\{[\s\S]*?border-radius: 999px/);
   assert.match(css, /@keyframes runReportSkeletonPulse/);
@@ -189,7 +195,7 @@ test('run monitor exposes a report CTA into /runs/:runId/report', () => {
   assert.match(source, /리포트 생성/);
   assert.match(source, /분석 시작/);
   assert.doesNotMatch(source, /모의 리포트 보기/);
-  assert.match(css, /\.run-monitor-report-cta\s*\{[\s\S]*?background: rgba\(240, 249, 255, 0\.62\)/);
+  assert.match(css, /\.run-monitor-report-cta\s*\{[\s\S]*?background: rgba\(240, 249, 255, 0\.78\)/);
   assert.match(css, /\.run-monitor-report-cta a,\s*\n\.run-monitor-report-cta button\s*\{[\s\S]*?background: #334155/);
   assert.match(css, /\.run-monitor-report-cta button:disabled\s*\{[\s\S]*?cursor: not-allowed/);
 });
