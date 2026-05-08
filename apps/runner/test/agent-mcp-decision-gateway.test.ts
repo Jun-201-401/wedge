@@ -45,6 +45,7 @@ test("[Agent MCP Decision] gateway 응답 targetKey를 관찰된 candidate로만
   });
 
   const decision = await client.decide({
+    runId: "00000000-0000-4000-8000-000000000301",
     goal: "Find checkout",
     startUrl: "https://example.com/product",
     state: {
@@ -116,6 +117,7 @@ test("[Agent MCP Decision] gateway payload는 browser-control primitive 대신 c
   });
 
   const input = {
+    runId: "00000000-0000-4000-8000-000000000302",
     goal: "Find checkout for mvp.tester@example.com",
     startUrl: "https://example.com/product?token=secret-token",
     state: {
@@ -133,6 +135,7 @@ test("[Agent MCP Decision] gateway payload는 browser-control primitive 대신 c
   );
   const serializedPayload = JSON.stringify(payload);
 
+  assert.equal(payload.runId, "00000000-0000-4000-8000-000000000302");
   assert.deepEqual(payload.allowedActions, ["click", "scroll", "checkpoint", "finish"]);
   assert.match(serializedPayload, /candidate_001/);
   assert.doesNotMatch(serializedPayload, /selector/);

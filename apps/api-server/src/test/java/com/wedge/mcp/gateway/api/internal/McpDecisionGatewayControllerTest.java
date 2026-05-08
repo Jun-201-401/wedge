@@ -17,6 +17,7 @@ import com.wedge.mcp.gateway.application.McpDecisionGatewayService;
 import com.wedge.mcp.gateway.application.command.McpDecisionGatewayCommand;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.http.MediaType;
@@ -51,6 +52,7 @@ class McpDecisionGatewayControllerTest {
         verify(service).requestDecision(commandCaptor.capture());
 
         McpDecisionGatewayCommand command = commandCaptor.getValue();
+        assertThat(command.runId()).isEqualTo(UUID.fromString("00000000-0000-4000-8000-000000000601"));
         assertThat(command.goal()).isEqualTo("Find checkout");
         assertThat(command.startUrl()).isEqualTo("https://example.com/product");
         assertThat(command.state().started()).isTrue();
@@ -78,6 +80,7 @@ class McpDecisionGatewayControllerTest {
 
     private Map<String, Object> validRequest() {
         return Map.of(
+                "runId", "00000000-0000-4000-8000-000000000601",
                 "goal", "Find checkout",
                 "startUrl", "https://example.com/product",
                 "state", Map.of(

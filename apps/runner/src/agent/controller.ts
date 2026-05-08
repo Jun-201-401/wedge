@@ -94,6 +94,7 @@ export async function executeAgentRun(input: AgentExecutorInput): Promise<AgentE
     let decision: AgentDecision;
     try {
       decision = await runWithinAgentDeadline(deadline, "decision", () => decisionClient.decide({
+        runId: input.runId,
         goal: resolveTaskGoal(input.task),
         startUrl: input.task.start_url,
         state,

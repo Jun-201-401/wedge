@@ -30,6 +30,7 @@ Runner Agent Runtime
 Runner sends only a constrained observation:
 
 ```text
+runId
 goal
 startUrl
 state.started
@@ -41,6 +42,8 @@ page.candidates[]
 allowedActions
 outputSchema
 ```
+
+`runId` is the correlation key the API Server can later use to resolve run ownership, project context, and the active MCP Host session. Runner must not send an MCP session id; session selection remains an API Server responsibility.
 
 Candidate IDs are opaque values such as `candidate_001`. The payload must not expose full DOM, screenshots, cookies, storage values, arbitrary selectors for model selection, JavaScript execution hooks, or credentials.
 

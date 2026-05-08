@@ -14,6 +14,7 @@ export interface AgentMcpDecisionGatewayRequest {
 }
 
 export interface AgentMcpDecisionGatewayPayload {
+  runId: string;
   goal: string;
   startUrl: string;
   state: {
@@ -116,6 +117,7 @@ export function createMcpDecisionGatewayPayload(
   candidateReferences: LlmCandidateReference[]
 ): AgentMcpDecisionGatewayPayload {
   return redactSensitiveValue({
+    runId: input.runId,
     goal: input.goal,
     startUrl: input.startUrl,
     state: {

@@ -1,8 +1,10 @@
 package com.wedge.mcp.gateway.application.command;
 
 import java.util.List;
+import java.util.UUID;
 
 public record McpDecisionGatewayCommand(
+        UUID runId,
         String goal,
         String startUrl,
         AgentState state,

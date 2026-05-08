@@ -26,6 +26,7 @@ public class McpDecisionGatewayController {
 
     private McpDecisionGatewayCommand toCommand(McpDecisionGatewayRequest request) {
         return new McpDecisionGatewayCommand(
+                request.runId(),
                 request.goal(),
                 request.startUrl(),
                 new McpDecisionGatewayCommand.AgentState(
