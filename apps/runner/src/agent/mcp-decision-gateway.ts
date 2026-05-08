@@ -173,12 +173,25 @@ export function createFetchMcpDecisionGatewayTransport(): AgentMcpDecisionGatewa
           throw new Error(`MCP decision gateway failed with status ${response.status}`);
         }
 
-        return await response.json() as unknown;
+        return unwrapApiResponseData(await response.json() as unknown);
       } finally {
         clearTimeout(timeout);
       }
     }
   };
+}
+
+function unwrapApiResponseData(value: unknown): unknown {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return value;
+  }
+
+  const record = value as Record<string, unknown>;
+  if ("data" in record && "meta" in record) {
+    return record.data;
+  }
+
+  return value;
 }
 
 function resolveMcpGatewayTimeoutMs(configuredTimeoutMs: number, remainingTimeMs: number | undefined): number {

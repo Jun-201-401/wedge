@@ -1,12 +1,15 @@
 package com.wedge.mcp.gateway.application;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.wedge.common.error.BusinessException;
 import com.wedge.mcp.gateway.application.command.McpDecisionGatewayCommand;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -15,7 +18,8 @@ class McpDecisionGatewayServiceTest {
     private static final UUID RUN_ID = UUID.fromString("00000000-0000-4000-8000-000000000901");
 
     private final McpDecisionSessionRegistry sessionRegistry = org.mockito.Mockito.mock(McpDecisionSessionRegistry.class);
-    private final McpDecisionGatewayService service = new McpDecisionGatewayService(sessionRegistry);
+    private final McpSamplingBridge samplingBridge = org.mockito.Mockito.mock(McpSamplingBridge.class);
+    private final McpDecisionGatewayService service = new McpDecisionGatewayService(sessionRegistry, samplingBridge);
 
     @Test
     void requestDecisionFailsWhenRunHasNoRegisteredMcpSession() {
@@ -36,12 +40,21 @@ class McpDecisionGatewayServiceTest {
     }
 
     @Test
-    void requestDecisionResolvesRegisteredSamplingSessionBeforeTypedNotImplementedFailure() {
-        when(sessionRegistry.findByRunId(RUN_ID)).thenReturn(Optional.of(session(true)));
+    void requestDecisionDelegatesToSamplingBridgeForRegisteredSamplingSession() {
+        McpDecisionSession session = session(true);
+        McpDecisionGatewayCommand command = command();
+        when(sessionRegistry.findByRunId(RUN_ID)).thenReturn(Optional.of(session));
+        when(samplingBridge.requestDecision(command, session)).thenReturn(new McpDecisionGatewayResponse(Map.of(
+                "kind", "checkpoint",
+                "actionType", "checkpoint",
+                "reason", "Bridge selected checkpoint.",
+                "confidence", 0.7
+        )));
 
-        assertThatThrownBy(() -> service.requestDecision(command()))
-                .isInstanceOf(BusinessException.class)
-                .hasMessage("MCP host session is registered, but decision sampling routing is not implemented yet.");
+        McpDecisionGatewayResponse response = service.requestDecision(command);
+
+        assertThat(response.decision()).containsEntry("kind", "checkpoint");
+        verify(samplingBridge).requestDecision(command, session);
     }
 
     private McpDecisionSession session(boolean samplingSupported) {

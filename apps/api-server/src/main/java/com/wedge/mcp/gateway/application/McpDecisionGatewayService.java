@@ -10,8 +10,9 @@ import org.springframework.stereotype.Service;
 @RequiredArgsConstructor
 public class McpDecisionGatewayService {
     private final McpDecisionSessionRegistry sessionRegistry;
+    private final McpSamplingBridge samplingBridge;
 
-    public void requestDecision(McpDecisionGatewayCommand command) {
+    public McpDecisionGatewayResponse requestDecision(McpDecisionGatewayCommand command) {
         McpDecisionSession session = sessionRegistry.findByRunId(command.runId())
                 .orElseThrow(() -> new BusinessException(
                         ErrorCode.MCP_SESSION_UNAVAILABLE,
@@ -25,9 +26,6 @@ public class McpDecisionGatewayService {
             );
         }
 
-        throw new BusinessException(
-                ErrorCode.MCP_SESSION_UNAVAILABLE,
-                "MCP host session is registered, but decision sampling routing is not implemented yet."
-        );
+        return samplingBridge.requestDecision(command, session);
     }
 }

@@ -19,6 +19,7 @@ Runner Agent Runtime
   -> AgentMcpDecisionClient
   -> API Server MCP Decision Gateway
   -> runId-based MCP decision session registry
+  -> McpSamplingBridge
   -> active MCP Host session
   -> sampling/createMessage
   -> AgentDecision JSON
@@ -111,4 +112,20 @@ expiresAt
 
 It intentionally does not persist SDK request context or execute sampling from the internal HTTP request yet. Therefore, `/internal/agent/mcp/decision` still returns a typed `mcp_session_unavailable` failure after resolving the route until the actual server-to-client sampling bridge is implemented.
 
-MCP session selection now has a first in-memory boundary. Production MCP mode must remain disabled until the actual sampling bridge, response parser, audit log, and failure policy are implemented.
+MCP session selection now has a first in-memory boundary and `McpSamplingBridge` has a first interface boundary. The default bridge implementation intentionally returns `mcp_sampling_bridge_unavailable`.
+
+The current API/library inspection found:
+
+```text
+McpSyncRequestContext.sample(...)
+McpSyncServerExchange.createMessage(...)
+```
+
+These are public APIs for bidirectional sampling while handling a stateful MCP request. No public Spring AI or Java MCP SDK API has been wired here that resolves a later HTTP request's `sessionId` back into an active `McpSyncServerExchange`. Because of that, Wedge must not store `McpSyncRequestContext` itself in the registry and call it later.
+
+Production MCP mode must remain disabled until one of these is implemented:
+
+```text
+1. a documented direct bridge from registered session to createMessage
+2. a host-driven pending decision flow that performs sampling inside a fresh MCP tool call
+```

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   AgentMcpDecisionClient,
+  createFetchMcpDecisionGatewayTransport,
   createMcpDecisionGatewayPayload,
   type AgentMcpDecisionGatewayTransport
 } from "../src/agent/mcp-decision-gateway.ts";
@@ -143,4 +144,69 @@ test("[Agent MCP Decision] gateway payload는 browser-control primitive 대신 c
   assert.doesNotMatch(serializedPayload, /cookie|localStorage|sessionStorage|javascript|evaluate/i);
   assert.doesNotMatch(serializedPayload, /mvp\.tester@example\.com/);
   assert.doesNotMatch(serializedPayload, /checkout-secret|secret-token/);
+});
+
+test("[Agent MCP Decision] fetch transport는 API Server ApiResponse data를 decision payload로 unwrap한다", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async () => new Response(JSON.stringify({
+    data: {
+      decision: {
+        kind: "checkpoint",
+        actionType: "checkpoint",
+        reason: "API Server wrapped response.",
+        confidence: 0.7
+      }
+    },
+    meta: {
+      requestId: "req-1"
+    }
+  }), {
+    status: 200,
+    headers: {
+      "Content-Type": "application/json"
+    }
+  })) as typeof fetch;
+
+  try {
+    const response = await createFetchMcpDecisionGatewayTransport().decide({
+      gatewayUrl: "http://api-server:8080/internal/agent/mcp/decision",
+      timeoutMs: 1_000,
+      payload: {
+        runId: "00000000-0000-4000-8000-000000000303",
+        goal: "Find checkout",
+        startUrl: "https://example.com",
+        state: {
+          started: true,
+          scrollCount: 0,
+          clickedTargetKeys: []
+        },
+        page: {
+          finalUrl: "https://example.com",
+          title: "Example",
+          candidates: []
+        },
+        allowedActions: ["checkpoint"],
+        outputSchema: {
+          kind: "act|checkpoint|finish",
+          actionType: "goto|click|scroll|checkpoint",
+          targetKey: "opaque candidate targetKey for click, null otherwise",
+          scrollY: "number, only for scroll",
+          stage: "FIRST_VIEW|VALUE|CTA|INPUT|COMMIT",
+          reason: "short reason",
+          confidence: "0..1"
+        }
+      }
+    });
+
+    assert.deepEqual(response, {
+      decision: {
+        kind: "checkpoint",
+        actionType: "checkpoint",
+        reason: "API Server wrapped response.",
+        confidence: 0.7
+      }
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });

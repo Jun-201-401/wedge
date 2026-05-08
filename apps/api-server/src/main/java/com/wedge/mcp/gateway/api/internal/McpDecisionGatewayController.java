@@ -3,6 +3,7 @@ package com.wedge.mcp.gateway.api.internal;
 import com.wedge.common.response.ApiResponse;
 import com.wedge.mcp.gateway.api.internal.dto.McpDecisionGatewayRequest;
 import com.wedge.mcp.gateway.application.McpDecisionGatewayService;
+import com.wedge.mcp.gateway.application.McpDecisionGatewayResponse;
 import com.wedge.mcp.gateway.application.command.McpDecisionGatewayCommand;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -19,9 +20,8 @@ public class McpDecisionGatewayController {
     private final McpDecisionGatewayService service;
 
     @PostMapping("/decision")
-    public ResponseEntity<ApiResponse<Void>> requestDecision(@Valid @RequestBody McpDecisionGatewayRequest request) {
-        service.requestDecision(toCommand(request));
-        return ApiResponse.ok(null);
+    public ResponseEntity<ApiResponse<McpDecisionGatewayResponse>> requestDecision(@Valid @RequestBody McpDecisionGatewayRequest request) {
+        return ApiResponse.ok(service.requestDecision(toCommand(request)));
     }
 
     private McpDecisionGatewayCommand toCommand(McpDecisionGatewayRequest request) {
