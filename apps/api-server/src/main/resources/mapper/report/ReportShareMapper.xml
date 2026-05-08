@@ -34,6 +34,16 @@
           AND report.deleted_at IS NULL
     </select>
 
+    <select id="findActiveByReportId" resultMap="ReportShareResultMap">
+        SELECT <include refid="ReportShareColumns"/>
+        FROM report_share
+        WHERE report_id = #{reportId}
+          AND revoked_at IS NULL
+          AND (expires_at IS NULL OR expires_at &gt; #{now})
+        ORDER BY created_at DESC
+        LIMIT 1
+    </select>
+
     <insert id="insert" parameterType="com.wedge.report.domain.ReportShare">
         INSERT INTO report_share (
             id, report_id, share_token, access_level, expires_at, created_by, created_at

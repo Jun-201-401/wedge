@@ -44,6 +44,12 @@ public class ReportShareService {
     public ReportShareResponse createReportShare(UUID reportId, UUID userId) {
         ensureReportAccessible(reportId, userId);
         OffsetDateTime now = now();
+        return reportShareMapper.findActiveByReportId(reportId, now)
+                .map(this::toResponse)
+                .orElseGet(() -> createNewReportShare(reportId, userId, now));
+    }
+
+    private ReportShareResponse createNewReportShare(UUID reportId, UUID userId, OffsetDateTime now) {
         ReportShare share = new ReportShare();
         share.setId(UUID.randomUUID());
         share.setReportId(reportId);

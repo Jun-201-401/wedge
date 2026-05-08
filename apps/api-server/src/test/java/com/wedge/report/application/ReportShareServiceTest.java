@@ -2,6 +2,7 @@ package com.wedge.report.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -84,6 +85,7 @@ class ReportShareServiceTest {
         UUID userId = UUID.randomUUID();
         when(reportMapper.findById(reportId)).thenReturn(Optional.of(report(reportId, runId)));
         when(runService.getRun(runId)).thenReturn(runResponse(runId, projectId));
+        when(reportShareMapper.findActiveByReportId(reportId, NOW)).thenReturn(Optional.empty());
         when(tokenGenerator.generate()).thenReturn(SHARE_TOKEN);
 
         ReportShareResponse response = reportShareService.createReportShare(reportId, userId);
@@ -100,6 +102,28 @@ class ReportShareServiceTest {
         assertThat(response.shareUrl()).isEqualTo("https://wedge.example.com/api/report-shares/" + SHARE_TOKEN);
         assertThat(response.expiresAt()).isEqualTo(NOW.plusMinutes(10));
         assertThat(response.createdAt()).isEqualTo(NOW);
+        verify(reportAccessGuard).ensureProjectAccessible(projectId, userId);
+    }
+
+    @Test
+    void createReportShareReusesExistingActiveShare() {
+        UUID reportId = UUID.randomUUID();
+        UUID runId = UUID.randomUUID();
+        UUID projectId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        ReportShare activeShare = share(reportId);
+        when(reportMapper.findById(reportId)).thenReturn(Optional.of(report(reportId, runId)));
+        when(runService.getRun(runId)).thenReturn(runResponse(runId, projectId));
+        when(reportShareMapper.findActiveByReportId(reportId, NOW)).thenReturn(Optional.of(activeShare));
+
+        ReportShareResponse response = reportShareService.createReportShare(reportId, userId);
+
+        assertThat(response.id()).isEqualTo(activeShare.getId());
+        assertThat(response.reportId()).isEqualTo(reportId);
+        assertThat(response.shareUrl()).isEqualTo("https://wedge.example.com/api/report-shares/" + SHARE_TOKEN);
+        assertThat(response.expiresAt()).isEqualTo(activeShare.getExpiresAt());
+        verify(tokenGenerator, never()).generate();
+        verify(reportShareMapper, never()).insert(org.mockito.ArgumentMatchers.any());
         verify(reportAccessGuard).ensureProjectAccessible(projectId, userId);
     }
 

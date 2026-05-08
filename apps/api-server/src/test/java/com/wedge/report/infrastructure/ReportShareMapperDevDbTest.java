@@ -88,6 +88,10 @@ class ReportShareMapperDevDbTest {
         assertThat(found.get().getId()).isEqualTo(ACTIVE_SHARE_ID);
         assertThat(found.get().getReportId()).isEqualTo(REPORT_ID);
 
+        Optional<ReportShare> foundByReport = reportShareMapper.findActiveByReportId(REPORT_ID, NOW);
+        assertThat(foundByReport).isPresent();
+        assertThat(foundByReport.get().getId()).isEqualTo(ACTIVE_SHARE_ID);
+
         assertThat(reportShareMapper.findActiveByToken("expired-token", NOW)).isEmpty();
         assertThat(reportShareMapper.findActiveByToken("revoked-token", NOW)).isEmpty();
         assertThat(reportShareMapper.findActiveByToken("deleted-report-token", NOW)).isEmpty();
@@ -95,6 +99,7 @@ class ReportShareMapperDevDbTest {
 
         assertThat(reportShareMapper.revoke(ACTIVE_SHARE_ID, REPORT_ID, NOW)).isEqualTo(1);
         assertThat(reportShareMapper.findActiveByToken("active-token", NOW)).isEmpty();
+        assertThat(reportShareMapper.findActiveByReportId(REPORT_ID, NOW)).isEmpty();
         assertThat(reportShareMapper.revoke(ACTIVE_SHARE_ID, REPORT_ID, NOW.plusSeconds(1))).isZero();
     }
 
