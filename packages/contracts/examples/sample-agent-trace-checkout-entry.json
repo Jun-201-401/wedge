@@ -35,7 +35,11 @@
           "timeout_ms": 1000
         },
         "stage": "FIRST_VIEW",
-        "targetKey": "https://example.com/product/sample"
+        "targetKey": "https://example.com/product/sample",
+        "metadata": {
+          "decisionId": "decision-sample-001",
+          "decisionSource": "heuristic"
+        }
       },
       "policy": {
         "allowed": true,
@@ -89,7 +93,11 @@
           "timeout_ms": 500
         },
         "stage": "CTA",
-        "targetKey": "#add-to-cart"
+        "targetKey": "#add-to-cart",
+        "metadata": {
+          "decisionId": "decision-sample-002",
+          "decisionSource": "heuristic"
+        }
       },
       "policy": {
         "allowed": true,

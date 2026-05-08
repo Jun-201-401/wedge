@@ -1761,6 +1761,7 @@ Completed:
 - Static Runner replay consumes exported `action.options.replay_hint.locator_recipe` as locator fallback so stale selectors do not block same-fixture replay.
 - LLM prompt payloads use opaque candidate ids plus redacted semantic selector/href hints instead of raw selector/href values.
 - LLM invalid-JSON-only retry and broader heuristic-vs-LLM checkout fixture comparison are covered by Runner tests.
+- Agent decisions now carry redacted trace-safe metadata: decision id, source, optional model, and prompt shape summary without raw prompt content.
 
 Remaining:
 - Promote local terminal idempotency records to API/DB-backed global idempotency when multiple runner replicas share a queue.

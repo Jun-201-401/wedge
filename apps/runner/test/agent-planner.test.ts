@@ -39,6 +39,9 @@ test("[Agent Planner] checkout 목표에서는 일반 CTA보다 장바구니 담
     text: "장바구니 담기"
   });
   assert.match(decision.replayHint?.candidate_fingerprint ?? "", /^candidate:[a-f0-9]{16}$/);
+  assert.match(decision.metadata?.decisionId ?? "", /^[0-9a-f-]{36}$/);
+  assert.equal(decision.metadata?.decisionSource, "heuristic");
+  assert.equal(decision.metadata?.model, undefined);
   assert.deepEqual(decision.replayHint?.locator_recipe[0], {
     strategy: "selector",
     selector: "#add-to-cart",

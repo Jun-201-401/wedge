@@ -146,6 +146,8 @@ test("[Agent Worker] AgentTask로 CTA 후보를 관찰해 클릭한다", async (
   assert.equal(result.trace.turns.length, 2);
   assert.equal(result.trace.turns[0].preDecisionVerification.phase, "pre_decision");
   assert.equal(result.trace.turns[1].decision?.action.type, "click");
+  assert.equal(result.trace.turns[1].decision?.metadata?.decisionSource, "heuristic");
+  assert.match(result.trace.turns[1].decision?.metadata?.decisionId ?? "", /^[0-9a-f-]{36}$/);
   assert.equal(result.trace.turns[1].policy?.allowed, true);
   assert.equal(result.trace.turns[1].postActionVerification?.satisfied, true);
   assert.equal(persistedArtifacts.length, 2);
@@ -153,6 +155,9 @@ test("[Agent Worker] AgentTask로 CTA 후보를 관찰해 클릭한다", async (
   const scenarioPlanExportDraft = persistedArtifacts.find((artifact) => artifact.stepKey === "agent_scenario_plan_export");
   assert.equal(traceArtifactDraft?.artifactType, "TRACE");
   assert.match(traceArtifactDraft?.content ?? "", /"outcome"/);
+  assert.match(traceArtifactDraft?.content ?? "", /"decisionSource": "heuristic"/);
+  assert.match(traceArtifactDraft?.content ?? "", /"decisionId":/);
+  assert.doesNotMatch(traceArtifactDraft?.content ?? "", /rawPrompt|messages|outputSchema/);
   assert.equal(scenarioPlanExportDraft?.artifactType, "OTHER");
   assert.match(scenarioPlanExportDraft?.content ?? "", /"scenario_plan"/);
   assert.match(scenarioPlanExportDraft?.content ?? "", /"stop_when"/);

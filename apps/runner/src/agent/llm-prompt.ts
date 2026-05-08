@@ -1,6 +1,6 @@
 import type { InteractiveComponentObservationItem } from "../shared/contracts.ts";
 import { targetKey } from "./component-target.ts";
-import type { AgentDecisionInput } from "./planner.ts";
+import type { AgentDecisionInput, AgentDecisionPromptMetadata } from "./planner.ts";
 import { redactSensitiveString, redactSensitiveValue } from "./redaction.ts";
 
 export interface LlmCandidateReference {
@@ -8,6 +8,8 @@ export interface LlmCandidateReference {
   rawTargetKey: string;
   component: InteractiveComponentObservationItem;
 }
+
+export const LLM_PROMPT_PAYLOAD_SHAPE_VERSION = "llm-prompt-v1";
 
 export function createLlmCandidateReferences(components: InteractiveComponentObservationItem[]): LlmCandidateReference[] {
   return components.map((component, index) => ({
@@ -67,6 +69,19 @@ export function createLlmRequestPayload(
         content: JSON.stringify(userPayload)
       }
     ]
+  };
+}
+
+export function createLlmPromptMetadata(
+  candidateReferences: LlmCandidateReference[]
+): AgentDecisionPromptMetadata {
+  return {
+    payloadShapeVersion: LLM_PROMPT_PAYLOAD_SHAPE_VERSION,
+    candidateCount: candidateReferences.length,
+    redacted: true,
+    rawPromptStored: false,
+    rawCandidateSelectorsIncluded: false,
+    rawCandidateHrefsIncluded: false
   };
 }
 
