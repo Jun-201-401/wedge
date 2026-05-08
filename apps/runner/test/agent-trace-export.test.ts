@@ -12,6 +12,7 @@ test("[Agent Trace Export] 성공한 checkout trace를 payment 직전 stop이 �
     schema_version: "0.1",
     task_id: task.task_id,
     attempt_id: task.attempt_id,
+    attempt_index: task.attempt_index,
     run_id: task.run_id,
     outcome: {
       status: "SUCCESS",
@@ -179,6 +180,7 @@ test("[Agent Trace Export] login/CAPTCHA 등 BLOCKED trace는 ScenarioPlan 후�
     schema_version: "0.1",
     task_id: task.task_id,
     attempt_id: task.attempt_id,
+    attempt_index: task.attempt_index,
     run_id: task.run_id,
     outcome: {
       status: "BLOCKED",

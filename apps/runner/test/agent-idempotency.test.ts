@@ -50,6 +50,7 @@ function createSensitiveAgentResult(): AgentRunnerExecutionResult {
       schema_version: "0.1",
       task_id: "task-1",
       attempt_id: "attempt-1",
+      attempt_index: 1,
       run_id: "run-1",
       outcome: {
         status: "SUCCESS",

@@ -1688,7 +1688,7 @@ Implement agent/session.ts state machine.
 Implement MockDecisionClient.
 Implement HeuristicDecisionClient.
 Implement AgentTrace builder.
-Include attempt_id/attempt_index in trace.
+DONE: Include attempt_id/attempt_index in trace.
 Implement no mid-action resume MVP behavior.
 Run fixtures 1-9b without LLM.
 ```
@@ -1766,6 +1766,7 @@ Completed:
 - Static Runner replay resolves `replay_hint.locator_recipe[].frame_id` to the matching Playwright iframe before locator execution.
 - Open shadow-root candidates are observed for verification, but excluded from click decision/replay execution until a safe shadow locator contract is defined.
 - Agent worker can receive an injected `AgentIdempotencyStore`, so API/DB-backed global idempotency can be shared across runner instances instead of relying only on local artifact files.
+- AgentTrace contract and artifacts include `attempt_index` alongside `attempt_id` for retry debugging.
 
 Remaining:
 - Wire the injected `AgentIdempotencyStore` to the API/DB adapter once the API service exposes the backing endpoint/table.
