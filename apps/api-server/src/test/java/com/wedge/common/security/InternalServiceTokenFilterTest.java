@@ -39,6 +39,13 @@ class InternalServiceTokenFilterTest {
     }
 
     @Test
+    void internalAgentGatewayPathRequiresInternalTokenFilter() {
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/internal/agent/mcp/decision");
+
+        assertThat(filter.shouldNotFilter(request)).isFalse();
+    }
+
+    @Test
     void publicApiPathsDoNotUseInternalTokenFilter() {
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/runs/run-id/evidence-packet");
         request.addHeader("Authorization", "Bearer internal-token");
@@ -95,6 +102,22 @@ class InternalServiceTokenFilterTest {
 
         assertThat(response.getStatus()).isEqualTo(200);
         assertThat(chainCalled.get()).isTrue();
+    }
+
+    @Test
+    void internalAgentGatewayDoesNotUseRunnerSignatureSecret() throws Exception {
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/internal/agent/mcp/decision");
+        request.addHeader("Authorization", "Bearer internal-token");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        AtomicBoolean chainCalled = new AtomicBoolean(false);
+
+        filter.doFilter(request, response, (servletRequest, servletResponse) -> chainCalled.set(true));
+
+        assertThat(response.getStatus()).isEqualTo(200);
+        assertThat(chainCalled.get()).isTrue();
+        assertThat(SecurityContextHolder.getContext().getAuthentication().getAuthorities())
+                .extracting("authority")
+                .containsExactly("ROLE_INTERNAL_RUNNER");
     }
 
     @Test

@@ -65,9 +65,17 @@ Current Runner code provides the first boundary:
 
 ```text
 RUNNER_AGENT_DECISION_MODE=mcp
-RUNNER_AGENT_MCP_GATEWAY_URL=<api-server gateway endpoint>
+RUNNER_AGENT_MCP_GATEWAY_URL=http://api-server:8080/internal/agent/mcp/decision
 RUNNER_AGENT_MCP_SERVICE_TOKEN=<internal gateway token>
 RUNNER_AGENT_MCP_GATEWAY_TIMEOUT_MS=10000
 ```
 
-The API Server gateway endpoint and MCP session selection are intentionally not hard-coded yet. They must be designed before enabling MCP mode in production.
+The API Server currently exposes the internal gateway entrypoint:
+
+```text
+POST /internal/agent/mcp/decision
+```
+
+This endpoint is protected by the internal service token and accepts the constrained Runner observation contract. It intentionally returns a typed `mcp_session_unavailable` failure until MCP Host session selection and sampling routing are implemented.
+
+MCP session selection is still not implemented. It must be designed before enabling MCP mode in production.

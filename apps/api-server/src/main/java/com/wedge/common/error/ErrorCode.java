@@ -14,6 +14,7 @@ public enum ErrorCode {
     RUN_NOT_FOUND(HttpStatus.NOT_FOUND, "run_not_found", "Run was not found."),
     REPORT_NOT_FOUND(HttpStatus.NOT_FOUND, "report_not_found", "Report was not found."),
     SCENARIO_AUTHORING_JOB_NOT_FOUND(HttpStatus.NOT_FOUND, "scenario_authoring_job_not_found", "ScenarioAuthoring job was not found."),
+    MCP_SESSION_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "mcp_session_unavailable", "No active MCP host session is available."),
     EMAIL_ALREADY_EXISTS(HttpStatus.CONFLICT, "email_already_exists", "Email is already registered."),
     STATE_CONFLICT(HttpStatus.CONFLICT, "state_conflict", "Resource state conflict."),
     INTERNAL_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "internal_error", "Unexpected server error.");

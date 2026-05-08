@@ -36,7 +36,7 @@ public class InternalServiceTokenFilter extends OncePerRequestFilter {
     private static final String SIGNATURE_HEADER = "X-Signature";
     private static final String HMAC_SHA256_ALGORITHM = "HmacSHA256";
     private static final String HMAC_SHA256_PREFIX = "hmac-sha256=";
-    private static final List<String> INTERNAL_CALLBACK_PATHS = List.of("/internal/runner/**", "/internal/analysis/**");
+    private static final List<String> INTERNAL_CALLBACK_PATHS = List.of("/internal/runner/**", "/internal/analysis/**", "/internal/agent/**");
     private static final List<String> MCP_PATHS = List.of("/mcp", "/mcp/**");
     private static final String INTERNAL_RUNNER_CALLBACK_PATH = "/internal/runner/**";
 
