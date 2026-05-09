@@ -109,6 +109,10 @@ test('run monitor page exposes Sprint 2 live cockpit essentials with Korean-faci
   assert.match(source, /reportCtaState\.kind === 'request-analysis'/);
   assert.match(source, /reportCtaStatusLabel/);
   assert.match(source, /run-monitor-report-cta__actions/);
+  assert.match(source, /RUN_MONITOR_PANEL_DEFAULT_WIDTH/);
+  assert.match(source, /handleAnalysisPanelResizePointerDown/);
+  assert.match(source, /run-monitor-cockpit run-monitor-cockpit--resizable/);
+  assert.match(source, /run-monitor-panel-resizer/);
   assert.match(source, /리포트 생성/);
   assert.match(source, /분석 시작/);
   assert.match(source, /RunLifecycleActions/);
@@ -123,8 +127,11 @@ test('run monitor css follows the live cockpit visual language', () => {
   assert.match(cssRule(css, '.run-monitor-workspace'), /display: grid/);
   assert.match(cssRule(css, '.run-monitor-workspace'), /grid-template-rows: auto minmax\(0, 1fr\)/);
   assert.match(css, /\.run-monitor-run-context\s*\{[\s\S]*?border-bottom: 1px solid #f1f5f9/);
-  assert.match(css, /\.run-monitor-cockpit\s*\{[\s\S]*?grid-template-columns: minmax\(0, 1fr\) 25rem/);
+  assert.match(css, /\.run-monitor-cockpit\s*\{[\s\S]*?grid-template-columns: minmax\(0, 1fr\) 28rem/);
+  assert.match(css, /\.run-monitor-cockpit--resizable\s*\{[\s\S]*?grid-template-columns: minmax\(0, 1fr\) 0\.5rem minmax\(21rem, var\(--run-monitor-analysis-panel-width, 28rem\)\)/);
   assert.match(cssRule(css, '.run-monitor-cockpit'), /align-self: stretch/);
+  assert.match(cssRule(css, '.run-monitor-panel-resizer'), /cursor: col-resize/);
+  assert.match(cssRule(css, '.run-monitor-panel-resizer'), /touch-action: none/);
   assert.match(cssRule(css, '.run-monitor-simulation'), /min-height: 0/);
   assert.match(cssRule(css, '.run-monitor-simulation'), /overflow: hidden/);
   assert.match(cssRule(css, '.run-monitor-analysis-panel'), /display: flex/);

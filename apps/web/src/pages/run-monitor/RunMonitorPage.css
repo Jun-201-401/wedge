@@ -342,8 +342,12 @@
   display: grid;
   align-self: stretch;
   min-height: 0;
-  grid-template-columns: minmax(0, 1fr) 25rem;
+  grid-template-columns: minmax(0, 1fr) 28rem;
   overflow: hidden;
+}
+
+.run-monitor-cockpit--resizable {
+  grid-template-columns: minmax(0, 1fr) 0.5rem minmax(21rem, var(--run-monitor-analysis-panel-width, 28rem));
 }
 
 .run-monitor-simulation {
@@ -354,6 +358,41 @@
   overflow: hidden;
   background: rgba(248, 250, 252, 0.22);
   padding: 1.5rem 1.75rem 1.75rem;
+}
+
+.run-monitor-panel-resizer {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  width: 0.5rem;
+  height: 100%;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-right: 1px solid #f1f5f9;
+  border-left: 1px solid #f8fafc;
+  background: #fff;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.run-monitor-panel-resizer span {
+  width: 0.16rem;
+  height: 2.8rem;
+  border-radius: 999px;
+  background: #e2e8f0;
+  transition: background 0.18s ease, height 0.18s ease;
+}
+
+.run-monitor-panel-resizer:hover span,
+.run-monitor-panel-resizer:focus-visible span {
+  height: 3.5rem;
+  background: #0ea5e9;
+}
+
+.run-monitor-panel-resizer:focus-visible {
+  outline: 3px solid rgba(14, 165, 233, 0.18);
+  outline-offset: -3px;
 }
 
 .run-monitor-action-message {
@@ -1569,6 +1608,10 @@
     height: auto;
     grid-template-columns: 1fr;
     overflow: visible;
+  }
+
+  .run-monitor-panel-resizer {
+    display: none;
   }
 
   .run-monitor-simulation {

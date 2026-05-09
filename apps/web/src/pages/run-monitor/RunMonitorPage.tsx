@@ -1,4 +1,15 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type KeyboardEvent,
+  type MouseEvent,
+  type PointerEvent,
+  type ReactNode,
+} from 'react';
 
 import { generateRunReport, getRunReport } from '../../api/reports';
 import { handleSpaNavigationClick, replaceAppPath } from '../../shared/lib/navigation';
@@ -52,6 +63,11 @@ const GENERATE_REPORT_ERROR_MESSAGE = '리포트 생성 요청에 실패했습�
 const REQUEST_ANALYSIS_PENDING_MESSAGE = '분석 요청 중입니다.';
 const REQUEST_ANALYSIS_SUCCESS_MESSAGE = '분석 요청이 접수됐습니다. 분석이 완료되면 리포트를 생성할 수 있습니다.';
 const REQUEST_ANALYSIS_ERROR_MESSAGE = '분석 요청에 실패했습니다. Run 상태 또는 접근 권한을 확인해주세요.';
+const RUN_MONITOR_PANEL_DEFAULT_WIDTH = 448;
+const RUN_MONITOR_PANEL_MIN_WIDTH = 336;
+const RUN_MONITOR_PANEL_MAX_WIDTH = 640;
+const RUN_MONITOR_CAPTURE_MIN_WIDTH = 560;
+const RUN_MONITOR_RESIZE_STEP = 24;
 
 function readQueryParam(name: string) {
   if (typeof window === 'undefined') {
@@ -63,6 +79,27 @@ function readQueryParam(name: string) {
 
 function getFallbackUrl() {
   return readQueryParam('url') ?? 'https://example.com/';
+}
+
+function clampNumber(value: number, min: number, max: number) {
+  return Math.min(Math.max(value, min), max);
+}
+
+function getResizablePanelBounds(cockpit: HTMLDivElement | null) {
+  if (!cockpit) {
+    return {
+      min: RUN_MONITOR_PANEL_MIN_WIDTH,
+      max: RUN_MONITOR_PANEL_MAX_WIDTH,
+    };
+  }
+
+  const availableWidth = cockpit.getBoundingClientRect().width;
+  const maxByCaptureWidth = Math.max(RUN_MONITOR_PANEL_MIN_WIDTH, availableWidth - RUN_MONITOR_CAPTURE_MIN_WIDTH);
+
+  return {
+    min: RUN_MONITOR_PANEL_MIN_WIDTH,
+    max: Math.min(RUN_MONITOR_PANEL_MAX_WIDTH, maxByCaptureWidth),
+  };
 }
 
 function StepNode({ status }: { status: StepStatus }) {
@@ -398,6 +435,8 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
   const [reportActionState, setReportActionState] = useState<MonitorActionState>(IDLE_MONITOR_ACTION_STATE);
   const activeRouteRunIdRef = useRef(runId);
   const isMonitorMountedRef = useRef(false);
+  const cockpitRef = useRef<HTMLDivElement | null>(null);
+  const [analysisPanelWidth, setAnalysisPanelWidth] = useState(RUN_MONITOR_PANEL_DEFAULT_WIDTH);
 
   useEffect(() => {
     isMonitorMountedRef.current = true;
@@ -491,6 +530,61 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
       window.clearTimeout(refreshTimerId);
     };
   }, [canApplyReportResponse, isMockRun, reportProjection, run.id, run.status, runId]);
+
+  const updateAnalysisPanelWidth = useCallback((nextWidth: number) => {
+    const bounds = getResizablePanelBounds(cockpitRef.current);
+    setAnalysisPanelWidth(clampNumber(nextWidth, bounds.min, bounds.max));
+  }, []);
+
+  const updateAnalysisPanelWidthFromPointer = useCallback((clientX: number) => {
+    const cockpit = cockpitRef.current;
+
+    if (!cockpit) {
+      return;
+    }
+
+    const rect = cockpit.getBoundingClientRect();
+    updateAnalysisPanelWidth(rect.right - clientX);
+  }, [updateAnalysisPanelWidth]);
+
+  const handleAnalysisPanelResizePointerDown = useCallback((event: PointerEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    updateAnalysisPanelWidthFromPointer(event.clientX);
+  }, [updateAnalysisPanelWidthFromPointer]);
+
+  const handleAnalysisPanelResizePointerMove = useCallback((event: PointerEvent<HTMLButtonElement>) => {
+    if (event.buttons !== 1) {
+      return;
+    }
+
+    updateAnalysisPanelWidthFromPointer(event.clientX);
+  }, [updateAnalysisPanelWidthFromPointer]);
+
+  const handleAnalysisPanelResizeKeyDown = useCallback((event: KeyboardEvent<HTMLButtonElement>) => {
+    if (event.key === 'ArrowLeft') {
+      event.preventDefault();
+      updateAnalysisPanelWidth(analysisPanelWidth + RUN_MONITOR_RESIZE_STEP);
+      return;
+    }
+
+    if (event.key === 'ArrowRight') {
+      event.preventDefault();
+      updateAnalysisPanelWidth(analysisPanelWidth - RUN_MONITOR_RESIZE_STEP);
+      return;
+    }
+
+    if (event.key === 'Home') {
+      event.preventDefault();
+      updateAnalysisPanelWidth(RUN_MONITOR_PANEL_DEFAULT_WIDTH);
+      return;
+    }
+
+    if (event.key === 'End') {
+      event.preventDefault();
+      updateAnalysisPanelWidth(RUN_MONITOR_PANEL_MAX_WIDTH);
+    }
+  }, [analysisPanelWidth, updateAnalysisPanelWidth]);
 
   const evidenceScreenshotUrl = findEvidenceScreenshotArtifact(evidencePacket)?.uri ?? null;
   const snapshotUrl = live.latestFrame?.url ?? run.latestSnapshot?.url ?? evidenceScreenshotUrl;
@@ -706,7 +800,11 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
           )}
         />
 
-        <div className="run-monitor-cockpit">
+        <div
+          ref={cockpitRef}
+          className="run-monitor-cockpit run-monitor-cockpit--resizable"
+          style={{ '--run-monitor-analysis-panel-width': `${analysisPanelWidth}px` } as CSSProperties}
+        >
           <section className="run-monitor-simulation" aria-labelledby="run-monitor-title">
             {runActionState.message ? (
               <p className={`run-monitor-action-message run-monitor-action-message--${runActionState.kind}`} role="status">
@@ -798,7 +896,19 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
             </div>
           </section>
 
-        <aside className="run-monitor-analysis-panel" aria-label="실시간 분석 상태">
+          <button
+            type="button"
+            className="run-monitor-panel-resizer"
+            aria-label="캡처 화면과 분석 메뉴 폭 조절"
+            title="좌우로 드래그해서 패널 폭 조절"
+            onKeyDown={handleAnalysisPanelResizeKeyDown}
+            onPointerDown={handleAnalysisPanelResizePointerDown}
+            onPointerMove={handleAnalysisPanelResizePointerMove}
+          >
+            <span aria-hidden="true" />
+          </button>
+
+          <aside className="run-monitor-analysis-panel" aria-label="실시간 분석 상태">
           <section className="run-monitor-progress-panel" aria-labelledby="run-progress-title">
             <div className="run-monitor-panel-heading">
               <h2 id="run-progress-title">전체 진행률</h2>
