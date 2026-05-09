@@ -26,6 +26,9 @@ test('run report page follows the report.html result-first layout', () => {
   assert.match(source, /CTA 전환 마찰 리포트/);
   assert.match(source, /function RunReportStatePage/);
   assert.match(source, /리포트 준비 중/);
+  assert.match(source, /run-report-state-card__header/);
+  assert.doesNotMatch(source, /getReportStateStatusLabel/);
+  assert.doesNotMatch(source, />리포트<\/span>/);
   assert.match(source, /run-report-state-card__meta/);
   assert.doesNotMatch(source, /새 분석 만들기/);
   assert.match(source, /function RunReportLoadingShell/);
@@ -152,6 +155,9 @@ test('run report css keeps result-first content in the live simulation cockpit t
   assert.match(css, /\.run-report-evidence-preview__hero button\s*\{[\s\S]*?background: #111827/);
   assert.match(css, /\.run-report-topbar__link\s*\{[\s\S]*?background: #334155/);
   assert.match(css, /\.run-report-state-card a,\s*\n\.run-report-state-card button\s*\{[\s\S]*?background: #334155/);
+  assert.match(css, /\.run-report-state-card__header\s*\{[\s\S]*?margin-bottom: 1rem/);
+  assert.doesNotMatch(css, /\.run-report-state-card::before/);
+  assert.doesNotMatch(css, /\.run-report-state-card > span/);
   assert.match(css, /\.run-report-state-card__actions a\s*\{[\s\S]*?background: rgba\(240, 249, 255, 0\.88\)/);
   assert.match(css, /\.run-report-state-card__meta\s*\{[\s\S]*?border-top: 1px solid #f1f5f9/);
   assert.match(css, /\.run-report-loading-status\s*\{[\s\S]*?background: rgba\(240, 249, 255, 0\.78\)/);

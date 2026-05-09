@@ -98,7 +98,7 @@ export function resolveRunReportState({
     return {
       kind: 'api-pending',
       title: '리포트 생성이 필요합니다',
-      message: '분석 결과가 준비됐습니다. 리포트 생성 버튼을 눌러 결과 화면을 만들 수 있습니다.',
+      message: '분석이 완료됐습니다. 리포트를 생성해주세요.',
     };
   }
 

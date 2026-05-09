@@ -129,7 +129,7 @@ test('resolveRunReportState uses backend report readiness before evidence fallba
     report: { ...baseReport, reportStatus: 'GENERATABLE', reportId: null, status: null },
   });
   assert.equal(generatable.kind, 'api-pending');
-  assert.match(generatable.message, /리포트 생성/);
+  assert.equal(generatable.message, '분석이 완료됐습니다. 리포트를 생성해주세요.');
 
   const notReady = resolveRunReportState({
     isMockRun: false,

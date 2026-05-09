@@ -1068,38 +1068,36 @@
 }
 
 .run-report-state-card {
-  width: min(100%, 38rem);
-  padding: 2.3rem 2.2rem 1.45rem;
+  width: min(100%, 34rem);
+  padding: 2rem 2rem 1.4rem;
   text-align: center;
   box-shadow: 0 28px 80px rgba(148, 163, 184, 0.16);
 }
 
-.run-report-state-card > span {
-  display: inline-flex;
-  margin-bottom: 1.15rem;
-  border: 1px solid rgba(14, 165, 233, 0.12);
-  border-radius: 999px;
-  background: rgba(240, 249, 255, 0.78);
-  padding: 0.35rem 0.7rem;
-  color: #0284c7;
+.run-report-state-card__header {
+  margin-bottom: 1rem;
+}
+
+.run-report-state-card__header span {
+  color: #0ea5e9;
   font-size: 0.56rem;
   font-weight: 900;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
 }
 
 .run-report-state-card h1 {
   margin: 0;
   color: #020617;
-  font-size: clamp(2rem, 4vw, 3.25rem);
+  font-size: clamp(1.75rem, 3vw, 2.55rem);
   font-weight: 900;
-  line-height: 0.98;
-  letter-spacing: -0.07em;
+  line-height: 1.08;
+  letter-spacing: -0.045em;
 }
 
 .run-report-state-card p {
-  max-width: 28rem;
-  margin: 0.9rem auto 1.55rem;
+  max-width: 27rem;
+  margin: 0.76rem auto 1.35rem;
   color: #64748b;
   font-size: 0.86rem;
   font-weight: 800;

@@ -79,7 +79,9 @@ function RunReportStatePage({
 
       <main className="run-report-state-screen" aria-labelledby="run-report-state-title">
         <section className="run-report-state-card">
-          <span>리포트</span>
+          <div className="run-report-state-card__header" aria-label="리포트 진행 상태">
+            <span>분석 상태</span>
+          </div>
           <h1 id="run-report-state-title">{title}</h1>
           <p>{message}</p>
           <div className="run-report-state-card__actions">
@@ -505,7 +507,14 @@ export function RunReportPage({ runId }: RunReportPageProps) {
     const message = reportActionState.message
       ? `${reportState.message} ${reportActionState.message}`
       : reportState.message;
-    return <RunReportStatePage runId={runId} title={reportState.title} message={message} action={stateAction} />;
+    return (
+      <RunReportStatePage
+        runId={runId}
+        title={reportState.title}
+        message={message}
+        action={stateAction}
+      />
+    );
   }
 
   if (!report) {
