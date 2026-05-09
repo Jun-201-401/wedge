@@ -5,7 +5,7 @@ import { readCurrentUser } from '../../api/authSession';
 import { readApiValidationFields, WedgeApiError } from '../../api/http';
 import { createRun, startRun } from '../../api/runs';
 import { FIRST_WORD_DELAY_MS, WORD_ROTATION_INTERVAL_MS } from '../../features/landing-vision';
-import { LOGIN_PATH } from '../../shared/lib/appPaths';
+import { LOGIN_PATH, RUNS_PATH } from '../../shared/lib/appPaths';
 import { pushAppPath } from '../../shared/lib/navigation';
 import { buildRunMonitorPath } from '../run-monitor/lib/runMonitorRoute';
 import {
@@ -228,7 +228,15 @@ function getInitialRouteState(): CreateAnalysisPageRouteState {
 
 function getLoginPathForCurrentCreateAnalysisState() {
   const nextPath = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+  return getLoginPathForNextPath(nextPath);
+}
+
+function getLoginPathForNextPath(nextPath: string) {
   return `${LOGIN_PATH}?${new URLSearchParams({ next: nextPath }).toString()}`;
+}
+
+function getLoginPathForCreateAnalysisRouteState(routeState: CreateAnalysisPageRouteState) {
+  return getLoginPathForNextPath(buildCreateAnalysisPath(routeState, CREATE_ANALYSIS_ROUTE_OPTIONS));
 }
 
 function findScenarioById(scenarioId: ScenarioId | null, scenarios: ScenarioRecommendation[]) {
@@ -257,6 +265,16 @@ function getCreateRunIds(routeState: CreateAnalysisPageRouteState): CreateRunIds
 
 function clearCreateRunContext(routeState: CreateAnalysisPageRouteState): CreateAnalysisPageRouteState {
   return withoutCreateRunContext(routeState);
+}
+
+function createDiscoveryRouteState(routeState: CreateAnalysisPageRouteState, submittedUrl: string): CreateAnalysisPageRouteState {
+  return clearCreateRunContext({
+    ...routeState,
+    stage: 'discovering',
+    submittedUrl,
+    scenarioId: null,
+    depthId: null,
+  });
 }
 
 function wait(ms: number) {
@@ -759,19 +777,21 @@ export function CreateAnalysisPage({ isAuthenticated = false, isAuthChecking = f
     setUrlError('');
   }, [routeState.submittedUrl]);
 
+  useEffect(() => {
+    if (stage !== 'discovering' || !submittedUrl || isAuthChecking || isAuthenticated) {
+      return;
+    }
+
+    pushAppPath(getLoginPathForCreateAnalysisRouteState(clearCreateRunContext(routeState)));
+  }, [isAuthenticated, isAuthChecking, routeState, stage, submittedUrl]);
+
   const runDiscovery = useCallback(async (targetUrl: string, currentRouteState: CreateAnalysisPageRouteState) => {
     const requestSeq = discoveryRequestSeq.current + 1;
     discoveryRequestSeq.current = requestSeq;
     setDiscoveryState({ kind: 'creating' });
     setRunStartError('');
 
-    const discoveryRouteState = clearCreateRunContext({
-      ...currentRouteState,
-      stage: 'discovering',
-      submittedUrl: targetUrl,
-      scenarioId: null,
-      depthId: null,
-    });
+    const discoveryRouteState = createDiscoveryRouteState(currentRouteState, targetUrl);
     let resolvedDiscoveryRouteState = discoveryRouteState;
     navigateToRouteState(discoveryRouteState);
 
@@ -875,6 +895,14 @@ export function CreateAnalysisPage({ isAuthenticated = false, isAuthChecking = f
     }
   }, [navigateToRouteState]);
 
+  useEffect(() => {
+    if (stage !== 'discovering' || !submittedUrl || isAuthChecking || !isAuthenticated || discoveryState.kind !== 'idle') {
+      return;
+    }
+
+    void runDiscovery(submittedUrl, routeState);
+  }, [discoveryState.kind, isAuthenticated, isAuthChecking, routeState, runDiscovery, stage, submittedUrl]);
+
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
@@ -893,6 +921,19 @@ export function CreateAnalysisPage({ isAuthenticated = false, isAuthChecking = f
     }
 
     setUrlError('');
+
+    const discoveryRouteState = createDiscoveryRouteState(routeState, normalizedUrl);
+
+    if (isAuthChecking) {
+      setUrlError('로그인 상태를 확인하는 중입니다. 잠시 후 다시 시도해주세요.');
+      return;
+    }
+
+    if (!isAuthenticated) {
+      pushAppPath(getLoginPathForCreateAnalysisRouteState(discoveryRouteState));
+      return;
+    }
+
     void runDiscovery(normalizedUrl, routeState);
   };
 
@@ -1046,14 +1087,19 @@ export function CreateAnalysisPage({ isAuthenticated = false, isAuthChecking = f
         <a href="/" className="create-analysis-nav__brand">
           Wedge
         </a>
-        <div className="create-analysis-nav__actions" aria-label="계정">
-          {!isAuthenticated && !isAuthChecking ? (
-            <a href={getLoginPathForCurrentCreateAnalysisState()}>Login</a>
-          ) : null}
-          {isAuthenticated && onLogout ? (
-            <button type="button" onClick={onLogout}>Logout</button>
-          ) : null}
-        </div>
+        {stage === 'input' ? (
+          <div className="create-analysis-nav__actions" aria-label="계정">
+            {!isAuthenticated && !isAuthChecking ? (
+              <a href={getLoginPathForCurrentCreateAnalysisState()}>Login</a>
+            ) : null}
+            {isAuthenticated ? (
+              <a href={RUNS_PATH} className="create-analysis-nav__link--secondary">실행 목록</a>
+            ) : null}
+            {isAuthenticated && onLogout ? (
+              <button type="button" onClick={onLogout}>Logout</button>
+            ) : null}
+          </div>
+        ) : null}
       </header>
 
       <main className="create-analysis-page__main">

@@ -26,6 +26,43 @@ test('create analysis preflight renders an agent-style progress card', () => {
   assert.match(source, /onEditUrl=\{editUrl\}/);
 });
 
+test('create analysis top nav links to previous run list beside logout', () => {
+  const source = fs.readFileSync(
+    new URL('../../src/pages/create-analysis/CreateAnalysisPage.tsx', import.meta.url),
+    'utf8',
+  );
+  const css = fs.readFileSync(
+    new URL('../../src/pages/create-analysis/CreateAnalysisPage.css', import.meta.url),
+    'utf8',
+  );
+
+  assert.match(source, /LOGIN_PATH, RUNS_PATH/);
+  assert.match(source, /stage === 'input' \? \(/);
+  assert.match(source, /<a href=\{RUNS_PATH\} className="create-analysis-nav__link--secondary">실행 목록<\/a>/);
+  assert.match(source, /<button type="button" onClick=\{onLogout\}>Logout<\/button>/);
+  assert.match(css, /\.create-analysis-nav__actions a,\s*\n\.create-analysis-nav__actions button\s*\{[\s\S]*?display: inline-flex/);
+  assert.match(css, /\.create-analysis-nav__actions \.create-analysis-nav__link--secondary\s*\{[\s\S]*?border: 0/);
+  assert.match(css, /\.create-analysis-nav__actions \.create-analysis-nav__link--secondary\s*\{[\s\S]*?background: rgba\(255, 255, 255, 0\.42\)/);
+  assert.match(css, /\.create-analysis-nav__actions \.create-analysis-nav__link--secondary:hover\s*\{[\s\S]*?background: rgba\(240, 249, 255, 0\.82\)/);
+  assert.doesNotMatch(source, /create-analysis-previous-runs/);
+});
+
+test('create analysis submit sends anonymous users to login before discovery', () => {
+  const source = fs.readFileSync(
+    new URL('../../src/pages/create-analysis/CreateAnalysisPage.tsx', import.meta.url),
+    'utf8',
+  );
+
+  assert.match(source, /function getLoginPathForCreateAnalysisRouteState\(routeState: CreateAnalysisPageRouteState\)/);
+  assert.match(source, /function createDiscoveryRouteState\(routeState: CreateAnalysisPageRouteState, submittedUrl: string\)/);
+  assert.match(source, /stage: 'discovering',\s*\n\s*submittedUrl,/);
+  assert.match(source, /const discoveryRouteState = createDiscoveryRouteState\(routeState, normalizedUrl\)/);
+  assert.match(source, /if \(isAuthChecking\) \{[\s\S]*?로그인 상태를 확인하는 중입니다/);
+  assert.match(source, /if \(!isAuthenticated\) \{[\s\S]*?pushAppPath\(getLoginPathForCreateAnalysisRouteState\(discoveryRouteState\)\)/);
+  assert.match(source, /stage !== 'discovering' \|\| !submittedUrl \|\| isAuthChecking \|\| !isAuthenticated/);
+  assert.match(source, /void runDiscovery\(submittedUrl, routeState\)/);
+});
+
 test('create analysis preflight css keeps the landing-agent card language', () => {
   const css = fs.readFileSync(
     new URL('../../src/pages/create-analysis/CreateAnalysisPage.css', import.meta.url),
@@ -228,7 +265,7 @@ test('create analysis ready run controls remain wired', () => {
   assert.match(source, /discoveryRequestSeq\.current \+= 1/);
   assert.doesNotMatch(source, /const explicitProjectId = getProjectId\(currentRouteState\)/);
   assert.doesNotMatch(source, /\.\.\.\(explicitProjectId \? \{ projectId: explicitProjectId \} : \{\}\)/);
-  assert.match(source, /const discoveryRouteState = clearCreateRunContext/);
+  assert.match(source, /const discoveryRouteState = createDiscoveryRouteState\(currentRouteState, targetUrl\)/);
   assert.match(source, /createDiscoveryIdempotencyKey\(targetUrl\)/);
   assert.match(source, /await createDiscovery/);
   assert.match(source, /await getDiscovery\(discoveryId\)/);

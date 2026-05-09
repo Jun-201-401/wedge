@@ -121,6 +121,27 @@
   box-shadow: 0 16px 34px rgba(14, 165, 233, 0.18);
 }
 
+.create-analysis-nav__actions .create-analysis-nav__link--secondary {
+  min-width: 0;
+  height: 2.25rem;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.42);
+  box-shadow: none;
+  padding: 0 0.95rem;
+  color: #0284c7;
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.create-analysis-nav__actions .create-analysis-nav__link--secondary:hover {
+  background: rgba(240, 249, 255, 0.82);
+  box-shadow: none;
+  color: #0369a1;
+  transform: translateY(-1px);
+}
+
 .create-analysis-nav__actions a:focus-visible,
 .create-analysis-nav__actions button:focus-visible {
   outline: 2px solid rgba(125, 211, 252, 0.72);
