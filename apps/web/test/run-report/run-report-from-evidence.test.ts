@@ -94,7 +94,7 @@ test('buildRunReportFromEvidence projects persisted evidence into report view mo
   assert.equal(report.targetUrl, completedRun.startUrl);
   assert.equal(report.scenarioLabel, '랜딩 전환 CTA 점검');
   assert.equal(report.totalSteps, 2);
-  assert.equal(report.durationLabel, '1m 24s');
+  assert.equal(report.durationLabel, '1분 24초');
   assert.equal(report.evidencePreviewUrl, '/api/runs/111/artifacts/screenshot-1/content');
   assert.equal(report.heroTitle, 'Example Landing');
   assert.equal(report.heroCallToAction, 'Primary CTA');

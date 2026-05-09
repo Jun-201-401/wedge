@@ -66,7 +66,7 @@ function stageDisplayName(stage: string | null | undefined) {
     CTA: '행동/CTA',
     INPUT: '입력',
     COMMIT: '최종 전환',
-  }[stage ?? ''] ?? stage ?? 'Report';
+  }[stage ?? ''] ?? stage ?? '리포트';
 }
 
 function buildUserFacingDecisionTags(issueIds: unknown[], evidenceRefs: unknown[]) {
@@ -111,10 +111,10 @@ function buildDecisionNodes(report: RunReportProjection): ReportDecisionNode[] {
   if (!Array.isArray(report.decisionMap) || report.decisionMap.length === 0) {
     return [{
       id: 'report-summary',
-      code: 'RPT',
+      code: '요약',
       tone: report.findings.length > 0 ? 'friction' : 'neutral',
       title: '분석 결과 요약',
-      summary: readString(report.summary.summary) ?? '백엔드 분석 결과를 바탕으로 리포트를 구성했습니다.',
+      summary: readString(report.summary.summary) ?? '서버 분석 결과를 바탕으로 리포트를 구성했습니다.',
       tags: report.findings.length > 0 ? [`이슈 ${report.findings.length}개`] : [],
     }];
   }
@@ -127,7 +127,7 @@ function buildDecisionNodes(report: RunReportProjection): ReportDecisionNode[] {
 
     return {
       id: stage.toLowerCase().replace(/[^a-z0-9]+/g, '-') || `decision-${index + 1}`,
-      code: stage.slice(0, 3).toUpperCase() || `D${index + 1}`,
+      code: `단계${index + 1}`,
       tone: decisionTone(status),
       title: readString(item.displayName) ?? stage,
       summary: userFacingDecisionSummary(status, readString(item.summary)),
@@ -167,7 +167,7 @@ function buildFindings(report: RunReportProjection): ReportFinding[] {
 
     return {
       id: finding.id,
-      issueId: `API-${String(index + 1).padStart(3, '0')}`,
+      issueId: `REPORT-${String(index + 1).padStart(3, '0')}`,
       order: finding.rankOrder ?? index + 1,
       severity,
       stage: stageDisplayName(finding.stage),
@@ -179,7 +179,7 @@ function buildFindings(report: RunReportProjection): ReportFinding[] {
       priorityScore: finding.priorityScore ?? Math.max(50, 86 - index * 8),
       evidenceRefs,
       previewImageUrl: null,
-      recommendation: finding.impactHypothesis ?? '분석 결과의 근거와 추천 nudge를 함께 검토하세요.',
+      recommendation: finding.impactHypothesis ?? '분석 결과의 근거와 개선 제안을 함께 검토하세요.',
       highlight: createHighlight(index),
     };
   });
@@ -265,7 +265,7 @@ function createArtifactHighlight(finding: ReportDetail['findings'][number]) {
 
   if (unit === 'viewport_ratio') {
     return {
-      label: readString(finding.highlight?.label) ?? 'EVIDENCE TARGET',
+      label: readString(finding.highlight?.label) ?? '근거 대상',
       source: 'artifact-coordinate' as const,
       top: ratioToPercent(y),
       left: ratioToPercent(x),
@@ -286,7 +286,7 @@ function createArtifactHighlight(finding: ReportDetail['findings'][number]) {
   }
 
   return {
-    label: readString(finding.highlight?.label) ?? 'EVIDENCE TARGET',
+    label: readString(finding.highlight?.label) ?? '근거 대상',
     source: 'artifact-coordinate' as const,
     top: boundsToPercent(y, scaleHeight),
     left: boundsToPercent(x, scaleWidth),
@@ -318,7 +318,7 @@ function buildFindingsFromDetail(detail: ReportDetail): ReportFinding[] {
       recommendation: firstNudge?.recommendation
         ?? firstNudge?.rationale
         ?? finding.impactHypothesis
-        ?? '분석 결과의 근거와 추천 nudge를 함께 검토하세요.',
+        ?? '분석 결과의 근거와 개선 제안을 함께 검토하세요.',
       highlight: createArtifactHighlight(finding),
     };
   });
@@ -326,9 +326,9 @@ function buildFindingsFromDetail(detail: ReportDetail): ReportFinding[] {
 
 function createHighlight(index: number) {
   const highlights = [
-    { label: 'REPORT FINDING', source: 'fallback' as const, top: '38%', left: '34%', width: '30%', height: '14%' },
-    { label: 'DECISION POINT', source: 'fallback' as const, top: '58%', left: '18%', width: '36%', height: '15%' },
-    { label: 'NUDGE TARGET', source: 'fallback' as const, top: '29%', left: '55%', width: '24%', height: '18%' },
+    { label: '마찰 지점', source: 'fallback' as const, top: '38%', left: '34%', width: '30%', height: '14%' },
+    { label: '판단 지점', source: 'fallback' as const, top: '58%', left: '18%', width: '36%', height: '15%' },
+    { label: '개선 지점', source: 'fallback' as const, top: '29%', left: '55%', width: '24%', height: '18%' },
   ];
   return highlights[index] ?? highlights[0];
 }
@@ -339,11 +339,13 @@ function buildRecommendationsFromDetail(detail: ReportDetail, findings: ReportFi
       finding.nudges.map((nudge, nudgeIndex) => ({
         id: nudge.id,
         findingId: finding.id,
-        priority: `NUDGE #${String(nudge.rank ?? nudgeIndex + 1).padStart(2, '0')}`,
+        priority: `개선 ${String(nudge.rank ?? nudgeIndex + 1).padStart(2, '0')}`,
         title: nudge.title,
         detail: nudge.recommendation ?? nudge.rationale ?? findings[findingIndex]?.recommendation ?? '분석 결과에 맞춰 전환 마찰을 줄이는 개선안을 검토하세요.',
+        rationale: nudge.rationale ?? null,
         expectedImpact: nudge.expectedEffect ?? '전환 판단 근거 강화',
-        effort: nudge.difficulty ?? 'Low',
+        effort: nudge.difficulty ?? '낮음',
+        validationQuestion: nudge.validationQuestion ?? null,
       }))
     ))
     .slice(0, 3);
@@ -355,11 +357,13 @@ function buildRecommendationsFromDetail(detail: ReportDetail, findings: ReportFi
   return findings.slice(0, 3).map((finding, index) => ({
     id: `recommendation-${finding.id}`,
     findingId: finding.id,
-    priority: `NUDGE #${String(index + 1).padStart(2, '0')}`,
+    priority: `개선 ${String(index + 1).padStart(2, '0')}`,
     title: finding.title,
     detail: finding.recommendation,
+    rationale: finding.summary,
     expectedImpact: '전환 판단 근거 강화',
-    effort: finding.severity === 'high' ? 'Medium' : 'Low',
+    effort: finding.severity === 'high' ? '보통' : '낮음',
+    validationQuestion: '수정 후 같은 흐름에서 이 마찰이 다시 발생하지 않는지 확인하세요.',
   }));
 }
 
@@ -368,22 +372,26 @@ function buildRecommendations(report: RunReportProjection, findings: ReportFindi
     return report.nudges.slice(0, 3).map((nudge, index) => ({
       id: nudge.id,
       findingId: nudge.findingId,
-      priority: `NUDGE #${String(nudge.rankOrder ?? index + 1).padStart(2, '0')}`,
+      priority: `개선 ${String(nudge.rankOrder ?? index + 1).padStart(2, '0')}`,
       title: nudge.title,
       detail: nudge.recommendation ?? nudge.rationale ?? '분석 결과에 맞춰 전환 마찰을 줄이는 개선안을 검토하세요.',
+      rationale: nudge.rationale ?? null,
       expectedImpact: nudge.expectedEffect ?? '전환 판단 근거 강화',
-      effort: nudge.difficulty ?? 'Low',
+      effort: nudge.difficulty ?? '낮음',
+      validationQuestion: nudge.validationQuestion ?? null,
     }));
   }
 
   return findings.slice(0, 3).map((finding, index) => ({
     id: `recommendation-${finding.id}`,
     findingId: finding.id,
-    priority: `NUDGE #${String(index + 1).padStart(2, '0')}`,
+    priority: `개선 ${String(index + 1).padStart(2, '0')}`,
     title: finding.title,
     detail: finding.recommendation,
+    rationale: finding.summary,
     expectedImpact: '전환 판단 근거 강화',
-    effort: finding.severity === 'high' ? 'Medium' : 'Low',
+    effort: finding.severity === 'high' ? '보통' : '낮음',
+    validationQuestion: '수정 후 같은 흐름에서 이 마찰이 다시 발생하지 않는지 확인하세요.',
   }));
 }
 
@@ -418,7 +426,7 @@ function getDurationLabel(run: Run) {
   }
 
   const seconds = Math.round(durationMs / 1000);
-  return seconds >= 60 ? `${Math.floor(seconds / 60)}m ${seconds % 60}s` : `${seconds}s`;
+  return seconds >= 60 ? `${Math.floor(seconds / 60)}분 ${seconds % 60}초` : `${seconds}초`;
 }
 
 export function buildRunReportFromApi({ run, report, detail, fallbackPreviewUrl, scenarioId }: BuildRunReportFromApiInput): RunReportViewModel {
@@ -441,8 +449,8 @@ export function buildRunReportFromApi({ run, report, detail, fallbackPreviewUrl,
     completedAt: getCompletedAt(run, report),
     decisionNodes: buildDecisionNodes(report),
     heroTitle: report.title ?? '전환 마찰 리포트',
-    heroSubtitle: `${report.analysisStatus} · ${report.reportStatus}`,
-    heroCallToAction: readString(report.summary.primary_cta) ?? readString(report.summary.primaryCta) ?? 'Primary CTA',
+    heroSubtitle: '서버 분석 완료',
+    heroCallToAction: readString(report.summary.primary_cta) ?? readString(report.summary.primaryCta) ?? '주요 행동 버튼',
     evidencePreviewUrl: detailPreviewUrl ?? fallbackPreviewUrl ?? null,
     findings,
     recommendations: detailWithFindings ? buildRecommendationsFromDetail(detailWithFindings, findings) : buildRecommendations(report, findings),

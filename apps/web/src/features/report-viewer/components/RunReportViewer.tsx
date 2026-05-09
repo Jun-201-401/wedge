@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { useAuthenticatedResourceUrl } from '../../../shared/lib/authenticatedResourceUrl';
+import { RUNS_PATH } from '../../../shared/lib/appPaths';
 import { resolveActiveFinding, resolveLinkedFindingId } from '../lib/runReportInteractions';
 import type { RunReportViewModel } from '../lib/runReportViewModel';
 import '../styles/run-report-viewer.css';
@@ -15,31 +16,62 @@ function formatIssueCount(issueCount: number) {
 
 function severityLabel(severity: string) {
   return {
-    high: 'High',
-    medium: 'Medium',
-    low: 'Low',
-  }[severity] ?? 'Medium';
+    high: '높음',
+    medium: '보통',
+    low: '낮음',
+  }[severity] ?? '보통';
 }
 
 function formatConfidence(confidence: number) {
   return `${Math.round(confidence * 100)}%`;
 }
 
+function formatRecommendationPriority(priority: string) {
+  return priority.replace(/^NUDGE\s*#\s*/i, '개선 ');
+}
+
+function effortLabel(effort: string) {
+  return {
+    high: '높음',
+    medium: '보통',
+    low: '낮음',
+  }[effort.toLowerCase()] ?? effort;
+}
+
+function markerLabel(label: string) {
+  return {
+    'EVIDENCE POINT': '근거 지점',
+    CHECKPOINT: '점검 지점',
+    'FOLLOW-UP': '추가 확인',
+    'REPORT FINDING': '마찰 지점',
+    'DECISION POINT': '판단 지점',
+    'NUDGE TARGET': '개선 지점',
+    'EVIDENCE TARGET': '근거 대상',
+  }[label] ?? label;
+}
+
 export function RunReportBrand() {
   return (
-    <a href="/" className="run-report-brand" aria-label="Wedge home">
+    <a href="/" className="run-report-brand" aria-label="Wedge 홈">
       <span>Wedge</span>
     </a>
   );
 }
 
 export function RunReportViewer({ report }: RunReportViewerProps) {
+  const evidencePreviewRef = useRef<HTMLDivElement | null>(null);
   const [hoveredFindingId, setHoveredFindingId] = useState<string | null>(null);
   const [selectedFindingId, setSelectedFindingId] = useState<string | null>(report.findings[0]?.id ?? null);
+  const [selectedRecommendationId, setSelectedRecommendationId] = useState<string | null>(report.recommendations[0]?.id ?? null);
   const [isFullFindingListOpen, setIsFullFindingListOpen] = useState(false);
   const topFindings = report.findings.slice(0, 3);
   const recommendations = report.recommendations.slice(0, 3);
   const hiddenFindingCount = Math.max(0, report.findings.length - topFindings.length);
+  const selectedRecommendation = recommendations.find((recommendation) => recommendation.id === selectedRecommendationId) ?? recommendations[0] ?? null;
+  const selectedRecommendationFindingId = selectedRecommendation
+    ? resolveLinkedFindingId(report.findings, selectedRecommendation.findingId)
+    : null;
+  const selectedRecommendationFinding = resolveActiveFinding(report.findings, selectedRecommendationFindingId);
   const activeFinding = useMemo(() => {
     const activeId = hoveredFindingId ?? selectedFindingId;
     return resolveActiveFinding(report.findings, activeId);
@@ -48,9 +80,39 @@ export function RunReportViewer({ report }: RunReportViewerProps) {
   const selectedEvidencePreviewUrl = activeFinding?.previewImageUrl ?? report.evidencePreviewUrl;
   const evidencePreviewUrl = useAuthenticatedResourceUrl(selectedEvidencePreviewUrl);
   const isEvidencePreviewResolving = Boolean(selectedEvidencePreviewUrl && !evidencePreviewUrl);
-  const highlightSourceLabel = !activeFinding?.highlight
-    ? '영역 없음'
-    : activeFinding.highlight.source === 'fallback' ? '추정 영역' : '실측 영역';
+  const browserModeLabel = isEvidencePreviewResolving ? '캡처 로딩' : evidencePreviewUrl ? '페이지 캡처' : '모의 프리뷰';
+
+  useEffect(() => {
+    const preview = evidencePreviewRef.current;
+    const markerTop = activeFinding?.highlight?.top;
+    if (!preview || !markerTop || !evidencePreviewUrl) {
+      return;
+    }
+
+    const topRatio = Number.parseFloat(markerTop) / 100;
+    if (!Number.isFinite(topRatio)) {
+      return;
+    }
+
+    const maxScrollTop = preview.scrollHeight - preview.clientHeight;
+    if (maxScrollTop <= 0) {
+      return;
+    }
+
+    const targetScrollTop = Math.max(
+      0,
+      Math.min(maxScrollTop, preview.scrollHeight * topRatio - preview.clientHeight * 0.35),
+    );
+    preview.scrollTo({ top: targetScrollTop, behavior: 'smooth' });
+  }, [activeFinding?.id, activeFinding?.highlight?.top, evidencePreviewUrl]);
+
+  useEffect(() => {
+    if (recommendations.length === 0) {
+      setSelectedRecommendationId(null);
+    } else if (!selectedRecommendationId || !recommendations.some((recommendation) => recommendation.id === selectedRecommendationId)) {
+      setSelectedRecommendationId(recommendations[0].id);
+    }
+  }, [recommendations, selectedRecommendationId]);
 
   useEffect(() => {
     if (report.findings.length === 0) {
@@ -59,43 +121,48 @@ export function RunReportViewer({ report }: RunReportViewerProps) {
       return;
     }
 
+    if (selectedRecommendationFindingId && report.findings.some((finding) => finding.id === selectedRecommendationFindingId)) {
+      setSelectedFindingId(selectedRecommendationFindingId);
+      return;
+    }
+
     if (!selectedFindingId || !report.findings.some((finding) => finding.id === selectedFindingId)) {
       setSelectedFindingId(report.findings[0].id);
     }
-  }, [report.findings, selectedFindingId]);
+  }, [report.findings, selectedFindingId, selectedRecommendationFindingId]);
 
   return (
     <div className="run-report-page">
       <div className="run-report-grid-bg" aria-hidden="true" />
 
-      <header className="run-report-topbar" aria-label="Wedge analysis report">
+      <header className="run-report-topbar" aria-label="Wedge 분석 리포트">
         <div className="run-report-topbar__left">
           <RunReportBrand />
-          <span className="run-report-topbar__divider" aria-hidden="true" />
-          <div className="run-report-target-inline run-report-target-inline--optional">
-            <span>Report ID:</span>
-            <strong>{report.reportId}</strong>
-          </div>
         </div>
 
         <div className="run-report-topbar__right">
-          <button type="button" className="run-report-topbar__ghost" disabled title="PDF export API 연결 대기 중">Export PDF · 준비 중</button>
-          <button type="button" className="run-report-topbar__share" disabled title="Share report API 연결 대기 중">Share Report · 준비 중</button>
+          <a href={RUNS_PATH} className="run-report-topbar__link run-report-topbar__link--secondary">실행 목록</a>
+          <button type="button" className="run-report-topbar__export" disabled title="리포트 내보내기 기능 준비 중">내보내기 · 준비 중</button>
         </div>
       </header>
 
       <main className="run-report-shell" aria-labelledby="run-report-title">
         <header className="run-report-hero">
           <div className="run-report-hero__copy">
-            <span className="run-report-tag">분석 완료</span>
-            <h1 id="run-report-title">
-              랜딩 페이지 <span>CTA 전환 마찰 리포트</span>
-            </h1>
-            <p>
-              Target: <strong>{report.targetUrl}</strong>
-              <span aria-hidden="true">•</span>
-              시나리오: {report.scenarioLabel}
-            </p>
+            <div className="run-report-hero__meta">
+              <span className="run-report-tag">분석 완료</span>
+            </div>
+            <h1 id="run-report-title">CTA 전환 마찰 분석</h1>
+            <dl className="run-report-hero-context" aria-label="리포트 대상 정보">
+              <div>
+                <dt>분석 대상</dt>
+                <dd>{report.targetUrl}</dd>
+              </div>
+              <div>
+                <dt>점검 시나리오</dt>
+                <dd>{report.scenarioLabel}</dd>
+              </div>
+            </dl>
             {report.sourceNotice ? <p className="run-report-hero__notice" role="status">{report.sourceNotice}</p> : null}
           </div>
 
@@ -116,72 +183,213 @@ export function RunReportViewer({ report }: RunReportViewerProps) {
         </header>
 
         <div className="run-report-layout">
-          <section className="run-report-visual-panel" aria-labelledby="run-report-evidence-title">
-            <div className="run-report-section-heading run-report-section-heading--plain">
-              <h2 id="run-report-evidence-title">Evidence Screen</h2>
-            </div>
-
+          <section className="run-report-visual-panel" aria-label="분석 화면 미리보기">
             <article className="run-report-evidence-card">
-              <div className="run-report-evidence-card__head">
-                <div>
-                  <h3>{activeFinding?.title ?? '발견된 마찰이 없습니다'}</h3>
-                  <p>관련 지점: {activeFinding?.evidenceLabel ?? '추가 근거 없음'}</p>
-                </div>
-                <div>
-                  <span>Confidence</span>
-                  <strong>{activeFinding ? formatConfidence(activeFinding.confidence) : '0%'}</strong>
-                </div>
-              </div>
-
-              <div
-                className={`run-report-evidence-preview${isEvidencePreviewResolving ? ' run-report-evidence-preview--resolving' : ''}`}
-                aria-label="분석 근거 화면 미리보기"
-              >
-                {evidencePreviewUrl ? (
-                  <img className="run-report-evidence-preview__image" src={evidencePreviewUrl} alt="실제 실행에서 수집된 evidence 화면" />
-                ) : isEvidencePreviewResolving ? (
-                  <div className="run-report-sr-only" role="status">근거 화면을 불러오는 중입니다.</div>
-                ) : (
-                  <div className="run-report-evidence-preview__site">
-                    <div className="run-report-evidence-preview__nav" aria-hidden="true">
-                      <span />
-                      <span />
-                      <span />
-                    </div>
-                    <div className="run-report-evidence-preview__hero">
-                      <small>{report.heroSubtitle}</small>
-                      <strong>{report.heroTitle}</strong>
-                      <button type="button">{report.heroCallToAction}</button>
-                    </div>
+              <div className="run-report-browser" aria-label="최근 화면 캡처">
+                <div className="run-report-browser__bar">
+                  <div className="run-report-browser__dots" aria-hidden="true">
+                    <span />
+                    <span />
+                    <span />
                   </div>
-                )}
-                {activeFinding?.highlight && !isEvidencePreviewResolving ? (
-                  <div
-                    className={`run-report-friction-marker run-report-friction-marker--${activeFinding.severity}`}
-                    style={{
-                      top: activeFinding.highlight.top,
-                      left: activeFinding.highlight.left,
-                      width: activeFinding.highlight.width,
-                      height: activeFinding.highlight.height,
-                    }}
-                  >
-                    <span>{activeFinding.highlight.label}</span>
-                  </div>
-                ) : null}
-              </div>
+                  <div className="run-report-browser__address">{report.targetUrl}</div>
+                  <span className="run-report-browser__mode-pill">{browserModeLabel}</span>
+                </div>
 
-              <div className="run-report-evidence-card__summary">
-                <span>{activeFinding ? `${activeFinding.issueId} · ${highlightSourceLabel}` : 'NO ISSUE'}</span>
-                <p>{activeFinding?.summary ?? '이번 흐름에서는 우선 조치가 필요한 마찰을 찾지 못했습니다.'}</p>
+                <div
+                  ref={evidencePreviewRef}
+                  className={`run-report-evidence-preview${evidencePreviewUrl ? ' run-report-evidence-preview--image' : ''}${isEvidencePreviewResolving ? ' run-report-evidence-preview--resolving' : ''}`}
+                  aria-label="분석 근거 화면 미리보기"
+                >
+                  {evidencePreviewUrl ? (
+                    <div className="run-report-evidence-preview__canvas">
+                      <img className="run-report-evidence-preview__image" src={evidencePreviewUrl} alt="실제 실행에서 수집된 화면" />
+                      {activeFinding?.highlight && !isEvidencePreviewResolving ? (
+                        <div
+                          className={`run-report-friction-marker run-report-friction-marker--${activeFinding.severity}`}
+                          style={{
+                            top: activeFinding.highlight.top,
+                            left: activeFinding.highlight.left,
+                            width: activeFinding.highlight.width,
+                            height: activeFinding.highlight.height,
+                          }}
+                        >
+                          <span>{markerLabel(activeFinding.highlight.label)}</span>
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : isEvidencePreviewResolving ? (
+                    <div className="run-report-sr-only" role="status">근거 화면을 불러오는 중입니다.</div>
+                  ) : (
+                    <div className="run-report-evidence-preview__site">
+                      <div className="run-report-evidence-preview__nav" aria-hidden="true">
+                        <span />
+                        <span />
+                        <span />
+                      </div>
+                      <div className="run-report-evidence-preview__hero">
+                        <small>{report.heroSubtitle}</small>
+                        <strong>{report.heroTitle}</strong>
+                        <button type="button">{report.heroCallToAction}</button>
+                      </div>
+                    </div>
+                  )}
+                  {!evidencePreviewUrl && activeFinding?.highlight && !isEvidencePreviewResolving ? (
+                    <div
+                      className={`run-report-friction-marker run-report-friction-marker--${activeFinding.severity}`}
+                      style={{
+                        top: activeFinding.highlight.top,
+                        left: activeFinding.highlight.left,
+                        width: activeFinding.highlight.width,
+                        height: activeFinding.highlight.height,
+                      }}
+                    >
+                      <span>{markerLabel(activeFinding.highlight.label)}</span>
+                    </div>
+                  ) : null}
+                </div>
               </div>
             </article>
           </section>
 
-          <aside className="run-report-insight-panel" aria-label="Nudge and finding details">
+          <aside className="run-report-insight-panel" aria-label="우선 개선 제안과 전환 흐름 진단">
+            <header className="run-report-insight-summary">
+              <span>분석 리포트</span>
+              <h2>{recommendations.length > 0 ? '우선 고칠 항목부터 확인하세요' : '이번 실행에서 바로 고칠 항목은 없습니다'}</h2>
+              <p>
+                {recommendations.length > 0
+                  ? '전환을 막을 가능성이 큰 권장 수정을 먼저 정리했습니다.'
+                  : '아래 전환 흐름 진단에서 각 단계의 관찰 결과를 확인할 수 있습니다.'}
+              </p>
+            </header>
+
+            <section className="run-report-section run-report-section--priority" aria-labelledby="run-report-nudge-title">
+              <div className="run-report-section-heading">
+                <h2 id="run-report-nudge-title">우선 개선 제안</h2>
+              </div>
+
+              {selectedRecommendation ? (
+                <article
+                  className="run-report-primary-nudge"
+                  onMouseEnter={() => setHoveredFindingId(selectedRecommendationFindingId)}
+                  onMouseLeave={() => setHoveredFindingId(null)}
+                >
+                  <div className="run-report-primary-nudge__eyebrow">
+                    <strong>{formatRecommendationPriority(selectedRecommendation.priority)}</strong>
+                    <span>권장 수정</span>
+                  </div>
+                  <h3>{selectedRecommendation.title}</h3>
+                  <p>{selectedRecommendation.detail}</p>
+                  <dl className="run-report-primary-nudge__meta">
+                    <div>
+                      <dt>기대 효과</dt>
+                      <dd>{selectedRecommendation.expectedImpact}</dd>
+                    </div>
+                    <div>
+                      <dt>적용 난이도</dt>
+                      <dd>{effortLabel(selectedRecommendation.effort)}</dd>
+                    </div>
+                    <div>
+                      <dt>관련 단계</dt>
+                      <dd>{selectedRecommendationFinding?.stage ?? '분석 결과'}</dd>
+                    </div>
+                    <div>
+                      <dt>판단 신뢰도</dt>
+                      <dd>{selectedRecommendationFinding ? formatConfidence(selectedRecommendationFinding.confidence) : '확인 중'}</dd>
+                    </div>
+                  </dl>
+                </article>
+              ) : (
+                <div className="run-report-nudge-empty" role="status">
+                  <strong>현재 우선 수정할 항목은 없습니다</strong>
+                  <p>이번 실행에서는 전환을 크게 막는 마찰이 발견되지 않았습니다.</p>
+                </div>
+              )}
+
+              {recommendations.length > 1 ? (
+                <div className="run-report-next-nudges" onMouseLeave={() => setHoveredFindingId(null)}>
+                  <h3>다음 개선 제안</h3>
+                  <ol>
+                    {recommendations.map((recommendation) => {
+                      const relatedFindingId = resolveLinkedFindingId(report.findings, recommendation.findingId);
+                      const relatedFinding = resolveActiveFinding(report.findings, relatedFindingId);
+
+                      return (
+                        <li key={recommendation.id}>
+                          <button
+                            type="button"
+                            aria-pressed={selectedRecommendation?.id === recommendation.id}
+                            onClick={() => {
+                              setSelectedRecommendationId(recommendation.id);
+                              if (relatedFindingId) {
+                                setSelectedFindingId(relatedFindingId);
+                              }
+                            }}
+                            onFocus={() => {
+                              if (relatedFindingId) {
+                                setHoveredFindingId(relatedFindingId);
+                              }
+                            }}
+                            onMouseEnter={() => setHoveredFindingId(relatedFindingId)}
+                          >
+                            <span>{formatRecommendationPriority(recommendation.priority)}</span>
+                            <strong>{recommendation.title}</strong>
+                            <small>{relatedFinding?.stage ?? '분석 결과'} · {effortLabel(recommendation.effort)}</small>
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ol>
+                </div>
+              ) : null}
+            </section>
+
+            <section className="run-report-section run-report-section--reason" aria-labelledby="run-report-reason-title">
+              <div className="run-report-section-heading">
+                <h2 id="run-report-reason-title">왜 필요한가요?</h2>
+              </div>
+
+              {selectedRecommendationFinding ? (
+                <article
+                  className={`run-report-reason-card run-report-reason-card--${selectedRecommendationFinding.severity}`}
+                  onMouseEnter={() => setHoveredFindingId(selectedRecommendationFinding.id)}
+                  onMouseLeave={() => setHoveredFindingId(null)}
+                >
+                  <h3>{selectedRecommendationFinding.title}</h3>
+                  <p>{selectedRecommendation?.rationale ?? selectedRecommendationFinding.summary}</p>
+                  <dl>
+                    <div>
+                      <dt>관련 단계</dt>
+                      <dd>{selectedRecommendationFinding.stage}</dd>
+                    </div>
+                    <div>
+                      <dt>영향도</dt>
+                      <dd>{severityLabel(selectedRecommendationFinding.severity)}</dd>
+                    </div>
+                    <div>
+                      <dt>근거</dt>
+                      <dd>{selectedRecommendationFinding.evidenceCount}개</dd>
+                    </div>
+                  </dl>
+                </article>
+              ) : (
+                <div className="run-report-reason-empty" role="status">
+                  <strong>연결된 마찰 근거가 없습니다</strong>
+                  <p>개선 제안은 전체 분석 요약을 바탕으로 표시됩니다.</p>
+                </div>
+              )}
+
+              {selectedRecommendation?.validationQuestion ? (
+                <aside className="run-report-validation-check">
+                  <span>수정 후 확인할 것</span>
+                  <p>{selectedRecommendation.validationQuestion}</p>
+                </aside>
+              ) : null}
+            </section>
+
             <section className="run-report-section run-report-section--top-findings" aria-labelledby="run-report-top-findings-title">
               <div className="run-report-section-heading">
-                <h2 id="run-report-top-findings-title">Top Priority Findings</h2>
-                <span aria-hidden="true" />
+                <h2 id="run-report-top-findings-title">관련 마찰 근거</h2>
               </div>
 
               {topFindings.length > 0 ? (
@@ -192,7 +400,15 @@ export function RunReportViewer({ report }: RunReportViewerProps) {
                         type="button"
                         className="run-report-top-finding-card__button"
                         aria-pressed={activeFindingId === finding.id}
-                        onClick={() => setSelectedFindingId(finding.id)}
+                        onClick={() => {
+                          setSelectedFindingId(finding.id);
+                          const linkedRecommendation = recommendations.find((recommendation) => (
+                            resolveLinkedFindingId(report.findings, recommendation.findingId) === finding.id
+                          ));
+                          if (linkedRecommendation) {
+                            setSelectedRecommendationId(linkedRecommendation.id);
+                          }
+                        }}
                         onFocus={() => setHoveredFindingId(finding.id)}
                         onMouseEnter={() => setHoveredFindingId(finding.id)}
                       >
@@ -204,15 +420,15 @@ export function RunReportViewer({ report }: RunReportViewerProps) {
                         <p>{finding.summary}</p>
                         <dl>
                           <div>
-                            <dt>Stage</dt>
+                            <dt>구간</dt>
                             <dd>{finding.stage}</dd>
                           </div>
                           <div>
-                            <dt>Confidence</dt>
+                            <dt>신뢰도</dt>
                             <dd>{formatConfidence(finding.confidence)}</dd>
                           </div>
                           <div>
-                            <dt>Evidence</dt>
+                            <dt>근거</dt>
                             <dd>{finding.evidenceCount}</dd>
                           </div>
                         </dl>
@@ -222,8 +438,8 @@ export function RunReportViewer({ report }: RunReportViewerProps) {
                 </ol>
               ) : (
                 <div className="run-report-top-finding-empty" role="status">
-                  <strong>우선순위 이슈 없음</strong>
-                  <p>이번 분석에서는 상위 3개로 표시할 마찰 지점이 발견되지 않았습니다.</p>
+                  <strong>주요 마찰 근거가 없습니다</strong>
+                  <p>이번 분석에서는 우선순위로 표시할 마찰 근거가 발견되지 않았습니다.</p>
                 </div>
               )}
 
@@ -238,7 +454,7 @@ export function RunReportViewer({ report }: RunReportViewerProps) {
                   </button>
 
                   {isFullFindingListOpen ? (
-                    <ol className="run-report-finding-full-list" aria-label="전체 finding 목록">
+                    <ol className="run-report-finding-full-list" aria-label="전체 마찰 지점 목록">
                       {report.findings.map((finding, index) => (
                         <li key={finding.id}>
                           <button
@@ -261,78 +477,29 @@ export function RunReportViewer({ report }: RunReportViewerProps) {
               ) : null}
             </section>
 
-            <section className="run-report-section run-report-section--priority" aria-labelledby="run-report-nudge-title">
-              <div className="run-report-section-heading">
-                <h2 id="run-report-nudge-title">Recommended Nudge</h2>
-                <span aria-hidden="true" />
-              </div>
-
-              <div className="run-report-nudge-list" onMouseLeave={() => setHoveredFindingId(null)}>
-                {recommendations.map((recommendation) => {
-                  const relatedFindingId = resolveLinkedFindingId(report.findings, recommendation.findingId);
-                  const isActive = relatedFindingId === activeFindingId;
-                  const isSelected = relatedFindingId === selectedFindingId;
-
-                  return (
-                    <button
-                      key={recommendation.id}
-                      type="button"
-                      className={`run-report-nudge-card${isActive ? ' run-report-nudge-card--active' : ''}`}
-                      aria-pressed={isSelected}
-                      onBlur={() => setHoveredFindingId(null)}
-                      onClick={() => {
-                        if (relatedFindingId) {
-                          setSelectedFindingId(relatedFindingId);
-                        }
-                      }}
-                      onFocus={() => {
-                        if (relatedFindingId) {
-                          setSelectedFindingId(relatedFindingId);
-                        }
-                      }}
-                      onMouseEnter={() => setHoveredFindingId(relatedFindingId)}
-                    >
-                      <span className="run-report-nudge-card__eyebrow">
-                        <span aria-hidden="true">+</span>
-                        <strong>{recommendation.priority}</strong>
-                      </span>
-                      <span className="run-report-nudge-card__title">{recommendation.title}</span>
-                      <span className="run-report-nudge-card__detail">{recommendation.detail}</span>
-                      <span className="run-report-nudge-card__meta">
-                        <span>
-                          <small>Expected Impact</small>
-                          <strong>{recommendation.expectedImpact}</strong>
-                        </span>
-                        <span>
-                          <small>Difficulty</small>
-                          <strong>{recommendation.effort}</strong>
-                        </span>
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            </section>
-
             <section className="run-report-section" aria-labelledby="run-report-decision-title">
               <div className="run-report-section-heading">
-                <h2 id="run-report-decision-title">Decision Map</h2>
-                <span aria-hidden="true" />
+                <h2 id="run-report-decision-title">전환 흐름 진단</h2>
               </div>
 
               <ol className="run-report-decision-map">
-                {report.decisionNodes.map((node) => (
+                {report.decisionNodes.map((node, nodeIndex) => (
                   <li key={node.id} className={`run-report-decision-node run-report-decision-node--${node.tone}`}>
-                    <div className="run-report-decision-node__badge">{node.code}</div>
-                    <div className="run-report-decision-node__body">
-                      <h3>{node.title}</h3>
-                      <p>{node.summary}</p>
-                      {node.tags.length > 0 ? (
-                        <div className="run-report-decision-node__tags">
-                          {node.tags.map((tag) => <span key={tag}>{tag}</span>)}
+                      {nodeIndex < report.decisionNodes.length - 1 ? (
+                        <div className="run-report-decision-node__rail" aria-hidden="true">
+                          <div className="run-report-decision-node__rail-base" />
+                          <div className="run-report-decision-node__rail-signal" />
                         </div>
                       ) : null}
-                    </div>
+
+                      <div className="run-report-decision-node__node-wrap">
+                        <div className="run-report-decision-node__badge" aria-hidden="true">{node.code}</div>
+                      </div>
+
+                      <div className="run-report-decision-node__body">
+                        <h3>{node.title}</h3>
+                        <p>{node.summary}</p>
+                      </div>
                   </li>
                 ))}
               </ol>

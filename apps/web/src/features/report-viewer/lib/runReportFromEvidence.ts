@@ -76,7 +76,7 @@ function getPrimaryCallToAction(evidencePacket: EvidencePacket) {
     .flatMap((checkpoint) => checkpoint.observations)
     .find((observation) => observation.type.includes('cta'));
 
-  return ctaObservation ? getObservationText(ctaObservation) : 'Primary CTA';
+  return ctaObservation ? getObservationText(ctaObservation) : '주요 행동 버튼';
 }
 
 function getDurationLabel(run: Run, evidencePacket: EvidencePacket) {
@@ -85,10 +85,10 @@ function getDurationLabel(run: Run, evidencePacket: EvidencePacket) {
     if (Number.isFinite(durationMs) && durationMs > 0) {
       const seconds = Math.round(durationMs / 1000);
       if (seconds >= 60) {
-        return `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
+    return `${Math.floor(seconds / 60)}분 ${seconds % 60}초`;
       }
 
-      return `${seconds}s`;
+      return `${seconds}초`;
     }
   }
 
@@ -97,7 +97,7 @@ function getDurationLabel(run: Run, evidencePacket: EvidencePacket) {
     return total + durationMs;
   }, 0);
 
-  return settleDurationMs > 0 ? `${Math.max(1, Math.round(settleDurationMs / 1000))}s` : '방금 전';
+  return settleDurationMs > 0 ? `${Math.max(1, Math.round(settleDurationMs / 1000))}초` : '방금 전';
 }
 
 function getCompletedAt(run: Run) {
@@ -131,7 +131,7 @@ function titleFromObservation(observation: EvidenceObservation) {
   }
 
   if (observation.type.includes('form')) {
-    return 'Form 진입 전 입력 기대치 확인이 필요함';
+    return '입력 단계 진입 전 안내 확인이 필요함';
   }
 
   if (observation.type.includes('console_error')) {
@@ -151,7 +151,7 @@ function recommendationFromObservation(observation: EvidenceObservation) {
   }
 
   if (observation.type.includes('form')) {
-    return 'Form 진입 전 예상 입력 항목과 완료 시간을 짧게 안내하세요.';
+    return '입력 단계 진입 전 예상 입력 항목과 완료 시간을 짧게 안내하세요.';
   }
 
   if (observation.type.includes('error') || observation.type.includes('failure')) {
@@ -167,7 +167,7 @@ function stageLabel(stage: string) {
   }
 
   if (stage === 'CTA') {
-    return 'CTA';
+    return '행동 선택';
   }
 
   if (stage === 'INPUT') {
@@ -178,7 +178,7 @@ function stageLabel(stage: string) {
     return '결정';
   }
 
-  return stage || 'Evidence';
+  return stage || '근거';
 }
 
 function buildFindings(evidencePacket: EvidencePacket): ReportFinding[] {
@@ -210,7 +210,7 @@ function buildFindings(evidencePacket: EvidencePacket): ReportFinding[] {
       confidence,
       priorityScore: Math.min(95, Math.max(45, Math.round(confidence * 100) + (severity === 'high' ? 8 : severity === 'medium' ? 3 : 0))),
       evidenceRefs: [checkpoint.checkpoint_id, ...(observation ? [observation.observation_id] : [])],
-      recommendation: observation ? recommendationFromObservation(observation) : '해당 체크포인트의 화면 캡처와 DOM 근거를 함께 확인하세요.',
+      recommendation: observation ? recommendationFromObservation(observation) : '해당 체크포인트의 화면 캡처와 화면 구조 근거를 함께 확인하세요.',
       highlight: createHighlight(index),
     };
   });
@@ -218,9 +218,9 @@ function buildFindings(evidencePacket: EvidencePacket): ReportFinding[] {
 
 function createHighlight(index: number) {
   const highlights = [
-    { label: 'EVIDENCE POINT', source: 'fallback' as const, top: '38%', left: '34%', width: '30%', height: '14%' },
-    { label: 'CHECKPOINT', source: 'fallback' as const, top: '58%', left: '18%', width: '36%', height: '15%' },
-    { label: 'FOLLOW-UP', source: 'fallback' as const, top: '29%', left: '55%', width: '24%', height: '18%' },
+    { label: '근거 지점', source: 'fallback' as const, top: '38%', left: '34%', width: '30%', height: '14%' },
+    { label: '점검 지점', source: 'fallback' as const, top: '58%', left: '18%', width: '36%', height: '15%' },
+    { label: '추가 확인', source: 'fallback' as const, top: '29%', left: '55%', width: '24%', height: '18%' },
   ];
   return highlights[index] ?? highlights[0];
 }
@@ -233,53 +233,56 @@ function buildDecisionNodes(evidencePacket: EvidencePacket, findings: ReportFind
   return [
     {
       id: 'see-primary-cta',
-      code: 'SEE',
+      code: '보기',
       tone: ctaCount > 0 ? 'neutral' : 'friction',
       title: '사용자가 CTA를 발견했는가',
       summary: ctaCount > 0
         ? `실행 중 CTA 후보 ${ctaCount}개가 관찰되었습니다.`
         : 'CTA 후보 관찰이 부족해 첫 행동 발견성을 추가 확인해야 합니다.',
-      tags: ctaCount > 0 ? [`CTA x${ctaCount}`] : ['Needs Evidence'],
+      tags: ctaCount > 0 ? [`CTA ${ctaCount}개`] : ['근거 부족'],
     },
     {
       id: 'technical-stability',
-      code: 'REL',
+      code: '안정',
       tone: consoleErrorCount + networkFailureCount > 0 ? 'friction' : 'neutral',
       title: '실행 중 기술적 방해가 있었는가',
       summary: consoleErrorCount + networkFailureCount > 0
         ? `콘솔 오류 ${consoleErrorCount}개, 네트워크 실패 ${networkFailureCount}개가 감지되었습니다.`
         : '콘솔 오류와 네트워크 실패가 주요 근거에서 감지되지 않았습니다.',
-      tags: consoleErrorCount + networkFailureCount > 0 ? ['Tech Signal'] : [],
+      tags: consoleErrorCount + networkFailureCount > 0 ? ['기술 이슈'] : [],
     },
     {
       id: 'evidence-depth',
-      code: 'EVD',
+      code: '근거',
       tone: findings.length > 0 ? 'neutral' : 'friction',
       title: '판단 가능한 근거가 충분한가',
-      summary: `${evidencePacket.checkpoints.length}개 체크포인트와 ${evidencePacket.artifacts.length}개 artifact를 바탕으로 리포트를 구성했습니다.`,
-      tags: [`Evidence x${evidencePacket.checkpoints.length + evidencePacket.artifacts.length}`],
+      summary: `${evidencePacket.checkpoints.length}개 점검 지점과 ${evidencePacket.artifacts.length}개 수집 파일을 바탕으로 리포트를 구성했습니다.`,
+      tags: [`근거 ${evidencePacket.checkpoints.length + evidencePacket.artifacts.length}개`],
     },
   ];
 }
 
-type RecommendationSource = Pick<ReportFinding, 'id' | 'title' | 'recommendation' | 'severity'>;
+type RecommendationSource = Pick<ReportFinding, 'id' | 'title' | 'summary' | 'recommendation' | 'severity'>;
 
 function buildRecommendations(findings: ReportFinding[]): ReportRecommendation[] {
   const sourceFindings: RecommendationSource[] = findings.length > 0 ? findings : [{
     id: 'evidence-review',
-    title: 'Evidence Packet 기반 결과 검토',
-    recommendation: '수집된 checkpoint와 artifact를 바탕으로 데모 URL의 핵심 전환 흐름을 직접 확인하세요.',
+    title: '수집 근거 기반 결과 검토',
+    summary: '수집된 근거를 바탕으로 직접 확인이 필요한 흐름입니다.',
+    recommendation: '수집된 점검 지점과 파일을 바탕으로 핵심 전환 흐름을 직접 확인하세요.',
     severity: 'low',
   }];
 
   return sourceFindings.slice(0, 3).map((finding, index) => ({
     id: `recommendation-${finding.id}`,
     findingId: finding.id,
-    priority: `NUDGE #${String(index + 1).padStart(2, '0')}`,
+    priority: `개선 ${String(index + 1).padStart(2, '0')}`,
     title: finding.title,
     detail: finding.recommendation,
+    rationale: finding.summary,
     expectedImpact: index === 0 ? '전환 판단 근거 강화' : '마찰 원인 식별',
-    effort: finding.severity === 'high' ? 'Medium' : 'Low',
+    effort: finding.severity === 'high' ? '보통' : '낮음',
+    validationQuestion: '수집 근거를 다시 확인했을 때 같은 마찰 신호가 줄어들었는지 확인하세요.',
   }));
 }
 
@@ -311,7 +314,7 @@ export function buildRunReportFromEvidence({ run, evidencePacket, scenarioId }: 
     completedAt: getCompletedAt(run),
     decisionNodes: buildDecisionNodes(evidencePacket, findings),
     heroTitle: getPrimaryPageTitle(evidencePacket, targetUrl),
-    heroSubtitle: `${evidencePacket.checkpoints.length} checkpoints · ${evidencePacket.artifacts.length} artifacts`,
+    heroSubtitle: `점검 지점 ${evidencePacket.checkpoints.length}개 · 수집 파일 ${evidencePacket.artifacts.length}개`,
     heroCallToAction: getPrimaryCallToAction(evidencePacket),
     evidencePreviewUrl: previewArtifact?.uri ?? null,
     findings,

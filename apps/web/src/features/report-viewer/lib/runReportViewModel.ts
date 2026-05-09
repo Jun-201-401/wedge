@@ -41,8 +41,10 @@ export interface ReportRecommendation {
   priority: string;
   title: string;
   detail: string;
+  rationale?: string | null;
   expectedImpact: string;
   effort: string;
+  validationQuestion?: string | null;
 }
 
 export interface RunReportViewModel {

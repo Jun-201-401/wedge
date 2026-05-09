@@ -82,7 +82,7 @@ test('resolveRunReportState treats missing real run data as an error', () => {
   });
 
   assert.equal(missingRun.kind, 'error');
-  assert.equal(missingRun.title, 'Run을 찾을 수 없습니다');
+  assert.equal(missingRun.title, '실행 결과를 찾을 수 없습니다');
 });
 
 test('resolveRunReportState blocks incomplete real runs and completed real runs without evidence data', () => {
