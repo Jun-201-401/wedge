@@ -3,6 +3,10 @@ import type { BrowserPageSnapshot } from "../../browser/playwright/index.ts";
 import type {
   AgentEvent,
   AgentEventType,
+  AgentFinalOutcome,
+  AgentPolicyDecision,
+  AgentPolicyResult,
+  AgentRiskClass,
   AgentTask,
   AgentTrace,
   ScenarioStep
@@ -16,9 +20,18 @@ import { createAgentOutcome, type AgentOutcomeInput } from "./outcome.ts";
 
 export type { AgentOutcomeInput } from "./outcome.ts";
 
+export interface AgentPolicyTraceInput {
+  riskClass: AgentRiskClass;
+  decision: AgentPolicyDecision;
+  reason: string;
+  matchedSignals: string[];
+  finalOutcome?: AgentFinalOutcome | null;
+}
+
 export interface AgentTraceBuilder {
   recordObservation: (stepIndex: number, observation: AgentObservation) => string;
   recordDecision: (stepIndex: number, observationId: string, decision: AgentDecision) => string;
+  recordPolicyResult: (stepIndex: number, decisionId: string, result: AgentPolicyTraceInput) => string;
   recordActionStarted: (stepIndex: number, decisionId: string, step: ScenarioStep) => void;
   recordActionCompleted: (stepIndex: number, decisionId: string, step: ScenarioStep, snapshot: BrowserPageSnapshot) => void;
   recordActionFailed: (stepIndex: number, decisionId: string | null, step: ScenarioStep | null, error: unknown) => void;
@@ -32,7 +45,7 @@ export function createAgentTraceBuilder(task: AgentTask): AgentTraceBuilder {
   const events: AgentEvent[] = [];
   const observations: Record<string, unknown>[] = [];
   const decisions: Record<string, unknown>[] = [];
-  const policyResults: Record<string, unknown>[] = [];
+  const policyResults: AgentPolicyResult[] = [];
   const verificationResults: Record<string, unknown>[] = [];
   const artifactRefs: string[] = [];
   let finishedTrace: AgentTrace | null = null;
@@ -98,11 +111,32 @@ export function createAgentTraceBuilder(task: AgentTask): AgentTraceBuilder {
         decision_id: decisionId,
         valid: true
       });
-      addEvent(stepIndex, "AGENT_POLICY_ALLOWED", {
-        decision_id: decisionId,
-        reason: "No agent-specific policy block was produced by the current MVP runtime."
-      });
       return decisionId;
+    },
+
+    recordPolicyResult(stepIndex, decisionId, result) {
+      const policyResultId = randomUUID();
+      policyResults.push({
+        schema_version: "0.1",
+        policy_result_id: policyResultId,
+        task_id: task.task_id,
+        decision_id: decisionId,
+        risk_class: result.riskClass,
+        decision: result.decision,
+        reason: result.reason,
+        matched_signals: result.matchedSignals,
+        final_outcome: result.finalOutcome ?? null
+      });
+      addEvent(stepIndex, result.decision === "BLOCK" ? "AGENT_POLICY_BLOCKED" : "AGENT_POLICY_ALLOWED", {
+        policy_result_id: policyResultId,
+        decision_id: decisionId,
+        risk_class: result.riskClass,
+        decision: result.decision,
+        reason: result.reason,
+        matched_signals: result.matchedSignals,
+        final_outcome: result.finalOutcome ?? null
+      });
+      return policyResultId;
     },
 
     recordActionStarted(stepIndex, decisionId, step) {

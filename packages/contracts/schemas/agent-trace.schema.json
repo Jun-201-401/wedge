@@ -43,7 +43,7 @@
     },
     "policy_results": {
       "type": "array",
-      "items": { "type": "object", "additionalProperties": true }
+      "items": { "$ref": "agent-policy-result.schema.json" }
     },
     "verification_results": {
       "type": "array",

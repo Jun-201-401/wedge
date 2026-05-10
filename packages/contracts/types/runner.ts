@@ -206,6 +206,40 @@ export type AgentFinalOutcome =
 
 export type AgentOutcomeCategory = "SUCCESS" | "POLICY_BLOCKED" | "BLOCKED" | "FAILED";
 
+export type AgentRiskClass =
+  | "SAFE_NAVIGATION"
+  | "CHECKOUT_NAVIGATION"
+  | "CART_ADD_ITEM"
+  | "CART_REMOVE_ITEM"
+  | "CART_QUANTITY_INCREASE"
+  | "CART_QUANTITY_DECREASE"
+  | "NON_PAYMENT_FORM_ENTRY"
+  | "SHIPPING_FORM_ENTRY"
+  | "PAYMENT_INFO_ENTRY"
+  | "ORDER_REVIEW_NAVIGATION"
+  | "FINAL_PAYMENT_SUBMIT"
+  | "FINAL_ORDER_COMMIT"
+  | "DESTRUCTIVE_ACCOUNT_ACTION"
+  | "EXTERNAL_MESSAGE_SEND"
+  | "LOGIN_CREDENTIAL_ENTRY"
+  | "CAPTCHA_OR_BOT_CHALLENGE"
+  | "UNKNOWN_HIGH_RISK"
+  | "UNKNOWN_LOW_RISK";
+
+export type AgentPolicyDecision = "ALLOW" | "BLOCK";
+
+export interface AgentPolicyResult {
+  schema_version: "0.1";
+  policy_result_id: string;
+  task_id: string;
+  decision_id: string;
+  risk_class: AgentRiskClass;
+  decision: AgentPolicyDecision;
+  reason: string;
+  matched_signals: string[];
+  final_outcome?: AgentFinalOutcome | null;
+}
+
 export interface AgentEvent {
   schema_version: "0.1";
   event_id: string;
@@ -241,7 +275,7 @@ export interface AgentTrace {
   events: AgentEvent[];
   observations: Record<string, unknown>[];
   decisions: Record<string, unknown>[];
-  policy_results: Record<string, unknown>[];
+  policy_results: AgentPolicyResult[];
   verification_results: Record<string, unknown>[];
   artifact_refs: string[];
   outcome?: AgentOutcome;

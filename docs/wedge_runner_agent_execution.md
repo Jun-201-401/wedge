@@ -683,6 +683,7 @@ Runner Agent 전환이 최소 성공했다고 볼 수 있는 기준:
 - agent request 파싱, MQ queue, worker regression test 추가
 - `AgentEvent` / `AgentOutcome` / `AgentTrace` schema와 runner TS mirror 추가
 - Agent 실행 결과를 `TRACE` artifact로 저장하고 artifact callback으로 전달
+- Agent policy가 final payment/order/destructive/external 위험 행동을 실행 전 차단하고 `policy_results`에 기록
 
 아직 수행하지 않은 작업:
 

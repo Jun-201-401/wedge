@@ -33,8 +33,8 @@ Canonical machine-readable contracts belong here. Human-readable design rational
 - `examples/sample-scenario-authoring-result.json`: completed ScenarioAuthoring result fixture with a `custom_compiled` ScenarioPlan candidate
 - Runner Agent Runtime schemas:
   - `AgentTask` and `AgentExecuteMessage` live in `mq/messages.schema.json` for the first runnable `agent.execute.request` path.
-  - `schemas/agent-event.schema.json`, `schemas/agent-outcome.schema.json`, and `schemas/agent-trace.schema.json` define the first persisted AgentTrace artifact shape.
-  - Planned typed subdocument/callback schemas remain contract-first follow-ups: `agent-observation`, `agent-decision`, `agent-policy-result`, and `agent-verification-result`.
+  - `schemas/agent-event.schema.json`, `schemas/agent-outcome.schema.json`, `schemas/agent-policy-result.schema.json`, and `schemas/agent-trace.schema.json` define the first persisted AgentTrace artifact shape.
+  - Planned typed subdocument/callback schemas remain contract-first follow-ups: `agent-observation`, `agent-decision`, and `agent-verification-result`.
 - `examples/sample-evidence-packet.json`: EvidencePacket fixture
 - `examples/sample-run-artifacts-response.json`: prototype REST fixture for `GET /api/runs/{runId}/artifacts`
 - `examples/sample-run-evidence-packet-response.json`: prototype REST fixture for `GET /api/runs/{runId}/evidence-packet`

@@ -455,3 +455,123 @@ test("[Agent Worker] Agent 실행 실패도 TRACE artifact로 남긴다", async 
   assert.ok(trace.events.some((event) => event.event_type === "AGENT_ACTION_FAILED"));
   assert.ok(trace.events.some((event) => event.event_type === "AGENT_FAILED"));
 });
+
+test("[Agent Worker] 정책 차단은 action 실행 없이 TRACE policy_results에 남긴다", async () => {
+  const message = await loadAgentExampleMessage();
+  const task = message.payload.agentTask;
+  task.budget.max_steps = 3;
+  task.budget.max_same_page_attempts = 0;
+  task.artifact_policy = {
+    capture_screenshots: false,
+    capture_dom_snapshots: false,
+    capture_ax_tree: false,
+    capture_trace: true
+  };
+
+  const executedActions: string[] = [];
+  const traceArtifactContents: string[] = [];
+  const stepEvents: StepEvent[] = [];
+  let loaded = false;
+  let closed = false;
+
+  const worker = registerAgentWorker({
+    config: createRunnerTestConfig({
+      artifactsRoot: join(tmpdir(), "runner-test-agent-policy-artifacts"),
+      callbackLogFile: join(tmpdir(), "runner-test-agent-policy-callbacks.jsonl")
+    }),
+    browserFactory: {
+      kind: "simulated-playwright",
+      createSession: async ({ plan }) =>
+        createSimulatedSession(plan, {
+          execute: async (action) => {
+            executedActions.push(action.type);
+            if (action.type === "goto") {
+              loaded = true;
+            }
+            return {
+              actionType: action.type,
+              targetSummary: null,
+              stopRequested: false,
+              details: {}
+            };
+          },
+          settle: async () => createSettledResult(),
+          snapshot: () => createSimulatedPageSnapshot(plan, {
+            currentUrl: task.start_url,
+            finalUrl: task.start_url,
+            interactiveComponents: loaded
+              ? [
+                {
+                  text: "결제 완료",
+                  selector: "#pay-now",
+                  role: "button",
+                  tag: "button",
+                  clickable: true,
+                  clicked_in_scenario: false,
+                  is_cta_candidate: true,
+                  is_primary_like: true,
+                  bounds: {
+                    x: 10,
+                    y: 10,
+                    width: 120,
+                    height: 40,
+                    unit: "css_px"
+                  }
+                }
+              ]
+              : []
+          }),
+          close: async () => {
+            closed = true;
+          }
+        })
+    },
+    callbackClient: createStubCallbackClient({
+      sendStepEvents: async (_runId, payload) => {
+        stepEvents.push(...payload.events);
+      }
+    }),
+    capturePipeline: {
+      collectCheckpoint: async () => {
+        throw new Error("checkpoint collection should not run when capture_screenshots is false");
+      }
+    },
+    artifactStore: {
+      persistArtifacts: async ({ runId, artifacts }) =>
+        artifacts.map((artifact) => {
+          if (artifact.artifactType === "TRACE") {
+            traceArtifactContents.push(artifact.content);
+          }
+          return {
+            artifactId: artifact.artifactId,
+            artifactType: artifact.artifactType,
+            bucket: "local-runner",
+            key: `runs/${runId}/${artifact.stepKey}/${artifact.artifactId}.${artifact.fileExtension}`,
+            mimeType: artifact.mimeType,
+            width: artifact.width,
+            height: artifact.height,
+            sizeBytes: artifact.content.length,
+            sha256: "test-sha256",
+            createdAt: new Date(0).toISOString(),
+            stepKey: artifact.stepKey
+          };
+        })
+    }
+  });
+
+  const result = await worker.handleMessage(message);
+
+  assert.deepEqual(executedActions, ["goto"]);
+  assert.equal(result.summary.completedStepCount, 1);
+  assert.equal(result.summary.stopped, true);
+  assert.equal(traceArtifactContents.length, 1);
+  const trace = JSON.parse(traceArtifactContents[0]) as AgentTrace;
+  assert.equal(trace.final_outcome, "POLICY_BLOCKED_FINAL_PAYMENT_SUBMIT");
+  assert.equal(trace.policy_results.length, 2);
+  assert.ok(trace.policy_results.some((result) => result.decision === "ALLOW"));
+  assert.ok(trace.policy_results.some((result) => result.decision === "BLOCK"));
+  assert.ok(trace.events.some((event) => event.event_type === "AGENT_POLICY_BLOCKED"));
+  assert.ok(!trace.events.some((event) => event.event_type === "AGENT_ACTION_STARTED" && event.step_index === 2));
+  assert.ok(stepEvents.some((event) => event.payload.event === "POLICY_BLOCKED"));
+  assert.equal(closed, true);
+});

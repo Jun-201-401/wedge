@@ -98,6 +98,7 @@ test("[계약 동기화] AgentTrace TS mirror가 packages/contracts trace schema
   const runnerTypesSource = await readRunnerTypesSource();
   const eventSchema = await readJson(resolve(repoRoot, "packages/contracts/schemas/agent-event.schema.json"));
   const outcomeSchema = await readJson(resolve(repoRoot, "packages/contracts/schemas/agent-outcome.schema.json"));
+  const policySchema = await readJson(resolve(repoRoot, "packages/contracts/schemas/agent-policy-result.schema.json"));
   const traceExample = await readJson(resolve(repoRoot, "packages/contracts/examples/sample-agent-trace-checkout-entry.json"));
 
   assertTypeAliasMatchesSchemaEnum(
@@ -117,6 +118,18 @@ test("[계약 동기화] AgentTrace TS mirror가 packages/contracts trace schema
     "AgentOutcomeCategory",
     outcomeSchema,
     outcomeSchema.$defs.outcome_category
+  );
+  assertTypeAliasMatchesSchemaEnum(
+    runnerTypesSource,
+    "AgentRiskClass",
+    policySchema,
+    policySchema.$defs.risk_class
+  );
+  assertTypeAliasMatchesSchemaEnum(
+    runnerTypesSource,
+    "AgentPolicyDecision",
+    policySchema,
+    policySchema.$defs.policy_decision
   );
   assert.equal(traceExample.final_outcome, "SUCCESS_CHECKOUT_ENTRY_REACHED");
   assert.ok(traceExample.events.some((event: any) => event.event_type === "AGENT_STOPPED"));

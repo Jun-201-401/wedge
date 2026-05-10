@@ -8,6 +8,7 @@ import { executeScenarioStep } from "../scenario/executor/step-executor.ts";
 import type { ArtifactStore } from "../storage/index.ts";
 import type { AgentTask, AgentTrace, ScenarioPlan, ScenarioStep } from "../shared/contracts.ts";
 import { classifyRunnerFailure, errorMessage, logOperationalEvent } from "../shared/utils.ts";
+import { evaluateAgentPolicy } from "./policy.ts";
 import { ruleBasedAgentPlanner, type AgentDecision } from "./planner.ts";
 import { observePage } from "./observation.ts";
 import { createInitialAgentState } from "./state.ts";
@@ -54,6 +55,12 @@ export async function executeAgentRun(input: AgentExecutorInput): Promise<AgentE
     });
     const decisionId = traceBuilder.recordDecision(turn, observationId, decision);
     const step = agentDecisionToScenarioStep(decision, turn, config.captureEveryTurn);
+    const policy = evaluateAgentPolicy({
+      task: input.task,
+      currentUrl: previousUrl,
+      decision
+    });
+    const policyResultId = traceBuilder.recordPolicyResult(turn, decisionId, policy);
 
     deliveryIssues.push(...(await emitStepEventBestEffort(input.callbackClient, input.runId, turn, step.step_id, "ISSUE_SIGNAL_DETECTED", {
       agentTurn: turn,
@@ -63,6 +70,32 @@ export async function executeAgentRun(input: AgentExecutorInput): Promise<AgentE
       actionType: decision.action.type,
       targetKey: decision.targetKey
     })));
+
+    if (policy.decision === "BLOCK" && policy.finalOutcome) {
+      deliveryIssues.push(...(await emitStepEventBestEffort(input.callbackClient, input.runId, turn, step.step_id, "ISSUE_SIGNAL_DETECTED", {
+        agentTurn: turn,
+        event: "POLICY_BLOCKED",
+        riskClass: policy.riskClass,
+        reason: policy.reason,
+        matchedSignals: policy.matchedSignals,
+        finalOutcome: policy.finalOutcome
+      })));
+      const trace = traceBuilder.finish({
+        finalOutcome: policy.finalOutcome,
+        category: policy.finalOutcome.startsWith("POLICY_BLOCKED") ? "POLICY_BLOCKED" : "BLOCKED",
+        reason: policy.reason,
+        policyResultId
+      });
+      return {
+        summary: {
+          completedStepCount,
+          failedStepCount: 0,
+          stopped: true
+        },
+        delivery: createDeliverySummary(mergeDeliveryIssues(deliveryIssues)),
+        trace
+      };
+    }
 
     try {
       traceBuilder.recordActionStarted(turn, decisionId, step);
