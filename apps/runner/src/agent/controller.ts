@@ -2,40 +2,23 @@ import type { BrowserSession } from "../browser/playwright/index.ts";
 import type { CallbackClient } from "../callback/index.ts";
 import type { CapturePipeline } from "../capture/index.ts";
 import { createDeliverySummary, mergeDeliveryIssues, type DeliveryIssue, type DeliverySummary } from "../delivery/index.ts";
-import { ScenarioExecutionError, type ScenarioExecutionSummary } from "../scenario/executor/index.ts";
+import type { ScenarioExecutionSummary } from "../scenario/executor/index.ts";
 import { emitStepEventBestEffort } from "../scenario/executor/step-events.ts";
 import { executeScenarioStep } from "../scenario/executor/step-executor.ts";
 import type { ArtifactStore } from "../storage/index.ts";
 import type { AgentTask, AgentTrace, ScenarioPlan, ScenarioStep } from "../shared/contracts.ts";
-import { classifyRunnerFailure, errorMessage, logOperationalEvent, type RunnerFailureCode } from "../shared/utils.ts";
-import { decideNextAction, type AgentDecision } from "./planner.ts";
+import { classifyRunnerFailure, errorMessage, logOperationalEvent } from "../shared/utils.ts";
+import { ruleBasedAgentPlanner, type AgentDecision } from "./planner.ts";
 import { observePage } from "./observation.ts";
 import { createInitialAgentState } from "./state.ts";
-import { createAgentTraceBuilder } from "./trace.ts";
+import { AgentExecutionError } from "./errors.ts";
+import { createAgentTraceBuilder } from "./trace/index.ts";
 import { verifyGoal } from "./verifier.ts";
 
 export interface AgentExecutionResult {
   summary: ScenarioExecutionSummary;
   delivery: DeliverySummary;
   trace: AgentTrace;
-}
-
-export class AgentExecutionError extends ScenarioExecutionError {
-  readonly trace: AgentTrace;
-
-  constructor(input: {
-    cause: unknown;
-    summary: ScenarioExecutionSummary;
-    delivery: DeliverySummary;
-    failedStepKey: string;
-    failedStepOrder: number;
-    failureCode: RunnerFailureCode;
-    trace: AgentTrace;
-  }) {
-    super(input);
-    this.name = "AgentExecutionError";
-    this.trace = input.trace;
-  }
 }
 
 export interface AgentExecutorInput {
@@ -62,7 +45,7 @@ export async function executeAgentRun(input: AgentExecutorInput): Promise<AgentE
     const observation = await observePage(input.session);
     const observationId = traceBuilder.recordObservation(turn, observation);
     const previousUrl = observation.snapshot.finalUrl;
-    const decision = decideNextAction({
+    const decision = ruleBasedAgentPlanner.decideNextAction({
       goal: resolveTaskGoal(input.task),
       startUrl: input.task.start_url,
       state,

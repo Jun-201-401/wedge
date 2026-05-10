@@ -29,6 +29,14 @@ export interface AgentDecisionInput {
   maxScrolls: number;
 }
 
+export interface AgentPlanner {
+  decideNextAction: (input: AgentDecisionInput) => AgentDecision;
+}
+
+export const ruleBasedAgentPlanner: AgentPlanner = {
+  decideNextAction
+};
+
 export function decideNextAction(input: AgentDecisionInput): AgentDecision {
   if (!input.state.started) {
     return {
