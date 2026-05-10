@@ -76,11 +76,15 @@ export function RunReportViewer({ report }: RunReportViewerProps) {
     const activeId = hoveredFindingId ?? selectedFindingId;
     return resolveActiveFinding(report.findings, activeId);
   }, [hoveredFindingId, report.findings, selectedFindingId]);
-  const activeFindingId = activeFinding?.id ?? null;
   const selectedEvidencePreviewUrl = activeFinding?.previewImageUrl ?? report.evidencePreviewUrl;
   const evidencePreviewUrl = useAuthenticatedResourceUrl(selectedEvidencePreviewUrl);
   const isEvidencePreviewResolving = Boolean(selectedEvidencePreviewUrl && !evidencePreviewUrl);
   const browserModeLabel = isEvidencePreviewResolving ? '캡처 로딩' : evidencePreviewUrl ? '페이지 캡처' : '모의 프리뷰';
+  const selectSelectedRecommendationFinding = () => {
+    if (selectedRecommendationFindingId) {
+      setSelectedFindingId(selectedRecommendationFindingId);
+    }
+  };
 
   useEffect(() => {
     const preview = evidencePreviewRef.current;
@@ -270,7 +274,22 @@ export function RunReportViewer({ report }: RunReportViewerProps) {
 
               {selectedRecommendation ? (
                 <article
+                  role="button"
+                  tabIndex={0}
                   className="run-report-primary-nudge"
+                  aria-pressed={Boolean(selectedRecommendationFindingId && selectedFindingId === selectedRecommendationFindingId)}
+                  onClick={selectSelectedRecommendationFinding}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault();
+                      selectSelectedRecommendationFinding();
+                    }
+                  }}
+                  onFocus={() => {
+                    if (selectedRecommendationFindingId) {
+                      setHoveredFindingId(selectedRecommendationFindingId);
+                    }
+                  }}
                   onMouseEnter={() => setHoveredFindingId(selectedRecommendationFindingId)}
                   onMouseLeave={() => setHoveredFindingId(null)}
                 >
@@ -351,7 +370,7 @@ export function RunReportViewer({ report }: RunReportViewerProps) {
 
               {selectedRecommendationFinding ? (
                 <article
-                  className={`run-report-reason-card run-report-reason-card--${selectedRecommendationFinding.severity}`}
+                  className="run-report-reason-card"
                   onMouseEnter={() => setHoveredFindingId(selectedRecommendationFinding.id)}
                   onMouseLeave={() => setHoveredFindingId(null)}
                 >
@@ -399,7 +418,7 @@ export function RunReportViewer({ report }: RunReportViewerProps) {
                       <button
                         type="button"
                         className="run-report-top-finding-card__button"
-                        aria-pressed={activeFindingId === finding.id}
+                        aria-pressed={selectedFindingId === finding.id}
                         onClick={() => {
                           setSelectedFindingId(finding.id);
                           const linkedRecommendation = recommendations.find((recommendation) => (
@@ -460,7 +479,7 @@ export function RunReportViewer({ report }: RunReportViewerProps) {
                           <button
                             type="button"
                             className="run-report-finding-row"
-                            aria-pressed={activeFindingId === finding.id}
+                            aria-pressed={selectedFindingId === finding.id}
                             onClick={() => setSelectedFindingId(finding.id)}
                             onFocus={() => setHoveredFindingId(finding.id)}
                             onMouseEnter={() => setHoveredFindingId(finding.id)}
