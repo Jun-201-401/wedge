@@ -100,6 +100,7 @@ test('buildRunReportFromEvidence projects persisted evidence into report view mo
   assert.equal(report.heroCallToAction, 'Primary CTA');
   assert.equal(report.findings.length, 1);
   assert.equal(report.findings[0].evidenceRefs.includes('obs_cta_001'), true);
+  assert.equal(report.findings[0].highlight, null);
   assert.equal(report.recommendations.length, 1);
   assert.equal(report.decisionNodes.some((node) => node.id === 'evidence-depth'), true);
 });

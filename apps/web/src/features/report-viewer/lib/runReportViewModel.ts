@@ -27,7 +27,7 @@ export interface ReportFinding {
   recommendation: string;
   highlight: {
     label: string;
-    source?: 'fallback' | 'artifact-coordinate';
+    source?: 'artifact-coordinate';
     top: string;
     left: string;
     width: string;

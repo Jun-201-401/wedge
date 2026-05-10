@@ -180,7 +180,7 @@ function buildFindings(report: RunReportProjection): ReportFinding[] {
       evidenceRefs,
       previewImageUrl: null,
       recommendation: finding.impactHypothesis ?? '분석 결과의 근거와 개선 제안을 함께 검토하세요.',
-      highlight: createHighlight(index),
+      highlight: null,
     };
   });
 }
@@ -322,15 +322,6 @@ function buildFindingsFromDetail(detail: ReportDetail): ReportFinding[] {
       highlight: createArtifactHighlight(finding),
     };
   });
-}
-
-function createHighlight(index: number) {
-  const highlights = [
-    { label: '마찰 지점', source: 'fallback' as const, top: '38%', left: '34%', width: '30%', height: '14%' },
-    { label: '판단 지점', source: 'fallback' as const, top: '58%', left: '18%', width: '36%', height: '15%' },
-    { label: '개선 지점', source: 'fallback' as const, top: '29%', left: '55%', width: '24%', height: '18%' },
-  ];
-  return highlights[index] ?? highlights[0];
 }
 
 function buildRecommendationsFromDetail(detail: ReportDetail, findings: ReportFinding[]): ReportRecommendation[] {

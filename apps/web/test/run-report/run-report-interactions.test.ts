@@ -19,14 +19,7 @@ const findings: ReportFinding[] = [
     priorityScore: 90,
     evidenceRefs: ['cp_001.obs_001'],
     recommendation: 'Increase contrast.',
-    highlight: {
-      label: 'CTA',
-      source: 'fallback',
-      top: '40%',
-      left: '40%',
-      width: '20%',
-      height: '10%',
-    },
+    highlight: null,
   },
   {
     id: 'finding-2',
@@ -42,14 +35,7 @@ const findings: ReportFinding[] = [
     priorityScore: 72,
     evidenceRefs: ['cp_002.obs_002'],
     recommendation: 'Move trust copy earlier.',
-    highlight: {
-      label: 'TRUST',
-      source: 'fallback',
-      top: '60%',
-      left: '20%',
-      width: '28%',
-      height: '12%',
-    },
+    highlight: null,
   },
 ];
 

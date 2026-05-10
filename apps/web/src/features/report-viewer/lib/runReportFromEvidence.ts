@@ -211,18 +211,9 @@ function buildFindings(evidencePacket: EvidencePacket): ReportFinding[] {
       priorityScore: Math.min(95, Math.max(45, Math.round(confidence * 100) + (severity === 'high' ? 8 : severity === 'medium' ? 3 : 0))),
       evidenceRefs: [checkpoint.checkpoint_id, ...(observation ? [observation.observation_id] : [])],
       recommendation: observation ? recommendationFromObservation(observation) : '해당 체크포인트의 화면 캡처와 화면 구조 근거를 함께 확인하세요.',
-      highlight: createHighlight(index),
+      highlight: null,
     };
   });
-}
-
-function createHighlight(index: number) {
-  const highlights = [
-    { label: '근거 지점', source: 'fallback' as const, top: '38%', left: '34%', width: '30%', height: '14%' },
-    { label: '점검 지점', source: 'fallback' as const, top: '58%', left: '18%', width: '36%', height: '15%' },
-    { label: '추가 확인', source: 'fallback' as const, top: '29%', left: '55%', width: '24%', height: '18%' },
-  ];
-  return highlights[index] ?? highlights[0];
 }
 
 function buildDecisionNodes(evidencePacket: EvidencePacket, findings: ReportFinding[]): ReportDecisionNode[] {

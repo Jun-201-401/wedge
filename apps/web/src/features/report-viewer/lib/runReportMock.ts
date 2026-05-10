@@ -69,14 +69,7 @@ export function buildMockRunReportData(runId: string, targetUrl: string, scenari
         evidenceRefs: ['checkpoint.hero.primary_cta', 'artifact.screenshot.hero'],
         previewImageUrl: '/mock-report-evidence.png',
         recommendation: 'CTA 주변에 결과 중심 혜택 문구를 추가하고 버튼 대비를 한 단계 높이세요.',
-        highlight: {
-          label: '마찰 지점',
-          source: 'fallback',
-          top: '43%',
-          left: '37%',
-          width: '26%',
-          height: '12%',
-        },
+        highlight: null,
       },
       {
         id: 'trust-delay',
@@ -93,14 +86,7 @@ export function buildMockRunReportData(runId: string, targetUrl: string, scenari
         evidenceRefs: ['checkpoint.below_fold.proof'],
         previewImageUrl: '/mock-report-evidence.png',
         recommendation: '고객 수, 보안, 환불 정책처럼 즉시 판단을 돕는 신뢰 정보를 CTA 근처로 올리세요.',
-        highlight: {
-          label: '신뢰 보강',
-          source: 'fallback',
-          top: '67%',
-          left: '17%',
-          width: '31%',
-          height: '16%',
-        },
+        highlight: null,
       },
       {
         id: 'form-context',
@@ -117,14 +103,7 @@ export function buildMockRunReportData(runId: string, targetUrl: string, scenari
         evidenceRefs: ['checkpoint.cta.destination', 'artifact.dom.form_hint'],
         previewImageUrl: '/mock-report-evidence.png',
         recommendation: 'CTA 하단에 예상 소요 시간과 필수 입력 항목 수를 짧게 안내하세요.',
-        highlight: {
-          label: '다음 단계',
-          source: 'fallback',
-          top: '31%',
-          left: '22%',
-          width: '56%',
-          height: '15%',
-        },
+        highlight: null,
       },
     ],
     recommendations: [

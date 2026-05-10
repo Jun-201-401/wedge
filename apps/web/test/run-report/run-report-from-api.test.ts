@@ -229,6 +229,7 @@ test('buildRunReportFromApi projects backend report data into report view model'
   assert.equal(report.decisionNodes[0].tone, 'friction');
   assert.equal(report.findings[0].severity, 'high');
   assert.equal(report.findings[0].evidenceRefs[0], 'cp-1');
+  assert.equal(report.findings[0].highlight, null);
   assert.equal(report.recommendations[0].detail, 'CTA 아래에 기대 결과를 한 문장으로 설명하세요.');
 });
 
