@@ -21,6 +21,11 @@ class RunStatusTransitionPolicyTest {
     }
 
     @Test
+    void allowsRunnerReportedStopFromRunning() {
+        assertThat(RunStatusTransitionPolicy.canTransition(RunStatus.RUNNING, RunStatus.STOPPED)).isTrue();
+    }
+
+    @Test
     void rejectsSkippingDirectlyFromCreatedToCompleted() {
         assertThat(RunStatusTransitionPolicy.canTransition(RunStatus.CREATED, RunStatus.COMPLETED)).isFalse();
         assertThatThrownBy(() -> RunStatusTransitionPolicy.validateTransition(RunStatus.CREATED, RunStatus.COMPLETED))
