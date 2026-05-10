@@ -213,8 +213,10 @@ test('run report css keeps result-first content in the live simulation cockpit t
   assert.doesNotMatch(css, /!important/);
   assert.doesNotMatch(css.match(/\.run-report-primary-nudge\s*\{[^}]*\}/)?.[0] ?? '', /border-left/);
   assert.match(css, /\.run-report-primary-nudge\s*\{[\s\S]*?cursor: pointer/);
-  assert.match(css, /\.run-report-primary-nudge:hover,\s*\n\.run-report-primary-nudge:focus-visible,\s*\n\.run-report-primary-nudge\[aria-pressed="true"\]\s*\{[\s\S]*?background: #f0f9ff/);
-  assert.match(css, /\.run-report-primary-nudge__meta\s*\{[\s\S]*?grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/);
+  assert.match(css, /\.run-report-primary-nudge:hover,\s*\n\.run-report-primary-nudge:focus-visible,\s*\n\.run-report-primary-nudge\[aria-pressed="true"\]\s*\{[\s\S]*?background: rgba\(240, 249, 255, 0\.42\)/);
+  assert.match(css, /\.run-report-primary-nudge\[aria-pressed="true"\]\s*\{[\s\S]*?border-color: #bae6fd/);
+  assert.match(css, /\.run-report-primary-nudge__meta\s*\{[\s\S]*?display: flex/);
+  assert.match(css, /\.run-report-primary-nudge__meta div\s*\{[\s\S]*?border-radius: 999px/);
   assert.match(css, /\.run-report-next-nudges button\s*\{[\s\S]*?grid-template-columns: auto minmax\(0, 1fr\) auto/);
   assert.doesNotMatch(css.match(/\.run-report-reason-card\s*\{[^}]*\}/)?.[0] ?? '', /border-left/);
   assert.doesNotMatch(css, /\.run-report-reason-card--(?:high|medium)\s*\{[\s\S]*?border-left-color/);
