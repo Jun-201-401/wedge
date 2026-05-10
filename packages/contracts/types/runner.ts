@@ -172,6 +172,81 @@ export interface AgentArtifactPolicy {
   capture_trace?: boolean;
 }
 
+export type AgentEventType =
+  | "AGENT_OBSERVATION_CAPTURED"
+  | "AGENT_CANDIDATES_EXTRACTED"
+  | "AGENT_DECISION_REQUESTED"
+  | "AGENT_DECISION_RECEIVED"
+  | "AGENT_DECISION_VALIDATED"
+  | "AGENT_POLICY_ALLOWED"
+  | "AGENT_POLICY_BLOCKED"
+  | "AGENT_ACTION_STARTED"
+  | "AGENT_ACTION_COMPLETED"
+  | "AGENT_ACTION_FAILED"
+  | "AGENT_SETTLE_COMPLETED"
+  | "AGENT_VERIFICATION_COMPLETED"
+  | "AGENT_RECOVERY_ATTEMPTED"
+  | "AGENT_TRACE_EXPORTED_TO_SCENARIO_PLAN"
+  | "AGENT_STOPPED"
+  | "AGENT_FAILED";
+
+export type AgentFinalOutcome =
+  | "SUCCESS_CHECKOUT_ENTRY_REACHED"
+  | "SUCCESS_SHIPPING_ENTRY_REACHED"
+  | "SUCCESS_PAYMENT_ENTRY_REACHED_AND_STOPPED"
+  | "POLICY_BLOCKED_FINAL_PAYMENT_SUBMIT"
+  | "POLICY_BLOCKED_FINAL_ORDER_COMMIT"
+  | "POLICY_BLOCKED_DESTRUCTIVE_ACTION"
+  | "POLICY_BLOCKED_EXTERNAL_NAVIGATION"
+  | "BLOCKED_NO_CHECKOUT_PATH_FOUND"
+  | "BLOCKED_TEST_DATA_REQUIRED"
+  | "FAILED_BUDGET_EXHAUSTED"
+  | "FAILED_ACTION_ERROR"
+  | "FAILED_INTERNAL_ERROR";
+
+export type AgentOutcomeCategory = "SUCCESS" | "POLICY_BLOCKED" | "BLOCKED" | "FAILED";
+
+export interface AgentEvent {
+  schema_version: "0.1";
+  event_id: string;
+  task_id: string;
+  attempt_id: string;
+  run_id: string;
+  step_index: number;
+  event_type: AgentEventType;
+  occurred_at: string;
+  payload: Record<string, unknown>;
+}
+
+export interface AgentOutcome {
+  schema_version: "0.1";
+  final_outcome: AgentFinalOutcome;
+  category: AgentOutcomeCategory;
+  terminal: boolean;
+  reason: string;
+  evidence_refs: string[];
+  verification_id?: string | null;
+  policy_result_id?: string | null;
+}
+
+export interface AgentTrace {
+  schema_version: "0.1";
+  trace_id: string;
+  task_id: string;
+  attempt_id: string;
+  run_id: string;
+  started_at: string;
+  finished_at: string;
+  final_outcome: AgentFinalOutcome;
+  events: AgentEvent[];
+  observations: Record<string, unknown>[];
+  decisions: Record<string, unknown>[];
+  policy_results: Record<string, unknown>[];
+  verification_results: Record<string, unknown>[];
+  artifact_refs: string[];
+  outcome?: AgentOutcome;
+}
+
 export interface AgentTask {
   schema_version: "0.1";
   task_id: string;

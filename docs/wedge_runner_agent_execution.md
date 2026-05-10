@@ -681,11 +681,13 @@ Runner Agent 전환이 최소 성공했다고 볼 수 있는 기준:
 - `apps/runner/src/worker/agent-worker.ts`로 agent 실행 경로 분리
 - 기존 `run.execute.request` / `ScenarioPlan` worker는 scripted executor로 유지
 - agent request 파싱, MQ queue, worker regression test 추가
+- `AgentEvent` / `AgentOutcome` / `AgentTrace` schema와 runner TS mirror 추가
+- Agent 실행 결과를 `TRACE` artifact로 저장하고 artifact callback으로 전달
 
 아직 수행하지 않은 작업:
 
-- callback contract에 정식 `AgentEvent` / `AgentTrace` 추가
-- agent trace artifact와 generated replay path 구현
+- callback contract에 정식 agent-specific event/trace endpoint 추가
+- generated replay path 구현
 - LLM planner 및 replay-hint planner 구현
 
 새 구현을 시작할 때는 `docs/runner_agent_runtime_implementation_plan.md`를 기준으로 contract-first 순서를 따른다.

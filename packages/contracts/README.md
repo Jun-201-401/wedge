@@ -33,7 +33,8 @@ Canonical machine-readable contracts belong here. Human-readable design rational
 - `examples/sample-scenario-authoring-result.json`: completed ScenarioAuthoring result fixture with a `custom_compiled` ScenarioPlan candidate
 - Runner Agent Runtime schemas:
   - `AgentTask` and `AgentExecuteMessage` live in `mq/messages.schema.json` for the first runnable `agent.execute.request` path.
-  - Planned trace/callback schemas remain contract-first follow-ups: `agent-observation`, `agent-decision`, `agent-policy-result`, `agent-verification-result`, `agent-event`, `agent-outcome`, and `agent-trace`.
+  - `schemas/agent-event.schema.json`, `schemas/agent-outcome.schema.json`, and `schemas/agent-trace.schema.json` define the first persisted AgentTrace artifact shape.
+  - Planned typed subdocument/callback schemas remain contract-first follow-ups: `agent-observation`, `agent-decision`, `agent-policy-result`, and `agent-verification-result`.
 - `examples/sample-evidence-packet.json`: EvidencePacket fixture
 - `examples/sample-run-artifacts-response.json`: prototype REST fixture for `GET /api/runs/{runId}/artifacts`
 - `examples/sample-run-evidence-packet-response.json`: prototype REST fixture for `GET /api/runs/{runId}/evidence-packet`
@@ -44,7 +45,7 @@ Canonical machine-readable contracts belong here. Human-readable design rational
 - `examples/sample-runner-checkpoints.json`: runner callback checkpoint example including settle observation subtypes
 - Runner Agent Runtime examples:
   - `examples/sample-agent-execute-checkout-entry.request.json`
-  - Planned trace fixture: `examples/sample-agent-trace-checkout-entry.json`
+  - `examples/sample-agent-trace-checkout-entry.json`
 - `mq/messages.schema.json`: RabbitMQ common envelope and message type contract; this is the canonical MQ source
 - `mq/run.execute.request.schema.json`: thin `$ref` entrypoint to `messages.schema.json#/$defs/RunExecutePayload`
 - `mq/agent.execute.request.schema.json`: thin `$ref` entrypoint for AgentExecutePayload

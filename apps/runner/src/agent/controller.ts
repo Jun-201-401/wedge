@@ -6,16 +6,36 @@ import { ScenarioExecutionError, type ScenarioExecutionSummary } from "../scenar
 import { emitStepEventBestEffort } from "../scenario/executor/step-events.ts";
 import { executeScenarioStep } from "../scenario/executor/step-executor.ts";
 import type { ArtifactStore } from "../storage/index.ts";
-import type { AgentTask, ScenarioPlan, ScenarioStep } from "../shared/contracts.ts";
-import { classifyRunnerFailure, errorMessage, logOperationalEvent } from "../shared/utils.ts";
+import type { AgentTask, AgentTrace, ScenarioPlan, ScenarioStep } from "../shared/contracts.ts";
+import { classifyRunnerFailure, errorMessage, logOperationalEvent, type RunnerFailureCode } from "../shared/utils.ts";
 import { decideNextAction, type AgentDecision } from "./planner.ts";
 import { observePage } from "./observation.ts";
 import { createInitialAgentState } from "./state.ts";
+import { createAgentTraceBuilder } from "./trace.ts";
 import { verifyGoal } from "./verifier.ts";
 
 export interface AgentExecutionResult {
   summary: ScenarioExecutionSummary;
   delivery: DeliverySummary;
+  trace: AgentTrace;
+}
+
+export class AgentExecutionError extends ScenarioExecutionError {
+  readonly trace: AgentTrace;
+
+  constructor(input: {
+    cause: unknown;
+    summary: ScenarioExecutionSummary;
+    delivery: DeliverySummary;
+    failedStepKey: string;
+    failedStepOrder: number;
+    failureCode: RunnerFailureCode;
+    trace: AgentTrace;
+  }) {
+    super(input);
+    this.name = "AgentExecutionError";
+    this.trace = input.trace;
+  }
 }
 
 export interface AgentExecutorInput {
@@ -31,12 +51,16 @@ export interface AgentExecutorInput {
 export async function executeAgentRun(input: AgentExecutorInput): Promise<AgentExecutionResult> {
   const config = resolveAgentBudget(input.task);
   const state = createInitialAgentState();
+  const traceBuilder = createAgentTraceBuilder(input.task);
   const deliveryIssues: DeliveryIssue[] = [];
   let completedStepCount = 0;
   let stopped = false;
+  let lastVerificationId: string | null = null;
+  let lastVerificationReason = "Agent turn budget was exhausted before the goal was verified.";
 
   for (let turn = 1; turn <= config.maxTurns; turn += 1) {
     const observation = await observePage(input.session);
+    const observationId = traceBuilder.recordObservation(turn, observation);
     const previousUrl = observation.snapshot.finalUrl;
     const decision = decideNextAction({
       goal: resolveTaskGoal(input.task),
@@ -45,6 +69,7 @@ export async function executeAgentRun(input: AgentExecutorInput): Promise<AgentE
       observation,
       maxScrolls: config.maxScrolls
     });
+    const decisionId = traceBuilder.recordDecision(turn, observationId, decision);
     const step = agentDecisionToScenarioStep(decision, turn, config.captureEveryTurn);
 
     deliveryIssues.push(...(await emitStepEventBestEffort(input.callbackClient, input.runId, turn, step.step_id, "ISSUE_SIGNAL_DETECTED", {
@@ -57,6 +82,7 @@ export async function executeAgentRun(input: AgentExecutorInput): Promise<AgentE
     })));
 
     try {
+      traceBuilder.recordActionStarted(turn, decisionId, step);
       const stepResult = await executeScenarioStep({
         runId: input.runId,
         stepOrder: turn,
@@ -68,9 +94,11 @@ export async function executeAgentRun(input: AgentExecutorInput): Promise<AgentE
         artifactStore: input.artifactStore
       });
       deliveryIssues.push(...stepResult.deliveryIssues);
+      traceBuilder.recordActionCompleted(turn, decisionId, step, input.session.snapshot());
     } catch (error) {
       const failureCode = classifyRunnerFailure(error);
       const failureMessage = errorMessage(error);
+      traceBuilder.recordActionFailed(turn, decisionId, step, error);
 
       logOperationalEvent(
         "agent-executor",
@@ -95,7 +123,7 @@ export async function executeAgentRun(input: AgentExecutorInput): Promise<AgentE
         failureMessage
       })));
 
-      throw new ScenarioExecutionError({
+      throw new AgentExecutionError({
         cause: error,
         summary: {
           completedStepCount,
@@ -105,7 +133,13 @@ export async function executeAgentRun(input: AgentExecutorInput): Promise<AgentE
         delivery: createDeliverySummary(mergeDeliveryIssues(deliveryIssues)),
         failedStepKey: step.step_id,
         failedStepOrder: turn,
-        failureCode
+        failureCode,
+        trace: traceBuilder.finish({
+          finalOutcome: "FAILED_ACTION_ERROR",
+          category: "FAILED",
+          reason: failureMessage,
+          verificationId: lastVerificationId
+        })
       });
     }
 
@@ -125,6 +159,8 @@ export async function executeAgentRun(input: AgentExecutorInput): Promise<AgentE
       snapshot: input.session.snapshot(),
       decision
     });
+    lastVerificationId = traceBuilder.recordVerification(turn, decisionId, verification);
+    lastVerificationReason = verification.reason;
 
     state.turns.push({
       turn,
@@ -144,9 +180,30 @@ export async function executeAgentRun(input: AgentExecutorInput): Promise<AgentE
 
     if (verification.satisfied || decision.kind === "finish") {
       stopped = true;
-      break;
+      const trace = traceBuilder.finish({
+        finalOutcome: verification.satisfied ? "SUCCESS_CHECKOUT_ENTRY_REACHED" : "BLOCKED_NO_CHECKOUT_PATH_FOUND",
+        category: verification.satisfied ? "SUCCESS" : "BLOCKED",
+        reason: verification.reason,
+        verificationId: lastVerificationId
+      });
+      return {
+        summary: {
+          completedStepCount,
+          failedStepCount: 0,
+          stopped
+        },
+        delivery: createDeliverySummary(mergeDeliveryIssues(deliveryIssues)),
+        trace
+      };
     }
   }
+
+  const trace = traceBuilder.finish({
+    finalOutcome: "FAILED_BUDGET_EXHAUSTED",
+    category: "FAILED",
+    reason: lastVerificationReason,
+    verificationId: lastVerificationId
+  });
 
   return {
     summary: {
@@ -154,7 +211,8 @@ export async function executeAgentRun(input: AgentExecutorInput): Promise<AgentE
       failedStepCount: 0,
       stopped
     },
-    delivery: createDeliverySummary(mergeDeliveryIssues(deliveryIssues))
+    delivery: createDeliverySummary(mergeDeliveryIssues(deliveryIssues)),
+    trace
   };
 }
 

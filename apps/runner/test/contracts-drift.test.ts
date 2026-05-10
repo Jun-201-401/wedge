@@ -94,6 +94,34 @@ test("[계약 동기화] runner callback literal이 packages/contracts callback 
   );
 });
 
+test("[계약 동기화] AgentTrace TS mirror가 packages/contracts trace schema와 어긋나지 않는다", async () => {
+  const runnerTypesSource = await readRunnerTypesSource();
+  const eventSchema = await readJson(resolve(repoRoot, "packages/contracts/schemas/agent-event.schema.json"));
+  const outcomeSchema = await readJson(resolve(repoRoot, "packages/contracts/schemas/agent-outcome.schema.json"));
+  const traceExample = await readJson(resolve(repoRoot, "packages/contracts/examples/sample-agent-trace-checkout-entry.json"));
+
+  assertTypeAliasMatchesSchemaEnum(
+    runnerTypesSource,
+    "AgentEventType",
+    eventSchema,
+    eventSchema.$defs.agent_event_type
+  );
+  assertTypeAliasMatchesSchemaEnum(
+    runnerTypesSource,
+    "AgentFinalOutcome",
+    outcomeSchema,
+    outcomeSchema.$defs.final_outcome
+  );
+  assertTypeAliasMatchesSchemaEnum(
+    runnerTypesSource,
+    "AgentOutcomeCategory",
+    outcomeSchema,
+    outcomeSchema.$defs.outcome_category
+  );
+  assert.equal(traceExample.final_outcome, "SUCCESS_CHECKOUT_ENTRY_REACHED");
+  assert.ok(traceExample.events.some((event: any) => event.event_type === "AGENT_STOPPED"));
+});
+
 async function readRunnerTypesSource(): Promise<string> {
   return readFile(resolve(repoRoot, "packages/contracts/types/runner.ts"), "utf8");
 }

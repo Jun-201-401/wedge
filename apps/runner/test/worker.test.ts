@@ -14,7 +14,7 @@ import {
   loadAgentExampleMessage,
   loadExampleMessage
 } from "./support.ts";
-import type { RunnerFailedPayload, StepEvent } from "../src/shared/contracts.ts";
+import type { AgentTrace, ArtifactBatch, RunnerFailedPayload, StepEvent } from "../src/shared/contracts.ts";
 
 test("[Worker lifecycle] accepted callback 실패 시 session을 닫고 failed callback을 보낸다", async () => {
   const message = await loadExampleMessage();
@@ -254,6 +254,8 @@ test("[Agent Worker] AgentTask로 CTA 후보를 관찰해 클릭한다", async (
   };
 
   const executedActions: string[] = [];
+  const traceArtifactContents: string[] = [];
+  const artifactCallbacks: ArtifactBatch[] = [];
   let currentUrl = task.start_url;
   let loaded = false;
   let closed = false;
@@ -318,14 +320,36 @@ test("[Agent Worker] AgentTask로 CTA 후보를 관찰해 클릭한다", async (
           }
         })
     },
-    callbackClient: createStubCallbackClient(),
+    callbackClient: createStubCallbackClient({
+      sendArtifacts: async (_runId, payload) => {
+        artifactCallbacks.push(payload);
+      }
+    }),
     capturePipeline: {
       collectCheckpoint: async () => {
         throw new Error("checkpoint collection should not run when capture_screenshots is false");
       }
     },
     artifactStore: {
-      persistArtifacts: async () => []
+      persistArtifacts: async ({ runId, artifacts }) =>
+        artifacts.map((artifact) => {
+          if (artifact.artifactType === "TRACE") {
+            traceArtifactContents.push(artifact.content);
+          }
+          return {
+            artifactId: artifact.artifactId,
+            artifactType: artifact.artifactType,
+            bucket: "local-runner",
+            key: `runs/${runId}/${artifact.stepKey}/${artifact.artifactId}.${artifact.fileExtension}`,
+            mimeType: artifact.mimeType,
+            width: artifact.width,
+            height: artifact.height,
+            sizeBytes: artifact.content.length,
+            sha256: "test-sha256",
+            createdAt: new Date(0).toISOString(),
+            stepKey: artifact.stepKey
+          };
+        })
     }
   });
 
@@ -334,5 +358,100 @@ test("[Agent Worker] AgentTask로 CTA 후보를 관찰해 클릭한다", async (
   assert.deepEqual(executedActions, ["goto", "click"]);
   assert.equal(result.summary.completedStepCount, 2);
   assert.equal(result.summary.stopped, true);
+  assert.equal(traceArtifactContents.length, 1);
+  const trace = JSON.parse(traceArtifactContents[0]) as AgentTrace;
+  assert.equal(trace.run_id, task.run_id);
+  assert.equal(trace.task_id, task.task_id);
+  assert.equal(trace.final_outcome, "SUCCESS_CHECKOUT_ENTRY_REACHED");
+  assert.ok(trace.observations.length >= 2);
+  assert.ok(trace.decisions.length >= 2);
+  assert.ok(trace.verification_results.length >= 1);
+  assert.ok(trace.events.some((event) => event.event_type === "AGENT_OBSERVATION_CAPTURED"));
+  assert.ok(trace.events.some((event) => event.event_type === "AGENT_DECISION_RECEIVED"));
+  assert.ok(trace.events.some((event) => event.event_type === "AGENT_ACTION_COMPLETED"));
+  assert.ok(trace.events.some((event) => event.event_type === "AGENT_VERIFICATION_COMPLETED"));
+  assert.ok(trace.events.some((event) => event.event_type === "AGENT_STOPPED"));
+  assert.ok(artifactCallbacks.some((batch) => batch.artifacts.some((artifact) => artifact.artifactType === "TRACE")));
   assert.equal(closed, true);
+});
+
+test("[Agent Worker] Agent 실행 실패도 TRACE artifact로 남긴다", async () => {
+  const message = await loadAgentExampleMessage();
+  const task = message.payload.agentTask;
+  task.budget.max_steps = 1;
+  task.artifact_policy = {
+    capture_screenshots: false,
+    capture_dom_snapshots: false,
+    capture_ax_tree: false,
+    capture_trace: true
+  };
+
+  const traceArtifactContents: string[] = [];
+  let failedPayload: RunnerFailedPayload | null = null;
+  let closed = false;
+
+  const worker = registerAgentWorker({
+    config: createRunnerTestConfig({
+      artifactsRoot: join(tmpdir(), "runner-test-agent-failure-artifacts"),
+      callbackLogFile: join(tmpdir(), "runner-test-agent-failure-callbacks.jsonl")
+    }),
+    browserFactory: {
+      kind: "simulated-playwright",
+      createSession: async ({ plan }) =>
+        createSimulatedSession(plan, {
+          execute: async () => {
+            throw new Error("agent action failed");
+          },
+          settle: async () => createSettledResult(),
+          snapshot: () => createSimulatedPageSnapshot(plan),
+          close: async () => {
+            closed = true;
+          }
+        })
+    },
+    callbackClient: createStubCallbackClient({
+      sendFailed: async (_runId, payload) => {
+        failedPayload = payload;
+      }
+    }),
+    capturePipeline: {
+      collectCheckpoint: async () => {
+        throw new Error("checkpoint collection should not run when action fails before checkpoint");
+      }
+    },
+    artifactStore: {
+      persistArtifacts: async ({ runId, artifacts }) =>
+        artifacts.map((artifact) => {
+          if (artifact.artifactType === "TRACE") {
+            traceArtifactContents.push(artifact.content);
+          }
+          return {
+            artifactId: artifact.artifactId,
+            artifactType: artifact.artifactType,
+            bucket: "local-runner",
+            key: `runs/${runId}/${artifact.stepKey}/${artifact.artifactId}.${artifact.fileExtension}`,
+            mimeType: artifact.mimeType,
+            width: artifact.width,
+            height: artifact.height,
+            sizeBytes: artifact.content.length,
+            sha256: "test-sha256",
+            createdAt: new Date(0).toISOString(),
+            stepKey: artifact.stepKey
+          };
+        })
+    }
+  });
+
+  await assert.rejects(() => worker.handleMessage(message), /agent action failed/);
+  assert.equal(closed, true);
+  if (failedPayload === null) {
+    throw new Error("failed payload was not captured");
+  }
+
+  assert.equal((failedPayload as RunnerFailedPayload).failureCode, "RUNNER_EXECUTION_FAILED");
+  assert.equal(traceArtifactContents.length, 1);
+  const trace = JSON.parse(traceArtifactContents[0]) as AgentTrace;
+  assert.equal(trace.final_outcome, "FAILED_ACTION_ERROR");
+  assert.ok(trace.events.some((event) => event.event_type === "AGENT_ACTION_FAILED"));
+  assert.ok(trace.events.some((event) => event.event_type === "AGENT_FAILED"));
 });
