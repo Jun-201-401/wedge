@@ -46,6 +46,7 @@ Canonical machine-readable contracts belong here. Human-readable design rational
 - Runner Agent Runtime examples:
   - `examples/sample-agent-execute-checkout-entry.request.json`
   - `examples/sample-agent-trace-checkout-entry.json`
+  - Successful AgentTrace executions may also produce replay `ScenarioPlan` artifacts using the existing `schemas/scenario-plan.schema.json` contract.
 - `mq/messages.schema.json`: RabbitMQ common envelope and message type contract; this is the canonical MQ source
 - `mq/run.execute.request.schema.json`: thin `$ref` entrypoint to `messages.schema.json#/$defs/RunExecutePayload`
 - `mq/agent.execute.request.schema.json`: thin `$ref` entrypoint for AgentExecutePayload

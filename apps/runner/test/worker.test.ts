@@ -255,6 +255,7 @@ test("[Agent Worker] AgentTask로 CTA 후보를 관찰해 클릭한다", async (
 
   const executedActions: string[] = [];
   const traceArtifactContents: string[] = [];
+  const replayPlanArtifactContents: string[] = [];
   const artifactCallbacks: ArtifactBatch[] = [];
   let currentUrl = task.start_url;
   let loaded = false;
@@ -336,6 +337,9 @@ test("[Agent Worker] AgentTask로 CTA 후보를 관찰해 클릭한다", async (
           if (artifact.artifactType === "TRACE") {
             traceArtifactContents.push(artifact.content);
           }
+          if (artifact.stepKey === "agent_replay_plan") {
+            replayPlanArtifactContents.push(artifact.content);
+          }
           return {
             artifactId: artifact.artifactId,
             artifactType: artifact.artifactType,
@@ -359,6 +363,10 @@ test("[Agent Worker] AgentTask로 CTA 후보를 관찰해 클릭한다", async (
   assert.equal(result.summary.completedStepCount, 2);
   assert.equal(result.summary.stopped, true);
   assert.equal(traceArtifactContents.length, 1);
+  assert.equal(replayPlanArtifactContents.length, 1);
+  const replayPlan = JSON.parse(replayPlanArtifactContents[0]);
+  assert.equal(replayPlan.scenario_type, "custom_compiled");
+  assert.deepEqual(replayPlan.steps.map((step: any) => step.action.type), ["goto", "click"]);
   const trace = JSON.parse(traceArtifactContents[0]) as AgentTrace;
   assert.equal(trace.run_id, task.run_id);
   assert.equal(trace.task_id, task.task_id);
@@ -372,6 +380,7 @@ test("[Agent Worker] AgentTask로 CTA 후보를 관찰해 클릭한다", async (
   assert.ok(trace.events.some((event) => event.event_type === "AGENT_VERIFICATION_COMPLETED"));
   assert.ok(trace.events.some((event) => event.event_type === "AGENT_STOPPED"));
   assert.ok(artifactCallbacks.some((batch) => batch.artifacts.some((artifact) => artifact.artifactType === "TRACE")));
+  assert.ok(artifactCallbacks.some((batch) => batch.artifacts.some((artifact) => artifact.stepKey === "agent_replay_plan")));
   assert.equal(closed, true);
 });
 

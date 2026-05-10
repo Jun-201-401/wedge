@@ -2,6 +2,8 @@ import {
   AgentExecutionError,
   createAgentRuntimePlan,
   executeAgentRun,
+  exportAgentTraceToScenarioPlan,
+  persistAgentReplayPlanArtifact,
   persistAgentTraceArtifact
 } from "../agent/index.ts";
 import type { BrowserSessionFactory } from "../browser/playwright/index.ts";
@@ -85,6 +87,19 @@ export function registerAgentWorker({
             callbackClient
           })
           : [];
+        const replayPlanExport = exportAgentTraceToScenarioPlan({
+          task,
+          trace: executionResult.trace
+        });
+        const replayPlanDeliveryIssues = replayPlanExport
+          ? await persistAgentReplayPlanArtifact({
+            runId: task.run_id,
+            traceId: executionResult.trace.trace_id,
+            plan: replayPlanExport.plan,
+            artifactStore,
+            callbackClient
+          })
+          : [];
 
         const finishedDeliveryIssues = await emitFinishedCallback({
           callbackClient,
@@ -99,7 +114,7 @@ export function registerAgentWorker({
           browserSessionId: session.id,
           summary: executionResult.summary,
           delivery: createDeliverySummary(
-            mergeDeliveryIssues(executionResult.delivery.issues, traceDeliveryIssues, finishedDeliveryIssues)
+            mergeDeliveryIssues(executionResult.delivery.issues, traceDeliveryIssues, replayPlanDeliveryIssues, finishedDeliveryIssues)
           )
         };
       } catch (error) {
