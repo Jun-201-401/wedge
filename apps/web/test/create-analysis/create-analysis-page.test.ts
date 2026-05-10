@@ -197,6 +197,7 @@ test('create analysis ready screen uses an agent card layout', () => {
   assert.match(source, /className="ready-agent"/);
   assert.match(source, /분석 시작 준비 완료/);
   assert.match(source, /선택한 흐름으로 바로 진단을 시작할 수 있어요/);
+  assert.doesNotMatch(source, /ready-agent__header-icon/);
   assert.doesNotMatch(source, /selectedDepth=\{selectedDepth\}/);
   assert.match(source, /className="ready-agent__summary-grid"/);
   assert.match(source, /className="ready-agent__launch-plan"/);

@@ -613,13 +613,6 @@ function ReadyAgent({ submittedUrl, selectedScenario, isCreatingRun, runStartErr
       <div className="ready-agent">
         <div className="ready-agent__header">
           <div className="ready-agent__header-main">
-            <div className="ready-agent__header-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24" fill="none">
-                <path d="M12 3.5 19.5 7.75v8.5L12 20.5l-7.5-4.25v-8.5L12 3.5Z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
-                <path d="m8.5 12 2.25 2.25L15.75 9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </div>
-
             <div className="ready-agent__header-copy">
               <p>분석 시작</p>
               <h2 id="ready-title">분석 시작 준비 완료</h2>
