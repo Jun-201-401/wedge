@@ -10,7 +10,7 @@ body {
   margin: 0;
   min-width: 320px;
   background: #fff;
-  font-family: 'Inter', sans-serif;
+  font-family: 'Pretendard Variable', Pretendard, 'Inter', sans-serif;
   -webkit-font-smoothing: antialiased;
   overflow-x: hidden;
   overflow-x: clip;
@@ -27,6 +27,8 @@ a {
 }
 
 button,
-input {
+input,
+select,
+textarea {
   font: inherit;
 }
