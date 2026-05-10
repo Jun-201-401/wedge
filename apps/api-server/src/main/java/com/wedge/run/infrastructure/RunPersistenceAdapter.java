@@ -74,6 +74,20 @@ public class RunPersistenceAdapter {
         return runMapper.findById(runId).map(this::toExecutionRequestSource);
     }
 
+    public Optional<Map<String, Object>> findLatestSuccessfulAgentTraceForReplay(RunExecutionRequestSource source) {
+        return runMapper.findLatestSuccessfulAgentTraceJsonForReplay(
+                        source.projectId(),
+                        source.startUrl().toString(),
+                        source.goal(),
+                        source.id()
+                )
+                .map(rawJson -> readJsonMap(rawJson, "Stored AgentTrace replay payload is invalid"));
+    }
+
+    public int nextAgentAttemptIndex(UUID runId) {
+        return runMapper.countAgentTraces(runId) + 1;
+    }
+
     public RunResponse createRun(RunCreateRequest request) {
         RunRecord record = RunRecord.created(request);
         record.setScenarioPlanSchemaVersion(resolveScenarioPlanSchemaVersion(request.scenarioPlan()));

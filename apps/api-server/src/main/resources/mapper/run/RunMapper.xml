@@ -366,6 +366,26 @@
         ON CONFLICT (run_id, agent_event_id) DO NOTHING
     </insert>
 
+    <select id="findLatestSuccessfulAgentTraceJsonForReplay" resultType="string">
+        SELECT CAST(t.trace_jsonb AS TEXT) AS trace_jsonb
+        FROM runner_agent_trace t
+        JOIN test_run r ON r.id = t.run_id
+        WHERE r.project_id = #{projectId}
+          AND r.start_url = #{startUrl}
+          AND COALESCE(r.goal, '') = COALESCE(#{goal}, '')
+          AND r.deleted_at IS NULL
+          AND t.run_id != #{excludeRunId}
+          AND t.final_outcome LIKE 'SUCCESS\_%' ESCAPE '\'
+        ORDER BY t.finished_at DESC NULLS LAST, t.created_at DESC
+        LIMIT 1
+    </select>
+
+    <select id="countAgentTraces" resultType="int">
+        SELECT COUNT(*)
+        FROM runner_agent_trace
+        WHERE run_id = #{runId}
+    </select>
+
     <insert id="insertAgentTrace">
         INSERT INTO runner_agent_trace (
             id,

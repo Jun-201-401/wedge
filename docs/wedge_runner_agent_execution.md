@@ -686,6 +686,7 @@ Runner Agent 전환이 최소 성공했다고 볼 수 있는 기준:
 - Agent policy가 final payment/order/destructive/external 위험 행동을 실행 전 차단하고 `policy_results`에 기록
 - 성공한 AgentTrace를 deterministic replay용 `ScenarioPlan` artifact로 export
 - `AgentTask.replay_hints` 계약과 `ReplayHintPlanner`를 추가해, 이전 성공 경로를 먼저 시도하고 소진/부적합/실행 실패 시 rule-based planner로 fallback
+- Spring API가 `/api/runs/{runId}/agent/start`에서 `agent.execute.request`를 발행하고, 이전 성공 AgentTrace를 `AgentTask.replay_hints`로 주입
 - callback contract와 Runner/Spring skeleton에 정식 agent-specific `agent-events` / `agent-traces` endpoint 추가
 
 아직 수행하지 않은 작업:

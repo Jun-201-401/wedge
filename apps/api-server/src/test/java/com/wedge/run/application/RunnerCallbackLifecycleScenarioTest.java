@@ -75,6 +75,7 @@ class RunnerCallbackLifecycleScenarioTest {
         runService = new RunService(
                 runPersistenceAdapter,
                 new RunExecuteRequestMessageFactory(),
+                new AgentExecuteRequestMessageFactory(new AgentReplayHintsFactory()),
                 outboxMessagePersistenceAdapter,
                 applicationEventPublisher,
                 new ScenarioPlanValidator()
@@ -530,6 +531,16 @@ class RunnerCallbackLifecycleScenarioTest {
                 OffsetDateTime occurredAt
         ) {
             return 1;
+        }
+
+        @Override
+        public Optional<String> findLatestSuccessfulAgentTraceJsonForReplay(UUID projectId, String startUrl, String goal, UUID excludeRunId) {
+            return Optional.empty();
+        }
+
+        @Override
+        public int countAgentTraces(UUID runId) {
+            return 0;
         }
 
         @Override

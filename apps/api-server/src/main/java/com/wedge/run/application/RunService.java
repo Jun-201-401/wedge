@@ -25,6 +25,7 @@ public class RunService {
 
     private final RunPersistenceAdapter runPersistenceAdapter;
     private final RunExecuteRequestMessageFactory runExecuteRequestMessageFactory;
+    private final AgentExecuteRequestMessageFactory agentExecuteRequestMessageFactory;
     private final OutboxMessagePersistenceAdapter outboxMessagePersistenceAdapter;
     private final ApplicationEventPublisher applicationEventPublisher;
     private final ScenarioPlanValidator scenarioPlanValidator;
@@ -124,6 +125,24 @@ public class RunService {
         RunExecuteRequestMessage message = runExecuteRequestMessageFactory.create(executionRequestSource);
         UUID outboxMessageId = outboxMessagePersistenceAdapter.appendRunExecuteMessage(message);
         applicationEventPublisher.publishEvent(new RunExecuteOutboxEnqueuedEvent(outboxMessageId));
+        return queued;
+    }
+
+    @Transactional
+    public RunResponse startAgentRun(UUID runId) {
+        RunResponse current = getRun(runId);
+        RunExecutionRequestSource executionRequestSource = runPersistenceAdapter.findExecutionRequestSource(runId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.RUN_NOT_FOUND));
+        RunStatusTransitionPolicy.validateTransition(current.status(), RunStatus.QUEUED);
+
+        RunResponse queued = runPersistenceAdapter.updateExecutionState(current, RunStatus.QUEUED, ResultCompleteness.NONE);
+        AgentExecuteRequestMessage message = agentExecuteRequestMessageFactory.create(
+                executionRequestSource,
+                runPersistenceAdapter.findLatestSuccessfulAgentTraceForReplay(executionRequestSource),
+                runPersistenceAdapter.nextAgentAttemptIndex(runId)
+        );
+        UUID outboxMessageId = outboxMessagePersistenceAdapter.appendAgentExecuteMessage(message);
+        applicationEventPublisher.publishEvent(new AgentExecuteOutboxEnqueuedEvent(outboxMessageId));
         return queued;
     }
 

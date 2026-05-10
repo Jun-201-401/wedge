@@ -236,6 +236,7 @@ GET    /api/runs
 GET    /api/runs/{runId}
 DELETE /api/runs/{runId}
 POST   /api/runs/{runId}/start
+POST   /api/runs/{runId}/agent/start
 POST   /api/runs/{runId}/stop
 GET    /api/runs/{runId}/live
 GET    /api/runs/{runId}/steps
@@ -510,6 +511,21 @@ Response:
   }
 }
 ```
+
+### Agent Run 시작
+
+```http
+POST /api/runs/{runId}/agent/start
+Idempotency-Key: idem_start_agent_run_001
+```
+
+동작:
+
+- CREATED 상태의 Run을 QUEUED로 전환한다.
+- `agent.execute.request` outbox/MQ 메시지를 발행한다.
+- 같은 project/startUrl/goal의 이전 성공 AgentTrace가 있으면 `AgentTask.replay_hints`로 주입한다.
+
+Response는 일반 Run 시작과 같은 `AckResponse` shape를 사용한다.
 
 ### Report share 생성
 

@@ -105,6 +105,15 @@ public interface RunMapper {
             @Param("occurredAt") OffsetDateTime occurredAt
     );
 
+    Optional<String> findLatestSuccessfulAgentTraceJsonForReplay(
+            @Param("projectId") UUID projectId,
+            @Param("startUrl") String startUrl,
+            @Param("goal") String goal,
+            @Param("excludeRunId") UUID excludeRunId
+    );
+
+    int countAgentTraces(@Param("runId") UUID runId);
+
     int insertAgentTrace(
             @Param("id") UUID id,
             @Param("runId") UUID runId,

@@ -776,6 +776,39 @@ paths:
           $ref: '#/components/responses/Conflict'
         '422':
           $ref: '#/components/responses/ValidationError'
+  /api/runs/{runId}/agent/start:
+    post:
+      tags:
+      - Runs
+      operationId: startAgentRun
+      summary: Agent 실행 시작
+      description: CREATED 상태의 Run을 QUEUED로 전환하고 AgentTask 기반 Runner Agent 실행 요청 outbox를 발행한다. 이전 성공 AgentTrace가 있으면 replay_hints로 주입한다.
+      security:
+      - HumanBearer: []
+      parameters:
+      - $ref: '#/components/parameters/RunId'
+      - name: Idempotency-Key
+        in: header
+        required: false
+        schema:
+          type: string
+      responses:
+        '202':
+          description: Agent run start accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AckResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
   /api/runs/{runId}/stop:
     post:
       tags:
