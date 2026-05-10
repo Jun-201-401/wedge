@@ -1,6 +1,7 @@
 import {
   AgentExecutionError,
   createAgentRuntimePlan,
+  emitAgentTraceCallbacks,
   executeAgentRun,
   exportAgentTraceToScenarioPlan,
   persistAgentReplayPlanArtifact,
@@ -79,6 +80,11 @@ export function registerAgentWorker({
           artifactStore
         });
 
+        const agentCallbackDeliveryIssues = await emitAgentTraceCallbacks({
+          runId: task.run_id,
+          trace: executionResult.trace,
+          callbackClient
+        });
         const traceDeliveryIssues = shouldPersistAgentTrace(task)
           ? await persistAgentTraceArtifact({
             runId: task.run_id,
@@ -114,7 +120,13 @@ export function registerAgentWorker({
           browserSessionId: session.id,
           summary: executionResult.summary,
           delivery: createDeliverySummary(
-            mergeDeliveryIssues(executionResult.delivery.issues, traceDeliveryIssues, replayPlanDeliveryIssues, finishedDeliveryIssues)
+            mergeDeliveryIssues(
+              executionResult.delivery.issues,
+              agentCallbackDeliveryIssues,
+              traceDeliveryIssues,
+              replayPlanDeliveryIssues,
+              finishedDeliveryIssues
+            )
           )
         };
       } catch (error) {
@@ -142,22 +154,30 @@ export function registerAgentWorker({
           "error"
         );
 
-        if (error instanceof AgentExecutionError && shouldPersistAgentTrace(task)) {
-          const traceDeliveryIssues = await persistAgentTraceArtifact({
+        if (error instanceof AgentExecutionError) {
+          const agentCallbackDeliveryIssues = await emitAgentTraceCallbacks({
             runId: task.run_id,
             trace: error.trace,
-            artifactStore,
             callbackClient
           });
-          if (traceDeliveryIssues.length > 0) {
+          const traceDeliveryIssues = shouldPersistAgentTrace(task)
+            ? await persistAgentTraceArtifact({
+              runId: task.run_id,
+              trace: error.trace,
+              artifactStore,
+              callbackClient
+            })
+            : [];
+          const deliveryIssues = mergeDeliveryIssues(agentCallbackDeliveryIssues, traceDeliveryIssues);
+          if (deliveryIssues.length > 0) {
             logOperationalEvent(
               "agent-worker",
               "failed_trace_delivery_issues",
               {
                 runId: task.run_id,
                 taskId: task.task_id,
-                issueCount: traceDeliveryIssues.length,
-                issues: traceDeliveryIssues
+                issueCount: deliveryIssues.length,
+                issues: deliveryIssues
               },
               "warn"
             );

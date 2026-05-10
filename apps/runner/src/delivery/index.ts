@@ -5,6 +5,8 @@ export interface DeliveryIssue {
     | "step-events"
     | "artifact-storage"
     | "artifacts-callback"
+    | "agent-events-callback"
+    | "agent-trace-callback"
     | "checkpoints-callback"
     | "finished-callback";
   stepKey?: string;

@@ -685,10 +685,10 @@ Runner Agent 전환이 최소 성공했다고 볼 수 있는 기준:
 - Agent 실행 결과를 `TRACE` artifact로 저장하고 artifact callback으로 전달
 - Agent policy가 final payment/order/destructive/external 위험 행동을 실행 전 차단하고 `policy_results`에 기록
 - 성공한 AgentTrace를 deterministic replay용 `ScenarioPlan` artifact로 export
+- callback contract와 Runner/Spring skeleton에 정식 agent-specific `agent-events` / `agent-traces` endpoint 추가
 
 아직 수행하지 않은 작업:
 
-- callback contract에 정식 agent-specific event/trace endpoint 추가
 - LLM planner 및 replay-hint planner 구현
 
 새 구현을 시작할 때는 `docs/runner_agent_runtime_implementation_plan.md`를 기준으로 contract-first 순서를 따른다.

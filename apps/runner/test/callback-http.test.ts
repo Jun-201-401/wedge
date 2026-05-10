@@ -205,6 +205,97 @@ test("createCallbackClient sends discovery callbacks to discovery endpoint", asy
   }
 });
 
+test("createCallbackClient sends agent callbacks to run-scoped agent endpoints", async () => {
+  const received: Array<{ url: string; body: string }> = [];
+  const server = createServer((request, response) => {
+    let body = "";
+    request.setEncoding("utf8");
+    request.on("data", (chunk) => {
+      body += chunk;
+    });
+    request.on("end", () => {
+      received.push({ url: request.url ?? "", body });
+      response.writeHead(200, {
+        "content-type": "application/json"
+      });
+      response.end(JSON.stringify({ accepted: true }));
+    });
+  });
+
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      server.off("error", reject);
+      resolve();
+    });
+  });
+
+  try {
+    const address = server.address();
+    assert.ok(address && typeof address !== "string");
+
+    const callbackClient = createCallbackClient(
+      createRunnerTestConfig({
+        callbackMode: "http",
+        callbackBaseUrl: `http://127.0.0.1:${address.port}`
+      })
+    );
+
+    await callbackClient.sendAgentEvents("run-1", {
+      events: [
+        {
+          schema_version: "0.1",
+          event_id: "event-1",
+          task_id: "00000000-0000-4000-8000-000000000001",
+          attempt_id: "00000000-0000-4000-8000-000000000002",
+          run_id: "run-1",
+          step_index: 1,
+          event_type: "AGENT_STOPPED",
+          occurred_at: "2026-05-06T00:00:00.000Z",
+          payload: {
+            final_outcome: "SUCCESS_CHECKOUT_ENTRY_REACHED"
+          }
+        }
+      ]
+    });
+    await callbackClient.sendAgentTrace("run-1", {
+      trace: {
+        schema_version: "0.1",
+        trace_id: "00000000-0000-4000-8000-000000000003",
+        task_id: "00000000-0000-4000-8000-000000000001",
+        attempt_id: "00000000-0000-4000-8000-000000000002",
+        run_id: "run-1",
+        started_at: "2026-05-06T00:00:00.000Z",
+        finished_at: "2026-05-06T00:00:01.000Z",
+        final_outcome: "SUCCESS_CHECKOUT_ENTRY_REACHED",
+        events: [],
+        observations: [],
+        decisions: [],
+        policy_results: [],
+        verification_results: [],
+        artifact_refs: []
+      }
+    });
+
+    assert.deepEqual(received.map((request) => request.url), [
+      "/internal/runner/runs/run-1/agent-events",
+      "/internal/runner/runs/run-1/agent-traces"
+    ]);
+    assert.match(received[0]?.body ?? "", /"event_type":"AGENT_STOPPED"/);
+    assert.match(received[1]?.body ?? "", /"trace_id":"00000000-0000-4000-8000-000000000003"/);
+  } finally {
+    await new Promise<void>((resolve, reject) => {
+      server.close((error) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+        resolve();
+      });
+    });
+  }
+});
+
 test("[콜백:http] 비정상 HTTP 응답은 callback 실패로 처리하고 outbox에 남긴다", async () => {
   const server = createServer((_request, response) => {
     response.writeHead(409, {

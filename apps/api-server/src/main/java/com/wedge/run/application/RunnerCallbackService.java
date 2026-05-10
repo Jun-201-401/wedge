@@ -11,6 +11,8 @@ import com.wedge.evidence.application.command.SaveRunCheckpointsCommand;
 import com.wedge.evidence.domain.ArtifactType;
 import com.wedge.run.api.dto.RunResponse;
 import com.wedge.run.application.command.RunnerAcceptedCommand;
+import com.wedge.run.application.command.RunnerAgentEventsCommand;
+import com.wedge.run.application.command.RunnerAgentTraceCommand;
 import com.wedge.run.application.command.RunnerArtifactCommand;
 import com.wedge.run.application.command.RunnerArtifactsCommand;
 import com.wedge.common.internal.InternalCallbackContext;
@@ -39,6 +41,8 @@ public class RunnerCallbackService {
     private static final String ARTIFACTS_CONSUMER = "runner.artifacts";
     private static final String FINISHED_CONSUMER = "runner.finished";
     private static final String FAILED_CONSUMER = "runner.failed";
+    private static final String AGENT_EVENTS_CONSUMER = "runner.agent-events";
+    private static final String AGENT_TRACES_CONSUMER = "runner.agent-traces";
 
     private final RunService runService;
     private final RunPersistenceAdapter runPersistenceAdapter;
@@ -140,6 +144,31 @@ public class RunnerCallbackService {
 
         RunResponse run = runService.failRun(runId, command.failureCode(), command.failureMessage(), command.resultCompleteness());
         return RunnerCallbackAckResponse.terminal(run);
+    }
+
+    @Transactional
+    public RunnerCallbackAckResponse handleAgentEvents(UUID runId, RunnerAgentEventsCommand command, InternalCallbackContext context) {
+        context.validateRequired();
+
+        if (isDuplicate(AGENT_EVENTS_CONSUMER, context.eventId())) {
+            RunResponse run = runService.getRun(runId);
+            return RunnerCallbackAckResponse.stepEvents(run, command.events().size()).withEventCount(command.events().size());
+        }
+
+        RunResponse run = runService.getRun(runId);
+        return RunnerCallbackAckResponse.stepEvents(run, command.events().size());
+    }
+
+    @Transactional
+    public RunnerCallbackAckResponse handleAgentTrace(UUID runId, RunnerAgentTraceCommand command, InternalCallbackContext context) {
+        context.validateRequired();
+
+        if (isDuplicate(AGENT_TRACES_CONSUMER, context.eventId())) {
+            return RunnerCallbackAckResponse.duplicateStatus(runService.getRun(runId));
+        }
+
+        RunResponse run = runService.getRun(runId);
+        return RunnerCallbackAckResponse.accepted(run);
     }
 
     private void applyStepEvent(UUID runId, RunnerStepEventCommand event) {

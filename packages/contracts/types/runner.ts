@@ -281,6 +281,14 @@ export interface AgentTrace {
   outcome?: AgentOutcome;
 }
 
+export interface AgentEventBatch {
+  events: AgentEvent[];
+}
+
+export interface AgentTraceRequest {
+  trace: AgentTrace;
+}
+
 export interface AgentTask {
   schema_version: "0.1";
   task_id: string;

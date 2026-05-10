@@ -2,6 +2,8 @@ package com.wedge.run.api.internal.runner;
 
 import com.wedge.common.response.ApiResponse;
 import com.wedge.run.api.internal.runner.dto.RunnerAcceptedRequest;
+import com.wedge.run.api.internal.runner.dto.RunnerAgentEventsRequest;
+import com.wedge.run.api.internal.runner.dto.RunnerAgentTraceRequest;
 import com.wedge.run.api.internal.runner.dto.RunnerArtifactsRequest;
 import com.wedge.run.api.internal.runner.dto.RunnerCheckpointsRequest;
 import com.wedge.run.api.internal.runner.dto.RunnerFailedRequest;
@@ -11,6 +13,9 @@ import com.wedge.run.api.internal.runner.dto.RunnerStepEventsRequest;
 import com.wedge.run.application.RunnerCallbackAckResponse;
 import com.wedge.run.application.RunnerCallbackService;
 import com.wedge.run.application.command.RunnerAcceptedCommand;
+import com.wedge.run.application.command.RunnerAgentEventCommand;
+import com.wedge.run.application.command.RunnerAgentEventsCommand;
+import com.wedge.run.application.command.RunnerAgentTraceCommand;
 import com.wedge.run.application.command.RunnerArtifactCommand;
 import com.wedge.run.application.command.RunnerArtifactsCommand;
 import com.wedge.common.internal.InternalCallbackContext;
@@ -104,6 +109,28 @@ public class RunnerCallbackController {
         return ApiResponse.ok(runnerCallbackService.handleFailed(runId, toFailedCommand(request), callbackContext(workerId, eventId, signature)));
     }
 
+    @PostMapping("/agent-events")
+    public ResponseEntity<ApiResponse<RunnerCallbackAckResponse>> handleRunnerAgentEvents(
+            @PathVariable UUID runId,
+            @Valid @RequestBody RunnerAgentEventsRequest request,
+            @RequestHeader("X-Worker-Id") String workerId,
+            @RequestHeader("X-Event-Id") String eventId,
+            @RequestHeader("X-Signature") String signature
+    ) {
+        return ApiResponse.ok(runnerCallbackService.handleAgentEvents(runId, toAgentEventsCommand(request), callbackContext(workerId, eventId, signature)));
+    }
+
+    @PostMapping("/agent-traces")
+    public ResponseEntity<ApiResponse<RunnerCallbackAckResponse>> handleRunnerAgentTrace(
+            @PathVariable UUID runId,
+            @Valid @RequestBody RunnerAgentTraceRequest request,
+            @RequestHeader("X-Worker-Id") String workerId,
+            @RequestHeader("X-Event-Id") String eventId,
+            @RequestHeader("X-Signature") String signature
+    ) {
+        return ApiResponse.ok(runnerCallbackService.handleAgentTrace(runId, new RunnerAgentTraceCommand(request.trace()), callbackContext(workerId, eventId, signature)));
+    }
+
     private RunnerAcceptedCommand toAcceptedCommand(RunnerAcceptedRequest request) {
         return new RunnerAcceptedCommand(request.workerId(), request.acceptedAt(), request.browserSessionId());
     }
@@ -182,6 +209,22 @@ public class RunnerCallbackController {
                 summary == null ? null : summary.failedStepCount(),
                 summary == null ? null : summary.stopped()
         );
+    }
+
+    private RunnerAgentEventsCommand toAgentEventsCommand(RunnerAgentEventsRequest request) {
+        return new RunnerAgentEventsCommand(request.events().stream()
+                .map(event -> new RunnerAgentEventCommand(
+                        event.schemaVersion(),
+                        event.eventId(),
+                        event.taskId(),
+                        event.attemptId(),
+                        event.runId(),
+                        event.stepIndex(),
+                        event.eventType(),
+                        event.occurredAt(),
+                        event.payload()
+                ))
+                .toList());
     }
 
     private InternalCallbackContext callbackContext(String workerId, String eventId, String signature) {

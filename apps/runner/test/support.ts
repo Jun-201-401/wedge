@@ -12,6 +12,8 @@ import type { RunnerConfig } from "../src/config/index.ts";
 import { parseAgentExecuteMessage, parseRunExecuteMessage } from "../src/messaging/index.ts";
 import type {
   AgentExecuteMessage,
+  AgentEventBatch,
+  AgentTraceRequest,
   ArtifactBatch,
   RunExecuteMessage,
   RunnerAcceptedPayload,
@@ -199,6 +201,8 @@ export function createStubCallbackClient(overrides: Partial<StubCallbackClient> 
     sendCheckpoints: async () => {},
     sendFinished: async () => {},
     sendFailed: async () => {},
+    sendAgentEvents: async () => {},
+    sendAgentTrace: async () => {},
     ...overrides
   };
 }
@@ -210,4 +214,6 @@ export interface StubCallbackClient {
   sendCheckpoints: (runId: string, payload: RunnerCheckpointsRequest) => Promise<void>;
   sendFinished: (runId: string, payload: RunnerFinishedPayload) => Promise<void>;
   sendFailed: (runId: string, payload: RunnerFailedPayload) => Promise<void>;
+  sendAgentEvents: (runId: string, payload: AgentEventBatch) => Promise<void>;
+  sendAgentTrace: (runId: string, payload: AgentTraceRequest) => Promise<void>;
 }

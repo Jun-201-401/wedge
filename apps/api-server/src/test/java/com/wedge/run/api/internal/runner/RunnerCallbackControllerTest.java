@@ -19,6 +19,8 @@ import com.wedge.run.api.internal.runner.dto.RunnerArtifactType;
 import com.wedge.run.application.RunnerCallbackAckResponse;
 import com.wedge.run.application.RunnerCallbackService;
 import com.wedge.run.application.command.RunnerAcceptedCommand;
+import com.wedge.run.application.command.RunnerAgentEventsCommand;
+import com.wedge.run.application.command.RunnerAgentTraceCommand;
 import com.wedge.run.application.command.RunnerArtifactsCommand;
 import com.wedge.common.internal.InternalCallbackContext;
 import com.wedge.run.application.command.RunnerCheckpointsCommand;
@@ -218,6 +220,69 @@ class RunnerCallbackControllerTest {
     }
 
     @Test
+    void agentEventsCallbackMapsRequestToCommand() throws Exception {
+        UUID runId = UUID.randomUUID();
+        UUID taskId = UUID.randomUUID();
+        UUID attemptId = UUID.randomUUID();
+        when(runnerCallbackService.handleAgentEvents(eq(runId), any(), any()))
+                .thenReturn(new RunnerCallbackAckResponse(runId, RunStatus.RUNNING, null, 1, null, null, null));
+
+        postJson(runId, "agent-events", "req_agent_events", "evt_agent_batch_001", Map.of(
+                        "events", List.of(Map.of(
+                                "schema_version", "0.1",
+                                "event_id", "agent-event-1",
+                                "task_id", taskId.toString(),
+                                "attempt_id", attemptId.toString(),
+                                "run_id", runId.toString(),
+                                "step_index", 1,
+                                "event_type", "AGENT_STOPPED",
+                                "occurred_at", "2026-05-06T09:00:00+09:00",
+                                "payload", Map.of("final_outcome", "SUCCESS_CHECKOUT_ENTRY_REACHED")
+                        ))
+                ))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.eventCount").value(1));
+
+        ArgumentCaptor<RunnerAgentEventsCommand> commandCaptor = ArgumentCaptor.forClass(RunnerAgentEventsCommand.class);
+        verify(runnerCallbackService).handleAgentEvents(eq(runId), commandCaptor.capture(), any());
+        assertThat(commandCaptor.getValue().events()).singleElement().satisfies(event -> {
+            assertThat(event.schemaVersion()).isEqualTo("0.1");
+            assertThat(event.eventId()).isEqualTo("agent-event-1");
+            assertThat(event.taskId()).isEqualTo(taskId);
+            assertThat(event.attemptId()).isEqualTo(attemptId);
+            assertThat(event.runId()).isEqualTo(runId);
+            assertThat(event.stepIndex()).isEqualTo(1);
+            assertThat(event.eventType()).isEqualTo("AGENT_STOPPED");
+            assertThat(event.occurredAt().toString()).isEqualTo("2026-05-06T00:00Z");
+            assertThat(event.payload()).isEqualTo(Map.of("final_outcome", "SUCCESS_CHECKOUT_ENTRY_REACHED"));
+        });
+    }
+
+    @Test
+    void agentTraceCallbackMapsRequestToCommand() throws Exception {
+        UUID runId = UUID.randomUUID();
+        UUID traceId = UUID.randomUUID();
+        when(runnerCallbackService.handleAgentTrace(eq(runId), any(), any()))
+                .thenReturn(new RunnerCallbackAckResponse(runId, RunStatus.RUNNING, null, null, null, null, null));
+
+        postJson(runId, "agent-traces", "req_agent_trace", "evt_agent_trace_001", Map.of(
+                        "trace", Map.of(
+                                "schema_version", "0.1",
+                                "trace_id", traceId.toString(),
+                                "run_id", runId.toString(),
+                                "final_outcome", "SUCCESS_CHECKOUT_ENTRY_REACHED",
+                                "events", List.of()
+                        )
+                ))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.runId").value(runId.toString()));
+
+        ArgumentCaptor<RunnerAgentTraceCommand> commandCaptor = ArgumentCaptor.forClass(RunnerAgentTraceCommand.class);
+        verify(runnerCallbackService).handleAgentTrace(eq(runId), commandCaptor.capture(), any());
+        assertThat(commandCaptor.getValue().trace()).containsEntry("trace_id", traceId.toString());
+    }
+
+    @Test
     void emptyCallbackBatchesAreRejectedBeforeService() throws Exception {
         UUID runId = UUID.randomUUID();
 
@@ -226,6 +291,8 @@ class RunnerCallbackControllerTest {
         postJson(runId, "checkpoints", "req_empty_checkpoints", "evt_empty_checkpoints", Map.of("checkpoints", List.of()))
                 .andExpect(status().isUnprocessableEntity());
         postJson(runId, "artifacts", "req_empty_artifacts", "evt_empty_artifacts", Map.of("artifacts", List.of()))
+                .andExpect(status().isUnprocessableEntity());
+        postJson(runId, "agent-events", "req_empty_agent_events", "evt_empty_agent_events", Map.of("events", List.of()))
                 .andExpect(status().isUnprocessableEntity());
 
         verifyNoInteractions(runnerCallbackService);

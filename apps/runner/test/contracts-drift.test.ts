@@ -92,6 +92,10 @@ test("[계약 동기화] runner callback literal이 packages/contracts callback 
     callbackSchema,
     callbackSchema.$defs.Checkpoint.properties.stage
   );
+  assert.equal(callbackSchema.$defs.AgentEventBatch.properties.events.items.$ref, "../schemas/agent-event.schema.json");
+  assert.equal(callbackSchema.$defs.AgentTraceRequest.properties.trace.$ref, "../schemas/agent-trace.schema.json");
+  assert.ok(runnerTypesSource.includes("export interface AgentEventBatch"));
+  assert.ok(runnerTypesSource.includes("export interface AgentTraceRequest"));
 });
 
 test("[계약 동기화] AgentTrace TS mirror가 packages/contracts trace schema와 어긋나지 않는다", async () => {

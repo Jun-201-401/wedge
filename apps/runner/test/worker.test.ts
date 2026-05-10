@@ -257,6 +257,8 @@ test("[Agent Worker] AgentTask로 CTA 후보를 관찰해 클릭한다", async (
   const traceArtifactContents: string[] = [];
   const replayPlanArtifactContents: string[] = [];
   const artifactCallbacks: ArtifactBatch[] = [];
+  const agentEventCallbacks: AgentTrace["events"][] = [];
+  const agentTraceCallbacks: AgentTrace[] = [];
   let currentUrl = task.start_url;
   let loaded = false;
   let closed = false;
@@ -324,6 +326,12 @@ test("[Agent Worker] AgentTask로 CTA 후보를 관찰해 클릭한다", async (
     callbackClient: createStubCallbackClient({
       sendArtifacts: async (_runId, payload) => {
         artifactCallbacks.push(payload);
+      },
+      sendAgentEvents: async (_runId, payload) => {
+        agentEventCallbacks.push(payload.events);
+      },
+      sendAgentTrace: async (_runId, payload) => {
+        agentTraceCallbacks.push(payload.trace);
       }
     }),
     capturePipeline: {
@@ -379,6 +387,10 @@ test("[Agent Worker] AgentTask로 CTA 후보를 관찰해 클릭한다", async (
   assert.ok(trace.events.some((event) => event.event_type === "AGENT_ACTION_COMPLETED"));
   assert.ok(trace.events.some((event) => event.event_type === "AGENT_VERIFICATION_COMPLETED"));
   assert.ok(trace.events.some((event) => event.event_type === "AGENT_STOPPED"));
+  assert.equal(agentEventCallbacks.length, 1);
+  assert.equal(agentEventCallbacks[0]?.length, trace.events.length);
+  assert.equal(agentTraceCallbacks.length, 1);
+  assert.equal(agentTraceCallbacks[0]?.trace_id, trace.trace_id);
   assert.ok(artifactCallbacks.some((batch) => batch.artifacts.some((artifact) => artifact.artifactType === "TRACE")));
   assert.ok(artifactCallbacks.some((batch) => batch.artifacts.some((artifact) => artifact.stepKey === "agent_replay_plan")));
   assert.equal(closed, true);
@@ -396,6 +408,7 @@ test("[Agent Worker] Agent 실행 실패도 TRACE artifact로 남긴다", async 
   };
 
   const traceArtifactContents: string[] = [];
+  const agentTraceCallbacks: AgentTrace[] = [];
   let failedPayload: RunnerFailedPayload | null = null;
   let closed = false;
 
@@ -419,6 +432,9 @@ test("[Agent Worker] Agent 실행 실패도 TRACE artifact로 남긴다", async 
         })
     },
     callbackClient: createStubCallbackClient({
+      sendAgentTrace: async (_runId, payload) => {
+        agentTraceCallbacks.push(payload.trace);
+      },
       sendFailed: async (_runId, payload) => {
         failedPayload = payload;
       }
@@ -461,6 +477,8 @@ test("[Agent Worker] Agent 실행 실패도 TRACE artifact로 남긴다", async 
   assert.equal(traceArtifactContents.length, 1);
   const trace = JSON.parse(traceArtifactContents[0]) as AgentTrace;
   assert.equal(trace.final_outcome, "FAILED_ACTION_ERROR");
+  assert.equal(agentTraceCallbacks.length, 1);
+  assert.equal(agentTraceCallbacks[0]?.final_outcome, "FAILED_ACTION_ERROR");
   assert.ok(trace.events.some((event) => event.event_type === "AGENT_ACTION_FAILED"));
   assert.ok(trace.events.some((event) => event.event_type === "AGENT_FAILED"));
 });
