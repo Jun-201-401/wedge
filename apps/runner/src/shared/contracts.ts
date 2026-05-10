@@ -24,6 +24,8 @@ export type {
   AgentGoalType,
   AgentObservationBudget,
   AgentProductSelectionPolicy,
+  AgentReplayHints,
+  AgentReplayHintStep,
   AgentRiskPolicy,
   AgentTask,
   AgentTestData,

@@ -172,6 +172,22 @@ export interface AgentArtifactPolicy {
   capture_trace?: boolean;
 }
 
+export interface AgentReplayHintStep {
+  step_id?: string;
+  stage?: ScenarioStage;
+  description?: string;
+  action: ScenarioAction;
+  settle_strategy?: SettleStrategy;
+  target_key?: string | null;
+  confidence?: number;
+}
+
+export interface AgentReplayHints {
+  source_trace_id?: string | null;
+  source_plan_id?: string | null;
+  steps: AgentReplayHintStep[];
+}
+
 export type AgentEventType =
   | "AGENT_OBSERVATION_CAPTURED"
   | "AGENT_CANDIDATES_EXTRACTED"
@@ -308,6 +324,7 @@ export interface AgentTask {
   risk_policy: AgentRiskPolicy;
   test_data?: AgentTestData;
   artifact_policy?: AgentArtifactPolicy;
+  replay_hints?: AgentReplayHints;
 }
 
 export interface AgentExecuteMessage {

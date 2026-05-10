@@ -396,6 +396,140 @@ test("[Agent Worker] AgentTask로 CTA 후보를 관찰해 클릭한다", async (
   assert.equal(closed, true);
 });
 
+test("[Agent Worker] replay hint 실행 실패 시 rule-based 탐색으로 fallback한다", async () => {
+  const message = await loadAgentExampleMessage();
+  const task = message.payload.agentTask;
+  task.goal = "무료로 시작하기 CTA를 찾아 진입한다";
+  task.budget.max_steps = 4;
+  task.budget.max_same_page_attempts = 0;
+  task.artifact_policy = {
+    capture_screenshots: false,
+    capture_dom_snapshots: false,
+    capture_ax_tree: false,
+    capture_trace: true
+  };
+  task.replay_hints = {
+    source_plan_id: "agent-trace-replay-stale",
+    steps: [
+      {
+        description: "Stale checkout CTA selector",
+        action: {
+          type: "click",
+          target: {
+            selector: "#stale-checkout"
+          }
+        },
+        target_key: "#stale-checkout"
+      }
+    ]
+  };
+
+  const executedTargets: string[] = [];
+  const traceArtifactContents: string[] = [];
+  let currentUrl = task.start_url;
+  let loaded = false;
+
+  const worker = registerAgentWorker({
+    config: createRunnerTestConfig({
+      artifactsRoot: join(tmpdir(), "runner-test-agent-replay-fallback-artifacts"),
+      callbackLogFile: join(tmpdir(), "runner-test-agent-replay-fallback-callbacks.jsonl")
+    }),
+    browserFactory: {
+      kind: "simulated-playwright",
+      createSession: async ({ plan }) =>
+        createSimulatedSession(plan, {
+          execute: async (action) => {
+            const target = action.target && typeof action.target === "object" && "selector" in action.target
+              ? String(action.target.selector)
+              : action.type;
+            executedTargets.push(`${action.type}:${target}`);
+            if (action.type === "goto") {
+              loaded = true;
+              currentUrl = task.start_url;
+            }
+            if (action.type === "click" && target === "#stale-checkout") {
+              throw new Error("stale replay selector");
+            }
+            if (action.type === "click" && target === "#start-free") {
+              currentUrl = "https://example.com/signup";
+            }
+            return {
+              actionType: action.type,
+              targetSummary: target,
+              stopRequested: false,
+              details: {
+                currentUrl
+              }
+            };
+          },
+          settle: async () => createSettledResult(),
+          snapshot: () => createSimulatedPageSnapshot(plan, {
+            currentUrl,
+            finalUrl: currentUrl,
+            interactiveComponents: loaded && currentUrl === task.start_url
+              ? [
+                {
+                  text: "무료로 시작하기",
+                  selector: "#start-free",
+                  role: "link",
+                  tag: "a",
+                  clickable: true,
+                  clicked_in_scenario: false,
+                  is_cta_candidate: true,
+                  is_primary_like: true,
+                  bounds: {
+                    x: 10,
+                    y: 10,
+                    width: 120,
+                    height: 40,
+                    unit: "css_px"
+                  }
+                }
+              ]
+              : []
+          })
+        })
+    },
+    callbackClient: createStubCallbackClient(),
+    capturePipeline: {
+      collectCheckpoint: async () => {
+        throw new Error("checkpoint collection should not run when capture_screenshots is false");
+      }
+    },
+    artifactStore: {
+      persistArtifacts: async ({ runId, artifacts }) =>
+        artifacts.map((artifact) => {
+          if (artifact.artifactType === "TRACE") {
+            traceArtifactContents.push(artifact.content);
+          }
+          return {
+            artifactId: artifact.artifactId,
+            artifactType: artifact.artifactType,
+            bucket: "local-runner",
+            key: `runs/${runId}/${artifact.stepKey}/${artifact.artifactId}.${artifact.fileExtension}`,
+            mimeType: artifact.mimeType,
+            width: artifact.width,
+            height: artifact.height,
+            sizeBytes: artifact.content.length,
+            sha256: "test-sha256",
+            createdAt: new Date(0).toISOString(),
+            stepKey: artifact.stepKey
+          };
+        })
+    }
+  });
+
+  const result = await worker.handleMessage(message);
+
+  assert.deepEqual(executedTargets, ["goto:goto", "click:#stale-checkout", "click:#start-free"]);
+  assert.equal(result.summary.completedStepCount, 2);
+  assert.equal(result.summary.stopped, true);
+  const trace = JSON.parse(traceArtifactContents[0]) as AgentTrace;
+  assert.ok(trace.events.some((event) => event.event_type === "AGENT_ACTION_FAILED"));
+  assert.ok(trace.decisions.some((decision) => decision.planner_source === "replay_hint"));
+  assert.ok(trace.decisions.some((decision) => decision.planner_source === "rule_based"));
+});
+
 test("[Agent Worker] Agent 실행 실패도 TRACE artifact로 남긴다", async () => {
   const message = await loadAgentExampleMessage();
   const task = message.payload.agentTask;

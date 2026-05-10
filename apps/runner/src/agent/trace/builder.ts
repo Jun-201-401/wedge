@@ -98,14 +98,16 @@ export function createAgentTraceBuilder(task: AgentTask): AgentTraceBuilder {
         expected_outcome: {},
         reason: decision.reason,
         confidence: decision.confidence,
-        stage: decision.stage
+        stage: decision.stage,
+        planner_source: decision.source ?? "rule_based"
       });
       addEvent(stepIndex, "AGENT_DECISION_RECEIVED", {
         decision_id: decisionId,
         observation_id: observationId,
         decision_type: decision.kind === "finish" ? "STOP_BLOCKED" : "ACT",
         action_type: decision.action.type,
-        confidence: decision.confidence
+        confidence: decision.confidence,
+        planner_source: decision.source ?? "rule_based"
       });
       addEvent(stepIndex, "AGENT_DECISION_VALIDATED", {
         decision_id: decisionId,

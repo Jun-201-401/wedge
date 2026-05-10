@@ -9,7 +9,8 @@ import type { ArtifactStore } from "../storage/index.ts";
 import type { AgentTask, AgentTrace, ScenarioPlan, ScenarioStep } from "../shared/contracts.ts";
 import { classifyRunnerFailure, errorMessage, logOperationalEvent } from "../shared/utils.ts";
 import { evaluateAgentPolicy } from "./policy.ts";
-import { ruleBasedAgentPlanner, type AgentDecision } from "./planner.ts";
+import { type AgentDecision } from "./planner.ts";
+import { replayHintAgentPlanner } from "./replay-hint-planner.ts";
 import { observePage } from "./observation.ts";
 import { createInitialAgentState } from "./state.ts";
 import { AgentExecutionError } from "./errors.ts";
@@ -46,12 +47,13 @@ export async function executeAgentRun(input: AgentExecutorInput): Promise<AgentE
     const observation = await observePage(input.session);
     const observationId = traceBuilder.recordObservation(turn, observation);
     const previousUrl = observation.snapshot.finalUrl;
-    const decision = ruleBasedAgentPlanner.decideNextAction({
+    const decision = replayHintAgentPlanner.decideNextAction({
       goal: resolveTaskGoal(input.task),
       startUrl: input.task.start_url,
       state,
       observation,
-      maxScrolls: config.maxScrolls
+      maxScrolls: config.maxScrolls,
+      replayHints: input.task.replay_hints ?? null
     });
     const decisionId = traceBuilder.recordDecision(turn, observationId, decision);
     const step = agentDecisionToScenarioStep(decision, turn, config.captureEveryTurn);
@@ -115,6 +117,43 @@ export async function executeAgentRun(input: AgentExecutorInput): Promise<AgentE
       const failureCode = classifyRunnerFailure(error);
       const failureMessage = errorMessage(error);
       traceBuilder.recordActionFailed(turn, decisionId, step, error);
+
+      if (decision.source === "replay_hint") {
+        state.replayHintsDisabled = true;
+        state.turns.push({
+          turn,
+          actionType: decision.action.type,
+          targetKey: decision.targetKey,
+          finalUrl: input.session.snapshot().finalUrl,
+          goalSatisfied: false
+        });
+
+        logOperationalEvent(
+          "agent-executor",
+          "replay_hint_failed_fallback",
+          {
+            runId: input.runId,
+            turn,
+            stepKey: step.step_id,
+            actionType: step.action.type,
+            failureCode,
+            failureMessage
+          },
+          "warn"
+        );
+
+        deliveryIssues.push(...(await emitStepEventBestEffort(input.callbackClient, input.runId, turn, step.step_id, "ISSUE_SIGNAL_DETECTED", {
+          agentTurn: turn,
+          event: "REPLAY_HINT_FAILED_FALLBACK",
+          description: step.description,
+          stage: step.stage,
+          actionType: step.action.type,
+          failureCode,
+          failureMessage
+        })));
+
+        continue;
+      }
 
       logOperationalEvent(
         "agent-executor",

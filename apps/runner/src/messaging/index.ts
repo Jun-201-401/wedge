@@ -172,6 +172,72 @@ function assertAgentTask(value: unknown): asserts value is AgentTask {
   assertAgentBudget(value.budget);
   assertAgentAllowedNavigation(value.allowed_navigation);
   assertAgentRiskPolicy(value.risk_policy);
+  assertAgentReplayHints(value.replay_hints);
+}
+
+function assertAgentReplayHints(value: unknown): void {
+  if (value === undefined) {
+    return;
+  }
+
+  if (!isRecord(value)) {
+    throw new RunnerMessageValidationError("agentTask.replay_hints must be an object");
+  }
+
+  assertOptionalNullableNonEmptyString(value.source_trace_id, "agentTask.replay_hints.source_trace_id");
+  assertOptionalNullableNonEmptyString(value.source_plan_id, "agentTask.replay_hints.source_plan_id");
+
+  if (!Array.isArray(value.steps) || value.steps.length === 0 || value.steps.length > 50) {
+    throw new RunnerMessageValidationError("agentTask.replay_hints.steps must contain between 1 and 50 steps");
+  }
+
+  for (const [index, step] of value.steps.entries()) {
+    assertAgentReplayHintStep(step, index);
+  }
+}
+
+function assertAgentReplayHintStep(value: unknown, index: number): void {
+  const fieldName = `agentTask.replay_hints.steps[${index}]`;
+
+  if (!isRecord(value)) {
+    throw new RunnerMessageValidationError(`${fieldName} must be an object`);
+  }
+
+  assertOptionalNonEmptyString(value.step_id, `${fieldName}.step_id`);
+  if (value.stage !== undefined) {
+    assertOneOf(value.stage, SCENARIO_STEP_STAGES, `${fieldName}.stage`);
+  }
+  assertOptionalNonEmptyString(value.description, `${fieldName}.description`);
+
+  if (!isRecord(value.action) || typeof value.action.type !== "string") {
+    throw new RunnerMessageValidationError(`${fieldName}.action.type is required`);
+  }
+
+  if (!isScenarioActionType(value.action.type)) {
+    throw new RunnerMessageValidationError(`${fieldName}.action.type is unsupported`);
+  }
+
+  if (value.settle_strategy !== undefined) {
+    if (!isRecord(value.settle_strategy) || typeof value.settle_strategy.type !== "string") {
+      throw new RunnerMessageValidationError(`${fieldName}.settle_strategy.type is required`);
+    }
+
+    if (!isSettleStrategyType(value.settle_strategy.type)) {
+      throw new RunnerMessageValidationError(`${fieldName}.settle_strategy.type is unsupported`);
+    }
+
+    if (typeof value.settle_strategy.timeout_ms !== "number" || value.settle_strategy.timeout_ms < 0) {
+      throw new RunnerMessageValidationError(`${fieldName}.settle_strategy.timeout_ms must be >= 0`);
+    }
+  }
+
+  if (value.target_key !== undefined && value.target_key !== null && (typeof value.target_key !== "string" || value.target_key.length === 0)) {
+    throw new RunnerMessageValidationError(`${fieldName}.target_key must be a non-empty string or null`);
+  }
+
+  if (value.confidence !== undefined && (typeof value.confidence !== "number" || value.confidence < 0 || value.confidence > 1)) {
+    throw new RunnerMessageValidationError(`${fieldName}.confidence must be between 0 and 1`);
+  }
 }
 
 function assertAgentBudget(value: unknown): void {
@@ -364,6 +430,12 @@ function assertNonEmptyString(value: unknown, fieldName: string): void {
 function assertOptionalNonEmptyString(value: unknown, fieldName: string): void {
   if (value !== undefined && (typeof value !== "string" || value.length === 0)) {
     throw new RunnerMessageValidationError(`${fieldName} must be a non-empty string`);
+  }
+}
+
+function assertOptionalNullableNonEmptyString(value: unknown, fieldName: string): void {
+  if (value !== undefined && value !== null && (typeof value !== "string" || value.length === 0)) {
+    throw new RunnerMessageValidationError(`${fieldName} must be a non-empty string or null`);
   }
 }
 

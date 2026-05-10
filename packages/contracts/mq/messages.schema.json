@@ -946,6 +946,9 @@
               "type": "boolean"
             }
           }
+        },
+        "replay_hints": {
+          "$ref": "#/$defs/AgentReplayHints"
         }
       },
       "required": [
@@ -961,6 +964,75 @@
         "budget",
         "allowed_navigation",
         "risk_policy"
+      ]
+    },
+    "AgentReplayHintStep": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "step_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "stage": {
+          "$ref": "../schemas/scenario-plan.schema.json#/$defs/DecisionStage"
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1
+        },
+        "action": {
+          "$ref": "../schemas/scenario-plan.schema.json#/$defs/action"
+        },
+        "settle_strategy": {
+          "$ref": "../schemas/scenario-plan.schema.json#/$defs/settle_strategy"
+        },
+        "target_key": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        }
+      },
+      "required": [
+        "action"
+      ]
+    },
+    "AgentReplayHints": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "source_trace_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1
+        },
+        "source_plan_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1
+        },
+        "steps": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 50,
+          "items": {
+            "$ref": "#/$defs/AgentReplayHintStep"
+          }
+        }
+      },
+      "required": [
+        "steps"
       ]
     }
   }

@@ -1,6 +1,7 @@
 import type { AgentObservation } from "./observation.ts";
 import type { AgentExecutionState } from "./state.ts";
 import type {
+  AgentReplayHints,
   InteractiveComponentObservationItem,
   ScenarioAction,
   ScenarioStage,
@@ -9,6 +10,7 @@ import type {
 } from "../shared/contracts.ts";
 
 export type AgentDecisionKind = "act" | "finish";
+export type AgentDecisionSource = "rule_based" | "replay_hint";
 
 export interface AgentDecision {
   kind: AgentDecisionKind;
@@ -19,6 +21,7 @@ export interface AgentDecision {
   settleStrategy: SettleStrategy;
   stage: ScenarioStage;
   targetKey: string | null;
+  source?: AgentDecisionSource;
 }
 
 export interface AgentDecisionInput {
@@ -27,6 +30,7 @@ export interface AgentDecisionInput {
   state: AgentExecutionState;
   observation: AgentObservation;
   maxScrolls: number;
+  replayHints?: AgentReplayHints | null;
 }
 
 export interface AgentPlanner {

@@ -13,6 +13,7 @@ export interface AgentExecutionState {
   scrollCount: number;
   clickedTargetKeys: Set<string>;
   turns: AgentTurnRecord[];
+  replayHintsDisabled: boolean;
 }
 
 export function createInitialAgentState(): AgentExecutionState {
@@ -20,6 +21,7 @@ export function createInitialAgentState(): AgentExecutionState {
     started: false,
     scrollCount: 0,
     clickedTargetKeys: new Set(),
-    turns: []
+    turns: [],
+    replayHintsDisabled: false
   };
 }

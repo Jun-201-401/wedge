@@ -22,6 +22,36 @@ test("[MQ 계약] 정상 agent.execute.request envelope를 파싱한다", async 
   assert.equal(message.payload.agentTask.budget.max_steps, 8);
 });
 
+test("[MQ 계약] agent.execute.request replay_hints를 파싱한다", async () => {
+  const message = cloneAgentMessage(await loadAgentExampleMessage());
+  message.payload.agentTask.replay_hints = {
+    source_plan_id: "agent-trace-replay-1",
+    steps: [
+      {
+        step_id: "agent_replay_001",
+        stage: "CTA",
+        description: "Use prior checkout CTA",
+        action: {
+          type: "click",
+          target: {
+            selector: "#checkout"
+          }
+        },
+        settle_strategy: {
+          type: "fixed_short",
+          timeout_ms: 500
+        },
+        target_key: "#checkout",
+        confidence: 0.9
+      }
+    ]
+  };
+
+  const parsed = parseAgentExecuteMessage(JSON.stringify(message));
+
+  assert.equal(parsed.payload.agentTask.replay_hints?.steps[0]?.target_key, "#checkout");
+});
+
 test("[MQ 계약] agent.execute.request는 AgentTask가 없으면 거부한다", async () => {
   const message = cloneAgentMessage(await loadAgentExampleMessage()) as unknown as {
     payload: Record<string, unknown>;
@@ -31,6 +61,24 @@ test("[MQ 계약] agent.execute.request는 AgentTask가 없으면 거부한다",
   assert.throws(
     () => parseAgentExecuteMessage(JSON.stringify(message)),
     /agent payload\.agentTask must be an object/
+  );
+});
+
+test("[MQ 계약] replay_hints action type이 지원되지 않으면 거부한다", async () => {
+  const message = cloneAgentMessage(await loadAgentExampleMessage());
+  message.payload.agentTask.replay_hints = {
+    steps: [
+      {
+        action: {
+          type: "drag" as never
+        }
+      }
+    ]
+  };
+
+  assert.throws(
+    () => parseAgentExecuteMessage(JSON.stringify(message)),
+    /agentTask\.replay_hints\.steps\[0\]\.action\.type is unsupported/
   );
 });
 

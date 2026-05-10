@@ -45,6 +45,7 @@ Canonical machine-readable contracts belong here. Human-readable design rational
 - `examples/sample-runner-checkpoints.json`: runner callback checkpoint example including settle observation subtypes
 - Runner Agent Runtime examples:
   - `examples/sample-agent-execute-checkout-entry.request.json`
+  - `examples/sample-agent-execute-checkout-entry-replay-hints.request.json`
   - `examples/sample-agent-trace-checkout-entry.json`
   - Successful AgentTrace executions may also produce replay `ScenarioPlan` artifacts using the existing `schemas/scenario-plan.schema.json` contract.
   - Agent runtime callbacks use `internal/runner-callback.schema.json` `AgentEventBatch` and `AgentTraceRequest` over `/internal/runner/runs/{runId}/agent-events` and `/internal/runner/runs/{runId}/agent-traces`.
