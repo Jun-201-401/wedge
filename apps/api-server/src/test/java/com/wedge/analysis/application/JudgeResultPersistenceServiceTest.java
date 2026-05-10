@@ -132,6 +132,42 @@ class JudgeResultPersistenceServiceTest {
     }
 
     @Test
+    void saveCompletedEnrichesProblemComponentRefWithoutDroppingTechnicalEvidence() throws Exception {
+        UUID analysisJobId = UUID.randomUUID();
+        UUID runId = UUID.randomUUID();
+        Map<String, Object> issue = issue();
+        issue.put("evidence_refs", List.of("cp_001.obs_network_failure"));
+        issue.put("problem_components", List.of(Map.of(
+                "component_id", "cp_001.obs_interactive_components.component_001",
+                "evidence_ref", "cp_001.obs_interactive_components",
+                "label", "Start free",
+                "selector", "a.hero-start",
+                "coordinate_space", "viewport",
+                "bounding_box", Map.of("x", 520, "y", 360, "width", 220, "height", 56),
+                "viewport", Map.of("width", 1440, "height", 900),
+                "screenshot_artifact_id", "screenshot-1"
+        )));
+        AnalyzerCompletedRequest request = completedRequest(analysisJobId, runId, List.of(issue));
+
+        judgeResultPersistenceService.saveCompleted(request);
+
+        verify(ruleHitMapper).insert(ruleHitCaptor.capture());
+        assertThat(ruleHitCaptor.getValue().getEvidenceRefsJsonb())
+                .contains("cp_001.obs_network_failure")
+                .doesNotContain("cp_001.obs_interactive_components");
+        verify(analysisFindingMapper).insert(findingCaptor.capture());
+        AnalysisFinding finding = findingCaptor.getValue();
+        List<Object> findingRefs = objectMapper.readValue(finding.getEvidenceRefsJsonb(), new TypeReference<>() {});
+        assertThat(findingRefs).hasSize(2);
+        assertThat(findingRefs.get(0)).isEqualTo("cp_001.obs_network_failure");
+        assertThat(findingRefs.get(1)).isInstanceOf(Map.class);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> componentRef = (Map<String, Object>) findingRefs.get(1);
+        assertThat(componentRef.get("ref")).isEqualTo("cp_001.obs_interactive_components");
+        assertThat(componentRef.get("problemComponent")).isInstanceOf(Map.class);
+    }
+
+    @Test
     void saveFailedMarksAnalysisJobFailed() {
         UUID analysisJobId = UUID.randomUUID();
         UUID runId = UUID.randomUUID();

@@ -20,9 +20,12 @@ import com.wedge.run.domain.AnalysisStatus;
 import com.wedge.run.infrastructure.RunMapper;
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -238,13 +241,26 @@ public class JudgeResultPersistenceService {
     private List<Object> enrichedEvidenceRefs(Map<String, Object> issue) {
         List<Object> evidenceRefs = readListValue(issue, "evidence_refs");
         Map<String, Map<String, Object>> componentsByRef = problemComponentsByRef(issue);
-        if (evidenceRefs.isEmpty() || componentsByRef.isEmpty()) {
+        if (componentsByRef.isEmpty()) {
             return evidenceRefs;
         }
 
-        return evidenceRefs.stream()
-                .map(ref -> enrichEvidenceRef(ref, componentsByRef))
-                .toList();
+        List<Object> enrichedRefs = new ArrayList<>();
+        Set<String> seenRefs = new LinkedHashSet<>();
+        for (Object ref : evidenceRefs) {
+            enrichedRefs.add(enrichEvidenceRef(ref, componentsByRef));
+            String refId = evidenceRefId(ref);
+            if (refId != null && !refId.isBlank()) {
+                seenRefs.add(refId);
+            }
+        }
+        componentsByRef.forEach((evidenceRef, component) -> {
+            if (!seenRefs.contains(evidenceRef)) {
+                enrichedRefs.add(problemComponentEvidenceRef(evidenceRef, component));
+                seenRefs.add(evidenceRef);
+            }
+        });
+        return enrichedRefs;
     }
 
     private Map<String, Map<String, Object>> problemComponentsByRef(Map<String, Object> issue) {
@@ -319,6 +335,14 @@ public class JudgeResultPersistenceService {
             return ref;
         }
 
+        return problemComponentEvidenceRef(refId, component, ref);
+    }
+
+    private Map<String, Object> problemComponentEvidenceRef(String refId, Map<String, Object> component) {
+        return problemComponentEvidenceRef(refId, component, null);
+    }
+
+    private Map<String, Object> problemComponentEvidenceRef(String refId, Map<String, Object> component, Object ref) {
         Map<String, Object> enriched = new LinkedHashMap<>();
         if (ref instanceof Map<?, ?> refMap) {
             refMap.forEach((key, value) -> enriched.put(String.valueOf(key), value));

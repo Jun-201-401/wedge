@@ -565,6 +565,134 @@ class RuleEngineTest(unittest.TestCase):
         self.assertEqual(reliability[0]["stage"], "INPUT")
         self.assertIn("cp_002.state.network_summary", reliability[0]["evidence_refs"])
 
+    def test_reliability_issue_links_clicked_component_bounds(self) -> None:
+        packet = load_sample_packet()
+        packet["aggregate_signals"]["primary_cta_count_by_stage"] = {"CTA": 1}
+        packet["checkpoints"][0]["observations"].extend([
+            {
+                "observation_id": "obs_interactive_components",
+                "type": "interactive_components",
+                "stage": "CTA",
+                "source": ["dom", "layout", "screenshot"],
+                "confidence": 0.82,
+                "data": {
+                    "primary_like_component_count": 1,
+                    "components": [
+                        {
+                            "text": "Start free",
+                            "selector": "a.hero-start",
+                            "role": "link",
+                            "tag": "a",
+                            "clickable": True,
+                            "clicked_in_scenario": True,
+                            "is_cta_candidate": True,
+                            "is_primary_like": True,
+                            "bounds": {"x": 520, "y": 360, "width": 220, "height": 56},
+                        }
+                    ],
+                },
+            },
+            {
+                "observation_id": "obs_network_failure",
+                "type": "network_failure",
+                "stage": "CTA",
+                "source": ["network"],
+                "data": {"url": "https://example.com/api/signup", "status": "failed"},
+                "confidence": 0.9,
+            },
+        ])
+
+        result = analyze_evidence_packet(packet)
+
+        issue = [issue for issue in result["issues"] if issue["criterion_id"] == "RELIABILITY-TECH-001"][0]
+        self.assertEqual(issue["evidence_refs"], ["cp_001.obs_network_failure"])
+        self.assertEqual(issue["evidence_locations"][0]["type"], "network_failure")
+        self.assertEqual(issue["evidence_locations"][1]["type"], "interactive_components")
+        self.assertEqual(issue["problem_components"][0]["evidence_ref"], "cp_001.obs_interactive_components")
+        self.assertEqual(issue["problem_components"][0]["selector"], "a.hero-start")
+        self.assertEqual(issue["problem_components"][0]["bounding_box"], {"x": 520, "y": 360, "width": 220, "height": 56, "unit": "css_px"})
+        self.assertEqual(issue["problem_components"][0]["screenshot_artifact_id"], "screenshot_cp_001")
+
+    def test_reliability_issue_does_not_project_unclicked_component_bounds(self) -> None:
+        packet = load_sample_packet()
+        packet["aggregate_signals"]["primary_cta_count_by_stage"] = {"CTA": 1}
+        packet["checkpoints"][0]["observations"].extend([
+            {
+                "observation_id": "obs_interactive_components",
+                "type": "interactive_components",
+                "stage": "CTA",
+                "source": ["dom", "layout", "screenshot"],
+                "confidence": 0.82,
+                "data": {
+                    "primary_like_component_count": 1,
+                    "components": [
+                        {
+                            "text": "Start free",
+                            "selector": "a.hero-start",
+                            "role": "link",
+                            "clickable": True,
+                            "clicked_in_scenario": False,
+                            "is_primary_like": True,
+                            "bounds": {"x": 520, "y": 360, "width": 220, "height": 56},
+                        }
+                    ],
+                },
+            },
+            {
+                "observation_id": "obs_network_failure",
+                "type": "network_failure",
+                "stage": "CTA",
+                "source": ["network"],
+                "data": {"url": "https://example.com/api/signup", "status": "failed"},
+                "confidence": 0.9,
+            },
+        ])
+
+        result = analyze_evidence_packet(packet)
+
+        issue = [issue for issue in result["issues"] if issue["criterion_id"] == "RELIABILITY-TECH-001"][0]
+        self.assertEqual(issue["evidence_refs"], ["cp_001.obs_network_failure"])
+        self.assertNotIn("problem_components", issue)
+
+    def test_checkpoint_state_reliability_links_clicked_component_bounds(self) -> None:
+        packet = load_sample_packet()
+        packet["aggregate_signals"]["primary_cta_count_by_stage"] = {"CTA": 1}
+        packet["checkpoints"][1]["state"]["network_summary"]["failed_request_count"] = 1
+        packet["checkpoints"][1]["observations"].append(
+            {
+                "observation_id": "obs_interactive_components",
+                "type": "interactive_components",
+                "stage": "INPUT",
+                "source": ["dom", "layout", "screenshot"],
+                "confidence": 0.82,
+                "data": {
+                    "primary_like_component_count": 1,
+                    "components": [
+                        {
+                            "text": "Submit",
+                            "selector": "button.submit",
+                            "role": "button",
+                            "clickable": True,
+                            "clicked_in_scenario": True,
+                            "is_primary_like": True,
+                            "bounds": {"x": 620, "y": 420, "width": 160, "height": 48},
+                        }
+                    ],
+                },
+            }
+        )
+
+        result = analyze_evidence_packet(packet)
+
+        issue = [issue for issue in result["issues"] if issue["criterion_id"] == "RELIABILITY-TECH-001"][0]
+        self.assertEqual(issue["evidence_refs"], ["cp_002.state.network_summary"])
+        self.assertEqual(issue["evidence_locations"][0]["type"], "network_failure")
+        self.assertEqual(issue["evidence_locations"][1]["type"], "interactive_components")
+        self.assertEqual(issue["problem_components"][0]["evidence_ref"], "cp_002.obs_interactive_components")
+        self.assertEqual(issue["problem_components"][0]["selector"], "button.submit")
+        self.assertEqual(issue["problem_components"][0]["bounding_box"], {"x": 620, "y": 420, "width": 160, "height": 48, "unit": "css_px"})
+        self.assertEqual(issue["problem_components"][0]["screenshot_artifact_id"], "screenshot_cp_002")
+
     def test_checkpoint_state_reliability_is_not_duplicated_across_observation_stages(self) -> None:
         packet = load_sample_packet()
         packet["aggregate_signals"]["primary_cta_count_by_stage"] = {"CTA": 1}

@@ -13,6 +13,9 @@ from app.rule_engine.registry_loader import load_default_registry
 from app.rule_engine.scoring import friction_score, overall_risk, stage_scores_from_issues
 from app.stage.stage_context_builder import StageContext, StageContextBuilder
 
+RELIABILITY_CRITERION_ID = "RELIABILITY-TECH-001"
+RELIABILITY_LOCATION_TYPES = {"network_failure", "console_error"}
+
 
 def analyze_evidence_packet(
     packet: dict[str, Any],
@@ -66,6 +69,8 @@ def _attach_evidence_locations(
     screenshot_artifact_ids: set[str],
 ) -> list[dict[str, Any]]:
     location_index = _evidence_location_index(contexts)
+    location_index.update(_checkpoint_state_location_index(contexts))
+    action_locations_by_checkpoint = _action_target_locations_by_checkpoint(location_index.values())
     located_issues: list[dict[str, Any]] = []
     for issue in issues:
         locations = [
@@ -73,8 +78,10 @@ def _attach_evidence_locations(
             for ref in issue.get("evidence_refs") or []
             if isinstance(ref, str) and ref in location_index
         ]
+        if issue.get("criterion_id") == RELIABILITY_CRITERION_ID:
+            locations = _with_related_action_locations(locations, action_locations_by_checkpoint)
+        problem_components = _problem_components_from_locations(locations, screenshot_artifact_ids)
         if locations:
-            problem_components = _problem_components_from_locations(locations, screenshot_artifact_ids)
             located_issue = {**issue, "evidence_locations": locations}
             if problem_components:
                 located_issue["problem_components"] = problem_components
@@ -82,6 +89,101 @@ def _attach_evidence_locations(
         else:
             located_issues.append(issue)
     return located_issues
+
+
+def _action_target_locations_by_checkpoint(locations: Any) -> dict[str, list[dict[str, Any]]]:
+    locations_by_checkpoint: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for location in locations:
+        if not isinstance(location, dict) or location.get("type") != "interactive_components":
+            continue
+        checkpoint_id = location.get("checkpoint_id")
+        if not isinstance(checkpoint_id, str) or not checkpoint_id:
+            continue
+        clicked_components = [
+            component
+            for component in location.get("components") or []
+            if isinstance(component, dict)
+            and component.get("clicked_in_scenario") is True
+            and isinstance(component.get("bounds"), dict)
+        ]
+        if not clicked_components:
+            continue
+        locations_by_checkpoint[checkpoint_id].append({**location, "problem_components": clicked_components})
+    return locations_by_checkpoint
+
+
+def _checkpoint_state_location_index(contexts: dict[DecisionStage, StageContext]) -> dict[str, dict[str, Any]]:
+    locations: dict[str, dict[str, Any]] = {}
+    seen_checkpoints: set[str] = set()
+    for context in contexts.values():
+        for checkpoint in context.checkpoints:
+            checkpoint_id = str(checkpoint.get("checkpoint_id") or "")
+            if not checkpoint_id or checkpoint_id in seen_checkpoints:
+                continue
+            seen_checkpoints.add(checkpoint_id)
+            state = checkpoint.get("state")
+            if not isinstance(state, dict):
+                continue
+            network = state.get("network_summary")
+            if isinstance(network, dict) and int(network.get("failed_request_count") or 0) > 0:
+                ref = f"{checkpoint_id}.state.network_summary"
+                locations[ref] = _checkpoint_state_location(checkpoint, ref, "network_failure", ["network"])
+            console = state.get("console_summary")
+            if isinstance(console, dict) and int(console.get("error_count") or 0) > 0:
+                ref = f"{checkpoint_id}.state.console_summary"
+                locations[ref] = _checkpoint_state_location(checkpoint, ref, "console_error", ["console"])
+    return locations
+
+
+def _checkpoint_state_location(
+    checkpoint: dict[str, Any],
+    evidence_ref: str,
+    location_type: str,
+    source: list[str],
+) -> dict[str, Any]:
+    location: dict[str, Any] = {
+        "evidence_ref": evidence_ref,
+        "checkpoint_id": str(checkpoint.get("checkpoint_id") or ""),
+        "observation_id": evidence_ref.split(".", 1)[1],
+        "type": location_type,
+        "stage": checkpoint.get("primaryStage") or checkpoint.get("stage"),
+        "source": source,
+    }
+    artifact_refs = checkpoint.get("artifact_refs")
+    if isinstance(artifact_refs, list):
+        location["artifact_refs"] = artifact_refs
+    viewport = _viewport_from_checkpoint(checkpoint)
+    if viewport:
+        location["viewport"] = viewport
+    return location
+
+
+def _with_related_action_locations(
+    locations: list[dict[str, Any]],
+    action_locations_by_checkpoint: dict[str, list[dict[str, Any]]],
+) -> list[dict[str, Any]]:
+    if not any(location.get("type") in RELIABILITY_LOCATION_TYPES for location in locations):
+        return locations
+
+    result = list(locations)
+    seen_refs = {
+        location.get("evidence_ref")
+        for location in result
+        if isinstance(location.get("evidence_ref"), str)
+    }
+    for location in locations:
+        if location.get("type") not in RELIABILITY_LOCATION_TYPES:
+            continue
+        checkpoint_id = location.get("checkpoint_id")
+        if not isinstance(checkpoint_id, str):
+            continue
+        for action_location in action_locations_by_checkpoint.get(checkpoint_id, []):
+            evidence_ref = action_location.get("evidence_ref")
+            if not isinstance(evidence_ref, str) or evidence_ref in seen_refs:
+                continue
+            result.append(action_location)
+            seen_refs.add(evidence_ref)
+    return result
 
 
 def _problem_components_from_locations(
