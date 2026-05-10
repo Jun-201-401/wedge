@@ -20,6 +20,9 @@ import com.wedge.evidence.application.command.SaveRunCheckpointsCommand;
 import com.wedge.evidence.domain.ArtifactType;
 import com.wedge.run.api.dto.RunResponse;
 import com.wedge.run.application.command.RunnerAcceptedCommand;
+import com.wedge.run.application.command.RunnerAgentEventCommand;
+import com.wedge.run.application.command.RunnerAgentEventsCommand;
+import com.wedge.run.application.command.RunnerAgentTraceCommand;
 import com.wedge.run.application.command.RunnerArtifactCommand;
 import com.wedge.run.application.command.RunnerArtifactsCommand;
 import com.wedge.common.internal.InternalCallbackContext;
@@ -227,6 +230,59 @@ class RunnerCallbackServiceTest {
         ))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("Worker id header does not match payload.");
+    }
+
+    @Test
+    void agentEventsCallbackPersistsEvents() {
+        UUID runId = UUID.randomUUID();
+        RunResponse running = sampleRun(runId, RunStatus.RUNNING, ResultCompleteness.PARTIAL);
+        RunnerAgentEventsCommand command = new RunnerAgentEventsCommand(List.of(
+                new RunnerAgentEventCommand(
+                        "0.1",
+                        "agent-event-1",
+                        UUID.randomUUID(),
+                        UUID.randomUUID(),
+                        runId,
+                        1,
+                        "AGENT_STOPPED",
+                        OffsetDateTime.parse("2026-05-06T10:00:00+09:00"),
+                        Map.of("final_outcome", "SUCCESS_CHECKOUT_ENTRY_REACHED")
+                )
+        ));
+        when(processedMessagePersistenceAdapter.tryMarkProcessed("runner.agent-events", "evt_agent_events_001")).thenReturn(true);
+        when(runService.getRun(runId)).thenReturn(running);
+
+        RunnerCallbackAckResponse result = runnerCallbackService.handleAgentEvents(
+                runId,
+                command,
+                headers("evt_agent_events_001")
+        );
+
+        assertThat(result.eventCount()).isEqualTo(1);
+        verify(runPersistenceAdapter).saveAgentEvents(runId, command.events());
+    }
+
+    @Test
+    void agentTraceCallbackPersistsTrace() {
+        UUID runId = UUID.randomUUID();
+        UUID traceId = UUID.randomUUID();
+        RunResponse running = sampleRun(runId, RunStatus.RUNNING, ResultCompleteness.PARTIAL);
+        RunnerAgentTraceCommand command = new RunnerAgentTraceCommand(Map.of(
+                "trace_id", traceId.toString(),
+                "run_id", runId.toString(),
+                "final_outcome", "SUCCESS_CHECKOUT_ENTRY_REACHED"
+        ));
+        when(processedMessagePersistenceAdapter.tryMarkProcessed("runner.agent-traces", "evt_agent_trace_001")).thenReturn(true);
+        when(runService.getRun(runId)).thenReturn(running);
+
+        RunnerCallbackAckResponse result = runnerCallbackService.handleAgentTrace(
+                runId,
+                command,
+                headers("evt_agent_trace_001")
+        );
+
+        assertThat(result.runId()).isEqualTo(runId);
+        verify(runPersistenceAdapter).saveAgentTrace(runId, command);
     }
 
     @Test

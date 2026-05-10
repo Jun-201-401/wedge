@@ -156,6 +156,7 @@ public class RunnerCallbackService {
         }
 
         RunResponse run = runService.getRun(runId);
+        runPersistenceAdapter.saveAgentEvents(runId, command.events());
         return RunnerCallbackAckResponse.stepEvents(run, command.events().size());
     }
 
@@ -168,6 +169,7 @@ public class RunnerCallbackService {
         }
 
         RunResponse run = runService.getRun(runId);
+        runPersistenceAdapter.saveAgentTrace(runId, command);
         return RunnerCallbackAckResponse.accepted(run);
     }
 

@@ -341,6 +341,56 @@
         )
     </insert>
 
+    <insert id="insertAgentEvent">
+        INSERT INTO runner_agent_event (
+            id,
+            run_id,
+            task_id,
+            attempt_id,
+            agent_event_id,
+            step_index,
+            event_type,
+            payload_jsonb,
+            occurred_at
+        ) VALUES (
+            #{id},
+            #{runId},
+            #{taskId},
+            #{attemptId},
+            #{agentEventId},
+            #{stepIndex},
+            #{eventType},
+            CAST(#{payloadJson} AS jsonb),
+            #{occurredAt}
+        )
+        ON CONFLICT (run_id, agent_event_id) DO NOTHING
+    </insert>
+
+    <insert id="insertAgentTrace">
+        INSERT INTO runner_agent_trace (
+            id,
+            run_id,
+            trace_id,
+            task_id,
+            attempt_id,
+            final_outcome,
+            trace_jsonb,
+            started_at,
+            finished_at
+        ) VALUES (
+            #{id},
+            #{runId},
+            #{traceId},
+            #{taskId},
+            #{attemptId},
+            #{finalOutcome},
+            CAST(#{traceJson} AS jsonb),
+            #{startedAt},
+            #{finishedAt}
+        )
+        ON CONFLICT (run_id, trace_id) DO NOTHING
+    </insert>
+
     <update id="softDelete">
         UPDATE test_run
         SET deleted_at = NOW(),

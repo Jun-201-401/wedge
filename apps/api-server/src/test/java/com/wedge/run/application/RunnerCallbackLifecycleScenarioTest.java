@@ -518,6 +518,36 @@ class RunnerCallbackLifecycleScenarioTest {
         }
 
         @Override
+        public int insertAgentEvent(
+                UUID id,
+                UUID runId,
+                UUID taskId,
+                UUID attemptId,
+                String agentEventId,
+                int stepIndex,
+                String eventType,
+                String payloadJson,
+                OffsetDateTime occurredAt
+        ) {
+            return 1;
+        }
+
+        @Override
+        public int insertAgentTrace(
+                UUID id,
+                UUID runId,
+                UUID traceId,
+                UUID taskId,
+                UUID attemptId,
+                String finalOutcome,
+                String traceJson,
+                OffsetDateTime startedAt,
+                OffsetDateTime finishedAt
+        ) {
+            return 1;
+        }
+
+        @Override
         public int softDelete(UUID runId) {
             RunRecord run = runs.get(runId);
             if (run == null || run.getDeletedAt() != null) {
