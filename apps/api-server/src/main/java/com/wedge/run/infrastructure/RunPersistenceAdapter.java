@@ -10,6 +10,8 @@ import com.wedge.run.api.dto.RunEventResponse;
 import com.wedge.run.api.dto.RunResponse;
 import com.wedge.run.api.dto.RunStepResponse;
 import com.wedge.run.application.RunExecutionRequestSource;
+import com.wedge.run.application.command.RunnerAgentEventCommand;
+import com.wedge.run.application.command.RunnerAgentTraceCommand;
 import com.wedge.run.domain.ResultCompleteness;
 import com.wedge.run.domain.RunStatus;
 import com.wedge.run.domain.StepStatus;
@@ -70,6 +72,20 @@ public class RunPersistenceAdapter {
 
     public Optional<RunExecutionRequestSource> findExecutionRequestSource(UUID runId) {
         return runMapper.findById(runId).map(this::toExecutionRequestSource);
+    }
+
+    public Optional<Map<String, Object>> findLatestSuccessfulAgentTraceForReplay(RunExecutionRequestSource source) {
+        return runMapper.findLatestSuccessfulAgentTraceJsonForReplay(
+                        source.projectId(),
+                        source.startUrl().toString(),
+                        source.goal(),
+                        source.id()
+                )
+                .map(rawJson -> readJsonMap(rawJson, "Stored AgentTrace replay payload is invalid"));
+    }
+
+    public int nextAgentAttemptIndex(UUID runId) {
+        return runMapper.countAgentTraces(runId) + 1;
     }
 
     public RunResponse createRun(RunCreateRequest request) {
@@ -178,6 +194,39 @@ public class RunPersistenceAdapter {
         );
     }
 
+    public int saveAgentEvents(UUID runId, List<RunnerAgentEventCommand> events) {
+        int inserted = 0;
+        for (RunnerAgentEventCommand event : events) {
+            inserted += runMapper.insertAgentEvent(
+                    UUID.randomUUID(),
+                    runId,
+                    event.taskId(),
+                    event.attemptId(),
+                    event.eventId(),
+                    event.stepIndex(),
+                    event.eventType(),
+                    writeJson(event.payload()),
+                    event.occurredAt()
+            );
+        }
+        return inserted;
+    }
+
+    public int saveAgentTrace(UUID runId, RunnerAgentTraceCommand command) {
+        Map<String, Object> trace = command.trace();
+        return runMapper.insertAgentTrace(
+                UUID.randomUUID(),
+                runId,
+                requiredUuid(trace, "trace_id"),
+                optionalUuid(trace, "task_id"),
+                optionalUuid(trace, "attempt_id"),
+                optionalString(trace, "final_outcome"),
+                writeJson(trace),
+                optionalOffsetDateTime(trace, "started_at"),
+                optionalOffsetDateTime(trace, "finished_at")
+        );
+    }
+
     private void insertScenarioSteps(UUID runId, Map<String, Object> scenarioPlan) {
         Object steps = scenarioPlan.get("steps");
         if (!(steps instanceof List<?> stepList) || stepList.isEmpty()) {
@@ -220,6 +269,45 @@ public class RunPersistenceAdapter {
             return text;
         }
         throw new BusinessException(ErrorCode.INVALID_REQUEST, name + " is required.");
+    }
+
+    private UUID requiredUuid(Map<String, Object> source, String key) {
+        UUID value = optionalUuid(source, key);
+        if (value != null) {
+            return value;
+        }
+        throw new BusinessException(ErrorCode.INVALID_REQUEST, "AgentTrace." + key + " is required.");
+    }
+
+    private UUID optionalUuid(Map<String, Object> source, String key) {
+        Object value = source.get(key);
+        if (value instanceof UUID uuid) {
+            return uuid;
+        }
+        if (value instanceof String text && !text.isBlank()) {
+            try {
+                return UUID.fromString(text);
+            } catch (IllegalArgumentException exception) {
+                throw new BusinessException(ErrorCode.INVALID_REQUEST, "AgentTrace." + key + " must be a UUID.", null, exception);
+            }
+        }
+        return null;
+    }
+
+    private String optionalString(Map<String, Object> source, String key) {
+        Object value = source.get(key);
+        return value instanceof String text && !text.isBlank() ? text : null;
+    }
+
+    private OffsetDateTime optionalOffsetDateTime(Map<String, Object> source, String key) {
+        Object value = source.get(key);
+        if (value instanceof OffsetDateTime timestamp) {
+            return timestamp;
+        }
+        if (value instanceof String text && !text.isBlank()) {
+            return OffsetDateTime.parse(text);
+        }
+        return null;
     }
 
     private BusinessException stateConflict(RunStatus from, RunStatus to) {

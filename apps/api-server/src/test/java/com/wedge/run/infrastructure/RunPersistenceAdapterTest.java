@@ -14,6 +14,8 @@ import com.wedge.run.api.dto.RunCreateRequest;
 import com.wedge.run.api.dto.RunEventResponse;
 import com.wedge.run.api.dto.RunResponse;
 import com.wedge.run.application.RunExecutionRequestSource;
+import com.wedge.run.application.command.RunnerAgentEventCommand;
+import com.wedge.run.application.command.RunnerAgentTraceCommand;
 import com.wedge.run.domain.AnalysisStatus;
 import com.wedge.run.domain.ResultCompleteness;
 import com.wedge.run.domain.RunStatus;
@@ -238,6 +240,58 @@ class RunPersistenceAdapterTest {
         assertThat(resolved.id()).isEqualTo(stepRecord.getId());
         assertThat(resolved.stepOrder()).isEqualTo(3);
         assertThat(resolved.stepKey()).isEqualTo("step_003_fill_email");
+    }
+
+    @Test
+    void saveAgentEventsPersistsEachAgentEvent() {
+        UUID runId = UUID.randomUUID();
+        UUID taskId = UUID.randomUUID();
+        UUID attemptId = UUID.randomUUID();
+        OffsetDateTime occurredAt = OffsetDateTime.parse("2026-05-06T10:00:00+09:00");
+        when(runMapper.insertAgentEvent(any(), eq(runId), eq(taskId), eq(attemptId), eq("agent-event-1"), eq(2),
+                eq("AGENT_STOPPED"), any(), eq(occurredAt))).thenReturn(1);
+
+        int inserted = adapter().saveAgentEvents(runId, List.of(new RunnerAgentEventCommand(
+                "0.1",
+                "agent-event-1",
+                taskId,
+                attemptId,
+                runId,
+                2,
+                "AGENT_STOPPED",
+                occurredAt,
+                Map.of("final_outcome", "SUCCESS_CHECKOUT_ENTRY_REACHED")
+        )));
+
+        assertThat(inserted).isEqualTo(1);
+        verify(runMapper).insertAgentEvent(any(), eq(runId), eq(taskId), eq(attemptId), eq("agent-event-1"), eq(2),
+                eq("AGENT_STOPPED"), org.mockito.ArgumentMatchers.contains("SUCCESS_CHECKOUT_ENTRY_REACHED"), eq(occurredAt));
+    }
+
+    @Test
+    void saveAgentTracePersistsTraceSnapshotWithIndexedFields() {
+        UUID runId = UUID.randomUUID();
+        UUID traceId = UUID.randomUUID();
+        UUID taskId = UUID.randomUUID();
+        UUID attemptId = UUID.randomUUID();
+        OffsetDateTime startedAt = OffsetDateTime.parse("2026-05-06T10:00:00+09:00");
+        OffsetDateTime finishedAt = OffsetDateTime.parse("2026-05-06T10:00:05+09:00");
+        when(runMapper.insertAgentTrace(any(), eq(runId), eq(traceId), eq(taskId), eq(attemptId),
+                eq("SUCCESS_CHECKOUT_ENTRY_REACHED"), any(), eq(startedAt), eq(finishedAt))).thenReturn(1);
+
+        int inserted = adapter().saveAgentTrace(runId, new RunnerAgentTraceCommand(Map.of(
+                "trace_id", traceId.toString(),
+                "task_id", taskId.toString(),
+                "attempt_id", attemptId.toString(),
+                "run_id", runId.toString(),
+                "started_at", startedAt.toString(),
+                "finished_at", finishedAt.toString(),
+                "final_outcome", "SUCCESS_CHECKOUT_ENTRY_REACHED"
+        )));
+
+        assertThat(inserted).isEqualTo(1);
+        verify(runMapper).insertAgentTrace(any(), eq(runId), eq(traceId), eq(taskId), eq(attemptId),
+                eq("SUCCESS_CHECKOUT_ENTRY_REACHED"), org.mockito.ArgumentMatchers.contains(traceId.toString()), eq(startedAt), eq(finishedAt));
     }
 
     private RunPersistenceAdapter adapter() {

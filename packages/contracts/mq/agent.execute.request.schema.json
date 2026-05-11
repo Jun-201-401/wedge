@@ -1,0 +1,7 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wedge.example.com/contracts/mq/agent.execute.request.schema.json",
+  "title": "Agent Execute Request Payload",
+  "description": "Payload schema for the canonical agent.execute.request envelope.",
+  "$ref": "./messages.schema.json#/$defs/AgentExecutePayload"
+}

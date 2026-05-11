@@ -1,0 +1,169 @@
+{
+  "schema_version": "0.1",
+  "trace_id": "55555555-5555-5555-5555-555555555555",
+  "task_id": "22222222-2222-2222-2222-222222222222",
+  "attempt_id": "33333333-3333-3333-3333-333333333333",
+  "run_id": "11111111-1111-1111-1111-111111111111",
+  "started_at": "2026-05-06T00:00:00.000Z",
+  "finished_at": "2026-05-06T00:00:04.000Z",
+  "final_outcome": "SUCCESS_CHECKOUT_ENTRY_REACHED",
+  "events": [
+    {
+      "schema_version": "0.1",
+      "event_id": "evt-observation-1",
+      "task_id": "22222222-2222-2222-2222-222222222222",
+      "attempt_id": "33333333-3333-3333-3333-333333333333",
+      "run_id": "11111111-1111-1111-1111-111111111111",
+      "step_index": 1,
+      "event_type": "AGENT_OBSERVATION_CAPTURED",
+      "occurred_at": "2026-05-06T00:00:01.000Z",
+      "payload": {
+        "observation_id": "obs-1"
+      }
+    },
+    {
+      "schema_version": "0.1",
+      "event_id": "evt-decision-1",
+      "task_id": "22222222-2222-2222-2222-222222222222",
+      "attempt_id": "33333333-3333-3333-3333-333333333333",
+      "run_id": "11111111-1111-1111-1111-111111111111",
+      "step_index": 1,
+      "event_type": "AGENT_DECISION_RECEIVED",
+      "occurred_at": "2026-05-06T00:00:02.000Z",
+      "payload": {
+        "decision_id": "decision-1"
+      }
+    },
+    {
+      "schema_version": "0.1",
+      "event_id": "evt-policy-1",
+      "task_id": "22222222-2222-2222-2222-222222222222",
+      "attempt_id": "33333333-3333-3333-3333-333333333333",
+      "run_id": "11111111-1111-1111-1111-111111111111",
+      "step_index": 1,
+      "event_type": "AGENT_POLICY_ALLOWED",
+      "occurred_at": "2026-05-06T00:00:02.500Z",
+      "payload": {
+        "policy_result_id": "policy-1",
+        "decision_id": "decision-1",
+        "risk_class": "CHECKOUT_NAVIGATION",
+        "decision": "ALLOW"
+      }
+    },
+    {
+      "schema_version": "0.1",
+      "event_id": "evt-action-1",
+      "task_id": "22222222-2222-2222-2222-222222222222",
+      "attempt_id": "33333333-3333-3333-3333-333333333333",
+      "run_id": "11111111-1111-1111-1111-111111111111",
+      "step_index": 1,
+      "event_type": "AGENT_ACTION_COMPLETED",
+      "occurred_at": "2026-05-06T00:00:03.000Z",
+      "payload": {
+        "tool": "click",
+        "target_key": "#checkout"
+      }
+    },
+    {
+      "schema_version": "0.1",
+      "event_id": "evt-verification-1",
+      "task_id": "22222222-2222-2222-2222-222222222222",
+      "attempt_id": "33333333-3333-3333-3333-333333333333",
+      "run_id": "11111111-1111-1111-1111-111111111111",
+      "step_index": 1,
+      "event_type": "AGENT_VERIFICATION_COMPLETED",
+      "occurred_at": "2026-05-06T00:00:04.000Z",
+      "payload": {
+        "verification_id": "verification-1",
+        "status": "SUCCESS"
+      }
+    },
+    {
+      "schema_version": "0.1",
+      "event_id": "evt-stopped-1",
+      "task_id": "22222222-2222-2222-2222-222222222222",
+      "attempt_id": "33333333-3333-3333-3333-333333333333",
+      "run_id": "11111111-1111-1111-1111-111111111111",
+      "step_index": 0,
+      "event_type": "AGENT_STOPPED",
+      "occurred_at": "2026-05-06T00:00:04.000Z",
+      "payload": {
+        "final_outcome": "SUCCESS_CHECKOUT_ENTRY_REACHED",
+        "category": "SUCCESS",
+        "reason": "Checkout entry verified with URL/title evidence."
+      }
+    }
+  ],
+  "observations": [
+    {
+      "schema_version": "0.1",
+      "observation_id": "obs-1",
+      "task_id": "22222222-2222-2222-2222-222222222222",
+      "step_index": 1,
+      "url": "https://example.com",
+      "title": "Example",
+      "candidates": [
+        {
+          "candidate_id": "candidate-1",
+          "text": "Checkout",
+          "selector": "#checkout",
+          "role": "link",
+          "is_cta_candidate": true,
+          "is_primary_like": true
+        }
+      ]
+    }
+  ],
+  "decisions": [
+    {
+      "schema_version": "0.1",
+      "decision_id": "decision-1",
+      "task_id": "22222222-2222-2222-2222-222222222222",
+      "observation_id": "obs-1",
+      "decision_type": "ACT",
+      "action": {
+        "tool": "click",
+        "target_key": "#checkout"
+      },
+      "reason": "The component is the primary-like CTA candidate in the current viewport.",
+      "confidence": 0.82
+    }
+  ],
+  "policy_results": [
+    {
+      "schema_version": "0.1",
+      "policy_result_id": "policy-1",
+      "task_id": "22222222-2222-2222-2222-222222222222",
+      "decision_id": "decision-1",
+      "risk_class": "CHECKOUT_NAVIGATION",
+      "decision": "ALLOW",
+      "reason": "Agent policy allowed CHECKOUT_NAVIGATION.",
+      "matched_signals": [
+        "keyword:checkout"
+      ],
+      "final_outcome": null
+    }
+  ],
+  "verification_results": [
+    {
+      "schema_version": "0.1",
+      "verification_id": "verification-1",
+      "task_id": "22222222-2222-2222-2222-222222222222",
+      "status": "SUCCESS",
+      "goal_progress": "CHECKOUT_ENTRY_REACHED",
+      "confidence": 0.8,
+      "reason": "A CTA click moved the browser to a goal-like destination."
+    }
+  ],
+  "artifact_refs": [],
+  "outcome": {
+    "schema_version": "0.1",
+    "final_outcome": "SUCCESS_CHECKOUT_ENTRY_REACHED",
+    "category": "SUCCESS",
+    "terminal": true,
+    "reason": "Checkout entry verified with URL/title evidence.",
+    "evidence_refs": [],
+    "verification_id": "verification-1",
+    "policy_result_id": null
+  }
+}

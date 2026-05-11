@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wedge.example.com/contracts/schemas/agent-trace.schema.json",
+  "title": "Wedge AgentTrace",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "trace_id",
+    "task_id",
+    "attempt_id",
+    "run_id",
+    "started_at",
+    "finished_at",
+    "final_outcome",
+    "events",
+    "observations",
+    "decisions",
+    "policy_results",
+    "verification_results",
+    "artifact_refs"
+  ],
+  "properties": {
+    "schema_version": { "const": "0.1" },
+    "trace_id": { "type": "string", "format": "uuid" },
+    "task_id": { "type": "string", "format": "uuid" },
+    "attempt_id": { "type": "string", "format": "uuid" },
+    "run_id": { "type": "string", "format": "uuid" },
+    "started_at": { "type": "string", "format": "date-time" },
+    "finished_at": { "type": "string", "format": "date-time" },
+    "final_outcome": { "$ref": "agent-outcome.schema.json#/$defs/final_outcome" },
+    "events": {
+      "type": "array",
+      "items": { "$ref": "agent-event.schema.json" }
+    },
+    "observations": {
+      "type": "array",
+      "items": { "type": "object", "additionalProperties": true }
+    },
+    "decisions": {
+      "type": "array",
+      "items": { "type": "object", "additionalProperties": true }
+    },
+    "policy_results": {
+      "type": "array",
+      "items": { "$ref": "agent-policy-result.schema.json" }
+    },
+    "verification_results": {
+      "type": "array",
+      "items": { "type": "object", "additionalProperties": true }
+    },
+    "artifact_refs": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "outcome": { "$ref": "agent-outcome.schema.json" }
+  }
+}

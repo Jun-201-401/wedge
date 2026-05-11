@@ -3,6 +3,7 @@ package com.wedge.run.api;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -222,6 +223,22 @@ class RunControllerTest {
     }
 
     @Test
+    void agentStartQueuesAgentRun() throws Exception {
+        UUID runId = UUID.randomUUID();
+        RunResponse queued = sampleRun(runId, RunStatus.QUEUED);
+        when(runService.startAgentRun(runId)).thenReturn(queued);
+
+        mockMvc.perform(post("/api/runs/{runId}/agent/start", runId)
+                        .header("X-Request-Id", "req_agent_start"))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.data.runId").value(runId.toString()))
+                .andExpect(jsonPath("$.data.status").value("QUEUED"))
+                .andExpect(jsonPath("$.meta.requestId").value("req_agent_start"));
+
+        verify(runService).startAgentRun(runId);
+    }
+
+    @Test
     void artifactsReturnsPersistedArtifactList() throws Exception {
         UUID runId = UUID.randomUUID();
         UUID artifactId = UUID.randomUUID();
@@ -282,6 +299,10 @@ class RunControllerTest {
     }
 
     private RunResponse sampleRun(UUID runId) {
+        return sampleRun(runId, RunStatus.RUNNING);
+    }
+
+    private RunResponse sampleRun(UUID runId, RunStatus status) {
         return new RunResponse(
                 runId,
                 "run",
@@ -292,7 +313,7 @@ class RunControllerTest {
                 "CTA flow",
                 "desktop",
                 UUID.randomUUID(),
-                RunStatus.RUNNING,
+                status,
                 ResultCompleteness.NONE,
                 AnalysisStatus.NOT_STARTED,
                 1,

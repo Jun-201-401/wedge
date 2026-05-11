@@ -173,6 +173,123 @@ export interface AgentArtifactPolicy {
   capture_trace?: boolean;
 }
 
+export interface AgentReplayHintStep {
+  step_id?: string;
+  stage?: ScenarioStage;
+  description?: string;
+  action: ScenarioAction;
+  settle_strategy?: SettleStrategy;
+  target_key?: string | null;
+  confidence?: number;
+}
+
+export interface AgentReplayHints {
+  source_trace_id?: string | null;
+  source_plan_id?: string | null;
+  steps: AgentReplayHintStep[];
+}
+
+export type AgentEventType =
+  | "AGENT_OBSERVATION_CAPTURED"
+  | "AGENT_CANDIDATES_EXTRACTED"
+  | "AGENT_DECISION_REQUESTED"
+  | "AGENT_DECISION_RECEIVED"
+  | "AGENT_DECISION_VALIDATED"
+  | "AGENT_POLICY_ALLOWED"
+  | "AGENT_POLICY_BLOCKED"
+  | "AGENT_ACTION_STARTED"
+  | "AGENT_ACTION_COMPLETED"
+  | "AGENT_ACTION_FAILED"
+  | "AGENT_SETTLE_COMPLETED"
+  | "AGENT_VERIFICATION_COMPLETED"
+  | "AGENT_RECOVERY_ATTEMPTED"
+  | "AGENT_TRACE_EXPORTED_TO_SCENARIO_PLAN"
+  | "AGENT_STOPPED"
+  | "AGENT_FAILED";
+
+export type AgentFinalOutcome =
+  | "SUCCESS_CHECKOUT_ENTRY_REACHED"
+  | "SUCCESS_SHIPPING_ENTRY_REACHED"
+  | "SUCCESS_PAYMENT_ENTRY_REACHED_AND_STOPPED"
+  | "POLICY_BLOCKED_FINAL_PAYMENT_SUBMIT"
+  | "POLICY_BLOCKED_FINAL_ORDER_COMMIT"
+  | "POLICY_BLOCKED_DESTRUCTIVE_ACTION"
+  | "POLICY_BLOCKED_EXTERNAL_NAVIGATION"
+  | "BLOCKED_NO_CHECKOUT_PATH_FOUND"
+  | "BLOCKED_TEST_DATA_REQUIRED"
+  | "FAILED_BUDGET_EXHAUSTED"
+  | "FAILED_ACTION_ERROR"
+  | "FAILED_INTERNAL_ERROR";
+
+export type AgentOutcomeCategory = "SUCCESS" | "POLICY_BLOCKED" | "BLOCKED" | "FAILED";
+
+export type AgentRiskClass =
+  | "SAFE_NAVIGATION"
+  | "CHECKOUT_NAVIGATION"
+  | "CART_ADD_ITEM"
+  | "CART_REMOVE_ITEM"
+  | "CART_QUANTITY_INCREASE"
+  | "CART_QUANTITY_DECREASE"
+  | "NON_PAYMENT_FORM_ENTRY"
+  | "SHIPPING_FORM_ENTRY"
+  | "PAYMENT_INFO_ENTRY"
+  | "ORDER_REVIEW_NAVIGATION"
+  | "FINAL_PAYMENT_SUBMIT"
+  | "FINAL_ORDER_COMMIT"
+  | "DESTRUCTIVE_ACCOUNT_ACTION"
+  | "EXTERNAL_MESSAGE_SEND"
+  | "LOGIN_CREDENTIAL_ENTRY"
+  | "CAPTCHA_OR_BOT_CHALLENGE"
+  | "UNKNOWN_HIGH_RISK"
+  | "UNKNOWN_LOW_RISK";
+
+export type AgentPolicyDecision = "ALLOW" | "BLOCK";
+
+export interface AgentPolicyResult {
+  schema_version: "0.1";
+  policy_result_id: string;
+  task_id: string;
+  decision_id: string;
+  risk_class: AgentRiskClass;
+  decision: AgentPolicyDecision;
+  reason: string;
+  matched_signals: string[];
+  final_outcome?: AgentFinalOutcome | null;
+}
+
+export interface AgentOutcome {
+  schema_version: "0.1";
+  final_outcome: AgentFinalOutcome;
+  category: AgentOutcomeCategory;
+  terminal: boolean;
+  reason: string;
+  evidence_refs: string[];
+  verification_id?: string | null;
+  policy_result_id?: string | null;
+}
+
+export interface AgentTrace {
+  schema_version: "0.1";
+  trace_id: string;
+  task_id: string;
+  attempt_id: string;
+  run_id: string;
+  started_at: string;
+  finished_at: string;
+  final_outcome: AgentFinalOutcome;
+  events: Record<string, unknown>[];
+  observations: Record<string, unknown>[];
+  decisions: Record<string, unknown>[];
+  policy_results: AgentPolicyResult[];
+  verification_results: Record<string, unknown>[];
+  artifact_refs: string[];
+  outcome?: AgentOutcome;
+}
+
+export interface AgentTraceRequest {
+  trace: AgentTrace;
+}
+
 export interface AgentTask {
   schema_version: "0.1";
   task_id: string;
@@ -192,6 +309,7 @@ export interface AgentTask {
   risk_policy: AgentRiskPolicy;
   test_data?: AgentTestData;
   artifact_policy?: AgentArtifactPolicy;
+  replay_hints?: AgentReplayHints;
 }
 
 export interface AgentExecuteMessage {

@@ -905,6 +905,34 @@
         "INPUT",
         "COMMIT"
       ]
+    },
+    "AgentEventBatch": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "events": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "../schemas/agent-event.schema.json"
+          }
+        }
+      },
+      "required": [
+        "events"
+      ]
+    },
+    "AgentTraceRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "trace": {
+          "$ref": "../schemas/agent-trace.schema.json"
+        }
+      },
+      "required": [
+        "trace"
+      ]
     }
   }
 }

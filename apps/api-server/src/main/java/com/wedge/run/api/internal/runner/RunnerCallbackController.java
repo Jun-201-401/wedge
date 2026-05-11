@@ -65,29 +65,6 @@ public class RunnerCallbackController {
         return ApiResponse.ok(runnerCallbackService.handleStepEvents(runId, toStepEventsCommand(request), callbackContext(workerId, eventId, signature)));
     }
 
-
-    @PostMapping("/agent-events")
-    public ResponseEntity<ApiResponse<RunnerCallbackAckResponse>> handleRunnerAgentEvents(
-            @PathVariable UUID runId,
-            @Valid @RequestBody RunnerAgentEventsRequest request,
-            @RequestHeader("X-Worker-Id") String workerId,
-            @RequestHeader("X-Event-Id") String eventId,
-            @RequestHeader("X-Signature") String signature
-    ) {
-        return ApiResponse.ok(runnerCallbackService.handleAgentEvents(runId, toAgentEventsCommand(request), callbackContext(workerId, eventId, signature)));
-    }
-
-    @PostMapping("/agent-traces")
-    public ResponseEntity<ApiResponse<RunnerCallbackAckResponse>> handleRunnerAgentTrace(
-            @PathVariable UUID runId,
-            @Valid @RequestBody RunnerAgentTraceRequest request,
-            @RequestHeader("X-Worker-Id") String workerId,
-            @RequestHeader("X-Event-Id") String eventId,
-            @RequestHeader("X-Signature") String signature
-    ) {
-        return ApiResponse.ok(runnerCallbackService.handleAgentTrace(runId, toAgentTraceCommand(request), callbackContext(workerId, eventId, signature)));
-    }
-
     @PostMapping("/checkpoints")
     public ResponseEntity<ApiResponse<RunnerCallbackAckResponse>> handleRunnerCheckpoints(
             @PathVariable UUID runId,
@@ -132,6 +109,28 @@ public class RunnerCallbackController {
         return ApiResponse.ok(runnerCallbackService.handleFailed(runId, toFailedCommand(request), callbackContext(workerId, eventId, signature)));
     }
 
+    @PostMapping("/agent-events")
+    public ResponseEntity<ApiResponse<RunnerCallbackAckResponse>> handleRunnerAgentEvents(
+            @PathVariable UUID runId,
+            @Valid @RequestBody RunnerAgentEventsRequest request,
+            @RequestHeader("X-Worker-Id") String workerId,
+            @RequestHeader("X-Event-Id") String eventId,
+            @RequestHeader("X-Signature") String signature
+    ) {
+        return ApiResponse.ok(runnerCallbackService.handleAgentEvents(runId, toAgentEventsCommand(request), callbackContext(workerId, eventId, signature)));
+    }
+
+    @PostMapping("/agent-traces")
+    public ResponseEntity<ApiResponse<RunnerCallbackAckResponse>> handleRunnerAgentTrace(
+            @PathVariable UUID runId,
+            @Valid @RequestBody RunnerAgentTraceRequest request,
+            @RequestHeader("X-Worker-Id") String workerId,
+            @RequestHeader("X-Event-Id") String eventId,
+            @RequestHeader("X-Signature") String signature
+    ) {
+        return ApiResponse.ok(runnerCallbackService.handleAgentTrace(runId, new RunnerAgentTraceCommand(request.trace()), callbackContext(workerId, eventId, signature)));
+    }
+
     private RunnerAcceptedCommand toAcceptedCommand(RunnerAcceptedRequest request) {
         return new RunnerAcceptedCommand(request.workerId(), request.acceptedAt(), request.browserSessionId());
     }
@@ -147,31 +146,6 @@ public class RunnerCallbackController {
                         event.payload()
                 ))
                 .toList());
-    }
-
-
-    private RunnerAgentEventsCommand toAgentEventsCommand(RunnerAgentEventsRequest request) {
-        return new RunnerAgentEventsCommand(request.events().stream()
-                .map(event -> new RunnerAgentEventCommand(
-                        event.eventId(),
-                        event.taskId(),
-                        event.attemptId(),
-                        event.turn(),
-                        event.eventType().name(),
-                        event.occurredAt(),
-                        event.payload()
-                ))
-                .toList());
-    }
-
-    private RunnerAgentTraceCommand toAgentTraceCommand(RunnerAgentTraceRequest request) {
-        return new RunnerAgentTraceCommand(
-                request.taskId(),
-                request.attemptId(),
-                request.occurredAt(),
-                request.trace(),
-                request.traceArtifact() == null ? null : request.traceArtifact().artifactId()
-        );
     }
 
     private RunnerCheckpointsCommand toCheckpointsCommand(RunnerCheckpointsRequest request) {
@@ -235,6 +209,22 @@ public class RunnerCallbackController {
                 summary == null ? null : summary.failedStepCount(),
                 summary == null ? null : summary.stopped()
         );
+    }
+
+    private RunnerAgentEventsCommand toAgentEventsCommand(RunnerAgentEventsRequest request) {
+        return new RunnerAgentEventsCommand(request.events().stream()
+                .map(event -> new RunnerAgentEventCommand(
+                        event.schemaVersion(),
+                        event.eventId(),
+                        event.taskId(),
+                        event.attemptId(),
+                        event.runId(),
+                        event.stepIndex(),
+                        event.eventType(),
+                        event.occurredAt(),
+                        event.payload()
+                ))
+                .toList());
     }
 
     private InternalCallbackContext callbackContext(String workerId, String eventId, String signature) {

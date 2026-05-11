@@ -236,6 +236,7 @@ GET    /api/runs
 GET    /api/runs/{runId}
 DELETE /api/runs/{runId}
 POST   /api/runs/{runId}/start
+POST   /api/runs/{runId}/agent/start
 POST   /api/runs/{runId}/stop
 GET    /api/runs/{runId}/live
 GET    /api/runs/{runId}/steps
@@ -511,6 +512,21 @@ Response:
 }
 ```
 
+### Agent Run 시작
+
+```http
+POST /api/runs/{runId}/agent/start
+Idempotency-Key: idem_start_agent_run_001
+```
+
+동작:
+
+- CREATED 상태의 Run을 QUEUED로 전환한다.
+- `agent.execute.request` outbox/MQ 메시지를 발행한다.
+- 같은 project/startUrl/goal의 이전 성공 AgentTrace가 있으면 `AgentTask.replay_hints`로 주입한다.
+
+Response는 일반 Run 시작과 같은 `AckResponse` shape를 사용한다.
+
 ### Report share 생성
 
 ```http
@@ -563,7 +579,6 @@ POST /internal/runner/runs/{runId}/artifacts
 POST /internal/runner/runs/{runId}/finished
 POST /internal/runner/runs/{runId}/failed
 
-# Runner Agent Runtime callbacks, contract-first implementation plan
 POST /internal/runner/runs/{runId}/agent-events
 POST /internal/runner/runs/{runId}/agent-traces
 
@@ -720,6 +735,32 @@ X-Signature: hmac-sha256=...
 }
 ```
 
+#### Agent event callback
+
+Runner Agent Runtime은 관찰/결정/정책/검증 이벤트 batch를 별도 agent callback으로 전달한다.
+
+```http
+POST /internal/runner/runs/{runId}/agent-events
+X-Event-Id: evt_agent_events_001
+X-Worker-Id: runner_001
+X-Signature: hmac-sha256=...
+```
+
+Payload shape is `AgentEventBatch` in `packages/contracts/internal/runner-callback.schema.json`; each event uses `packages/contracts/schemas/agent-event.schema.json`.
+
+#### Agent trace callback
+
+Runner Agent Runtime은 최종 `AgentTrace`를 TRACE artifact와 별도 trace callback으로 전달한다.
+
+```http
+POST /internal/runner/runs/{runId}/agent-traces
+X-Event-Id: evt_agent_trace_001
+X-Worker-Id: runner_001
+X-Signature: hmac-sha256=...
+```
+
+Payload shape is `AgentTraceRequest` in `packages/contracts/internal/runner-callback.schema.json`; `trace` uses `packages/contracts/schemas/agent-trace.schema.json`.
+
 ## 9. RabbitMQ
 
 RabbitMQ는 작업 분배용이다.  
@@ -727,7 +768,7 @@ Canonical MQ contract는 `packages/contracts/mq/messages.schema.json`의 envelop
 
 Run execution message는 Spring이 고정한 `scenarioTemplateVersionId`와 materialized `scenarioPlan`을 포함한다. MVP Analyzer message는 Spring이 저장한 EvidencePacket snapshot을 가리키는 `evidencePacketId`를 포함하고, Analyzer는 내부 API `/internal/analysis/evidence-packets/{evidencePacketId}`로 packet을 조회한다.
 
-Runner Agent Runtime contract-first 구현 범위에는 `agent.execute.request` 별도 MQ message가 포함된다. 이 메시지는 `ScenarioPlan`을 확장하지 않고 `AgentTask`를 전달하며, Runner는 AgentTrace를 TRACE artifact와 agent callback으로 남긴다. Machine-readable agent callback payloads should be added to `packages/contracts/internal/runner-callback.schema.json` unless implementation introduces a dedicated agent callback schema and updates this section. 상세 contract-first 계획은 `docs/runner_agent_runtime_implementation_plan.md`를 기준으로 한다.
+Runner Agent Runtime contract-first 구현 범위에는 `agent.execute.request` 별도 MQ message가 포함된다. 이 메시지는 `ScenarioPlan`을 확장하지 않고 `AgentTask`를 전달하며, Runner는 AgentTrace를 TRACE artifact와 agent callback으로 남긴다. Machine-readable agent callback payloads are defined in `packages/contracts/internal/runner-callback.schema.json`. 상세 contract-first 계획은 `docs/runner_agent_runtime_implementation_plan.md`를 기준으로 한다.
 
 MQ payload는 camelCase envelope를 사용한다.
 

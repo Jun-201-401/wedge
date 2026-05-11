@@ -1,0 +1,113 @@
+{
+  "messageId": "00000000-0000-4000-8000-000000000921",
+  "messageType": "agent.execute.request",
+  "schemaVersion": "0.1",
+  "createdAt": "2026-05-06T00:00:00.000Z",
+  "producer": "api-server",
+  "correlationId": "00000000-0000-4000-8000-000000000902",
+  "idempotencyKey": "agent-task-checkout-entry-replay-hints-sample-1",
+  "payload": {
+    "agentTask": {
+      "schema_version": "0.1",
+      "task_id": "00000000-0000-4000-8000-000000000903",
+      "attempt_id": "00000000-0000-4000-8000-000000000924",
+      "attempt_index": 2,
+      "idempotency_key": "agent-task-checkout-entry-replay-hints-sample-1",
+      "run_id": "00000000-0000-4000-8000-000000000905",
+      "project_id": "00000000-0000-4000-8000-000000000906",
+      "goal_type": "CHECKOUT_ENTRY_VERIFICATION",
+      "goal": "Find the checkout entry path without submitting payment or final order.",
+      "start_url": "https://example.com/product/sample",
+      "environment": {
+        "device": "desktop",
+        "viewport": {
+          "width": 1440,
+          "height": 900
+        },
+        "locale": "ko-KR",
+        "timezone": "Asia/Seoul",
+        "auth_state": "anonymous"
+      },
+      "budget": {
+        "max_steps": 8,
+        "max_duration_ms": 120000,
+        "max_recovery_attempts": 2,
+        "max_same_page_attempts": 3,
+        "max_external_redirects": 1
+      },
+      "observation_budget": {
+        "max_candidates": 80,
+        "max_visible_text_chars": 6000,
+        "max_nearby_text_chars_per_candidate": 300,
+        "max_dom_snapshot_bytes": 1000000,
+        "max_ax_tree_bytes": 1000000,
+        "max_artifacts_per_run": 80,
+        "max_artifact_bytes_per_run": 5000000
+      },
+      "allowed_navigation": {
+        "allow_external_navigation": false,
+        "allowed_origins": [
+          "https://example.com"
+        ],
+        "allowed_checkout_redirect_origins": []
+      },
+      "product_selection_policy": {
+        "mode": "PROVIDED_OR_OBVIOUS_ONLY",
+        "provided_product_url": "https://example.com/product/sample",
+        "required_option_strategy": "FIRST_AVAILABLE",
+        "allow_quantity_change": false,
+        "max_add_to_cart_attempts": 1
+      },
+      "risk_policy": {
+        "allow_checkout_navigation": true,
+        "allow_cart_mutation": true,
+        "allow_shipping_form_entry": true,
+        "allow_payment_info_entry": false,
+        "allow_final_payment_submit": false,
+        "allow_final_order_commit": false,
+        "allow_destructive_action": false,
+        "allow_external_message_send": false
+      },
+      "test_data": {
+        "email": "test@example.com",
+        "name": "Test User",
+        "phone": "01000000000",
+        "shipping_address": null,
+        "postal_code": null,
+        "country": "KR",
+        "coupon_code": null,
+        "sandbox_payment": null
+      },
+      "artifact_policy": {
+        "capture_screenshots": true,
+        "capture_dom_snapshots": true,
+        "capture_ax_tree": true,
+        "capture_trace": true
+      },
+      "replay_hints": {
+        "source_trace_id": "00000000-0000-4000-8000-000000000931",
+        "source_plan_id": "agent-trace-replay-00000000-0000-4000-8000-000000000931",
+        "steps": [
+          {
+            "step_id": "agent_replay_001",
+            "stage": "CTA",
+            "description": "Retry checkout entrypoint from a prior successful AgentTrace before heuristic exploration.",
+            "action": {
+              "type": "click",
+              "target": {
+                "selector": "#checkout",
+                "text": "Checkout"
+              }
+            },
+            "settle_strategy": {
+              "type": "fixed_short",
+              "timeout_ms": 500
+            },
+            "target_key": "#checkout",
+            "confidence": 0.86
+          }
+        ]
+      }
+    }
+  }
+}
