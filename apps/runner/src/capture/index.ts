@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { BrowserActionResult, BrowserCapturedArtifacts, BrowserPageSnapshot, BrowserSettleResult } from "../browser/playwright/index.ts";
 import type {
   ArtifactDraft,
+  CategoryFilterSignalObservation,
   Checkpoint,
   GoalActionCandidateObservation,
   InteractiveComponentsObservation,
@@ -128,6 +129,8 @@ function createCheckpointState(pageSnapshot: BrowserPageSnapshot): Checkpoint["s
     toastTexts: pageSnapshot.toastTexts,
     cartCount: pageSnapshot.cartCount,
     visiblePrices: pageSnapshot.visiblePrices,
+    selectedFilters: pageSnapshot.selectedFilters,
+    searchQuery: pageSnapshot.searchQuery,
     network_summary: {
       event_count: pageSnapshot.networkEvents.length,
       failed_request_count: pageSnapshot.networkEvents.filter((event) => event.failed).length
@@ -162,9 +165,17 @@ function createCheckpointObservations({
     settleResult,
     screenshotArtifactId
   });
+  const categoryFilterObservation = createCategoryFilterSignalObservation({
+    step,
+    stepOrder,
+    beforeSnapshot,
+    pageSnapshot,
+    actionResult
+  });
 
   return [
     ...(journeyActionObservation ? [{ ...journeyActionObservation }] : []),
+    ...(categoryFilterObservation ? [{ ...categoryFilterObservation }] : []),
     ...createInteractiveComponentsObservations(step, pageSnapshot).map((observation) => ({ ...observation })),
     ...createFormFieldObservations(pageSnapshot.fields),
     ...createCtaCandidateObservations(step, pageSnapshot),
@@ -244,6 +255,61 @@ function createJourneyActionRawObservation({
     settle_status: settleResult.status,
     screenshot_artifact_id: screenshotArtifactId,
     bbox
+  };
+}
+
+function createCategoryFilterSignalObservation({
+  step,
+  stepOrder,
+  beforeSnapshot,
+  pageSnapshot,
+  actionResult
+}: {
+  step: ScenarioStep;
+  stepOrder: number;
+  beforeSnapshot?: BrowserPageSnapshot;
+  pageSnapshot: BrowserPageSnapshot;
+  actionResult?: BrowserActionResult;
+}): CategoryFilterSignalObservation | null {
+  if (!beforeSnapshot) {
+    return null;
+  }
+
+  const actionDetails = actionResult?.details ?? {};
+  const clickedText = readOptionalString(actionDetails, "clickedText") ?? clickedComponent(pageSnapshot)?.text ?? null;
+  const clickedSelector = readOptionalString(actionDetails, "clickedSelector") ?? clickedComponent(pageSnapshot)?.selector ?? null;
+  const filterChanged = !sameJsonArray(beforeSnapshot.selectedFilters, pageSnapshot.selectedFilters);
+  const searchSubmitted = normalizeSearchQuery(beforeSnapshot.searchQuery) !== normalizeSearchQuery(pageSnapshot.searchQuery);
+  const categoryUrlChanged = categoryUrlSignalChanged(beforeSnapshot.finalUrl, pageSnapshot.finalUrl);
+  const breadcrumbChanged = !sameStringArray(beforeSnapshot.breadcrumb, pageSnapshot.breadcrumb);
+  const actionLooksCategoryLike = isCategoryFilterSearchText(clickedText ?? step.description ?? "");
+
+  if (!filterChanged && !searchSubmitted && !categoryUrlChanged && !(breadcrumbChanged && actionLooksCategoryLike)) {
+    return null;
+  }
+
+  return {
+    observation_id: `${step.step_id}.obs_category_filter_signal`,
+    type: "category_filter_signal",
+    stage: step.stage,
+    source: ["scenario_log", "dom", "browser"],
+    confidence: filterChanged || searchSubmitted ? 0.82 : 0.68,
+    step_order: stepOrder,
+    step_key: step.step_id,
+    action_type: step.action.type,
+    clicked_text: clickedText,
+    clicked_selector: clickedSelector,
+    url_before: beforeSnapshot.finalUrl,
+    url_after: pageSnapshot.finalUrl,
+    breadcrumb_before: beforeSnapshot.breadcrumb,
+    breadcrumb_after: pageSnapshot.breadcrumb,
+    selected_filter_before: beforeSnapshot.selectedFilters.map((filter) => ({ ...filter })),
+    selected_filter_after: pageSnapshot.selectedFilters.map((filter) => ({ ...filter })),
+    search_query_before: beforeSnapshot.searchQuery,
+    search_query_after: pageSnapshot.searchQuery,
+    filter_changed: filterChanged,
+    search_submitted: searchSubmitted,
+    category_url_changed: categoryUrlChanged
   };
 }
 
@@ -450,6 +516,53 @@ function readBounds(value: unknown): BrowserPageSnapshot["interactiveComponents"
 
 function isAddToCartLike(text: string | null | undefined): boolean {
   return /add to cart|add to basket|장바구니|카트|담기|신청|예약|문의|결제|무료 체험|다운로드|가입/i.test(text ?? "");
+}
+
+function sameJsonArray(left: unknown[], right: unknown[]): boolean {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
+function sameStringArray(left: string[], right: string[]): boolean {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
+}
+
+function normalizeSearchQuery(value: string | null | undefined): string {
+  return (value ?? "").trim().replaceAll(/\s+/g, " ").toLowerCase();
+}
+
+function categoryUrlSignalChanged(beforeUrl: string, afterUrl: string): boolean {
+  const before = parseCategoryUrlSignal(beforeUrl);
+  const after = parseCategoryUrlSignal(afterUrl);
+  return Boolean(before || after) && before !== after;
+}
+
+function parseCategoryUrlSignal(urlString: string): string | null {
+  try {
+    const url = new URL(urlString);
+    const categoryParams = [
+      "category",
+      "cat",
+      "filter",
+      "facet",
+      "sort",
+      "q",
+      "query",
+      "keyword",
+      "search"
+    ];
+    const matchedParams = categoryParams
+      .flatMap((key) => url.searchParams.getAll(key).map((value) => `${key}=${value}`))
+      .join("&");
+    const categoryPath = url.pathname.match(/(?:category|categories|collections|products|shop|search|filter)\/?[^?]*/i)?.[0] ?? "";
+    const signal = `${categoryPath}?${matchedParams}`;
+    return signal === "?" ? null : signal;
+  } catch {
+    return null;
+  }
+}
+
+function isCategoryFilterSearchText(text: string): boolean {
+  return /category|categories|collection|filter|sort|search|카테고리|분류|필터|정렬|검색|상품|제품/i.test(text);
 }
 
 function createNetworkResult(

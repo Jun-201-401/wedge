@@ -56,6 +56,12 @@ export interface BrowserProductCardSignal {
   bbox: InteractiveComponentBounds;
 }
 
+export interface BrowserFilterSignal {
+  key: string;
+  value: string;
+  selector: string | null;
+}
+
 export interface BrowserNetworkEventSignal {
   method: string;
   url: string;
@@ -96,6 +102,8 @@ export interface BrowserPageSnapshot {
   visiblePrices: string[];
   productImages: BrowserProductImageSignal[];
   productCards: BrowserProductCardSignal[];
+  selectedFilters: BrowserFilterSignal[];
+  searchQuery: string | null;
   domSignature: string | null;
   cdpSession: CdpSessionMetadata;
 }
@@ -205,6 +213,8 @@ interface MutableBrowserState {
   visiblePrices: string[];
   productImages: BrowserProductImageSignal[];
   productCards: BrowserProductCardSignal[];
+  selectedFilters: BrowserFilterSignal[];
+  searchQuery: string | null;
   domSignature: string | null;
 }
 
@@ -952,6 +962,8 @@ class RealPlaywrightSession implements BrowserSession {
     this.state.visiblePrices = await safeVisiblePrices(this.page, this.state.visiblePrices);
     this.state.productImages = await safeProductImages(this.page, this.state.productImages);
     this.state.productCards = await safeProductCards(this.page, this.state.productCards);
+    this.state.selectedFilters = await safeSelectedFilters(this.page, this.state.selectedFilters);
+    this.state.searchQuery = await safeSearchQuery(this.page, this.state.searchQuery);
     this.state.domSignature = await safeDomSignature(this.page, this.state.domSignature);
     appendVisitedUrl(this.state.visitedUrls, currentUrl);
   }
@@ -1086,6 +1098,8 @@ function createInitialBrowserState(plan: ScenarioPlan): MutableBrowserState {
     visiblePrices: [],
     productImages: [],
     productCards: [],
+    selectedFilters: [],
+    searchQuery: null,
     domSignature: null
   };
 }
@@ -1126,6 +1140,8 @@ function createBrowserPageSnapshot(
       ...card,
       bbox: { ...card.bbox }
     })),
+    selectedFilters: state.selectedFilters.map((filter) => ({ ...filter })),
+    searchQuery: state.searchQuery,
     domSignature: state.domSignature,
     cdpSession
   };
@@ -1972,6 +1988,111 @@ async function safeProductCards(page: Page, fallbackValue: BrowserProductCardSig
         .filter((card) => card.visible && card.likely && card.element_text.length > 0)
         .slice(0, 20)
         .map(({ visible, likely, ...card }) => card);
+    });
+  } catch {
+    return fallbackValue;
+  }
+}
+
+async function safeSelectedFilters(page: Page, fallbackValue: BrowserFilterSignal[]): Promise<BrowserFilterSignal[]> {
+  try {
+    return await page.evaluate(() => {
+      function normalizeText(value: string | null | undefined): string {
+        return (value ?? "").trim().replaceAll(/\s+/g, " ");
+      }
+
+      function selectorFor(element: Element): string | null {
+        const id = element.getAttribute("id");
+        if (id) {
+          return `#${id.replace(/[^a-zA-Z0-9_-]/g, "\\$&")}`;
+        }
+        const name = element.getAttribute("name");
+        if (name) {
+          return `${element.tagName.toLowerCase()}[name="${name.replace(/"/g, '\\"')}"]`;
+        }
+        const className = Array.from(element.classList).find((entry) => entry.length > 0);
+        return className ? `${element.tagName.toLowerCase()}.${className.replace(/[^a-zA-Z0-9_-]/g, "\\$&")}` : element.tagName.toLowerCase();
+      }
+
+      function labelForInput(input: HTMLInputElement | HTMLOptionElement): string {
+        if (input instanceof HTMLOptionElement) {
+          return normalizeText(input.label || input.textContent || input.value);
+        }
+        const id = input.getAttribute("id");
+        const explicitLabel = id ? document.querySelector(`label[for="${id.replace(/"/g, '\\"')}"]`) : null;
+        const wrappingLabel = input.closest("label");
+        return normalizeText(
+          explicitLabel?.textContent ||
+          wrappingLabel?.textContent ||
+          input.getAttribute("aria-label") ||
+          input.value ||
+          input.name
+        );
+      }
+
+      const checkedInputs = Array.from(document.querySelectorAll("input[type='checkbox']:checked, input[type='radio']:checked"))
+        .map((input) => {
+          const typedInput = input as HTMLInputElement;
+          return {
+            key: normalizeText(typedInput.name || typedInput.getAttribute("data-filter") || "filter"),
+            value: labelForInput(typedInput),
+            selector: selectorFor(typedInput)
+          };
+        });
+
+      const selectedOptions = Array.from(document.querySelectorAll("select"))
+        .flatMap((select) => Array.from((select as HTMLSelectElement).selectedOptions)
+          .filter((option) => option.value.length > 0)
+          .map((option) => ({
+            key: normalizeText((select as HTMLSelectElement).name || select.getAttribute("aria-label") || "select"),
+            value: labelForInput(option),
+            selector: selectorFor(select)
+          })));
+
+      const pressedOrSelected = Array.from(document.querySelectorAll("[aria-pressed='true'], [aria-selected='true'], [data-state='checked'], [data-selected='true'], .active, .selected, [class*='filter'][class*='active']"))
+        .map((element) => ({
+          key: normalizeText(element.getAttribute("data-filter") || element.getAttribute("role") || "ui_state"),
+          value: normalizeText(element.textContent || element.getAttribute("aria-label") || element.getAttribute("title")),
+          selector: selectorFor(element)
+        }));
+
+      const seen = new Set<string>();
+      return [...checkedInputs, ...selectedOptions, ...pressedOrSelected]
+        .filter((filter) => filter.value.length > 0)
+        .filter((filter) => {
+          const key = `${filter.key}:${filter.value}:${filter.selector ?? ""}`;
+          if (seen.has(key)) {
+            return false;
+          }
+          seen.add(key);
+          return true;
+        })
+        .slice(0, 30);
+    });
+  } catch {
+    return fallbackValue;
+  }
+}
+
+async function safeSearchQuery(page: Page, fallbackValue: string | null): Promise<string | null> {
+  try {
+    return await page.evaluate(() => {
+      const candidates = Array.from(document.querySelectorAll([
+        "input[type='search']",
+        "form[role='search'] input",
+        "input[name*='search' i]",
+        "input[name='q']",
+        "input[name*='query' i]",
+        "input[name*='keyword' i]",
+        "input[placeholder*='검색']",
+        "input[placeholder*='search' i]"
+      ].join(", "))) as HTMLInputElement[];
+
+      const query = candidates
+        .map((input) => input.value.trim())
+        .find((value) => value.length > 0);
+
+      return query ?? null;
     });
   } catch {
     return fallbackValue;

@@ -167,6 +167,8 @@ export function createSimulatedPageSnapshot(
     visiblePrices: [],
     productImages: [],
     productCards: [],
+    selectedFilters: [],
+    searchQuery: null,
     domSignature: null,
     cdpSession: {
       protocol: "cdp",

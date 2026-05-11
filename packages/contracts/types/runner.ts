@@ -879,6 +879,30 @@ export interface GoalActionCandidateObservation {
   candidates: Record<string, unknown>[];
 }
 
+export interface CategoryFilterSignalObservation {
+  observation_id: string;
+  type: "category_filter_signal";
+  stage: ScenarioStage;
+  source: ("scenario_log" | "dom" | "browser")[];
+  confidence: number;
+  step_order: number;
+  step_key: string;
+  action_type: ScenarioActionType;
+  clicked_text?: string | null;
+  clicked_selector?: string | null;
+  url_before: string;
+  url_after: string;
+  breadcrumb_before: string[];
+  breadcrumb_after: string[];
+  selected_filter_before: Record<string, unknown>[];
+  selected_filter_after: Record<string, unknown>[];
+  search_query_before: string | null;
+  search_query_after: string | null;
+  filter_changed: boolean;
+  search_submitted: boolean;
+  category_url_changed: boolean;
+}
+
 export interface RunnerCheckpointsRequest {
   checkpoints: Checkpoint[];
 }

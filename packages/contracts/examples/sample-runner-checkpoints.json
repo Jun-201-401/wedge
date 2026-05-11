@@ -125,6 +125,46 @@
           }
         },
         {
+          "observation_id": "step_004_expand_benefits.obs_category_filter_signal",
+          "type": "category_filter_signal",
+          "stage": "VALUE",
+          "source": [
+            "scenario_log",
+            "dom",
+            "browser"
+          ],
+          "confidence": 0.68,
+          "step_order": 4,
+          "step_key": "step_004_expand_benefits",
+          "action_type": "click",
+          "clicked_text": "혜택 보기",
+          "clicked_selector": "#signup-benefits-toggle",
+          "url_before": "https://example.com/signup",
+          "url_after": "https://example.com/signup?category=benefits",
+          "breadcrumb_before": [
+            "Home",
+            "Sign up"
+          ],
+          "breadcrumb_after": [
+            "Home",
+            "Sign up",
+            "Benefits"
+          ],
+          "selected_filter_before": [],
+          "selected_filter_after": [
+            {
+              "key": "category",
+              "value": "Benefits",
+              "selector": "button.benefits"
+            }
+          ],
+          "search_query_before": null,
+          "search_query_after": null,
+          "filter_changed": true,
+          "search_submitted": false,
+          "category_url_changed": true
+        },
+        {
           "type": "settle_item_count_change",
           "settle_status": "settled",
           "target": "selector=#signup-benefits li",

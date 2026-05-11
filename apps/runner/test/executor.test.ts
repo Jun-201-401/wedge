@@ -880,6 +880,90 @@ test("[수집 pipeline] Journey raw signal은 click 전후 상태와 artifact/bb
   assert.ok(Array.isArray(observation.network_result));
 });
 
+test("[수집 pipeline] 카테고리/필터/검색 변화는 category_filter_signal observation으로 남긴다", async () => {
+  const capturePipeline = createCapturePipeline();
+  const plan = createMinimalPlan();
+  const beforeSnapshot = createSimulatedPageSnapshot(plan, {
+    finalUrl: "https://example.com/products",
+    breadcrumb: ["Home", "Products"],
+    selectedFilters: [],
+    searchQuery: null
+  });
+  const afterSnapshot = createSimulatedPageSnapshot(plan, {
+    finalUrl: "https://example.com/products?category=shoes&q=runner",
+    breadcrumb: ["Home", "Products", "Shoes"],
+    selectedFilters: [
+      {
+        key: "category",
+        value: "Shoes",
+        selector: "input[name=\"category\"]"
+      }
+    ],
+    searchQuery: "runner"
+  });
+
+  const collection = await capturePipeline.collectCheckpoint({
+    step: {
+      step_id: "step_filter_search",
+      stage: "VALUE",
+      description: "카테고리와 검색어 적용",
+      action: {
+        type: "click",
+        target: {
+          selector: "button.apply-filter"
+        }
+      },
+      settle_strategy: {
+        type: "url_change",
+        timeout_ms: 500
+      },
+      checkpoint: true
+    },
+    stepOrder: 3,
+    plan,
+    beforeSnapshot,
+    pageSnapshot: afterSnapshot,
+    actionResult: {
+      actionType: "click",
+      targetSummary: "selector=button.apply-filter",
+      stopRequested: false,
+      details: {
+        clickedText: "필터 적용",
+        clickedSelector: "button.apply-filter"
+      }
+    },
+    settleResult: createSettledResult({
+      strategy: "url_change",
+      status: "settled",
+      durationMs: 120
+    })
+  });
+
+  const observation = collection.checkpoint.observations.find(
+    (candidate) => candidate.type === "category_filter_signal"
+  );
+
+  assert.ok(observation);
+  assert.equal(observation.clicked_text, "필터 적용");
+  assert.equal(observation.url_before, "https://example.com/products");
+  assert.equal(observation.url_after, "https://example.com/products?category=shoes&q=runner");
+  assert.deepEqual(observation.breadcrumb_before, ["Home", "Products"]);
+  assert.deepEqual(observation.breadcrumb_after, ["Home", "Products", "Shoes"]);
+  assert.deepEqual(observation.selected_filter_before, []);
+  assert.deepEqual(observation.selected_filter_after, [
+    {
+      key: "category",
+      value: "Shoes",
+      selector: "input[name=\"category\"]"
+    }
+  ]);
+  assert.equal(observation.search_query_before, null);
+  assert.equal(observation.search_query_after, "runner");
+  assert.equal(observation.filter_changed, true);
+  assert.equal(observation.search_submitted, true);
+  assert.equal(observation.category_url_changed, true);
+});
+
 test("[전달 정책] optional delivery 이슈를 병합하고 finished callback 실패는 fatal로 분류한다", () => {
   const merged = mergeDeliveryIssues(
     [

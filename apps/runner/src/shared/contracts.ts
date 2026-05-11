@@ -6,6 +6,7 @@ import type {
 
 export type {
   Artifact,
+  CategoryFilterSignalObservation,
   AgentAllowedNavigation,
   AgentCallbackEventType,
   AgentEvent,
