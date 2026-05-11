@@ -84,6 +84,14 @@ pipeline {
         disableConcurrentBuilds()
     }
 
+    parameters {
+        booleanParam(
+            name: 'RUN_DB_MIGRATION',
+            defaultValue: false,
+            description: 'Run Flyway info and migrate before application deploy. Enable only after the one-time production baseline is complete.'
+        )
+    }
+
     triggers {
         GenericTrigger(
             genericVariables: [
@@ -155,6 +163,52 @@ docker build -f apps/web/Dockerfile -t "${WEB_IMAGE_NAME}:ci-${BUILD_NUMBER}" ap
 docker build -f apps/runner/Dockerfile -t "${RUNNER_IMAGE_NAME}:ci-${BUILD_NUMBER}" .
 docker build -f apps/analyzer/Dockerfile -t "${ANALYZER_IMAGE_NAME}:ci-${BUILD_NUMBER}" .
                     ''')
+                }
+            }
+        }
+
+        stage('Database Migration') {
+            when {
+                expression {
+                    return params.RUN_DB_MIGRATION == true
+                }
+            }
+            steps {
+                script {
+                    env.FAILED_STAGE = 'Database Migration'
+                }
+                withCredentials([sshUserPrivateKey(
+                    credentialsId: 'ec2-ssh',
+                    keyFileVariable: 'EC2_KEY',
+                    usernameVariable: 'EC2_USER'
+                ), usernamePassword(
+                    credentialsId: 'gitlab-ec2-readonly',
+                    usernameVariable: 'GITLAB_RO_USER',
+                    passwordVariable: 'GITLAB_RO_TOKEN'
+                )]) {
+                    script {
+                        runLogged('''
+set -e
+
+GIT_AUTH_HEADER="$(printf '%s:%s' "$GITLAB_RO_USER" "$GITLAB_RO_TOKEN" | base64 | tr -d '\n')"
+
+ssh -i "$EC2_KEY" $SSH_OPTS "$EC2_USER@$DEPLOY_HOST" "GIT_AUTH_HEADER='$GIT_AUTH_HEADER' GIT_URL='$GIT_URL' GIT_BRANCH='$GIT_BRANCH' bash -s" << 'EOF'
+set -e
+
+cd /srv/wedge
+
+git remote set-url origin "$GIT_URL"
+git remote set-url --push origin "$GIT_URL"
+git -c credential.helper= -c "http.extraHeader=Authorization: Basic ${GIT_AUTH_HEADER}" fetch --prune origin "$GIT_BRANCH"
+unset GIT_AUTH_HEADER
+git reset --hard "origin/$GIT_BRANCH"
+
+docker compose --env-file .env.prod -f compose.prod.yaml up -d postgres
+docker compose --env-file .env.prod -f compose.prod.yaml --profile migration run --rm flyway info
+docker compose --env-file .env.prod -f compose.prod.yaml --profile migration run --rm flyway migrate
+EOF
+                        ''')
+                    }
                 }
             }
         }
