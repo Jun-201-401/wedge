@@ -23,6 +23,7 @@ from app.providers import (
     SemanticProviderChain,
     sanitize_semantic_label_result,
 )
+from app.providers.label_role import LabelRoleIssueResult
 from app.rule_engine import analyze_evidence_packet, load_default_registry
 from app.rule_engine.contract_schema import schema_enum, schema_properties
 from app.rule_engine.evaluator import RuleEngine, RuleHandlerMissing
@@ -714,6 +715,87 @@ class RuleEngineTest(unittest.TestCase):
         self.assertEqual(len(reliability), 1)
         self.assertEqual(reliability[0]["stage"], "INPUT")
         self.assertEqual(reliability[0]["evidence_refs"], ["cp_002.state.network_summary"])
+
+    def test_copy_flow_quality_ignores_direct_label_issue_type_without_gms_alignment(self) -> None:
+        packet = load_sample_packet()
+        packet["checkpoints"][0]["observations"].append(
+            {
+                "observation_id": "obs_direct_label_issue",
+                "type": "interactive_components",
+                "stage": "CTA",
+                "source": ["dom"],
+                "data": {
+                    "visible_text": "Random",
+                    "label_issue_type": "irrelevant_label",
+                    "fix_leverage": 1.3,
+                },
+                "confidence": 0.95,
+            }
+        )
+
+        result = analyze_evidence_packet(packet)
+
+        copy_issues = [issue for issue in result["issues"] if issue["criterion_id"] == "COPY-FLOW-QUALITY-001"]
+        self.assertEqual(copy_issues, [])
+
+    def test_copy_flow_quality_uses_gms_alignment_and_not_observation_type(self) -> None:
+        class FakeLabelRoleProvider:
+            def __init__(self) -> None:
+                self.calls: list[dict] = []
+
+            def classify_label_roles(self, *, scenario_goal: str, stage: str, checkpoint_id: str, screenshot_url: str, candidates: list[dict]):
+                self.calls.append(
+                    {
+                        "stage": stage,
+                        "checkpoint_id": checkpoint_id,
+                        "screenshot_url": screenshot_url,
+                        "candidate_ids": [candidate["candidate_id"] for candidate in candidates],
+                    }
+                )
+                if checkpoint_id != "cp_001":
+                    return []
+                return [
+                    LabelRoleIssueResult(
+                        candidate_id="cp_001.obs_custom_label_role",
+                        has_issue=True,
+                        issue_type="label_role_mismatch",
+                        expected_meaning="Open account settings",
+                        reason="The label suggests help instead of settings.",
+                        fix_leverage=1.15,
+                        confidence=0.84,
+                        affected_bounds={"x": 20, "y": 20, "width": 120, "height": 44},
+                    )
+                ]
+
+        packet = load_sample_packet()
+        packet["artifacts"][0]["signed_url"] = "https://example.com/cp_001.png"
+        packet["checkpoints"][0]["observations"].append(
+            {
+                "observation_id": "obs_custom_label_role",
+                "type": "custom_visual_text",
+                "stage": "CTA",
+                "source": ["dom", "screenshot"],
+                "data": {
+                    "visible_text": "Help",
+                    "role": "button",
+                    "clicked_in_scenario": True,
+                    "bounds": {"x": 20, "y": 20, "width": 120, "height": 44},
+                },
+                "confidence": 0.7,
+            }
+        )
+        provider = FakeLabelRoleProvider()
+
+        result = analyze_evidence_packet(packet, label_role_provider=provider)
+
+        copy_issues = [issue for issue in result["issues"] if issue["criterion_id"] == "COPY-FLOW-QUALITY-001"]
+        self.assertEqual(len(copy_issues), 1)
+        self.assertEqual(copy_issues[0]["stage"], "CTA")
+        self.assertEqual(copy_issues[0]["confidence"], 0.84)
+        self.assertEqual(copy_issues[0]["fix_leverage"], 1.15)
+        self.assertEqual(copy_issues[0]["evidence_refs"], ["cp_001.obs_custom_label_role"])
+        self.assertIn("expected_meaning=Open account settings", copy_issues[0]["signals"])
+        self.assertIn("cp_001.obs_custom_label_role", provider.calls[0]["candidate_ids"])
 
     def test_registry_rule_without_handler_fails_fast(self) -> None:
         registry = load_default_registry()
