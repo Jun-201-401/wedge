@@ -5,11 +5,14 @@ import {
   AUTH_ACCESS_TOKEN_STORAGE_KEY,
   AUTH_REFRESH_TOKEN_STORAGE_KEY,
   AUTH_USER_STORAGE_KEY,
+  AUTH_REFRESH_COOKIE_HINT_STORAGE_KEY,
   LEGACY_ACCESS_TOKEN_STORAGE_KEY,
   clearAuthToken,
+  hasRefreshCookieHint,
   readAccessToken,
   readCurrentUser,
   saveAuthToken,
+  saveCurrentUser,
 } from '../../src/api/authSession';
 import type { AuthToken } from '../../src/entities/auth';
 
@@ -72,10 +75,17 @@ test('auth session keeps access token in memory and never persists refresh token
   assert.equal(storage.getItem(AUTH_REFRESH_TOKEN_STORAGE_KEY), null);
   assert.equal(storage.getItem(AUTH_USER_STORAGE_KEY), null);
   assert.equal(storage.getItem(LEGACY_ACCESS_TOKEN_STORAGE_KEY), null);
+  assert.equal(storage.getItem(AUTH_REFRESH_COOKIE_HINT_STORAGE_KEY), 'true');
+  assert.equal(hasRefreshCookieHint(), true);
+
+  saveCurrentUser({ ...authToken.user, displayName: 'Updated User' });
+  assert.equal(readCurrentUser()?.displayName, 'Updated User');
 
   clearAuthToken();
   assert.equal(readAccessToken(), null);
   assert.equal(readCurrentUser(), null);
+  assert.equal(storage.getItem(AUTH_REFRESH_COOKIE_HINT_STORAGE_KEY), null);
+  assert.equal(hasRefreshCookieHint(), false);
   removeWindow();
 });
 

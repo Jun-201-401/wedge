@@ -1,0 +1,101 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wedge.example.com/contracts/schemas/agent-decision.schema.json",
+  "title": "Runner Agent Decision",
+  "description": "Constrained browser decision selected by the heuristic or LLM decision client. Decisions choose fixed ScenarioAction tools; they do not contain generated Playwright code.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "kind": {
+      "type": "string",
+      "enum": ["act", "checkpoint", "finish"]
+    },
+    "description": {
+      "type": "string",
+      "minLength": 1
+    },
+    "reason": {
+      "type": "string",
+      "minLength": 1
+    },
+    "confidence": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "action": {
+      "$ref": "scenario-plan.schema.json#/$defs/action"
+    },
+    "settleStrategy": {
+      "$ref": "scenario-plan.schema.json#/$defs/settle_strategy"
+    },
+    "stage": {
+      "$ref": "scenario-plan.schema.json#/$defs/stage"
+    },
+    "targetKey": {
+      "type": ["string", "null"]
+    },
+    "metadata": {
+      "$ref": "#/$defs/decision_metadata"
+    }
+  },
+  "required": ["kind", "description", "reason", "confidence", "action", "settleStrategy", "stage", "targetKey"],
+  "$defs": {
+    "decision_metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "decisionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "decisionSource": {
+          "type": "string",
+          "enum": ["heuristic", "llm"]
+        },
+        "model": {
+          "type": "string",
+          "minLength": 1
+        },
+        "promptMetadata": {
+          "$ref": "#/$defs/prompt_metadata"
+        }
+      },
+      "required": ["decisionId", "decisionSource"]
+    },
+    "prompt_metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "payloadShapeVersion": {
+          "type": "string",
+          "minLength": 1
+        },
+        "candidateCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "redacted": {
+          "const": true
+        },
+        "rawPromptStored": {
+          "const": false
+        },
+        "rawCandidateSelectorsIncluded": {
+          "const": false
+        },
+        "rawCandidateHrefsIncluded": {
+          "const": false
+        }
+      },
+      "required": [
+        "payloadShapeVersion",
+        "candidateCount",
+        "redacted",
+        "rawPromptStored",
+        "rawCandidateSelectorsIncluded",
+        "rawCandidateHrefsIncluded"
+      ]
+    }
+  }
+}

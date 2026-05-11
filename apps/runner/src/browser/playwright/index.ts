@@ -5,6 +5,7 @@ import {
   webkit,
   type Browser,
   type BrowserContext,
+  type Frame,
   type Locator,
   type BrowserType,
   type Page
@@ -101,6 +102,7 @@ export interface BrowserSessionFactory {
 const DEFAULT_LOCATOR_TIMEOUT_MS = 1_500;
 const DEFAULT_WAIT_FOR_TIMEOUT_MS = 1_500;
 const ITEM_COUNT_POLL_INTERVAL_MS = 50;
+const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
 type SettleTimeoutDetails = Record<string, unknown> | ((error: unknown) => Record<string, unknown>);
 
@@ -108,6 +110,34 @@ interface SettleAttempt {
   attempt: () => Promise<Record<string, unknown>>;
   timeoutDetails: SettleTimeoutDetails;
 }
+
+type ReplayHintLocatorRecipeEntry =
+  | {
+      strategy: "selector";
+      selector: string;
+      confidence?: number;
+      frame_id?: string;
+    }
+  | {
+      strategy: "role_text";
+      role: string;
+      text: string;
+      confidence?: number;
+      frame_id?: string;
+    }
+  | {
+      strategy: "href";
+      href: string;
+      confidence?: number;
+      frame_id?: string;
+    }
+  | {
+      strategy: "tag_text";
+      tag: string;
+      text: string;
+      confidence?: number;
+      frame_id?: string;
+    };
 
 class SettleTimeoutError extends Error {
   readonly details: Record<string, unknown>;
@@ -131,6 +161,17 @@ interface MutableBrowserState {
   interactiveComponents: InteractiveComponentObservationItem[];
   consoleErrors: string[];
   networkErrors: string[];
+}
+
+function readPngDimensions(buffer: Buffer) {
+  if (buffer.length < 24 || !buffer.subarray(0, 8).equals(PNG_SIGNATURE)) {
+    return null;
+  }
+
+  return {
+    width: buffer.readUInt32BE(16),
+    height: buffer.readUInt32BE(20)
+  };
 }
 
 class SimulatedPlaywrightSession implements BrowserSession {
@@ -318,7 +359,7 @@ class RealPlaywrightSession implements BrowserSession {
       }
       case "click": {
         assertScenarioActionAllowed(this.plan, this.state.currentUrl, action);
-        const clicked = await this.tryClickTarget(action.target);
+        const clicked = await this.tryClickTarget(action);
         if (!clicked) {
           const nextUrl = inferNavigationUrl(this.state.currentUrl, action.target);
           assertScenarioActionAllowed(this.plan, this.state.currentUrl, action, nextUrl);
@@ -528,8 +569,10 @@ class RealPlaywrightSession implements BrowserSession {
 
   async captureArtifacts(): Promise<BrowserCapturedArtifacts> {
     const screenshotBuffer = await this.page.screenshot({
-      type: "png"
+      type: "png",
+      fullPage: true
     });
+    const screenshotDimensions = readPngDimensions(screenshotBuffer) ?? this.plan.environment.viewport;
     const domSnapshot = await this.page.content();
 
     return {
@@ -537,8 +580,8 @@ class RealPlaywrightSession implements BrowserSession {
         contentBase64: screenshotBuffer.toString("base64"),
         mimeType: "image/png",
         fileExtension: "png",
-        width: this.plan.environment.viewport.width,
-        height: this.plan.environment.viewport.height
+        width: screenshotDimensions.width,
+        height: screenshotDimensions.height
       },
       domSnapshot: {
         content: domSnapshot,
@@ -582,8 +625,8 @@ class RealPlaywrightSession implements BrowserSession {
     });
   }
 
-  private async tryClickTarget(target: TargetDescriptor | undefined): Promise<boolean> {
-    const clicked = await tryCandidateLocators(this.page, target, async (locator) => {
+  private async tryClickTarget(action: ScenarioAction): Promise<boolean> {
+    const clicked = await tryCandidateLocators(this.page, action.target, action.options, async (locator) => {
       await locator.click({
         timeout: DEFAULT_LOCATOR_TIMEOUT_MS
       });
@@ -598,7 +641,7 @@ class RealPlaywrightSession implements BrowserSession {
 
   private async tryFillTarget(target: TargetDescriptor | undefined, value: unknown, fallbackKey: string): Promise<boolean> {
     const nextValue = stringifyValue(value);
-    const filled = await tryCandidateLocators(this.page, target, async (locator) => {
+    const filled = await tryCandidateLocators(this.page, target, undefined, async (locator) => {
       await locator.fill(nextValue, {
         timeout: DEFAULT_LOCATOR_TIMEOUT_MS
       });
@@ -614,7 +657,7 @@ class RealPlaywrightSession implements BrowserSession {
 
   private async trySelectTarget(target: TargetDescriptor | undefined, value: unknown, fallbackKey: string): Promise<boolean> {
     const nextValue = stringifyValue(value);
-    const selected = await tryCandidateLocators(this.page, target, async (locator) => {
+    const selected = await tryCandidateLocators(this.page, target, undefined, async (locator) => {
       try {
         await locator.selectOption(nextValue, {
           timeout: DEFAULT_LOCATOR_TIMEOUT_MS
@@ -640,7 +683,7 @@ class RealPlaywrightSession implements BrowserSession {
   }
 
   private async tryHoverTarget(target: TargetDescriptor | undefined): Promise<boolean> {
-    const hovered = await tryCandidateLocators(this.page, target, async (locator) => {
+    const hovered = await tryCandidateLocators(this.page, target, undefined, async (locator) => {
       await locator.hover({
         timeout: DEFAULT_LOCATOR_TIMEOUT_MS
       });
@@ -656,7 +699,7 @@ class RealPlaywrightSession implements BrowserSession {
   private async waitForAction(action: ScenarioAction): Promise<void> {
     const timeoutMs = resolveWaitForTimeoutMs(action);
     const locatorState = resolveWaitForLocatorState(action);
-    const matched = await tryCandidateLocators(this.page, action.target, async (locator) => {
+    const matched = await tryCandidateLocators(this.page, action.target, undefined, async (locator) => {
       await locator.waitFor({
         state: locatorState,
         timeout: timeoutMs
@@ -690,7 +733,7 @@ class RealPlaywrightSession implements BrowserSession {
     state: "visible" | "hidden",
     timeoutMs: number
   ): Promise<void> {
-    const settled = await tryCandidateLocators(this.page, target, async (locator) => {
+    const settled = await tryCandidateLocators(this.page, target, undefined, async (locator) => {
       await locator.waitFor({
         state,
         timeout: timeoutMs
@@ -1109,13 +1152,20 @@ function inferNavigationUrl(currentUrl: string, target: TargetDescriptor | undef
   return null;
 }
 
-function buildCandidateLocators(page: Page, target: TargetDescriptor | undefined): Locator[] {
+function buildCandidateLocators(
+  page: Page,
+  target: TargetDescriptor | undefined,
+  options?: Record<string, unknown>
+): Locator[] {
   if (!target) {
-    return [];
+    return buildReplayHintLocators(page, options);
   }
 
   if (typeof target === "string") {
-    return [page.getByText(target)];
+    return [
+      page.getByText(target),
+      ...buildReplayHintLocators(page, options)
+    ];
   }
 
   const candidates: Locator[] = [];
@@ -1198,7 +1248,98 @@ function buildCandidateLocators(page: Page, target: TargetDescriptor | undefined
     }
   }
 
-  return candidates;
+  return [
+    ...candidates,
+    ...buildReplayHintLocators(page, options)
+  ];
+}
+
+function buildReplayHintLocators(page: Page, options?: Record<string, unknown>): Locator[] {
+  const replayHint = options?.replay_hint;
+  if (!replayHint || typeof replayHint !== "object" || Array.isArray(replayHint)) {
+    return [];
+  }
+
+  const locatorRecipe = (replayHint as Record<string, unknown>).locator_recipe;
+  if (!Array.isArray(locatorRecipe)) {
+    return [];
+  }
+
+  return locatorRecipe.flatMap((entry) => buildReplayRecipeLocator(page, entry));
+}
+
+function buildReplayRecipeLocator(page: Page, entry: unknown): Locator[] {
+  if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+    return [];
+  }
+
+  const recipe = entry as Partial<ReplayHintLocatorRecipeEntry>;
+  const scope = resolveReplayRecipeScope(page, recipe.frame_id);
+  if (!scope) {
+    return [];
+  }
+
+  switch (recipe.strategy) {
+    case "selector": {
+      return typeof recipe.selector === "string" && recipe.selector.length > 0
+        ? [scope.locator(recipe.selector)]
+        : [];
+    }
+    case "role_text": {
+      return typeof recipe.role === "string" && recipe.role.length > 0 && typeof recipe.text === "string" && recipe.text.length > 0
+        ? [scope.getByRole(recipe.role as Parameters<Page["getByRole"]>[0], { name: recipe.text })]
+        : [];
+    }
+    case "href": {
+      return typeof recipe.href === "string" && recipe.href.length > 0
+        ? hrefLocators(scope, recipe.href)
+        : [];
+    }
+    case "tag_text": {
+      return typeof recipe.tag === "string" && recipe.tag.length > 0 && typeof recipe.text === "string" && recipe.text.length > 0
+        ? [scope.locator(recipe.tag).filter({ hasText: recipe.text })]
+        : [];
+    }
+    default:
+      return [];
+  }
+}
+
+function resolveReplayRecipeScope(page: Page, frameId: string | undefined): Page | Frame | null {
+  if (!frameId) {
+    return page;
+  }
+
+  const match = /^frame:(\d+)$/.exec(frameId);
+  if (!match) {
+    return null;
+  }
+
+  const frameIndex = Number(match[1]) - 1;
+  if (!Number.isInteger(frameIndex) || frameIndex < 0) {
+    return null;
+  }
+
+  return page.frames().filter((frame) => frame !== page.mainFrame())[frameIndex] ?? null;
+}
+
+function hrefLocators(scope: Page | Frame, href: string): Locator[] {
+  const hrefCandidates = new Set([href]);
+  try {
+    const parsed = new URL(href);
+    hrefCandidates.add(parsed.pathname);
+    hrefCandidates.add(`${parsed.pathname}${parsed.search}`);
+    const fileName = parsed.pathname.split("/").filter(Boolean).at(-1);
+    if (fileName) {
+      hrefCandidates.add(fileName);
+    }
+  } catch {
+    // The original href may already be relative; use it as-is.
+  }
+
+  return [...hrefCandidates]
+    .filter((candidate) => candidate.length > 0)
+    .map((candidate) => scope.locator(`a[href*="${escapeCssString(candidate)}"]`));
 }
 
 function escapeCssString(value: string): string {
@@ -1208,9 +1349,10 @@ function escapeCssString(value: string): string {
 async function tryCandidateLocators(
   page: Page,
   target: TargetDescriptor | undefined,
+  options: Record<string, unknown> | undefined,
   run: (locator: Locator) => Promise<void>
 ): Promise<boolean> {
-  for (const locator of buildCandidateLocators(page, target)) {
+  for (const locator of buildCandidateLocators(page, target, options)) {
     try {
       await run(locator.first());
       return true;
@@ -1225,6 +1367,11 @@ async function tryCandidateLocators(
 function shouldStop(stopCondition: Record<string, unknown> | undefined, finalUrl: string): boolean {
   if (!stopCondition) {
     return false;
+  }
+
+  const condition = stopCondition.condition;
+  if (condition === "before_real_submit" || condition === "before_payment_commit") {
+    return true;
   }
 
   const urlIncludes = stopCondition.url_includes;
@@ -1463,8 +1610,39 @@ async function safeInteractiveComponents(
   lastAction: BrowserPageSnapshot["lastAction"],
   fallbackValue: InteractiveComponentObservationItem[]
 ): Promise<InteractiveComponentObservationItem[]> {
+  const clickedTarget = lastAction?.type === "click" ? lastAction.target : null;
   try {
-    return await page.evaluate((clickedTarget) => {
+    const mainComponents = await extractInteractiveComponentsFromFrame(page.mainFrame(), clickedTarget, null);
+    const frameComponents: InteractiveComponentObservationItem[] = [];
+
+    for (const [index, frame] of page.frames().filter((frame) => frame !== page.mainFrame()).entries()) {
+      try {
+        frameComponents.push(...await extractInteractiveComponentsFromFrame(frame, clickedTarget, `frame:${index + 1}`));
+      } catch {
+        continue;
+      }
+    }
+
+    const components = [...mainComponents, ...frameComponents]
+      .sort((left, right) => componentScore(right) - componentScore(left))
+      .slice(0, 20);
+    const primaryIndex = components.findIndex((component) => component.is_cta_candidate);
+
+    return components.map((component, index) => ({
+      ...component,
+      is_primary_like: index === primaryIndex
+    }));
+  } catch {
+    return fallbackValue;
+  }
+}
+
+async function extractInteractiveComponentsFromFrame(
+  frame: Frame,
+  clickedTarget: string | null,
+  frameId: string | null
+): Promise<InteractiveComponentObservationItem[]> {
+  return frame.evaluate(({ clickedTarget, frameId }) => {
       const CTA_TEXT_PATTERN = /무료|시작|가입|신청|구매|결제|문의|상담|체험|다운로드|start|sign\s*up|try|buy|checkout|contact|demo|continue/i;
       const SELECTOR_ESCAPE_SCOPE = globalThis as typeof globalThis & {
         CSS?: {
@@ -1563,10 +1741,25 @@ async function safeInteractiveComponents(
         );
       }
 
+      const INTERACTIVE_SELECTOR = "a[href], button, input[type='button'], input[type='submit'], [role='button'], [role='link'], [onclick], [tabindex='0']";
+
+      function collectInteractiveElements(root: Document | ShadowRoot, shadowRoot: boolean): Array<{ element: Element; shadowRoot: boolean }> {
+        const direct = Array.from(root.querySelectorAll(INTERACTIVE_SELECTOR)).map((element) => ({
+          element,
+          shadowRoot
+        }));
+        const nested = Array.from(root.querySelectorAll("*")).flatMap((element) => {
+          const openShadowRoot = (element as HTMLElement).shadowRoot;
+          return openShadowRoot ? collectInteractiveElements(openShadowRoot, true) : [];
+        });
+
+        return [...direct, ...nested];
+      }
+
       const viewportWidth = globalThis.innerWidth || 0;
       const viewportHeight = globalThis.innerHeight || 0;
-      const components = Array.from(document.querySelectorAll("a[href], button, input[type='button'], input[type='submit'], [role='button'], [role='link'], [onclick], [tabindex='0']"))
-        .map((element) => {
+      const components = collectInteractiveElements(document, false)
+        .map(({ element, shadowRoot }) => {
           const rect = element.getBoundingClientRect();
           const tag = element.tagName.toLowerCase();
           const role = element.getAttribute("role") ?? implicitRole(element, tag);
@@ -1582,6 +1775,8 @@ async function safeInteractiveComponents(
             selector,
             role,
             href,
+            frame_id: frameId,
+            shadow_root: shadowRoot,
             tag,
             clickable,
             clicked_in_scenario: isClickedInScenario({ text, selector, role }),
@@ -1602,21 +1797,25 @@ async function safeInteractiveComponents(
         .sort((left, right) => right.score - left.score)
         .slice(0, 20);
 
-      const primaryIndex = components.findIndex((component) => component.is_cta_candidate);
-      return components.map((component, index) => ({
+      return components.map((component) => ({
         text: component.text,
         selector: component.selector,
         role: component.role,
         href: component.href,
+        frame_id: component.frame_id,
+        shadow_root: component.shadow_root,
         tag: component.tag,
         clickable: component.clickable,
         clicked_in_scenario: component.clicked_in_scenario,
         is_cta_candidate: component.is_cta_candidate,
-        is_primary_like: index === primaryIndex,
+        is_primary_like: false,
         bounds: component.bounds
       }));
-    }, lastAction?.type === "click" ? lastAction.target : null);
-  } catch {
-    return fallbackValue;
-  }
+    }, { clickedTarget, frameId });
+}
+
+function componentScore(component: InteractiveComponentObservationItem): number {
+  return (component.is_cta_candidate ? 1_000_000 : 0) +
+    component.bounds.width * component.bounds.height +
+    (component.frame_id ? 100 : 0);
 }

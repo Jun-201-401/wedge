@@ -2,17 +2,17 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import type { ReportDetail, RunReportProjection } from '../../src/entities/report';
-import type { Run } from '../../src/entities/run';
-import { buildRunReportFromApi } from '../../src/features/report-viewer/lib/runReportFromApi';
+import type { Run, RunArtifact } from '../../src/entities/run';
+import { buildRunReportFromApi, selectLatestScreenshotPreviewUrl } from '../../src/features/report-viewer/lib/runReportFromApi';
 
 const completedRun: Run = {
   id: '11111111-1111-4111-8111-111111111111',
   type: 'run',
   projectId: '22222222-2222-4222-8222-222222222222',
-  name: '첫 화면 CTA 점검',
+  name: '랜딩 전환 CTA 점검',
   triggerSource: 'WEB',
   startUrl: 'https://example.com/',
-  goal: '첫 화면 CTA 점검',
+  goal: '랜딩 전환 CTA 점검',
   devicePreset: 'desktop',
   scenarioTemplateVersionId: '33333333-3333-4333-8333-333333333333',
   status: 'COMPLETED',
@@ -131,6 +131,24 @@ const reportDetail: ReportDetail = {
       },
       source: 'STAGE_SCREENSHOT',
     },
+    highlight: {
+      evidenceRef: 'cp-detail.obs-1',
+      label: 'Start free',
+      source: 'artifact-coordinate',
+      coordinateSpace: 'viewport',
+      bounds: {
+        x: 520,
+        y: 360,
+        width: 220,
+        height: 56,
+        unit: 'css_px',
+      },
+      viewport: {
+        width: 1440,
+        height: 900,
+      },
+      screenshotArtifactId: '66666666-6666-4666-8666-666666666666',
+    },
     nudges: [{
       id: 'detail-nudge-1',
       rank: 1,
@@ -145,6 +163,60 @@ const reportDetail: ReportDetail = {
   createdAt: '2026-04-27T01:02:00.000Z',
 };
 
+const screenshotArtifacts: RunArtifact[] = [
+  {
+    id: '77777777-7777-4777-8777-777777777777',
+    runId: completedRun.id,
+    stepId: null,
+    stepKey: 'first-view',
+    artifactType: 'SCREENSHOT',
+    bucket: 'wedge-artifacts',
+    key: 'runs/report/first-view.png',
+    mimeType: 'image/png',
+    width: 1440,
+    height: 900,
+    sizeBytes: 2048,
+    sha256: null,
+    url: null,
+    contentUrl: `/api/runs/${completedRun.id}/artifacts/77777777-7777-4777-8777-777777777777/content`,
+    createdAt: '2026-04-27T01:02:00.000Z',
+  },
+  {
+    id: '88888888-8888-4888-8888-888888888888',
+    runId: completedRun.id,
+    stepId: null,
+    stepKey: 'final',
+    artifactType: 'SCREENSHOT',
+    bucket: 'wedge-artifacts',
+    key: 'runs/report/final.png',
+    mimeType: 'image/png',
+    width: 1440,
+    height: 900,
+    sizeBytes: 4096,
+    sha256: null,
+    url: null,
+    contentUrl: `/api/runs/${completedRun.id}/artifacts/88888888-8888-4888-8888-888888888888/content`,
+    createdAt: '2026-04-27T01:03:00.000Z',
+  },
+  {
+    id: '99999999-9999-4999-8999-999999999999',
+    runId: completedRun.id,
+    stepId: null,
+    stepKey: 'dom',
+    artifactType: 'DOM_SNAPSHOT',
+    bucket: 'wedge-artifacts',
+    key: 'runs/report/dom.html',
+    mimeType: 'text/html',
+    width: null,
+    height: null,
+    sizeBytes: 512,
+    sha256: null,
+    url: null,
+    contentUrl: `/api/runs/${completedRun.id}/artifacts/99999999-9999-4999-8999-999999999999/content`,
+    createdAt: '2026-04-27T01:04:00.000Z',
+  },
+];
+
 test('buildRunReportFromApi projects backend report data into report view model', () => {
   const report = buildRunReportFromApi({ run: completedRun, report: readyReport, scenarioId: 'landing-cta' });
 
@@ -157,6 +229,7 @@ test('buildRunReportFromApi projects backend report data into report view model'
   assert.equal(report.decisionNodes[0].tone, 'friction');
   assert.equal(report.findings[0].severity, 'high');
   assert.equal(report.findings[0].evidenceRefs[0], 'cp-1');
+  assert.equal(report.findings[0].highlight, null);
   assert.equal(report.recommendations[0].detail, 'CTA 아래에 기대 결과를 한 문장으로 설명하세요.');
 });
 
@@ -173,5 +246,249 @@ test('buildRunReportFromApi prefers report detail finding preview image when ava
   assert.equal(report.findings[0].title, '상세 CTA 문맥 부족');
   assert.equal(report.findings[0].previewImageUrl, reportDetail.findings[0].previewImage?.artifact.contentUrl);
   assert.equal(report.findings[0].evidenceRefs[0], 'cp-detail.obs-1');
+  assert.equal(report.findings[0].highlight?.source, 'artifact-coordinate');
+  assert.equal(report.findings[0].highlight?.label, 'Start free');
+  assert.equal(report.findings[0].highlight?.left, '36.11%');
+  assert.equal(report.findings[0].highlight?.top, '40.00%');
+  assert.equal(report.findings[0].highlight?.width, '15.28%');
+  assert.equal(report.findings[0].highlight?.height, '6.22%');
+  assert.equal(report.recommendations[0].findingId, 'detail-finding-1');
   assert.equal(report.recommendations[0].detail, '상세 CTA 아래에 기대 결과를 한 문장으로 설명하세요.');
+});
+
+test('buildRunReportFromApi ignores coordinate highlight when it targets another screenshot', () => {
+  const mismatchedDetail: ReportDetail = {
+    ...reportDetail,
+    findings: [{
+      ...reportDetail.findings[0],
+      highlight: {
+        ...reportDetail.findings[0].highlight!,
+        screenshotArtifactId: '99999999-9999-4999-8999-999999999999',
+      },
+    }],
+  };
+  const report = buildRunReportFromApi({
+    run: completedRun,
+    report: readyReport,
+    detail: mismatchedDetail,
+    scenarioId: 'landing-cta',
+  });
+
+  assert.equal(report.findings[0].highlight, null);
+});
+
+test('buildRunReportFromApi accepts artifact-prefixed coordinate highlight ids', () => {
+  const prefixedDetail: ReportDetail = {
+    ...reportDetail,
+    findings: [{
+      ...reportDetail.findings[0],
+      highlight: {
+        ...reportDetail.findings[0].highlight!,
+        screenshotArtifactId: `artifact:${reportDetail.findings[0].previewImage!.artifact.id}`,
+      },
+    }],
+  };
+  const report = buildRunReportFromApi({
+    run: completedRun,
+    report: readyReport,
+    detail: prefixedDetail,
+    scenarioId: 'landing-cta',
+  });
+
+  assert.equal(report.findings[0].highlight?.source, 'artifact-coordinate');
+});
+
+test('buildRunReportFromApi ignores coordinate highlight without a screenshot binding', () => {
+  const unboundDetail: ReportDetail = {
+    ...reportDetail,
+    findings: [{
+      ...reportDetail.findings[0],
+      highlight: {
+        ...reportDetail.findings[0].highlight!,
+        screenshotArtifactId: '',
+      },
+    }],
+  };
+  const report = buildRunReportFromApi({
+    run: completedRun,
+    report: readyReport,
+    detail: unboundDetail,
+    scenarioId: 'landing-cta',
+  });
+
+  assert.equal(report.findings[0].highlight, null);
+});
+
+test('buildRunReportFromApi converts viewport ratio highlight coordinates directly', () => {
+  const ratioDetail: ReportDetail = {
+    ...reportDetail,
+    findings: [{
+      ...reportDetail.findings[0],
+      highlight: {
+        evidenceRef: 'cp-detail.obs-1',
+        label: 'Ratio target',
+        source: 'artifact-coordinate',
+        coordinateSpace: 'viewport_ratio',
+        bounds: {
+          x: 0.25,
+          y: 0.5,
+          width: 0.2,
+          height: 0.1,
+          unit: 'viewport_ratio',
+        },
+        viewport: null,
+        screenshotArtifactId: '66666666-6666-4666-8666-666666666666',
+      },
+    }],
+  };
+  const report = buildRunReportFromApi({
+    run: completedRun,
+    report: readyReport,
+    detail: ratioDetail,
+    scenarioId: 'landing-cta',
+  });
+
+  assert.equal(report.findings[0].highlight?.left, '25.00%');
+  assert.equal(report.findings[0].highlight?.top, '50.00%');
+  assert.equal(report.findings[0].highlight?.width, '20.00%');
+  assert.equal(report.findings[0].highlight?.height, '10.00%');
+});
+
+test('buildRunReportFromApi scales screenshot pixel highlight coordinates against the preview artifact', () => {
+  const screenshotPixelDetail: ReportDetail = {
+    ...reportDetail,
+    findings: [{
+      ...reportDetail.findings[0],
+      highlight: {
+        evidenceRef: 'cp-detail.obs-1',
+        label: 'Screenshot target',
+        source: 'artifact-coordinate',
+        coordinateSpace: 'screenshot',
+        bounds: {
+          x: 720,
+          y: 225,
+          width: 360,
+          height: 90,
+          unit: 'screenshot_px',
+        },
+        viewport: null,
+        screenshotArtifactId: '66666666-6666-4666-8666-666666666666',
+      },
+    }],
+  };
+  const report = buildRunReportFromApi({
+    run: completedRun,
+    report: readyReport,
+    detail: screenshotPixelDetail,
+    scenarioId: 'landing-cta',
+  });
+
+  assert.equal(report.findings[0].highlight?.left, '50.00%');
+  assert.equal(report.findings[0].highlight?.top, '25.00%');
+  assert.equal(report.findings[0].highlight?.width, '25.00%');
+  assert.equal(report.findings[0].highlight?.height, '10.00%');
+});
+
+test('buildRunReportFromApi accepts explicit screenshot pixel units when coordinate space is absent', () => {
+  const screenshotPixelDetail: ReportDetail = {
+    ...reportDetail,
+    findings: [{
+      ...reportDetail.findings[0],
+      highlight: {
+        ...reportDetail.findings[0].highlight!,
+        coordinateSpace: null,
+        bounds: {
+          x: 720,
+          y: 225,
+          width: 360,
+          height: 90,
+          unit: 'screenshot_px',
+        },
+      },
+    }],
+  };
+  const report = buildRunReportFromApi({
+    run: completedRun,
+    report: readyReport,
+    detail: screenshotPixelDetail,
+    scenarioId: 'landing-cta',
+  });
+
+  assert.equal(report.findings[0].highlight?.left, '50.00%');
+  assert.equal(report.findings[0].highlight?.top, '25.00%');
+});
+
+test('buildRunReportFromApi ignores highlight coordinates with unsupported units', () => {
+  const invalidUnitDetail: ReportDetail = {
+    ...reportDetail,
+    findings: [{
+      ...reportDetail.findings[0],
+      highlight: {
+        ...reportDetail.findings[0].highlight!,
+        coordinateSpace: 'screenshot',
+        bounds: {
+          ...reportDetail.findings[0].highlight!.bounds,
+          unit: 'document_px' as never,
+        },
+      },
+    }],
+  };
+  const report = buildRunReportFromApi({
+    run: completedRun,
+    report: readyReport,
+    detail: invalidUnitDetail,
+    scenarioId: 'landing-cta',
+  });
+
+  assert.equal(report.findings[0].highlight, null);
+});
+
+test('buildRunReportFromApi links detail fallback recommendations back to their findings', () => {
+  const detailWithoutNudges: ReportDetail = {
+    ...reportDetail,
+    findings: [{
+      ...reportDetail.findings[0],
+      nudges: [],
+    }],
+  };
+  const report = buildRunReportFromApi({
+    run: completedRun,
+    report: readyReport,
+    detail: detailWithoutNudges,
+    scenarioId: 'landing-cta',
+  });
+
+  assert.equal(report.recommendations[0].findingId, 'detail-finding-1');
+  assert.equal(report.recommendations[0].title, '상세 CTA 문맥 부족');
+});
+
+test('selectLatestScreenshotPreviewUrl picks the latest screenshot artifact', () => {
+  assert.equal(selectLatestScreenshotPreviewUrl(screenshotArtifacts), screenshotArtifacts[1].contentUrl);
+  assert.equal(selectLatestScreenshotPreviewUrl([screenshotArtifacts[2]]), null);
+});
+
+test('selectLatestScreenshotPreviewUrl uses public artifact url when content url is absent', () => {
+  assert.equal(selectLatestScreenshotPreviewUrl([{
+    ...screenshotArtifacts[0],
+    contentUrl: null,
+    url: 'https://cdn.example.com/report-preview.png',
+  }]), 'https://cdn.example.com/report-preview.png');
+});
+
+test('buildRunReportFromApi uses a run screenshot fallback when report findings have no preview', () => {
+  const reportWithoutFindings: RunReportProjection = {
+    ...readyReport,
+    findings: [],
+    nudges: [],
+  };
+  const fallbackPreviewUrl = selectLatestScreenshotPreviewUrl(screenshotArtifacts);
+  const report = buildRunReportFromApi({
+    run: completedRun,
+    report: reportWithoutFindings,
+    fallbackPreviewUrl,
+    scenarioId: 'landing-cta',
+  });
+
+  assert.equal(report.findings.length, 0);
+  assert.equal(report.evidencePreviewUrl, fallbackPreviewUrl);
 });

@@ -31,10 +31,16 @@ Canonical machine-readable contracts belong here. Human-readable design rational
 - `examples/sample-site-discovery-result.json`: SiteDiscoveryResult fixture
 - `examples/sample-scenario-authoring-job.json`: queued ScenarioAuthoring job fixture
 - `examples/sample-scenario-authoring-result.json`: completed ScenarioAuthoring result fixture with a `custom_compiled` ScenarioPlan candidate
-- Runner Agent Runtime schemas:
-  - `AgentTask` and `AgentExecuteMessage` live in `mq/messages.schema.json` for the first runnable `agent.execute.request` path.
-  - `schemas/agent-event.schema.json`, `schemas/agent-outcome.schema.json`, `schemas/agent-policy-result.schema.json`, and `schemas/agent-trace.schema.json` define the first persisted AgentTrace artifact shape.
-  - Planned typed subdocument/callback schemas remain contract-first follow-ups: `agent-observation`, `agent-decision`, and `agent-verification-result`.
+- Runner Agent Runtime schemas for the official `agent.execute.request` path:
+  - `AgentTask` and `AgentExecuteMessage` live in `mq/messages.schema.json`; `mq/agent.execute.request.schema.json` is the thin payload entrypoint.
+  - `schemas/agent-task.schema.json`
+  - `schemas/agent-observation.schema.json`
+  - `schemas/agent-decision.schema.json`
+  - `schemas/agent-policy-result.schema.json`
+  - `schemas/agent-verification-result.schema.json`
+  - `schemas/agent-event.schema.json`
+  - `schemas/agent-outcome.schema.json`
+  - `schemas/agent-trace.schema.json`
 - `examples/sample-evidence-packet.json`: EvidencePacket fixture
 - `examples/sample-run-artifacts-response.json`: prototype REST fixture for `GET /api/runs/{runId}/artifacts`
 - `examples/sample-run-evidence-packet-response.json`: prototype REST fixture for `GET /api/runs/{runId}/evidence-packet`
@@ -49,13 +55,13 @@ Canonical machine-readable contracts belong here. Human-readable design rational
   - `examples/sample-agent-trace-checkout-entry.json`
   - Successful AgentTrace executions may also produce replay `ScenarioPlan` artifacts using the existing `schemas/scenario-plan.schema.json` contract.
   - Agent runtime callbacks use `internal/runner-callback.schema.json` `AgentEventBatch` and `AgentTraceRequest` over `/internal/runner/runs/{runId}/agent-events` and `/internal/runner/runs/{runId}/agent-traces`.
-- `mq/messages.schema.json`: RabbitMQ common envelope and message type contract; this is the canonical MQ source
+- `mq/messages.schema.json`: RabbitMQ common envelope and message type contract; this is the canonical MQ source. `agent.execute.request` is the official Runner Agent path; `run.execute.request` remains ScenarioPlan scripted/replay execution.
 - `mq/run.execute.request.schema.json`: thin `$ref` entrypoint to `messages.schema.json#/$defs/RunExecutePayload`
-- `mq/agent.execute.request.schema.json`: thin `$ref` entrypoint for AgentExecutePayload
+- `mq/agent.execute.request.schema.json`: thin `$ref` entrypoint to `messages.schema.json#/$defs/AgentExecutePayload`
 - `mq/analysis.request.schema.json`: thin `$ref` entrypoint to `messages.schema.json#/$defs/AnalysisRequestPayload`
 - `mq/report.export.request.schema.json`: thin `$ref` entrypoint to `messages.schema.json#/$defs/ReportExportRequestPayload`
 - `websocket/events.schema.json`: live event envelope and event variants
-- `internal/runner-callback.schema.json`: runner callback payload definitions; planned Agent Runtime callback payloads should be added here unless a dedicated agent callback schema is introduced
+- `internal/runner-callback.schema.json`: runner callback payload definitions, including `agent-events` and `agent-traces` callback payloads
 - `internal/analyzer-callback.schema.json`: analyzer callback payload definitions
 - `mcp/tools.schema.json`: MCP tool metadata contract, including asynchronous ScenarioAuthoring job/result tools
 - `enums/run-status.json`: shared lifecycle enums

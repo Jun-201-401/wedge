@@ -167,10 +167,11 @@ public class RunService {
 
     @Transactional
     public RunResponse finishRun(UUID runId, boolean stopped) {
-        if (stopped) {
-            return transition(runId, RunStatus.STOPPED, ResultCompleteness.PARTIAL);
+        RunResponse current = getRun(runId);
+        if (stopped && current.status() == RunStatus.STOP_REQUESTED) {
+            return transition(current, RunStatus.STOPPED, ResultCompleteness.PARTIAL);
         }
-        return transition(runId, RunStatus.COMPLETED, ResultCompleteness.FINAL);
+        return transition(current, RunStatus.COMPLETED, ResultCompleteness.FINAL);
     }
 
     @Transactional

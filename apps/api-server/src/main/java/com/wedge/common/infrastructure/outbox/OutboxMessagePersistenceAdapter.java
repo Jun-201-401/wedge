@@ -81,6 +81,10 @@ public class OutboxMessagePersistenceAdapter {
     }
 
     public Optional<RunExecuteRequestMessage> findRunExecuteMessageForPublish(UUID outboxMessageId) {
+        return findRunnerRequestMessageForPublish(outboxMessageId);
+    }
+
+    public Optional<RunExecuteRequestMessage> findRunnerRequestMessageForPublish(UUID outboxMessageId) {
         return outboxMessageMapper.findById(outboxMessageId, RUN_EXECUTE_EVENT_TYPE, MAX_PUBLISH_ATTEMPTS)
                 .map(this::toRunExecuteRequestMessage);
     }
@@ -101,10 +105,14 @@ public class OutboxMessagePersistenceAdapter {
     }
 
     public List<RunExecuteOutboxMessage> findDueRunExecuteMessages(int limit) {
+        return findDueMessages(RUN_EXECUTE_EVENT_TYPE, limit);
+    }
+
+    private List<RunExecuteOutboxMessage> findDueMessages(String eventType, int limit) {
         OffsetDateTime now = OffsetDateTime.now();
         OffsetDateTime pendingBefore = now.minusSeconds(PENDING_RETRY_GRACE_SECONDS);
         return outboxMessageMapper.findDueMessages(
-                        RUN_EXECUTE_EVENT_TYPE,
+                        eventType,
                         now,
                         pendingBefore,
                         MAX_PUBLISH_ATTEMPTS,

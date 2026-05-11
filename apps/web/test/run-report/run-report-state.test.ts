@@ -9,10 +9,10 @@ const completedRun: Run = {
   id: '11111111-1111-4111-8111-111111111111',
   type: 'run',
   projectId: '22222222-2222-4222-8222-222222222222',
-  name: '첫 화면 CTA 점검',
+  name: '랜딩 전환 CTA 점검',
   triggerSource: 'WEB',
   startUrl: 'https://example.com/',
-  goal: '첫 화면 CTA 점검',
+  goal: '랜딩 전환 CTA 점검',
   devicePreset: 'desktop',
   scenarioTemplateVersionId: '33333333-3333-4333-8333-333333333333',
   status: 'COMPLETED',
@@ -82,7 +82,7 @@ test('resolveRunReportState treats missing real run data as an error', () => {
   });
 
   assert.equal(missingRun.kind, 'error');
-  assert.equal(missingRun.title, 'Run을 찾을 수 없습니다');
+  assert.equal(missingRun.title, '실행 결과를 찾을 수 없습니다');
 });
 
 test('resolveRunReportState blocks incomplete real runs and completed real runs without evidence data', () => {
@@ -129,7 +129,7 @@ test('resolveRunReportState uses backend report readiness before evidence fallba
     report: { ...baseReport, reportStatus: 'GENERATABLE', reportId: null, status: null },
   });
   assert.equal(generatable.kind, 'api-pending');
-  assert.match(generatable.message, /리포트 생성/);
+  assert.equal(generatable.message, '분석이 완료됐습니다. 리포트를 생성해주세요.');
 
   const notReady = resolveRunReportState({
     isMockRun: false,
@@ -139,7 +139,7 @@ test('resolveRunReportState uses backend report readiness before evidence fallba
     report: { ...baseReport, reportStatus: 'NOT_READY', analysisStatus: 'NOT_STARTED', reportId: null, status: null },
   });
   assert.equal(notReady.kind, 'api-pending');
-  assert.match(notReady.message, /분석 요청/);
+  assert.match(notReady.message, /아직 분석이 시작되지 않았습니다/);
 
   const failed = resolveRunReportState({
     isMockRun: false,

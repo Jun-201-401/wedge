@@ -1,58 +1,84 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://wedge.example.com/contracts/schemas/agent-trace.schema.json",
-  "title": "Wedge AgentTrace",
+  "title": "Runner Agent Trace",
+  "description": "MVP AgentTrace artifact. Stores explainable execution metadata only; no LLM chain-of-thought.",
   "type": "object",
   "additionalProperties": false,
-  "required": [
-    "schema_version",
-    "trace_id",
-    "task_id",
-    "attempt_id",
-    "run_id",
-    "started_at",
-    "finished_at",
-    "final_outcome",
-    "events",
-    "observations",
-    "decisions",
-    "policy_results",
-    "verification_results",
-    "artifact_refs"
-  ],
   "properties": {
-    "schema_version": { "const": "0.1" },
-    "trace_id": { "type": "string", "format": "uuid" },
-    "task_id": { "type": "string", "format": "uuid" },
-    "attempt_id": { "type": "string", "format": "uuid" },
-    "run_id": { "type": "string", "format": "uuid" },
-    "started_at": { "type": "string", "format": "date-time" },
-    "finished_at": { "type": "string", "format": "date-time" },
-    "final_outcome": { "$ref": "agent-outcome.schema.json#/$defs/final_outcome" },
-    "events": {
-      "type": "array",
-      "items": { "$ref": "agent-event.schema.json" }
+    "schema_version": {
+      "const": "0.1"
     },
-    "observations": {
-      "type": "array",
-      "items": { "type": "object", "additionalProperties": true }
+    "task_id": {
+      "type": "string",
+      "minLength": 1
     },
-    "decisions": {
-      "type": "array",
-      "items": { "type": "object", "additionalProperties": true }
+    "attempt_id": {
+      "type": "string",
+      "minLength": 1
     },
-    "policy_results": {
-      "type": "array",
-      "items": { "$ref": "agent-policy-result.schema.json" }
+    "attempt_index": {
+      "type": "integer",
+      "minimum": 1
     },
-    "verification_results": {
-      "type": "array",
-      "items": { "type": "object", "additionalProperties": true }
+    "run_id": {
+      "type": "string",
+      "minLength": 1
     },
-    "artifact_refs": {
+    "turns": {
       "type": "array",
-      "items": { "type": "string" }
+      "items": {
+        "$ref": "#/$defs/AgentTurnTrace"
+      }
     },
-    "outcome": { "$ref": "agent-outcome.schema.json" }
+    "outcome": {
+      "$ref": "agent-outcome.schema.json"
+    }
+  },
+  "required": ["schema_version", "task_id", "attempt_id", "attempt_index", "run_id", "turns", "outcome"],
+  "$defs": {
+    "AgentTurnTrace": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "turn": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "observation": {
+          "$ref": "agent-observation.schema.json"
+        },
+        "preDecisionVerification": {
+          "$ref": "agent-verification-result.schema.json"
+        },
+        "decision": {
+          "$ref": "agent-decision.schema.json"
+        },
+        "policy": {
+          "$ref": "agent-policy-result.schema.json"
+        },
+        "actionResult": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "actionType": {
+              "$ref": "scenario-plan.schema.json#/$defs/action/properties/type"
+            },
+            "finalUrl": {
+              "type": "string",
+              "minLength": 1
+            },
+            "completed": {
+              "type": "boolean"
+            }
+          },
+          "required": ["actionType", "finalUrl", "completed"]
+        },
+        "postActionVerification": {
+          "$ref": "agent-verification-result.schema.json"
+        }
+      },
+      "required": ["turn", "observation", "preDecisionVerification"]
+    }
   }
 }

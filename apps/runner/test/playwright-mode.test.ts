@@ -11,13 +11,17 @@ import { executeScenario } from "../src/scenario/executor/index.ts";
 import { executeScenarioStep } from "../src/scenario/executor/step-executor.ts";
 import { createArtifactStore } from "../src/storage/index.ts";
 import { registerAgentWorker } from "../src/worker/agent-worker.ts";
+import { exportAgentTraceToScenarioPlan } from "../src/agent/trace-export.ts";
+import type { AgentTrace } from "../src/agent/trace.ts";
 import type {
   AgentEvent,
   AgentTask,
   AgentTraceCallbackPayload,
   Artifact,
   Checkpoint,
+  ScenarioAction,
   ScenarioPlan,
+  ScenarioStage,
   ScenarioStep
 } from "../src/shared/contracts.ts";
 import { createMinimalPlan, createRunnerTestConfig, createStubCallbackClient } from "./support.ts";
@@ -93,8 +97,13 @@ test("[Playwright 실제 실행] goto/fill/select를 수행하고 실제 screens
     assert.equal(capturedArtifacts.screenshot?.mimeType, "image/png");
     assert.equal(capturedArtifacts.screenshot?.fileExtension, "png");
     assert.ok((capturedArtifacts.screenshot?.contentBase64.length ?? 0) > 0);
+    const screenshotBuffer = Buffer.from(capturedArtifacts.screenshot?.contentBase64 ?? "", "base64");
+    const screenshotDimensions = readPngDimensions(screenshotBuffer);
+    assert.equal(capturedArtifacts.screenshot?.width, screenshotDimensions.width);
+    assert.equal(capturedArtifacts.screenshot?.height, screenshotDimensions.height);
+    assert.ok((capturedArtifacts.screenshot?.height ?? 0) > plan.environment.viewport.height);
     assert.deepEqual(
-      Buffer.from(capturedArtifacts.screenshot?.contentBase64 ?? "", "base64").subarray(0, 8),
+      screenshotBuffer.subarray(0, 8),
       Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
     );
     assert.equal(capturedArtifacts.domSnapshot?.mimeType, "text/html");
@@ -541,6 +550,43 @@ test("[Agent Checkout Smoke] 실제 Playwright 경로에서 장바구니, 카트
   }
 });
 
+test("[Agent Trace Export Replay] export된 ScenarioPlan은 replay_hint locator로 static Runner에서 재생된다", async () => {
+  const fixtureRoot = await mkdtemp(join(tmpdir(), "wedge-runner-agent-export-replay-site-"));
+  const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-agent-export-replay-artifacts-"));
+
+  try {
+    const { productUrl } = await createAgentCheckoutFixtureSite(fixtureRoot);
+    const task = createAgentCheckoutTask(productUrl);
+    const traceExport = exportAgentTraceToScenarioPlan({
+      task,
+      trace: createReplayHintOnlyCheckoutTrace(task, productUrl),
+      exportedAt: "2026-05-08T00:00:00.000Z"
+    });
+
+    assert.equal(traceExport.status, "EXPORTED");
+    assert.ok(traceExport.scenario_plan);
+    assert.ok(
+      traceExport.scenario_plan.steps
+        .filter((step) => step.action.type === "click")
+        .every((step) => typeof step.action.options?.replay_hint === "object")
+    );
+
+    const result = await executeRealScenarioPlan({
+      runId: "run-agent-export-replay",
+      plan: traceExport.scenario_plan,
+      artifactsRoot
+    });
+
+    assert.equal(result.execution.summary.failedStepCount, 0);
+    assert.equal(result.execution.summary.stopped, true);
+    assert.ok(result.snapshot.finalUrl.endsWith("/checkout.html"));
+    assert.ok(!result.domSnapshots.some((snapshot) => snapshot.includes('data-payment-committed="true"')));
+  } finally {
+    await rm(fixtureRoot, { recursive: true, force: true });
+    await rm(artifactsRoot, { recursive: true, force: true });
+  }
+});
+
 test("[Agent Login Blocker Smoke] 실제 Playwright 경로에서 로그인 벽을 decision 전에 감지한다", async () => {
   const fixtureRoot = await mkdtemp(join(tmpdir(), "wedge-runner-agent-blocker-site-"));
   const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-agent-blocker-artifacts-"));
@@ -591,6 +637,76 @@ test("[Agent CAPTCHA Blocker Smoke] 실제 Playwright 경로에서 CAPTCHA 벽�
     assert.equal(result.execution.trace.turns.at(-1)?.preDecisionVerification?.outcome, "BLOCKED_CAPTCHA");
     assert.deepEqual(result.actionCompletedTargets, [blockerUrl]);
     assert.equal(result.traceArtifacts.length, 1);
+  } finally {
+    await rm(fixtureRoot, { recursive: true, force: true });
+    await rm(artifactsRoot, { recursive: true, force: true });
+  }
+});
+
+test("[Agent Iframe Payment Blocker Smoke] iframe 내부 최종 결제 후보를 decision 전에 감지한다", async () => {
+  const fixtureRoot = await mkdtemp(join(tmpdir(), "wedge-runner-agent-iframe-payment-site-"));
+  const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-agent-iframe-payment-artifacts-"));
+
+  try {
+    const { checkoutUrl } = await createAgentIframePaymentFixtureSite(fixtureRoot);
+    const result = await executeRealAgentTask({
+      task: createAgentCheckoutTask(checkoutUrl),
+      artifactsRoot
+    });
+
+    assert.equal(result.execution.summary.completedStepCount, 1);
+    assert.equal(result.execution.summary.stopped, true);
+    assert.equal(result.execution.trace.outcome.status, "POLICY_BLOCKED");
+    assert.equal(result.execution.trace.turns.at(-1)?.preDecisionVerification?.outcome, "POLICY_BLOCKED");
+    assert.match(result.execution.trace.turns.at(-1)?.preDecisionVerification?.reason ?? "", /iframe frame:1/);
+    assert.deepEqual(result.actionCompletedTargets, [checkoutUrl]);
+    assert.ok(!result.actionCompletedTargets.includes("#pay-now"));
+    assert.equal(result.traceArtifacts.length, 1);
+  } finally {
+    await rm(fixtureRoot, { recursive: true, force: true });
+    await rm(artifactsRoot, { recursive: true, force: true });
+  }
+});
+
+test("[Agent Shadow Payment Blocker Smoke] open shadow DOM 최종 결제 후보를 decision 전에 감지한다", async () => {
+  const fixtureRoot = await mkdtemp(join(tmpdir(), "wedge-runner-agent-shadow-payment-site-"));
+  const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-agent-shadow-payment-artifacts-"));
+
+  try {
+    const { checkoutUrl } = await createAgentShadowPaymentFixtureSite(fixtureRoot);
+    const result = await executeRealAgentTask({
+      task: createAgentCheckoutTask(checkoutUrl),
+      artifactsRoot
+    });
+
+    assert.equal(result.execution.summary.completedStepCount, 1);
+    assert.equal(result.execution.summary.stopped, true);
+    assert.equal(result.execution.trace.outcome.status, "POLICY_BLOCKED");
+    assert.equal(result.execution.trace.turns.at(-1)?.preDecisionVerification?.outcome, "POLICY_BLOCKED");
+    assert.match(result.execution.trace.turns.at(-1)?.preDecisionVerification?.reason ?? "", /shadow root/);
+    assert.deepEqual(result.actionCompletedTargets, [checkoutUrl]);
+    assert.equal(result.traceArtifacts.length, 1);
+  } finally {
+    await rm(fixtureRoot, { recursive: true, force: true });
+    await rm(artifactsRoot, { recursive: true, force: true });
+  }
+});
+
+test("[Agent Frame Replay] replay_hint frame_id로 iframe 내부 후보를 static Runner가 클릭한다", async () => {
+  const fixtureRoot = await mkdtemp(join(tmpdir(), "wedge-runner-agent-frame-replay-site-"));
+  const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-agent-frame-replay-artifacts-"));
+
+  try {
+    const { frameUrl } = await createAgentIframeReplayFixtureSite(fixtureRoot);
+    const result = await executeRealScenarioPlan({
+      runId: "run-agent-frame-replay",
+      plan: createAgentIframeReplayPlan(frameUrl),
+      artifactsRoot
+    });
+
+    assert.equal(result.execution.summary.failedStepCount, 0);
+    assert.equal(result.execution.summary.completedStepCount, 4);
+    assert.equal(result.execution.summary.stopped, true);
   } finally {
     await rm(fixtureRoot, { recursive: true, force: true });
     await rm(artifactsRoot, { recursive: true, force: true });
@@ -1995,6 +2111,106 @@ async function createAgentBlockerFixtureSite(
   };
 }
 
+async function createAgentIframePaymentFixtureSite(root: string): Promise<{ checkoutUrl: string }> {
+  const checkoutFile = join(root, "iframe-checkout.html");
+
+  await writeFile(
+    checkoutFile,
+    `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Checkout with iframe payment</title>
+  </head>
+  <body>
+    <main>
+      <h1>Checkout</h1>
+      <p>Payment is embedded below.</p>
+      <iframe
+        id="payment-frame"
+        title="Payment frame"
+        srcdoc='<!doctype html><html lang="en"><body><main><h2>Payment</h2><button id="pay-now" type="button">Pay now</button></main><script>document.getElementById("pay-now")?.addEventListener("click", () => { document.body.dataset.paymentCommitted = "true"; });</script></body></html>'>
+      </iframe>
+    </main>
+  </body>
+</html>`,
+    "utf8"
+  );
+
+  return {
+    checkoutUrl: pathToFileURL(checkoutFile).toString()
+  };
+}
+
+async function createAgentShadowPaymentFixtureSite(root: string): Promise<{ checkoutUrl: string }> {
+  const checkoutFile = join(root, "shadow-checkout.html");
+
+  await writeFile(
+    checkoutFile,
+    `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Checkout with shadow payment</title>
+  </head>
+  <body>
+    <main>
+      <h1>Checkout</h1>
+      <p>Payment is rendered by a web component.</p>
+      <payment-panel></payment-panel>
+    </main>
+    <script>
+      customElements.define("payment-panel", class extends HTMLElement {
+        connectedCallback() {
+          const root = this.attachShadow({ mode: "open" });
+          root.innerHTML = '<section><h2>Payment</h2><button id="pay-now" type="button">Pay now</button></section>';
+          root.getElementById("pay-now")?.addEventListener("click", () => {
+            document.body.dataset.paymentCommitted = "true";
+          });
+        }
+      });
+    </script>
+  </body>
+</html>`,
+    "utf8"
+  );
+
+  return {
+    checkoutUrl: pathToFileURL(checkoutFile).toString()
+  };
+}
+
+async function createAgentIframeReplayFixtureSite(root: string): Promise<{ frameUrl: string }> {
+  const frameFile = join(root, "iframe-replay.html");
+
+  await writeFile(
+    frameFile,
+    `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Iframe replay fixture</title>
+  </head>
+  <body>
+    <main>
+      <h1>Support flow</h1>
+      <p>The safe continuation button is embedded in an iframe.</p>
+      <iframe
+        id="support-frame"
+        title="Support frame"
+        srcdoc='<!doctype html><html lang="en"><body><main><h2>Support</h2><button id="continue-frame" type="button">Continue in frame</button><script>document.getElementById("continue-frame")?.addEventListener("click", () => { document.body.dataset.frameContinued = "true"; });</script></main></body></html>'>
+      </iframe>
+    </main>
+  </body>
+</html>`,
+    "utf8"
+  );
+
+  return {
+    frameUrl: pathToFileURL(frameFile).toString()
+  };
+}
+
 async function createAgentExternalCheckoutFixtureServer(): Promise<{
   productUrl: string;
   checkoutOrigin: string;
@@ -2128,6 +2344,18 @@ function serverOrigin(server: ReturnType<typeof createServer>): string {
   return `http://127.0.0.1:${address.port}`;
 }
 
+function readPngDimensions(buffer: Buffer): { width: number; height: number } {
+  assert.deepEqual(
+    buffer.subarray(0, 8),
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
+  );
+
+  return {
+    width: buffer.readUInt32BE(16),
+    height: buffer.readUInt32BE(20)
+  };
+}
+
 async function closeServer(server: ReturnType<typeof createServer>): Promise<void> {
   await new Promise<void>((resolve, reject) => {
     server.close((error) => {
@@ -2139,6 +2367,191 @@ async function closeServer(server: ReturnType<typeof createServer>): Promise<voi
       resolve();
     });
   });
+}
+
+function createReplayHintOnlyCheckoutTrace(task: AgentTask, productUrl: string): AgentTrace {
+  const cartUrl = new URL("./cart.html", productUrl).toString();
+  const checkoutUrl = new URL("./checkout.html", productUrl).toString();
+
+  return {
+    schema_version: "0.1",
+    task_id: task.task_id,
+    attempt_id: task.attempt_id,
+    attempt_index: task.attempt_index,
+    run_id: task.run_id,
+    outcome: {
+      status: "SUCCESS",
+      reason: "Checkout entry reached before payment commit."
+    },
+    turns: [
+      replayTurn({
+        turn: 1,
+        description: "Open product page",
+        targetKey: productUrl,
+        action: {
+          type: "goto",
+          target: {
+            url: productUrl
+          }
+        },
+        finalUrl: productUrl,
+        stage: "FIRST_VIEW"
+      }),
+      replayTurn({
+        turn: 2,
+        description: "Click add to cart via replay hint",
+        targetKey: "stale:add-to-cart",
+        action: {
+          type: "click",
+          target: {
+            selector: "#stale-add-to-cart"
+          },
+          options: {
+            replay_hint: {
+              candidate_fingerprint: "candidate:addtocart000001",
+              locator_recipe: [
+                {
+                  strategy: "role_text",
+                  role: "button",
+                  text: "Add to cart",
+                  confidence: 0.84
+                },
+                {
+                  strategy: "tag_text",
+                  tag: "button",
+                  text: "Add to cart",
+                  confidence: 0.62
+                }
+              ]
+            }
+          }
+        },
+        finalUrl: productUrl,
+        stage: "CTA"
+      }),
+      replayTurn({
+        turn: 3,
+        description: "Open cart via replay hint",
+        targetKey: "stale:cart-link",
+        action: {
+          type: "click",
+          target: {
+            selector: "#stale-cart-link"
+          },
+          options: {
+            replay_hint: {
+              candidate_fingerprint: "candidate:cartlink000000",
+              locator_recipe: [
+                {
+                  strategy: "role_text",
+                  role: "link",
+                  text: "View cart",
+                  confidence: 0.84
+                },
+                {
+                  strategy: "href",
+                  href: cartUrl,
+                  confidence: 0.72
+                }
+              ]
+            }
+          }
+        },
+        finalUrl: cartUrl,
+        stage: "CTA"
+      }),
+      replayTurn({
+        turn: 4,
+        description: "Open checkout via replay hint",
+        targetKey: "stale:checkout-link",
+        action: {
+          type: "click",
+          target: {
+            selector: "#stale-checkout-link"
+          },
+          options: {
+            replay_hint: {
+              candidate_fingerprint: "candidate:checkout000000",
+              locator_recipe: [
+                {
+                  strategy: "role_text",
+                  role: "link",
+                  text: "Proceed to checkout",
+                  confidence: 0.84
+                },
+                {
+                  strategy: "href",
+                  href: checkoutUrl,
+                  confidence: 0.72
+                }
+              ]
+            }
+          }
+        },
+        finalUrl: checkoutUrl,
+        stage: "COMMIT",
+        terminal: true
+      })
+    ]
+  };
+}
+
+function replayTurn(input: {
+  turn: number;
+  description: string;
+  targetKey: string;
+  action: ScenarioAction;
+  finalUrl: string;
+  stage: ScenarioStage;
+  terminal?: boolean;
+}): AgentTrace["turns"][number] {
+  return {
+    turn: input.turn,
+    observation: {
+      finalUrl: input.finalUrl,
+      title: "Agent export replay fixture",
+      candidateCount: 1
+    },
+    preDecisionVerification: {
+      satisfied: false,
+      terminal: false,
+      outcome: "CONTINUE",
+      reason: "continue",
+      confidence: 0.5,
+      phase: "pre_decision"
+    },
+    decision: {
+      kind: "act",
+      description: input.description,
+      reason: "replay hint fallback smoke",
+      confidence: 0.9,
+      action: input.action,
+      settleStrategy: {
+        type: "fixed_short",
+        timeout_ms: 100
+      },
+      stage: input.stage,
+      targetKey: input.targetKey
+    },
+    policy: {
+      allowed: true,
+      riskClass: input.stage === "COMMIT" ? "CHECKOUT_NAVIGATION" : "LOW",
+      reason: "allowed"
+    },
+    actionResult: {
+      actionType: input.action.type,
+      finalUrl: input.finalUrl,
+      completed: true
+    },
+    postActionVerification: {
+      satisfied: input.terminal === true,
+      terminal: input.terminal === true,
+      outcome: input.terminal === true ? "SUCCESS" : "CONTINUE",
+      reason: input.terminal === true ? "checkout reached" : "continue",
+      confidence: 0.8,
+      phase: "post_action"
+    }
+  };
 }
 
 function createAgentCheckoutTask(startUrl: string): AgentTask {
@@ -2318,6 +2731,78 @@ function createMvpPlan(startUrl: string, templateKey: string, goal: string, step
     },
     steps
   };
+}
+
+function createAgentIframeReplayPlan(startUrl: string): ScenarioPlan {
+  return createMvpPlan(startUrl, "agent-frame-replay", "iframe 내부 replay 후보를 안전하게 실행", [
+    createStep({
+      step_id: "agent_frame_replay_001_goto",
+      stage: "FIRST_VIEW",
+      description: "iframe replay fixture 진입",
+      action: {
+        type: "goto",
+        target: {
+          url: startUrl
+        }
+      },
+      checkpoint: true
+    }),
+    createStep({
+      step_id: "agent_frame_replay_002_click",
+      stage: "NAVIGATION",
+      description: "replay_hint frame_id 후보 클릭",
+      action: {
+        type: "click",
+        target: {
+          selector: "#missing-frame-button"
+        },
+        options: {
+          replay_hint: {
+            selected_index: 0,
+            locator_recipe: [
+              {
+                strategy: "selector",
+                selector: "#continue-frame",
+                confidence: 0.95,
+                frame_id: "frame:1"
+              },
+              {
+                strategy: "role_text",
+                role: "button",
+                text: "Continue in frame",
+                confidence: 0.9,
+                frame_id: "frame:1"
+              }
+            ]
+          }
+        }
+      },
+      settle_strategy: {
+        type: "fixed_short",
+        timeout_ms: 100
+      }
+    }),
+    createStep({
+      step_id: "agent_frame_replay_003_checkpoint",
+      stage: "ASSERT",
+      description: "frame replay checkpoint",
+      action: {
+        type: "checkpoint"
+      },
+      checkpoint: true
+    }),
+    createStep({
+      step_id: "agent_frame_replay_004_stop",
+      stage: "COMMIT",
+      description: "before_real_submit",
+      action: {
+        type: "stop_when"
+      },
+      stop_condition: {
+        condition: "before_real_submit"
+      }
+    })
+  ]);
 }
 
 function createMvpLandingCtaPlan(startUrl: string): ScenarioPlan {

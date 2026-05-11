@@ -9,7 +9,13 @@ import type { AgentExecuteMessage, Artifact } from "../shared/contracts.ts";
 import { classifyRunnerFailure, errorMessage, logOperationalEvent } from "../shared/utils.ts";
 import type { ArtifactStore } from "../storage/index.ts";
 import type { AgentTrace } from "../agent/trace.ts";
-import { persistAgentIdempotencyResult, readAgentIdempotencyResult, resolveAgentIdempotencyKey } from "./agent-idempotency.ts";
+import {
+  AgentIdempotencyInProgressError,
+  createApiAgentIdempotencyStore,
+  createLocalAgentIdempotencyStore,
+  resolveAgentIdempotencyKey,
+  type AgentIdempotencyStore
+} from "./agent-idempotency.ts";
 import { emitAcceptedCallback, emitFailedCallback, emitFinishedCallback } from "./callback-policy.ts";
 
 export interface AgentRunnerExecutionResult {
@@ -30,6 +36,7 @@ export interface RegisterAgentWorkerInput {
   callbackClient: CallbackClient;
   capturePipeline: CapturePipeline;
   artifactStore: ArtifactStore;
+  agentIdempotencyStore?: AgentIdempotencyStore;
 }
 
 export interface AgentRunnerWorker {
@@ -42,9 +49,13 @@ export function registerAgentWorker({
   browserFactory,
   callbackClient,
   capturePipeline,
-  artifactStore
+  artifactStore,
+  agentIdempotencyStore
 }: RegisterAgentWorkerInput): AgentRunnerWorker {
   const idempotentExecutions = new Map<string, Promise<AgentRunnerExecutionResult>>();
+  const terminalIdempotencyStore = config.agentIdempotencyStoreEnabled
+    ? agentIdempotencyStore ?? createConfiguredAgentIdempotencyStore(config)
+    : null;
 
   return {
     workerId: config.workerId,
@@ -69,8 +80,46 @@ export function registerAgentWorker({
           return existingExecution;
         }
 
-        if (config.agentIdempotencyStoreEnabled) {
-          const persistedResult = await readAgentIdempotencyResult(config, idempotencyKey);
+        if (terminalIdempotencyStore?.claim) {
+          const claim = await terminalIdempotencyStore.claim(idempotencyKey, {
+            runId: message.payload.agentTask.run_id,
+            taskId: message.payload.agentTask.task_id,
+            attemptId: message.payload.agentTask.attempt_id,
+            attemptIndex: message.payload.agentTask.attempt_index
+          });
+
+          if (claim.status === "COMPLETED") {
+            logOperationalEvent(
+              "agent-worker",
+              "duplicate_message_replayed",
+              {
+                runId: message.payload.agentTask.run_id,
+                taskId: message.payload.agentTask.task_id,
+                idempotencyKey,
+                originalRunId: claim.result.runId
+              },
+              "warn"
+            );
+            return claim.result;
+          }
+
+          if (claim.status === "IN_PROGRESS") {
+            logOperationalEvent(
+              "agent-worker",
+              "duplicate_message_in_progress",
+              {
+                runId: message.payload.agentTask.run_id,
+                taskId: message.payload.agentTask.task_id,
+                idempotencyKey,
+                claimedBy: claim.claimedBy,
+                leaseExpiresAt: claim.leaseExpiresAt
+              },
+              "warn"
+            );
+            throw new AgentIdempotencyInProgressError(idempotencyKey, claim.claimedBy, claim.leaseExpiresAt);
+          }
+        } else if (terminalIdempotencyStore) {
+          const persistedResult = await terminalIdempotencyStore.read(idempotencyKey);
           if (persistedResult) {
             logOperationalEvent(
               "agent-worker",
@@ -96,8 +145,8 @@ export function registerAgentWorker({
           artifactStore
         })
           .then(async (result) => {
-            if (config.agentIdempotencyStoreEnabled) {
-              await persistAgentIdempotencyResult(config, idempotencyKey, result);
+            if (terminalIdempotencyStore) {
+              await terminalIdempotencyStore.persist(idempotencyKey, result);
             }
             return result;
           })
@@ -119,6 +168,12 @@ export function registerAgentWorker({
       });
     }
   };
+}
+
+function createConfiguredAgentIdempotencyStore(config: RunnerConfig): AgentIdempotencyStore {
+  return config.agentIdempotencyStoreMode === "api"
+    ? createApiAgentIdempotencyStore(config)
+    : createLocalAgentIdempotencyStore(config);
 }
 
 async function executeAgentMessage({

@@ -9,6 +9,7 @@
         <result property="confidence" column="confidence"/>
         <result property="reason" column="reason"/>
         <result property="evidenceRefsJsonb" column="evidence_refs_jsonb"/>
+        <result property="evidenceSummaryJsonb" column="evidence_summary_jsonb"/>
         <result property="suggestedStartUrl" column="suggested_start_url"/>
         <result property="suggestedTargetJsonb" column="suggested_target_jsonb"/>
         <result property="createdAt" column="created_at"/>
@@ -17,6 +18,7 @@
     <select id="findByDiscoveryId" resultMap="ScenarioRecommendationResultMap">
         SELECT id, discovery_id, scenario_type, recommendation_level, confidence, reason,
                CAST(evidence_refs_jsonb AS TEXT) AS evidence_refs_jsonb,
+               CAST(evidence_summary_jsonb AS TEXT) AS evidence_summary_jsonb,
                suggested_start_url,
                CAST(suggested_target_jsonb AS TEXT) AS suggested_target_jsonb,
                created_at
@@ -33,10 +35,10 @@
     <insert id="insert" parameterType="com.wedge.discovery.domain.ScenarioRecommendation">
         INSERT INTO scenario_recommendation (
             id, discovery_id, scenario_type, recommendation_level, confidence, reason,
-            evidence_refs_jsonb, suggested_start_url, suggested_target_jsonb
+            evidence_refs_jsonb, evidence_summary_jsonb, suggested_start_url, suggested_target_jsonb
         ) VALUES (
             #{id}, #{discoveryId}, #{scenarioType}, #{recommendationLevel}, #{confidence}, #{reason},
-            CAST(#{evidenceRefsJsonb} AS jsonb), #{suggestedStartUrl}, CAST(#{suggestedTargetJsonb} AS jsonb)
+            CAST(#{evidenceRefsJsonb} AS jsonb), CAST(#{evidenceSummaryJsonb} AS jsonb), #{suggestedStartUrl}, CAST(#{suggestedTargetJsonb} AS jsonb)
         )
     </insert>
 </mapper>

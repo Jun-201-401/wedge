@@ -1,49 +1,19 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://wedge.example.com/contracts/schemas/agent-outcome.schema.json",
-  "title": "Wedge AgentOutcome",
+  "title": "Runner Agent Outcome",
+  "description": "Terminal or in-progress AgentTrace outcome summary.",
   "type": "object",
   "additionalProperties": false,
-  "required": [
-    "schema_version",
-    "final_outcome",
-    "category",
-    "terminal",
-    "reason",
-    "evidence_refs"
-  ],
   "properties": {
-    "schema_version": { "const": "0.1" },
-    "final_outcome": { "$ref": "#/$defs/final_outcome" },
-    "category": { "$ref": "#/$defs/outcome_category" },
-    "terminal": { "type": "boolean" },
-    "reason": { "type": "string" },
-    "evidence_refs": {
-      "type": "array",
-      "items": { "type": "string" }
+    "status": {
+      "type": "string",
+      "enum": ["RUNNING", "SUCCESS", "POLICY_BLOCKED", "BLOCKED", "FAILED", "EXHAUSTED"]
     },
-    "verification_id": { "type": ["string", "null"] },
-    "policy_result_id": { "type": ["string", "null"] }
-  },
-  "$defs": {
-    "final_outcome": {
-      "enum": [
-        "SUCCESS_CHECKOUT_ENTRY_REACHED",
-        "SUCCESS_SHIPPING_ENTRY_REACHED",
-        "SUCCESS_PAYMENT_ENTRY_REACHED_AND_STOPPED",
-        "POLICY_BLOCKED_FINAL_PAYMENT_SUBMIT",
-        "POLICY_BLOCKED_FINAL_ORDER_COMMIT",
-        "POLICY_BLOCKED_DESTRUCTIVE_ACTION",
-        "POLICY_BLOCKED_EXTERNAL_NAVIGATION",
-        "BLOCKED_NO_CHECKOUT_PATH_FOUND",
-        "BLOCKED_TEST_DATA_REQUIRED",
-        "FAILED_BUDGET_EXHAUSTED",
-        "FAILED_ACTION_ERROR",
-        "FAILED_INTERNAL_ERROR"
-      ]
-    },
-    "outcome_category": {
-      "enum": ["SUCCESS", "POLICY_BLOCKED", "BLOCKED", "FAILED"]
+    "reason": {
+      "type": "string",
+      "minLength": 1
     }
-  }
+  },
+  "required": ["status", "reason"]
 }

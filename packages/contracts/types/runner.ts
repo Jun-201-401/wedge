@@ -190,100 +190,118 @@ export interface AgentReplayHints {
 }
 
 export type AgentEventType =
-  | "AGENT_OBSERVATION_CAPTURED"
-  | "AGENT_CANDIDATES_EXTRACTED"
-  | "AGENT_DECISION_REQUESTED"
-  | "AGENT_DECISION_RECEIVED"
-  | "AGENT_DECISION_VALIDATED"
-  | "AGENT_POLICY_ALLOWED"
-  | "AGENT_POLICY_BLOCKED"
-  | "AGENT_ACTION_STARTED"
-  | "AGENT_ACTION_COMPLETED"
-  | "AGENT_ACTION_FAILED"
-  | "AGENT_SETTLE_COMPLETED"
-  | "AGENT_VERIFICATION_COMPLETED"
-  | "AGENT_RECOVERY_ATTEMPTED"
-  | "AGENT_TRACE_EXPORTED_TO_SCENARIO_PLAN"
-  | "AGENT_STOPPED"
-  | "AGENT_FAILED";
+  | "PRE_DECISION_VERIFIED"
+  | "DECISION_MADE"
+  | "POLICY_CHECKED"
+  | "ACTION_COMPLETED"
+  | "ACTION_FAILED"
+  | "GOAL_VERIFIED"
+  | "TRACE_PERSISTED";
 
-export type AgentFinalOutcome =
-  | "SUCCESS_CHECKOUT_ENTRY_REACHED"
-  | "SUCCESS_SHIPPING_ENTRY_REACHED"
-  | "SUCCESS_PAYMENT_ENTRY_REACHED_AND_STOPPED"
-  | "POLICY_BLOCKED_FINAL_PAYMENT_SUBMIT"
-  | "POLICY_BLOCKED_FINAL_ORDER_COMMIT"
-  | "POLICY_BLOCKED_DESTRUCTIVE_ACTION"
-  | "POLICY_BLOCKED_EXTERNAL_NAVIGATION"
-  | "BLOCKED_NO_CHECKOUT_PATH_FOUND"
-  | "BLOCKED_TEST_DATA_REQUIRED"
-  | "FAILED_BUDGET_EXHAUSTED"
-  | "FAILED_ACTION_ERROR"
-  | "FAILED_INTERNAL_ERROR";
-
-export type AgentOutcomeCategory = "SUCCESS" | "POLICY_BLOCKED" | "BLOCKED" | "FAILED";
+export type AgentOutcomeStatus = "RUNNING" | "SUCCESS" | "POLICY_BLOCKED" | "BLOCKED" | "FAILED" | "EXHAUSTED";
+export type AgentFinalOutcome = AgentOutcomeStatus;
+export type AgentOutcomeCategory = AgentOutcomeStatus;
 
 export type AgentRiskClass =
-  | "SAFE_NAVIGATION"
+  | "LOW"
+  | "EXTERNAL_NAVIGATION"
   | "CHECKOUT_NAVIGATION"
-  | "CART_ADD_ITEM"
-  | "CART_REMOVE_ITEM"
-  | "CART_QUANTITY_INCREASE"
-  | "CART_QUANTITY_DECREASE"
-  | "NON_PAYMENT_FORM_ENTRY"
+  | "CART_MUTATION"
   | "SHIPPING_FORM_ENTRY"
   | "PAYMENT_INFO_ENTRY"
-  | "ORDER_REVIEW_NAVIGATION"
-  | "FINAL_PAYMENT_SUBMIT"
-  | "FINAL_ORDER_COMMIT"
-  | "DESTRUCTIVE_ACCOUNT_ACTION"
-  | "EXTERNAL_MESSAGE_SEND"
-  | "LOGIN_CREDENTIAL_ENTRY"
-  | "CAPTCHA_OR_BOT_CHALLENGE"
-  | "UNKNOWN_HIGH_RISK"
-  | "UNKNOWN_LOW_RISK";
+  | "PAYMENT_COMMIT"
+  | "DESTRUCTIVE_ACTION"
+  | "EXTERNAL_MESSAGE_SEND";
 
 export type AgentPolicyDecision = "ALLOW" | "BLOCK";
 
 export interface AgentPolicyResult {
-  schema_version: "0.1";
-  policy_result_id: string;
-  task_id: string;
-  decision_id: string;
-  risk_class: AgentRiskClass;
-  decision: AgentPolicyDecision;
+  allowed: boolean;
   reason: string;
-  matched_signals: string[];
-  final_outcome?: AgentFinalOutcome | null;
+  riskClass: AgentRiskClass;
 }
 
 export interface AgentOutcome {
-  schema_version: "0.1";
-  final_outcome: AgentFinalOutcome;
-  category: AgentOutcomeCategory;
-  terminal: boolean;
+  status: AgentOutcomeStatus;
   reason: string;
-  evidence_refs: string[];
-  verification_id?: string | null;
-  policy_result_id?: string | null;
+}
+
+export type AgentVerificationOutcome =
+  | "CONTINUE"
+  | "SUCCESS"
+  | "BLOCKED_LOGIN"
+  | "BLOCKED_CAPTCHA"
+  | "BLOCKED_NO_PATH"
+  | "POLICY_BLOCKED_PAYMENT"
+  | "POLICY_BLOCKED_DESTRUCTIVE"
+  | "EXHAUSTED";
+
+export interface AgentVerificationResult {
+  satisfied: boolean;
+  terminal: boolean;
+  outcome: AgentVerificationOutcome;
+  reason: string;
+  confidence: number;
+  phase: "pre_decision" | "post_action";
+}
+
+export type AgentDecisionKind = "act" | "checkpoint";
+
+export interface AgentReplayHintLocatorRecipe {
+  strategy: string;
+  selector?: string;
+  role?: string;
+  text?: string;
+  frame_id?: string;
+  confidence: number;
+}
+
+export interface AgentDecisionReplayHint {
+  candidate_fingerprint?: string | null;
+  locator_recipe?: AgentReplayHintLocatorRecipe[];
+}
+
+export interface AgentDecision {
+  kind: AgentDecisionKind;
+  description: string;
+  reason: string;
+  confidence: number;
+  action: ScenarioAction;
+  settleStrategy: SettleStrategy;
+  stage: ScenarioStage;
+  targetKey?: string | null;
+  replayHint?: AgentDecisionReplayHint;
+  metadata?: Record<string, unknown>;
+}
+
+export interface AgentObservation {
+  finalUrl: string;
+  title: string;
+  candidateCount: number;
+}
+
+export interface AgentTurnTrace {
+  turn: number;
+  observation: AgentObservation;
+  preDecisionVerification: AgentVerificationResult;
+  decision?: AgentDecision;
+  policy?: AgentPolicyResult;
+  actionResult?: {
+    actionType: ScenarioAction["type"];
+    finalUrl: string;
+    completed: boolean;
+  };
+  postActionVerification?: AgentVerificationResult;
 }
 
 export interface AgentTrace {
   schema_version: "0.1";
-  trace_id: string;
   task_id: string;
   attempt_id: string;
+  attempt_index: number;
   run_id: string;
-  started_at: string;
-  finished_at: string;
-  final_outcome: AgentFinalOutcome;
-  events: Record<string, unknown>[];
-  observations: Record<string, unknown>[];
-  decisions: Record<string, unknown>[];
-  policy_results: AgentPolicyResult[];
-  verification_results: Record<string, unknown>[];
-  artifact_refs: string[];
-  outcome?: AgentOutcome;
+  turns: AgentTurnTrace[];
+  outcome: AgentOutcome;
 }
 
 export interface AgentTraceRequest {
@@ -409,14 +427,74 @@ export interface DiscoveryFlowCandidate {
   reason: string;
 }
 
+export type DiscoveryEvidenceSignalSource =
+  | "text"
+  | "aria_label"
+  | "aria_labelled_by_text"
+  | "label_text"
+  | "alt"
+  | "title"
+  | "href"
+  | "selector"
+  | "name"
+  | "placeholder"
+  | "form_field"
+  | "shallow_navigation";
+
+export interface DiscoveryEvidenceSignal {
+  signal_id: string;
+  source: DiscoveryEvidenceSignalSource;
+  signal_type: string;
+  value: string;
+  evidence_ref?: string | null;
+  weight?: number;
+}
+
+export interface DiscoveryEvidenceSummary {
+  matched_signals: DiscoveryEvidenceSignal[];
+  missing_signals: string[];
+  limitations: string[];
+}
+
 export interface DiscoveryScenarioRecommendation {
   scenario_type: DiscoveryFlowType;
   recommendation_level: DiscoveryRecommendationLevel;
   confidence: number;
   reason: string;
   evidence_refs: string[];
+  evidence_summary?: DiscoveryEvidenceSummary | null;
   suggested_start_url?: string | null;
   suggested_target?: TargetDescriptorMap | null;
+}
+
+export interface DiscoveryShallowNavigationVerification {
+  status: "verified";
+  destination_url: string;
+  title?: string;
+}
+
+export interface DiscoveryObservationData {
+  shallow_navigation?: DiscoveryShallowNavigationVerification;
+  [key: string]: unknown;
+}
+
+export interface DiscoveryObservation {
+  observation_id?: string;
+  type?: string;
+  stage?: string;
+  source?: string[];
+  data?: DiscoveryObservationData;
+  confidence?: number;
+  [key: string]: unknown;
+}
+
+export interface DiscoveryCheckpoint {
+  checkpoint_id?: string;
+  stage?: string;
+  state?: Record<string, unknown>;
+  observations?: DiscoveryObservation[];
+  artifact_refs?: string[];
+  [key: string]: unknown;
 }
 
 export interface SiteDiscoveryResult {
@@ -434,7 +512,7 @@ export interface SiteDiscoveryResult {
     timezone: string;
     [key: string]: unknown;
   };
-  checkpoints: Record<string, unknown>[];
+  checkpoints: DiscoveryCheckpoint[];
   detected_flow_types: DiscoveryFlowType[];
   missing_flow_types?: DiscoveryFlowType[];
   flow_candidates?: DiscoveryFlowCandidate[];
@@ -460,10 +538,12 @@ export type ScenarioAuthoringProviderType =
   | "OTHER";
 
 export interface ScenarioAuthoringSelectedRecommendation {
+  recommendation_id?: string | null;
   scenario_type: DiscoveryFlowType;
   recommendation_level: DiscoveryRecommendationLevel;
   confidence: number;
   evidence_refs: string[];
+  evidence_summary?: DiscoveryEvidenceSummary | null;
   suggested_start_url?: string | null;
   suggested_target?: TargetDescriptorMap | null;
 }
@@ -568,11 +648,13 @@ export interface DiscoverySummaryPayload {
   pricingEntrypointCount: number;
   checkoutEntrypointCount: number;
   scenarioRecommendations: Array<{
+    recommendationId?: string | null;
     scenarioType: DiscoveryFlowType;
     recommendationLevel: DiscoveryRecommendationLevel;
     confidence: number;
     reason: string;
     evidenceRefs: string[];
+    evidenceSummary?: DiscoveryEvidenceSummary | null;
     suggestedStartUrl?: string | null;
     suggestedTarget?: TargetDescriptorMap | null;
   }>;
@@ -726,6 +808,8 @@ export interface InteractiveComponentObservationItem {
   selector: string | null;
   role: string | null;
   href?: string | null;
+  frame_id?: string | null;
+  shadow_root?: boolean;
   tag: string;
   clickable: boolean;
   clicked_in_scenario: boolean;
@@ -754,6 +838,11 @@ export interface RunnerFinishedPayload {
   summary: {
     completedStepCount: number;
     failedStepCount: number;
+    /**
+     * True when runner execution stopped at a planned safety stop condition or
+     * after an explicit stop request. Planned scenario stops still complete the
+     * run; only a prior STOP_REQUESTED run becomes STOPPED.
+     */
     stopped: boolean;
   };
 }

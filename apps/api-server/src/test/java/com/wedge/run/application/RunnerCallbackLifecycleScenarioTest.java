@@ -252,20 +252,37 @@ class RunnerCallbackLifecycleScenarioTest {
                         "schema_version", "0.5",
                         "plan_id", "plan_001",
                         "scenario_type", "custom_compiled",
+                        "goal", "무료 체험 CTA까지의 흐름 점검",
                         "start_url", "https://example.com",
-                        "environment", Map.of("device", "desktop"),
+                        "environment", Map.of(
+                                "device", "desktop",
+                                "viewport", Map.of("width", 1440, "height", 900),
+                                "locale", "ko-KR",
+                                "timezone", "Asia/Seoul",
+                                "auth_state", "anonymous"
+                        ),
+                        "safety", Map.of(
+                                "allow_external_navigation", false,
+                                "allow_payment_commit", false,
+                                "allow_destructive_action", false,
+                                "use_synthetic_inputs", true
+                        ),
                         "steps", List.of(
                                 Map.of(
                                         "step_id", "step_001_goto",
                                         "stage", "FIRST_VIEW",
                                         "description", "랜딩 첫 화면 로드",
-                                        "action", Map.of("type", "goto")
+                                        "action", Map.of("type", "goto"),
+                                        "settle_strategy", Map.of("type", "network_idle", "timeout_ms", 1000),
+                                        "checkpoint", true
                                 ),
                                 Map.of(
                                         "step_id", "step_002_click_signup",
                                         "stage", "CTA",
                                         "description", "CTA 클릭",
-                                        "action", Map.of("type", "click")
+                                        "action", Map.of("type", "click"),
+                                        "settle_strategy", Map.of("type", "none", "timeout_ms", 0),
+                                        "checkpoint", true
                                 )
                         )
                 )

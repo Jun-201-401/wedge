@@ -27,20 +27,24 @@ export interface ReportFinding {
   recommendation: string;
   highlight: {
     label: string;
+    source?: 'artifact-coordinate';
     top: string;
     left: string;
     width: string;
     height: string;
-  };
+  } | null;
 }
 
 export interface ReportRecommendation {
   id: string;
+  findingId?: string | null;
   priority: string;
   title: string;
   detail: string;
+  rationale?: string | null;
   expectedImpact: string;
   effort: string;
+  validationQuestion?: string | null;
 }
 
 export interface RunReportViewModel {

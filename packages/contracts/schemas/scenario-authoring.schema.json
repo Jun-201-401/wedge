@@ -72,6 +72,31 @@
     "failure": {
       "$ref": "#/$defs/authoring_failure"
     },
+    "confirmed_candidate_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "confirmed_by": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "confirmed_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    },
+    "materialized_run_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
     "created_at": {
       "type": "string",
       "format": "date-time"
@@ -180,6 +205,12 @@
         "scenario_type": {
           "$ref": "#/$defs/flow_type"
         },
+        "recommendation_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "recommendation_level": {
           "enum": ["HIGH", "MEDIUM", "LOW", "NOT_AVAILABLE"]
         },
@@ -193,6 +224,9 @@
           "items": {
             "type": "string"
           }
+        },
+        "evidence_summary": {
+          "$ref": "site-discovery-result.schema.json#/$defs/evidence_summary"
         },
         "suggested_start_url": {
           "type": ["string", "null"],

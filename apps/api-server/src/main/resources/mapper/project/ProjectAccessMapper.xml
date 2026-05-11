@@ -18,4 +18,62 @@
               AND user_id = #{userId}
         )
     </select>
+
+    <select id="findDefaultProjectId" resultType="java.util.UUID">
+        SELECT p.id
+        FROM project p
+        WHERE p.created_by = #{userId}
+          AND p.project_key = 'default'
+          AND p.deleted_at IS NULL
+        ORDER BY p.created_at ASC, p.id ASC
+        LIMIT 1
+    </select>
+
+    <select id="findDefaultWorkspaceId" resultType="java.util.UUID">
+        SELECT w.id
+        FROM workspace w
+        WHERE w.slug = #{slug}
+          AND w.created_by = #{userId}
+        LIMIT 1
+    </select>
+
+    <insert id="insertDefaultWorkspace">
+        INSERT INTO workspace (id, name, slug, created_by)
+        VALUES (#{workspaceId}, #{name}, #{slug}, #{userId,jdbcType=OTHER})
+        ON CONFLICT (slug) DO UPDATE SET
+            name = EXCLUDED.name,
+            created_by = EXCLUDED.created_by,
+            deleted_at = NULL,
+            updated_at = NOW()
+        WHERE workspace.created_by = EXCLUDED.created_by
+    </insert>
+
+    <insert id="insertWorkspaceMember">
+        INSERT INTO workspace_member (workspace_id, user_id, role, status)
+        VALUES (#{workspaceId}, #{userId,jdbcType=OTHER}, #{role}, 'ACTIVE')
+        ON CONFLICT (workspace_id, user_id) DO UPDATE SET
+            role = EXCLUDED.role,
+            status = 'ACTIVE',
+            updated_at = NOW()
+    </insert>
+
+    <insert id="insertDefaultProject">
+        INSERT INTO project (id, workspace_id, name, project_key, base_url, created_by)
+        VALUES (#{projectId}, #{workspaceId}, #{name}, #{projectKey}, #{baseUrl}, #{userId,jdbcType=OTHER})
+        ON CONFLICT (workspace_id, project_key) DO UPDATE SET
+            name = EXCLUDED.name,
+            base_url = EXCLUDED.base_url,
+            created_by = EXCLUDED.created_by,
+            status = 'ACTIVE',
+            deleted_at = NULL,
+            updated_at = NOW()
+    </insert>
+
+    <insert id="insertProjectMember">
+        INSERT INTO project_member (project_id, user_id, role)
+        VALUES (#{projectId}, #{userId,jdbcType=OTHER}, #{role})
+        ON CONFLICT (project_id, user_id) DO UPDATE SET
+            role = EXCLUDED.role,
+            updated_at = NOW()
+    </insert>
 </mapper>

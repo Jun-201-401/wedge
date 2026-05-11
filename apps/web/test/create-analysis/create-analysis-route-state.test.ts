@@ -3,10 +3,13 @@ import assert from 'node:assert/strict';
 
 import {
   buildCreateAnalysisPath,
-  MVP_SMOKE_CREATE_RUN_CONTEXT,
+  createManualChoiceRouteState,
+  createRecommendationChoiceRouteState,
+  createScenarioReadyRouteState,
   parseCreateAnalysisRouteState,
   readCreateRunContextFromEnv,
   withCreateRunContextFallback,
+  withoutCreateRunContext,
   type CreateAnalysisRouteOptions,
 } from '../../src/pages/create-analysis/lib/createAnalysisRouteState';
 
@@ -44,7 +47,7 @@ test('parseCreateAnalysisRouteState returns input for empty or invalid search', 
   });
 });
 
-test('parseCreateAnalysisRouteState restores preflight and recommendations with normalized URL', () => {
+test('parseCreateAnalysisRouteState restores preflight, recommendations, and manual choice with normalized URL', () => {
   assert.deepEqual(parseCreateAnalysisRouteState('?step=preflight&url=example.com', options), {
     stage: 'discovering',
     submittedUrl: 'https://example.com/',
@@ -55,6 +58,13 @@ test('parseCreateAnalysisRouteState restores preflight and recommendations with 
   assert.deepEqual(parseCreateAnalysisRouteState('?step=recommendations&url=https%3A%2F%2Fexample.com%2Fpricing', options), {
     stage: 'recommendations',
     submittedUrl: 'https://example.com/pricing',
+    scenarioId: null,
+    depthId: null,
+  });
+
+  assert.deepEqual(parseCreateAnalysisRouteState('?step=manual&url=example.com', options), {
+    stage: 'manual-choice',
+    submittedUrl: 'https://example.com/',
     scenarioId: null,
     depthId: null,
   });
@@ -106,13 +116,6 @@ test('create-analysis route state preserves valid run creation context', () => {
     ),
     `/create-analysis?step=ready&url=https%3A%2F%2Fexample.com%2F&scenario=landing-cta&depth=next-screen&projectId=${projectId}&scenarioTemplateVersionId=${scenarioTemplateVersionId}`,
   );
-});
-
-test('create-analysis route state exposes MVP smoke run context defaults', () => {
-  assert.deepEqual(MVP_SMOKE_CREATE_RUN_CONTEXT, {
-    projectId: '8f06dca8-9c4d-4f20-b1a8-1d5ee40a9923',
-    scenarioTemplateVersionId: '5c5f4c77-0c32-4ab3-9841-2b6f6cc07a40',
-  });
 });
 
 test('create-analysis route state can use dev env run context as fallback', () => {
@@ -177,6 +180,40 @@ test('create-analysis route state can use dev env run context as fallback', () =
   );
 });
 
+test('create-analysis route state can drop stale run context before automatic discovery', () => {
+  assert.deepEqual(
+    withoutCreateRunContext({
+      stage: 'discovering',
+      submittedUrl: 'https://example.com/',
+      scenarioId: null,
+      depthId: null,
+      projectId,
+      scenarioTemplateVersionId,
+    }),
+    {
+      stage: 'discovering',
+      submittedUrl: 'https://example.com/',
+      scenarioId: null,
+      depthId: null,
+    },
+  );
+
+  assert.equal(
+    buildCreateAnalysisPath(
+      withoutCreateRunContext({
+        stage: 'input',
+        submittedUrl: null,
+        scenarioId: null,
+        depthId: null,
+        projectId,
+        scenarioTemplateVersionId,
+      }),
+      options,
+    ),
+    '/create-analysis',
+  );
+});
+
 test('parseCreateAnalysisRouteState falls back to recommendations for invalid scenario', () => {
   assert.deepEqual(parseCreateAnalysisRouteState('?step=setup&url=example.com&scenario=missing', options), {
     stage: 'recommendations',
@@ -195,6 +232,11 @@ test('buildCreateAnalysisPath encodes create-analysis route state', () => {
   assert.equal(
     buildCreateAnalysisPath({ stage: 'discovering', submittedUrl: 'https://example.com/', scenarioId: null, depthId: null }, options),
     '/create-analysis?step=preflight&url=https%3A%2F%2Fexample.com%2F',
+  );
+
+  assert.equal(
+    buildCreateAnalysisPath({ stage: 'manual-choice', submittedUrl: 'https://example.com/', scenarioId: null, depthId: null }, options),
+    '/create-analysis?step=manual&url=https%3A%2F%2Fexample.com%2F',
   );
 
   assert.equal(
@@ -229,4 +271,49 @@ test('buildCreateAnalysisPath avoids impossible non-input route states', () => {
     ),
     '/create-analysis?step=recommendations&url=https%3A%2F%2Fexample.com%2F',
   );
+});
+
+
+test('create-analysis recommendation route helpers move selection directly to ready and back', () => {
+  const currentState = {
+    stage: 'recommendations',
+    submittedUrl: 'https://example.com/',
+    scenarioId: null,
+    depthId: null,
+    projectId,
+    scenarioTemplateVersionId,
+  } as const;
+
+  const readyState = createScenarioReadyRouteState(currentState, 'https://example.com/', 'landing-cta', options.defaultDepthId);
+
+  assert.deepEqual(readyState, {
+    stage: 'ready',
+    submittedUrl: 'https://example.com/',
+    scenarioId: 'landing-cta',
+    depthId: 'hero-only',
+    projectId,
+    scenarioTemplateVersionId,
+  });
+  assert.equal(
+    buildCreateAnalysisPath(readyState, options),
+    `/create-analysis?step=ready&url=https%3A%2F%2Fexample.com%2F&scenario=landing-cta&depth=hero-only&projectId=${projectId}&scenarioTemplateVersionId=${scenarioTemplateVersionId}`,
+  );
+
+  assert.deepEqual(createRecommendationChoiceRouteState(readyState, 'https://example.com/'), {
+    stage: 'recommendations',
+    submittedUrl: 'https://example.com/',
+    scenarioId: null,
+    depthId: null,
+    projectId,
+    scenarioTemplateVersionId,
+  });
+
+  assert.deepEqual(createManualChoiceRouteState(readyState, 'https://example.com/'), {
+    stage: 'manual-choice',
+    submittedUrl: 'https://example.com/',
+    scenarioId: null,
+    depthId: null,
+    projectId,
+    scenarioTemplateVersionId,
+  });
 });

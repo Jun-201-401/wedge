@@ -246,6 +246,13 @@
             "type": "string"
           }
         },
+        "problem_components": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/problem_component"
+          },
+          "description": "Optional coordinate projection for report screenshot highlights. The source of truth remains evidence_refs and observations."
+        },
         "observations": {
           "type": "array",
           "items": {
@@ -284,6 +291,96 @@
         }
       },
       "description": "Judge issue produced by Rule Engine. issue.stage is assigned from StageContext; LLM cannot create a new stage or move the issue to another stage."
+    },
+    "problem_component": {
+      "type": "object",
+      "required": [
+        "component_id",
+        "evidence_ref",
+        "coordinate_space",
+        "bounding_box",
+        "screenshot_artifact_id"
+      ],
+      "properties": {
+        "component_id": {
+          "type": "string"
+        },
+        "evidence_ref": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "role": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        },
+        "selector": {
+          "type": "string"
+        },
+        "coordinate_space": {
+          "type": "string",
+          "enum": [
+            "viewport",
+            "screenshot",
+            "viewport_ratio"
+          ]
+        },
+        "bounding_box": {
+          "type": "object",
+          "required": [
+            "x",
+            "y",
+            "width",
+            "height"
+          ],
+          "properties": {
+            "x": {
+              "type": "number"
+            },
+            "y": {
+              "type": "number"
+            },
+            "width": {
+              "type": "number"
+            },
+            "height": {
+              "type": "number"
+            },
+            "unit": {
+              "type": "string",
+              "enum": [
+                "css_px",
+                "screenshot_px",
+                "viewport_ratio"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        "viewport": {
+          "type": "object",
+          "required": [
+            "width",
+            "height"
+          ],
+          "properties": {
+            "width": {
+              "type": "number"
+            },
+            "height": {
+              "type": "number"
+            }
+          },
+          "additionalProperties": false
+        },
+        "screenshot_artifact_id": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
     },
     "nudge": {
       "type": "object",

@@ -29,10 +29,10 @@ const baseRun: Run = {
   id: '11111111-1111-4111-8111-111111111111',
   type: 'run',
   projectId: '22222222-2222-4222-8222-222222222222',
-  name: '첫 화면 CTA 점검',
+  name: '랜딩 전환 CTA 점검',
   triggerSource: 'WEB',
   startUrl: 'https://example.com/',
-  goal: '첫 화면 CTA 점검',
+  goal: '랜딩 전환 CTA 점검',
   devicePreset: 'desktop',
   scenarioTemplateVersionId: '33333333-3333-4333-8333-333333333333',
   status: 'RUNNING',
@@ -163,8 +163,8 @@ test('run monitor view model maps API run steps into a real timeline with failur
   assert.deepEqual(steps.map((step) => step.id), ['step-1', 'step-2']);
   assert.equal(steps[0].status, 'complete');
   assert.equal(steps[1].status, 'failed');
-  assert.equal(steps[1].label, '2. CTA 제출');
-  assert.equal(steps[1].detail, '시간 초과: locator click timed out');
+  assert.equal(steps[1].label, 'CTA 제출');
+  assert.equal(steps[1].detail, '응답이 지연되어 확인이 막혔습니다.');
   assert.equal(getFailureCodeLabel('RUNNER_TIMEOUT'), '시간 초과');
 });
 
@@ -197,19 +197,56 @@ test('run monitor view model prefers API run events for timeline and logs', () =
       },
       occurredAt: '2026-04-27T01:00:00.000Z',
     },
+    {
+      id: 'event-3',
+      runId: baseRun.id,
+      stepId: 'step-1',
+      stepKey: 'step_001_goto',
+      eventType: 'ACTION_EXECUTED',
+      eventSource: 'RUNNER',
+      payload: {
+        actionType: 'click',
+      },
+      occurredAt: '2026-04-27T01:00:30.000Z',
+    },
   ];
 
   const timeline = buildApiEventTimeline(baseRun, baseLive, events, []);
   const logs = buildApiEventLogs(baseRun, baseLive, events);
 
-  assert.deepEqual(timeline.map((step) => step.id), ['event-1', 'event-2']);
-  assert.equal(timeline[0].label, 'step_001_goto · Step 시작');
+  assert.deepEqual(timeline.map((step) => step.id), ['event-1', 'event-3', 'event-2']);
+  assert.equal(timeline[0].label, '화면 흐름 확인 중');
   assert.equal(timeline[0].status, 'complete');
-  assert.equal(timeline[1].label, 'step_002_submit · Step 실패');
-  assert.equal(timeline[1].status, 'failed');
-  assert.equal(timeline[1].detail, '시간 초과: locator click timed out');
-  assert.equal(logs[1].tone, 'warning');
-  assert.match(logs[1].message, /step_002_submit · Step 실패/);
+  assert.equal(timeline[1].label, '화면 동작 확인');
+  assert.equal(timeline[2].label, '확인 막힘');
+  assert.equal(timeline[2].status, 'failed');
+  assert.equal(timeline[2].detail, '응답이 지연되어 확인이 막혔습니다');
+  assert.equal(logs[0].message, '다음 화면 흐름을 확인하고 있습니다');
+  assert.equal(logs[1].message, '버튼이나 링크 반응을 확인했습니다');
+  assert.equal(logs[2].message, '응답이 지연되어 확인이 막혔습니다');
+  assert.equal(logs[2].tone, 'warning');
+  assert.doesNotMatch(logs[2].message, /step_002_submit|STEP_FAILED|locator/);
+});
+
+test('run monitor view model keeps unknown event logs generic', () => {
+  const logs = buildApiEventLogs(baseRun, baseLive, [
+    {
+      id: 'event-unknown',
+      runId: baseRun.id,
+      stepId: null,
+      stepKey: null,
+      eventType: 'EXPERIMENTAL_BACKEND_EVENT',
+      eventSource: 'RUNNER',
+      payload: {
+        message: 'raw backend diagnostic payload',
+      },
+      occurredAt: '2026-04-27T01:02:00.000Z',
+    },
+  ]);
+
+  assert.equal(logs[0].message, '실행 상태가 업데이트되었습니다');
+  assert.equal(logs[0].tone, 'info');
+  assert.doesNotMatch(logs[0].message, /raw backend diagnostic payload|EXPERIMENTAL_BACKEND_EVENT/);
 });
 
 test('run monitor view model falls back to snapshot steps when API steps are not available', () => {

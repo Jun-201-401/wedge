@@ -10,29 +10,43 @@ import org.springframework.stereotype.Component;
 
 @Component
 public class RabbitRunRequestPublisher implements RunRequestPublisher {
+    private static final String RUN_EXECUTE_MESSAGE_TYPE = "run.execute.request";
+    private static final String AGENT_EXECUTE_MESSAGE_TYPE = "agent.execute.request";
+
     private final RabbitTemplate rabbitTemplate;
     private final ObjectMapper objectMapper;
     private final String exchangeName;
-    private final String queueName;
+    private final String runExecuteQueueName;
+    private final String agentExecuteQueueName;
 
     public RabbitRunRequestPublisher(
             RabbitTemplate rabbitTemplate,
             ObjectMapper objectMapper,
             @Value("${wedge.runner.mq.exchange:wedge.direct}") String exchangeName,
-            @Value("${wedge.runner.mq.run-execute-queue:run.execute.request}") String queueName
+            @Value("${wedge.runner.mq.run-execute-queue:run.execute.request}") String runExecuteQueueName,
+            @Value("${wedge.runner.mq.agent-execute-queue:agent.execute.request}") String agentExecuteQueueName
     ) {
         this.rabbitTemplate = rabbitTemplate;
         this.objectMapper = objectMapper;
         this.exchangeName = exchangeName;
-        this.queueName = queueName;
+        this.runExecuteQueueName = runExecuteQueueName;
+        this.agentExecuteQueueName = agentExecuteQueueName;
     }
 
     @Override
     public void publish(RunExecuteRequestMessage message) {
         try {
-            rabbitTemplate.convertAndSend(exchangeName, queueName, objectMapper.writeValueAsString(message));
+            rabbitTemplate.convertAndSend(exchangeName, routingKeyFor(message), objectMapper.writeValueAsString(message));
         } catch (JsonProcessingException exception) {
-            throw new IllegalStateException("Failed to serialize run.execute.request message", exception);
+            throw new IllegalStateException("Failed to serialize runner request message", exception);
         }
+    }
+
+    private String routingKeyFor(RunExecuteRequestMessage message) {
+        return switch (message.messageType()) {
+            case RUN_EXECUTE_MESSAGE_TYPE -> runExecuteQueueName;
+            case AGENT_EXECUTE_MESSAGE_TYPE -> agentExecuteQueueName;
+            default -> throw new IllegalArgumentException("Unsupported runner request messageType: " + message.messageType());
+        };
     }
 }

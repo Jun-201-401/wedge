@@ -15,13 +15,16 @@ import com.wedge.discovery.domain.ScenarioRecommendation;
 import com.wedge.discovery.domain.SiteDiscovery;
 import com.wedge.discovery.infrastructure.ScenarioRecommendationMapper;
 import com.wedge.discovery.infrastructure.SiteDiscoveryMapper;
+import com.wedge.project.application.DefaultProjectService;
 import com.wedge.project.application.ProjectAccessService;
 import java.net.URI;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -39,23 +42,33 @@ public class DiscoveryService {
     private final OutboxMessagePersistenceAdapter outboxMessagePersistenceAdapter;
     private final ApplicationEventPublisher applicationEventPublisher;
     private final ProjectAccessService projectAccessService;
+    private final DefaultProjectService defaultProjectService;
     private final DiscoveryUrlValidator discoveryUrlValidator;
 
     @Transactional
     public DiscoveryResponse createDiscovery(CreateDiscoveryRequest request, UUID userId, String idempotencyKey) {
         validate(request);
-        projectAccessService.ensureProjectAccessible(request.projectId(), userId);
+        UUID projectId = resolveProjectId(request, userId);
         String normalizedIdempotencyKey = normalizeIdempotencyKey(idempotencyKey);
         if (normalizedIdempotencyKey != null) {
-            SiteDiscovery existing = siteDiscoveryMapper.findByIdempotencyKey(request.projectId(), userId, normalizedIdempotencyKey)
+            SiteDiscovery existing = siteDiscoveryMapper.findByIdempotencyKey(projectId, userId, normalizedIdempotencyKey)
                     .orElse(null);
             if (existing != null) {
-                return toResponse(existing, scenarioRecommendationMapper.findByDiscoveryId(existing.getId()));
+                return toIdempotentReplayResponse(existing, request);
             }
         }
 
-        SiteDiscovery discovery = toQueuedDiscovery(request, userId, normalizedIdempotencyKey);
-        siteDiscoveryMapper.insert(discovery);
+        SiteDiscovery discovery = toQueuedDiscovery(request, userId, projectId, normalizedIdempotencyKey);
+        try {
+            siteDiscoveryMapper.insert(discovery);
+        } catch (DuplicateKeyException exception) {
+            if (normalizedIdempotencyKey == null) {
+                throw exception;
+            }
+            SiteDiscovery existing = siteDiscoveryMapper.findByIdempotencyKey(projectId, userId, normalizedIdempotencyKey)
+                    .orElseThrow(() -> exception);
+            return toIdempotentReplayResponse(existing, request);
+        }
         DiscoveryExecuteRequestMessage message = messageFactory.create(discovery, request);
         UUID outboxMessageId = outboxMessagePersistenceAdapter.appendDiscoveryExecuteMessage(message, discovery.getId());
         applicationEventPublisher.publishEvent(new DiscoveryExecuteOutboxEnqueuedEvent(outboxMessageId));
@@ -74,10 +87,18 @@ public class DiscoveryService {
                 .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_REQUEST, "Discovery was not found."));
     }
 
-    private SiteDiscovery toQueuedDiscovery(CreateDiscoveryRequest request, UUID userId, String idempotencyKey) {
+    private UUID resolveProjectId(CreateDiscoveryRequest request, UUID userId) {
+        if (request.projectId() != null) {
+            projectAccessService.ensureProjectAccessible(request.projectId(), userId);
+            return request.projectId();
+        }
+        return defaultProjectService.resolveDefaultProject(userId, request.url());
+    }
+
+    private SiteDiscovery toQueuedDiscovery(CreateDiscoveryRequest request, UUID userId, UUID projectId, String idempotencyKey) {
         SiteDiscovery discovery = new SiteDiscovery();
         discovery.setId(UUID.randomUUID());
-        discovery.setProjectId(request.projectId());
+        discovery.setProjectId(projectId);
         discovery.setInputUrl(request.url().toString());
         discovery.setDevicePreset(request.devicePreset());
         discovery.setViewportJsonb(toJson(Map.of(
@@ -91,9 +112,32 @@ public class DiscoveryService {
         return discovery;
     }
 
+    private DiscoveryResponse toIdempotentReplayResponse(SiteDiscovery existing, CreateDiscoveryRequest request) {
+        requireSameDiscoveryRequest(existing, request);
+        return toResponse(existing, scenarioRecommendationMapper.findByDiscoveryId(existing.getId()));
+    }
+
+    private void requireSameDiscoveryRequest(SiteDiscovery existing, CreateDiscoveryRequest request) {
+        if (
+                !Objects.equals(existing.getInputUrl(), request.url().toString())
+                        || !Objects.equals(existing.getDevicePreset(), request.devicePreset())
+                        || !readMap(existing.getViewportJsonb()).equals(toViewportMap(request))
+        ) {
+            throw new BusinessException(ErrorCode.STATE_CONFLICT, "Idempotency-Key was reused with a different discovery request.");
+        }
+    }
+
+    private Map<String, Object> toViewportMap(CreateDiscoveryRequest request) {
+        return Map.of(
+                "width", request.viewport() == null ? messageFactory.defaultWidth(request.devicePreset()) : request.viewport().width(),
+                "height", request.viewport() == null ? messageFactory.defaultHeight(request.devicePreset()) : request.viewport().height()
+        );
+    }
+
     private DiscoveryResponse toResponse(SiteDiscovery discovery, List<ScenarioRecommendation> recommendations) {
         return new DiscoveryResponse(
                 discovery.getId(),
+                discovery.getProjectId(),
                 discovery.getStatus(),
                 URI.create(discovery.getInputUrl()),
                 discovery.getFinalUrl() == null ? null : URI.create(discovery.getFinalUrl()),
@@ -108,11 +152,13 @@ public class DiscoveryService {
 
     private ScenarioRecommendationResponse toRecommendationResponse(ScenarioRecommendation recommendation) {
         return new ScenarioRecommendationResponse(
+                recommendation.getId(),
                 recommendation.getScenarioType(),
                 recommendation.getRecommendationLevel(),
                 recommendation.getConfidence(),
                 recommendation.getReason(),
                 readStringList(recommendation.getEvidenceRefsJsonb()),
+                readMap(recommendation.getEvidenceSummaryJsonb()),
                 recommendation.getSuggestedStartUrl() == null ? null : URI.create(recommendation.getSuggestedStartUrl()),
                 readMap(recommendation.getSuggestedTargetJsonb())
         );

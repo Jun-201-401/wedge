@@ -1,51 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://wedge.example.com/contracts/schemas/agent-event.schema.json",
-  "title": "Wedge AgentEvent",
-  "type": "object",
-  "additionalProperties": false,
-  "required": [
-    "schema_version",
-    "event_id",
-    "task_id",
-    "attempt_id",
-    "run_id",
-    "step_index",
-    "event_type",
-    "occurred_at",
-    "payload"
-  ],
-  "properties": {
-    "schema_version": { "const": "0.1" },
-    "event_id": { "type": "string", "minLength": 1 },
-    "task_id": { "type": "string", "format": "uuid" },
-    "attempt_id": { "type": "string", "format": "uuid" },
-    "run_id": { "type": "string", "format": "uuid" },
-    "step_index": { "type": "integer", "minimum": 0 },
-    "event_type": { "$ref": "#/$defs/agent_event_type" },
-    "occurred_at": { "type": "string", "format": "date-time" },
-    "payload": { "type": "object", "additionalProperties": true }
-  },
-  "$defs": {
-    "agent_event_type": {
-      "enum": [
-        "AGENT_OBSERVATION_CAPTURED",
-        "AGENT_CANDIDATES_EXTRACTED",
-        "AGENT_DECISION_REQUESTED",
-        "AGENT_DECISION_RECEIVED",
-        "AGENT_DECISION_VALIDATED",
-        "AGENT_POLICY_ALLOWED",
-        "AGENT_POLICY_BLOCKED",
-        "AGENT_ACTION_STARTED",
-        "AGENT_ACTION_COMPLETED",
-        "AGENT_ACTION_FAILED",
-        "AGENT_SETTLE_COMPLETED",
-        "AGENT_VERIFICATION_COMPLETED",
-        "AGENT_RECOVERY_ATTEMPTED",
-        "AGENT_TRACE_EXPORTED_TO_SCENARIO_PLAN",
-        "AGENT_STOPPED",
-        "AGENT_FAILED"
-      ]
-    }
-  }
+  "title": "Runner Agent Event",
+  "description": "Agent turn event contract shared by AgentTrace event projections and runner agent-events callbacks.",
+  "$ref": "../internal/runner-callback.schema.json#/$defs/AgentEvent"
 }

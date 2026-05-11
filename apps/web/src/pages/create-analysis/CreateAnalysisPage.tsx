@@ -1,29 +1,55 @@
-import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
+import { createDiscovery, getDiscovery } from '../../api/discoveries';
+import { readCurrentUser } from '../../api/authSession';
+import { readApiValidationFields, WedgeApiError } from '../../api/http';
 import { createRun, startRun } from '../../api/runs';
 import { FIRST_WORD_DELAY_MS, WORD_ROTATION_INTERVAL_MS } from '../../features/landing-vision';
+import { LOGIN_PATH, RUNS_PATH } from '../../shared/lib/appPaths';
 import { pushAppPath } from '../../shared/lib/navigation';
 import { buildRunMonitorPath } from '../run-monitor/lib/runMonitorRoute';
 import {
   buildCreateAnalysisPath,
-  MVP_SMOKE_CREATE_RUN_CONTEXT,
+  createManualChoiceRouteState,
+  createRecommendationChoiceRouteState,
+  createScenarioReadyRouteState,
   parseCreateAnalysisRouteState,
   readCreateRunContextFromEnv,
   type CreateAnalysisRouteOptions,
   type CreateAnalysisRouteState,
-  type CreateAnalysisRouteStage,
+  type CreateRunContext,
   withCreateRunContextFallback,
+  withoutCreateRunContext,
 } from './lib/createAnalysisRouteState';
 import { normalizeAnalysisUrl } from './lib/createAnalysisUrl';
-import { buildPrototypeScenarioPlan } from './lib/prototypeScenarioPlan';
+import {
+  CREATE_ANALYSIS_SCENARIO_IDS,
+  toManualScenarioRecommendationViewModels,
+  toScenarioRecommendationViewModels,
+  type CreateAnalysisScenarioId,
+  type ScenarioRecommendationViewModel,
+} from './lib/discoveryRecommendations';
+import { createDiscoveryIdempotencyKey, isDiscoveryBusy } from './lib/discoveryPreflight';
 import './CreateAnalysisPage.css';
 
 type DiscoveryStepStatus = 'complete' | 'active' | 'pending';
-type ScenarioLevel = '추천' | '가능' | '낮음';
-type ScenarioTone = 'recommended' | 'available' | 'low';
-type CreateAnalysisStage = CreateAnalysisRouteStage;
-type ScenarioId = 'landing-cta' | 'signup-form' | 'checkout';
+type ScenarioId = CreateAnalysisScenarioId;
+type ScenarioRecommendation = ScenarioRecommendationViewModel;
 type ScenarioDepthId = 'hero-only' | 'next-screen' | 'form-depth';
+
+interface CreateAnalysisPageProps {
+  isAuthenticated?: boolean;
+  isAuthChecking?: boolean;
+  onLogout?: () => void;
+}
+
+type DiscoveryUiState =
+  | { kind: 'idle' }
+  | { kind: 'creating' }
+  | { kind: 'polling'; discoveryId: string; status: string; progressSteps: DiscoveryStep[] }
+  | { kind: 'completed'; discoveryId: string; scenarios: ScenarioRecommendation[] }
+  | { kind: 'empty'; discoveryId: string; message: string }
+  | { kind: 'failed'; message: string };
 
 function SendIcon() {
   return (
@@ -33,20 +59,39 @@ function SendIcon() {
   );
 }
 
+function createDiscoveryFailureMessage(error: unknown) {
+  if (!(error instanceof WedgeApiError)) {
+    return '사이트 확인을 시작하지 못했습니다. 로그인 상태와 프로젝트 자동 생성 상태를 확인한 뒤 다시 시도해주세요.';
+  }
+
+  const validationFields = readApiValidationFields(error.details);
+  if (error.status === 422 && validationFields.some((fieldError) => fieldError.field === 'projectId')) {
+    return 'Discovery API가 아직 projectId 필수 계약으로 동작 중입니다. API 서버를 최신 코드로 재시작한 뒤 다시 시도해주세요.';
+  }
+
+  if (error.status === 422 && validationFields.some((fieldError) => fieldError.field === 'url')) {
+    return '입력한 URL 형식이 API 검증을 통과하지 못했습니다. http 또는 https로 열 수 있는 공개 사이트 URL을 입력해주세요.';
+  }
+
+  if (error.status === 400 && error.code === 'invalid_request') {
+    return '입력한 URL이 Discovery 검증을 통과하지 못했습니다. localhost, 사설망 주소가 아닌 공개 사이트 URL을 입력해주세요.';
+  }
+
+  if (error.status === 401) {
+    return '로그인 세션이 만료되었습니다. 다시 로그인한 뒤 URL 확인을 시작해주세요.';
+  }
+
+  if (error.status === 403) {
+    return '현재 계정으로 접근할 수 없는 프로젝트입니다. URL 확인을 다시 시작해 자동 프로젝트를 새로 연결해주세요.';
+  }
+
+  return '사이트 확인을 시작하지 못했습니다. 로그인 상태와 프로젝트 자동 생성 상태를 확인한 뒤 다시 시도해주세요.';
+}
+
 interface DiscoveryStep {
   label: string;
   detail: string;
   status: DiscoveryStepStatus;
-}
-
-interface ScenarioRecommendation {
-  id: ScenarioId;
-  level: ScenarioLevel;
-  tone: ScenarioTone;
-  title: string;
-  summary: string;
-  evidence: string;
-  actionLabel: string;
 }
 
 interface ScenarioDepthOption {
@@ -56,62 +101,37 @@ interface ScenarioDepthOption {
 }
 
 const HEADLINE_PHRASES = ['Find', 'Friction'] as const;
+const DISCOVERY_POLL_INTERVAL_MS = 1800;
+const DISCOVERY_TIMEOUT_MS = 90000;
+const DISCOVERY_VIEWPORT = { width: 1440, height: 900 } as const;
 const PREFLIGHT_DISCOVERY_STEPS: DiscoveryStep[] = [
   {
-    label: '페이지 열기',
-    detail: '입력한 URL에 연결하고 기본 응답을 확인합니다',
-    status: 'complete',
-  },
-  {
-    label: '첫 화면 확인',
-    detail: '첫 화면의 메시지와 주요 섹션을 읽습니다',
-    status: 'complete',
-  },
-  {
-    label: 'CTA 후보 탐색',
-    detail: '사용자가 다음 행동으로 이동하는 버튼과 링크를 찾습니다',
+    label: '탐색 준비',
+    detail: '입력한 URL로 사이트 확인 작업을 준비합니다',
     status: 'active',
   },
   {
-    label: 'Form / Pricing / Contact 후보 확인',
-    detail: '진단 가능한 전환 흐름 후보를 좁히는 중입니다',
+    label: '첫 화면 열기',
+    detail: '페이지에 연결해 첫 화면과 주요 링크를 확인합니다',
     status: 'pending',
   },
   {
-    label: '추천 시나리오 정리',
-    detail: '사이트에 맞는 진단 흐름을 우선순위로 정리합니다',
+    label: '전환 후보 탐색',
+    detail: '사용자가 다음 행동으로 이동하는 버튼, 링크, 입력 후보를 찾습니다',
+    status: 'pending',
+  },
+  {
+    label: '구매·문의 흐름 확인',
+    detail: '요금제, 구매, 문의처럼 이어질 수 있는 흐름을 좁힙니다',
+    status: 'pending',
+  },
+  {
+    label: '추천 흐름 정리',
+    detail: '지금 바로 실행할 만한 진단 흐름을 우선순위로 정리합니다',
     status: 'pending',
   },
 ];
-const scenarioRecommendations: ScenarioRecommendation[] = [
-  {
-    id: 'landing-cta',
-    level: '추천',
-    tone: 'recommended',
-    title: '첫 화면 CTA 점검',
-    summary: '첫 화면에서 주요 CTA 후보 2개를 발견했어요. 사용자가 다음 행동을 바로 이해할 수 있는지 확인하기 좋습니다.',
-    evidence: 'hero section, primary button, nav CTA',
-    actionLabel: '이 흐름으로 진단',
-  },
-  {
-    id: 'signup-form',
-    level: '가능',
-    tone: 'available',
-    title: '가입 / 문의 Form 점검',
-    summary: '문의 또는 가입 form 후보 1개를 발견했어요. 입력 부담과 제출 전 신뢰 요소를 확인할 수 있습니다.',
-    evidence: 'contact link, email input candidate',
-    actionLabel: '이 흐름으로 진단',
-  },
-  {
-    id: 'checkout',
-    level: '낮음',
-    tone: 'low',
-    title: '구매 / 결제 흐름 점검',
-    summary: '가격, 장바구니, 결제 진입점을 아직 찾지 못했어요. 이 URL에는 랜딩 CTA나 문의 흐름이 더 적합해 보입니다.',
-    evidence: 'pricing / checkout 후보 없음',
-    actionLabel: '그래도 직접 설정',
-  },
-];
+
 const SCENARIO_DEPTH_OPTIONS: ScenarioDepthOption[] = [
   {
     id: 'hero-only',
@@ -129,7 +149,7 @@ const SCENARIO_DEPTH_OPTIONS: ScenarioDepthOption[] = [
     detail: '입력 부담과 제출 전 신뢰 요소까지 확인합니다',
   },
 ];
-const SCENARIO_IDS = scenarioRecommendations.map((scenario) => scenario.id);
+const SCENARIO_IDS = CREATE_ANALYSIS_SCENARIO_IDS;
 const SCENARIO_DEPTH_IDS = SCENARIO_DEPTH_OPTIONS.map((option) => option.id);
 const DEFAULT_SCENARIO_DEPTH_ID = 'hero-only' satisfies ScenarioDepthId;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -138,16 +158,30 @@ const CREATE_ANALYSIS_ROUTE_OPTIONS: CreateAnalysisRouteOptions<ScenarioId, Scen
   validDepthIds: SCENARIO_DEPTH_IDS,
   validScenarioIds: SCENARIO_IDS,
 };
-const DEV_CREATE_RUN_CONTEXT = import.meta.env.DEV
-  ? {
-      ...MVP_SMOKE_CREATE_RUN_CONTEXT,
-      ...readCreateRunContextFromEnv(import.meta.env),
-    }
-  : readCreateRunContextFromEnv(import.meta.env);
+const ENV_CREATE_RUN_CONTEXT = readCreateRunContextFromEnv(import.meta.env);
 
 interface CreateRunIds {
   projectId: string;
-  scenarioTemplateVersionId: string;
+}
+
+function readUserCreateRunContext(): Partial<CreateRunContext> {
+  const currentUser = readCurrentUser();
+
+  if (!currentUser?.defaultProjectId) {
+    return {};
+  }
+
+  return {
+    projectId: currentUser.defaultProjectId,
+    ...(currentUser.defaultScenarioTemplateVersionId ? { scenarioTemplateVersionId: currentUser.defaultScenarioTemplateVersionId } : {}),
+  };
+}
+
+function getCreateRunContextFallback(): Partial<CreateRunContext> {
+  return {
+    ...ENV_CREATE_RUN_CONTEXT,
+    ...readUserCreateRunContext(),
+  };
 }
 
 function getStepStatusLabel(status: DiscoveryStepStatus) {
@@ -173,7 +207,6 @@ function getDiscoveryProgressPercent(steps: DiscoveryStep[]) {
   return Math.round((completedStepCount / steps.length) * 100);
 }
 
-const PREFLIGHT_PROGRESS_PERCENT = getDiscoveryProgressPercent(PREFLIGHT_DISCOVERY_STEPS);
 
 type CreateAnalysisPageRouteState = CreateAnalysisRouteState<ScenarioId, ScenarioDepthId>;
 
@@ -189,12 +222,25 @@ function getInitialRouteState(): CreateAnalysisPageRouteState {
 
   return withCreateRunContextFallback(
     parseCreateAnalysisRouteState(window.location.search, CREATE_ANALYSIS_ROUTE_OPTIONS),
-    DEV_CREATE_RUN_CONTEXT,
+    getCreateRunContextFallback(),
   );
 }
 
-function findScenarioById(scenarioId: ScenarioId | null) {
-  return scenarioRecommendations.find((scenario) => scenario.id === scenarioId) ?? null;
+function getLoginPathForCurrentCreateAnalysisState() {
+  const nextPath = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+  return getLoginPathForNextPath(nextPath);
+}
+
+function getLoginPathForNextPath(nextPath: string) {
+  return `${LOGIN_PATH}?${new URLSearchParams({ next: nextPath }).toString()}`;
+}
+
+function getLoginPathForCreateAnalysisRouteState(routeState: CreateAnalysisPageRouteState) {
+  return getLoginPathForNextPath(buildCreateAnalysisPath(routeState, CREATE_ANALYSIS_ROUTE_OPTIONS));
+}
+
+function findScenarioById(scenarioId: ScenarioId | null, scenarios: ScenarioRecommendation[]) {
+  return scenarios.find((scenario) => scenario.id === scenarioId) ?? null;
 }
 
 function findDepthById(depthId: ScenarioDepthId | null) {
@@ -207,27 +253,70 @@ function isUuid(value: string | null): value is string {
 
 function getCreateRunIds(routeState: CreateAnalysisPageRouteState): CreateRunIds | null {
   const projectId = routeState.projectId ?? null;
-  const scenarioTemplateVersionId = routeState.scenarioTemplateVersionId ?? null;
 
-  if (!isUuid(projectId) || !isUuid(scenarioTemplateVersionId)) {
+  if (!isUuid(projectId)) {
     return null;
   }
 
   return {
     projectId,
-    scenarioTemplateVersionId,
   };
+}
+
+function clearCreateRunContext(routeState: CreateAnalysisPageRouteState): CreateAnalysisPageRouteState {
+  return withoutCreateRunContext(routeState);
+}
+
+function createDiscoveryRouteState(routeState: CreateAnalysisPageRouteState, submittedUrl: string): CreateAnalysisPageRouteState {
+  return clearCreateRunContext({
+    ...routeState,
+    stage: 'discovering',
+    submittedUrl,
+    scenarioId: null,
+    depthId: null,
+  });
+}
+
+function wait(ms: number) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+function isDiscoveryTerminalFailure(status: string) {
+  return status === 'FAILED' || status === 'CANCELED' || status === 'EXPIRED';
+}
+
+function getPollingSteps(status: string): DiscoveryStep[] {
+  if (status === 'COMPLETED') {
+    return PREFLIGHT_DISCOVERY_STEPS.map((step) => ({ ...step, status: 'complete' }));
+  }
+
+  const activeIndex = status === 'RUNNING' ? 2 : 1;
+  return PREFLIGHT_DISCOVERY_STEPS.map((step, index) => ({
+    ...step,
+    status: index < activeIndex ? 'complete' : index === activeIndex ? 'active' : 'pending',
+  }));
 }
 
 interface PreflightAgentProps {
   submittedUrl: string;
-  onShowRecommendations: () => void;
+  discoveryState: DiscoveryUiState;
+  onRetry: () => void;
+  onEditUrl: () => void;
 }
 
 interface RecommendationAgentProps {
   submittedUrl: string;
   scenarios: ScenarioRecommendation[];
+  emptyMessage?: string;
   onChooseScenario: (scenario: ScenarioRecommendation) => void;
+  onOpenManualChoice: () => void;
+}
+
+interface ManualChoiceAgentProps {
+  submittedUrl: string;
+  scenarios: ScenarioRecommendation[];
+  onChooseScenario: (scenario: ScenarioRecommendation) => void;
+  onBackToRecommendations: () => void;
 }
 
 interface ScenarioSetupAgentProps {
@@ -240,10 +329,9 @@ interface ScenarioSetupAgentProps {
 interface ReadyAgentProps {
   submittedUrl: string;
   selectedScenario: ScenarioRecommendation;
-  selectedDepth: ScenarioDepthOption;
   isCreatingRun: boolean;
   runStartError: string;
-  onEditScope: () => void;
+  onChooseDifferentScenario: () => void;
   onStartRun: () => void;
 }
 
@@ -270,44 +358,44 @@ function PreflightNode({ status }: { status: DiscoveryStepStatus }) {
   return <span className="preflight-agent__node-dot" />;
 }
 
-function PreflightAgent({ submittedUrl, onShowRecommendations }: PreflightAgentProps) {
+function PreflightAgent({ submittedUrl, discoveryState, onRetry, onEditUrl }: PreflightAgentProps) {
+  const steps = discoveryState.kind === 'polling' ? discoveryState.progressSteps : PREFLIGHT_DISCOVERY_STEPS;
+  const progressPercent = getDiscoveryProgressPercent(steps);
+  const isFailed = discoveryState.kind === 'failed';
+
   return (
     <section className="create-analysis-panel create-analysis-panel--preflight" aria-labelledby="discovery-progress-title">
       <div className="preflight-agent" aria-live="polite">
         <div className="preflight-agent__header">
           <div className="preflight-agent__header-main">
-            <div className="preflight-agent__header-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24" fill="none">
-                <path d="M12 3 4 7.5v9L12 21l8-4.5v-9L12 3Z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
-              </svg>
-            </div>
             <div className="preflight-agent__header-copy">
-              <p>Preflight</p>
-              <h2 id="discovery-progress-title">사이트를 살펴보고 있어요</h2>
-              <div className="preflight-agent__header-status">
-                <span className="preflight-agent__header-status-dot" aria-hidden="true" />
-                <span>Site trace active</span>
-              </div>
+              <p>사전 탐색</p>
+              <h2 id="discovery-progress-title">분석할 흐름을 찾고 있어요</h2>
             </div>
           </div>
 
-          <div className="preflight-agent__progress" aria-label={`진행률 ${PREFLIGHT_PROGRESS_PERCENT}%`}>
-            <span className="preflight-agent__progress-value">{PREFLIGHT_PROGRESS_PERCENT}</span>
+          <div className="preflight-agent__progress" aria-label={`진행률 ${progressPercent}%`}>
+            <span className="preflight-agent__progress-value">{progressPercent}</span>
             <span className="preflight-agent__progress-unit">%</span>
           </div>
         </div>
 
         <p className="preflight-agent__url">{submittedUrl}</p>
+        <div className="preflight-agent__scope" aria-label="사전 탐색 범위">
+          <span>전체 분석 전 확인</span>
+          <span>첫 화면과 주요 진입점 중심</span>
+          <span>추천 흐름 자동 정리</span>
+        </div>
         <div className="preflight-agent__divider" aria-hidden="true" />
 
         <ol className="preflight-agent__timeline" aria-label="Discovery 진행 상태">
-          {PREFLIGHT_DISCOVERY_STEPS.map((step, stepIndex) => (
+          {steps.map((step, stepIndex) => (
             <li
               key={step.label}
               className={`preflight-agent__step preflight-agent__step--${step.status}`}
               aria-current={step.status === 'active' ? 'step' : undefined}
             >
-              {stepIndex < PREFLIGHT_DISCOVERY_STEPS.length - 1 ? (
+              {stepIndex < steps.length - 1 ? (
                 <div className="preflight-agent__rail" aria-hidden="true">
                   <div className="preflight-agent__rail-base" />
                   <div className="preflight-agent__rail-stream" />
@@ -331,61 +419,131 @@ function PreflightAgent({ submittedUrl, onShowRecommendations }: PreflightAgentP
           ))}
         </ol>
 
-        <p className="preflight-agent__note">전체 분석 전, 가능한 사용자 흐름을 찾기 위한 짧은 탐색입니다.</p>
-        <button className="create-analysis-panel__action preflight-agent__action" type="button" onClick={onShowRecommendations}>
-          추천 결과 보기
-        </button>
+        {isFailed ? (
+          <div className="preflight-agent__state preflight-agent__state--error" role="alert">
+            <span>확인 실패</span>
+            <strong>사이트 확인을 시작하지 못했습니다</strong>
+            <p>{discoveryState.message}</p>
+            <div className="preflight-agent__actions">
+              <button className="create-analysis-panel__action preflight-agent__action" type="button" onClick={onRetry}>
+                다시 시도
+              </button>
+              <button className="create-analysis-secondary-action preflight-agent__secondary-action" type="button" onClick={onEditUrl}>
+                URL 수정
+              </button>
+            </div>
+          </div>
+        ) : (
+          <p className="preflight-agent__note">이 단계가 끝나면 바로 실행할 수 있는 점검 흐름을 추천해드릴게요.</p>
+        )}
       </div>
     </section>
   );
 }
 
-function RecommendationAgent({ submittedUrl, scenarios, onChooseScenario }: RecommendationAgentProps) {
+function RecommendationAgent({ submittedUrl, scenarios, emptyMessage, onChooseScenario, onOpenManualChoice }: RecommendationAgentProps) {
+  const visibleScenarios = scenarios.filter((scenario) => scenario.isRunnable);
+  const detectedScenarioCount = visibleScenarios.length;
+  const hasManualScenarios = toManualScenarioRecommendationViewModels(visibleScenarios.map((scenario) => scenario.id)).length > 0;
+
   return (
     <section className="create-analysis-panel create-analysis-panel--recommendations" aria-labelledby="recommendations-title">
       <div className="recommendation-agent">
         <div className="recommendation-agent__header">
           <div className="recommendation-agent__header-main">
-            <div className="recommendation-agent__header-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24" fill="none">
-                <path d="m12 4 8 4-8 4-8-4 8-4Z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
-                <path d="m4 12 8 4 8-4" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
-                <path d="m4 16 8 4 8-4" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
-              </svg>
-            </div>
-
             <div className="recommendation-agent__header-copy">
-              <p>Recommendations</p>
-              <h2 id="recommendations-title">이 사이트에서 가능한 진단 흐름을 찾았어요</h2>
-              <div className="recommendation-agent__header-status">
-                <span className="recommendation-agent__header-status-dot" aria-hidden="true" />
-                <span>Scenario match complete</span>
-              </div>
+              <p>진단 흐름 추천</p>
+              <h2 id="recommendations-title">이 사이트에서 점검해볼 만한 흐름을 찾았어요</h2>
             </div>
           </div>
 
-          <div className="recommendation-agent__count" aria-label={`추천 흐름 ${scenarios.length}개`}>
-            <span className="recommendation-agent__count-value">{scenarios.length}</span>
-            <span className="recommendation-agent__count-label">found</span>
+          <div className="recommendation-agent__count" aria-label={`탐지된 추천 흐름 ${detectedScenarioCount}개`}>
+            <span className="recommendation-agent__count-value">{detectedScenarioCount}</span>
+            <span className="recommendation-agent__count-label">탐지됨</span>
           </div>
         </div>
 
         <p className="recommendation-agent__url">{submittedUrl}</p>
+        <p className="recommendation-agent__limitation">
+          사이트 화면에서 확인한 버튼, 링크, 폼 신호를 기준으로 추천했어요. 이미지 텍스트, 숨겨진 메뉴, 로그인 뒤 화면은 제외될 수 있어요.
+        </p>
         <div className="recommendation-agent__divider" aria-hidden="true" />
 
-        <div className="scenario-grid">
+        {visibleScenarios.length === 0 ? (
+          <div className="recommendation-agent__empty" role="status">
+            <strong>추천 가능한 흐름을 찾지 못했어요</strong>
+            <p>{emptyMessage ?? '자동으로 찾은 흐름은 없지만, 직접 점검할 흐름을 선택할 수 있어요.'}</p>
+          </div>
+        ) : (
+          <div className="scenario-grid">
+            {visibleScenarios.map((scenario) => (
+              <article key={`${scenario.scenarioType}-${scenario.id}`} className={`scenario-card scenario-card--${scenario.tone}`}>
+                <span className="scenario-card__level">{scenario.levelLabel}</span>
+                <h3>{scenario.title}</h3>
+                <p>{scenario.summary}</p>
+                <button
+                  type="button"
+                  aria-label={`${scenario.title} 흐름으로 진단`}
+                  onClick={() => onChooseScenario(scenario)}
+                >
+                  {scenario.actionLabel}
+                </button>
+              </article>
+            ))}
+          </div>
+        )}
+
+        {hasManualScenarios ? (
+          <div className="recommendation-agent__manual-entry">
+            <div>
+              <strong>원하는 흐름이 없나요?</strong>
+              <p>자동 추천에 없는 흐름은 다음 화면에서 직접 선택할 수 있어요.</p>
+            </div>
+            <button className="create-analysis-secondary-action" type="button" onClick={onOpenManualChoice}>
+              다른 흐름 선택
+            </button>
+          </div>
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
+function ManualChoiceAgent({ submittedUrl, scenarios, onChooseScenario, onBackToRecommendations }: ManualChoiceAgentProps) {
+  return (
+    <section className="create-analysis-panel create-analysis-panel--manual-choice" aria-labelledby="manual-choice-title">
+      <div className="manual-choice-agent">
+        <div className="manual-choice-agent__header">
+          <div className="manual-choice-agent__header-main">
+            <div className="manual-choice-agent__header-copy">
+              <p>직접 선택</p>
+              <h2 id="manual-choice-title">점검할 흐름을 직접 고르세요</h2>
+            </div>
+          </div>
+        </div>
+
+        <p className="manual-choice-agent__url">{submittedUrl}</p>
+        <p className="manual-choice-agent__note">자동 탐지 근거가 약한 흐름은 사용자가 선택한 목표를 기준으로 안전하게 탐색합니다.</p>
+        <div className="manual-choice-agent__divider" aria-hidden="true" />
+
+        <div className="manual-choice-agent__grid">
           {scenarios.map((scenario) => (
-            <article key={scenario.id} className={`scenario-card scenario-card--${scenario.tone}`}>
-              <span className="scenario-card__level">{scenario.level}</span>
-              <h3>{scenario.title}</h3>
-              <p>{scenario.summary}</p>
-              <p className="scenario-card__evidence">근거: {scenario.evidence}</p>
-              <button type="button" aria-label={`${scenario.title} 흐름으로 진단`} onClick={() => onChooseScenario(scenario)}>
-                {scenario.actionLabel}
-              </button>
-            </article>
+            <button
+              key={`manual-${scenario.id}`}
+              className="manual-choice-agent__option"
+              type="button"
+              onClick={() => onChooseScenario(scenario)}
+            >
+              <span>{scenario.levelLabel}</span>
+              <strong>{scenario.title}</strong>
+              <small>{scenario.summary}</small>
+            </button>
           ))}
         </div>
+
+        <button className="create-analysis-secondary-action manual-choice-agent__back" type="button" onClick={onBackToRecommendations}>
+          추천 흐름으로 돌아가기
+        </button>
       </div>
     </section>
   );
@@ -449,30 +607,23 @@ function ScenarioSetupAgent({ selectedScenario, selectedDepthId, onDepthChange, 
   );
 }
 
-function ReadyAgent({ submittedUrl, selectedScenario, selectedDepth, isCreatingRun, runStartError, onEditScope, onStartRun }: ReadyAgentProps) {
+function ReadyAgent({ submittedUrl, selectedScenario, isCreatingRun, runStartError, onChooseDifferentScenario, onStartRun }: ReadyAgentProps) {
   return (
     <section className="create-analysis-panel create-analysis-panel--ready" aria-labelledby="ready-title">
       <div className="ready-agent">
         <div className="ready-agent__header">
           <div className="ready-agent__header-main">
-            <div className="ready-agent__header-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24" fill="none">
-                <path d="M12 3.5 19.5 7.75v8.5L12 20.5l-7.5-4.25v-8.5L12 3.5Z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
-                <path d="m8.5 12 2.25 2.25L15.75 9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </div>
-
             <div className="ready-agent__header-copy">
-              <p>Ready</p>
-              <h2 id="ready-title">이 설정으로 분석을 시작할게요</h2>
+              <p>분석 시작</p>
+              <h2 id="ready-title">분석 시작 준비 완료</h2>
               <div className="ready-agent__header-status">
                 <span className="ready-agent__header-status-dot" aria-hidden="true" />
-                <span>Run 생성 준비 완료</span>
+                <span>선택한 흐름으로 바로 진단을 시작할 수 있어요</span>
               </div>
             </div>
           </div>
 
-          <span className="ready-agent__badge">실행 전 확인</span>
+          <span className="ready-agent__badge">준비 완료</span>
         </div>
 
         <div className="ready-agent__url-card">
@@ -482,36 +633,31 @@ function ReadyAgent({ submittedUrl, selectedScenario, selectedDepth, isCreatingR
 
         <div className="ready-agent__summary-grid" aria-label="진단 시작 전 요약">
           <article className="ready-agent__summary-card">
-            <span>선택한 흐름</span>
+            <span>진단 흐름</span>
             <strong>{selectedScenario.title}</strong>
             <p>{selectedScenario.summary}</p>
-          </article>
-          <article className="ready-agent__summary-card">
-            <span>확인 범위</span>
-            <strong>{selectedDepth.title}</strong>
-            <p>{selectedDepth.detail}</p>
           </article>
         </div>
 
         <div className="ready-agent__launch-plan" aria-label="분석 시작 후 진행 단계">
           <div>
             <span className="ready-agent__launch-step">1</span>
-            <p>Run 생성</p>
+            <p>화면 탐색</p>
           </div>
           <div>
             <span className="ready-agent__launch-step">2</span>
-            <p>실시간 Trace 확인</p>
+            <p>마찰 기록</p>
           </div>
           <div>
             <span className="ready-agent__launch-step">3</span>
-            <p>마찰 리포트 작성</p>
+            <p>리포트 생성</p>
           </div>
         </div>
 
         <div className="ready-agent__notice">
           <span>안전 설정</span>
-          <strong>위험 행동 없이 탐색합니다</strong>
-          <p>실제 결제, 삭제·변경 같은 위험 행동, OAuth 우회는 수행하지 않습니다.</p>
+          <strong>안전하게 탐색합니다</strong>
+          <p>실제 결제, 삭제, 변경 같은 위험 행동은 수행하지 않아요.</p>
         </div>
 
         {runStartError && (
@@ -522,29 +668,44 @@ function ReadyAgent({ submittedUrl, selectedScenario, selectedDepth, isCreatingR
 
         <div className="ready-agent__actions">
           <button className="create-analysis-panel__action ready-agent__primary-action" type="button" onClick={onStartRun} disabled={isCreatingRun}>
-            {isCreatingRun ? 'Run 생성 중…' : '분석 시작'}
+            {isCreatingRun ? '분석 시작 중…' : '분석 시작하기'}
           </button>
-          <button className="ready-agent__secondary-action" type="button" onClick={onEditScope} disabled={isCreatingRun}>
-            범위 다시 조정
+          <button className="create-analysis-secondary-action" type="button" onClick={onChooseDifferentScenario} disabled={isCreatingRun}>
+            다른 흐름 선택
           </button>
         </div>
-
-        <p className="ready-agent__note">분석 시작 후 실시간 Trace 화면에서 진행률, 체크포인트, 화면 미리보기를 확인할 수 있습니다.</p>
       </div>
     </section>
   );
 }
 
-export function CreateAnalysisPage() {
+export function CreateAnalysisPage({ isAuthenticated = false, isAuthChecking = false, onLogout }: CreateAnalysisPageProps) {
   const [routeState, setRouteState] = useState<CreateAnalysisPageRouteState>(getInitialRouteState);
   const [headlineIndex, setHeadlineIndex] = useState(0);
   const [urlInput, setUrlInput] = useState(routeState.submittedUrl ?? '');
   const [urlError, setUrlError] = useState('');
+  const [discoveryState, setDiscoveryState] = useState<DiscoveryUiState>({ kind: 'idle' });
   const [isCreatingRun, setIsCreatingRun] = useState(false);
   const [runStartError, setRunStartError] = useState('');
+  const discoveryRequestSeq = useRef(0);
   const stage = routeState.stage;
   const submittedUrl = routeState.submittedUrl ?? '';
-  const selectedScenario = useMemo(() => findScenarioById(routeState.scenarioId), [routeState.scenarioId]);
+  const recommendationScenarios = useMemo(
+    () => discoveryState.kind === 'completed' ? discoveryState.scenarios : [],
+    [discoveryState],
+  );
+  const manualChoiceScenarios = useMemo(
+    () => toManualScenarioRecommendationViewModels(recommendationScenarios.map((scenario) => scenario.id)),
+    [recommendationScenarios],
+  );
+  const selectableScenarios = useMemo(
+    () => [...recommendationScenarios, ...manualChoiceScenarios],
+    [recommendationScenarios, manualChoiceScenarios],
+  );
+  const selectedScenario = useMemo(
+    () => findScenarioById(routeState.scenarioId, selectableScenarios),
+    [routeState.scenarioId, selectableScenarios],
+  );
   const selectedDepthId = routeState.depthId ?? DEFAULT_SCENARIO_DEPTH_ID;
   const selectedDepth = useMemo(() => findDepthById(selectedDepthId), [selectedDepthId]);
   const createRunIds = useMemo(() => getCreateRunIds(routeState), [routeState]);
@@ -571,10 +732,15 @@ export function CreateAnalysisPage() {
     };
   }, []);
 
+  useEffect(() => () => {
+    discoveryRequestSeq.current += 1;
+  }, []);
+
   const normalizedUrl = useMemo(() => normalizeAnalysisUrl(urlInput), [urlInput]);
-  const canSubmit = urlInput.trim().length > 0;
+  const discoveryBusy = isDiscoveryBusy(discoveryState.kind);
+  const canSubmit = urlInput.trim().length > 0 && !discoveryBusy;
   const navigateToRouteState = useCallback((nextRouteState: CreateAnalysisPageRouteState, historyMode: 'push' | 'replace' = 'push') => {
-    const routeStateWithDevContext = withCreateRunContextFallback(nextRouteState, DEV_CREATE_RUN_CONTEXT);
+    const routeStateWithDevContext = withCreateRunContextFallback(nextRouteState, getCreateRunContextFallback());
     const nextPath = buildCreateAnalysisPath(routeStateWithDevContext, CREATE_ANALYSIS_ROUTE_OPTIONS);
 
     if (historyMode === 'replace') {
@@ -588,9 +754,10 @@ export function CreateAnalysisPage() {
 
   useEffect(() => {
     const handlePopState = () => {
+      discoveryRequestSeq.current += 1;
       setRouteState(withCreateRunContextFallback(
         parseCreateAnalysisRouteState(window.location.search, CREATE_ANALYSIS_ROUTE_OPTIONS),
-        DEV_CREATE_RUN_CONTEXT,
+        getCreateRunContextFallback(),
       ));
     };
 
@@ -603,8 +770,138 @@ export function CreateAnalysisPage() {
     setUrlError('');
   }, [routeState.submittedUrl]);
 
+  useEffect(() => {
+    if (stage !== 'discovering' || !submittedUrl || isAuthChecking || isAuthenticated) {
+      return;
+    }
+
+    pushAppPath(getLoginPathForCreateAnalysisRouteState(clearCreateRunContext(routeState)));
+  }, [isAuthenticated, isAuthChecking, routeState, stage, submittedUrl]);
+
+  const runDiscovery = useCallback(async (targetUrl: string, currentRouteState: CreateAnalysisPageRouteState) => {
+    const requestSeq = discoveryRequestSeq.current + 1;
+    discoveryRequestSeq.current = requestSeq;
+    setDiscoveryState({ kind: 'creating' });
+    setRunStartError('');
+
+    const discoveryRouteState = createDiscoveryRouteState(currentRouteState, targetUrl);
+    let resolvedDiscoveryRouteState = discoveryRouteState;
+    navigateToRouteState(discoveryRouteState);
+
+    const completeDiscovery = (discoveryId: string, scenarios: ScenarioRecommendation[]) => {
+      if (discoveryRequestSeq.current !== requestSeq) {
+        return;
+      }
+
+      if (scenarios.length === 0) {
+        setDiscoveryState({
+          kind: 'empty',
+          discoveryId,
+          message: 'Discovery는 완료됐지만 추천 가능한 시나리오 근거를 찾지 못했습니다.',
+        });
+      } else {
+        setDiscoveryState({ kind: 'completed', discoveryId, scenarios });
+      }
+
+      navigateToRouteState({
+        ...resolvedDiscoveryRouteState,
+        stage: 'recommendations',
+      });
+    };
+
+    try {
+      const created = await createDiscovery({
+        url: targetUrl,
+        devicePreset: 'desktop',
+        viewport: DISCOVERY_VIEWPORT,
+      }, {
+        idempotencyKey: createDiscoveryIdempotencyKey(targetUrl),
+      });
+
+      if (discoveryRequestSeq.current !== requestSeq) {
+        return;
+      }
+
+      let discovery = created.data;
+      const discoveryId = discovery.discoveryId;
+      if (!isUuid(discovery.projectId)) {
+        setDiscoveryState({
+          kind: 'failed',
+          message: 'Discovery는 시작됐지만 연결된 프로젝트를 확인하지 못했습니다. 잠시 후 다시 시도해주세요.',
+        });
+        return;
+      }
+      resolvedDiscoveryRouteState = { ...discoveryRouteState, projectId: discovery.projectId };
+      navigateToRouteState(resolvedDiscoveryRouteState, 'replace');
+      setDiscoveryState({
+        kind: 'polling',
+        discoveryId,
+        status: discovery.status,
+        progressSteps: getPollingSteps(discovery.status),
+      });
+
+      const startedAt = Date.now();
+      while (Date.now() - startedAt <= DISCOVERY_TIMEOUT_MS) {
+        if (discovery.status === 'COMPLETED') {
+          completeDiscovery(discoveryId, toScenarioRecommendationViewModels(discovery));
+          return;
+        }
+
+        if (isDiscoveryTerminalFailure(discovery.status)) {
+          setDiscoveryState({
+            kind: 'failed',
+            message: discovery.failureMessage ?? 'Discovery가 실패했습니다. URL을 확인한 뒤 다시 시도해주세요.',
+          });
+          return;
+        }
+
+        await wait(DISCOVERY_POLL_INTERVAL_MS);
+        if (discoveryRequestSeq.current !== requestSeq) {
+          return;
+        }
+
+        const polled = await getDiscovery(discoveryId);
+        discovery = polled.data;
+        if (isUuid(discovery.projectId) && discovery.projectId !== resolvedDiscoveryRouteState.projectId) {
+          resolvedDiscoveryRouteState = { ...resolvedDiscoveryRouteState, projectId: discovery.projectId };
+          navigateToRouteState(resolvedDiscoveryRouteState, 'replace');
+        }
+        setDiscoveryState({
+          kind: 'polling',
+          discoveryId,
+          status: discovery.status,
+          progressSteps: getPollingSteps(discovery.status),
+        });
+      }
+
+      setDiscoveryState({
+        kind: 'failed',
+        message: 'Discovery 응답 시간이 초과됐습니다. 잠시 후 다시 시도해주세요.',
+      });
+    } catch (error) {
+      if (discoveryRequestSeq.current === requestSeq) {
+        setDiscoveryState({
+          kind: 'failed',
+          message: createDiscoveryFailureMessage(error),
+        });
+      }
+    }
+  }, [navigateToRouteState]);
+
+  useEffect(() => {
+    if (stage !== 'discovering' || !submittedUrl || isAuthChecking || !isAuthenticated || discoveryState.kind !== 'idle') {
+      return;
+    }
+
+    void runDiscovery(submittedUrl, routeState);
+  }, [discoveryState.kind, isAuthenticated, isAuthChecking, routeState, runDiscovery, stage, submittedUrl]);
+
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+
+    if (discoveryBusy) {
+      return;
+    }
 
     if (!canSubmit) {
       setUrlError('분석할 사이트 URL을 입력해주세요.');
@@ -617,41 +914,56 @@ export function CreateAnalysisPage() {
     }
 
     setUrlError('');
-    navigateToRouteState({
-      ...routeState,
-      stage: 'discovering',
-      submittedUrl: normalizedUrl,
-      scenarioId: null,
-      depthId: null,
-    });
+
+    const discoveryRouteState = createDiscoveryRouteState(routeState, normalizedUrl);
+
+    if (isAuthChecking) {
+      setUrlError('로그인 상태를 확인하는 중입니다. 잠시 후 다시 시도해주세요.');
+      return;
+    }
+
+    if (!isAuthenticated) {
+      pushAppPath(getLoginPathForCreateAnalysisRouteState(discoveryRouteState));
+      return;
+    }
+
+    void runDiscovery(normalizedUrl, routeState);
   };
 
-  const showRecommendations = () => {
+  const retryDiscovery = () => {
     if (!submittedUrl) {
       return;
     }
 
-    navigateToRouteState({
+    void runDiscovery(submittedUrl, clearCreateRunContext(routeState));
+  };
+
+  const editUrl = () => {
+    discoveryRequestSeq.current += 1;
+    setDiscoveryState({ kind: 'idle' });
+    navigateToRouteState(clearCreateRunContext({
       ...routeState,
-      stage: 'recommendations',
-      submittedUrl,
+      stage: 'input',
+      submittedUrl: null,
       scenarioId: null,
       depthId: null,
-    });
+    }));
   };
 
   const chooseScenario = (scenario: ScenarioRecommendation) => {
+    if (!submittedUrl || !scenario.isRunnable) {
+      return;
+    }
+
+    navigateToRouteState(createScenarioReadyRouteState(routeState, submittedUrl, scenario.id, DEFAULT_SCENARIO_DEPTH_ID));
+  };
+
+  const openManualChoice = () => {
     if (!submittedUrl) {
       return;
     }
 
-    navigateToRouteState({
-      ...routeState,
-      stage: 'onboarding',
-      submittedUrl,
-      scenarioId: scenario.id,
-      depthId: DEFAULT_SCENARIO_DEPTH_ID,
-    });
+    navigateToRouteState(createManualChoiceRouteState(routeState, submittedUrl));
   };
 
   const chooseDepth = (depthId: ScenarioDepthId) => {
@@ -685,18 +997,12 @@ export function CreateAnalysisPage() {
     });
   };
 
-  const editScope = () => {
-    if (!submittedUrl || !selectedScenario || isCreatingRun) {
+  const chooseDifferentScenario = () => {
+    if (!submittedUrl || isCreatingRun) {
       return;
     }
 
-    navigateToRouteState({
-      ...routeState,
-      stage: 'onboarding',
-      submittedUrl,
-      scenarioId: selectedScenario.id,
-      depthId: selectedDepthId,
-    });
+    navigateToRouteState(createRecommendationChoiceRouteState(routeState, submittedUrl));
   };
 
   const startAnalysisRun = async () => {
@@ -708,7 +1014,7 @@ export function CreateAnalysisPage() {
     setRunStartError('');
 
     if (!createRunIds) {
-      setRunStartError('Run 생성에 필요한 project/scenario UUID가 없습니다. MVP 기본 설정 또는 create-analysis URL을 확인해주세요.');
+      setRunStartError('분석 실행에 필요한 프로젝트 설정을 확인하지 못했습니다. URL 사전 탐색을 다시 진행해주세요.');
       setIsCreatingRun(false);
       return;
     }
@@ -716,22 +1022,31 @@ export function CreateAnalysisPage() {
     let createdRunId = '';
 
     try {
+      const runStartUrl = selectedScenario.suggestedStartUrl ?? submittedUrl;
+      const runGoal = selectedScenario.summary;
+      const scenarioOverrides: Record<string, unknown> = {
+        depthId: selectedDepthId,
+        source: 'create-analysis-agent-ready',
+        sourceDiscoveryId: selectedScenario.sourceDiscoveryId ?? null,
+        recommendationId: selectedScenario.recommendationId ?? null,
+        scenarioType: selectedScenario.scenarioType,
+        evidenceRefs: selectedScenario.evidenceRefs,
+        evidenceSummary: selectedScenario.evidenceSummary ?? null,
+        suggestedStartUrl: selectedScenario.suggestedStartUrl ?? null,
+        suggestedTarget: selectedScenario.suggestedTarget ?? null,
+      };
+
       const response = await createRun({
         projectId: createRunIds.projectId,
         name: selectedScenario.title,
-        startUrl: submittedUrl,
-        goal: selectedScenario.summary,
+        startUrl: runStartUrl,
+        goal: runGoal,
         devicePreset: 'desktop',
-        scenarioTemplateVersionId: createRunIds.scenarioTemplateVersionId,
-        scenarioOverrides: {
-          depthId: selectedDepthId,
-          source: 'create-analysis-ready',
-        },
-        scenarioPlan: buildPrototypeScenarioPlan({ submittedUrl, selectedScenario, selectedDepth }),
+        scenarioOverrides,
       });
       createdRunId = response.data.id;
     } catch {
-      setRunStartError('Run 생성에 실패했습니다. 프로젝트와 시나리오 설정을 확인한 뒤 다시 시도해주세요.');
+      setRunStartError('분석 실행 준비에 실패했습니다. 프로젝트 설정과 URL을 확인한 뒤 다시 시도해주세요.');
       setIsCreatingRun(false);
       return;
     }
@@ -739,7 +1054,7 @@ export function CreateAnalysisPage() {
     try {
       await startRun(createdRunId);
     } catch {
-      setRunStartError('Run은 생성됐지만 시작 요청에 실패했습니다. 실시간 Trace에서 현재 상태를 확인합니다.');
+      setRunStartError('분석 준비는 완료됐지만 시작 요청에 실패했습니다. 실시간 Trace에서 현재 상태를 확인합니다.');
     } finally {
       pushAppPath(buildRunMonitorPath(createdRunId, {
         submittedUrl,
@@ -765,6 +1080,19 @@ export function CreateAnalysisPage() {
         <a href="/" className="create-analysis-nav__brand">
           Wedge
         </a>
+        {stage === 'input' ? (
+          <div className="create-analysis-nav__actions" aria-label="계정">
+            {!isAuthenticated && !isAuthChecking ? (
+              <a href={getLoginPathForCurrentCreateAnalysisState()}>Login</a>
+            ) : null}
+            {isAuthenticated ? (
+              <a href={RUNS_PATH} className="create-analysis-nav__link--secondary">실행 목록</a>
+            ) : null}
+            {isAuthenticated && onLogout ? (
+              <button type="button" onClick={onLogout}>Logout</button>
+            ) : null}
+          </div>
+        ) : null}
       </header>
 
       <main className="create-analysis-page__main">
@@ -830,10 +1158,27 @@ export function CreateAnalysisPage() {
           </section>
         )}
 
-        {stage === 'discovering' && <PreflightAgent submittedUrl={submittedUrl} onShowRecommendations={showRecommendations} />}
+        {stage === 'discovering' && (
+          <PreflightAgent submittedUrl={submittedUrl} discoveryState={discoveryState} onRetry={retryDiscovery} onEditUrl={editUrl} />
+        )}
 
         {stage === 'recommendations' && (
-          <RecommendationAgent submittedUrl={submittedUrl} scenarios={scenarioRecommendations} onChooseScenario={chooseScenario} />
+          <RecommendationAgent
+            submittedUrl={submittedUrl}
+            scenarios={recommendationScenarios}
+            emptyMessage={discoveryState.kind === 'empty' ? discoveryState.message : undefined}
+            onChooseScenario={chooseScenario}
+            onOpenManualChoice={openManualChoice}
+          />
+        )}
+
+        {stage === 'manual-choice' && (
+          <ManualChoiceAgent
+            submittedUrl={submittedUrl}
+            scenarios={manualChoiceScenarios}
+            onChooseScenario={chooseScenario}
+            onBackToRecommendations={() => navigateToRouteState(createRecommendationChoiceRouteState(routeState, submittedUrl))}
+          />
         )}
 
         {stage === 'onboarding' && selectedScenario && (
@@ -844,10 +1189,9 @@ export function CreateAnalysisPage() {
           <ReadyAgent
             submittedUrl={submittedUrl}
             selectedScenario={selectedScenario}
-            selectedDepth={selectedDepth}
             isCreatingRun={isCreatingRun}
             runStartError={runStartError}
-            onEditScope={editScope}
+            onChooseDifferentScenario={chooseDifferentScenario}
             onStartRun={startAnalysisRun}
           />
         )}

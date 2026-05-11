@@ -46,7 +46,7 @@ export function resolveRunReportState({
     return {
       kind: 'loading',
       title: '리포트 상태를 확인하는 중입니다',
-      message: '실제 Run 상태와 리포트 생성 가능 여부를 확인하고 있습니다.',
+      message: '실행 상태와 리포트 생성 가능 여부를 확인하고 있습니다.',
     };
   }
 
@@ -61,8 +61,8 @@ export function resolveRunReportState({
   if (!run) {
     return {
       kind: 'error',
-      title: 'Run을 찾을 수 없습니다',
-      message: 'Run 상태를 확인할 수 없습니다. URL 또는 접근 권한을 확인한 뒤 다시 시도해주세요.',
+      title: '실행 결과를 찾을 수 없습니다',
+      message: '실행 상태를 확인할 수 없습니다. URL 또는 접근 권한을 확인한 뒤 다시 시도해주세요.',
     };
   }
 
@@ -70,14 +70,14 @@ export function resolveRunReportState({
     return {
       kind: 'not-ready',
       title: '리포트 준비 중입니다',
-      message: `현재 Run 상태는 ${RUN_STATUS_LABEL[run.status]}입니다. 실행이 완료되면 결과 리포트를 확인할 수 있습니다.`,
+      message: `현재 실행 상태는 ${RUN_STATUS_LABEL[run.status]}입니다. 실행이 완료되면 결과 리포트를 확인할 수 있습니다.`,
     };
   }
 
   if (isReportLoading) {
     return {
       kind: 'loading',
-      title: '백엔드 리포트 상태를 확인하는 중입니다',
+      title: '서버 리포트 상태를 확인하는 중입니다',
       message: '분석 결과와 리포트 생성 가능 여부를 서버에서 확인하고 있습니다.',
     };
   }
@@ -98,17 +98,17 @@ export function resolveRunReportState({
     return {
       kind: 'api-pending',
       title: '리포트 생성이 필요합니다',
-      message: '분석 결과가 준비됐습니다. 리포트 생성 버튼을 눌러 결과 화면을 만들 수 있습니다.',
+      message: '분석이 완료됐습니다. 리포트를 생성해주세요.',
     };
   }
 
   if (report?.reportStatus === 'NOT_READY') {
     return {
       kind: 'api-pending',
-      title: '분석 결과를 기다리는 중입니다',
+      title: '리포트 준비 중',
       message: report.analysisStatus === 'NOT_STARTED'
-        ? 'Run은 완료됐지만 아직 분석 요청이 시작되지 않았습니다.'
-        : `현재 분석 상태는 ${report.analysisStatus}입니다. 분석 완료 후 리포트를 생성할 수 있습니다.`,
+        ? '실행은 완료됐지만 아직 분석이 시작되지 않았습니다. 분석을 시작하면 수집된 근거를 바탕으로 리포트를 생성합니다.'
+        : '분석이 진행 중입니다. 분석 완료 후 리포트를 생성할 수 있습니다.',
     };
   }
 
@@ -116,7 +116,7 @@ export function resolveRunReportState({
     return {
       kind: 'loading',
       title: '리포트 근거를 불러오는 중입니다',
-      message: '완료된 Run의 Evidence Packet을 리포트 형태로 변환하고 있습니다.',
+      message: '완료된 실행의 수집 근거를 리포트 형태로 변환하고 있습니다.',
     };
   }
 
@@ -132,7 +132,7 @@ export function resolveRunReportState({
     return {
       kind: reportLoadError ? 'error' : 'api-pending',
       title: reportLoadError ? '리포트 상태를 불러오지 못했습니다' : '리포트 데이터 연결 대기 중입니다',
-      message: reportLoadError || 'Run은 완료됐지만 서버 리포트나 fallback Evidence Packet checkpoint가 아직 없습니다.',
+      message: reportLoadError || '실행은 완료됐지만 서버 리포트나 수집 근거가 아직 준비되지 않았습니다.',
     };
   }
 

@@ -67,8 +67,9 @@ class ReportDetailQueryServiceTest {
         UUID runId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
         UUID analysisJobId = UUID.randomUUID();
+        UUID highlightArtifactId = UUID.randomUUID();
         Report report = report(runId, analysisJobId);
-        AnalysisFinding firstFinding = finding(2, "INPUT", new BigDecimal("9.2"));
+        AnalysisFinding firstFinding = finding(2, "INPUT", new BigDecimal("9.2"), highlightArtifactId);
         AnalysisFinding secondFinding = finding(1, "CTA", new BigDecimal("5.1"));
         AnalysisFinding legacyFinding = finding(3, null, new BigDecimal("1.0"));
         when(reportMapper.findById(report.getId())).thenReturn(Optional.of(report));
@@ -82,8 +83,9 @@ class ReportDetailQueryServiceTest {
                 nudge(analysisJobId, firstFinding.getId(), null, "Rankless fallback"),
                 nudge(analysisJobId, firstFinding.getId(), 1, "Reduce input friction")
         ));
-        when(artifactMapper.findLatestScreenshotByRunIdAndStage(runId, "INPUT")).thenReturn(Optional.empty());
         when(artifactMapper.findLatestScreenshotByRunIdAndStage(runId, "CTA")).thenReturn(Optional.empty());
+        when(artifactMapper.findByRunIdAndId(runId, highlightArtifactId))
+                .thenReturn(Optional.of(screenshot(runId, highlightArtifactId, "highlight.png")));
         when(artifactMapper.findLatestScreenshotByRunId(runId)).thenReturn(Optional.of(screenshot(runId)));
 
         ReportDetailResponse response = reportDetailQueryService.getReportDetail(report.getId(), userId);
@@ -96,8 +98,14 @@ class ReportDetailQueryServiceTest {
         assertThat(response.findings().get(1).nudges()).singleElement()
                 .satisfies(item -> assertThat(item.title()).isEqualTo("Make CTA clearer"));
         assertThat(response.findings().get(2).stage()).isNull();
-        assertThat(response.findings().get(0).previewImage().source()).isEqualTo("LATEST_SCREENSHOT");
         assertThat(response.findings().get(0).evidenceRefs()).isInstanceOf(List.class);
+        assertThat(response.findings().get(0).highlight()).isNotNull();
+        assertThat(response.findings().get(0).highlight().label()).isEqualTo("Start free");
+        assertThat(response.findings().get(0).highlight().coordinateSpace()).isEqualTo("viewport");
+        assertThat(response.findings().get(0).highlight().bounds().x()).isEqualByComparingTo(new BigDecimal("520.0"));
+        assertThat(response.findings().get(0).previewImage().source()).isEqualTo("HIGHLIGHT_SCREENSHOT");
+        assertThat(response.findings().get(0).previewImage().artifact().id()).isEqualTo(highlightArtifactId);
+        assertThat(response.findings().get(0).highlight().screenshotArtifactId()).isEqualTo(highlightArtifactId.toString());
     }
 
     private Report report(UUID runId, UUID analysisJobId) {
@@ -118,6 +126,10 @@ class ReportDetailQueryServiceTest {
     }
 
     private AnalysisFinding finding(int rank, String stage, BigDecimal priorityScore) {
+        return finding(rank, stage, priorityScore, null);
+    }
+
+    private AnalysisFinding finding(int rank, String stage, BigDecimal priorityScore, UUID screenshotArtifactId) {
         AnalysisFinding finding = new AnalysisFinding();
         finding.setId(UUID.randomUUID());
         finding.setRankOrder(rank);
@@ -127,7 +139,19 @@ class ReportDetailQueryServiceTest {
         finding.setSeverity(2);
         finding.setConfidence(new BigDecimal("0.87"));
         finding.setPriorityScore(priorityScore);
-        finding.setEvidenceRefsJsonb("[{\"ref\":\"cp_001.obs_001\"}]");
+        finding.setEvidenceRefsJsonb(screenshotArtifactId == null
+                ? "[\"cp_001.obs_001\"]"
+                : """
+                    [{"ref":"cp_001.obs_001","problemComponent":{
+                    "component_id":"component_001",
+                    "evidence_ref":"cp_001.obs_001",
+                    "label":"Start free",
+                    "coordinate_space":"viewport",
+                    "bounding_box":{"x":520,"y":360,"width":220,"height":56},
+                    "viewport":{"width":1440,"height":900},
+                    "screenshot_artifact_id":"artifact:%s"
+                    }}]
+                    """.formatted(screenshotArtifactId));
         return finding;
     }
 
@@ -142,12 +166,16 @@ class ReportDetailQueryServiceTest {
     }
 
     private Artifact screenshot(UUID runId) {
+        return screenshot(runId, UUID.randomUUID(), "latest.png");
+    }
+
+    private Artifact screenshot(UUID runId, UUID artifactId, String key) {
         Artifact artifact = new Artifact();
-        artifact.setId(UUID.randomUUID());
+        artifact.setId(artifactId);
         artifact.setRunId(runId);
         artifact.setArtifactType(ArtifactType.SCREENSHOT);
         artifact.setS3Bucket("wedge-artifacts");
-        artifact.setS3Key("latest.png");
+        artifact.setS3Key(key);
         artifact.setMimeType("image/png");
         artifact.setWidth(1440);
         artifact.setHeight(900);

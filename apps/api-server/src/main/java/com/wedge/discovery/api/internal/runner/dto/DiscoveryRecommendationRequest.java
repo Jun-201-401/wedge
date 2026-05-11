@@ -16,6 +16,7 @@ public record DiscoveryRecommendationRequest(
         @NotNull @DecimalMin("0.0") @DecimalMax("1.0") BigDecimal confidence,
         @NotBlank String reason,
         @NotNull List<String> evidenceRefs,
+        Map<String, Object> evidenceSummary,
         URI suggestedStartUrl,
         Map<String, Object> suggestedTarget
 ) {

@@ -186,7 +186,7 @@
             #{goal},
             #{devicePreset},
             CAST(#{environmentJson} AS jsonb),
-            #{scenarioTemplateVersionId},
+            #{scenarioTemplateVersionId,jdbcType=OTHER},
             #{scenarioPlanSchemaVersion},
             CAST(#{scenarioPlanJson} AS jsonb),
             #{status},

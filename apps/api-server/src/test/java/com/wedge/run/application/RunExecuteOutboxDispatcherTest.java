@@ -58,13 +58,13 @@ class RunExecuteOutboxDispatcherTest {
     void handlePublishesOnlyWhenMessageCanBeClaimed() {
         UUID outboxMessageId = UUID.randomUUID();
         RunExecuteRequestMessage message = sampleMessage();
-        when(outboxMessagePersistenceAdapter.findRunExecuteMessageForPublish(outboxMessageId))
+        when(outboxMessagePersistenceAdapter.findRunnerRequestMessageForPublish(outboxMessageId))
                 .thenReturn(Optional.of(message));
 
         dispatcher.handle(new RunExecuteOutboxEnqueuedEvent(outboxMessageId));
 
         InOrder inOrder = inOrder(runRequestPublisher, outboxMessagePersistenceAdapter);
-        inOrder.verify(outboxMessagePersistenceAdapter).findRunExecuteMessageForPublish(outboxMessageId);
+        inOrder.verify(outboxMessagePersistenceAdapter).findRunnerRequestMessageForPublish(outboxMessageId);
         inOrder.verify(runRequestPublisher).publish(message);
         inOrder.verify(outboxMessagePersistenceAdapter).markPublished(outboxMessageId);
     }
@@ -72,7 +72,7 @@ class RunExecuteOutboxDispatcherTest {
     @Test
     void handleSkipsPublishWhenMessageCannotBeClaimed() {
         UUID outboxMessageId = UUID.randomUUID();
-        when(outboxMessagePersistenceAdapter.findRunExecuteMessageForPublish(outboxMessageId))
+        when(outboxMessagePersistenceAdapter.findRunnerRequestMessageForPublish(outboxMessageId))
                 .thenReturn(Optional.empty());
 
         dispatcher.handle(new RunExecuteOutboxEnqueuedEvent(outboxMessageId));

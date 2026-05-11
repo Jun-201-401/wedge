@@ -1,10 +1,12 @@
 # Wedge RabbitMQ Topology
 
-로컬/개발용 RabbitMQ 토폴로지 초안. `rabbitmq-definitions-dev.json`을 부팅 시 일괄 import한다.
+RabbitMQ 토폴로지 정의. dev/prod compose는 각각 환경별 definitions 파일을 부팅 시 일괄 import한다.
 
 - 큐 소유권: [queue-ownership.md](./queue-ownership.md)
-- 토폴로지 정의: [rabbitmq-definitions-dev.json](./rabbitmq-definitions-dev.json)
-- 브로커 설정: [rabbitmq.conf](./rabbitmq.conf)
+- dev 토폴로지 정의: [rabbitmq-definitions-dev.json](./rabbitmq-definitions-dev.json)
+- prod 토폴로지 정의: [rabbitmq-definitions-prod.json](./rabbitmq-definitions-prod.json)
+- dev 브로커 설정: [rabbitmq.conf](./rabbitmq.conf)
+- prod 브로커 설정: [rabbitmq-prod.conf](./rabbitmq-prod.conf)
 - Management UI: http://localhost:15672 (compose 기동 후)
 
 기본 dev 로그인 계정:
@@ -34,7 +36,7 @@ exchange            : wedge.direct | wedge.dlq
 
 ## 운영 전환 시 TODO (V1 초안에서는 의도적으로 제외)
 
-아래 항목은 현재 "로컬/개발 초안" 범위 밖이며, 운영 진입 전 반드시 재검토한다.
+아래 항목은 현재 기본 prod compose 토폴로지 범위 밖이며, 운영 고도화 전 반드시 재검토한다.
 WDAY-025(dummy publish/consume) 검증 후 실증 데이터로 값 결정 권장.
 
 | 항목 | 현재 상태 | 운영 전 필요 작업 | 우선순위 |
@@ -45,21 +47,36 @@ WDAY-025(dummy publish/consume) 검증 후 실증 데이터로 값 결정 권장
 | Queue type | 기본 `classic` | `x-queue-type: quorum` 검토 (3.8+ 권장, classic mirrored deprecated) | 中 |
 | DLQ 보관 한도 | 무제한 | DLQ에 `x-message-ttl`(예: 7d) 또는 `x-max-length` policy 적용 | 高 |
 | Unroutable 방어 | 없음 | `wedge.direct`에 `alternate-exchange` → `wedge.unroutable` 큐 | 低 |
-| 사용자/권한 | `RABBITMQ_DEFAULT_USER` env (dev guest 대체) | definitions에 `users` / `permissions` 정의 또는 외부 주입 | 中 |
+| 사용자/권한 | `RABBITMQ_DEFAULT_USER` env (dev guest 대체, prod는 `.env.prod` 주입) | 전용 vhost 분리 시 definitions 또는 외부 secret provisioning으로 권한 범위 제한 | 中 |
 | Consumer 튜닝 | `prefetch` 미지정 | 워크로드별 `prefetch_count` 결정 (Runner vs Analyzer 부하 특성 다름) | 中 |
+
+## prod definitions 주의
+
+`rabbitmq-definitions-prod.json`은 topology(vhost/exchange/queue/binding)만 포함하고 사용자/권한은 포함하지 않는다.
+운영 계정은 `compose.prod.yaml`의 `RABBITMQ_DEFAULT_USER` / `RABBITMQ_DEFAULT_PASS` 환경변수로 주입하고,
+배포 시 [provision-prod-user.sh](./provision-prod-user.sh)가 `.env.prod` 기준으로 사용자/비밀번호/권한을 보장한다.
+비밀번호 hash나 운영 secret을 definitions 파일에 커밋하지 않는다.
+
+`compose.prod.yaml`은 RabbitMQ 컨테이너 재생성 시에도 같은 노드 데이터 디렉터리를 사용하도록 `hostname`과
+`RABBITMQ_NODENAME`을 고정한다. 기존 운영 브로커에서 처음 적용할 때는 현재 definitions 백업을 먼저 확보한다.
+Jenkins 운영 배포는 `compose.prod.yaml`, `rabbitmq-prod.conf`, `rabbitmq-definitions-prod.json` 변경이 있을 때만
+RabbitMQ definitions 백업 후 RabbitMQ 컨테이너를 재생성한다.
 
 ## 변경 절차
 
-`rabbitmq-definitions-dev.json` 수정 시:
+`rabbitmq-definitions-*.json` 수정 시:
 
 1. 관련 문서/계약 동기화 (publisher/consumer 코드가 생기면 routing_key 상수도 포함)
-2. RabbitMQ 컨테이너 재생성 — `management.load_definitions`는 부팅 시에만 로드되므로 `up -d`만으로는 반영 안 됨:
+2. RabbitMQ 컨테이너 재생성 — definitions import는 부팅 시에만 로드되므로 단순 `up -d`만으로는 반영 안 될 수 있음:
    ```bash
    docker compose -f compose.dev.yaml up -d --force-recreate rabbitmq
+   docker compose -f compose.prod.yaml up -d --force-recreate rabbitmq
    ```
-   (또는 `docker compose ... restart rabbitmq`)
-3. Management UI에서 exchange/queue/binding 반영 확인
-4. Publisher/consumer 재시작
+   대상 환경에 맞는 compose 파일만 실행한다. 운영 Jenkins 배포는 prod RabbitMQ 관련 파일 변경 시 이 단계를 자동 수행한다.
+   기존 볼륨이 유지되는 경우 RabbitMQ는 새 definitions를 import해 누락 topology를 보강한다.
+3. prod는 RabbitMQ 기동 후 `bash infra/rabbitmq/provision-prod-user.sh`로 운영 사용자/권한을 보장
+4. Management UI에서 exchange/queue/binding 반영 확인
+5. Publisher/consumer 재시작
 
 Breaking change (큐 이름/arguments 변경)는 기존 큐 삭제 필요. dev에서 RabbitMQ volume만 초기화하려면:
 

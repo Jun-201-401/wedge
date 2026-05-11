@@ -20,6 +20,7 @@ public class ReportPreviewImageResolver {
     private static final String STAGE_SCREENSHOT = "STAGE_SCREENSHOT";
     private static final String REPORT_ARTIFACT = "REPORT_ARTIFACT";
     private static final String LATEST_SCREENSHOT = "LATEST_SCREENSHOT";
+    private static final String HIGHLIGHT_SCREENSHOT = "HIGHLIGHT_SCREENSHOT";
 
     private final ArtifactMapper artifactMapper;
 
@@ -43,6 +44,23 @@ public class ReportPreviewImageResolver {
             AnalysisFinding finding,
             DetailPreviewContext context
     ) {
+        return resolve(report, finding, context, null);
+    }
+
+    public ReportPreviewImageResponse resolve(
+            Report report,
+            AnalysisFinding finding,
+            DetailPreviewContext context,
+            String preferredScreenshotArtifactId
+    ) {
+        Optional<ReportPreviewImageResponse> preferredPreview = screenshotByArtifactId(
+                report.getRunId(),
+                preferredScreenshotArtifactId
+        );
+        if (preferredPreview.isPresent()) {
+            return preferredPreview.get();
+        }
+
         Optional<ReportPreviewImageResponse> stagePreview = context.stagePreviews().computeIfAbsent(
                 finding.getStage(),
                 stage -> stageScreenshot(report.getRunId(), stage)
@@ -51,6 +69,30 @@ public class ReportPreviewImageResolver {
                 .or(context::reportPreview)
                 .or(context::latestPreview)
                 .orElse(null);
+    }
+
+    private Optional<ReportPreviewImageResponse> screenshotByArtifactId(UUID runId, String artifactId) {
+        UUID parsedId = parseArtifactId(artifactId);
+        if (parsedId == null) {
+            return Optional.empty();
+        }
+        return artifactMapper.findByRunIdAndId(runId, parsedId)
+                .filter(artifact -> artifact.getArtifactType() == ArtifactType.SCREENSHOT)
+                .map(artifact -> previewImage(artifact, HIGHLIGHT_SCREENSHOT));
+    }
+
+    private UUID parseArtifactId(String artifactId) {
+        if (artifactId == null || artifactId.isBlank()) {
+            return null;
+        }
+        String normalized = artifactId.startsWith("artifact:")
+                ? artifactId.substring("artifact:".length())
+                : artifactId;
+        try {
+            return UUID.fromString(normalized);
+        } catch (IllegalArgumentException ignored) {
+            return null;
+        }
     }
 
     private Optional<ReportPreviewImageResponse> stageScreenshot(UUID runId, String stage) {

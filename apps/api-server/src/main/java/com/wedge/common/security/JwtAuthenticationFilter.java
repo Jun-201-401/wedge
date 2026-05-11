@@ -26,7 +26,11 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             "/api/runs",
             "/api/runs/**",
             "/api/reports",
-            "/api/reports/**"
+            "/api/reports/**",
+            "/api/discoveries",
+            "/api/discoveries/**",
+            "/api/scenario-authoring-jobs",
+            "/api/scenario-authoring-jobs/**"
     );
 
     private final JwtTokenProvider jwtTokenProvider;

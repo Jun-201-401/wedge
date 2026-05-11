@@ -132,6 +132,42 @@ class JudgeResultPersistenceServiceTest {
     }
 
     @Test
+    void saveCompletedEnrichesProblemComponentRefWithoutDroppingTechnicalEvidence() throws Exception {
+        UUID analysisJobId = UUID.randomUUID();
+        UUID runId = UUID.randomUUID();
+        Map<String, Object> issue = issue();
+        issue.put("evidence_refs", List.of("cp_001.obs_network_failure"));
+        issue.put("problem_components", List.of(Map.of(
+                "component_id", "cp_001.obs_interactive_components.component_001",
+                "evidence_ref", "cp_001.obs_interactive_components",
+                "label", "Start free",
+                "selector", "a.hero-start",
+                "coordinate_space", "viewport",
+                "bounding_box", Map.of("x", 520, "y", 360, "width", 220, "height", 56),
+                "viewport", Map.of("width", 1440, "height", 900),
+                "screenshot_artifact_id", "screenshot-1"
+        )));
+        AnalyzerCompletedRequest request = completedRequest(analysisJobId, runId, List.of(issue));
+
+        judgeResultPersistenceService.saveCompleted(request);
+
+        verify(ruleHitMapper).insert(ruleHitCaptor.capture());
+        assertThat(ruleHitCaptor.getValue().getEvidenceRefsJsonb())
+                .contains("cp_001.obs_network_failure")
+                .doesNotContain("cp_001.obs_interactive_components");
+        verify(analysisFindingMapper).insert(findingCaptor.capture());
+        AnalysisFinding finding = findingCaptor.getValue();
+        List<Object> findingRefs = objectMapper.readValue(finding.getEvidenceRefsJsonb(), new TypeReference<>() {});
+        assertThat(findingRefs).hasSize(2);
+        assertThat(findingRefs.get(0)).isEqualTo("cp_001.obs_network_failure");
+        assertThat(findingRefs.get(1)).isInstanceOf(Map.class);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> componentRef = (Map<String, Object>) findingRefs.get(1);
+        assertThat(componentRef.get("ref")).isEqualTo("cp_001.obs_interactive_components");
+        assertThat(componentRef.get("problemComponent")).isInstanceOf(Map.class);
+    }
+
+    @Test
     void saveFailedMarksAnalysisJobFailed() {
         UUID analysisJobId = UUID.randomUUID();
         UUID runId = UUID.randomUUID();
@@ -229,6 +265,12 @@ class JudgeResultPersistenceServiceTest {
         assertThat(finding.getRankOrder()).isEqualTo(1);
         assertThat(finding.getCategory()).isEqualTo("INPUT-ASYNC-001");
         assertThat(finding.getSummary()).isEqualTo("이메일 검증 상태가 지연됩니다.");
+        List<Map<String, Object>> findingRefs = objectMapper.readValue(finding.getEvidenceRefsJsonb(), new TypeReference<>() {});
+        assertThat(findingRefs).singleElement()
+                .satisfies(ref -> {
+                    assertThat(ref.get("ref")).isEqualTo("cp_002.obs_004");
+                    assertThat(ref.get("problemComponent")).isInstanceOf(Map.class);
+                });
     }
 
     private void verifyNudgeProjection(UUID analysisJobId) {
@@ -282,6 +324,16 @@ class JudgeResultPersistenceServiceTest {
         issue.put("confidence", 0.72);
         issue.put("priority_score", 1.44);
         issue.put("evidence_refs", List.of("cp_002.obs_004"));
+        issue.put("problem_components", List.of(Map.of(
+                "component_id", "component_001",
+                "evidence_ref", "cp_002.obs_004",
+                "label", "Start free",
+                "selector", "a.hero-start",
+                "coordinate_space", "viewport",
+                "bounding_box", Map.of("x", 520, "y", 360, "width", 220, "height", 56),
+                "viewport", Map.of("width", 1440, "height", 900),
+                "screenshot_artifact_id", "screenshot-1"
+        )));
         issue.put("observations", List.of("validation response observed"));
         issue.put("signals", List.of("server round-trip"));
         issue.put("summary", "이메일 검증 상태가 지연됩니다.");

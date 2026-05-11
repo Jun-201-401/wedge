@@ -1,11 +1,15 @@
 package com.wedge.evidence.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.wedge.common.error.BusinessException;
+import com.wedge.common.error.ErrorCode;
+import com.wedge.evidence.api.dto.ArtifactPresignedUrlsResponse;
 import com.wedge.evidence.api.dto.ArtifactResponse;
 import com.wedge.evidence.api.dto.RunEvidenceSummaryResponse;
 import com.wedge.evidence.domain.Artifact;
@@ -23,7 +27,12 @@ import com.wedge.run.domain.AnalysisStatus;
 import com.wedge.run.domain.ResultCompleteness;
 import com.wedge.run.domain.RunStatus;
 import java.net.URI;
+import java.net.URL;
+import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -54,6 +63,9 @@ class EvidenceServiceTest {
 
     @Mock
     private ArtifactContentStore artifactContentStore;
+
+    @Mock
+    private ArtifactPresignedUrlGenerator artifactPresignedUrlGenerator;
 
     @Test
     void listRunArtifactsAddsPrototypeContentUrlAndStepKey() {
@@ -141,6 +153,59 @@ class EvidenceServiceTest {
     }
 
     @Test
+    void createRunArtifactPresignedUrlsReturnsTimeLimitedUrlsForImageArtifacts() throws Exception {
+        UUID runId = UUID.randomUUID();
+        UUID artifactId = UUID.randomUUID();
+        Artifact artifact = sampleArtifact(runId, artifactId);
+        when(runService.getRun(runId)).thenReturn(sampleRun(runId));
+        when(artifactMapper.findByRunId(runId)).thenReturn(List.of(artifact));
+        when(artifactPresignedUrlGenerator.generateGetUrl(artifact, Duration.ofSeconds(3600)))
+                .thenReturn(new URL("https://wedge-artifacts-prod.s3.ap-northeast-2.amazonaws.com/runs/a.png?X-Amz-Signature=test"));
+        EvidenceService evidenceService = newService();
+
+        ArtifactPresignedUrlsResponse response = evidenceService.createRunArtifactPresignedUrls(runId, List.of(artifactId));
+
+        assertThat(response.urls()).hasSize(1);
+        assertThat(response.urls().get(0).artifactId()).isEqualTo(artifactId);
+        assertThat(response.urls().get(0).mimeType()).isEqualTo("image/png");
+        assertThat(response.urls().get(0).expiresAt()).isEqualTo(Instant.parse("2026-05-08T08:00:00Z"));
+        assertThat(response.urls().get(0).url()).contains("X-Amz-Signature=test");
+    }
+
+    @Test
+    void createRunArtifactPresignedUrlsRejectsMoreThanConfiguredMaxCount() {
+        UUID runId = UUID.randomUUID();
+        when(runService.getRun(runId)).thenReturn(sampleRun(runId));
+        EvidenceService evidenceService = newService();
+        List<UUID> artifactIds = java.util.stream.IntStream.range(0, 21)
+                .mapToObj(ignored -> UUID.randomUUID())
+                .toList();
+
+        assertThatThrownBy(() -> evidenceService.createRunArtifactPresignedUrls(runId, artifactIds))
+                .isInstanceOfSatisfying(BusinessException.class, exception -> {
+                    assertThat(exception.errorCode()).isEqualTo(ErrorCode.INVALID_REQUEST);
+                    assertThat(exception.getMessage()).isEqualTo("artifactIds must contain at most 20 items.");
+                });
+    }
+
+    @Test
+    void createRunArtifactPresignedUrlsRejectsNonImageArtifacts() {
+        UUID runId = UUID.randomUUID();
+        UUID artifactId = UUID.randomUUID();
+        Artifact artifact = sampleArtifact(runId, artifactId);
+        artifact.setMimeType("text/html");
+        when(runService.getRun(runId)).thenReturn(sampleRun(runId));
+        when(artifactMapper.findByRunId(runId)).thenReturn(List.of(artifact));
+        EvidenceService evidenceService = newService();
+
+        assertThatThrownBy(() -> evidenceService.createRunArtifactPresignedUrls(runId, List.of(artifactId)))
+                .isInstanceOfSatisfying(BusinessException.class, exception -> {
+                    assertThat(exception.errorCode()).isEqualTo(ErrorCode.INVALID_REQUEST);
+                    assertThat(exception.getMessage()).isEqualTo("Only PNG, JPEG, and WebP image artifacts can be presigned.");
+                });
+    }
+
+    @Test
     void getRunEvidenceSummaryReturnsLatestEvidenceForLivePolling() {
         UUID runId = UUID.randomUUID();
         UUID checkpointId = UUID.randomUUID();
@@ -177,7 +242,11 @@ class EvidenceServiceTest {
                 evidencePacketMapper,
                 new EvidencePacketAssembler(new ObjectMapper()),
                 artifactContentStore,
-                new ObjectMapper()
+                artifactPresignedUrlGenerator,
+                new ObjectMapper(),
+                Clock.fixed(Instant.parse("2026-05-08T07:00:00Z"), ZoneOffset.UTC),
+                20,
+                Duration.ofSeconds(3600)
         );
     }
 

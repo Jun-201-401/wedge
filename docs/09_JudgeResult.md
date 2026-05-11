@@ -127,13 +127,13 @@ JSON Schema 기준 필수 필드는 다음과 같다.
 | `coordinate_space` | 필수 | 좌표 기준. Playwright `locator.boundingBox()` 기준은 `viewport` |
 | `bounding_box` | 필수 | `{ x, y, width, height }` |
 | `viewport` | 선택 | 좌표 수집 당시 viewport `{ width, height }` |
-| `screenshot_artifact_id` | 선택 | 좌표와 맞춰 볼 screenshot artifact id |
+| `screenshot_artifact_id` | 필수 | 좌표와 맞춰 볼 screenshot artifact id |
 
 수집 기준:
 
 - 좌표는 Runner가 Playwright `locator.boundingBox()`로 수집한다.
 - `x`, `y`, `width`, `height`는 viewport 기준 값이다.
-- 요소가 보이지 않거나 bounding box가 없으면 `problem_components`에 넣지 않고 observation/evidence ref만 유지한다.
+- 요소가 보이지 않거나 bounding box 또는 screenshot artifact id가 없으면 `problem_components`에 넣지 않고 observation/evidence ref만 유지한다.
 - 좌표만으로 컴포넌트를 식별하지 않는다. 항상 `evidence_ref`와 가능하면 `selector`, `label`, `role`, `screenshot_artifact_id`를 함께 둔다.
 - 저장 구조가 별도 component table을 갖기 전까지는 원본 `analysis_job.output_jsonb`에 보존하고, 조회가 필요한 경우 `analysis_finding.evidence_refs_jsonb`에 projection한다.
 
@@ -294,7 +294,7 @@ LLM이 할 수 있는 일:
             "width": 1440,
             "height": 900
           },
-          "screenshot_artifact_id": "artifact_screenshot_001"
+          "screenshot_artifact_id": "screenshot_001"
         }
       ],
       "summary": "핵심 CTA가 첫 화면에서 충분히 명확하지 않습니다.",

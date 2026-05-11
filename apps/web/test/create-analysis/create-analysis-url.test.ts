@@ -12,8 +12,9 @@ test('normalizeAnalysisUrl adds https for domain input', () => {
   assert.equal(normalizeAnalysisUrl('example.com'), 'https://example.com/');
 });
 
-test('normalizeAnalysisUrl supports localhost development URLs', () => {
-  assert.equal(normalizeAnalysisUrl('localhost:3000'), 'https://localhost:3000/');
+test('normalizeAnalysisUrl rejects localhost URLs to match discovery SSRF guardrails', () => {
+  assert.equal(normalizeAnalysisUrl('localhost:3000'), null);
+  assert.equal(normalizeAnalysisUrl('http://app.localhost:3000'), null);
 });
 
 test('normalizeAnalysisUrl rejects empty, non-http, and unlikely host input', () => {

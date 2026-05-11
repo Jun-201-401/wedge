@@ -30,7 +30,7 @@ public class RunExecuteOutboxDispatcher {
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void handle(RunExecuteOutboxEnqueuedEvent event) {
-        outboxMessagePersistenceAdapter.findRunExecuteMessageForPublish(event.outboxMessageId()).ifPresent(message -> {
+        outboxMessagePersistenceAdapter.findRunnerRequestMessageForPublish(event.outboxMessageId()).ifPresent(message -> {
             dispatch(event.outboxMessageId(), message);
         });
     }
@@ -48,8 +48,9 @@ public class RunExecuteOutboxDispatcher {
             outboxMessagePersistenceAdapter.markPublished(outboxMessageId);
         } catch (RuntimeException exception) {
             log.warn(
-                    "Failed to publish run.execute.request outbox message id={} messageId={} correlationId={} idempotencyKey={}",
+                    "Failed to publish runner request outbox message id={} messageType={} messageId={} correlationId={} idempotencyKey={}",
                     outboxMessageId,
+                    message.messageType(),
                     message.messageId(),
                     message.correlationId(),
                     message.idempotencyKey(),

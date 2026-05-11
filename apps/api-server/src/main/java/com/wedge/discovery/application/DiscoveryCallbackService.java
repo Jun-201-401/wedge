@@ -142,6 +142,7 @@ public class DiscoveryCallbackService {
         recommendation.setConfidence(command.confidence());
         recommendation.setReason(command.reason());
         recommendation.setEvidenceRefsJsonb(toJson(command.evidenceRefs() == null ? List.of() : command.evidenceRefs()));
+        recommendation.setEvidenceSummaryJsonb(toJson(command.evidenceSummary() == null ? Map.of() : command.evidenceSummary()));
         recommendation.setSuggestedStartUrl(command.suggestedStartUrl());
         recommendation.setSuggestedTargetJsonb(toJson(command.suggestedTarget() == null ? Map.of() : command.suggestedTarget()));
         return recommendation;

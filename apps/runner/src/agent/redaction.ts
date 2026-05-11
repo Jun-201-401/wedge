@@ -9,6 +9,8 @@ const US_PHONE_PATTERN = /\b(?:\+?1[-.\s]?)?(?:\(\d{3}\)|\d{3})[-.\s]?\d{3}[-.\s
 const BEARER_TOKEN_PATTERN = /\b(Bearer\s+)[A-Za-z0-9._~+/=-]{8,}\b/gi;
 const UUID_PATTERN = /\b[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b/gi;
 const INLINE_SECRET_PATTERN = /\b(api[_-]?key|access[_-]?token|refresh[_-]?token|token|secret|password)([=:]\s*|\s+)([^&\s]+)/gi;
+const STREET_ADDRESS_PATTERN = /\b\d{1,6}\s+[A-Za-z0-9.'-]+(?:\s+[A-Za-z0-9.'-]+){0,5}\s+(?:street|st\.?|avenue|ave\.?|road|rd\.?|boulevard|blvd\.?|lane|ln\.?|drive|dr\.?|way|court|ct\.?)\b/gi;
+const INLINE_COUPON_PATTERN = /\b(coupon(?:[_ -]?code)?|promo(?:[_ -]?code)?|discount(?:[_ -]?code)?)([=:]\s*|\s+)([A-Za-z0-9][A-Za-z0-9_-]{3,})\b/gi;
 const SENSITIVE_QUERY_KEYS = new Set([
   "email",
   "phone",
@@ -20,12 +22,23 @@ const SENSITIVE_QUERY_KEYS = new Set([
   "apikey",
   "secret",
   "password",
+  "session",
+  "session_id",
+  "sid",
   "card",
   "card_number",
   "cvc",
-  "cvv"
+  "cvv",
+  "coupon",
+  "coupon_code",
+  "promo",
+  "promo_code",
+  "discount_code",
+  "address",
+  "shipping_address",
+  "postal_code"
 ]);
-const SENSITIVE_OBJECT_KEY_PATTERN = /(^|[_-])(api[_-]?key|access[_-]?token|refresh[_-]?token|token|authorization|cookie|secret|password|card[_-]?number|cvc|cvv|email|phone|tel)($|[_-])/i;
+const SENSITIVE_OBJECT_KEY_PATTERN = /(^|[_-])(api[_-]?key|access[_-]?token|refresh[_-]?token|token|authorization|cookie|secret|password|session|session[_-]?id|sid|card[_-]?number|cvc|cvv|email|phone|tel|address|shipping[_-]?address|postal[_-]?code|coupon|coupon[_-]?code|promo|promo[_-]?code|discount[_-]?code)($|[_-])/i;
 
 export function redactSensitiveString(value: string): string {
   const preservedValues: string[] = [];
@@ -40,7 +53,9 @@ export function redactSensitiveString(value: string): string {
     .replace(KOREA_MOBILE_PATTERN, "[REDACTED_PHONE]")
     .replace(US_PHONE_PATTERN, "[REDACTED_PHONE]")
     .replace(BEARER_TOKEN_PATTERN, "$1[REDACTED_TOKEN]")
-    .replace(INLINE_SECRET_PATTERN, "$1$2[REDACTED_SECRET]");
+    .replace(INLINE_SECRET_PATTERN, "$1$2[REDACTED_SECRET]")
+    .replace(STREET_ADDRESS_PATTERN, "[REDACTED_ADDRESS]")
+    .replace(INLINE_COUPON_PATTERN, "$1$2[REDACTED_COUPON]");
 
   return preservedValues.reduce(
     (current, preserved, index) => current.replaceAll(`__WEDGE_UUID_${index}__`, preserved),
@@ -142,6 +157,12 @@ function sensitiveReplacementForKey(key: string | null): string {
   }
   if (normalizedKey.includes("card")) {
     return "[REDACTED_CARD]";
+  }
+  if (normalizedKey.includes("address") || normalizedKey.includes("postal")) {
+    return "[REDACTED_ADDRESS]";
+  }
+  if (normalizedKey.includes("coupon") || normalizedKey.includes("promo") || normalizedKey.includes("discount")) {
+    return "[REDACTED_COUPON]";
   }
   return "[REDACTED_SECRET]";
 }

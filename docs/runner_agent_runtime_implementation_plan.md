@@ -169,6 +169,27 @@ Agent runtime:
 - optionally export stable path to ScenarioPlan candidate
 ```
 
+
+## 4.0 Official execution routing decision
+
+Decision: `agent.execute.request` is the official Runner Agent MQ path. `run.execute.request` remains the deterministic `ScenarioPlan` scripted/replay path.
+
+```text
+User-facing AI UX check
+-> API server builds AgentTask
+-> agent.execute.request
+-> Agent Runtime
+
+Saved/replay/regression path
+-> API server selects ScenarioPlan
+-> run.execute.request
+-> deterministic ScenarioPlan executor
+```
+
+Do not merge agent behavior back into `run.execute.request` through an `executionMode` switch. The separate message keeps validation, callback semantics, queue concurrency, idempotency, and operational failure handling clear.
+
+Successful AgentTrace exports may create a `ScenarioPlan` candidate. Replaying that candidate is intentionally a `run.execute.request` concern, not an Agent Runtime resume mode.
+
 ## 4.1 Dependency Boundaries
 
 Keep dependency direction explicit:
@@ -253,7 +274,7 @@ Implemented in apps/runner:
 
 Create new contracts before application wiring.
 
-Add new contract files:
+Contract files:
 
 ```text
 packages/contracts/schemas/agent-task.schema.json
@@ -293,7 +314,7 @@ packages/contracts/types/runner.ts
 Do not remove or break:
 
 ```text
-run.execute.request
+run.execute.request as the scripted/replay ScenarioPlan path
 ScenarioPlan
 runner callback payloads
 existing sample ScenarioPlan examples
@@ -1146,7 +1167,7 @@ Frame and shadow DOM rules:
 locator_recipe must include frame_id for iframe candidates.
 tools.ts must resolve frame_id to the correct Playwright Frame or frameLocator before executing.
 main-frame and child-frame candidate IDs must not collide.
-MVP must at least observe iframe risky candidates and block final commit/payment actions inside iframes.
+DONE: MVP observes iframe risky candidates and blocks final commit/payment actions inside iframes before requesting another decision.
 Shadow DOM support may be observation-only in MVP unless locator_recipe can safely resolve it.
 ```
 
@@ -1667,7 +1688,7 @@ Implement agent/session.ts state machine.
 Implement MockDecisionClient.
 Implement HeuristicDecisionClient.
 Implement AgentTrace builder.
-Include attempt_id/attempt_index in trace.
+DONE: Include attempt_id/attempt_index in trace.
 Implement no mid-action resume MVP behavior.
 Run fixtures 1-9b without LLM.
 ```
@@ -1721,7 +1742,7 @@ Verification:
 cd apps/runner && npm test -- test/app.test.ts test/messaging.test.ts test/rabbitmq-consumer.test.ts test/agent/agent-worker.test.ts
 ```
 
-Implementation status as of 2026-05-07:
+Implementation status as of 2026-05-08:
 
 ```text
 Completed:
@@ -1737,10 +1758,20 @@ Completed:
 - Terminal agent results are persisted under the runner artifact root so duplicate deliveries after a runner process restart do not re-execute the browser flow.
 - MQ poison message requeue is bounded by RUNNER_MQ_MAX_DELIVERY_ATTEMPTS.
 - Successful AgentTrace results are exported to custom_compiled ScenarioPlan candidate artifacts with final checkpoint and stop-before-commit guard steps.
+- Static Runner replay consumes exported `action.options.replay_hint.locator_recipe` as locator fallback so stale selectors do not block same-fixture replay.
+- LLM prompt payloads use opaque candidate ids plus redacted semantic selector/href hints instead of raw selector/href values.
+- LLM invalid-JSON-only retry and broader heuristic-vs-LLM checkout fixture comparison are covered by Runner tests.
+- Agent decisions now carry redacted trace-safe metadata: decision id, source, optional model, and prompt shape summary without raw prompt content.
+- Iframe candidates are observed with frame ids, and iframe payment/final-order commit candidates are blocked before the next Agent decision.
+- Static Runner replay resolves `replay_hint.locator_recipe[].frame_id` to the matching Playwright iframe before locator execution.
+- Open shadow-root candidates are observed for verification, but excluded from click decision/replay execution until a safe shadow locator contract is defined.
+- Agent worker can receive an injected `AgentIdempotencyStore`, so API/DB-backed global idempotency can be shared across runner instances instead of relying only on local artifact files.
+- AgentTrace contract and artifacts include `attempt_index` alongside `attempt_id` for retry debugging.
+- API server exposes DB-backed Agent idempotency records, and Runner can use them with `RUNNER_AGENT_IDEMPOTENCY_STORE_MODE=api`.
+- API-backed Agent idempotency uses a `CLAIMED` lease before browser execution, so concurrent duplicate deliveries on different Runner replicas do not start parallel browser sessions.
 
 Remaining:
-- Add prompt redaction beyond the current minimal observation payload.
-- Add invalid-JSON-only LLM retry and broader heuristic-vs-LLM fixture comparison.
+- Decide whether failed/exhausted agent attempts should renew or release claims explicitly, or continue relying on MQ retry plus lease expiry.
 ```
 
 ## Phase 7: LLM Decision Client
@@ -1755,9 +1786,9 @@ DONE: Add LLMDecisionClient behind RUNNER_AGENT_DECISION_MODE=llm.
 DONE: Keep heuristic as the default decision client.
 DONE: Validate LLM output against observed target keys and constrained action types.
 DONE: Fall back to heuristic when LLM output is invalid or the endpoint fails.
-TODO: Add prompt redaction beyond the current minimal observation payload.
-TODO: Add retry for invalid JSON only, not unsafe decisions.
-TODO: Compare LLM against heuristic on broader fixtures.
+DONE: Add prompt redaction beyond the current minimal observation payload.
+DONE: Add invalid-JSON-only retry; unsafe structured decisions are rejected without retry or heuristic fallback.
+DONE: Compare LLM against heuristic on broader fixtures.
 ```
 
 Acceptance criteria:
@@ -1773,7 +1804,7 @@ Trace records prompt metadata, model, and decision IDs without leaking sensitive
 Verification:
 
 ```bash
-cd apps/runner && npm test -- test/agent/llm-decision.test.ts
+cd apps/runner && node --experimental-strip-types --test test/agent-llm-client.test.ts
 ```
 
 LLM integration tests may be skipped by default unless credentials/config are present.
@@ -1784,7 +1815,7 @@ Tasks:
 
 ```text
 DONE: Add export module that converts successful completed trace actions into a ScenarioPlan candidate.
-TODO: Add candidate_fingerprint and locator_recipe after replay stability data exists.
+DONE: Add candidate_fingerprint and locator_recipe replay hints to click AgentDecision traces and ScenarioPlan export action options.
 DONE: Mark generated plan as custom_compiled.
 DONE: Include source agent trace provenance in the export wrapper.
 DONE: Append final checkpoint and stop_before_commit guard steps so payment/final-order boundaries remain explicit.
@@ -1838,12 +1869,15 @@ MVP idempotency:
 DONE: Use message idempotencyKey or AgentTask.idempotency_key at task start.
 DONE: Suppress duplicate same-process agent delivery by reusing the existing execution promise/result.
 DONE: Suppress duplicate post-restart agent delivery with a local terminal idempotency record.
+DONE: Add an injectable AgentIdempotencyStore boundary so multiple worker instances can share global terminal idempotency through API/DB-backed hosting code.
+DONE: Implement API/DB-backed terminal idempotency record endpoint/table and Runner API store adapter.
+DONE: Add API-backed in-progress reservation/lease claims for concurrent duplicate deliveries across Runner replicas.
 Use attempt_id and attempt_index for every execution attempt.
 Persist terminal AgentTrace once.
 Do not resume mid-action in MVP.
 On worker crash, retry should start a new browser session and produce a new trace attempt.
 Never replay final commit actions because policy blocks them.
-TODO: Promote local terminal idempotency records to API/DB-backed global idempotency when multiple runner replicas share a queue.
+TODO: Define explicit claim release/renewal semantics if long-running agent attempts exceed the default lease.
 ```
 
 Future resume policy can be designed later:

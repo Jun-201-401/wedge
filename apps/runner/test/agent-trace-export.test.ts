@@ -12,6 +12,7 @@ test("[Agent Trace Export] 성공한 checkout trace를 payment 직전 stop이 �
     schema_version: "0.1",
     task_id: task.task_id,
     attempt_id: task.attempt_id,
+    attempt_index: task.attempt_index,
     run_id: task.run_id,
     outcome: {
       status: "SUCCESS",
@@ -82,7 +83,23 @@ test("[Agent Trace Export] 성공한 checkout trace를 payment 직전 stop이 �
             timeout_ms: 500
           },
           stage: "COMMIT",
-          targetKey: "#checkout"
+          targetKey: "#checkout",
+          replayHint: {
+            candidate_fingerprint: "candidate:checkout1234abcd",
+            locator_recipe: [
+              {
+                strategy: "selector",
+                selector: "#checkout",
+                confidence: 0.9
+              },
+              {
+                strategy: "role_text",
+                role: "link",
+                text: "Checkout",
+                confidence: 0.78
+              }
+            ]
+          }
         },
         policy: {
           allowed: true,
@@ -115,6 +132,22 @@ test("[Agent Trace Export] 성공한 checkout trace를 payment 직전 stop이 �
   assert.equal(result.scenario_plan?.steps.length, 4);
   assert.equal(result.scenario_plan?.steps[0].action.type, "goto");
   assert.equal(result.scenario_plan?.steps[1].action.type, "click");
+  assert.deepEqual(result.scenario_plan?.steps[1].action.options?.replay_hint, {
+    candidate_fingerprint: "candidate:checkout1234abcd",
+    locator_recipe: [
+      {
+        strategy: "selector",
+        selector: "#checkout",
+        confidence: 0.9
+      },
+      {
+        strategy: "role_text",
+        role: "link",
+        text: "Checkout",
+        confidence: 0.78
+      }
+    ]
+  });
   assert.equal(result.scenario_plan?.steps[1].checkpoint, true);
   assert.equal(result.scenario_plan?.steps[2].action.type, "checkpoint");
   assert.equal(result.scenario_plan?.steps[2].checkpoint, true);
@@ -147,6 +180,7 @@ test("[Agent Trace Export] login/CAPTCHA 등 BLOCKED trace는 ScenarioPlan 후�
     schema_version: "0.1",
     task_id: task.task_id,
     attempt_id: task.attempt_id,
+    attempt_index: task.attempt_index,
     run_id: task.run_id,
     outcome: {
       status: "BLOCKED",

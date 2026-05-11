@@ -138,7 +138,7 @@ test("[콜백:http] runner callback을 HTTP로 보내고 worker/event/signature 
 });
 
 test("createCallbackClient sends discovery callbacks to discovery endpoint", async () => {
-  const received: Array<{ url: string; body: string }> = [];
+  const received: Array<{ url: string; headers: Record<string, string | string[] | undefined>; body: string }> = [];
   const server = createServer((request, response) => {
     let body = "";
     request.setEncoding("utf8");
@@ -146,7 +146,7 @@ test("createCallbackClient sends discovery callbacks to discovery endpoint", asy
       body += chunk;
     });
     request.on("end", () => {
-      received.push({ url: request.url ?? "", body });
+      received.push({ url: request.url ?? "", headers: request.headers, body });
       response.writeHead(200, {
         "content-type": "application/json"
       });
@@ -191,6 +191,7 @@ test("createCallbackClient sends discovery callbacks to discovery endpoint", asy
 
     assert.equal(received.length, 1);
     assert.equal(received[0]?.url, "/internal/runner/discoveries/discovery-1/finished");
+    assert.equal(received[0]?.headers["x-event-id"], "event-1");
     assert.match(received[0]?.body ?? "", /"finalUrl":"https:\/\/example.com"/);
   } finally {
     await new Promise<void>((resolve, reject) => {

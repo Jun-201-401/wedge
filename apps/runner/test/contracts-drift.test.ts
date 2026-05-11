@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import test from "node:test";
+import { parseAgentExecuteMessage } from "../src/messaging/index.ts";
 import { fileURLToPath } from "node:url";
 
 const currentDir = dirname(fileURLToPath(import.meta.url));
@@ -74,6 +75,44 @@ test("[계약 동기화] ScenarioAuthoring TS mirror가 packages/contracts autho
   );
 });
 
+
+test("[계약 동기화] agent.execute 공식 contract entrypoint와 예제가 유지된다", async () => {
+  const agentSchemaFiles = [
+    "schemas/agent-task.schema.json",
+    "schemas/agent-observation.schema.json",
+    "schemas/agent-decision.schema.json",
+    "schemas/agent-policy-result.schema.json",
+    "schemas/agent-verification-result.schema.json",
+    "schemas/agent-event.schema.json",
+    "schemas/agent-outcome.schema.json",
+    "schemas/agent-trace.schema.json",
+    "mq/agent.execute.request.schema.json"
+  ];
+
+  for (const relativePath of agentSchemaFiles) {
+    const schema = await readJson(resolve(repoRoot, "packages/contracts", relativePath));
+    assert.equal(schema.$schema, "https://json-schema.org/draft/2020-12/schema");
+    assert.ok(schema.$id.endsWith(relativePath));
+  }
+
+  const agentMqEntrypoint = await readJson(resolve(repoRoot, "packages/contracts/mq/agent.execute.request.schema.json"));
+  assert.equal(agentMqEntrypoint.$ref, "./messages.schema.json#/$defs/AgentExecutePayload");
+
+  const agentRequestRaw = await readFile(
+    resolve(repoRoot, "packages/contracts/examples/sample-agent-execute-checkout-entry.request.json"),
+    "utf8"
+  );
+  const parsedAgentRequest = parseAgentExecuteMessage(agentRequestRaw);
+  assert.equal(parsedAgentRequest.messageType, "agent.execute.request");
+  assert.equal(parsedAgentRequest.payload.agentTask.goal_type, "CHECKOUT_ENTRY_VERIFICATION");
+
+  const agentTrace = await readJson(resolve(repoRoot, "packages/contracts/examples/sample-agent-trace-checkout-entry.json"));
+  assert.equal(agentTrace.schema_version, "0.1");
+  assert.equal(agentTrace.outcome.status, "SUCCESS");
+  assert.ok(Array.isArray(agentTrace.turns));
+  assert.ok(agentTrace.turns.length > 0);
+});
+
 test("[계약 동기화] runner callback literal이 packages/contracts callback schema와 어긋나지 않는다", async () => {
   const runnerTypesSource = await readRunnerTypesSource();
   const callbackSchema = await readJson(resolve(repoRoot, "packages/contracts/internal/runner-callback.schema.json"));
@@ -106,7 +145,7 @@ test("[계약 동기화] runner callback literal이 packages/contracts callback 
 
 test("[계약 동기화] AgentTrace TS mirror가 packages/contracts trace schema와 어긋나지 않는다", async () => {
   const runnerTypesSource = await readRunnerTypesSource();
-  const eventSchema = await readJson(resolve(repoRoot, "packages/contracts/schemas/agent-event.schema.json"));
+  const callbackSchema = await readJson(resolve(repoRoot, "packages/contracts/internal/runner-callback.schema.json"));
   const outcomeSchema = await readJson(resolve(repoRoot, "packages/contracts/schemas/agent-outcome.schema.json"));
   const policySchema = await readJson(resolve(repoRoot, "packages/contracts/schemas/agent-policy-result.schema.json"));
   const traceExample = await readJson(resolve(repoRoot, "packages/contracts/examples/sample-agent-trace-checkout-entry.json"));
@@ -114,35 +153,23 @@ test("[계약 동기화] AgentTrace TS mirror가 packages/contracts trace schema
   assertTypeAliasMatchesSchemaEnum(
     runnerTypesSource,
     "AgentEventType",
-    eventSchema,
-    eventSchema.$defs.agent_event_type
+    callbackSchema,
+    callbackSchema.$defs.AgentEvent.properties.eventType
   );
   assertTypeAliasMatchesSchemaEnum(
     runnerTypesSource,
-    "AgentFinalOutcome",
+    "AgentOutcomeStatus",
     outcomeSchema,
-    outcomeSchema.$defs.final_outcome
-  );
-  assertTypeAliasMatchesSchemaEnum(
-    runnerTypesSource,
-    "AgentOutcomeCategory",
-    outcomeSchema,
-    outcomeSchema.$defs.outcome_category
+    outcomeSchema.properties.status
   );
   assertTypeAliasMatchesSchemaEnum(
     runnerTypesSource,
     "AgentRiskClass",
     policySchema,
-    policySchema.$defs.risk_class
+    policySchema.properties.riskClass
   );
-  assertTypeAliasMatchesSchemaEnum(
-    runnerTypesSource,
-    "AgentPolicyDecision",
-    policySchema,
-    policySchema.$defs.policy_decision
-  );
-  assert.equal(traceExample.final_outcome, "SUCCESS_CHECKOUT_ENTRY_REACHED");
-  assert.ok(traceExample.events.some((event: any) => event.event_type === "AGENT_STOPPED"));
+  assert.equal(traceExample.outcome.status, "SUCCESS");
+  assert.ok(traceExample.turns.some((turn: any) => turn.postActionVerification?.terminal === true));
 });
 
 async function readRunnerTypesSource(): Promise<string> {

@@ -4,10 +4,15 @@ import assert from 'node:assert/strict';
 import { buildPrototypeScenarioPlan } from '../../src/pages/create-analysis/lib/prototypeScenarioPlan';
 
 const selectedScenario = {
-  id: 'landing-cta',
-  title: '첫 화면 CTA 점검',
-  summary: '첫 화면에서 주요 CTA 후보를 점검합니다.',
-  evidence: 'hero section, primary button, nav CTA',
+  id: 'contact',
+  title: '문의 / 상담 신청 흐름 점검',
+  summary: '문의 CTA 후보를 점검합니다.',
+  evidence: 'cp_001.obs_003',
+  scenarioType: 'CONTACT',
+  sourceDiscoveryId: '20000000-0000-4000-8000-000000000011',
+  evidenceRefs: ['cp_001.obs_003'],
+  suggestedStartUrl: 'https://example.com/',
+  suggestedTarget: { text: 'Book a demo' },
 };
 
 const selectedDepth = {
@@ -25,9 +30,15 @@ test('prototype scenario plan is compatible with the runner run.execute contract
 
   assert.equal(plan.schema_version, '0.5');
   assert.equal(plan.scenario_type, 'custom_compiled');
-  assert.equal(plan.template_key, 'landing-cta');
+  assert.equal(plan.template_key, 'contact');
   assert.equal(plan.goal, selectedScenario.summary);
   assert.equal(plan.start_url, 'https://example.com/');
+  assert.equal(plan.source_discovery_id, selectedScenario.sourceDiscoveryId);
+  assert.deepEqual(plan.fit_requirements, {
+    required_flow_type: 'CONTACT',
+    required_entrypoint_types: ['contact', 'form', 'cta'],
+    fallback_allowed: true,
+  });
   assert.deepEqual(plan.environment.viewport, { width: 1440, height: 900 });
   assert.equal(plan.environment.device, 'desktop');
   assert.equal(plan.environment.locale, 'ko-KR');
@@ -43,10 +54,12 @@ test('prototype scenario plan is compatible with the runner run.execute contract
   assert.equal(plan.steps.length, 2);
   assert.deepEqual(plan.steps.map((step) => step.step_id), [
     'step_001_goto_start_url',
-    'step_002_checkpoint_landing_cta',
+    'step_002_checkpoint_contact',
   ]);
   assert.deepEqual(plan.steps.map((step) => step.stage), ['FIRST_VIEW', 'CTA']);
   assert.deepEqual(plan.steps.map((step) => step.action.type), ['goto', 'checkpoint']);
   assert.deepEqual(plan.steps.map((step) => step.settle_strategy.type), ['network_idle', 'fixed_short']);
   assert.deepEqual(plan.steps.map((step) => step.checkpoint), [true, true]);
+  assert.deepEqual(plan.steps[1].action.target.evidence_refs, ['cp_001.obs_003']);
+  assert.deepEqual(plan.steps[1].action.target.suggested_target, { text: 'Book a demo' });
 });

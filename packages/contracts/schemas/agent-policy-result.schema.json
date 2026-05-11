@@ -1,63 +1,32 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://wedge.example.com/contracts/schemas/agent-policy-result.schema.json",
-  "title": "Wedge AgentPolicyResult",
+  "title": "Runner Agent Policy Result",
+  "description": "Result of evaluating a constrained AgentDecision against AgentTask risk and navigation policy.",
   "type": "object",
   "additionalProperties": false,
-  "required": [
-    "schema_version",
-    "policy_result_id",
-    "task_id",
-    "decision_id",
-    "risk_class",
-    "decision",
-    "reason",
-    "matched_signals"
-  ],
   "properties": {
-    "schema_version": { "const": "0.1" },
-    "policy_result_id": { "type": "string" },
-    "task_id": { "type": "string" },
-    "decision_id": { "type": "string" },
-    "risk_class": { "$ref": "#/$defs/risk_class" },
-    "decision": { "$ref": "#/$defs/policy_decision" },
-    "reason": { "type": "string" },
-    "matched_signals": {
-      "type": "array",
-      "items": { "type": "string" }
+    "allowed": {
+      "type": "boolean"
     },
-    "final_outcome": {
-      "anyOf": [
-        { "$ref": "agent-outcome.schema.json#/$defs/final_outcome" },
-        { "type": "null" }
+    "reason": {
+      "type": "string",
+      "minLength": 1
+    },
+    "riskClass": {
+      "type": "string",
+      "enum": [
+        "LOW",
+        "EXTERNAL_NAVIGATION",
+        "CHECKOUT_NAVIGATION",
+        "CART_MUTATION",
+        "SHIPPING_FORM_ENTRY",
+        "PAYMENT_INFO_ENTRY",
+        "PAYMENT_COMMIT",
+        "DESTRUCTIVE_ACTION",
+        "EXTERNAL_MESSAGE_SEND"
       ]
     }
   },
-  "$defs": {
-    "risk_class": {
-      "enum": [
-        "SAFE_NAVIGATION",
-        "CHECKOUT_NAVIGATION",
-        "CART_ADD_ITEM",
-        "CART_REMOVE_ITEM",
-        "CART_QUANTITY_INCREASE",
-        "CART_QUANTITY_DECREASE",
-        "NON_PAYMENT_FORM_ENTRY",
-        "SHIPPING_FORM_ENTRY",
-        "PAYMENT_INFO_ENTRY",
-        "ORDER_REVIEW_NAVIGATION",
-        "FINAL_PAYMENT_SUBMIT",
-        "FINAL_ORDER_COMMIT",
-        "DESTRUCTIVE_ACCOUNT_ACTION",
-        "EXTERNAL_MESSAGE_SEND",
-        "LOGIN_CREDENTIAL_ENTRY",
-        "CAPTCHA_OR_BOT_CHALLENGE",
-        "UNKNOWN_HIGH_RISK",
-        "UNKNOWN_LOW_RISK"
-      ]
-    },
-    "policy_decision": {
-      "enum": ["ALLOW", "BLOCK"]
-    }
-  }
+  "required": ["allowed", "reason", "riskClass"]
 }

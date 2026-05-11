@@ -8,6 +8,7 @@ import java.util.UUID;
 
 public record DiscoveryResponse(
         UUID discoveryId,
+        UUID projectId,
         DiscoveryStatus status,
         URI inputUrl,
         URI finalUrl,

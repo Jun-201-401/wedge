@@ -145,9 +145,37 @@ CREATE TABLE scenario_recommendation (
     confidence          NUMERIC(4,3) NOT NULL CHECK (confidence >= 0 AND confidence <= 1),
     reason              TEXT NOT NULL,
     evidence_refs_jsonb JSONB NOT NULL DEFAULT '[]'::jsonb,
+    evidence_summary_jsonb JSONB NOT NULL DEFAULT '{}'::jsonb,
     suggested_start_url TEXT,
     suggested_target_jsonb JSONB NOT NULL DEFAULT '{}'::jsonb,
     created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE scenario_authoring_job (
+    id                      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_id              UUID NOT NULL REFERENCES project(id) ON DELETE CASCADE,
+    source_discovery_id     UUID NOT NULL REFERENCES site_discovery(id) ON DELETE CASCADE,
+    correlation_id          VARCHAR(120),
+    idempotency_key         VARCHAR(160),
+    status                  VARCHAR(32) NOT NULL DEFAULT 'CREATED'
+                                CHECK (status IN ('CREATED','QUEUED','RUNNING','SUCCEEDED','FAILED','CANCELED','EXPIRED')),
+    input_jsonb             JSONB NOT NULL DEFAULT '{}'::jsonb,
+    provider_policy_jsonb   JSONB NOT NULL DEFAULT '{}'::jsonb,
+    provider_trace_jsonb    JSONB NOT NULL DEFAULT '[]'::jsonb,
+    candidates_jsonb        JSONB NOT NULL DEFAULT '[]'::jsonb,
+    validation_jsonb        JSONB NOT NULL DEFAULT '{}'::jsonb,
+    provenance_jsonb        JSONB NOT NULL DEFAULT '{}'::jsonb,
+    failure_jsonb           JSONB NOT NULL DEFAULT 'null'::jsonb,
+    created_by              UUID REFERENCES user_account(id),
+    confirmed_candidate_id  VARCHAR(120),
+    confirmed_by            UUID REFERENCES user_account(id),
+    confirmed_at            TIMESTAMPTZ,
+    materialized_run_id     UUID,
+    created_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    expires_at              TIMESTAMPTZ,
+    deleted_at              TIMESTAMPTZ,
+    version                 BIGINT NOT NULL DEFAULT 0
 );
 
 CREATE TABLE test_run (
@@ -160,7 +188,7 @@ CREATE TABLE test_run (
     goal                TEXT,
     device_preset       VARCHAR(32) NOT NULL CHECK (device_preset IN ('desktop', 'mobile', 'tablet')),
     environment_jsonb   JSONB NOT NULL DEFAULT '{}'::jsonb,
-    scenario_template_version_id UUID NOT NULL REFERENCES scenario_template_version(id),
+    scenario_template_version_id UUID REFERENCES scenario_template_version(id),
     source_discovery_id UUID REFERENCES site_discovery(id) ON DELETE SET NULL,
     scenario_plan_schema_version VARCHAR(32),
     scenario_plan_jsonb JSONB NOT NULL,
@@ -506,6 +534,23 @@ CREATE TABLE processed_message (
     PRIMARY KEY (consumer_name, message_id)
 );
 
+CREATE TABLE agent_idempotency_record (
+    idempotency_key_hash VARCHAR(64) PRIMARY KEY,
+    run_id              UUID NOT NULL REFERENCES test_run(id) ON DELETE CASCADE,
+    task_id             VARCHAR(160) NOT NULL,
+    attempt_id          VARCHAR(160) NOT NULL,
+    attempt_index       INTEGER NOT NULL CHECK (attempt_index >= 1),
+    status              VARCHAR(32) NOT NULL DEFAULT 'COMPLETED' CHECK (status IN ('CLAIMED','COMPLETED')),
+    claimed_by          VARCHAR(128),
+    claimed_at          TIMESTAMPTZ,
+    lease_expires_at    TIMESTAMPTZ,
+    result_jsonb        JSONB,
+    outcome_status      VARCHAR(32),
+    completed_at        TIMESTAMPTZ,
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 CREATE TABLE worker_instance (
     id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     worker_id           VARCHAR(128) NOT NULL UNIQUE,
@@ -529,6 +574,12 @@ CREATE INDEX idx_site_discovery_project_created ON site_discovery(project_id, cr
 CREATE INDEX idx_site_discovery_status ON site_discovery(status, updated_at DESC) WHERE deleted_at IS NULL;
 CREATE UNIQUE INDEX ux_site_discovery_project_creator_idempotency ON site_discovery(project_id, created_by, idempotency_key) WHERE idempotency_key IS NOT NULL AND deleted_at IS NULL;
 CREATE INDEX idx_scenario_recommendation_discovery_level ON scenario_recommendation(discovery_id, recommendation_level);
+CREATE INDEX idx_scenario_authoring_project_created ON scenario_authoring_job(project_id, created_at DESC) WHERE deleted_at IS NULL;
+CREATE INDEX idx_scenario_authoring_discovery ON scenario_authoring_job(source_discovery_id, created_at DESC) WHERE deleted_at IS NULL;
+CREATE INDEX idx_scenario_authoring_status ON scenario_authoring_job(status, updated_at DESC) WHERE deleted_at IS NULL;
+CREATE UNIQUE INDEX ux_scenario_authoring_project_creator_idempotency
+    ON scenario_authoring_job(project_id, created_by, idempotency_key)
+    WHERE idempotency_key IS NOT NULL AND deleted_at IS NULL;
 CREATE INDEX idx_test_run_source_discovery ON test_run(source_discovery_id) WHERE source_discovery_id IS NOT NULL;
 CREATE INDEX idx_test_run_scenario_fit ON test_run(scenario_fit_status, updated_at DESC) WHERE deleted_at IS NULL;
 CREATE INDEX idx_checkpoint_discovery_captured ON checkpoint(source_type, discovery_id, captured_at);
@@ -552,6 +603,8 @@ CREATE UNIQUE INDEX ux_report_active_analysis_job ON report(analysis_job_id) WHE
 
 CREATE INDEX idx_mcp_invocation_started ON mcp_invocation_log(started_at DESC);
 CREATE INDEX idx_outbox_pending ON outbox_message(status, next_attempt_at);
+CREATE INDEX idx_agent_idempotency_run ON agent_idempotency_record(run_id, completed_at DESC);
+CREATE INDEX idx_agent_idempotency_lease ON agent_idempotency_record(status, lease_expires_at);
 CREATE INDEX idx_worker_heartbeat ON worker_instance(worker_type, last_heartbeat_at);
 
 CREATE INDEX idx_test_run_event_run_time ON test_run_event(run_id, occurred_at DESC);

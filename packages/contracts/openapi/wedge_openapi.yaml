@@ -438,12 +438,13 @@ paths:
       - Discoveries
       operationId: createDiscovery
       summary: 사이트 사전 탐색 시작
-      description: 전체 실행 전에 URL을 가볍게 탐색해 추천 시나리오를 만들기 위한 계약 API다. MVP 핵심 수동 테스트에서는 Run 생성 예시로 대체 가능하다.
+      description: 전체 실행 전에 URL을 가볍게 탐색해 추천 시나리오를 만들기 위한 계약 API다. projectId를 생략하면 현재 사용자 default Project를 자동 생성 또는 재사용한다.
       security:
       - HumanBearer: []
       parameters:
       - name: Idempotency-Key
         in: header
+        description: 같은 Discovery 생성 시도에 대한 네트워크 재시도 dedupe 키다. resolved project/url의 의도적 재검사는 새 키를 사용해야 하며, 같은 키로 다른 payload를 보내면 충돌로 처리될 수 있다.
         required: false
         schema:
           type: string
@@ -453,12 +454,24 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/CreateDiscoveryRequest'
-            example:
-              url: https://example.com
-              devicePreset: desktop
-              viewport:
-                width: 1440
-                height: 900
+            examples:
+              urlFirstDefaultProject:
+                summary: URL-first default Project 자동 생성/재사용
+                value:
+                  url: https://example.com
+                  devicePreset: desktop
+                  viewport:
+                    width: 1440
+                    height: 900
+              explicitProject:
+                summary: 기존 projectId 명시 호출
+                value:
+                  projectId: 8f06dca8-9c4d-4f20-b1a8-1d5ee40a9923
+                  url: https://example.com
+                  devicePreset: desktop
+                  viewport:
+                    width: 1440
+                    height: 900
       responses:
         '202':
           description: Discovery queued
@@ -468,7 +481,8 @@ paths:
                 $ref: '#/components/schemas/SingleDiscoveryResponse'
               example:
                 data:
-                  discoveryId: disc_123
+                  discoveryId: 20000000-0000-4000-8000-000000000011
+                  projectId: 8f06dca8-9c4d-4f20-b1a8-1d5ee40a9923
                   status: QUEUED
                 meta:
                   requestId: req_123
@@ -540,6 +554,129 @@ paths:
           $ref: '#/components/responses/Conflict'
         '422':
           $ref: '#/components/responses/ValidationError'
+  /api/scenario-authoring-jobs:
+    post:
+      tags:
+      - ScenarioAuthoring
+      operationId: createScenarioAuthoringJob
+      summary: 추천 기반 ScenarioAuthoring job 생성
+      description: Discovery recommendation을 즉시 Run으로 바꾸지 않고, 검증 가능한 ScenarioPlan candidate authoring job으로 고정한다. MVP provider는 RULE_BASED stub으로 시작한다.
+      security:
+      - HumanBearer: []
+      parameters:
+      - name: Idempotency-Key
+        in: header
+        required: false
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ScenarioAuthoringJobCreateRequest'
+            example:
+              projectId: 8f06dca8-9c4d-4f20-b1a8-1d5ee40a9923
+              sourceDiscoveryId: 20000000-0000-4000-8000-000000000011
+              requestedGoal: 무료 체험 CTA까지의 흐름 점검
+              preferredScenarioType: LANDING_CTA
+              selectedRecommendation:
+                scenarioType: LANDING_CTA
+                recommendationLevel: HIGH
+                confidence: 0.86
+                evidenceRefs:
+                - cp_001.obs_002
+                suggestedStartUrl: https://example.com
+              providerPolicy:
+                providerOrder:
+                - RULE_BASED
+                timeoutMs: 10000
+                fallbackAllowed: true
+                approvalRequired: true
+      responses:
+        '202':
+          description: ScenarioAuthoring job created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SingleScenarioAuthoringJobResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /api/scenario-authoring-jobs/{authoringJobId}:
+    get:
+      tags:
+      - ScenarioAuthoring
+      operationId: getScenarioAuthoringJob
+      summary: ScenarioAuthoring job 조회
+      security:
+      - HumanBearer: []
+      parameters:
+      - name: authoringJobId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: ScenarioAuthoring job
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SingleScenarioAuthoringJobResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/scenario-authoring-jobs/{authoringJobId}/confirm:
+    post:
+      tags:
+      - ScenarioAuthoring
+      operationId: confirmScenarioAuthoringCandidate
+      summary: ScenarioAuthoring candidate 확정
+      description: confirmed candidate의 embedded ScenarioPlan을 Run materialization 입력으로 사용하기 위한 선택 상태를 저장한다. 브라우저 조작이나 Runner 실행을 직접 트리거하지 않는다.
+      security:
+      - HumanBearer: []
+      parameters:
+      - name: authoringJobId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ScenarioAuthoringConfirmRequest'
+            example:
+              candidateId: rule_based_landing_cta_001
+      responses:
+        '200':
+          description: ScenarioAuthoring candidate confirmed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScenarioAuthoringConfirmEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
   /api/runs:
     get:
       tags:
@@ -597,8 +734,7 @@ paths:
       - Runs
       operationId: createRun
       summary: 실행 생성
-      description: 분석 실행 단위를 생성한다. Swagger 예시는 회원가입 CTA 점검용 scenarioPlan을 포함하며, projectId와 scenarioTemplateVersionId는 로컬 DB/seed
-        값으로 교체해야 실제 테스트가 가능하다.
+      description: 분석 실행 단위를 생성한다. scenarioPlan을 생략하면 기본 사용자 실행으로 agent.execute.request를 발행하고, scenarioPlan을 포함하면 scripted/replay 실행으로 run.execute.request를 발행한다. Swagger의 replay 예시는 projectId와 scenarioTemplateVersionId를 로컬 DB/seed 값으로 교체해야 실제 테스트가 가능하다.
       security:
       - HumanBearer: []
       parameters:
@@ -614,6 +750,17 @@ paths:
             schema:
               $ref: '#/components/schemas/RunCreateRequest'
             examples:
+              agentDefault:
+                summary: Runner Agent 기본 실행 생성
+                description: scenarioPlan 없이 생성하면 Run 시작 시 agent.execute.request 공식 경로로 발행된다.
+                value:
+                  projectId: 8f06dca8-9c4d-4f20-b1a8-1d5ee40a9923
+                  name: Checkout entry Agent 실행
+                  startUrl: https://example.com/product/sample
+                  goal: 결제나 최종 주문 제출 없이 checkout 진입 경로를 확인한다.
+                  devicePreset: desktop
+                  scenarioOverrides:
+                    source: swagger-agent-default
               signupBasicMvp:
                 summary: Runner smoke 실행 생성
                 description: infra/scripts/seed-real-run-smoke.mjs가 생성하는 projectId/scenarioTemplateVersionId를 사용하는 최소 Runner
@@ -1571,6 +1718,143 @@ paths:
           $ref: '#/components/responses/Conflict'
         '422':
           $ref: '#/components/responses/ValidationError'
+  /internal/runner/agent-idempotency/{idempotencyKeyHash}:
+    get:
+      tags:
+      - InternalRunner
+      operationId: getRunnerAgentIdempotencyRecord
+      summary: Agent terminal idempotency record 조회
+      description: Runner replica가 agent.execute 중복 실행 전 DB-backed terminal result를 조회한다. idempotencyKey 원문 대신 SHA-256 hex digest를 사용한다.
+      security:
+      - InternalBearer: []
+      parameters:
+      - name: idempotencyKeyHash
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: ^[0-9a-f]{64}$
+      - name: X-Worker-Id
+        in: header
+        required: true
+        schema:
+          type: string
+      - name: X-Event-Id
+        in: header
+        required: true
+        schema:
+          type: string
+      - name: X-Signature
+        in: header
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Agent idempotency lookup result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RunnerAgentIdempotencyRecordEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+    put:
+      tags:
+      - InternalRunner
+      operationId: putRunnerAgentIdempotencyRecord
+      summary: Agent terminal idempotency record 저장
+      description: Runner가 terminal agent.execute 결과를 first-writer-wins 방식으로 저장한다. 이미 같은 key hash가 있으면 기존 record를 반환한다.
+      security:
+      - InternalBearer: []
+      parameters:
+      - name: idempotencyKeyHash
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: ^[0-9a-f]{64}$
+      - name: X-Worker-Id
+        in: header
+        required: true
+        schema:
+          type: string
+      - name: X-Event-Id
+        in: header
+        required: true
+        schema:
+          type: string
+      - name: X-Signature
+        in: header
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RunnerAgentIdempotencyRecordRequest'
+      responses:
+        '200':
+          description: Stored or pre-existing Agent idempotency record
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RunnerAgentIdempotencyRecordEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /internal/runner/agent-idempotency/{idempotencyKeyHash}/claim:
+    post:
+      tags:
+      - InternalRunner
+      operationId: claimRunnerAgentIdempotencyRecord
+      summary: Agent idempotency lease claim
+      description: Runner replica가 agent.execute 시작 전 같은 idempotency key hash의 진행 중 lease를 선점한다. 완료 record가 있으면 terminal result를 반환하고, 다른 worker의 유효 lease가 있으면 CLAIMED record를 반환한다.
+      security:
+      - InternalBearer: []
+      parameters:
+      - name: idempotencyKeyHash
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: ^[0-9a-f]{64}$
+      - name: X-Worker-Id
+        in: header
+        required: true
+        schema:
+          type: string
+      - name: X-Event-Id
+        in: header
+        required: true
+        schema:
+          type: string
+      - name: X-Signature
+        in: header
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RunnerAgentIdempotencyClaimRequest'
+      responses:
+        '200':
+          description: Claimed, in-progress, or pre-existing completed Agent idempotency record
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RunnerAgentIdempotencyRecordEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
   /internal/runner/runs/{runId}/artifacts:
     post:
       tags:
@@ -2163,14 +2447,20 @@ paths:
       - Reports
       operationId: createReportShare
       summary: 리포트 공유 링크 생성
-      description: 외부 공유용 링크를 생성한다. 만료 시간은 클라이언트가 지정하지 않으며 서버 기본값으로 생성 후 10분을 사용한다.
+      description: 외부 공유용 링크를 생성하거나, 만료 전 유효한 공유 링크가 이미 있으면 기존 링크를 반환한다. 만료 시간은 클라이언트가 지정하지 않으며 새로 생성되는 링크는 서버 기본값으로 생성 후 10분을 사용한다.
       security:
       - HumanBearer: []
       parameters:
       - $ref: '#/components/parameters/ReportId'
       responses:
+        '200':
+          description: Existing active report share reused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SingleReportShareResponse'
         '201':
-          description: Report share created
+          description: New report share created
           content:
             application/json:
               schema:
@@ -2604,11 +2894,21 @@ components:
           enum:
           - ACTIVE
           - INACTIVE
+        defaultProjectId:
+          type: string
+          format: uuid
+          description: Web analysis default project owned by or accessible to the authenticated user.
+        defaultScenarioTemplateVersionId:
+          type: string
+          format: uuid
+          description: Default scenario template version used when web analysis creates a Run from Discovery.
       required:
       - id
       - email
       - displayName
       - status
+      - defaultProjectId
+      - defaultScenarioTemplateVersionId
     AuthToken:
       type: object
       properties:
@@ -2812,6 +3112,60 @@ components:
       - MEDIUM
       - LOW
       - NOT_AVAILABLE
+    DiscoveryEvidenceSignal:
+      type: object
+      additionalProperties: false
+      properties:
+        signal_id:
+          type: string
+        source:
+          type: string
+          enum:
+          - text
+          - aria_label
+          - aria_labelled_by_text
+          - label_text
+          - alt
+          - title
+          - href
+          - selector
+          - name
+          - placeholder
+          - form_field
+          - shallow_navigation
+        signal_type:
+          type: string
+        value:
+          type: string
+        evidence_ref:
+          type: string
+          nullable: true
+        weight:
+          type: number
+          minimum: 0
+      required:
+      - source
+      - value
+    DiscoveryEvidenceSummary:
+      type: object
+      additionalProperties: false
+      properties:
+        matched_signals:
+          type: array
+          items:
+            $ref: '#/components/schemas/DiscoveryEvidenceSignal'
+        missing_signals:
+          type: array
+          items:
+            type: string
+        limitations:
+          type: array
+          items:
+            type: string
+      required:
+      - matched_signals
+      - missing_signals
+      - limitations
     DiscoveryStatus:
       type: string
       enum:
@@ -2860,7 +3214,6 @@ components:
         viewport:
           $ref: '#/components/schemas/DiscoveryViewport'
       required:
-      - projectId
       - url
       - devicePreset
     DiscoverySummary:
@@ -2896,6 +3249,10 @@ components:
     ScenarioRecommendation:
       type: object
       properties:
+        recommendationId:
+          type: string
+          format: uuid
+          nullable: true
         scenarioType:
           $ref: '#/components/schemas/ScenarioType'
         recommendationLevel:
@@ -2910,6 +3267,9 @@ components:
           type: array
           items:
             type: string
+        evidenceSummary:
+          $ref: '#/components/schemas/DiscoveryEvidenceSummary'
+          nullable: true
         suggestedStartUrl:
           type: string
           format: uri
@@ -2929,6 +3289,9 @@ components:
       properties:
         discoveryId:
           type: string
+        projectId:
+          type: string
+          format: uuid
         status:
           $ref: '#/components/schemas/DiscoveryStatus'
         inputUrl:
@@ -2955,12 +3318,418 @@ components:
           nullable: true
       required:
       - discoveryId
+      - projectId
       - status
     SingleDiscoveryResponse:
       type: object
       properties:
         data:
           $ref: '#/components/schemas/DiscoveryResponse'
+        meta:
+          $ref: '#/components/schemas/Meta'
+      required:
+      - data
+      - meta
+    ScenarioAuthoringProviderPolicyRequest:
+      type: object
+      description: 현재 API skeleton은 providerOrder가 비어 있거나 [RULE_BASED]인 경우만 허용한다. 다른 provider enum 값은 향후 확장을 위해 예약되어 있다.
+      properties:
+        providerOrder:
+          type: array
+          description: 현재 지원값은 정확히 [RULE_BASED]뿐이다.
+          items:
+            $ref: '#/components/schemas/ScenarioAuthoringProviderType'
+        timeoutMs:
+          type: integer
+          minimum: 1000
+        fallbackAllowed:
+          type: boolean
+        approvalRequired:
+          type: boolean
+    ScenarioAuthoringSelectedRecommendation:
+      type: object
+      additionalProperties: false
+      properties:
+        recommendationId:
+          type: string
+          format: uuid
+          nullable: true
+        scenarioType:
+          $ref: '#/components/schemas/ScenarioType'
+        recommendationLevel:
+          $ref: '#/components/schemas/ScenarioRecommendationLevel'
+        confidence:
+          type: number
+          minimum: 0
+          maximum: 1
+        evidenceRefs:
+          type: array
+          items:
+            type: string
+        evidenceSummary:
+          $ref: '#/components/schemas/DiscoveryEvidenceSummary'
+          nullable: true
+        suggestedStartUrl:
+          type: string
+          format: uri
+          nullable: true
+        suggestedTarget:
+          type: object
+          nullable: true
+          additionalProperties: true
+    ScenarioAuthoringJobCreateRequest:
+      type: object
+      properties:
+        projectId:
+          type: string
+          format: uuid
+        sourceDiscoveryId:
+          type: string
+          format: uuid
+        selectedRecommendationId:
+          type: string
+          format: uuid
+          nullable: true
+        requestedGoal:
+          type: string
+        preferredScenarioType:
+          $ref: '#/components/schemas/ScenarioType'
+        selectedRecommendation:
+          nullable: true
+          allOf:
+          - $ref: '#/components/schemas/ScenarioAuthoringSelectedRecommendation'
+        constraints:
+          type: object
+          additionalProperties: true
+        providerPolicy:
+          $ref: '#/components/schemas/ScenarioAuthoringProviderPolicyRequest'
+      required:
+      - projectId
+      - sourceDiscoveryId
+      - requestedGoal
+    ScenarioAuthoringConfirmRequest:
+      type: object
+      properties:
+        candidateId:
+          type: string
+      required:
+      - candidateId
+    ScenarioAuthoringStatus:
+      type: string
+      enum:
+      - CREATED
+      - QUEUED
+      - RUNNING
+      - SUCCEEDED
+      - FAILED
+      - CANCELED
+      - EXPIRED
+    ScenarioAuthoringProviderType:
+      type: string
+      enum:
+      - CODEX
+      - CLAUDE_CODE
+      - INTERNAL_LLM
+      - RULE_BASED
+      - SERVICE_ACCOUNT
+      - OTHER
+    ScenarioAuthoringProviderPolicy:
+      type: object
+      additionalProperties: false
+      properties:
+        allowed_provider_types:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/ScenarioAuthoringProviderType'
+        provider_order:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/ScenarioAuthoringProviderType'
+        timeout_ms:
+          type: integer
+          minimum: 1000
+        fallback_allowed:
+          type: boolean
+        approval_required:
+          type: boolean
+        max_attempts:
+          type: integer
+          minimum: 1
+      required:
+      - allowed_provider_types
+      - provider_order
+      - timeout_ms
+      - fallback_allowed
+      - approval_required
+    ScenarioAuthoringValidationIssue:
+      type: object
+      additionalProperties: false
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        path:
+          type: string
+          nullable: true
+        evidence_refs:
+          type: array
+          items:
+            type: string
+      required:
+      - code
+      - message
+    ScenarioAuthoringValidation:
+      type: object
+      additionalProperties: false
+      properties:
+        schema_valid:
+          type: boolean
+        safety_valid:
+          type: boolean
+        fit_requirements_valid:
+          type: boolean
+        errors:
+          type: array
+          items:
+            $ref: '#/components/schemas/ScenarioAuthoringValidationIssue'
+        warnings:
+          type: array
+          items:
+            $ref: '#/components/schemas/ScenarioAuthoringValidationIssue'
+      required:
+      - schema_valid
+      - safety_valid
+      - fit_requirements_valid
+      - errors
+      - warnings
+    ScenarioAuthoringProviderTraceEntry:
+      type: object
+      additionalProperties: false
+      properties:
+        provider_type:
+          $ref: '#/components/schemas/ScenarioAuthoringProviderType'
+        provider_name:
+          type: string
+        provider_version:
+          type: string
+          nullable: true
+        model_or_agent:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum:
+          - STARTED
+          - SUCCEEDED
+          - FAILED
+          - TIMED_OUT
+          - SKIPPED
+        confidence:
+          type: number
+          minimum: 0
+          maximum: 1
+          nullable: true
+        fallback_reason:
+          type: string
+          nullable: true
+        started_at:
+          type: string
+          format: date-time
+        finished_at:
+          type: string
+          format: date-time
+          nullable: true
+      required:
+      - provider_type
+      - provider_name
+      - status
+      - started_at
+    ScenarioAuthoringCandidate:
+      type: object
+      additionalProperties: false
+      properties:
+        candidate_id:
+          type: string
+        scenario_plan:
+          type: object
+          description: Canonical ScenarioPlan contract payload from packages/contracts/schemas/scenario-plan.schema.json.
+          additionalProperties: true
+        confidence:
+          type: number
+          minimum: 0
+          maximum: 1
+        rationale:
+          type: string
+        evidence_refs:
+          type: array
+          items:
+            type: string
+        source_recommendation_refs:
+          type: array
+          items:
+            type: string
+        validation:
+          $ref: '#/components/schemas/ScenarioAuthoringValidation'
+      required:
+      - candidate_id
+      - scenario_plan
+      - confidence
+      - rationale
+      - evidence_refs
+      - validation
+    ScenarioAuthoringProvenance:
+      type: object
+      additionalProperties: false
+      properties:
+        source_discovery_id:
+          type: string
+        source_recommendation_refs:
+          type: array
+          items:
+            type: string
+        source_evidence_refs:
+          type: array
+          items:
+            type: string
+        prompt_version:
+          type: string
+          nullable: true
+        input_summary:
+          type: string
+        generated_at:
+          type: string
+          format: date-time
+      required:
+      - source_evidence_refs
+      - generated_at
+    ScenarioAuthoringFailure:
+      type: object
+      nullable: true
+      additionalProperties: false
+      properties:
+        failure_code:
+          type: string
+        failure_message:
+          type: string
+        provider_type:
+          $ref: '#/components/schemas/ScenarioAuthoringProviderType'
+      required:
+      - failure_code
+      - failure_message
+    ScenarioAuthoringJob:
+      type: object
+      properties:
+        schemaVersion:
+          type: string
+          enum:
+          - '0.5'
+        authoringJobId:
+          type: string
+          format: uuid
+        status:
+          $ref: '#/components/schemas/ScenarioAuthoringStatus'
+        projectId:
+          type: string
+          format: uuid
+        sourceDiscoveryId:
+          type: string
+          format: uuid
+        correlationId:
+          type: string
+          nullable: true
+        candidateCount:
+          type: integer
+          minimum: 0
+        providerOrder:
+          type: array
+          items:
+            $ref: '#/components/schemas/ScenarioAuthoringProviderType'
+        input:
+          type: object
+          additionalProperties: true
+        providerPolicy:
+          $ref: '#/components/schemas/ScenarioAuthoringProviderPolicy'
+        providerTrace:
+          type: array
+          items:
+            $ref: '#/components/schemas/ScenarioAuthoringProviderTraceEntry'
+        candidates:
+          type: array
+          items:
+            $ref: '#/components/schemas/ScenarioAuthoringCandidate'
+        validation:
+          $ref: '#/components/schemas/ScenarioAuthoringValidation'
+        provenance:
+          $ref: '#/components/schemas/ScenarioAuthoringProvenance'
+        failure:
+          $ref: '#/components/schemas/ScenarioAuthoringFailure'
+        confirmedCandidateId:
+          type: string
+          nullable: true
+        confirmedBy:
+          type: string
+          format: uuid
+          nullable: true
+        confirmedAt:
+          type: string
+          format: date-time
+          nullable: true
+        materializedRunId:
+          type: string
+          format: uuid
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+          nullable: true
+        updatedAt:
+          type: string
+          format: date-time
+          nullable: true
+        expiresAt:
+          type: string
+          format: date-time
+          nullable: true
+      required:
+      - schemaVersion
+      - authoringJobId
+      - status
+      - projectId
+      - sourceDiscoveryId
+      - candidateCount
+      - providerOrder
+      - input
+      - providerPolicy
+      - validation
+      - provenance
+    SingleScenarioAuthoringJobResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/ScenarioAuthoringJob'
+        meta:
+          $ref: '#/components/schemas/Meta'
+      required:
+      - data
+      - meta
+    ScenarioAuthoringConfirmResponse:
+      type: object
+      properties:
+        authoringJob:
+          $ref: '#/components/schemas/ScenarioAuthoringJob'
+        confirmedCandidate:
+          $ref: '#/components/schemas/ScenarioAuthoringCandidate'
+      required:
+      - authoringJob
+      - confirmedCandidate
+    ScenarioAuthoringConfirmEnvelope:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/ScenarioAuthoringConfirmResponse'
         meta:
           $ref: '#/components/schemas/Meta'
       required:
@@ -3005,6 +3774,7 @@ components:
         scenarioTemplateVersionId:
           type: string
           format: uuid
+          nullable: true
         status:
           type: string
           enum:
@@ -3066,7 +3836,6 @@ components:
       - startUrl
       - devicePreset
       - scenarioTemplateVersionId
-      - scenarioPlan
       - status
       - resultCompleteness
       - analysisStatus
@@ -3108,6 +3877,7 @@ components:
         scenarioTemplateVersionId:
           type: string
           format: uuid
+          nullable: true
         scenarioOverrides:
           type: object
           additionalProperties: true
@@ -3119,8 +3889,6 @@ components:
       - name
       - startUrl
       - devicePreset
-      - scenarioTemplateVersionId
-      - scenarioPlan
     RunActionRequest:
       type: object
       properties:
@@ -3845,6 +4613,11 @@ components:
           allOf:
           - $ref: '#/components/schemas/ReportPreviewImage'
           nullable: true
+        highlight:
+          type: object
+          allOf:
+          - $ref: '#/components/schemas/ReportFindingHighlight'
+          nullable: true
         nudges:
           type: array
           items:
@@ -3857,6 +4630,79 @@ components:
       - stage
       - evidenceRefs
       - nudges
+    ReportFindingHighlight:
+      type: object
+      description: Screen coordinate metadata for drawing a finding marker over the preview image.
+      properties:
+        evidenceRef:
+          type: string
+          nullable: true
+        label:
+          type: string
+        source:
+          type: string
+          enum:
+          - artifact-coordinate
+        coordinateSpace:
+          type: string
+          nullable: true
+          enum:
+          - viewport
+          - screenshot
+          - viewport_ratio
+          description: Coordinate origin emitted by analyzer. `viewport` uses runner viewport coordinates.
+        bounds:
+          type: object
+          properties:
+            x:
+              type: number
+            y:
+              type: number
+            width:
+              type: number
+            height:
+              type: number
+            unit:
+              type: string
+              enum:
+              - css_px
+              - screenshot_px
+              - viewport_ratio
+          description: Element bounds in the unit emitted by the runner, usually css_px.
+          example:
+            x: 520
+            y: 360
+            width: 220
+            height: 56
+            unit: css_px
+          required:
+          - x
+          - y
+          - width
+          - height
+        viewport:
+          type: object
+          nullable: true
+          properties:
+            width:
+              type: number
+            height:
+              type: number
+          required:
+          - width
+          - height
+          description: Viewport dimensions used to translate bounds into preview percentages.
+          example:
+            width: 1440
+            height: 900
+        screenshotArtifactId:
+          type: string
+          description: Screenshot artifact id that the coordinate was captured against.
+      required:
+      - label
+      - source
+      - bounds
+      - screenshotArtifactId
     ReportDetailNudge:
       type: object
       properties:
@@ -4111,6 +4957,122 @@ components:
       - attemptId
       - occurredAt
       - trace
+    RunnerAgentIdempotencyClaimRequest:
+      type: object
+      properties:
+        runId:
+          type: string
+          format: uuid
+        taskId:
+          type: string
+        attemptId:
+          type: string
+        attemptIndex:
+          type: integer
+          minimum: 1
+        leaseTtlMs:
+          type: integer
+          minimum: 1000
+          maximum: 86400000
+          nullable: true
+          default: 300000
+      required:
+      - runId
+      - taskId
+      - attemptId
+      - attemptIndex
+    RunnerAgentIdempotencyRecordRequest:
+      type: object
+      properties:
+        runId:
+          type: string
+          format: uuid
+        taskId:
+          type: string
+        attemptId:
+          type: string
+        attemptIndex:
+          type: integer
+          minimum: 1
+        result:
+          type: object
+          additionalProperties: true
+      required:
+      - runId
+      - taskId
+      - attemptId
+      - attemptIndex
+      - result
+    RunnerAgentIdempotencyRecord:
+      type: object
+      properties:
+        idempotencyKeyHash:
+          type: string
+          pattern: ^[0-9a-f]{64}$
+        found:
+          type: boolean
+        status:
+          type: string
+          enum:
+          - CLAIMED
+          - COMPLETED
+          nullable: true
+        runId:
+          type: string
+          format: uuid
+          nullable: true
+        taskId:
+          type: string
+          nullable: true
+        attemptId:
+          type: string
+          nullable: true
+        attemptIndex:
+          type: integer
+          minimum: 1
+          nullable: true
+        claimedBy:
+          type: string
+          nullable: true
+        claimedAt:
+          type: string
+          format: date-time
+          nullable: true
+        leaseExpiresAt:
+          type: string
+          format: date-time
+          nullable: true
+        result:
+          type: object
+          additionalProperties: true
+          nullable: true
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+      required:
+      - idempotencyKeyHash
+      - found
+      - status
+      - runId
+      - taskId
+      - attemptId
+      - attemptIndex
+      - claimedBy
+      - claimedAt
+      - leaseExpiresAt
+      - result
+      - completedAt
+    RunnerAgentIdempotencyRecordEnvelope:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/RunnerAgentIdempotencyRecord'
+        meta:
+          $ref: '#/components/schemas/ApiMeta'
+      required:
+      - data
+      - meta
     RunnerArtifactsRequest:
       type: object
       properties:
@@ -4215,6 +5177,7 @@ components:
               minimum: 0
             stopped:
               type: boolean
+              description: True when runner execution stopped at a planned safety stop condition or after an explicit stop request. Planned scenario stops still complete the run; only a prior STOP_REQUESTED run becomes STOPPED.
           required:
           - completedStepCount
           - failedStepCount

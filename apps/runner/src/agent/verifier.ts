@@ -44,7 +44,7 @@ export function verifyGoal(input: {
       return blocker;
     }
 
-    const riskyCommit = verifyPreDecisionFinalCommit(pageText);
+    const riskyCommit = verifyPreDecisionFinalCommit(input.snapshot, pageText);
     if (riskyCommit) {
       return riskyCommit;
     }
@@ -119,17 +119,41 @@ function verifyPreDecisionBlocker(pageText: string): AgentVerificationResult | n
   return null;
 }
 
-function verifyPreDecisionFinalCommit(pageText: string): AgentVerificationResult | null {
+function verifyPreDecisionFinalCommit(snapshot: BrowserPageSnapshot, pageText: string): AgentVerificationResult | null {
   if (!verifierSemantics.finalCommit.test(pageText)) {
     return null;
   }
+
+  const iframeCommitCandidate = snapshot.interactiveComponents.find((component) =>
+    typeof component.frame_id === "string" &&
+    component.frame_id.length > 0 &&
+    verifierSemantics.finalCommit.test([
+      component.text,
+      component.role ?? "",
+      component.selector ?? "",
+      component.tag
+    ].join(" "))
+  );
+  const shadowCommitCandidate = snapshot.interactiveComponents.find((component) =>
+    component.shadow_root === true &&
+    verifierSemantics.finalCommit.test([
+      component.text,
+      component.role ?? "",
+      component.selector ?? "",
+      component.tag
+    ].join(" "))
+  );
 
   return {
     satisfied: false,
     terminal: true,
     outcome: "POLICY_BLOCKED",
-    reason: "A final payment or order commit action is visible, so the agent must stop before a new decision.",
-    confidence: 0.82,
+    reason: iframeCommitCandidate
+      ? `A final payment or order commit action is visible inside iframe ${iframeCommitCandidate.frame_id}, so the agent must stop before a new decision.`
+      : shadowCommitCandidate
+        ? "A final payment or order commit action is visible inside an open shadow root, so the agent must stop before a new decision."
+      : "A final payment or order commit action is visible, so the agent must stop before a new decision.",
+    confidence: iframeCommitCandidate || shadowCommitCandidate ? 0.88 : 0.82,
     phase: "pre_decision"
   };
 }
@@ -165,6 +189,7 @@ function createPageSignalText(snapshot: BrowserPageSnapshot): string {
       component.text,
       component.role ?? "",
       component.selector ?? "",
+      component.frame_id ?? "",
       component.tag
     ]),
     ...snapshot.consoleErrors,

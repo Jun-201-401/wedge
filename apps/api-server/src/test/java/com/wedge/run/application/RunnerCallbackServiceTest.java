@@ -329,7 +329,9 @@ class RunnerCallbackServiceTest {
         UUID latestCheckpointId = UUID.randomUUID();
         when(processedMessagePersistenceAdapter.tryMarkProcessed("runner.checkpoints", "evt_checkpoint_001")).thenReturn(true);
         when(processedMessagePersistenceAdapter.tryMarkProcessed("runner.artifacts", "evt_artifact_001")).thenReturn(true);
-        when(runPersistenceAdapter.resolveStep(runId, "step_002_click_signup"))
+        when(runPersistenceAdapter.resolveOrCreateAgentStep(runId, "step_002_click_signup", "CTA"))
+                .thenReturn(new RunPersistenceAdapter.ResolvedStep(stepId, 2, "step_002_click_signup", StepStatus.RUNNING));
+        when(runPersistenceAdapter.resolveOrCreateAgentStep(runId, "step_002_click_signup", "VALUE"))
                 .thenReturn(new RunPersistenceAdapter.ResolvedStep(stepId, 2, "step_002_click_signup", StepStatus.RUNNING));
         when(runService.getRun(runId)).thenReturn(sampleRun(runId, RunStatus.RUNNING, ResultCompleteness.NONE));
         when(checkpointPersistenceService.saveRunCheckpoints(
@@ -399,7 +401,7 @@ class RunnerCallbackServiceTest {
         UUID runId = UUID.randomUUID();
         UUID stepId = UUID.randomUUID();
         when(processedMessagePersistenceAdapter.tryMarkProcessed("runner.checkpoints", "evt_checkpoint_001")).thenReturn(true);
-        when(runPersistenceAdapter.resolveStep(runId, "step_003_fill_email"))
+        when(runPersistenceAdapter.resolveOrCreateAgentStep(runId, "step_003_fill_email", "INPUT"))
                 .thenReturn(new RunPersistenceAdapter.ResolvedStep(stepId, 3, "step_003_fill_email", StepStatus.RUNNING));
         when(runService.getRun(runId)).thenReturn(sampleRun(runId, RunStatus.RUNNING, ResultCompleteness.NONE));
         when(checkpointPersistenceService.saveRunCheckpoints(

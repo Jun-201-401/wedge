@@ -5,6 +5,8 @@ from typing import Any
 
 from app.contracts.stages import DECISION_STAGE_DISPLAY_NAMES, DECISION_STAGES, DecisionStage
 from app.providers import SemanticProviderPort
+from app.providers.label_role import LabelRoleProviderPort
+from app.normalization.label_role_resolver import LabelRoleResolver
 from app.normalization import SemanticLabelResolver
 from app.rule_engine.evaluator import RuleEngine
 from app.rule_engine.models import RuleHit
@@ -13,19 +15,25 @@ from app.rule_engine.registry_loader import load_default_registry
 from app.rule_engine.scoring import friction_score, overall_risk, stage_scores_from_issues
 from app.stage.stage_context_builder import StageContext, StageContextBuilder
 
+RELIABILITY_CRITERION_ID = "RELIABILITY-TECH-001"
+RELIABILITY_LOCATION_TYPES = {"network_failure", "console_error"}
+
 
 def analyze_evidence_packet(
     packet: dict[str, Any],
     registry: dict[str, Any] | None = None,
     semantic_provider: SemanticProviderPort | None = None,
+    label_role_provider: LabelRoleProviderPort | None = None,
 ) -> dict[str, Any]:
     registry = registry or load_default_registry()
+    if label_role_provider is not None:
+        packet = LabelRoleResolver(label_role_provider).enrich_packet(packet)
     contexts = StageContextBuilder().build(packet)
     if semantic_provider is not None:
         contexts = SemanticLabelResolver(semantic_provider).enrich(contexts)
     hits = RuleEngine().evaluate(contexts=contexts, registry=registry)
     issues = _issues_from_hits(hits)
-    issues = _attach_evidence_locations(issues, contexts)
+    issues = _attach_evidence_locations(issues, contexts, _screenshot_artifact_ids(packet))
     observation_priorities = stage_observation_priorities(contexts, issues)
     stage_scores = stage_scores_from_issues(issues)
     friction = friction_score(stage_scores)
@@ -63,8 +71,11 @@ def _issues_from_hits(hits: list[RuleHit]) -> list[dict[str, Any]]:
 def _attach_evidence_locations(
     issues: list[dict[str, Any]],
     contexts: dict[DecisionStage, StageContext],
+    screenshot_artifact_ids: set[str],
 ) -> list[dict[str, Any]]:
     location_index = _evidence_location_index(contexts)
+    location_index.update(_checkpoint_state_location_index(contexts))
+    action_locations_by_checkpoint = _action_target_locations_by_checkpoint(location_index.values())
     located_issues: list[dict[str, Any]] = []
     for issue in issues:
         locations = [
@@ -72,11 +83,182 @@ def _attach_evidence_locations(
             for ref in issue.get("evidence_refs") or []
             if isinstance(ref, str) and ref in location_index
         ]
+        if issue.get("criterion_id") == RELIABILITY_CRITERION_ID:
+            locations = _with_related_action_locations(locations, action_locations_by_checkpoint)
+        problem_components = _problem_components_from_locations(locations, screenshot_artifact_ids)
         if locations:
-            located_issues.append({**issue, "evidence_locations": locations})
+            located_issue = {**issue, "evidence_locations": locations}
+            if problem_components:
+                located_issue["problem_components"] = problem_components
+            located_issues.append(located_issue)
         else:
             located_issues.append(issue)
     return located_issues
+
+
+def _action_target_locations_by_checkpoint(locations: Any) -> dict[str, list[dict[str, Any]]]:
+    locations_by_checkpoint: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for location in locations:
+        if not isinstance(location, dict) or location.get("type") != "interactive_components":
+            continue
+        checkpoint_id = location.get("checkpoint_id")
+        if not isinstance(checkpoint_id, str) or not checkpoint_id:
+            continue
+        clicked_components = [
+            component
+            for component in location.get("components") or []
+            if isinstance(component, dict)
+            and component.get("clicked_in_scenario") is True
+            and isinstance(component.get("bounds"), dict)
+        ]
+        if not clicked_components:
+            continue
+        locations_by_checkpoint[checkpoint_id].append({**location, "problem_components": clicked_components})
+    return locations_by_checkpoint
+
+
+def _checkpoint_state_location_index(contexts: dict[DecisionStage, StageContext]) -> dict[str, dict[str, Any]]:
+    locations: dict[str, dict[str, Any]] = {}
+    seen_checkpoints: set[str] = set()
+    for context in contexts.values():
+        for checkpoint in context.checkpoints:
+            checkpoint_id = str(checkpoint.get("checkpoint_id") or "")
+            if not checkpoint_id or checkpoint_id in seen_checkpoints:
+                continue
+            seen_checkpoints.add(checkpoint_id)
+            state = checkpoint.get("state")
+            if not isinstance(state, dict):
+                continue
+            network = state.get("network_summary")
+            if isinstance(network, dict) and int(network.get("failed_request_count") or 0) > 0:
+                ref = f"{checkpoint_id}.state.network_summary"
+                locations[ref] = _checkpoint_state_location(checkpoint, ref, "network_failure", ["network"])
+            console = state.get("console_summary")
+            if isinstance(console, dict) and int(console.get("error_count") or 0) > 0:
+                ref = f"{checkpoint_id}.state.console_summary"
+                locations[ref] = _checkpoint_state_location(checkpoint, ref, "console_error", ["console"])
+    return locations
+
+
+def _checkpoint_state_location(
+    checkpoint: dict[str, Any],
+    evidence_ref: str,
+    location_type: str,
+    source: list[str],
+) -> dict[str, Any]:
+    location: dict[str, Any] = {
+        "evidence_ref": evidence_ref,
+        "checkpoint_id": str(checkpoint.get("checkpoint_id") or ""),
+        "observation_id": evidence_ref.split(".", 1)[1],
+        "type": location_type,
+        "stage": checkpoint.get("primaryStage") or checkpoint.get("stage"),
+        "source": source,
+    }
+    artifact_refs = checkpoint.get("artifact_refs")
+    if isinstance(artifact_refs, list):
+        location["artifact_refs"] = artifact_refs
+    viewport = _viewport_from_checkpoint(checkpoint)
+    if viewport:
+        location["viewport"] = viewport
+    return location
+
+
+def _with_related_action_locations(
+    locations: list[dict[str, Any]],
+    action_locations_by_checkpoint: dict[str, list[dict[str, Any]]],
+) -> list[dict[str, Any]]:
+    if not any(location.get("type") in RELIABILITY_LOCATION_TYPES for location in locations):
+        return locations
+
+    result = list(locations)
+    seen_refs = {
+        location.get("evidence_ref")
+        for location in result
+        if isinstance(location.get("evidence_ref"), str)
+    }
+    for location in locations:
+        if location.get("type") not in RELIABILITY_LOCATION_TYPES:
+            continue
+        checkpoint_id = location.get("checkpoint_id")
+        if not isinstance(checkpoint_id, str):
+            continue
+        for action_location in action_locations_by_checkpoint.get(checkpoint_id, []):
+            evidence_ref = action_location.get("evidence_ref")
+            if not isinstance(evidence_ref, str) or evidence_ref in seen_refs:
+                continue
+            result.append(action_location)
+            seen_refs.add(evidence_ref)
+    return result
+
+
+def _problem_components_from_locations(
+    locations: list[dict[str, Any]],
+    screenshot_artifact_ids: set[str],
+) -> list[dict[str, Any]]:
+    components: list[dict[str, Any]] = []
+    for location in locations:
+        evidence_ref = location.get("evidence_ref")
+        if not isinstance(evidence_ref, str) or not evidence_ref:
+            continue
+        for index, component in enumerate(location.get("problem_components") or [], start=1):
+            if not isinstance(component, dict):
+                continue
+            bounds = component.get("bounds")
+            if not isinstance(bounds, dict):
+                continue
+            screenshot_artifact_id = _screenshot_artifact_id(location, screenshot_artifact_ids)
+            if not screenshot_artifact_id:
+                continue
+            item: dict[str, Any] = {
+                "component_id": f"{evidence_ref}.component_{index:03d}",
+                "evidence_ref": evidence_ref,
+                "coordinate_space": "viewport",
+                "bounding_box": {**bounds, "unit": bounds.get("unit") or "css_px"},
+            }
+            for key in ("label", "role", "text", "selector"):
+                value = component.get(key)
+                if isinstance(value, str) and value:
+                    item[key] = value
+            viewport = location.get("viewport")
+            if isinstance(viewport, dict):
+                item["viewport"] = viewport
+            item["screenshot_artifact_id"] = screenshot_artifact_id
+            components.append(item)
+    return components
+
+
+def _screenshot_artifact_ids(packet: dict[str, Any]) -> set[str]:
+    artifacts = packet.get("artifacts")
+    if not isinstance(artifacts, list):
+        return set()
+    screenshot_ids: set[str] = set()
+    for artifact in artifacts:
+        if not isinstance(artifact, dict) or artifact.get("type") != "screenshot":
+            continue
+        artifact_id = _normalize_artifact_ref(artifact.get("artifact_id"))
+        if artifact_id:
+            screenshot_ids.add(artifact_id)
+    return screenshot_ids
+
+
+def _screenshot_artifact_id(location: dict[str, Any], screenshot_artifact_ids: set[str]) -> str | None:
+    explicit = location.get("screenshot_artifact_id")
+    normalized_explicit = _normalize_artifact_ref(explicit)
+    if normalized_explicit and (not screenshot_artifact_ids or normalized_explicit in screenshot_artifact_ids):
+        return normalized_explicit
+    artifact_refs = location.get("artifact_refs")
+    if isinstance(artifact_refs, list):
+        for artifact_ref in artifact_refs:
+            normalized_ref = _normalize_artifact_ref(artifact_ref)
+            if normalized_ref and normalized_ref in screenshot_artifact_ids:
+                return normalized_ref
+    return None
+
+
+def _normalize_artifact_ref(value: Any) -> str | None:
+    if not isinstance(value, str) or not value:
+        return None
+    return value.removeprefix("artifact:")
 
 
 def _evidence_location_index(contexts: dict[DecisionStage, StageContext]) -> dict[str, dict[str, Any]]:

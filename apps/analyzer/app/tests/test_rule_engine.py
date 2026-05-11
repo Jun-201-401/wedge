@@ -23,6 +23,7 @@ from app.providers import (
     SemanticProviderChain,
     sanitize_semantic_label_result,
 )
+from app.providers.label_role import LabelRoleIssueResult
 from app.rule_engine import analyze_evidence_packet, load_default_registry
 from app.rule_engine.contract_schema import schema_enum, schema_properties
 from app.rule_engine.evaluator import RuleEngine, RuleHandlerMissing
@@ -179,23 +180,144 @@ class SemanticClassificationContractTest(unittest.TestCase):
 
 
 class RuleEngineTest(unittest.TestCase):
-    def test_sample_packet_emits_cta_competition_only(self) -> None:
+    def test_sample_packet_emits_cta_competition_and_journey_timeout(self) -> None:
         result = analyze_evidence_packet(load_sample_packet())
         criteria = [issue["criterion_id"] for issue in result["issues"]]
-        self.assertEqual(criteria, ["PATH-CTA-002"])
-        issue = result["issues"][0]
-        self.assertEqual(issue["stage"], "CTA")
-        self.assertEqual(issue["evidence_refs"], ["cp_001.obs_002"])
-        self.assertEqual(issue["priority_score"], 2.03)
+        self.assertEqual(criteria, ["PATH-CTA-002", "JOURNEY-ACTION-RESULT-001"])
+        cta_issue = result["issues"][0]
+        self.assertEqual(cta_issue["stage"], "CTA")
+        self.assertEqual(cta_issue["evidence_refs"], ["cp_001.obs_002"])
+        self.assertEqual(cta_issue["priority_score"], 2.03)
+        journey_issue = result["issues"][1]
+        self.assertEqual(journey_issue["stage"], "VALUE")
+        self.assertEqual(journey_issue["evidence_refs"], ["cp_005.obs_010"])
         decision_by_stage = {item["stage"]: item for item in result["decision_map"]}
         self.assertEqual(decision_by_stage["CTA"]["status"], "WARNING")
         self.assertEqual(decision_by_stage["FIRST_VIEW"]["status"], "PASS")
         self.assertEqual(decision_by_stage["COMMIT"]["status"], "NOT_APPLICABLE")
         self.assertEqual(result["summary"]["task_success"], "partial")
 
+    def test_journey_action_result_ignores_non_click_timeout(self) -> None:
+        packet = load_sample_packet()
+        packet["checkpoints"][4]["settle"]["status"] = "settled"
+        packet["checkpoints"][4]["observations"][1]["data"]["settle_status"] = "settled"
+        packet["checkpoints"][4]["observations"][1]["data"]["current_count"] = 5
+        result = analyze_evidence_packet(packet)
+        criteria = [issue["criterion_id"] for issue in result["issues"]]
+        self.assertNotIn("JOURNEY-ACTION-RESULT-001", criteria)
+
+    def test_journey_action_result_ignores_settled_unmet_count(self) -> None:
+        packet = load_sample_packet()
+        packet["checkpoints"][4]["settle"]["status"] = "settled"
+        packet["checkpoints"][4]["observations"][1]["data"]["settle_status"] = "settled"
+        packet["checkpoints"][4]["observations"][1]["data"]["current_count"] = 3
+        packet["checkpoints"][4]["observations"][1]["data"]["expected_count"] = 5
+        result = analyze_evidence_packet(packet)
+        criteria = [issue["criterion_id"] for issue in result["issues"]]
+        self.assertNotIn("JOURNEY-ACTION-RESULT-001", criteria)
+
+    def test_journey_goal_cta_mismatch_uses_semantic_label(self) -> None:
+        class IrrelevantCtaProvider:
+            def classify_cta(self, *, text: str, scenario_goal: str, target_ref: str):
+                return SemanticLabelResult(
+                    target_observation_ref=target_ref,
+                    provider_type="test",
+                    provider_name="irrelevant_cta_provider",
+                    labels={
+                        "scenario_relevance_label": "IRRELEVANT_ACTION",
+                        "action_specificity_label": "SPECIFIC_ACTION",
+                    },
+                    confidence=0.88,
+                )
+
+        packet = load_sample_packet()
+        packet["checkpoints"][0]["trigger"] = {"type": "click", "target": "a.careers"}
+        packet["checkpoints"][0]["observations"] = [
+            {
+                "observation_id": "obs_goal_mismatch_cta",
+                "type": "cta_candidate",
+                "stage": "CTA",
+                "source": ["dom", "ax"],
+                "data": {"visible_text": "Read careers"},
+                "confidence": 0.8,
+            },
+            {
+                "observation_id": "obs_cta_cluster_ok",
+                "type": "cta_cluster",
+                "stage": "CTA",
+                "source": ["dom", "layout"],
+                "data": {"primary_like_cta_count": 1},
+                "confidence": 0.8,
+            },
+        ]
+        for checkpoint in packet["checkpoints"][1:]:
+            checkpoint["observations"] = [
+                observation
+                for observation in checkpoint["observations"]
+                if observation["type"] != "cta_candidate"
+            ]
+        result = analyze_evidence_packet(packet, semantic_provider=IrrelevantCtaProvider())
+        mismatch = [issue for issue in result["issues"] if issue["criterion_id"] == "JOURNEY-GOAL-CTA-MISMATCH-001"]
+        self.assertEqual(len(mismatch), 1)
+        self.assertEqual(mismatch[0]["severity"], 2)
+        self.assertEqual(mismatch[0]["confidence"], 0.88)
+
+    def test_journey_goal_cta_mismatch_ignores_unclicked_candidate(self) -> None:
+        class MixedCtaProvider:
+            def classify_cta(self, *, text: str, scenario_goal: str, target_ref: str):
+                irrelevant = target_ref.endswith("obs_unclicked_cta")
+                return SemanticLabelResult(
+                    target_observation_ref=target_ref,
+                    provider_type="test",
+                    provider_name="mixed_cta_provider",
+                    labels={
+                        "scenario_relevance_label": "IRRELEVANT_ACTION" if irrelevant else "DIRECT_GOAL_ACTION",
+                        "action_specificity_label": "SPECIFIC_ACTION",
+                    },
+                    confidence=0.9,
+                )
+
+        packet = load_sample_packet()
+        packet["checkpoints"][0]["trigger"] = {"type": "goto"}
+        packet["checkpoints"][0]["observations"] = [
+            {
+                "observation_id": "obs_unclicked_cta",
+                "type": "cta_candidate",
+                "stage": "CTA",
+                "source": ["dom"],
+                "data": {"visible_text": "Read careers"},
+                "confidence": 0.8,
+            }
+        ]
+        packet["checkpoints"][2]["trigger"] = {"type": "click", "target": "a.start"}
+        packet["checkpoints"][2]["observations"] = [
+            {
+                "observation_id": "obs_clicked_cta",
+                "type": "cta_candidate",
+                "stage": "CTA",
+                "source": ["dom"],
+                "data": {"visible_text": "Start free"},
+                "confidence": 0.8,
+            }
+        ]
+        result = analyze_evidence_packet(packet, semantic_provider=MixedCtaProvider())
+        criteria = [issue["criterion_id"] for issue in result["issues"]]
+        self.assertNotIn("JOURNEY-GOAL-CTA-MISMATCH-001", criteria)
+
     def test_interactive_components_issue_keeps_component_bounds(self) -> None:
         packet = load_sample_packet()
         packet["aggregate_signals"]["primary_cta_count_by_stage"] = {}
+        packet["artifacts"].insert(
+            0,
+            {
+                "artifact_id": "dom_cp_001",
+                "type": "dom_snapshot",
+                "uri": "s3://wedge-artifacts/runs/run_001/cp_001.html",
+                "mime_type": "text/html",
+                "size_bytes": 100,
+            },
+        )
+        packet["checkpoints"][0]["artifact_refs"] = ["artifact:dom_cp_001", "artifact:screenshot_cp_001"]
         packet["checkpoints"][0]["observations"] = [
             observation
             for observation in packet["checkpoints"][0]["observations"]
@@ -258,6 +380,73 @@ class RuleEngineTest(unittest.TestCase):
         self.assertEqual(location["components"][0]["selector"], "a.hero-start")
         self.assertEqual(location["components"][0]["bounds"], {"x": 520, "y": 360, "width": 220, "height": 56})
         self.assertEqual(location["problem_components"][0]["bounds"], {"x": 520, "y": 360, "width": 220, "height": 56})
+        self.assertEqual(issue["problem_components"][0]["evidence_ref"], "cp_001.obs_interactive_components")
+        self.assertEqual(issue["problem_components"][0]["coordinate_space"], "viewport")
+        self.assertEqual(issue["problem_components"][0]["bounding_box"], {"x": 520, "y": 360, "width": 220, "height": 56, "unit": "css_px"})
+        self.assertEqual(issue["problem_components"][0]["screenshot_artifact_id"], "screenshot_cp_001")
+
+    def test_interactive_components_without_screenshot_artifact_are_not_projected(self) -> None:
+        packet = load_sample_packet()
+        packet["aggregate_signals"]["primary_cta_count_by_stage"] = {}
+        packet["artifacts"] = [
+            {
+                "artifact_id": "dom_cp_001",
+                "type": "dom_snapshot",
+                "uri": "s3://wedge-artifacts/runs/run_001/cp_001.html",
+                "mime_type": "text/html",
+                "size_bytes": 100,
+            }
+        ]
+        packet["checkpoints"][0]["artifact_refs"] = ["artifact:dom_cp_001"]
+        packet["checkpoints"][0]["observations"] = [
+            observation
+            for observation in packet["checkpoints"][0]["observations"]
+            if observation["type"] != "cta_cluster"
+        ]
+        packet["checkpoints"][0]["observations"].append(
+            {
+                "observation_id": "obs_interactive_components",
+                "type": "interactive_components",
+                "stage": "CTA",
+                "source": ["dom", "layout"],
+                "confidence": 0.82,
+                "data": {
+                    "primary_like_component_count": 3,
+                    "components": [
+                        {
+                            "text": "Start free",
+                            "selector": "a.hero-start",
+                            "role": "link",
+                            "clicked_in_scenario": True,
+                            "is_primary_like": True,
+                            "bounds": {"x": 520, "y": 360, "width": 220, "height": 56},
+                        },
+                        {
+                            "text": "Try demo",
+                            "selector": "button.hero-demo",
+                            "role": "button",
+                            "clicked_in_scenario": False,
+                            "is_primary_like": True,
+                            "bounds": {"x": 760, "y": 360, "width": 180, "height": 56},
+                        },
+                        {
+                            "text": "Contact sales",
+                            "selector": "a.hero-sales",
+                            "role": "link",
+                            "clicked_in_scenario": False,
+                            "is_primary_like": True,
+                            "bounds": {"x": 960, "y": 360, "width": 190, "height": 56},
+                        },
+                    ],
+                },
+            }
+        )
+
+        result = analyze_evidence_packet(packet)
+
+        issue = [issue for issue in result["issues"] if issue["criterion_id"] == "PATH-CTA-002"][0]
+        self.assertEqual(issue["evidence_locations"][0]["problem_components"][0]["selector"], "a.hero-start")
+        self.assertNotIn("problem_components", issue)
 
     def test_missing_cta_evidence_is_not_user_facing_issue(self) -> None:
         packet = load_sample_packet()
@@ -377,6 +566,134 @@ class RuleEngineTest(unittest.TestCase):
         self.assertEqual(reliability[0]["stage"], "INPUT")
         self.assertIn("cp_002.state.network_summary", reliability[0]["evidence_refs"])
 
+    def test_reliability_issue_links_clicked_component_bounds(self) -> None:
+        packet = load_sample_packet()
+        packet["aggregate_signals"]["primary_cta_count_by_stage"] = {"CTA": 1}
+        packet["checkpoints"][0]["observations"].extend([
+            {
+                "observation_id": "obs_interactive_components",
+                "type": "interactive_components",
+                "stage": "CTA",
+                "source": ["dom", "layout", "screenshot"],
+                "confidence": 0.82,
+                "data": {
+                    "primary_like_component_count": 1,
+                    "components": [
+                        {
+                            "text": "Start free",
+                            "selector": "a.hero-start",
+                            "role": "link",
+                            "tag": "a",
+                            "clickable": True,
+                            "clicked_in_scenario": True,
+                            "is_cta_candidate": True,
+                            "is_primary_like": True,
+                            "bounds": {"x": 520, "y": 360, "width": 220, "height": 56},
+                        }
+                    ],
+                },
+            },
+            {
+                "observation_id": "obs_network_failure",
+                "type": "network_failure",
+                "stage": "CTA",
+                "source": ["network"],
+                "data": {"url": "https://example.com/api/signup", "status": "failed"},
+                "confidence": 0.9,
+            },
+        ])
+
+        result = analyze_evidence_packet(packet)
+
+        issue = [issue for issue in result["issues"] if issue["criterion_id"] == "RELIABILITY-TECH-001"][0]
+        self.assertEqual(issue["evidence_refs"], ["cp_001.obs_network_failure"])
+        self.assertEqual(issue["evidence_locations"][0]["type"], "network_failure")
+        self.assertEqual(issue["evidence_locations"][1]["type"], "interactive_components")
+        self.assertEqual(issue["problem_components"][0]["evidence_ref"], "cp_001.obs_interactive_components")
+        self.assertEqual(issue["problem_components"][0]["selector"], "a.hero-start")
+        self.assertEqual(issue["problem_components"][0]["bounding_box"], {"x": 520, "y": 360, "width": 220, "height": 56, "unit": "css_px"})
+        self.assertEqual(issue["problem_components"][0]["screenshot_artifact_id"], "screenshot_cp_001")
+
+    def test_reliability_issue_does_not_project_unclicked_component_bounds(self) -> None:
+        packet = load_sample_packet()
+        packet["aggregate_signals"]["primary_cta_count_by_stage"] = {"CTA": 1}
+        packet["checkpoints"][0]["observations"].extend([
+            {
+                "observation_id": "obs_interactive_components",
+                "type": "interactive_components",
+                "stage": "CTA",
+                "source": ["dom", "layout", "screenshot"],
+                "confidence": 0.82,
+                "data": {
+                    "primary_like_component_count": 1,
+                    "components": [
+                        {
+                            "text": "Start free",
+                            "selector": "a.hero-start",
+                            "role": "link",
+                            "clickable": True,
+                            "clicked_in_scenario": False,
+                            "is_primary_like": True,
+                            "bounds": {"x": 520, "y": 360, "width": 220, "height": 56},
+                        }
+                    ],
+                },
+            },
+            {
+                "observation_id": "obs_network_failure",
+                "type": "network_failure",
+                "stage": "CTA",
+                "source": ["network"],
+                "data": {"url": "https://example.com/api/signup", "status": "failed"},
+                "confidence": 0.9,
+            },
+        ])
+
+        result = analyze_evidence_packet(packet)
+
+        issue = [issue for issue in result["issues"] if issue["criterion_id"] == "RELIABILITY-TECH-001"][0]
+        self.assertEqual(issue["evidence_refs"], ["cp_001.obs_network_failure"])
+        self.assertNotIn("problem_components", issue)
+
+    def test_checkpoint_state_reliability_links_clicked_component_bounds(self) -> None:
+        packet = load_sample_packet()
+        packet["aggregate_signals"]["primary_cta_count_by_stage"] = {"CTA": 1}
+        packet["checkpoints"][1]["state"]["network_summary"]["failed_request_count"] = 1
+        packet["checkpoints"][1]["observations"].append(
+            {
+                "observation_id": "obs_interactive_components",
+                "type": "interactive_components",
+                "stage": "INPUT",
+                "source": ["dom", "layout", "screenshot"],
+                "confidence": 0.82,
+                "data": {
+                    "primary_like_component_count": 1,
+                    "components": [
+                        {
+                            "text": "Submit",
+                            "selector": "button.submit",
+                            "role": "button",
+                            "clickable": True,
+                            "clicked_in_scenario": True,
+                            "is_primary_like": True,
+                            "bounds": {"x": 620, "y": 420, "width": 160, "height": 48},
+                        }
+                    ],
+                },
+            }
+        )
+
+        result = analyze_evidence_packet(packet)
+
+        issue = [issue for issue in result["issues"] if issue["criterion_id"] == "RELIABILITY-TECH-001"][0]
+        self.assertEqual(issue["evidence_refs"], ["cp_002.state.network_summary"])
+        self.assertEqual(issue["evidence_locations"][0]["type"], "network_failure")
+        self.assertEqual(issue["evidence_locations"][1]["type"], "interactive_components")
+        self.assertEqual(issue["problem_components"][0]["evidence_ref"], "cp_002.obs_interactive_components")
+        self.assertEqual(issue["problem_components"][0]["selector"], "button.submit")
+        self.assertEqual(issue["problem_components"][0]["bounding_box"], {"x": 620, "y": 420, "width": 160, "height": 48, "unit": "css_px"})
+        self.assertEqual(issue["problem_components"][0]["screenshot_artifact_id"], "screenshot_cp_002")
+
     def test_checkpoint_state_reliability_is_not_duplicated_across_observation_stages(self) -> None:
         packet = load_sample_packet()
         packet["aggregate_signals"]["primary_cta_count_by_stage"] = {"CTA": 1}
@@ -398,6 +715,87 @@ class RuleEngineTest(unittest.TestCase):
         self.assertEqual(len(reliability), 1)
         self.assertEqual(reliability[0]["stage"], "INPUT")
         self.assertEqual(reliability[0]["evidence_refs"], ["cp_002.state.network_summary"])
+
+    def test_copy_flow_quality_ignores_direct_label_issue_type_without_gms_alignment(self) -> None:
+        packet = load_sample_packet()
+        packet["checkpoints"][0]["observations"].append(
+            {
+                "observation_id": "obs_direct_label_issue",
+                "type": "interactive_components",
+                "stage": "CTA",
+                "source": ["dom"],
+                "data": {
+                    "visible_text": "Random",
+                    "label_issue_type": "irrelevant_label",
+                    "fix_leverage": 1.3,
+                },
+                "confidence": 0.95,
+            }
+        )
+
+        result = analyze_evidence_packet(packet)
+
+        copy_issues = [issue for issue in result["issues"] if issue["criterion_id"] == "COPY-FLOW-QUALITY-001"]
+        self.assertEqual(copy_issues, [])
+
+    def test_copy_flow_quality_uses_gms_alignment_and_not_observation_type(self) -> None:
+        class FakeLabelRoleProvider:
+            def __init__(self) -> None:
+                self.calls: list[dict] = []
+
+            def classify_label_roles(self, *, scenario_goal: str, stage: str, checkpoint_id: str, screenshot_url: str, candidates: list[dict]):
+                self.calls.append(
+                    {
+                        "stage": stage,
+                        "checkpoint_id": checkpoint_id,
+                        "screenshot_url": screenshot_url,
+                        "candidate_ids": [candidate["candidate_id"] for candidate in candidates],
+                    }
+                )
+                if checkpoint_id != "cp_001":
+                    return []
+                return [
+                    LabelRoleIssueResult(
+                        candidate_id="cp_001.obs_custom_label_role",
+                        has_issue=True,
+                        issue_type="label_role_mismatch",
+                        expected_meaning="Open account settings",
+                        reason="The label suggests help instead of settings.",
+                        fix_leverage=1.15,
+                        confidence=0.84,
+                        affected_bounds={"x": 20, "y": 20, "width": 120, "height": 44},
+                    )
+                ]
+
+        packet = load_sample_packet()
+        packet["artifacts"][0]["signed_url"] = "https://example.com/cp_001.png"
+        packet["checkpoints"][0]["observations"].append(
+            {
+                "observation_id": "obs_custom_label_role",
+                "type": "custom_visual_text",
+                "stage": "CTA",
+                "source": ["dom", "screenshot"],
+                "data": {
+                    "visible_text": "Help",
+                    "role": "button",
+                    "clicked_in_scenario": True,
+                    "bounds": {"x": 20, "y": 20, "width": 120, "height": 44},
+                },
+                "confidence": 0.7,
+            }
+        )
+        provider = FakeLabelRoleProvider()
+
+        result = analyze_evidence_packet(packet, label_role_provider=provider)
+
+        copy_issues = [issue for issue in result["issues"] if issue["criterion_id"] == "COPY-FLOW-QUALITY-001"]
+        self.assertEqual(len(copy_issues), 1)
+        self.assertEqual(copy_issues[0]["stage"], "CTA")
+        self.assertEqual(copy_issues[0]["confidence"], 0.84)
+        self.assertEqual(copy_issues[0]["fix_leverage"], 1.15)
+        self.assertEqual(copy_issues[0]["evidence_refs"], ["cp_001.obs_custom_label_role"])
+        self.assertIn("expected_meaning=Open account settings", copy_issues[0]["signals"])
+        self.assertIn("cp_001.obs_custom_label_role", provider.calls[0]["candidate_ids"])
 
     def test_registry_rule_without_handler_fails_fast(self) -> None:
         registry = load_default_registry()

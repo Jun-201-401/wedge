@@ -1,15 +1,41 @@
 import type { ScenarioAction, ScenarioStage } from "../shared/contracts.ts";
-import { targetFromComponent } from "./component-target.ts";
+import { replayHintFromComponent, targetFromComponent } from "./component-target.ts";
 import type { LlmCandidateReference } from "./llm-prompt.ts";
-import type { AgentDecision, AgentDecisionInput } from "./planner.ts";
+import { withAgentDecisionMetadata, type AgentDecision, type AgentDecisionInput, type AgentDecisionPromptMetadata } from "./planner.ts";
 import { redactSensitiveString } from "./redaction.ts";
 
 const SCENARIO_STAGES = new Set<ScenarioStage>(["FIRST_VIEW", "VALUE", "CTA", "INPUT", "COMMIT"]);
 
+export class LlmDecisionInvalidJsonError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "LlmDecisionInvalidJsonError";
+  }
+}
+
+export class LlmDecisionUnsafeError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "LlmDecisionUnsafeError";
+  }
+}
+
+export function isRetryableLlmDecisionError(error: unknown): boolean {
+  return error instanceof LlmDecisionInvalidJsonError;
+}
+
+export function isUnsafeLlmDecisionError(error: unknown): boolean {
+  return error instanceof LlmDecisionUnsafeError;
+}
+
 export function parseLlmDecision(
   rawResponse: unknown,
   input: AgentDecisionInput,
-  candidateReferences: LlmCandidateReference[]
+  candidateReferences: LlmCandidateReference[],
+  metadata: {
+    model: string;
+    promptMetadata: AgentDecisionPromptMetadata;
+  }
 ): AgentDecision {
   const candidate = extractDecisionCandidate(rawResponse);
   const record = asRecord(candidate, "LLM decision");
@@ -19,7 +45,7 @@ export function parseLlmDecision(
   const stage = readStage(record, "stage") ?? "CTA";
 
   if (kind === "finish") {
-    return {
+    return llmDecision({
       kind: "finish",
       description: "LLM requested agent stop.",
       reason,
@@ -33,7 +59,7 @@ export function parseLlmDecision(
       },
       stage: "COMMIT",
       targetKey: null
-    };
+    }, metadata);
   }
 
   if (kind !== "act" && kind !== "checkpoint") {
@@ -42,7 +68,7 @@ export function parseLlmDecision(
 
   const actionType = readString(record, "actionType") ?? readNestedActionType(record);
   if (kind === "checkpoint" || actionType === "checkpoint") {
-    return {
+    return llmDecision({
       kind: "checkpoint",
       description: "LLM requested checkpoint without browser action.",
       reason,
@@ -56,15 +82,15 @@ export function parseLlmDecision(
       },
       stage,
       targetKey: null
-    };
+    }, metadata);
   }
 
   if (actionType === "goto") {
     if (input.state.started) {
-      throw new Error("LLM goto is allowed only before the agent has started");
+      throw new LlmDecisionUnsafeError("LLM goto is allowed only before the agent has started");
     }
 
-    return {
+    return llmDecision({
       kind: "act",
       description: "LLM selected start URL navigation.",
       reason,
@@ -81,7 +107,7 @@ export function parseLlmDecision(
       },
       stage: "FIRST_VIEW",
       targetKey: input.startUrl
-    };
+    }, metadata);
   }
 
   if (actionType === "click") {
@@ -93,10 +119,10 @@ export function parseLlmDecision(
     );
 
     if (!selectedTargetKey || !selectedCandidate) {
-      throw new Error("LLM click targetKey must match an observed component");
+      throw new LlmDecisionUnsafeError("LLM click targetKey must match an observed component");
     }
 
-    return {
+    return llmDecision({
       kind: "act",
       description: `LLM selected click target: ${redactSensitiveString(selectedTargetKey)}`,
       reason,
@@ -110,12 +136,13 @@ export function parseLlmDecision(
         timeout_ms: 500
       },
       stage,
-      targetKey: selectedCandidate.rawTargetKey
-    };
+      targetKey: selectedCandidate.rawTargetKey,
+      replayHint: replayHintFromComponent(selectedCandidate.component)
+    }, metadata);
   }
 
   if (actionType === "scroll") {
-    return {
+    return llmDecision({
       kind: "act",
       description: "LLM selected bounded scroll.",
       reason,
@@ -130,10 +157,28 @@ export function parseLlmDecision(
       },
       stage: "VALUE",
       targetKey: "scroll:700"
-    };
+    }, metadata);
   }
 
-  throw new Error(`LLM actionType is not allowed: ${actionType ?? "missing"}`);
+  if (actionType) {
+    throw new LlmDecisionUnsafeError(`LLM actionType is not allowed: ${actionType}`);
+  }
+
+  throw new Error("LLM actionType is missing");
+}
+
+function llmDecision(
+  decision: AgentDecision,
+  metadata: {
+    model: string;
+    promptMetadata: AgentDecisionPromptMetadata;
+  }
+): AgentDecision {
+  return withAgentDecisionMetadata(decision, {
+    decisionSource: "llm",
+    model: metadata.model,
+    promptMetadata: metadata.promptMetadata
+  });
 }
 
 function extractDecisionCandidate(rawResponse: unknown): unknown {
@@ -148,7 +193,12 @@ function extractDecisionCandidate(rawResponse: unknown): unknown {
     const firstChoice = choices[0] as { message?: { content?: unknown } } | undefined;
     const content = firstChoice?.message?.content;
     if (typeof content === "string") {
-      const parsed = JSON.parse(content) as unknown;
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(content) as unknown;
+      } catch {
+        throw new LlmDecisionInvalidJsonError("LLM decision content must be valid JSON");
+      }
       return (parsed && typeof parsed === "object" && "decision" in parsed)
         ? (parsed as { decision: unknown }).decision
         : parsed;

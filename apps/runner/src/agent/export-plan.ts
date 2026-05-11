@@ -5,16 +5,34 @@ export interface AgentTraceReplayExportResult {
   skippedUnsafeActionCount: number;
 }
 
+interface TraceTurnRecord {
+  turn?: unknown;
+  decision?: unknown;
+  policy?: unknown;
+  actionResult?: unknown;
+  postActionVerification?: unknown;
+}
+
 interface TraceDecisionRecord {
-  decision_id?: unknown;
   action?: unknown;
   reason?: unknown;
-  confidence?: unknown;
+  description?: unknown;
   stage?: unknown;
+  settleStrategy?: unknown;
+}
+
+interface TracePolicyRecord {
+  allowed?: unknown;
+}
+
+interface TraceActionResultRecord {
+  completed?: unknown;
 }
 
 interface TraceActionRecord {
+  type?: unknown;
   tool?: unknown;
+  targetKey?: unknown;
   target_key?: unknown;
   target?: unknown;
   value?: unknown;
@@ -25,46 +43,30 @@ export function exportAgentTraceToScenarioPlan(input: {
   task: AgentTask;
   trace: AgentTrace;
 }): AgentTraceReplayExportResult | null {
-  if (!input.trace.final_outcome.startsWith("SUCCESS_")) {
+  if (input.trace.outcome.status !== "SUCCESS") {
     return null;
   }
-
-  const blockedDecisionIds = new Set(
-    input.trace.policy_results
-      .filter((result) => result.decision === "BLOCK")
-      .map((result) => result.decision_id)
-  );
-  const completedDecisionIds = new Set(
-    input.trace.events
-      .filter((event) => event.event_type === "AGENT_ACTION_COMPLETED")
-      .map((event) => typeof event.payload.decision_id === "string" ? event.payload.decision_id : null)
-      .filter((decisionId): decisionId is string => decisionId !== null)
-  );
-  const completedActionKeys = new Set(
-    input.trace.events
-      .filter((event) => event.event_type === "AGENT_ACTION_COMPLETED")
-      .map((event) => actionRecordKey(event.payload))
-      .filter((actionKey): actionKey is string => actionKey !== null)
-  );
 
   const steps: ScenarioStep[] = [];
   let skippedUnsafeActionCount = 0;
 
-  for (const [index, decision] of input.trace.decisions.entries()) {
-    const record = decision as TraceDecisionRecord;
-    const decisionId = typeof record.decision_id === "string" ? record.decision_id : null;
-    const actionKey = actionRecordKey(record.action);
-    if (
-      (decisionId !== null && blockedDecisionIds.has(decisionId))
-      || (
-        (decisionId === null || !completedDecisionIds.has(decisionId))
-        && (actionKey === null || !completedActionKeys.has(actionKey))
-      )
-    ) {
+  for (const turn of input.trace.turns as TraceTurnRecord[]) {
+    const decision = isRecord(turn.decision) ? turn.decision as TraceDecisionRecord : null;
+    if (!decision) {
       continue;
     }
 
-    const action = toScenarioAction(record.action);
+    const policy = isRecord(turn.policy) ? turn.policy as TracePolicyRecord : null;
+    if (policy?.allowed !== true) {
+      continue;
+    }
+
+    const actionResult = isRecord(turn.actionResult) ? turn.actionResult as TraceActionResultRecord : null;
+    if (actionResult?.completed !== true) {
+      continue;
+    }
+
+    const action = toScenarioAction(decision.action);
     if (!action) {
       continue;
     }
@@ -75,10 +77,10 @@ export function exportAgentTraceToScenarioPlan(input: {
 
     steps.push({
       step_id: `agent_replay_${String(steps.length + 1).padStart(3, "0")}`,
-      stage: isScenarioStage(record.stage) ? record.stage : "CTA",
-      description: createReplayStepDescription(record, index),
+      stage: isScenarioStage(decision.stage) ? decision.stage : "CTA",
+      description: createReplayStepDescription(decision, steps.length),
       action,
-      settle_strategy: settleStrategyForAction(action),
+      settle_strategy: isSettleStrategy(decision.settleStrategy) ? cloneSettleStrategy(decision.settleStrategy) : settleStrategyForAction(action),
       checkpoint: true
     });
   }
@@ -90,7 +92,7 @@ export function exportAgentTraceToScenarioPlan(input: {
   return {
     plan: {
       schema_version: "0.5",
-      plan_id: `agent-trace-replay-${input.trace.trace_id}`,
+      plan_id: `agent-trace-replay-${input.trace.attempt_id}`,
       scenario_type: "custom_compiled",
       goal: resolveTaskGoal(input.task),
       start_url: input.task.start_url,
@@ -115,39 +117,36 @@ function toScenarioAction(value: unknown): ScenarioAction | null {
   }
 
   const action = value as TraceActionRecord;
-  if (!isScenarioActionType(action.tool)) {
+  const actionType = action.type ?? action.tool;
+  if (!isScenarioActionType(actionType)) {
     return null;
   }
 
   const scenarioAction: ScenarioAction = {
-    type: action.tool
+    type: actionType
   };
 
   if (action.target !== undefined && action.target !== null) {
-    scenarioAction.target = action.target as ScenarioAction["target"];
-  } else if (typeof action.target_key === "string" && action.target_key.length > 0) {
-    scenarioAction.target = {
-      selector: action.target_key
-    };
+    scenarioAction.target = cloneJson(action.target) as ScenarioAction["target"];
+  } else {
+    const targetKey = typeof action.targetKey === "string" ? action.targetKey : action.target_key;
+    if (typeof targetKey === "string" && targetKey.length > 0) {
+      scenarioAction.target = {
+        selector: targetKey
+      };
+    }
   }
   if (action.value !== undefined && action.value !== null) {
-    scenarioAction.value = action.value;
+    scenarioAction.value = cloneJson(action.value);
   }
   if (isRecord(action.options) && Object.keys(action.options).length > 0) {
-    scenarioAction.options = action.options;
+    scenarioAction.options = cloneJson(action.options) as ScenarioAction["options"];
   }
 
   return scenarioAction;
 }
 
 function isUnsafeReplayAction(action: ScenarioAction): boolean {
-  if (action.type === "fill" || action.type === "select") {
-    return containsUnsafeText(action);
-  }
-  if (action.type !== "click") {
-    return false;
-  }
-
   return containsUnsafeText(action);
 }
 
@@ -182,8 +181,9 @@ function settleStrategyForAction(action: ScenarioAction): SettleStrategy {
 }
 
 function createReplayStepDescription(decision: TraceDecisionRecord, index: number): string {
+  const description = typeof decision.description === "string" ? decision.description : null;
   const reason = typeof decision.reason === "string" ? decision.reason : "agent trace decision";
-  return `Replay AgentTrace decision ${index + 1}: ${reason}`;
+  return description ?? `Replay AgentTrace decision ${index + 1}: ${reason}`;
 }
 
 function resolveTaskGoal(task: AgentTask): string {
@@ -202,21 +202,16 @@ function isScenarioStage(value: unknown): value is ScenarioStage {
   return typeof value === "string" && SCENARIO_STAGES.includes(value as ScenarioStage);
 }
 
-function actionRecordKey(value: unknown): string | null {
-  if (!isRecord(value)) {
-    return null;
-  }
+function isSettleStrategy(value: unknown): value is SettleStrategy {
+  return isRecord(value) && typeof value.type === "string" && typeof value.timeout_ms === "number";
+}
 
-  const action = value as TraceActionRecord;
-  if (!isScenarioActionType(action.tool)) {
-    return null;
-  }
+function cloneSettleStrategy(settleStrategy: SettleStrategy): SettleStrategy {
+  return cloneJson(settleStrategy) as SettleStrategy;
+}
 
-  return JSON.stringify({
-    tool: action.tool,
-    target_key: typeof action.target_key === "string" ? action.target_key : null,
-    target: action.target ?? null
-  });
+function cloneJson(value: unknown): unknown {
+  return JSON.parse(JSON.stringify(value));
 }
 
 const SCENARIO_ACTION_TYPES: ScenarioAction["type"][] = [
@@ -238,19 +233,9 @@ const UNSAFE_REPLAY_KEYWORDS = [
   "submit payment",
   "complete payment",
   "confirm payment",
-  "final payment",
-  "place order",
-  "submit order",
-  "complete order",
-  "confirm order",
-  "delete account",
-  "remove account",
   "결제 완료",
-  "최종 결제",
-  "결제 확정",
+  "결제하기",
   "주문 완료",
-  "주문 확정",
-  "구매 확정",
-  "회원 탈퇴",
-  "계정 삭제"
+  "place order",
+  "delete account"
 ];
