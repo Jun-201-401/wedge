@@ -45,6 +45,27 @@
           "fixed_or_sticky_count": 0,
           "overlay_candidate_count": 0,
           "max_z_index": null
+        },
+        "ax_tree_summary": {
+          "node_count": 8,
+          "ignored_node_count": 1,
+          "named_node_count": 4,
+          "interactive_role_count": 2,
+          "form_control_role_count": 1,
+          "heading_count": 1,
+          "landmark_count": 1,
+          "button_count": 1,
+          "link_count": 1,
+          "focusable_count": 2,
+          "role_counts": {
+            "RootWebArea": 1,
+            "main": 1,
+            "heading": 1,
+            "link": 1,
+            "textbox": 1
+          },
+          "root_role": "RootWebArea",
+          "truncated": false
         }
       },
       "observations": [
@@ -114,6 +135,37 @@
               }
             }
           ]
+        },
+        {
+          "observation_id": "step_003_fill_email.obs_ax_tree",
+          "type": "ax_tree",
+          "stage": "INPUT",
+          "source": [
+            "accessibility"
+          ],
+          "confidence": 0.72,
+          "ax_artifact_id": "artifact-response-ax-tree",
+          "summary": {
+            "node_count": 8,
+            "ignored_node_count": 1,
+            "named_node_count": 4,
+            "interactive_role_count": 2,
+            "form_control_role_count": 1,
+            "heading_count": 1,
+            "landmark_count": 1,
+            "button_count": 1,
+            "link_count": 1,
+            "focusable_count": 2,
+            "role_counts": {
+              "RootWebArea": 1,
+              "main": 1,
+              "heading": 1,
+              "link": 1,
+              "textbox": 1
+            },
+            "root_role": "RootWebArea",
+            "truncated": false
+          }
         }
       ],
       "deltas": [
@@ -125,7 +177,8 @@
       ],
       "artifactRefs": [
         "artifact-response-screenshot",
-        "artifact-response-dom"
+        "artifact-response-dom",
+        "artifact-response-ax-tree"
       ]
     },
     {

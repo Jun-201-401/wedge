@@ -60,6 +60,71 @@ test("[Worker lifecycle] accepted callback 실패 시 session을 닫고 failed c
   assert.equal(capturedFailedPayload.resultCompleteness, "NONE");
 });
 
+test("[Worker capture policy] run artifactPolicy.captureAxTree를 ScenarioPlan capture 옵션으로 전달한다", async () => {
+  const message = await loadExampleMessage();
+  message.payload.artifactPolicy = {
+    captureAxTree: true
+  };
+  message.payload.scenarioPlan!.steps = [
+    {
+      step_id: "step_001_checkpoint",
+      stage: "FIRST_VIEW",
+      description: "checkpoint with AX tree",
+      action: {
+        type: "checkpoint"
+      },
+      settle_strategy: {
+        type: "none",
+        timeout_ms: 0
+      },
+      checkpoint: true
+    }
+  ];
+  const capturedOptions: unknown[] = [];
+
+  const worker = registerWorker({
+    config: createRunnerTestConfig(),
+    browserFactory: {
+      kind: "simulated-playwright",
+      createSession: async () =>
+        createSimulatedSession(message.payload.scenarioPlan!, {
+          snapshot: () => createSimulatedPageSnapshot(message.payload.scenarioPlan!),
+          captureArtifacts: async (options) => {
+            capturedOptions.push(options);
+            return {};
+          }
+        })
+    },
+    callbackClient: createStubCallbackClient(),
+    capturePipeline: {
+      collectCheckpoint: async () => ({
+        checkpoint: {
+          checkpointId: "checkpoint-1",
+          stepKey: "step_001_checkpoint",
+          stage: "FIRST_VIEW",
+          trigger: {},
+          settle: {
+            strategy: "none",
+            durationMs: 0,
+            status: "settled"
+          },
+          state: {},
+          observations: [],
+          deltas: []
+        },
+        artifacts: []
+      })
+    },
+    artifactStore: {
+      persistArtifacts: async () => []
+    }
+  });
+
+  await worker.handleMessage(message);
+
+  assert.deepEqual(capturedOptions, [{ captureAxTree: true }]);
+});
+
 test("[Worker 관측성] step timeout 실패는 timeout code와 runId/stepKey 로그를 남긴다", async () => {
   const message = await loadExampleMessage();
   message.payload.scenarioPlan!.steps = [

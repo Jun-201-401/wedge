@@ -67,7 +67,11 @@ export async function executeScenarioStep({
 
   const settleResult = preparedSettle ? await preparedSettle.settle() : await session.settle(step.settle_strategy);
   const pageSnapshot = session.snapshot();
-  const capturedArtifacts = step.checkpoint ? await session.captureArtifacts() : undefined;
+  const capturedArtifacts = step.checkpoint
+    ? await session.captureArtifacts({
+        captureAxTree: plan.artifact_policy?.capture_ax_tree === true
+      })
+    : undefined;
 
   if (step.checkpoint) {
     deliveryIssues.push(...(await emitCheckpointArtifactsAndCallbacks({

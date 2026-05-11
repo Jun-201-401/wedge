@@ -107,6 +107,7 @@ export interface ScenarioPlan {
     minimum_confidence?: number;
     required_evidence_refs?: string[];
   } | null;
+  artifact_policy?: AgentArtifactPolicy;
   steps: ScenarioStep[];
 }
 
@@ -392,6 +393,15 @@ export interface AgentExecuteMessage {
   };
 }
 
+export interface RunArtifactPolicy extends AgentArtifactPolicy {
+  captureScreenshot?: boolean;
+  captureScreenshots?: boolean;
+  captureDomSnapshot?: boolean;
+  captureDomSnapshots?: boolean;
+  captureAxTree?: boolean;
+  captureTrace?: boolean;
+}
+
 export interface RunExecuteMessage {
   messageId: string;
   messageType: "run.execute.request";
@@ -410,7 +420,7 @@ export interface RunExecuteMessage {
     scenarioTemplateVersionId: string;
     scenarioOverrides?: Record<string, unknown>;
     scenarioPlan: ScenarioPlan;
-    artifactPolicy?: Record<string, unknown>;
+    artifactPolicy?: RunArtifactPolicy;
   };
 }
 
@@ -925,6 +935,32 @@ export interface LayoutVisibilitySummary {
   fixed_or_sticky_count: number;
   overlay_candidate_count: number;
   max_z_index: number | null;
+}
+
+export interface AxTreeSummary {
+  node_count: number;
+  ignored_node_count: number;
+  named_node_count: number;
+  interactive_role_count: number;
+  form_control_role_count: number;
+  heading_count: number;
+  landmark_count: number;
+  button_count: number;
+  link_count: number;
+  focusable_count: number;
+  role_counts: Record<string, number>;
+  root_role?: string | null;
+  truncated?: boolean;
+}
+
+export interface AxTreeObservation {
+  observation_id: string;
+  type: "ax_tree";
+  stage: ScenarioStage;
+  source: ["accessibility"];
+  confidence: number;
+  ax_artifact_id: string;
+  summary: AxTreeSummary;
 }
 
 export interface InteractiveComponentsObservation {

@@ -5,7 +5,7 @@ import type { CapturePipeline } from "../capture/index.ts";
 import { createDeliverySummary, mergeDeliveryIssues, type DeliverySummary } from "../delivery/index.ts";
 import { executeScenario, ScenarioExecutionError, type ScenarioExecutionSummary } from "../scenario/executor/index.ts";
 import type { ArtifactStore } from "../storage/index.ts";
-import type { RunExecuteMessage } from "../shared/contracts.ts";
+import type { AgentArtifactPolicy, RunExecuteMessage, ScenarioPlan } from "../shared/contracts.ts";
 import { classifyRunnerFailure, errorMessage, logOperationalEvent } from "../shared/utils.ts";
 import { emitAcceptedCallback, emitFailedCallback, emitFinishedCallback } from "./callback-policy.ts";
 
@@ -44,7 +44,7 @@ export function registerWorker({
       let accepted = false;
 
       try {
-        const plan = message.payload.scenarioPlan;
+        const plan = applyRunArtifactPolicy(message.payload.scenarioPlan, message.payload.artifactPolicy);
 
         session = await browserFactory.createSession({
           runId: message.payload.runId,
@@ -128,4 +128,65 @@ export function registerWorker({
       }
     }
   };
+}
+
+function applyRunArtifactPolicy(
+  scenarioPlan: ScenarioPlan,
+  artifactPolicy: RunExecuteMessage["payload"]["artifactPolicy"]
+): ScenarioPlan {
+  const normalizedPolicy = normalizeRunArtifactPolicy(artifactPolicy);
+  if (!normalizedPolicy) {
+    return scenarioPlan;
+  }
+
+  return {
+    ...scenarioPlan,
+    artifact_policy: {
+      ...scenarioPlan.artifact_policy,
+      ...normalizedPolicy
+    }
+  };
+}
+
+function normalizeRunArtifactPolicy(
+  artifactPolicy: RunExecuteMessage["payload"]["artifactPolicy"]
+): AgentArtifactPolicy | null {
+  if (!artifactPolicy) {
+    return null;
+  }
+
+  const normalized: AgentArtifactPolicy = {};
+  setOptionalBoolean(normalized, "capture_screenshots", readArtifactPolicyBoolean(artifactPolicy, "capture_screenshots", "captureScreenshot", "captureScreenshots"));
+  setOptionalBoolean(normalized, "capture_dom_snapshots", readArtifactPolicyBoolean(artifactPolicy, "capture_dom_snapshots", "captureDomSnapshot", "captureDomSnapshots"));
+  setOptionalBoolean(normalized, "capture_ax_tree", readArtifactPolicyBoolean(artifactPolicy, "capture_ax_tree", "captureAxTree"));
+  setOptionalBoolean(normalized, "capture_trace", readArtifactPolicyBoolean(artifactPolicy, "capture_trace", "captureTrace"));
+
+  return Object.keys(normalized).length > 0 ? normalized : null;
+}
+
+function readArtifactPolicyBoolean(
+  artifactPolicy: RunExecuteMessage["payload"]["artifactPolicy"],
+  ...keys: string[]
+): boolean | undefined {
+  if (!artifactPolicy) {
+    return undefined;
+  }
+  const record = artifactPolicy as Record<string, unknown>;
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === "boolean") {
+      return value;
+    }
+  }
+  return undefined;
+}
+
+function setOptionalBoolean<K extends keyof AgentArtifactPolicy>(
+  policy: AgentArtifactPolicy,
+  key: K,
+  value: boolean | undefined
+): void {
+  if (value !== undefined) {
+    policy[key] = value;
+  }
 }

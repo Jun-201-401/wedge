@@ -139,6 +139,37 @@ test("[Playwright 실제 실행] goto/fill/select를 수행하고 실제 screens
   }
 });
 
+test("[Playwright AX collector] capture_ax_tree 요청 시 CDP accessibility tree와 summary를 캡처한다", async () => {
+  const fixtureRoot = await mkdtemp(join(tmpdir(), "wedge-runner-playwright-site-"));
+  const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-playwright-artifacts-"));
+  let session: Awaited<ReturnType<ReturnType<typeof createPlaywrightSessionFactory>["createSession"]>> | undefined;
+
+  try {
+    const { formUrl } = await createFixtureSite(fixtureRoot);
+    const browserFactory = createPlaywrightBrowserFactory(artifactsRoot);
+
+    session = await browserFactory.createSession({
+      runId: "run-playwright-ax-tree",
+      plan: createPlaywrightPlan(formUrl)
+    });
+
+    await executeGotoStep(session, formUrl, "step_goto_ax_tree");
+
+    const capturedArtifacts = await session.captureArtifacts({ captureAxTree: true });
+
+    assert.equal(capturedArtifacts.axTree?.mimeType, "application/json");
+    assert.equal(capturedArtifacts.axTree?.fileExtension, "json");
+    assert.ok((capturedArtifacts.axTree?.summary.node_count ?? 0) > 0);
+    assert.ok((capturedArtifacts.axTree?.summary.named_node_count ?? 0) > 0);
+    assert.ok((capturedArtifacts.axTree?.summary.form_control_role_count ?? 0) > 0);
+    assert.match(capturedArtifacts.axTree?.content ?? "", /Accessibility\.getFullAXTree/);
+  } finally {
+    await session?.close();
+    await rm(fixtureRoot, { recursive: true, force: true });
+    await rm(artifactsRoot, { recursive: true, force: true });
+  }
+});
+
 test("[Playwright 실제 실행] screenshot 캡처 전에 lazy image를 스크롤 로딩한다", async () => {
   const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-playwright-artifacts-"));
   const fixtureServer = await createLazyImageFixtureServer();

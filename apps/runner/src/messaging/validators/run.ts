@@ -4,6 +4,7 @@ import {
   assertLiteralString,
   assertNonEmptyString,
   assertOneOf,
+  assertOptionalBoolean,
   assertScenarioPlan,
   assertScenarioPlanConsistency,
   PAYLOAD_DEVICE_PRESETS,
@@ -34,6 +35,7 @@ function assertRunExecutePayload(value: unknown): asserts value is RunExecuteMes
   assertNonEmptyString(value.goal, "runner payload.goal");
   assertOneOf(value.devicePreset, PAYLOAD_DEVICE_PRESETS, "runner payload.devicePreset");
   assertNonEmptyString(value.scenarioTemplateVersionId, "runner payload.scenarioTemplateVersionId");
+  assertRunArtifactPolicy(value.artifactPolicy);
   assertScenarioPlan(value.scenarioPlan);
   assertScenarioPlanConsistency(
     {
@@ -43,4 +45,23 @@ function assertRunExecutePayload(value: unknown): asserts value is RunExecuteMes
     },
     value.scenarioPlan
   );
+}
+
+function assertRunArtifactPolicy(value: unknown): void {
+  if (value === undefined) {
+    return;
+  }
+  if (!isRecord(value)) {
+    throw new RunnerMessageValidationError("runner payload.artifactPolicy must be an object");
+  }
+  assertOptionalBoolean(value.captureScreenshot, "runner payload.artifactPolicy.captureScreenshot");
+  assertOptionalBoolean(value.captureScreenshots, "runner payload.artifactPolicy.captureScreenshots");
+  assertOptionalBoolean(value.captureDomSnapshot, "runner payload.artifactPolicy.captureDomSnapshot");
+  assertOptionalBoolean(value.captureDomSnapshots, "runner payload.artifactPolicy.captureDomSnapshots");
+  assertOptionalBoolean(value.captureAxTree, "runner payload.artifactPolicy.captureAxTree");
+  assertOptionalBoolean(value.captureTrace, "runner payload.artifactPolicy.captureTrace");
+  assertOptionalBoolean(value.capture_screenshots, "runner payload.artifactPolicy.capture_screenshots");
+  assertOptionalBoolean(value.capture_dom_snapshots, "runner payload.artifactPolicy.capture_dom_snapshots");
+  assertOptionalBoolean(value.capture_ax_tree, "runner payload.artifactPolicy.capture_ax_tree");
+  assertOptionalBoolean(value.capture_trace, "runner payload.artifactPolicy.capture_trace");
 }

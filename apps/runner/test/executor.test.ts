@@ -985,6 +985,78 @@ test("[수집 pipeline] DOM visibility/layout summary와 visible text blocks를 
   });
 });
 
+test("[수집 pipeline] AX tree artifact와 bounded summary observation을 checkpoint에 포함한다", async () => {
+  const capturePipeline = createCapturePipeline();
+  const plan = createMinimalPlan();
+  const axSummary = {
+    node_count: 8,
+    ignored_node_count: 1,
+    named_node_count: 4,
+    interactive_role_count: 2,
+    form_control_role_count: 1,
+    heading_count: 1,
+    landmark_count: 1,
+    button_count: 1,
+    link_count: 1,
+    focusable_count: 2,
+    role_counts: {
+      RootWebArea: 1,
+      heading: 1,
+      button: 1,
+      link: 1,
+      textbox: 1
+    },
+    root_role: "RootWebArea",
+    truncated: false
+  };
+  const pageSnapshot: BrowserPageSnapshot = createSimulatedPageSnapshot(plan);
+
+  const collection = await capturePipeline.collectCheckpoint({
+    step: {
+      step_id: "step_capture_ax_tree",
+      stage: "FIRST_VIEW",
+      description: "capture accessibility tree",
+      action: {
+        type: "checkpoint"
+      },
+      settle_strategy: {
+        type: "none",
+        timeout_ms: 0
+      },
+      checkpoint: true
+    },
+    stepOrder: 6,
+    plan,
+    pageSnapshot,
+    settleResult: createSettledResult(),
+    capturedArtifacts: {
+      axTree: {
+        content: JSON.stringify({ nodes: [{ role: { value: "RootWebArea" } }], summary: axSummary }),
+        mimeType: "application/json",
+        fileExtension: "json",
+        summary: axSummary
+      }
+    }
+  });
+
+  const axArtifact = collection.artifacts.find((artifact) => artifact.artifactType === "AX_TREE");
+  const observation = collection.checkpoint.observations.find((candidate) => candidate.type === "ax_tree");
+
+  assert.equal(axArtifact?.mimeType, "application/json");
+  assert.equal(axArtifact?.fileExtension, "json");
+  assert.match(axArtifact?.content ?? "", /RootWebArea/);
+  assert.deepEqual(collection.checkpoint.state.ax_tree_summary, axSummary);
+  assert.deepEqual(observation, {
+    observation_id: "step_capture_ax_tree.obs_ax_tree",
+    type: "ax_tree",
+    stage: "FIRST_VIEW",
+    source: ["accessibility"],
+    confidence: 0.72,
+    ax_artifact_id: axArtifact?.artifactId,
+    summary: axSummary
+  });
+});
+
 test("[수집 pipeline] Journey raw signal은 click 전후 상태와 artifact/bbox 근거를 observation으로 남긴다", async () => {
   const capturePipeline = createCapturePipeline();
   const plan = createMinimalPlan();

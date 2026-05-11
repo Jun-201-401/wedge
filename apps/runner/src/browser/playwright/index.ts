@@ -13,6 +13,7 @@ import {
 import { createCdpSession, type CdpSessionMetadata } from "../cdp/index.ts";
 import type { RunnerBrowserName, RunnerConfig } from "../../config/index.ts";
 import type {
+  AxTreeSummary,
   InteractiveComponentBounds,
   InteractiveComponentLayout,
   InteractiveComponentVisibility,
@@ -130,6 +131,16 @@ export interface BrowserCapturedArtifacts {
     mimeType: "text/html";
     fileExtension: "html";
   };
+  axTree?: {
+    content: string;
+    mimeType: "application/json";
+    fileExtension: "json";
+    summary: AxTreeSummary;
+  };
+}
+
+export interface BrowserCaptureOptions {
+  captureAxTree?: boolean;
 }
 
 export interface PreparedBrowserSettle {
@@ -144,7 +155,7 @@ export interface BrowserSession {
   prepareSettle?: (strategy: SettleStrategy) => Promise<PreparedBrowserSettle | null>;
   settle: (strategy: SettleStrategy) => Promise<BrowserSettleResult>;
   snapshot: () => BrowserPageSnapshot;
-  captureArtifacts: () => Promise<BrowserCapturedArtifacts>;
+  captureArtifacts: (options?: BrowserCaptureOptions) => Promise<BrowserCapturedArtifacts>;
   close: () => Promise<void>;
 }
 
@@ -164,6 +175,16 @@ type SettleTimeoutDetails = Record<string, unknown> | ((error: unknown) => Recor
 interface SettleAttempt {
   attempt: () => Promise<Record<string, unknown>>;
   timeoutDetails: SettleTimeoutDetails;
+}
+
+interface RawAxTreeNode {
+  role?: { value?: unknown };
+  name?: { value?: unknown };
+  ignored?: boolean;
+  properties?: Array<{
+    name?: string;
+    value?: { value?: unknown };
+  }>;
 }
 
 type ReplayHintLocatorRecipeEntry =
@@ -238,6 +259,110 @@ function readPngDimensions(buffer: Buffer) {
     width: buffer.readUInt32BE(16),
     height: buffer.readUInt32BE(20)
   };
+}
+
+function createEmptyAxTreeSummary(): AxTreeSummary {
+  return {
+    node_count: 0,
+    ignored_node_count: 0,
+    named_node_count: 0,
+    interactive_role_count: 0,
+    form_control_role_count: 0,
+    heading_count: 0,
+    landmark_count: 0,
+    button_count: 0,
+    link_count: 0,
+    focusable_count: 0,
+    role_counts: {},
+    root_role: null,
+    truncated: false
+  };
+}
+
+function summarizeAxTree(nodes: RawAxTreeNode[], truncated: boolean): AxTreeSummary {
+  const summary = createEmptyAxTreeSummary();
+  const interactiveRoles = new Set([
+    "button",
+    "link",
+    "textbox",
+    "searchbox",
+    "checkbox",
+    "radio",
+    "combobox",
+    "listbox",
+    "menuitem",
+    "option",
+    "slider",
+    "spinbutton",
+    "switch",
+    "tab"
+  ]);
+  const formControlRoles = new Set([
+    "textbox",
+    "searchbox",
+    "checkbox",
+    "radio",
+    "combobox",
+    "listbox",
+    "option",
+    "slider",
+    "spinbutton",
+    "switch"
+  ]);
+  const landmarkRoles = new Set(["banner", "main", "navigation", "contentinfo", "complementary", "region", "search", "form"]);
+
+  summary.node_count = nodes.length;
+  summary.root_role = axStringValue(nodes[0]?.role?.value);
+  summary.truncated = truncated;
+
+  for (const node of nodes) {
+    const role = axStringValue(node.role?.value) ?? "unknown";
+    summary.role_counts[role] = (summary.role_counts[role] ?? 0) + 1;
+
+    if (node.ignored === true) {
+      summary.ignored_node_count += 1;
+    }
+    if (axStringValue(node.name?.value)) {
+      summary.named_node_count += 1;
+    }
+    if (interactiveRoles.has(role)) {
+      summary.interactive_role_count += 1;
+    }
+    if (formControlRoles.has(role)) {
+      summary.form_control_role_count += 1;
+    }
+    if (role === "heading") {
+      summary.heading_count += 1;
+    }
+    if (landmarkRoles.has(role)) {
+      summary.landmark_count += 1;
+    }
+    if (role === "button") {
+      summary.button_count += 1;
+    }
+    if (role === "link") {
+      summary.link_count += 1;
+    }
+    if (hasAxBooleanProperty(node, "focusable")) {
+      summary.focusable_count += 1;
+    }
+  }
+
+  summary.role_counts = Object.fromEntries(
+    Object.entries(summary.role_counts)
+      .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
+      .slice(0, 30)
+  );
+
+  return summary;
+}
+
+function axStringValue(value: unknown): string | null {
+  return typeof value === "string" && value.length > 0 ? value : null;
+}
+
+function hasAxBooleanProperty(node: RawAxTreeNode, propertyName: string): boolean {
+  return node.properties?.some((property) => property.name === propertyName && property.value?.value === true) ?? false;
 }
 
 class SimulatedPlaywrightSession implements BrowserSession {
@@ -340,8 +465,25 @@ class SimulatedPlaywrightSession implements BrowserSession {
     return createBrowserPageSnapshot(this.plan, this.state, this.cdpSession);
   }
 
-  async captureArtifacts(): Promise<BrowserCapturedArtifacts> {
-    return {};
+  async captureArtifacts(options: BrowserCaptureOptions = {}): Promise<BrowserCapturedArtifacts> {
+    if (!options.captureAxTree) {
+      return {};
+    }
+
+    const summary = createEmptyAxTreeSummary();
+    return {
+      axTree: {
+        content: JSON.stringify({
+          source: "simulated",
+          truncated: false,
+          nodes: [],
+          summary
+        }, null, 2),
+        mimeType: "application/json",
+        fileExtension: "json",
+        summary
+      }
+    };
   }
 
   async close(): Promise<void> {
@@ -634,7 +776,7 @@ class RealPlaywrightSession implements BrowserSession {
     return createBrowserPageSnapshot(this.plan, this.state, this.cdpSession);
   }
 
-  async captureArtifacts(): Promise<BrowserCapturedArtifacts> {
+  async captureArtifacts(options: BrowserCaptureOptions = {}): Promise<BrowserCapturedArtifacts> {
     await preparePageForScreenshot(this.page);
 
     const screenshotBuffer = await this.page.screenshot({
@@ -643,6 +785,7 @@ class RealPlaywrightSession implements BrowserSession {
     });
     const screenshotDimensions = readPngDimensions(screenshotBuffer) ?? this.plan.environment.viewport;
     const domSnapshot = await this.page.content();
+    const axTree = options.captureAxTree ? await this.captureAxTree() : undefined;
 
     return {
       screenshot: {
@@ -656,7 +799,8 @@ class RealPlaywrightSession implements BrowserSession {
         content: domSnapshot,
         mimeType: "text/html",
         fileExtension: "html"
-      }
+      },
+      ...(axTree ? { axTree } : {})
     };
   }
 
@@ -668,6 +812,36 @@ class RealPlaywrightSession implements BrowserSession {
   private async initializeContext(plan: ScenarioPlan): Promise<void> {
     if (Array.isArray(plan.environment.permissions) && plan.environment.permissions.length > 0) {
       await this.context.grantPermissions(plan.environment.permissions);
+    }
+  }
+
+  private async captureAxTree(): Promise<NonNullable<BrowserCapturedArtifacts["axTree"]> | undefined> {
+    try {
+      const client = await this.context.newCDPSession(this.page);
+      try {
+        const result = await client.send("Accessibility.getFullAXTree");
+        const nodes = Array.isArray((result as { nodes?: unknown }).nodes)
+          ? ((result as { nodes: RawAxTreeNode[] }).nodes)
+          : [];
+        const truncated = nodes.length > 500;
+        const summary = summarizeAxTree(nodes, truncated);
+        return {
+          content: JSON.stringify({
+            source: "cdp.Accessibility.getFullAXTree",
+            truncated,
+            node_count: nodes.length,
+            nodes: nodes.slice(0, 500),
+            summary
+          }, null, 2),
+          mimeType: "application/json",
+          fileExtension: "json",
+          summary
+        };
+      } finally {
+        await client.detach().catch(() => {});
+      }
+    } catch {
+      return undefined;
     }
   }
 

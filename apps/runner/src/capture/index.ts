@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { BrowserActionResult, BrowserCapturedArtifacts, BrowserPageSnapshot, BrowserSettleResult } from "../browser/playwright/index.ts";
 import type {
   ArtifactDraft,
+  AxTreeObservation,
   CategoryFilterSignalObservation,
   Checkpoint,
   DepthFromDiscoveryObservation,
@@ -71,6 +72,7 @@ export function createCapturePipeline(): CapturePipeline {
         capturedArtifacts
       });
       const consoleLogArtifact = createConsoleLogArtifact(step.step_id, pageSnapshot.consoleErrors);
+      const axTreeArtifact = createAxTreeArtifact(step.step_id, capturedArtifacts);
 
       return {
         checkpoint: {
@@ -87,7 +89,7 @@ export function createCapturePipeline(): CapturePipeline {
             durationMs: settleResult.durationMs,
             status: settleResult.status
           },
-          state: createCheckpointState(pageSnapshot),
+          state: createCheckpointState(pageSnapshot, capturedArtifacts),
           observations: createCheckpointObservations({
             step,
             stepOrder,
@@ -96,11 +98,13 @@ export function createCapturePipeline(): CapturePipeline {
             actionResult,
             settleResult,
             screenshotArtifactId: screenshotArtifact.artifactId,
+            axTreeArtifactId: axTreeArtifact?.artifactId,
+            capturedArtifacts,
             journeyDepthContext
           }),
           deltas: createCheckpointDeltas(pageSnapshot)
         },
-        artifacts: buildCheckpointArtifacts(screenshotArtifact, domArtifact, consoleLogArtifact)
+        artifacts: buildCheckpointArtifacts(screenshotArtifact, domArtifact, consoleLogArtifact, axTreeArtifact)
       };
     }
   };
@@ -109,11 +113,15 @@ export function createCapturePipeline(): CapturePipeline {
 function buildCheckpointArtifacts(
   screenshotArtifact: ArtifactDraft,
   domArtifact: ArtifactDraft,
-  consoleLogArtifact: ArtifactDraft | null
+  consoleLogArtifact: ArtifactDraft | null,
+  axTreeArtifact: ArtifactDraft | null
 ): ArtifactDraft[] {
-  return consoleLogArtifact
-    ? [screenshotArtifact, domArtifact, consoleLogArtifact]
-    : [screenshotArtifact, domArtifact];
+  return [
+    screenshotArtifact,
+    domArtifact,
+    ...(consoleLogArtifact ? [consoleLogArtifact] : []),
+    ...(axTreeArtifact ? [axTreeArtifact] : [])
+  ];
 }
 
 function createConsoleLogArtifact(stepKey: string, consoleErrors: string[]): ArtifactDraft | null {
@@ -137,7 +145,28 @@ function createConsoleLogArtifact(stepKey: string, consoleErrors: string[]): Art
   };
 }
 
-function createCheckpointState(pageSnapshot: BrowserPageSnapshot): Checkpoint["state"] {
+function createAxTreeArtifact(
+  stepKey: string,
+  capturedArtifacts?: BrowserCapturedArtifacts
+): ArtifactDraft | null {
+  if (!capturedArtifacts?.axTree) {
+    return null;
+  }
+
+  return {
+    artifactId: randomUUID(),
+    artifactType: "AX_TREE",
+    stepKey,
+    mimeType: capturedArtifacts.axTree.mimeType,
+    fileExtension: capturedArtifacts.axTree.fileExtension,
+    content: capturedArtifacts.axTree.content
+  };
+}
+
+function createCheckpointState(
+  pageSnapshot: BrowserPageSnapshot,
+  capturedArtifacts?: BrowserCapturedArtifacts
+): Checkpoint["state"] {
   return {
     url: pageSnapshot.finalUrl,
     title: pageSnapshot.title,
@@ -160,6 +189,7 @@ function createCheckpointState(pageSnapshot: BrowserPageSnapshot): Checkpoint["s
       event_count: pageSnapshot.networkEvents.length,
       failed_request_count: pageSnapshot.networkEvents.filter((event) => event.failed).length
     },
+    ...(capturedArtifacts?.axTree ? { ax_tree_summary: capturedArtifacts.axTree.summary } : {}),
     cdpSession: pageSnapshot.cdpSession
   };
 }
@@ -172,6 +202,8 @@ function createCheckpointObservations({
   actionResult,
   settleResult,
   screenshotArtifactId,
+  axTreeArtifactId,
+  capturedArtifacts,
   journeyDepthContext
 }: {
   step: ScenarioStep;
@@ -181,6 +213,8 @@ function createCheckpointObservations({
   actionResult?: BrowserActionResult;
   settleResult: BrowserSettleResult;
   screenshotArtifactId: string;
+  axTreeArtifactId?: string;
+  capturedArtifacts?: BrowserCapturedArtifacts;
   journeyDepthContext?: JourneyDepthContext;
 }): Record<string, unknown>[] {
   const journeyActionObservation = createJourneyActionRawObservation({
@@ -234,6 +268,7 @@ function createCheckpointObservations({
     ...(productDetailSignalObservation ? [{ ...productDetailSignalObservation }] : []),
     ...(goalActionResultObservation ? [{ ...goalActionResultObservation }] : []),
     ...(depthFromDiscoveryObservation ? [{ ...depthFromDiscoveryObservation }] : []),
+    ...createAxTreeObservations(step, capturedArtifacts, axTreeArtifactId).map((observation) => ({ ...observation })),
     ...createVisibleTextBlockObservations(step, pageSnapshot),
     ...createInteractiveComponentsObservations(step, pageSnapshot).map((observation) => ({ ...observation })),
     ...createFormFieldObservations(pageSnapshot.fields),
@@ -593,6 +628,28 @@ function createGoalActionResultObservation({
     result,
     matched_product_card: matchedProductCard
   };
+}
+
+function createAxTreeObservations(
+  step: ScenarioStep,
+  capturedArtifacts?: BrowserCapturedArtifacts,
+  axTreeArtifactId?: string
+): AxTreeObservation[] {
+  if (!capturedArtifacts?.axTree || !axTreeArtifactId) {
+    return [];
+  }
+
+  return [
+    {
+      observation_id: `${step.step_id}.obs_ax_tree`,
+      type: "ax_tree",
+      stage: step.stage,
+      source: ["accessibility"],
+      confidence: 0.72,
+      ax_artifact_id: axTreeArtifactId,
+      summary: capturedArtifacts.axTree.summary
+    }
+  ];
 }
 
 function createVisibleTextBlockObservations(
