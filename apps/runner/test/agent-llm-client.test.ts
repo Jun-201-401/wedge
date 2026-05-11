@@ -617,7 +617,7 @@ function selectPromptCandidateId(payload: Record<string, unknown>, expectedText:
     message !== null &&
     (message as Record<string, unknown>).role === "user"
   ) as { content?: unknown } | undefined;
-  assert.equal(typeof userMessage?.content, "string");
+  assert.ok(userMessage && typeof userMessage.content === "string");
 
   const parsed = JSON.parse(userMessage.content) as {
     page?: {
@@ -628,6 +628,6 @@ function selectPromptCandidateId(payload: Record<string, unknown>, expectedText:
     };
   };
   const candidate = parsed.page?.candidates?.find((entry) => entry.text === expectedText);
-  assert.equal(typeof candidate?.targetKey, "string");
+  assert.ok(candidate && typeof candidate.targetKey === "string");
   return candidate.targetKey;
 }

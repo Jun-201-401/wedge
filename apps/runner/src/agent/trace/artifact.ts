@@ -3,6 +3,7 @@ import type { DeliveryIssue } from "../../delivery/index.ts";
 import type { ArtifactStore } from "../../storage/index.ts";
 import type { AgentTrace, ArtifactDraft } from "../../shared/contracts.ts";
 import { errorMessage } from "../../shared/utils.ts";
+import { randomUUID } from "node:crypto";
 
 export async function persistAgentTraceArtifact(input: {
   runId: string;
@@ -12,7 +13,7 @@ export async function persistAgentTraceArtifact(input: {
 }): Promise<DeliveryIssue[]> {
   const deliveryIssues: DeliveryIssue[] = [];
   const artifact: ArtifactDraft = {
-    artifactId: input.trace.trace_id,
+    artifactId: randomUUID(),
     artifactType: "TRACE",
     stepKey: "agent_trace",
     mimeType: "application/json",

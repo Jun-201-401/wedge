@@ -33,6 +33,7 @@ export type {
   AgentTrace,
   AgentTraceCallbackPayload,
   AgentTraceRequest,
+  AgentTurnTrace,
   ArtifactBatch,
   Checkpoint,
   DiscoveryEntrypointCandidate,

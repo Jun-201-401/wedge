@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { dirname } from "node:path";
 import { exportAgentTraceToScenarioPlan } from "../src/agent/export-plan.ts";
 import { executeScenario } from "../src/scenario/executor/index.ts";
-import type { AgentTrace, ScenarioPlan } from "../src/shared/contracts.ts";
+import type { AgentTrace, AgentTurnTrace, ScenarioPlan } from "../src/shared/contracts.ts";
 import {
   createSettledResult,
   createSimulatedPageSnapshot,
@@ -46,15 +46,17 @@ test("[Agent Export] 정책 차단/unsafe action은 replay plan에서 제외한�
     await readFile(resolve(repoRoot, "packages/contracts/examples/sample-agent-trace-checkout-entry.json"), "utf8")
   ) as AgentTrace;
 
-  const safeTurn = trace.turns[1] as Record<string, any>;
+  const safeTurn = trace.turns[1] as AgentTurnTrace;
+  const safeDecision = safeTurn.decision;
+  assert.ok(safeDecision);
   trace.turns.push({
     ...safeTurn,
     turn: 3,
     decision: {
-      ...safeTurn.decision,
+      ...safeDecision,
+      targetKey: "#pay-now",
       action: {
         type: "click",
-        targetKey: "#pay-now",
         target: {
           selector: "#pay-now",
           text: "결제 완료"

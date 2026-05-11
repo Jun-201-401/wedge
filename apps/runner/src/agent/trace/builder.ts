@@ -1,21 +1,20 @@
 import { randomUUID } from "node:crypto";
 import type { BrowserPageSnapshot } from "../../browser/playwright/index.ts";
 import type {
-  AgentEvent,
-  AgentEventType,
+  AgentCallbackEventType,
   AgentFinalOutcome,
   AgentPolicyDecision,
   AgentPolicyResult,
   AgentRiskClass,
   AgentTask,
   AgentTrace,
+  AgentTurnTrace,
   ScenarioStep
 } from "../../shared/contracts.ts";
-import { errorMessage, toIsoTimestamp } from "../../shared/utils.ts";
+import { errorMessage } from "../../shared/utils.ts";
 import type { AgentObservation } from "../observation.ts";
 import type { AgentDecision } from "../planner.ts";
 import type { AgentVerificationResult } from "../verifier.ts";
-import { createTraceObservation } from "./observation.ts";
 import { createAgentOutcome, type AgentOutcomeInput } from "./outcome.ts";
 
 export type { AgentOutcomeInput } from "./outcome.ts";
@@ -40,41 +39,50 @@ export interface AgentTraceBuilder {
 }
 
 export function createAgentTraceBuilder(task: AgentTask): AgentTraceBuilder {
-  const traceId = randomUUID();
-  const startedAt = toIsoTimestamp();
-  const events: AgentEvent[] = [];
-  const observations: Record<string, unknown>[] = [];
-  const decisions: Record<string, unknown>[] = [];
-  const policyResults: AgentPolicyResult[] = [];
-  const verificationResults: Record<string, unknown>[] = [];
-  const artifactRefs: string[] = [];
+  const events: Array<{ eventType: AgentCallbackEventType; payload: Record<string, unknown> }> = [];
+  const turnsByStepIndex = new Map<number, AgentTurnTrace>();
   let finishedTrace: AgentTrace | null = null;
 
-  function addEvent(stepIndex: number, eventType: AgentEventType, payload: Record<string, unknown>): void {
-    events.push({
-      schema_version: "0.1",
-      event_id: randomUUID(),
-      task_id: task.task_id,
-      attempt_id: task.attempt_id,
-      run_id: task.run_id,
-      step_index: stepIndex,
-      event_type: eventType,
-      occurred_at: toIsoTimestamp(),
-      payload
-    });
+  function addEvent(_stepIndex: number, eventType: AgentCallbackEventType, payload: Record<string, unknown>): void {
+    events.push({ eventType, payload });
+  }
+
+  function ensureTurn(stepIndex: number): AgentTurnTrace {
+    let turn = turnsByStepIndex.get(stepIndex);
+    if (!turn) {
+      turn = {
+        turn: Math.max(1, stepIndex),
+        observation: {
+          finalUrl: task.start_url,
+          title: "unknown",
+          candidateCount: 0
+        },
+        preDecisionVerification: {
+          satisfied: false,
+          terminal: false,
+          outcome: "CONTINUE",
+          reason: "Trace builder has not recorded pre-decision verification.",
+          confidence: 0,
+          phase: "pre_decision"
+        }
+      };
+      turnsByStepIndex.set(stepIndex, turn);
+    }
+    return turn;
   }
 
   return {
     recordObservation(stepIndex, observation) {
       const observationId = randomUUID();
-      observations.push(createTraceObservation(task, stepIndex, observationId, observation.snapshot));
-      addEvent(stepIndex, "AGENT_OBSERVATION_CAPTURED", {
+      const turn = ensureTurn(stepIndex);
+      turn.observation = {
+        finalUrl: observation.snapshot.finalUrl,
+        title: observation.snapshot.title,
+        candidateCount: observation.snapshot.interactiveComponents.length
+      };
+      addEvent(stepIndex, "PRE_DECISION_VERIFIED", {
         observation_id: observationId,
         url: observation.snapshot.finalUrl,
-        candidate_count: observation.snapshot.interactiveComponents.length
-      });
-      addEvent(stepIndex, "AGENT_CANDIDATES_EXTRACTED", {
-        observation_id: observationId,
         candidate_count: observation.snapshot.interactiveComponents.length
       });
       return observationId;
@@ -82,54 +90,30 @@ export function createAgentTraceBuilder(task: AgentTask): AgentTraceBuilder {
 
     recordDecision(stepIndex, observationId, decision) {
       const decisionId = randomUUID();
-      decisions.push({
-        schema_version: "0.1",
-        decision_id: decisionId,
-        task_id: task.task_id,
-        observation_id: observationId,
-        decision_type: decision.kind === "finish" ? "STOP_BLOCKED" : "ACT",
-        action: {
-          tool: decision.action.type,
-          target_key: decision.targetKey,
-          target: decision.action.target ?? null,
-          value: decision.action.value ?? null,
-          options: decision.action.options ?? {}
-        },
-        expected_outcome: {},
-        reason: decision.reason,
-        confidence: decision.confidence,
-        stage: decision.stage,
-        planner_source: decision.source ?? "rule_based"
-      });
-      addEvent(stepIndex, "AGENT_DECISION_RECEIVED", {
+      ensureTurn(stepIndex).decision = {
+        ...decision,
+        metadata: decision.metadata ? { ...decision.metadata } : undefined
+      };
+      addEvent(stepIndex, "DECISION_MADE", {
         decision_id: decisionId,
         observation_id: observationId,
         decision_type: decision.kind === "finish" ? "STOP_BLOCKED" : "ACT",
         action_type: decision.action.type,
         confidence: decision.confidence,
-        planner_source: decision.source ?? "rule_based"
-      });
-      addEvent(stepIndex, "AGENT_DECISION_VALIDATED", {
-        decision_id: decisionId,
-        valid: true
+        planner_source: decision.metadata?.decisionSource ?? "heuristic"
       });
       return decisionId;
     },
 
     recordPolicyResult(stepIndex, decisionId, result) {
       const policyResultId = randomUUID();
-      policyResults.push({
-        schema_version: "0.1",
-        policy_result_id: policyResultId,
-        task_id: task.task_id,
-        decision_id: decisionId,
-        risk_class: result.riskClass,
-        decision: result.decision,
+      const policy: AgentPolicyResult = {
+        allowed: result.decision === "ALLOW",
         reason: result.reason,
-        matched_signals: result.matchedSignals,
-        final_outcome: result.finalOutcome ?? null
-      });
-      addEvent(stepIndex, result.decision === "BLOCK" ? "AGENT_POLICY_BLOCKED" : "AGENT_POLICY_ALLOWED", {
+        riskClass: result.riskClass
+      };
+      ensureTurn(stepIndex).policy = policy;
+      addEvent(stepIndex, "POLICY_CHECKED", {
         policy_result_id: policyResultId,
         decision_id: decisionId,
         risk_class: result.riskClass,
@@ -142,7 +126,7 @@ export function createAgentTraceBuilder(task: AgentTask): AgentTraceBuilder {
     },
 
     recordActionStarted(stepIndex, decisionId, step) {
-      addEvent(stepIndex, "AGENT_ACTION_STARTED", {
+      addEvent(stepIndex, "ACTION_COMPLETED", {
         decision_id: decisionId,
         step_id: step.step_id,
         tool: step.action.type,
@@ -151,22 +135,22 @@ export function createAgentTraceBuilder(task: AgentTask): AgentTraceBuilder {
     },
 
     recordActionCompleted(stepIndex, decisionId, step, snapshot) {
-      addEvent(stepIndex, "AGENT_ACTION_COMPLETED", {
+      ensureTurn(stepIndex).actionResult = {
+        actionType: step.action.type,
+        finalUrl: snapshot.finalUrl,
+        completed: true
+      };
+      addEvent(stepIndex, "ACTION_COMPLETED", {
         decision_id: decisionId,
         step_id: step.step_id,
         tool: step.action.type,
         final_url: snapshot.finalUrl,
         title: snapshot.title
       });
-      addEvent(stepIndex, "AGENT_SETTLE_COMPLETED", {
-        decision_id: decisionId,
-        step_id: step.step_id,
-        final_url: snapshot.finalUrl
-      });
     },
 
     recordActionFailed(stepIndex, decisionId, step, error) {
-      addEvent(stepIndex, "AGENT_ACTION_FAILED", {
+      addEvent(stepIndex, "ACTION_FAILED", {
         decision_id: decisionId,
         step_id: step?.step_id ?? null,
         tool: step?.action.type ?? null,
@@ -177,18 +161,13 @@ export function createAgentTraceBuilder(task: AgentTask): AgentTraceBuilder {
     recordVerification(stepIndex, decisionId, verification) {
       const verificationId = randomUUID();
       const status = verification.satisfied ? "SUCCESS" : "PROGRESS";
-      verificationResults.push({
-        schema_version: "0.1",
-        verification_id: verificationId,
-        task_id: task.task_id,
-        decision_id: decisionId,
-        status,
-        goal_progress: verification.satisfied ? "CHECKOUT_ENTRY_REACHED" : "NO_PROGRESS",
-        confidence: verification.confidence,
-        reason: verification.reason,
-        evidence: {}
-      });
-      addEvent(stepIndex, "AGENT_VERIFICATION_COMPLETED", {
+      const turn = ensureTurn(stepIndex);
+      if (verification.phase === "pre_decision") {
+        turn.preDecisionVerification = verification;
+      } else {
+        turn.postActionVerification = verification;
+      }
+      addEvent(stepIndex, "GOAL_VERIFIED", {
         verification_id: verificationId,
         decision_id: decisionId,
         status,
@@ -203,26 +182,18 @@ export function createAgentTraceBuilder(task: AgentTask): AgentTraceBuilder {
         return finishedTrace;
       }
       const outcome = createAgentOutcome(outcomeInput);
-      addEvent(0, outcome.category === "FAILED" ? "AGENT_FAILED" : "AGENT_STOPPED", {
-        final_outcome: outcome.final_outcome,
-        category: outcome.category,
+      addEvent(0, outcome.status === "FAILED" ? "ACTION_FAILED" : "GOAL_VERIFIED", {
+        final_outcome: outcome.status,
+        category: outcomeInput.category,
         reason: outcome.reason
       });
       finishedTrace = {
         schema_version: "0.1",
-        trace_id: traceId,
         task_id: task.task_id,
         attempt_id: task.attempt_id,
+        attempt_index: task.attempt_index,
         run_id: task.run_id,
-        started_at: startedAt,
-        finished_at: toIsoTimestamp(),
-        final_outcome: outcome.final_outcome,
-        events,
-        observations,
-        decisions,
-        policy_results: policyResults,
-        verification_results: verificationResults,
-        artifact_refs: artifactRefs,
+        turns: [...turnsByStepIndex.values()].sort((left, right) => left.turn - right.turn),
         outcome
       };
       return finishedTrace;

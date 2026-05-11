@@ -52,8 +52,7 @@ function decideFromReplayHints(input: AgentDecisionInputWithReplayHints): AgentD
     action: step.action,
     settleStrategy: step.settle_strategy ?? defaultSettleStrategy(step.action),
     stage: step.stage ?? defaultStage(step.action),
-    targetKey,
-    source: "replay_hint"
+    targetKey
   };
 }
 

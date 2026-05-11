@@ -1,7 +1,7 @@
 import type { CallbackClient } from "../../callback/index.ts";
 import type { DeliveryIssue } from "../../delivery/index.ts";
 import type { AgentTrace } from "../../shared/contracts.ts";
-import { errorMessage } from "../../shared/utils.ts";
+import { errorMessage, toIsoTimestamp } from "../../shared/utils.ts";
 
 export async function emitAgentTraceCallbacks(input: {
   runId: string;
@@ -10,22 +10,12 @@ export async function emitAgentTraceCallbacks(input: {
 }): Promise<DeliveryIssue[]> {
   const deliveryIssues: DeliveryIssue[] = [];
 
-  if (input.trace.events.length > 0) {
-    try {
-      await input.callbackClient.sendAgentEvents(input.runId, {
-        events: input.trace.events
-      });
-    } catch (error) {
-      deliveryIssues.push({
-        scope: "agent-events-callback",
-        message: `agent events callback failed: ${errorMessage(error)}`
-      });
-    }
-  }
-
   try {
     await input.callbackClient.sendAgentTrace(input.runId, {
-      trace: input.trace
+      taskId: input.trace.task_id,
+      attemptId: input.trace.attempt_id,
+      occurredAt: toIsoTimestamp(),
+      trace: input.trace as unknown as Record<string, unknown>
     });
   } catch (error) {
     deliveryIssues.push({

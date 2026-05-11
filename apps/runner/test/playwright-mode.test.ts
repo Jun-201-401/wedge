@@ -2749,7 +2749,7 @@ function createAgentIframeReplayPlan(startUrl: string): ScenarioPlan {
     }),
     createStep({
       step_id: "agent_frame_replay_002_click",
-      stage: "NAVIGATION",
+      stage: "CTA",
       description: "replay_hint frame_id 후보 클릭",
       action: {
         type: "click",
@@ -2784,7 +2784,7 @@ function createAgentIframeReplayPlan(startUrl: string): ScenarioPlan {
     }),
     createStep({
       step_id: "agent_frame_replay_003_checkpoint",
-      stage: "ASSERT",
+      stage: "COMMIT",
       description: "frame replay checkpoint",
       action: {
         type: "checkpoint"

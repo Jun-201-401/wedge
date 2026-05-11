@@ -231,9 +231,7 @@ export type AgentVerificationOutcome =
   | "SUCCESS"
   | "BLOCKED_LOGIN"
   | "BLOCKED_CAPTCHA"
-  | "BLOCKED_NO_PATH"
-  | "POLICY_BLOCKED_PAYMENT"
-  | "POLICY_BLOCKED_DESTRUCTIVE"
+  | "POLICY_BLOCKED"
   | "EXHAUSTED";
 
 export interface AgentVerificationResult {
@@ -245,7 +243,7 @@ export interface AgentVerificationResult {
   phase: "pre_decision" | "post_action";
 }
 
-export type AgentDecisionKind = "act" | "checkpoint";
+export type AgentDecisionKind = "act" | "checkpoint" | "finish";
 
 export interface AgentReplayHintLocatorRecipe {
   strategy: string;
