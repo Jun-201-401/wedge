@@ -374,6 +374,11 @@
         "uri": {
           "type": "string"
         },
+        "signed_url": {
+          "type": "string",
+          "format": "uri",
+          "description": "Optional time-limited HTTP(S) URL for image-capable consumers such as Analyzer GMS screenshot checks."
+        },
         "mime_type": {
           "type": "string"
         },
