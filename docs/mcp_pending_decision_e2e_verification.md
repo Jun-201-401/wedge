@@ -297,6 +297,160 @@ Relevant logs with secrets redacted
 
 Do not paste production tokens, JWT secrets, AWS keys, RabbitMQ passwords, cookies, or presigned URLs into the verification result.
 
+## 2026-05-11 Local Verification Result
+
+This local verification was executed with MCP Inspector v0.21.2 and the Wedge API Server running locally.
+
+### Baseline Sampling Check
+
+Before running the Runner E2E, the Inspector sampling baseline was checked with:
+
+```text
+mcp_sampling_decision_spike
+```
+
+Result:
+
+```json
+{
+  "success": true,
+  "samplingSupported": true,
+  "clientName": "inspector-client",
+  "model": "stub-model",
+  "stopReason": "END_TURN",
+  "decision": {
+    "decisionType": "ACT",
+    "tool": "click",
+    "candidateId": "candidate_1",
+    "reason": "Click the visible primary CTA candidate.",
+    "confidence": 0.85
+  },
+  "validation": {
+    "jsonParsed": true,
+    "schemaValid": true,
+    "candidateAllowed": true,
+    "safetyValid": true
+  }
+}
+```
+
+This proves that the API Server can request `sampling/createMessage` from the connected MCP Host during an MCP tool call, and that the returned text can be parsed and validated as decision JSON.
+
+### Runner Pending Decision E2E
+
+The local Runner request was generated from:
+
+```text
+apps/runner/examples/run-execute.agent.request.json
+```
+
+For this verification, the fixture was copied to:
+
+```text
+apps/runner/.runner-artifacts/mcp-e2e-agent-request.json
+```
+
+The request was adjusted to use:
+
+```text
+runId=00000000-0000-4000-8000-000000000090
+RUNNER_AGENT_DECISION_MODE=mcp
+RUNNER_AGENT_MCP_GATEWAY_TIMEOUT_MS=600000
+RUNNER_BROWSER_MODE=simulated
+RUNNER_CALLBACK_MODE=file
+RUNNER_AGENT_IDEMPOTENCY_STORE_ENABLED=false
+```
+
+The MCP Host session was registered with:
+
+```json
+{
+  "runId": "00000000-0000-4000-8000-000000000090",
+  "clientName": "inspector-client",
+  "samplingSupported": true,
+  "samplingRoutingReady": false
+}
+```
+
+The first pending decision was resolved through `resolve_mcp_pending_decision`:
+
+```json
+{
+  "resolved": true,
+  "message": "MCP pending decision was resolved.",
+  "pendingDecisionId": "189c4488-666f-4984-8fb1-ed483502b866",
+  "runId": "00000000-0000-4000-8000-000000000090",
+  "model": "stub-model",
+  "stopReason": "END_TURN",
+  "decision": {
+    "kind": "act",
+    "actionType": "goto",
+    "targetKey": null,
+    "scrollY": null,
+    "stage": "FIRST_VIEW",
+    "reason": "Open the provided start URL before continuing the simulated run.",
+    "confidence": 0.9
+  }
+}
+```
+
+The second pending decision was resolved through `resolve_mcp_pending_decision`:
+
+```json
+{
+  "resolved": true,
+  "message": "MCP pending decision was resolved.",
+  "pendingDecisionId": "530a8235-5518-47c3-a70f-b3960f8eea30",
+  "runId": "00000000-0000-4000-8000-000000000090",
+  "model": "stub-model",
+  "stopReason": "END_TURN",
+  "decision": {
+    "kind": "finish",
+    "actionType": "checkpoint",
+    "targetKey": null,
+    "scrollY": null,
+    "stage": "COMMIT",
+    "reason": "Finish after verifying the MCP pending decision round trip.",
+    "confidence": 0.8
+  }
+}
+```
+
+The Runner completed without `runner failed`, `decision_failed`, or MCP pending decision timeout:
+
+```json
+{
+  "service": "runner",
+  "runId": "00000000-0000-4000-8000-000000000090",
+  "summary": {
+    "completedStepCount": 1,
+    "failedStepCount": 0,
+    "stopped": false
+  },
+  "delivery": {
+    "status": "DELIVERY_COMPLETE",
+    "issues": []
+  }
+}
+```
+
+### Verified Behavior
+
+This run verified the intended Host-driven pending decision flow:
+
+```text
+Runner created a pending MCP decision through API Server.
+API Server stored the pending decision by runId/session route.
+MCP Inspector resolved the pending decision from the active MCP Host session.
+API Server requested sampling/createMessage inside the resolve tool call.
+Inspector returned strict AgentDecision JSON.
+API Server validated and completed the pending decision.
+Runner polled and consumed the completed decision.
+Runner continued after the first decision and exited cleanly after the second decision.
+```
+
+The verification also confirmed that a too-short Runner timeout can fail the run even if the Inspector later resolves the pending decision. The successful rerun used a 600000 ms gateway timeout to give a human operator enough time to submit Inspector sampling responses.
+
 ## Production Gate
 
 Do not enable MCP mode as the production default after this local check alone.
@@ -311,4 +465,3 @@ timeout and TTL tuned for real Host latency
 observability for pending created/resolved/expired/failed counts
 load behavior decision for in-memory pending decisions versus Redis/DB-backed pending store
 ```
-
