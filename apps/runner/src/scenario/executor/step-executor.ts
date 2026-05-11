@@ -1,4 +1,4 @@
-import type { BrowserSession } from "../../browser/playwright/index.ts";
+import type { BrowserCaptureOptions, BrowserSession } from "../../browser/playwright/index.ts";
 import type { CallbackClient } from "../../callback/index.ts";
 import type { CapturePipeline, JourneyDepthContext } from "../../capture/index.ts";
 import type { DeliveryIssue } from "../../delivery/index.ts";
@@ -68,9 +68,7 @@ export async function executeScenarioStep({
   const settleResult = preparedSettle ? await preparedSettle.settle() : await session.settle(step.settle_strategy);
   const pageSnapshot = session.snapshot();
   const capturedArtifacts = step.checkpoint
-    ? await session.captureArtifacts({
-        captureAxTree: plan.artifact_policy?.capture_ax_tree === true
-      })
+    ? await session.captureArtifacts(createBrowserCaptureOptions(plan))
     : undefined;
 
   if (step.checkpoint) {
@@ -102,4 +100,21 @@ export async function executeScenarioStep({
     stopRequested: actionResult.stopRequested,
     deliveryIssues
   };
+}
+
+function createBrowserCaptureOptions(plan: ScenarioPlan): BrowserCaptureOptions {
+  const options: BrowserCaptureOptions = {};
+  if (plan.artifact_policy?.capture_ax_tree === true) {
+    options.captureAxTree = true;
+  }
+  if (plan.artifact_policy?.capture_har === true) {
+    options.captureHar = true;
+  }
+  if (plan.artifact_policy?.capture_performance === true) {
+    options.capturePerformance = true;
+  }
+  if (plan.artifact_policy?.capture_trace === true) {
+    options.captureTrace = true;
+  }
+  return options;
 }

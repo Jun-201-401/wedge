@@ -8,12 +8,14 @@ import {
   type Frame,
   type Locator,
   type BrowserType,
-  type Page
+  type Page,
+  type Request
 } from "playwright";
 import { createCdpSession, type CdpSessionMetadata } from "../cdp/index.ts";
 import type { RunnerBrowserName, RunnerConfig } from "../../config/index.ts";
 import type {
   AxTreeSummary,
+  BrowserPerformanceSummary,
   InteractiveComponentBounds,
   InteractiveComponentLayout,
   InteractiveComponentVisibility,
@@ -75,6 +77,13 @@ export interface BrowserNetworkEventSignal {
   status?: number;
   failed?: boolean;
   errorText?: string;
+  occurredAt?: string;
+  resourceType?: string;
+  requestStartMs?: number | null;
+  responseEndMs?: number | null;
+  durationMs?: number | null;
+  transferSizeBytes?: number | null;
+  encodedBodySizeBytes?: number | null;
 }
 
 export interface BrowserPageSnapshot {
@@ -106,6 +115,7 @@ export interface BrowserPageSnapshot {
   consoleErrors: string[];
   networkErrors: string[];
   networkEvents: BrowserNetworkEventSignal[];
+  performanceSummary: BrowserPerformanceSummary | null;
   breadcrumb: string[];
   toastTexts: string[];
   cartCount: number | null;
@@ -141,6 +151,9 @@ export interface BrowserCapturedArtifacts {
 
 export interface BrowserCaptureOptions {
   captureAxTree?: boolean;
+  captureHar?: boolean;
+  captureTrace?: boolean;
+  capturePerformance?: boolean;
 }
 
 export interface PreparedBrowserSettle {
@@ -239,6 +252,7 @@ interface MutableBrowserState {
   consoleErrors: string[];
   networkErrors: string[];
   networkEvents: BrowserNetworkEventSignal[];
+  performanceSummary: BrowserPerformanceSummary | null;
   breadcrumb: string[];
   toastTexts: string[];
   cartCount: number | null;
@@ -863,16 +877,23 @@ class RealPlaywrightSession implements BrowserSession {
         method: request.method(),
         url: request.url(),
         failed: true,
-        errorText: failureText
+        errorText: failureText,
+        occurredAt: toIsoTimestamp(),
+        resourceType: request.resourceType(),
+        ...networkTimingDetails(request)
       });
     });
 
     this.page.on("response", (response) => {
+      const request = response.request();
       appendNetworkEvent(this.state, {
-        method: response.request().method(),
+        method: request.method(),
         url: response.url(),
         status: response.status(),
-        failed: false
+        failed: false,
+        occurredAt: toIsoTimestamp(),
+        resourceType: request.resourceType(),
+        ...networkTimingDetails(request)
       });
     });
 
@@ -1153,6 +1174,7 @@ class RealPlaywrightSession implements BrowserSession {
     this.state.selectedFilters = await safeSelectedFilters(this.page, this.state.selectedFilters);
     this.state.searchQuery = await safeSearchQuery(this.page, this.state.searchQuery);
     this.state.domSignature = await safeDomSignature(this.page, this.state.domSignature);
+    this.state.performanceSummary = await safePerformanceSummary(this.page, this.state.performanceSummary);
     appendVisitedUrl(this.state.visitedUrls, currentUrl);
   }
 
@@ -1281,6 +1303,7 @@ function createInitialBrowserState(plan: ScenarioPlan): MutableBrowserState {
     consoleErrors: [],
     networkErrors: [],
     networkEvents: [],
+    performanceSummary: null,
     breadcrumb: [],
     toastTexts: [],
     cartCount: null,
@@ -1326,6 +1349,7 @@ function createBrowserPageSnapshot(
     consoleErrors: [...state.consoleErrors],
     networkErrors: [...state.networkErrors],
     networkEvents: state.networkEvents.map((event) => ({ ...event })),
+    performanceSummary: state.performanceSummary ? { ...state.performanceSummary } : null,
     breadcrumb: [...state.breadcrumb],
     toastTexts: [...state.toastTexts],
     cartCount: state.cartCount,
@@ -1448,6 +1472,40 @@ function appendNetworkEvent(state: MutableBrowserState, event: BrowserNetworkEve
   if (state.networkEvents.length > 50) {
     state.networkEvents.shift();
   }
+}
+
+function networkTimingDetails(request: Request): Pick<
+  BrowserNetworkEventSignal,
+  "requestStartMs" | "responseEndMs" | "durationMs" | "transferSizeBytes" | "encodedBodySizeBytes"
+> {
+  try {
+    const timing = request.timing();
+    const requestStartMs = normalizeTimingValue(timing.startTime);
+    const responseEndMs = normalizeTimingValue(timing.responseEnd);
+    const durationMs = requestStartMs !== null && responseEndMs !== null && responseEndMs >= requestStartMs
+      ? Math.round((responseEndMs - requestStartMs) * 100) / 100
+      : null;
+
+    return {
+      requestStartMs,
+      responseEndMs,
+      durationMs,
+      transferSizeBytes: null,
+      encodedBodySizeBytes: null
+    };
+  } catch {
+    return {
+      requestStartMs: null,
+      responseEndMs: null,
+      durationMs: null,
+      transferSizeBytes: null,
+      encodedBodySizeBytes: null
+    };
+  }
+}
+
+function normalizeTimingValue(value: number): number | null {
+  return Number.isFinite(value) && value >= 0 ? Math.round(value * 100) / 100 : null;
 }
 
 function appendVisitedUrl(visitedUrls: string[], url: string): void {
@@ -2504,6 +2562,41 @@ async function safeDomSignature(page: Page, fallbackValue: string | null): Promi
         document.querySelectorAll("a,button,input,select,textarea,[role='button'],[role='link']").length,
         bodyText
       ].join("|");
+    });
+  } catch {
+    return fallbackValue;
+  }
+}
+
+async function safePerformanceSummary(page: Page, fallbackValue: BrowserPerformanceSummary | null): Promise<BrowserPerformanceSummary | null> {
+  try {
+    return await page.evaluate(() => {
+      const navigation = performance.getEntriesByType("navigation")[0] as PerformanceNavigationTiming | undefined;
+      const paintEntries = performance.getEntriesByType("paint");
+      const resources = performance.getEntriesByType("resource") as PerformanceResourceTiming[];
+      const firstContentfulPaint = paintEntries.find((entry) => entry.name === "first-contentful-paint");
+      const sum = (values: number[]) => values.reduce((total, value) => total + (Number.isFinite(value) ? value : 0), 0);
+
+      return {
+        navigation_type: navigation?.type ?? null,
+        time_origin: Number.isFinite(performance.timeOrigin) ? performance.timeOrigin : null,
+        dom_content_loaded_ms: navigation ? durationFromStart(navigation.domContentLoadedEventEnd, navigation.startTime) : null,
+        load_event_ms: navigation ? durationFromStart(navigation.loadEventEnd, navigation.startTime) : null,
+        first_contentful_paint_ms: firstContentfulPaint ? roundMetric(firstContentfulPaint.startTime) : null,
+        resource_count: resources.length,
+        transfer_size_bytes: sum(resources.map((resource) => resource.transferSize)),
+        encoded_body_size_bytes: sum(resources.map((resource) => resource.encodedBodySize)),
+        decoded_body_size_bytes: sum(resources.map((resource) => resource.decodedBodySize))
+      };
+
+      function durationFromStart(value: number, startTime: number): number | null {
+        const duration = value - startTime;
+        return Number.isFinite(duration) && duration >= 0 ? roundMetric(duration) : null;
+      }
+
+      function roundMetric(value: number): number {
+        return Math.round(value * 100) / 100;
+      }
     });
   } catch {
     return fallbackValue;

@@ -189,7 +189,9 @@ close()
 - `item_count_change`는 현재 selector 기반 count polling + optional `expected_count`, `min_count`, `max_count`, `count_delta` 조건으로 동작한다.
 
 보류:
-- trace/HAR/performance collector는 아직 본격 구현하지 않는다.
+- trace/HAR/performance collector는 `artifact_policy.capture_trace`, `capture_har`,
+  `capture_performance` 기반 1차 checkpoint 수집까지 구현되어 있다. 다만 full browser tracing,
+  complete HAR timing/body capture, Core Web Vitals calibration은 별도 후속 범위다.
 - AX collector는 `capture_ax_tree` 기반 1차 artifact/summary 수집까지만 구현되어 있다.
 - `item_count_change`는 현재 count 변화 검출까지 구현되었고, 필요하면 이후 DOM collection contract와 observation 구조를 더 정교화한다.
 
@@ -371,12 +373,12 @@ LLM이 활성화되어도 pre-decision verifier, risk policy, fixed browser tool
 
 ## 4.4 Expanded collectors
 
-다음 collector는 아직 최소 skeleton 또는 미구현 상태다.
+다음 collector는 production-grade 확장 여지가 남아 있지만, checkpoint evidence용 1차 collector는 연결되어 있다.
 
-- layout collector
-- network timeline/HAR
-- trace
-- performance metric
+- layout collector: checkpoint `layout_collector` observation과 `state.layout_collector_summary`
+- network timeline/HAR: bounded `network_timeline` observation과 `capture_har=true`일 때 `HAR` artifact
+- trace: `capture_trace=true`일 때 checkpoint runtime `TRACE` artifact
+- performance metric: `capture_performance=true`일 때 `performance_metric` observation과 state summary
 
 `AX tree collector`는 1차 구현으로 `artifact_policy.capture_ax_tree=true`인 checkpoint에서
 `AX_TREE` artifact, `state.ax_tree_summary`, `ax_tree` observation을 남긴다. 단, WCAG

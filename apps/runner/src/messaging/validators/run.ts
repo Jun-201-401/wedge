@@ -60,8 +60,12 @@ function assertRunArtifactPolicy(value: unknown): void {
   assertOptionalBoolean(value.captureDomSnapshots, "runner payload.artifactPolicy.captureDomSnapshots");
   assertOptionalBoolean(value.captureAxTree, "runner payload.artifactPolicy.captureAxTree");
   assertOptionalBoolean(value.captureTrace, "runner payload.artifactPolicy.captureTrace");
+  assertOptionalBoolean(value.captureHar, "runner payload.artifactPolicy.captureHar");
+  assertOptionalBoolean(value.capturePerformance, "runner payload.artifactPolicy.capturePerformance");
   assertOptionalBoolean(value.capture_screenshots, "runner payload.artifactPolicy.capture_screenshots");
   assertOptionalBoolean(value.capture_dom_snapshots, "runner payload.artifactPolicy.capture_dom_snapshots");
   assertOptionalBoolean(value.capture_ax_tree, "runner payload.artifactPolicy.capture_ax_tree");
   assertOptionalBoolean(value.capture_trace, "runner payload.artifactPolicy.capture_trace");
+  assertOptionalBoolean(value.capture_har, "runner payload.artifactPolicy.capture_har");
+  assertOptionalBoolean(value.capture_performance, "runner payload.artifactPolicy.capture_performance");
 }

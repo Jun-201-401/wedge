@@ -54,12 +54,16 @@ function assertScenarioArtifactPolicy(value: unknown): void {
     "capture_screenshots",
     "capture_dom_snapshots",
     "capture_ax_tree",
-    "capture_trace"
+    "capture_trace",
+    "capture_har",
+    "capture_performance"
   ]);
   assertOptionalBoolean(value.capture_screenshots, "scenarioPlan.artifact_policy.capture_screenshots");
   assertOptionalBoolean(value.capture_dom_snapshots, "scenarioPlan.artifact_policy.capture_dom_snapshots");
   assertOptionalBoolean(value.capture_ax_tree, "scenarioPlan.artifact_policy.capture_ax_tree");
   assertOptionalBoolean(value.capture_trace, "scenarioPlan.artifact_policy.capture_trace");
+  assertOptionalBoolean(value.capture_har, "scenarioPlan.artifact_policy.capture_har");
+  assertOptionalBoolean(value.capture_performance, "scenarioPlan.artifact_policy.capture_performance");
 }
 
 export function assertScenarioStep(value: unknown): asserts value is ScenarioStep {

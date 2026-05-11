@@ -172,6 +172,8 @@ export interface AgentArtifactPolicy {
   capture_dom_snapshots?: boolean;
   capture_ax_tree?: boolean;
   capture_trace?: boolean;
+  capture_har?: boolean;
+  capture_performance?: boolean;
 }
 
 export interface AgentReplayHintStep {
@@ -402,6 +404,8 @@ export interface RunArtifactPolicy extends AgentArtifactPolicy {
   captureDomSnapshots?: boolean;
   captureAxTree?: boolean;
   captureTrace?: boolean;
+  captureHar?: boolean;
+  capturePerformance?: boolean;
 }
 
 export interface RunExecuteMessage {
@@ -955,6 +959,33 @@ export interface AxTreeSummary {
   truncated?: boolean;
 }
 
+export interface BrowserPerformanceSummary {
+  navigation_type: string | null;
+  time_origin: number | null;
+  dom_content_loaded_ms: number | null;
+  load_event_ms: number | null;
+  first_contentful_paint_ms: number | null;
+  resource_count: number;
+  transfer_size_bytes: number;
+  encoded_body_size_bytes: number;
+  decoded_body_size_bytes: number;
+}
+
+export interface NetworkTimelineEvent {
+  method: string;
+  url: string;
+  status?: number;
+  failed?: boolean;
+  errorText?: string;
+  occurredAt?: string;
+  resourceType?: string;
+  requestStartMs?: number | null;
+  responseEndMs?: number | null;
+  durationMs?: number | null;
+  transferSizeBytes?: number | null;
+  encodedBodySizeBytes?: number | null;
+}
+
 export interface AxTreeObservation {
   observation_id: string;
   type: "ax_tree";
@@ -963,6 +994,45 @@ export interface AxTreeObservation {
   confidence: number;
   ax_artifact_id: string;
   summary: AxTreeSummary;
+}
+
+export interface LayoutCollectorObservation {
+  observation_id: string;
+  type: "layout_collector";
+  stage: ScenarioStage;
+  source: ["layout", "dom"];
+  confidence: number;
+  summary: LayoutVisibilitySummary;
+  top_interactive_components: Array<{
+    text: string;
+    role?: string | null;
+    selector?: string | null;
+    bounds: InteractiveComponentBounds;
+    visibility?: InteractiveComponentVisibility;
+    layout?: InteractiveComponentLayout;
+  }>;
+}
+
+export interface NetworkTimelineObservation {
+  observation_id: string;
+  type: "network_timeline";
+  stage: ScenarioStage;
+  source: ["network"];
+  confidence: number;
+  har_artifact_id?: string | null;
+  event_count: number;
+  failed_request_count: number;
+  status_code_counts: Record<string, number>;
+  events: NetworkTimelineEvent[];
+}
+
+export interface PerformanceMetricObservation {
+  observation_id: string;
+  type: "performance_metric";
+  stage: ScenarioStage;
+  source: ["performance"];
+  confidence: number;
+  summary: BrowserPerformanceSummary;
 }
 
 export interface InteractiveComponentsObservation {

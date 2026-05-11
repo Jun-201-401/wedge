@@ -188,6 +188,7 @@ export function createSimulatedPageSnapshot(
     consoleErrors: [],
     networkErrors: [],
     networkEvents: [],
+    performanceSummary: null,
     breadcrumb: [],
     toastTexts: [],
     cartCount: null,

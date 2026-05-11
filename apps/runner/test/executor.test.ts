@@ -1057,6 +1057,126 @@ test("[수집 pipeline] AX tree artifact와 bounded summary observation을 check
   });
 });
 
+test("[수집 pipeline] expanded collector는 layout/network/HAR/trace/performance 근거를 남긴다", async () => {
+  const capturePipeline = createCapturePipeline();
+  const plan = {
+    ...createMinimalPlan(),
+    artifact_policy: {
+      capture_har: true,
+      capture_trace: true,
+      capture_performance: true
+    }
+  };
+  const performanceSummary = {
+    navigation_type: "navigate",
+    time_origin: 1710000000000,
+    dom_content_loaded_ms: 42,
+    load_event_ms: 88,
+    first_contentful_paint_ms: 55,
+    resource_count: 2,
+    transfer_size_bytes: 1234,
+    encoded_body_size_bytes: 1000,
+    decoded_body_size_bytes: 2000
+  };
+  const pageSnapshot: BrowserPageSnapshot = createSimulatedPageSnapshot(plan, {
+    networkEvents: [
+      {
+        method: "GET",
+        url: "https://example.com/api/cart",
+        status: 200,
+        failed: false,
+        occurredAt: "2026-05-11T07:00:00.000Z",
+        resourceType: "fetch",
+        durationMs: 12
+      },
+      {
+        method: "POST",
+        url: "https://example.com/api/checkout",
+        failed: true,
+        errorText: "net::ERR_FAILED",
+        occurredAt: "2026-05-11T07:00:01.000Z",
+        resourceType: "xhr"
+      }
+    ],
+    performanceSummary,
+    interactiveComponents: [
+      {
+        text: "Checkout",
+        selector: "#checkout",
+        role: "button",
+        tag: "button",
+        clickable: true,
+        clicked_in_scenario: false,
+        is_cta_candidate: true,
+        is_primary_like: true,
+        bounds: {
+          x: 10,
+          y: 20,
+          width: 160,
+          height: 48,
+          unit: "css_px"
+        },
+        visibility: {
+          visible: true,
+          in_viewport: true,
+          above_fold: true,
+          area_px: 7680,
+          viewport_coverage_ratio: 1
+        },
+        layout: {
+          center_x: 90,
+          center_y: 44,
+          viewport_position: "inside",
+          css_position: "fixed",
+          z_index: "10",
+          is_fixed: true,
+          overlay_candidate: false
+        }
+      }
+    ]
+  });
+
+  const collection = await capturePipeline.collectCheckpoint({
+    step: {
+      step_id: "step_expanded_collectors",
+      stage: "CTA",
+      description: "capture expanded collectors",
+      action: {
+        type: "checkpoint"
+      },
+      settle_strategy: {
+        type: "none",
+        timeout_ms: 0
+      },
+      checkpoint: true
+    },
+    stepOrder: 7,
+    plan,
+    pageSnapshot,
+    settleResult: createSettledResult()
+  });
+
+  const harArtifact = collection.artifacts.find((artifact) => artifact.artifactType === "HAR");
+  const traceArtifact = collection.artifacts.find((artifact) => artifact.artifactType === "TRACE");
+  const networkObservation = collection.checkpoint.observations.find((observation) => observation.type === "network_timeline") as Record<string, any> | undefined;
+  const performanceObservation = collection.checkpoint.observations.find((observation) => observation.type === "performance_metric") as Record<string, any> | undefined;
+  const layoutObservation = collection.checkpoint.observations.find((observation) => observation.type === "layout_collector") as Record<string, any> | undefined;
+
+  assert.equal(harArtifact?.mimeType, "application/json");
+  assert.match(harArtifact?.content ?? "", /api\/checkout/);
+  assert.equal(traceArtifact?.artifactType, "TRACE");
+  assert.match(traceArtifact?.content ?? "", /runner_checkpoint_runtime_trace/);
+  assert.deepEqual(collection.checkpoint.state.performance_summary, performanceSummary);
+  assert.equal(networkObservation?.har_artifact_id, harArtifact?.artifactId);
+  assert.equal(networkObservation?.event_count, 2);
+  assert.deepEqual(networkObservation?.status_code_counts, {
+    "200": 1,
+    failed: 1
+  });
+  assert.deepEqual(performanceObservation?.summary, performanceSummary);
+  assert.equal(layoutObservation?.summary.interactive_component_count, pageSnapshot.layoutSummary.interactive_component_count);
+});
+
 test("[수집 pipeline] Journey raw signal은 click 전후 상태와 artifact/bbox 근거를 observation으로 남긴다", async () => {
   const capturePipeline = createCapturePipeline();
   const plan = createMinimalPlan();

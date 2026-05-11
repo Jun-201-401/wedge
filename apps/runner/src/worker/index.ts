@@ -160,6 +160,8 @@ function normalizeRunArtifactPolicy(
   setOptionalBoolean(normalized, "capture_dom_snapshots", readArtifactPolicyBoolean(artifactPolicy, "capture_dom_snapshots", "captureDomSnapshot", "captureDomSnapshots"));
   setOptionalBoolean(normalized, "capture_ax_tree", readArtifactPolicyBoolean(artifactPolicy, "capture_ax_tree", "captureAxTree"));
   setOptionalBoolean(normalized, "capture_trace", readArtifactPolicyBoolean(artifactPolicy, "capture_trace", "captureTrace"));
+  setOptionalBoolean(normalized, "capture_har", readArtifactPolicyBoolean(artifactPolicy, "capture_har", "captureHar"));
+  setOptionalBoolean(normalized, "capture_performance", readArtifactPolicyBoolean(artifactPolicy, "capture_performance", "capturePerformance"));
 
   return Object.keys(normalized).length > 0 ? normalized : null;
 }

@@ -205,6 +205,12 @@
         },
         "capture_trace": {
           "type": "boolean"
+        },
+        "capture_har": {
+          "type": "boolean"
+        },
+        "capture_performance": {
+          "type": "boolean"
         }
       },
       "additionalProperties": false

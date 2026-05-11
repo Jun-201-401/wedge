@@ -3,6 +3,9 @@ import type { BrowserActionResult, BrowserCapturedArtifacts, BrowserPageSnapshot
 import type {
   ArtifactDraft,
   AxTreeObservation,
+  LayoutCollectorObservation,
+  NetworkTimelineObservation,
+  PerformanceMetricObservation,
   CategoryFilterSignalObservation,
   Checkpoint,
   DepthFromDiscoveryObservation,
@@ -73,6 +76,15 @@ export function createCapturePipeline(): CapturePipeline {
       });
       const consoleLogArtifact = createConsoleLogArtifact(step.step_id, pageSnapshot.consoleErrors);
       const axTreeArtifact = createAxTreeArtifact(step.step_id, capturedArtifacts);
+      const harArtifact = createHarArtifact(step.step_id, pageSnapshot, plan);
+      const runtimeTraceArtifact = createRuntimeTraceArtifact({
+        step,
+        stepOrder,
+        pageSnapshot,
+        actionResult,
+        settleResult,
+        plan
+      });
 
       return {
         checkpoint: {
@@ -99,12 +111,14 @@ export function createCapturePipeline(): CapturePipeline {
             settleResult,
             screenshotArtifactId: screenshotArtifact.artifactId,
             axTreeArtifactId: axTreeArtifact?.artifactId,
+            harArtifactId: harArtifact?.artifactId,
+            capturePerformance: plan.artifact_policy?.capture_performance === true,
             capturedArtifacts,
             journeyDepthContext
           }),
           deltas: createCheckpointDeltas(pageSnapshot)
         },
-        artifacts: buildCheckpointArtifacts(screenshotArtifact, domArtifact, consoleLogArtifact, axTreeArtifact)
+        artifacts: buildCheckpointArtifacts(screenshotArtifact, domArtifact, consoleLogArtifact, axTreeArtifact, harArtifact, runtimeTraceArtifact)
       };
     }
   };
@@ -114,13 +128,17 @@ function buildCheckpointArtifacts(
   screenshotArtifact: ArtifactDraft,
   domArtifact: ArtifactDraft,
   consoleLogArtifact: ArtifactDraft | null,
-  axTreeArtifact: ArtifactDraft | null
+  axTreeArtifact: ArtifactDraft | null,
+  harArtifact: ArtifactDraft | null,
+  runtimeTraceArtifact: ArtifactDraft | null
 ): ArtifactDraft[] {
   return [
     screenshotArtifact,
     domArtifact,
     ...(consoleLogArtifact ? [consoleLogArtifact] : []),
-    ...(axTreeArtifact ? [axTreeArtifact] : [])
+    ...(axTreeArtifact ? [axTreeArtifact] : []),
+    ...(harArtifact ? [harArtifact] : []),
+    ...(runtimeTraceArtifact ? [runtimeTraceArtifact] : [])
   ];
 }
 
@@ -163,6 +181,147 @@ function createAxTreeArtifact(
   };
 }
 
+function createHarArtifact(
+  stepKey: string,
+  pageSnapshot: BrowserPageSnapshot,
+  plan: ScenarioPlan
+): ArtifactDraft | null {
+  if (plan.artifact_policy?.capture_har !== true || pageSnapshot.networkEvents.length === 0) {
+    return null;
+  }
+
+  return {
+    artifactId: randomUUID(),
+    artifactType: "HAR",
+    stepKey,
+    mimeType: "application/json",
+    fileExtension: "har.json",
+    content: JSON.stringify(createHarPayload(pageSnapshot), null, 2)
+  };
+}
+
+function createRuntimeTraceArtifact({
+  step,
+  stepOrder,
+  pageSnapshot,
+  actionResult,
+  settleResult,
+  plan
+}: {
+  step: ScenarioStep;
+  stepOrder: number;
+  pageSnapshot: BrowserPageSnapshot;
+  actionResult?: BrowserActionResult;
+  settleResult: BrowserSettleResult;
+  plan: ScenarioPlan;
+}): ArtifactDraft | null {
+  if (plan.artifact_policy?.capture_trace !== true) {
+    return null;
+  }
+
+  return {
+    artifactId: randomUUID(),
+    artifactType: "TRACE",
+    stepKey: step.step_id,
+    mimeType: "application/json",
+    fileExtension: "json",
+    content: JSON.stringify({
+      schema_version: "0.1",
+      trace_type: "runner_checkpoint_runtime_trace",
+      step_order: stepOrder,
+      step_key: step.step_id,
+      stage: step.stage,
+      action: {
+        type: step.action.type,
+        target: actionResult?.targetSummary ?? null
+      },
+      settle: settleResult,
+      url: pageSnapshot.finalUrl,
+      title: pageSnapshot.title,
+      dom_summary: pageSnapshot.domSummary,
+      layout_summary: pageSnapshot.layoutSummary,
+      performance_summary: pageSnapshot.performanceSummary,
+      network_event_count: pageSnapshot.networkEvents.length,
+      failed_network_event_count: pageSnapshot.networkEvents.filter((event) => event.failed === true).length,
+      cdp_session: pageSnapshot.cdpSession
+    }, null, 2)
+  };
+}
+
+function createHarPayload(pageSnapshot: BrowserPageSnapshot): Record<string, unknown> {
+  return {
+    log: {
+      version: "1.2",
+      creator: {
+        name: "wedge-runner",
+        version: "0.1"
+      },
+      pages: [
+        {
+          startedDateTime: pageSnapshot.networkEvents[0]?.occurredAt ?? new Date().toISOString(),
+          id: "page_1",
+          title: pageSnapshot.title,
+          pageTimings: {
+            onContentLoad: pageSnapshot.performanceSummary?.dom_content_loaded_ms ?? -1,
+            onLoad: pageSnapshot.performanceSummary?.load_event_ms ?? -1
+          }
+        }
+      ],
+      entries: pageSnapshot.networkEvents.map((event) => ({
+        startedDateTime: event.occurredAt ?? new Date().toISOString(),
+        time: event.durationMs ?? 0,
+        request: {
+          method: event.method,
+          url: event.url,
+          httpVersion: "HTTP/1.1",
+          headers: [],
+          queryString: [],
+          cookies: [],
+          headersSize: -1,
+          bodySize: -1
+        },
+        response: {
+          status: event.status ?? 0,
+          statusText: event.failed ? event.errorText ?? "request failed" : "",
+          httpVersion: "HTTP/1.1",
+          headers: [],
+          cookies: [],
+          content: {
+            size: event.encodedBodySizeBytes ?? -1,
+            mimeType: "application/octet-stream"
+          },
+          redirectURL: "",
+          headersSize: -1,
+          bodySize: event.transferSizeBytes ?? -1
+        },
+        cache: {},
+        timings: {
+          blocked: -1,
+          dns: -1,
+          connect: -1,
+          send: 0,
+          wait: event.durationMs ?? 0,
+          receive: 0,
+          ssl: -1
+        },
+        _resourceType: event.resourceType ?? null,
+        _failed: event.failed === true
+      }))
+    }
+  };
+}
+
+function statusCodeCounts(events: BrowserPageSnapshot["networkEvents"]): Record<string, number> {
+  const counts: Record<string, number> = {};
+  for (const event of events) {
+    const key = event.status === undefined
+      ? event.failed === true ? "failed" : "unknown"
+      : String(event.status);
+    counts[key] = (counts[key] ?? 0) + 1;
+  }
+  return counts;
+}
+
 function createCheckpointState(
   pageSnapshot: BrowserPageSnapshot,
   capturedArtifacts?: BrowserCapturedArtifacts
@@ -189,6 +348,8 @@ function createCheckpointState(
       event_count: pageSnapshot.networkEvents.length,
       failed_request_count: pageSnapshot.networkEvents.filter((event) => event.failed).length
     },
+    layout_collector_summary: pageSnapshot.layoutSummary,
+    performance_summary: pageSnapshot.performanceSummary,
     ...(capturedArtifacts?.axTree ? { ax_tree_summary: capturedArtifacts.axTree.summary } : {}),
     cdpSession: pageSnapshot.cdpSession
   };
@@ -203,6 +364,8 @@ function createCheckpointObservations({
   settleResult,
   screenshotArtifactId,
   axTreeArtifactId,
+  harArtifactId,
+  capturePerformance,
   capturedArtifacts,
   journeyDepthContext
 }: {
@@ -214,6 +377,8 @@ function createCheckpointObservations({
   settleResult: BrowserSettleResult;
   screenshotArtifactId: string;
   axTreeArtifactId?: string;
+  harArtifactId?: string;
+  capturePerformance: boolean;
   capturedArtifacts?: BrowserCapturedArtifacts;
   journeyDepthContext?: JourneyDepthContext;
 }): Record<string, unknown>[] {
@@ -269,6 +434,9 @@ function createCheckpointObservations({
     ...(goalActionResultObservation ? [{ ...goalActionResultObservation }] : []),
     ...(depthFromDiscoveryObservation ? [{ ...depthFromDiscoveryObservation }] : []),
     ...createAxTreeObservations(step, capturedArtifacts, axTreeArtifactId).map((observation) => ({ ...observation })),
+    ...createLayoutCollectorObservations(step, pageSnapshot).map((observation) => ({ ...observation })),
+    ...createNetworkTimelineObservations(step, pageSnapshot, harArtifactId).map((observation) => ({ ...observation })),
+    ...(capturePerformance ? createPerformanceMetricObservations(step, pageSnapshot).map((observation) => ({ ...observation })) : []),
     ...createVisibleTextBlockObservations(step, pageSnapshot),
     ...createInteractiveComponentsObservations(step, pageSnapshot).map((observation) => ({ ...observation })),
     ...createFormFieldObservations(pageSnapshot.fields),
@@ -648,6 +816,83 @@ function createAxTreeObservations(
       confidence: 0.72,
       ax_artifact_id: axTreeArtifactId,
       summary: capturedArtifacts.axTree.summary
+    }
+  ];
+}
+
+function createLayoutCollectorObservations(
+  step: ScenarioStep,
+  pageSnapshot: BrowserPageSnapshot
+): LayoutCollectorObservation[] {
+  if (pageSnapshot.interactiveComponents.length === 0 && pageSnapshot.visibleTextBlocks.length === 0) {
+    return [];
+  }
+
+  return [
+    {
+      observation_id: `${step.step_id}.obs_layout_collector`,
+      type: "layout_collector",
+      stage: step.stage,
+      source: ["layout", "dom"],
+      confidence: 0.7,
+      summary: pageSnapshot.layoutSummary,
+      top_interactive_components: pageSnapshot.interactiveComponents
+        .slice()
+        .sort((left, right) => (right.visibility?.area_px ?? right.bounds.width * right.bounds.height) - (left.visibility?.area_px ?? left.bounds.width * left.bounds.height))
+        .slice(0, 10)
+        .map((component) => ({
+          text: component.text,
+          role: component.role,
+          selector: component.selector,
+          bounds: component.bounds,
+          visibility: component.visibility,
+          layout: component.layout
+        }))
+    }
+  ];
+}
+
+function createNetworkTimelineObservations(
+  step: ScenarioStep,
+  pageSnapshot: BrowserPageSnapshot,
+  harArtifactId?: string
+): NetworkTimelineObservation[] {
+  if (pageSnapshot.networkEvents.length === 0) {
+    return [];
+  }
+
+  return [
+    {
+      observation_id: `${step.step_id}.obs_network_timeline`,
+      type: "network_timeline",
+      stage: step.stage,
+      source: ["network"],
+      confidence: pageSnapshot.networkEvents.some((event) => event.status !== undefined || event.failed === true) ? 0.78 : 0.62,
+      har_artifact_id: harArtifactId ?? null,
+      event_count: pageSnapshot.networkEvents.length,
+      failed_request_count: pageSnapshot.networkEvents.filter((event) => event.failed === true).length,
+      status_code_counts: statusCodeCounts(pageSnapshot.networkEvents),
+      events: pageSnapshot.networkEvents.slice(-20).map((event) => ({ ...event }))
+    }
+  ];
+}
+
+function createPerformanceMetricObservations(
+  step: ScenarioStep,
+  pageSnapshot: BrowserPageSnapshot
+): PerformanceMetricObservation[] {
+  if (!pageSnapshot.performanceSummary) {
+    return [];
+  }
+
+  return [
+    {
+      observation_id: `${step.step_id}.obs_performance_metric`,
+      type: "performance_metric",
+      stage: step.stage,
+      source: ["performance"],
+      confidence: 0.72,
+      summary: pageSnapshot.performanceSummary
     }
   ];
 }
