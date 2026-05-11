@@ -37,7 +37,24 @@ test("[Agent Trace] observation summary는 후보/텍스트/위험 신호를 bou
       component({
         text: "결제하기",
         selector: "#pay-now",
-        href: "https://example.com/checkout?token=secret-token"
+        href: "https://example.com/checkout?token=secret-token",
+        visibility: {
+          visible: true,
+          in_viewport: true,
+          above_fold: true,
+          area_px: 4800,
+          viewport_coverage_ratio: 1
+        },
+        layout: {
+          center_x: 60,
+          center_y: 20,
+          viewport_position: "inside",
+          css_position: "fixed",
+          z_index: "10",
+          is_fixed: true,
+          is_sticky: false,
+          overlay_candidate: false
+        }
       }),
       component({
         text: "Continue shopping",
@@ -60,6 +77,8 @@ test("[Agent Trace] observation summary는 후보/텍스트/위험 신호를 bou
   assert.equal(summary.candidates?.[0]?.candidateId, "candidate_001");
   assert.equal(summary.candidates?.[0]?.riskHint, "PAYMENT_COMMIT");
   assert.equal(summary.candidates?.[0]?.hrefOrigin, "https://example.com");
+  assert.equal(summary.candidates?.[0]?.visibility?.above_fold, true);
+  assert.equal(summary.candidates?.[0]?.layout?.viewport_position, "inside");
   assert.equal(summary.formControls?.length, 2);
   assert.deepEqual(summary.formControls?.map((control) => control.controlType), ["field", "select"]);
   assert.equal(summary.pageSignals?.consoleErrorCount, 1);

@@ -551,9 +551,12 @@ test("[MVP 랜딩 CTA] 첫 화면 checkpoint 후 CTA 클릭과 도착 화면 che
 
     const firstViewCheckpoint = findCheckpoint(result.checkpoints, "landing_002_first_view_checkpoint");
     const interactiveComponents = findObservation(firstViewCheckpoint, "interactive_components");
+    const visibleTextBlocks = findObservation(firstViewCheckpoint, "visible_text_blocks");
     const components = readRecordArray(interactiveComponents, "components");
+    const textBlocks = readRecordArray(visibleTextBlocks, "blocks");
     const primaryComponents = components.filter((component) => component.is_primary_like === true);
     const startFreeComponent = components.find((component) => component.text === "Start free");
+    const headlineBlock = textBlocks.find((block) => block.text === "MVP Runner Fixture");
 
     assert.equal(interactiveComponents.stage, "CTA");
     assert.equal(interactiveComponents.primary_like_component_count, primaryComponents.length);
@@ -565,6 +568,15 @@ test("[MVP 랜딩 CTA] 첫 화면 checkpoint 후 CTA 클릭과 도착 화면 che
     assert.equal(readString(startFreeComponent?.bounds, "unit"), "css_px");
     assert.ok(readPositiveNumber(startFreeComponent?.bounds, "width") > 0);
     assert.ok(readPositiveNumber(startFreeComponent?.bounds, "height") > 0);
+    assert.equal(readString(startFreeComponent?.layout, "viewport_position"), "inside");
+    assert.equal(readBoolean(startFreeComponent?.visibility, "in_viewport"), true);
+    assert.equal(visibleTextBlocks.stage, "FIRST_VIEW");
+    assert.ok(textBlocks.length >= 2);
+    assert.equal(headlineBlock?.is_heading, true);
+    assert.equal(readString(headlineBlock?.bounds, "unit"), "css_px");
+    assert.equal(readBoolean(headlineBlock?.visibility, "above_fold"), true);
+    assert.equal(readNumber(firstViewCheckpoint.state.dom_summary, "cta_candidate_count"), components.filter((component) => component.is_cta_candidate === true).length);
+    assert.equal(readNumber(firstViewCheckpoint.state.layout_summary, "above_fold_interactive_count"), components.filter((component) => readBoolean(component.visibility, "above_fold") === true).length);
   } finally {
     await rm(fixtureRoot, { recursive: true, force: true });
     await rm(artifactsRoot, { recursive: true, force: true });
@@ -1880,6 +1892,14 @@ function readPositiveNumber(source: unknown, key: string): number {
   return value as number;
 }
 
+function readNumber(source: unknown, key: string): number {
+  assert.ok(typeof source === "object" && source !== null && !Array.isArray(source), `Expected source for ${key} to be an object`);
+  const value = (source as Record<string, unknown>)[key];
+  assert.equal(typeof value, "number", `Expected ${key} to be numeric`);
+  assert.ok(Number.isFinite(value), `Expected ${key} to be finite`);
+  return value as number;
+}
+
 function readString(source: unknown, key: string): string | undefined {
   if (typeof source !== "object" || source === null || Array.isArray(source)) {
     return undefined;
@@ -1887,6 +1907,15 @@ function readString(source: unknown, key: string): string | undefined {
 
   const value = (source as Record<string, unknown>)[key];
   return typeof value === "string" ? value : undefined;
+}
+
+function readBoolean(source: unknown, key: string): boolean | undefined {
+  if (typeof source !== "object" || source === null || Array.isArray(source)) {
+    return undefined;
+  }
+
+  const value = (source as Record<string, unknown>)[key];
+  return typeof value === "boolean" ? value : undefined;
 }
 
 function createPlaywrightBrowserFactory(artifactsRoot: string) {

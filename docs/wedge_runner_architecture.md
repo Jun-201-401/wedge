@@ -370,14 +370,18 @@ LLM이 활성화되어도 pre-decision verifier, risk policy, fixed browser tool
 
 ## 4.4 Expanded collectors
 
-아직 다음 collector는 최소 skeleton 또는 미구현 상태다.
+다음 collector는 아직 최소 skeleton 또는 미구현 상태다.
 
 - AX tree
 - layout collector
 - network timeline/HAR
 - trace
 - performance metric
-- richer DOM/visibility observation extractor
+
+`richer DOM/visibility observation extractor`는 1차 구현으로 checkpoint `state.dom_summary`,
+`state.layout_summary`, `visible_text_blocks` observation, interactive component별 visibility/layout
+signal을 남긴다. 단, 전체 layout tree/paint order 수준의 production layout collector는 위
+`layout collector` 범위로 계속 남아 있다.
 
 이들은 `browser` 또는 `capture` 경계를 넘나들 수 있지만, checkpoint contract는 보존해야 한다.
 

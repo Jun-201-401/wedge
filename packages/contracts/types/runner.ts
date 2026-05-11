@@ -294,6 +294,8 @@ export interface AgentObservationCandidateSummary {
   hrefPathHint?: string | null;
   riskHint: string | null;
   bounds: InteractiveComponentBounds;
+  visibility?: InteractiveComponentVisibility;
+  layout?: InteractiveComponentLayout;
 }
 
 export interface AgentObservationFormControlSummary {
@@ -850,6 +852,25 @@ export interface InteractiveComponentBounds {
   unit: "css_px" | "screenshot_px" | "viewport_ratio";
 }
 
+export interface InteractiveComponentVisibility {
+  visible: boolean;
+  in_viewport: boolean;
+  above_fold: boolean;
+  area_px: number;
+  viewport_coverage_ratio: number;
+}
+
+export interface InteractiveComponentLayout {
+  center_x: number;
+  center_y: number;
+  viewport_position: "inside" | "partially_inside" | "above" | "below" | "left" | "right";
+  css_position?: string | null;
+  z_index?: string | null;
+  is_fixed?: boolean;
+  is_sticky?: boolean;
+  overlay_candidate?: boolean;
+}
+
 export interface InteractiveComponentObservationItem {
   text: string;
   selector: string | null;
@@ -870,6 +891,40 @@ export interface InteractiveComponentObservationItem {
   is_cta_candidate: boolean;
   is_primary_like: boolean;
   bounds: InteractiveComponentBounds;
+  visibility?: InteractiveComponentVisibility;
+  layout?: InteractiveComponentLayout;
+}
+
+export interface VisibleTextBlockObservationItem {
+  text: string;
+  tag: string;
+  role?: string | null;
+  is_heading: boolean;
+  bounds: InteractiveComponentBounds;
+  visibility: InteractiveComponentVisibility;
+}
+
+export interface DomVisibilitySummary {
+  visible_text_block_count: number;
+  heading_count: number;
+  link_count: number;
+  button_count: number;
+  form_control_count: number;
+  required_field_count: number;
+  disabled_control_count: number;
+  cta_candidate_count: number;
+}
+
+export interface LayoutVisibilitySummary {
+  viewport_width: number;
+  viewport_height: number;
+  scroll_y: number;
+  interactive_component_count: number;
+  above_fold_interactive_count: number;
+  primary_like_component_count: number;
+  fixed_or_sticky_count: number;
+  overlay_candidate_count: number;
+  max_z_index: number | null;
 }
 
 export interface InteractiveComponentsObservation {

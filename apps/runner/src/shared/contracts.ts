@@ -62,10 +62,14 @@ export type {
   DepthFromDiscoveryObservation,
   GoalActionCandidateObservation,
   GoalActionResultObservation,
+  DomVisibilitySummary,
   InteractiveComponentBounds,
+  InteractiveComponentLayout,
   InteractiveComponentObservationItem,
+  InteractiveComponentVisibility,
   InteractiveComponentsObservation,
   JourneyActionRawObservation,
+  LayoutVisibilitySummary,
   ProductDetailSignalObservation,
   ProductCardObservation,
   RunExecuteMessage,
@@ -96,7 +100,8 @@ export type {
   StepEvent,
   StepEventBatch,
   TargetDescriptor,
-  TargetDescriptorMap
+  TargetDescriptorMap,
+  VisibleTextBlockObservationItem
 } from "../../../../packages/contracts/types/runner.ts";
 
 export interface ArtifactDraft {

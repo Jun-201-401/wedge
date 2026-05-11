@@ -875,6 +875,116 @@ test("[수집 pipeline] CTA 분석용 interactive_components observation을 chec
   });
 });
 
+test("[수집 pipeline] DOM visibility/layout summary와 visible text blocks를 checkpoint에 포함한다", async () => {
+  const capturePipeline = createCapturePipeline();
+  const plan = createMinimalPlan();
+  const domSummary = {
+    visible_text_block_count: 2,
+    heading_count: 1,
+    link_count: 1,
+    button_count: 1,
+    form_control_count: 0,
+    required_field_count: 0,
+    disabled_control_count: 0,
+    cta_candidate_count: 1
+  };
+  const layoutSummary = {
+    viewport_width: plan.environment.viewport.width,
+    viewport_height: plan.environment.viewport.height,
+    scroll_y: 120,
+    interactive_component_count: 1,
+    above_fold_interactive_count: 1,
+    primary_like_component_count: 1,
+    fixed_or_sticky_count: 1,
+    overlay_candidate_count: 0,
+    max_z_index: 10
+  };
+  const pageSnapshot: BrowserPageSnapshot = createSimulatedPageSnapshot(plan, {
+    domSummary,
+    layoutSummary,
+    visibleTextBlocks: [
+      {
+        text: "Start selling faster",
+        tag: "h1",
+        role: "heading",
+        is_heading: true,
+        bounds: {
+          x: 64,
+          y: 96,
+          width: 520,
+          height: 64,
+          unit: "css_px"
+        },
+        visibility: {
+          visible: true,
+          in_viewport: true,
+          above_fold: true,
+          area_px: 33280,
+          viewport_coverage_ratio: 1
+        }
+      },
+      {
+        text: "Try Wedge with no setup.",
+        tag: "p",
+        role: null,
+        is_heading: false,
+        bounds: {
+          x: 64,
+          y: 176,
+          width: 420,
+          height: 28,
+          unit: "css_px"
+        },
+        visibility: {
+          visible: true,
+          in_viewport: true,
+          above_fold: true,
+          area_px: 11760,
+          viewport_coverage_ratio: 1
+        }
+      }
+    ]
+  });
+
+  const collection = await capturePipeline.collectCheckpoint({
+    step: {
+      step_id: "step_capture_visible_text",
+      stage: "CTA",
+      description: "capture visible DOM text and layout summary",
+      action: {
+        type: "checkpoint"
+      },
+      settle_strategy: {
+        type: "none",
+        timeout_ms: 0
+      },
+      checkpoint: true
+    },
+    stepOrder: 5,
+    plan,
+    pageSnapshot,
+    settleResult: createSettledResult()
+  });
+
+  assert.deepEqual(collection.checkpoint.state.dom_summary, domSummary);
+  assert.deepEqual(collection.checkpoint.state.layout_summary, layoutSummary);
+
+  const observation = collection.checkpoint.observations.find(
+    (candidate) => candidate.type === "visible_text_blocks"
+  );
+
+  assert.deepEqual(observation, {
+    observation_id: "step_capture_visible_text.obs_visible_text_blocks",
+    type: "visible_text_blocks",
+    stage: "CTA",
+    source: ["dom", "layout"],
+    confidence: 0.68,
+    dom_summary: domSummary,
+    layout_summary: layoutSummary,
+    blocks: pageSnapshot.visibleTextBlocks
+  });
+});
+
 test("[수집 pipeline] Journey raw signal은 click 전후 상태와 artifact/bbox 근거를 observation으로 남긴다", async () => {
   const capturePipeline = createCapturePipeline();
   const plan = createMinimalPlan();

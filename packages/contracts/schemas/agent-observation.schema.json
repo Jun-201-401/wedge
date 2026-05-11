@@ -73,6 +73,62 @@
       },
       "required": ["x", "y", "width", "height", "unit"]
     },
+    "Visibility": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "visible": {
+          "type": "boolean"
+        },
+        "in_viewport": {
+          "type": "boolean"
+        },
+        "above_fold": {
+          "type": "boolean"
+        },
+        "area_px": {
+          "type": "number",
+          "minimum": 0
+        },
+        "viewport_coverage_ratio": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        }
+      },
+      "required": ["visible", "in_viewport", "above_fold", "area_px", "viewport_coverage_ratio"]
+    },
+    "Layout": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "center_x": {
+          "type": "number"
+        },
+        "center_y": {
+          "type": "number"
+        },
+        "viewport_position": {
+          "enum": ["inside", "partially_inside", "above", "below", "left", "right"]
+        },
+        "css_position": {
+          "type": ["string", "null"]
+        },
+        "z_index": {
+          "type": ["string", "null"]
+        },
+        "is_fixed": {
+          "type": "boolean"
+        },
+        "is_sticky": {
+          "type": "boolean"
+        },
+        "overlay_candidate": {
+          "type": "boolean"
+        }
+      },
+      "required": ["center_x", "center_y", "viewport_position"]
+    },
     "AgentObservationCandidate": {
       "type": "object",
       "additionalProperties": false,
@@ -142,6 +198,12 @@
         },
         "bounds": {
           "$ref": "#/$defs/Bounds"
+        },
+        "visibility": {
+          "$ref": "#/$defs/Visibility"
+        },
+        "layout": {
+          "$ref": "#/$defs/Layout"
         }
       },
       "required": [

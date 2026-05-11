@@ -160,6 +160,28 @@ export function createSimulatedPageSnapshot(
     scrollY: 0,
     lastAction: null,
     interactiveComponents: [],
+    visibleTextBlocks: [],
+    domSummary: {
+      visible_text_block_count: 0,
+      heading_count: 0,
+      link_count: 0,
+      button_count: 0,
+      form_control_count: 0,
+      required_field_count: 0,
+      disabled_control_count: 0,
+      cta_candidate_count: 0
+    },
+    layoutSummary: {
+      viewport_width: plan.environment.viewport.width,
+      viewport_height: plan.environment.viewport.height,
+      scroll_y: 0,
+      interactive_component_count: 0,
+      above_fold_interactive_count: 0,
+      primary_like_component_count: 0,
+      fixed_or_sticky_count: 0,
+      overlay_candidate_count: 0,
+      max_z_index: null
+    },
     consoleErrors: [],
     networkErrors: [],
     networkEvents: [],

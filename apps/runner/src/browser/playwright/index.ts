@@ -14,12 +14,17 @@ import { createCdpSession, type CdpSessionMetadata } from "../cdp/index.ts";
 import type { RunnerBrowserName, RunnerConfig } from "../../config/index.ts";
 import type {
   InteractiveComponentBounds,
+  InteractiveComponentLayout,
+  InteractiveComponentVisibility,
   ScenarioAction,
   ScenarioPlan,
   ScenarioStep,
   SettleStrategy,
   TargetDescriptor,
-  InteractiveComponentObservationItem
+  InteractiveComponentObservationItem,
+  VisibleTextBlockObservationItem,
+  DomVisibilitySummary,
+  LayoutVisibilitySummary
 } from "../../shared/contracts.ts";
 import {
   assertScenarioActionAllowed,
@@ -93,6 +98,9 @@ export interface BrowserPageSnapshot {
     bbox?: InteractiveComponentBounds | null;
   } | null;
   interactiveComponents: InteractiveComponentObservationItem[];
+  visibleTextBlocks: VisibleTextBlockObservationItem[];
+  domSummary: DomVisibilitySummary;
+  layoutSummary: LayoutVisibilitySummary;
   consoleErrors: string[];
   networkErrors: string[];
   networkEvents: BrowserNetworkEventSignal[];
@@ -205,6 +213,7 @@ interface MutableBrowserState {
   scrollY: number;
   lastAction: BrowserPageSnapshot["lastAction"];
   interactiveComponents: InteractiveComponentObservationItem[];
+  visibleTextBlocks: VisibleTextBlockObservationItem[];
   consoleErrors: string[];
   networkErrors: string[];
   networkEvents: BrowserNetworkEventSignal[];
@@ -957,6 +966,7 @@ class RealPlaywrightSession implements BrowserSession {
     this.state.title = await safePageTitle(this.page, currentUrl);
     this.state.scrollY = await safeScrollY(this.page, this.state.scrollY);
     this.state.interactiveComponents = await safeInteractiveComponents(this.page, this.state.lastAction, this.state.interactiveComponents);
+    this.state.visibleTextBlocks = await safeVisibleTextBlocks(this.page, this.state.visibleTextBlocks);
     this.state.breadcrumb = await safeBreadcrumb(this.page, this.state.breadcrumb);
     this.state.toastTexts = await safeToastTexts(this.page, this.state.toastTexts);
     this.state.cartCount = await safeCartCount(this.page, this.state.cartCount);
@@ -1090,6 +1100,7 @@ function createInitialBrowserState(plan: ScenarioPlan): MutableBrowserState {
     scrollY: 0,
     lastAction: null,
     interactiveComponents: [],
+    visibleTextBlocks: [],
     consoleErrors: [],
     networkErrors: [],
     networkEvents: [],
@@ -1124,8 +1135,17 @@ function createBrowserPageSnapshot(
     lastAction: state.lastAction ? { ...state.lastAction } : null,
     interactiveComponents: state.interactiveComponents.map((component) => ({
       ...component,
-      bounds: { ...component.bounds }
+      bounds: { ...component.bounds },
+      visibility: component.visibility ? { ...component.visibility } : undefined,
+      layout: component.layout ? { ...component.layout } : undefined
     })),
+    visibleTextBlocks: state.visibleTextBlocks.map((block) => ({
+      ...block,
+      bounds: { ...block.bounds },
+      visibility: { ...block.visibility }
+    })),
+    domSummary: createDomVisibilitySummary(state),
+    layoutSummary: createLayoutVisibilitySummary(plan, state),
     consoleErrors: [...state.consoleErrors],
     networkErrors: [...state.networkErrors],
     networkEvents: state.networkEvents.map((event) => ({ ...event })),
@@ -1146,6 +1166,48 @@ function createBrowserPageSnapshot(
     domSignature: state.domSignature,
     cdpSession
   };
+}
+
+function createDomVisibilitySummary(state: MutableBrowserState): DomVisibilitySummary {
+  return {
+    visible_text_block_count: state.visibleTextBlocks.length,
+    heading_count: state.visibleTextBlocks.filter((block) => block.is_heading).length,
+    link_count: state.interactiveComponents.filter((component) => component.tag === "a" || component.role === "link").length,
+    button_count: state.interactiveComponents.filter((component) => component.tag === "button" || component.role === "button").length,
+    form_control_count: state.interactiveComponents.filter((component) => component.is_form_control === true).length,
+    required_field_count: state.interactiveComponents.filter((component) => component.required === true).length,
+    disabled_control_count: state.interactiveComponents.filter((component) => component.disabled === true).length,
+    cta_candidate_count: state.interactiveComponents.filter((component) => component.is_cta_candidate).length
+  };
+}
+
+function createLayoutVisibilitySummary(
+  plan: ScenarioPlan,
+  state: MutableBrowserState
+): LayoutVisibilitySummary {
+  const zIndexes = state.interactiveComponents
+    .map((component) => parseZIndex(component.layout?.z_index))
+    .filter((value): value is number => value !== null);
+
+  return {
+    viewport_width: plan.environment.viewport.width,
+    viewport_height: plan.environment.viewport.height,
+    scroll_y: state.scrollY,
+    interactive_component_count: state.interactiveComponents.length,
+    above_fold_interactive_count: state.interactiveComponents.filter((component) => component.visibility?.above_fold === true).length,
+    primary_like_component_count: state.interactiveComponents.filter((component) => component.is_primary_like).length,
+    fixed_or_sticky_count: state.interactiveComponents.filter((component) => component.layout?.is_fixed === true || component.layout?.is_sticky === true).length,
+    overlay_candidate_count: state.interactiveComponents.filter((component) => component.layout?.overlay_candidate === true).length,
+    max_z_index: zIndexes.length > 0 ? Math.max(...zIndexes) : null
+  };
+}
+
+function parseZIndex(value: string | null | undefined): number | null {
+  if (!value || value === "auto") {
+    return null;
+  }
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 function recordLastAction(state: MutableBrowserState, action: ScenarioAction, targetSummary: string | null): void {
@@ -2303,6 +2365,88 @@ async function safeInteractiveComponents(
   }
 }
 
+async function safeVisibleTextBlocks(
+  page: Page,
+  fallbackValue: VisibleTextBlockObservationItem[]
+): Promise<VisibleTextBlockObservationItem[]> {
+  try {
+    return await page.evaluate(() => {
+      const TEXT_BLOCK_SELECTOR = "main h1, main h2, main h3, main p, main li, main label, h1, h2, h3, p, li, label, legend, [role='heading'], [role='alert'], [role='status']";
+      const viewportWidth = globalThis.innerWidth || 0;
+      const viewportHeight = globalThis.innerHeight || 0;
+      const seen = new Set<string>();
+
+      function normalizeText(value: string | null | undefined): string {
+        return (value ?? "").replace(/\s+/g, " ").trim();
+      }
+
+      function implicitRole(element: Element, tag: string): string | null {
+        if (/^h[1-6]$/.test(tag)) {
+          return "heading";
+        }
+        if (tag === "a") {
+          return "link";
+        }
+        if (tag === "button") {
+          return "button";
+        }
+        return null;
+      }
+
+      function visibilityFor(rect: DOMRect): InteractiveComponentVisibility {
+        const area = Math.max(0, rect.width) * Math.max(0, rect.height);
+        const intersectionWidth = Math.max(0, Math.min(rect.right, viewportWidth) - Math.max(rect.left, 0));
+        const intersectionHeight = Math.max(0, Math.min(rect.bottom, viewportHeight) - Math.max(rect.top, 0));
+        const intersectionArea = intersectionWidth * intersectionHeight;
+        return {
+          visible: area > 0,
+          in_viewport: intersectionArea > 0,
+          above_fold: rect.top < viewportHeight && rect.bottom > 0,
+          area_px: Math.round(area),
+          viewport_coverage_ratio: area > 0 ? Math.round((intersectionArea / area) * 1000) / 1000 : 0
+        };
+      }
+
+      return Array.from(document.querySelectorAll(TEXT_BLOCK_SELECTOR))
+        .map((element) => {
+          const rect = element.getBoundingClientRect();
+          const text = normalizeText(element.textContent);
+          const tag = element.tagName.toLowerCase();
+          const visibility = visibilityFor(rect);
+          return {
+            text,
+            tag,
+            role: element.getAttribute("role") ?? implicitRole(element, tag),
+            is_heading: /^h[1-6]$/.test(tag) || element.getAttribute("role") === "heading",
+            bounds: {
+              x: Math.round(rect.x),
+              y: Math.round(rect.y),
+              width: Math.round(rect.width),
+              height: Math.round(rect.height),
+              unit: "css_px" as const
+            },
+            visibility,
+            score: (visibility.above_fold ? 1_000_000 : 0) + visibility.area_px + Math.min(text.length, 240)
+          };
+        })
+        .filter((block) => block.text.length > 0 && block.visibility.in_viewport && block.bounds.width > 0 && block.bounds.height > 0)
+        .filter((block) => {
+          const key = `${block.tag}:${block.text.toLowerCase()}`;
+          if (seen.has(key)) {
+            return false;
+          }
+          seen.add(key);
+          return true;
+        })
+        .sort((left, right) => right.score - left.score)
+        .slice(0, 30)
+        .map(({ score, ...block }) => block);
+    });
+  } catch {
+    return fallbackValue;
+  }
+}
+
 async function extractInteractiveComponentsFromFrame(
   frame: Frame,
   clickedTarget: string | null,
@@ -2496,6 +2640,56 @@ async function extractInteractiveComponentsFromFrame(
         );
       }
 
+      function visibilityFor(rect: DOMRect): InteractiveComponentVisibility {
+        const area = Math.max(0, rect.width) * Math.max(0, rect.height);
+        const intersectionWidth = Math.max(0, Math.min(rect.right, viewportWidth) - Math.max(rect.left, 0));
+        const intersectionHeight = Math.max(0, Math.min(rect.bottom, viewportHeight) - Math.max(rect.top, 0));
+        const intersectionArea = intersectionWidth * intersectionHeight;
+        return {
+          visible: area > 0,
+          in_viewport: intersectionArea > 0,
+          above_fold: rect.top < viewportHeight && rect.bottom > 0,
+          area_px: Math.round(area),
+          viewport_coverage_ratio: area > 0 ? Math.round((intersectionArea / area) * 1000) / 1000 : 0
+        };
+      }
+
+      function viewportPosition(rect: DOMRect, visibility: InteractiveComponentVisibility): InteractiveComponentLayout["viewport_position"] {
+        if (visibility.viewport_coverage_ratio >= 1) {
+          return "inside";
+        }
+        if (visibility.in_viewport) {
+          return "partially_inside";
+        }
+        if (rect.bottom < 0) {
+          return "above";
+        }
+        if (rect.top > viewportHeight) {
+          return "below";
+        }
+        if (rect.right < 0) {
+          return "left";
+        }
+        return "right";
+      }
+
+      function layoutFor(element: Element, rect: DOMRect, visibility: InteractiveComponentVisibility): InteractiveComponentLayout {
+        const style = globalThis.getComputedStyle(element);
+        const viewportArea = Math.max(1, viewportWidth * viewportHeight);
+        const position = style.position || null;
+        const zIndex = style.zIndex && style.zIndex !== "auto" ? style.zIndex : null;
+        return {
+          center_x: Math.round(rect.x + rect.width / 2),
+          center_y: Math.round(rect.y + rect.height / 2),
+          viewport_position: viewportPosition(rect, visibility),
+          css_position: position,
+          z_index: zIndex,
+          is_fixed: position === "fixed",
+          is_sticky: position === "sticky",
+          overlay_candidate: (position === "fixed" || position === "sticky") && visibility.in_viewport && visibility.area_px / viewportArea >= 0.2
+        };
+      }
+
       const INTERACTIVE_SELECTOR = "a[href], button, input:not([type='hidden']), select, textarea, [role='button'], [role='link'], [role='textbox'], [role='searchbox'], [onclick], [tabindex='0']";
 
       function collectInteractiveElements(root: Document | ShadowRoot, shadowRoot: boolean): Array<{ element: Element; shadowRoot: boolean }> {
@@ -2528,7 +2722,9 @@ async function extractInteractiveComponentsFromFrame(
           const formControl = isFormControl(element, tag);
           const disabled = isDisabled(element);
           const clickable = isClickable(element, tag, role);
-          const visible = rect.width > 0 && rect.height > 0 && rect.bottom >= 0 && rect.right >= 0 && rect.top <= viewportHeight && rect.left <= viewportWidth;
+          const visibility = visibilityFor(rect);
+          const layout = layoutFor(element, rect, visibility);
+          const visible = visibility.visible && visibility.in_viewport;
           const isCtaCandidate = clickable && !formControl && !disabled && Boolean(text.match(CTA_TEXT_PATTERN) || role === "button" || tag === "button");
 
           return {
@@ -2557,6 +2753,8 @@ async function extractInteractiveComponentsFromFrame(
               height: Math.round(rect.height),
               unit: "css_px" as const
             },
+            visibility,
+            layout,
             visible,
             score: (isCtaCandidate ? 1000 : 0) + (formControl ? 100 : 0) + rect.width * rect.height + (text.match(CTA_TEXT_PATTERN) ? 500 : 0)
           };
@@ -2584,7 +2782,9 @@ async function extractInteractiveComponentsFromFrame(
         clicked_in_scenario: component.clicked_in_scenario,
         is_cta_candidate: component.is_cta_candidate,
         is_primary_like: false,
-        bounds: component.bounds
+        bounds: component.bounds,
+        visibility: component.visibility,
+        layout: component.layout
       }));
     }, { clickedTarget, frameId });
 }

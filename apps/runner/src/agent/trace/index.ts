@@ -91,7 +91,9 @@ export function summarizeObservation(
         shadowRoot: component.shadow_root === true,
         ...hrefHints(component.href),
         riskHint: riskHintForCandidate(component),
-        bounds: component.bounds
+        bounds: component.bounds,
+        visibility: component.visibility,
+        layout: component.layout
       })),
     formControls: formControls(snapshot),
     pageSignals: pageSignals(snapshot)

@@ -24,7 +24,28 @@
         "fields": {
           "Email": "test+wedge@example.com"
         },
-        "selectedOptions": {}
+        "selectedOptions": {},
+        "dom_summary": {
+          "visible_text_block_count": 2,
+          "heading_count": 1,
+          "link_count": 1,
+          "button_count": 0,
+          "form_control_count": 1,
+          "required_field_count": 0,
+          "disabled_control_count": 0,
+          "cta_candidate_count": 1
+        },
+        "layout_summary": {
+          "viewport_width": 1440,
+          "viewport_height": 900,
+          "scroll_y": 0,
+          "interactive_component_count": 2,
+          "above_fold_interactive_count": 2,
+          "primary_like_component_count": 1,
+          "fixed_or_sticky_count": 0,
+          "overlay_candidate_count": 0,
+          "max_z_index": null
+        }
       },
       "observations": [
         {
@@ -40,6 +61,59 @@
           "method": "POST",
           "status_code": 200,
           "url_includes": "/api/signup/validate-email"
+        },
+        {
+          "observation_id": "step_003_fill_email.obs_visible_text_blocks",
+          "type": "visible_text_blocks",
+          "stage": "INPUT",
+          "source": [
+            "dom",
+            "layout"
+          ],
+          "confidence": 0.68,
+          "dom_summary": {
+            "visible_text_block_count": 2,
+            "heading_count": 1,
+            "link_count": 1,
+            "button_count": 0,
+            "form_control_count": 1,
+            "required_field_count": 0,
+            "disabled_control_count": 0,
+            "cta_candidate_count": 1
+          },
+          "layout_summary": {
+            "viewport_width": 1440,
+            "viewport_height": 900,
+            "scroll_y": 0,
+            "interactive_component_count": 2,
+            "above_fold_interactive_count": 2,
+            "primary_like_component_count": 1,
+            "fixed_or_sticky_count": 0,
+            "overlay_candidate_count": 0,
+            "max_z_index": null
+          },
+          "blocks": [
+            {
+              "text": "Sign up",
+              "tag": "h1",
+              "role": "heading",
+              "is_heading": true,
+              "bounds": {
+                "x": 64,
+                "y": 96,
+                "width": 320,
+                "height": 56,
+                "unit": "css_px"
+              },
+              "visibility": {
+                "visible": true,
+                "in_viewport": true,
+                "above_fold": true,
+                "area_px": 17920,
+                "viewport_coverage_ratio": 1
+              }
+            }
+          ]
         }
       ],
       "deltas": [

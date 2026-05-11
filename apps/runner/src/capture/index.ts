@@ -152,6 +152,8 @@ function createCheckpointState(pageSnapshot: BrowserPageSnapshot): Checkpoint["s
     toastTexts: pageSnapshot.toastTexts,
     cartCount: pageSnapshot.cartCount,
     visiblePrices: pageSnapshot.visiblePrices,
+    dom_summary: pageSnapshot.domSummary,
+    layout_summary: pageSnapshot.layoutSummary,
     selectedFilters: pageSnapshot.selectedFilters,
     searchQuery: pageSnapshot.searchQuery,
     network_summary: {
@@ -232,6 +234,7 @@ function createCheckpointObservations({
     ...(productDetailSignalObservation ? [{ ...productDetailSignalObservation }] : []),
     ...(goalActionResultObservation ? [{ ...goalActionResultObservation }] : []),
     ...(depthFromDiscoveryObservation ? [{ ...depthFromDiscoveryObservation }] : []),
+    ...createVisibleTextBlockObservations(step, pageSnapshot),
     ...createInteractiveComponentsObservations(step, pageSnapshot).map((observation) => ({ ...observation })),
     ...createFormFieldObservations(pageSnapshot.fields),
     ...createCtaCandidateObservations(step, pageSnapshot),
@@ -590,6 +593,28 @@ function createGoalActionResultObservation({
     result,
     matched_product_card: matchedProductCard
   };
+}
+
+function createVisibleTextBlockObservations(
+  step: ScenarioStep,
+  pageSnapshot: BrowserPageSnapshot
+): Record<string, unknown>[] {
+  if (pageSnapshot.visibleTextBlocks.length === 0) {
+    return [];
+  }
+
+  return [
+    {
+      observation_id: `${step.step_id}.obs_visible_text_blocks`,
+      type: "visible_text_blocks",
+      stage: step.stage,
+      source: ["dom", "layout"],
+      confidence: 0.68,
+      dom_summary: pageSnapshot.domSummary,
+      layout_summary: pageSnapshot.layoutSummary,
+      blocks: pageSnapshot.visibleTextBlocks.slice(0, 20)
+    }
+  ];
 }
 
 function createInteractiveComponentsObservations(
