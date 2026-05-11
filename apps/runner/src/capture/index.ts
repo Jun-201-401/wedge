@@ -350,6 +350,7 @@ function createCheckpointState(
     },
     layout_collector_summary: pageSnapshot.layoutSummary,
     performance_summary: pageSnapshot.performanceSummary,
+    browser_health: pageSnapshot.browserHealth,
     ...(capturedArtifacts?.axTree ? { ax_tree_summary: capturedArtifacts.axTree.summary } : {}),
     cdpSession: pageSnapshot.cdpSession
   };
@@ -451,6 +452,14 @@ function createCheckpointObservations({
       type: "network_failure",
       message
     })),
+    ...(pageSnapshot.browserHealth.status === "ok"
+      ? []
+      : [{
+          type: "browser_health",
+          status: pageSnapshot.browserHealth.status,
+          reason: pageSnapshot.browserHealth.reason,
+          observed_at: pageSnapshot.browserHealth.observedAt
+        }]),
     ...createSettleObservations(settleResult)
   ];
 }

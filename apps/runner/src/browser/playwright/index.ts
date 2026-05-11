@@ -125,7 +125,14 @@ export interface BrowserPageSnapshot {
   selectedFilters: BrowserFilterSignal[];
   searchQuery: string | null;
   domSignature: string | null;
+  browserHealth: BrowserHealthState;
   cdpSession: CdpSessionMetadata;
+}
+
+export interface BrowserHealthState {
+  status: "ok" | "crashed" | "closed";
+  reason: string | null;
+  observedAt: string | null;
 }
 
 export interface BrowserCapturedArtifacts {
@@ -262,6 +269,7 @@ interface MutableBrowserState {
   selectedFilters: BrowserFilterSignal[];
   searchQuery: string | null;
   domSignature: string | null;
+  browserHealth: BrowserHealthState;
 }
 
 function readPngDimensions(buffer: Buffer) {
@@ -531,6 +539,7 @@ class RealPlaywrightSession implements BrowserSession {
   readonly page: Page;
   readonly cdpSession: CdpSessionMetadata;
   readonly state: MutableBrowserState;
+  private closing = false;
 
   private constructor(plan: ScenarioPlan, browser: Browser, context: BrowserContext, page: Page) {
     this.id = randomUUID();
@@ -566,6 +575,7 @@ class RealPlaywrightSession implements BrowserSession {
   }
 
   async execute(action: ScenarioAction, step: ScenarioStep): Promise<BrowserActionResult> {
+    assertBrowserHealthy(this.state);
     const targetSummary = describeTarget(action.target);
     recordLastAction(this.state, action, targetSummary);
 
@@ -673,6 +683,7 @@ class RealPlaywrightSession implements BrowserSession {
   }
 
   async prepareSettle(strategy: SettleStrategy): Promise<PreparedBrowserSettle | null> {
+    assertBrowserHealthy(this.state);
     if (strategy.type === "response") {
       return this.createPreparedSettle(strategy, this.createResponseSettleAttempt(strategy));
     }
@@ -690,6 +701,7 @@ class RealPlaywrightSession implements BrowserSession {
   }
 
   async settle(strategy: SettleStrategy): Promise<BrowserSettleResult> {
+    assertBrowserHealthy(this.state);
     const startedAt = Date.now();
     const targetSummary = describeTarget(strategy.target);
 
@@ -791,6 +803,7 @@ class RealPlaywrightSession implements BrowserSession {
   }
 
   async captureArtifacts(options: BrowserCaptureOptions = {}): Promise<BrowserCapturedArtifacts> {
+    assertBrowserHealthy(this.state);
     await preparePageForScreenshot(this.page);
 
     const screenshotBuffer = await this.page.screenshot({
@@ -819,8 +832,9 @@ class RealPlaywrightSession implements BrowserSession {
   }
 
   async close(): Promise<void> {
-    await this.context.close();
-    await this.browser.close();
+    this.closing = true;
+    await this.context.close().catch(() => {});
+    await this.browser.close().catch(() => {});
   }
 
   private async initializeContext(plan: ScenarioPlan): Promise<void> {
@@ -860,6 +874,28 @@ class RealPlaywrightSession implements BrowserSession {
   }
 
   private attachPageObservers(): void {
+    this.browser.on("disconnected", () => {
+      if (!this.closing) {
+        markBrowserUnhealthy(this.state, "closed", "browser_disconnected");
+      }
+    });
+
+    this.context.on("close", () => {
+      if (!this.closing) {
+        markBrowserUnhealthy(this.state, "closed", "context_closed");
+      }
+    });
+
+    this.page.on("crash", () => {
+      markBrowserUnhealthy(this.state, "crashed", "page_crash");
+    });
+
+    this.page.on("close", () => {
+      if (!this.closing) {
+        markBrowserUnhealthy(this.state, "closed", "page_closed");
+      }
+    });
+
     this.page.on("console", (message) => {
       if (message.type() === "error") {
         this.state.consoleErrors.push(message.text());
@@ -1312,7 +1348,12 @@ function createInitialBrowserState(plan: ScenarioPlan): MutableBrowserState {
     productCards: [],
     selectedFilters: [],
     searchQuery: null,
-    domSignature: null
+    domSignature: null,
+    browserHealth: {
+      status: "ok",
+      reason: null,
+      observedAt: null
+    }
   };
 }
 
@@ -1365,8 +1406,36 @@ function createBrowserPageSnapshot(
     selectedFilters: state.selectedFilters.map((filter) => ({ ...filter })),
     searchQuery: state.searchQuery,
     domSignature: state.domSignature,
+    browserHealth: { ...state.browserHealth },
     cdpSession
   };
+}
+
+function markBrowserUnhealthy(
+  state: MutableBrowserState,
+  status: Exclude<BrowserHealthState["status"], "ok">,
+  reason: string
+): void {
+  if (state.browserHealth.status !== "ok") {
+    return;
+  }
+
+  state.browserHealth = {
+    status,
+    reason,
+    observedAt: toIsoTimestamp()
+  };
+  state.consoleErrors.push(`browser ${status}: ${reason}`);
+}
+
+function assertBrowserHealthy(state: MutableBrowserState): void {
+  if (state.browserHealth.status === "ok") {
+    return;
+  }
+
+  const error = new Error(`browser ${state.browserHealth.status}: ${state.browserHealth.reason ?? "unknown"}`);
+  error.name = "BrowserCrashError";
+  throw error;
 }
 
 function createDomVisibilitySummary(state: MutableBrowserState): DomVisibilitySummary {

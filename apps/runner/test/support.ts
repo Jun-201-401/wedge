@@ -199,6 +199,11 @@ export function createSimulatedPageSnapshot(
     selectedFilters: [],
     searchQuery: null,
     domSignature: null,
+    browserHealth: {
+      status: "ok",
+      reason: null,
+      observedAt: null
+    },
     cdpSession: {
       protocol: "cdp",
       transport: "simulated",

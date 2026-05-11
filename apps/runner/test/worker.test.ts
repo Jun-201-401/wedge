@@ -341,6 +341,77 @@ test("[Worker 관측성] step timeout 실패는 timeout code와 runId/stepKey �
   );
 });
 
+test("[Worker recovery] browser crash는 전용 failure code로 실패하고 증거 캡처 실패를 원인 실패로 덮지 않는다", async () => {
+  const message = await loadExampleMessage();
+  message.payload.scenarioPlan!.steps = [
+    {
+      step_id: "step_001_crash",
+      stage: "CTA",
+      description: "browser crash",
+      action: {
+        type: "click",
+        target: {
+          selector: "#submit"
+        }
+      },
+      settle_strategy: {
+        type: "none",
+        timeout_ms: 0
+      },
+      checkpoint: false
+    }
+  ];
+
+  let failedPayload: RunnerFailedPayload | null = null;
+
+  const worker = registerWorker({
+    config: createRunnerTestConfig(),
+    browserFactory: {
+      kind: "simulated-playwright",
+      createSession: async () =>
+        createSimulatedSession(message.payload.scenarioPlan!, {
+          execute: async () => {
+            const error = new Error("Target page, context or browser has been closed");
+            error.name = "BrowserCrashError";
+            throw error;
+          },
+          snapshot: () => createSimulatedPageSnapshot(message.payload.scenarioPlan!, {
+            browserHealth: {
+              status: "crashed",
+              reason: "page_crash",
+              observedAt: "2026-05-11T00:00:00.000Z"
+            }
+          }),
+          captureArtifacts: async () => {
+            throw new Error("Target page, context or browser has been closed");
+          }
+        })
+    },
+    callbackClient: createStubCallbackClient({
+      sendFailed: async (_runId, payload) => {
+        failedPayload = payload;
+      }
+    }),
+    capturePipeline: {
+      collectCheckpoint: async () => {
+        throw new Error("failure capture should degrade before checkpoint collection");
+      }
+    },
+    artifactStore: {
+      persistArtifacts: async () => []
+    }
+  });
+
+  await assert.rejects(() => worker.handleMessage(message), /Target page, context or browser has been closed/);
+
+  if (failedPayload === null) {
+    throw new Error("failed payload was not captured");
+  }
+
+  assert.equal((failedPayload as RunnerFailedPayload).failureCode, "RUNNER_BROWSER_CRASH");
+  assert.equal((failedPayload as RunnerFailedPayload).failureMessage, "Target page, context or browser has been closed");
+});
+
 test("[Worker lifecycle] 실행 자체가 성공했다면 finished callback 실패만으로 실행 실패로 바꾸지 않는다", async () => {
   const message = await loadExampleMessage();
   message.payload.scenarioPlan!.steps = [
