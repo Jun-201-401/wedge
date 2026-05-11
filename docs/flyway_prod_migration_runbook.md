@@ -8,11 +8,33 @@ The production database already has application tables. Flyway must not assume t
 
 ## Current Policy
 
+- Flyway is the production migration tool for the deploy path.
 - Flyway runs as a separate Docker Compose service.
 - Flyway is not started by the normal production `up -d` command.
 - Production migrations must be executed explicitly through the `migration` profile.
 - `clean` is disabled in Compose and must not be enabled for production.
 - `baselineOnMigrate` stays disabled. Production baseline must be an explicit operator action.
+- Local development DBs do not use the Flyway Compose service by default. Developers should keep using `node infra/scripts/apply-dev-db-migrations.mjs` for local dev DB catch-up.
+
+## Local Development DB
+
+Local dev databases are intentionally managed separately from the production Flyway path.
+
+Use the checked-in dev migration helper:
+
+```bash
+node infra/scripts/apply-dev-db-migrations.mjs
+```
+
+This avoids requiring every developer's existing local DB to be manually baselined with `flyway_schema_history`.
+
+The migration SQL source remains shared:
+
+```text
+infra/db/migrations/*.sql
+```
+
+The local helper and production Flyway path must both use these checked-in SQL files. Do not create separate local-only schema scripts for the same database change.
 
 ## Commands
 
