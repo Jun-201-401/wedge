@@ -148,6 +148,9 @@ test("[Worker 관측성] step timeout 실패는 timeout code와 runId/stepKey �
 
   let failedPayload: RunnerFailedPayload | null = null;
   const stepEvents: StepEvent[] = [];
+  const checkpointStatuses: string[] = [];
+  const persistedArtifactIds: string[] = [];
+  const sentArtifactIds: string[] = [];
   const capturedLogs: string[] = [];
   const originalError = console.error;
   console.error = (message?: unknown, ...optional: unknown[]) => {
@@ -178,17 +181,56 @@ test("[Worker 관측성] step timeout 실패는 timeout code와 runId/stepKey �
         sendStepEvents: async (_runId, payload) => {
           stepEvents.push(...payload.events);
         },
+        sendArtifacts: async (_runId, payload) => {
+          sentArtifactIds.push(...payload.artifacts.map((artifact) => artifact.artifactId));
+        },
+        sendCheckpoints: async (_runId, payload) => {
+          checkpointStatuses.push(...payload.checkpoints.map((checkpoint) => checkpoint.settle.status));
+        },
         sendFailed: async (_runId, payload) => {
           failedPayload = payload;
         }
       }),
       capturePipeline: {
-        collectCheckpoint: async () => {
-          throw new Error("checkpoint collection should not be called on timeout");
-        }
+        collectCheckpoint: async ({ step, settleResult }) => ({
+          checkpoint: {
+            checkpointId: "checkpoint-timeout",
+            stepKey: step.step_id,
+            stage: step.stage,
+            trigger: {},
+            settle: { ...settleResult },
+            state: {},
+            observations: [],
+            deltas: []
+          },
+          artifacts: [
+            {
+              artifactId: "failure-screenshot",
+              artifactType: "SCREENSHOT",
+              stepKey: step.step_id,
+              mimeType: "image/png",
+              fileExtension: "png",
+              content: "iVBORw0KGgo=",
+              contentEncoding: "base64"
+            }
+          ]
+        })
       },
       artifactStore: {
-        persistArtifacts: async () => []
+        persistArtifacts: async ({ artifacts }) => {
+          persistedArtifactIds.push(...artifacts.map((artifact) => artifact.artifactId));
+          return artifacts.map((artifact) => ({
+            artifactId: artifact.artifactId,
+            artifactType: artifact.artifactType,
+            stepKey: artifact.stepKey,
+            bucket: "runner-test",
+            key: `memory/${artifact.artifactId}`,
+            mimeType: artifact.mimeType,
+            sizeBytes: artifact.content.length,
+            sha256: "test-sha256",
+            createdAt: "2026-05-11T00:00:00.000Z"
+          }));
+        }
       }
     });
 
@@ -203,11 +245,15 @@ test("[Worker 관측성] step timeout 실패는 timeout code와 runId/stepKey �
 
   const capturedFailedPayload = failedPayload as RunnerFailedPayload;
   assert.equal(capturedFailedPayload.failureCode, "RUNNER_TIMEOUT");
+  assert.deepEqual(capturedFailedPayload.failureArtifactRefs, ["failure-screenshot"]);
   assert.deepEqual(capturedFailedPayload.summary, {
     completedStepCount: 0,
     failedStepCount: 1,
     stopped: false
   });
+  assert.deepEqual(persistedArtifactIds, ["failure-screenshot"]);
+  assert.deepEqual(sentArtifactIds, ["failure-screenshot"]);
+  assert.deepEqual(checkpointStatuses, ["failed"]);
   assert.ok(
     stepEvents.some(
       (event) =>

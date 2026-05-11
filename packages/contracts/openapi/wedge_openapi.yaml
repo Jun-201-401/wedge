@@ -5353,6 +5353,10 @@ components:
           - completedStepCount
           - failedStepCount
           - stopped
+        failureArtifactRefs:
+          type: array
+          items:
+            type: string
       required:
       - workerId
       - executionFinishedAt

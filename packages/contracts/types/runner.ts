@@ -1269,4 +1269,5 @@ export interface RunnerFailedPayload {
     failedStepCount: number;
     stopped: boolean;
   };
+  failureArtifactRefs?: string[];
 }

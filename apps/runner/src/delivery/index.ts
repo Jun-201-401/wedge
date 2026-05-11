@@ -8,6 +8,7 @@ export interface DeliveryIssue {
     | "agent-events-callback"
     | "agent-trace-callback"
     | "checkpoints-callback"
+    | "failure-capture"
     | "finished-callback"
     | "agent-events-callback"
     | "agent-trace-callback";

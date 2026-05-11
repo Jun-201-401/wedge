@@ -395,11 +395,15 @@ signal을 남긴다. 단, 전체 layout tree/paint order 수준의 production la
 
 아직 runner reliability는 production 수준으로 고정하지 않았다.
 
+현재 구현:
+- step 실행 실패 후에도 session snapshot/capture가 가능하면 failure checkpoint를 남긴다.
+- failure checkpoint는 일반 checkpoint와 같은 artifact 저장/콜백 경로를 사용하며, failed callback에는 저장에 성공한 `failureArtifactRefs`를 포함한다.
+- browser/session이 이미 깨져 failure evidence capture가 실패하면 원래 실패를 덮지 않고 `failure-capture` delivery issue로 degrade 처리한다.
+
 추후 정리할 항목:
 - callback partial failure policy
 - per-step timeout policy
 - browser crash recovery
-- screenshot-on-failure policy
 - run cancellation / stop signal consume
 
 # 5. Agent 구현 규칙

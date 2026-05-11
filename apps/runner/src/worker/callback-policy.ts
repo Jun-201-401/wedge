@@ -26,6 +26,7 @@ export interface FailedCallbackInput {
   hasSession: boolean;
   summary?: ScenarioExecutionSummary;
   failureCode?: RunnerFailureCode;
+  failureArtifactRefs?: string[];
 }
 
 export async function emitAcceptedCallback({
@@ -72,7 +73,8 @@ export async function emitFailedCallback({
   accepted,
   hasSession,
   summary,
-  failureCode
+  failureCode,
+  failureArtifactRefs
 }: FailedCallbackInput): Promise<void> {
   if (!hasSession) {
     return;
@@ -85,7 +87,8 @@ export async function emitFailedCallback({
       failureCode: failureCode ?? classifyRunnerFailure(error),
       failureMessage: errorMessage(error),
       resultCompleteness: accepted ? "PARTIAL" : "NONE",
-      summary
+      summary,
+      failureArtifactRefs: failureArtifactRefs && failureArtifactRefs.length > 0 ? failureArtifactRefs : undefined
     });
   } catch (sendFailedError) {
     throw new Error(

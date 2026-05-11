@@ -117,7 +117,8 @@ export function registerWorker({
           accepted,
           hasSession: session !== undefined,
           summary: error instanceof ScenarioExecutionError ? error.summary : undefined,
-          failureCode
+          failureCode,
+          failureArtifactRefs: error instanceof ScenarioExecutionError ? error.failureArtifactRefs : undefined
         });
 
         throw error;
