@@ -10,16 +10,11 @@ import com.wedge.evidence.domain.Checkpoint;
 import com.wedge.evidence.domain.Observation;
 import com.wedge.run.api.dto.RunResponse;
 import java.net.URI;
-import java.net.URL;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.UUID;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -27,37 +22,11 @@ public class EvidencePacketAssembler {
     private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {};
     private static final TypeReference<List<Object>> LIST_TYPE = new TypeReference<>() {};
     private static final String EVIDENCE_SCHEMA_VERSION = "0.5";
-    private static final Set<String> SIGNABLE_IMAGE_MIME_TYPES = Set.of(
-            "image/png",
-            "image/jpeg",
-            "image/webp"
-    );
 
     private final ObjectMapper objectMapper;
-    private final ArtifactPresignedUrlGenerator artifactPresignedUrlGenerator;
-    private final Duration signedUrlTtl;
-
-    @Autowired
-    public EvidencePacketAssembler(
-            ObjectMapper objectMapper,
-            ArtifactPresignedUrlGenerator artifactPresignedUrlGenerator,
-            @Value("${wedge.artifacts.presigned-url.ttl-seconds:3600}") long signedUrlTtlSeconds
-    ) {
-        this(objectMapper, artifactPresignedUrlGenerator, Duration.ofSeconds(signedUrlTtlSeconds));
-    }
 
     public EvidencePacketAssembler(ObjectMapper objectMapper) {
-        this(objectMapper, null, Duration.ZERO);
-    }
-
-    EvidencePacketAssembler(
-            ObjectMapper objectMapper,
-            ArtifactPresignedUrlGenerator artifactPresignedUrlGenerator,
-            Duration signedUrlTtl
-    ) {
         this.objectMapper = objectMapper;
-        this.artifactPresignedUrlGenerator = artifactPresignedUrlGenerator;
-        this.signedUrlTtl = signedUrlTtl;
     }
 
     public Map<String, Object> assemble(RunResponse run, List<Artifact> artifacts, List<Checkpoint> checkpoints, List<Observation> observations) {
@@ -268,7 +237,6 @@ public class EvidencePacketAssembler {
         evidenceArtifact.put("artifact_id", artifact.getId().toString());
         evidenceArtifact.put("type", toEvidenceArtifactType(artifact.getArtifactType()));
         evidenceArtifact.put("uri", ArtifactResponse.contentUrl(artifact));
-        addSignedUrlIfAvailable(evidenceArtifact, artifact);
         evidenceArtifact.put("mime_type", artifact.getMimeType());
         evidenceArtifact.put("size_bytes", artifact.getSizeBytes());
         Map<String, Object> metadata = new LinkedHashMap<>();
@@ -278,35 +246,6 @@ public class EvidencePacketAssembler {
         metadata.put("height", artifact.getHeight());
         evidenceArtifact.put("metadata", metadata);
         return evidenceArtifact;
-    }
-
-    private void addSignedUrlIfAvailable(Map<String, Object> evidenceArtifact, Artifact artifact) {
-        if (artifactPresignedUrlGenerator == null || !isSignableImageArtifact(artifact)) {
-            return;
-        }
-
-        try {
-            URL signedUrl = artifactPresignedUrlGenerator.generateGetUrl(artifact, signedUrlTtl);
-            if (signedUrl != null && isHttpUrl(signedUrl)) {
-                evidenceArtifact.put("signed_url", signedUrl.toString());
-            }
-        } catch (RuntimeException ignored) {
-            // Analyzer can still use the stable API content uri when S3 presigning is unavailable.
-        }
-    }
-
-    private boolean isSignableImageArtifact(Artifact artifact) {
-        ArtifactType artifactType = artifact.getArtifactType();
-        if (artifactType != ArtifactType.SCREENSHOT && artifactType != ArtifactType.FRAME) {
-            return false;
-        }
-        String mimeType = artifact.getMimeType();
-        return mimeType != null && SIGNABLE_IMAGE_MIME_TYPES.contains(mimeType.toLowerCase());
-    }
-
-    private boolean isHttpUrl(URL url) {
-        String protocol = url.getProtocol();
-        return "https".equalsIgnoreCase(protocol) || "http".equalsIgnoreCase(protocol);
     }
 
     private String toEvidenceArtifactType(ArtifactType artifactType) {
