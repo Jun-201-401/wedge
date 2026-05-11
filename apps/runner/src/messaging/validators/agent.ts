@@ -1,4 +1,9 @@
-import type { AgentExecuteMessage, AgentTask } from "../../shared/contracts.ts";
+import {
+  scenarioActionTypes,
+  settleStrategyTypes,
+  type AgentExecuteMessage,
+  type AgentTask
+} from "../../shared/contracts.ts";
 import { isRecord } from "../../shared/utils.ts";
 import {
   assertAllowedObjectKeys,
@@ -64,6 +69,7 @@ function assertAgentTask(value: unknown): asserts value is AgentTask {
   assertAgentRiskPolicy(value.risk_policy);
   assertAgentTestData(value.test_data);
   assertAgentArtifactPolicy(value.artifact_policy);
+  assertAgentReplayHints(value.replay_hints);
 }
 
 function assertAgentBudget(value: unknown): void {
@@ -190,4 +196,74 @@ function assertAgentArtifactPolicy(value: unknown): void {
   assertOptionalBoolean(value.capture_dom_snapshots, "agentTask.artifact_policy.capture_dom_snapshots");
   assertOptionalBoolean(value.capture_ax_tree, "agentTask.artifact_policy.capture_ax_tree");
   assertOptionalBoolean(value.capture_trace, "agentTask.artifact_policy.capture_trace");
+}
+
+function assertAgentReplayHints(value: unknown): void {
+  if (value === undefined) {
+    return;
+  }
+  if (!isRecord(value)) {
+    throw new RunnerMessageValidationError("agentTask.replay_hints must be an object");
+  }
+  assertAllowedObjectKeys(value, "agentTask.replay_hints", [
+    "source_trace_id",
+    "source_plan_id",
+    "steps"
+  ]);
+  assertOptionalNullableNonEmptyString(value.source_trace_id, "agentTask.replay_hints.source_trace_id");
+  assertOptionalNullableNonEmptyString(value.source_plan_id, "agentTask.replay_hints.source_plan_id");
+
+  if (!Array.isArray(value.steps)) {
+    throw new RunnerMessageValidationError("agentTask.replay_hints.steps must be an array");
+  }
+
+  value.steps.forEach((step, index) => {
+    assertAgentReplayHintStep(step, `agentTask.replay_hints.steps[${index}]`);
+  });
+}
+
+function assertAgentReplayHintStep(value: unknown, fieldName: string): void {
+  if (!isRecord(value)) {
+    throw new RunnerMessageValidationError(`${fieldName} must be an object`);
+  }
+  assertAllowedObjectKeys(value, fieldName, [
+    "step_id",
+    "stage",
+    "description",
+    "action",
+    "settle_strategy",
+    "target_key",
+    "confidence"
+  ]);
+  assertOptionalNonEmptyString(value.step_id, `${fieldName}.step_id`);
+  assertOptionalOneOf(value.stage, ["FIRST_VIEW", "VALUE", "CTA", "INPUT", "COMMIT"], `${fieldName}.stage`);
+  assertOptionalNonEmptyString(value.description, `${fieldName}.description`);
+  assertOptionalNullableNonEmptyString(value.target_key, `${fieldName}.target_key`);
+  assertOptionalNumberRange(value.confidence, `${fieldName}.confidence`, 0, 1);
+
+  if (!isRecord(value.action)) {
+    throw new RunnerMessageValidationError(`${fieldName}.action must be an object`);
+  }
+  assertOneOf(value.action.type, scenarioActionTypes, `${fieldName}.action.type`);
+
+  if (value.settle_strategy !== undefined) {
+    if (!isRecord(value.settle_strategy)) {
+      throw new RunnerMessageValidationError(`${fieldName}.settle_strategy must be an object`);
+    }
+    assertOneOf(value.settle_strategy.type, settleStrategyTypes, `${fieldName}.settle_strategy.type`);
+    assertNumberRange(value.settle_strategy.timeout_ms, `${fieldName}.settle_strategy.timeout_ms`, 0, Number.MAX_SAFE_INTEGER);
+  }
+}
+
+function assertNumberRange(value: unknown, fieldName: string, min: number, max: number): void {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < min || value > max) {
+    throw new RunnerMessageValidationError(`${fieldName} must be a number between ${min} and ${max}`);
+  }
+}
+
+function assertOptionalNumberRange(value: unknown, fieldName: string, min: number, max: number): void {
+  if (value === undefined) {
+    return;
+  }
+  assertNumberRange(value, fieldName, min, max);
 }

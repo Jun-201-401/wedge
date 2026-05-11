@@ -13,6 +13,7 @@ export type {
   AgentEventBatch,
   AgentArtifactPolicy,
   AgentBudget,
+  AgentDecisionSource,
   AgentEventType,
   AgentExecuteMessage,
   AgentFinalOutcome,

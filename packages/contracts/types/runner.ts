@@ -273,6 +273,8 @@ export interface AgentDecision {
   metadata?: Record<string, unknown>;
 }
 
+export type AgentDecisionSource = "heuristic" | "llm" | "replay_hint";
+
 export interface AgentObservationCandidateSummary {
   candidateId: string;
   candidateFingerprint: string;
