@@ -81,6 +81,26 @@
       "source_refs": ["docs/12_analyzer_rule_catalog.md#copy-flow-quality-001"]
     },
     {
+      "criterion_id": "TARGET-SIZE-001",
+      "axis": "Friction",
+      "applicableStages": ["FIRST_VIEW", "VALUE", "CTA", "INPUT"],
+      "evidence_level": "Operational",
+      "definition": "Search input fields should provide a sufficiently large input area compared with the Google search box reference.",
+      "required_observations": ["form_field", "interactive_components", "cta_candidate", "final_submit_candidate"],
+      "measurement_sources": ["dom", "layout", "scenario_log"],
+      "signal_rule": "A search input candidate has bounds or hit_area_bounds smaller than the reference width or height thresholds.",
+      "severity_rules": [
+        {"severity": 0, "condition": "search input size is near the reference threshold"},
+        {"severity": 1, "condition": "search input height is under 40px, width ratio is under 0.75, or width is under 120px"},
+        {"severity": 2, "condition": "search input height is under 32px, width ratio is under 0.55, or width is under 100px"},
+        {"severity": 3, "condition": "a search input used in the scenario is critically small"}
+      ],
+      "confidence_rule": "Use observation confidence when DOM/layout bounds and viewport width are available; cap confidence when viewport width is missing.",
+      "fix_leverage_default": 1.0,
+      "output_template": "The search input area is small compared with the Google search box reference.",
+      "source_refs": ["docs/12_analyzer_rule_catalog.md#target-size-001", "docs/13_analyzer_rule_required_data.md#target-size-001"]
+    },
+    {
       "criterion_id": "RELIABILITY-TECH-001",
       "axis": "Reliability",
       "applicableStages": ["CTA", "INPUT", "COMMIT"],
@@ -99,23 +119,27 @@
       "source_refs": ["docs/05_judge_scoring_validation.md#11-나머지-p0-rule-최소-정책"]
     },
     {
-      "criterion_id": "JOURNEY-ACTION-RESULT-001",
-      "axis": "Path",
-      "applicableStages": ["VALUE", "CTA", "INPUT", "COMMIT"],
+      "criterion_id": "RELIABILITY-LOADING-STUCK-001",
+      "axis": "Reliability",
+      "applicableStages": ["CTA", "INPUT", "COMMIT"],
       "evidence_level": "Operational",
-      "definition": "A clicked journey action should produce a clear success, failure, or state-change result after settle.",
-      "required_observations": ["settle_response", "settle_item_count_change"],
-      "measurement_sources": ["dom", "network", "scenario_log"],
-      "signal_rule": "A click checkpoint has a failed, timeout, or unmet settle result in the same stage context.",
+      "definition": "A user action should not leave the interface in a long-running loading state without a confirmed result.",
+      "required_observations": ["loading_state", "settle_response"],
+      "measurement_sources": ["dom", "layout", "network", "scenario_log"],
+      "signal_rule": "loading_state.loading_visible=true with duration_ms >= 8000, or a long settle_response timeout/stuck fallback when no loading_state exists.",
       "severity_rules": [
-        {"severity": 0, "condition": "clicked action produces the expected settled result"},
-        {"severity": 2, "condition": "clicked action has timeout or missing expected state-change result"},
-        {"severity": 3, "condition": "commit-stage action is blocked or failed"}
+        {"severity": 0, "condition": "loading clears and a success, failure, or state-change result is confirmed"},
+        {"severity": 2, "condition": "loading remains visible for 8000ms or more, or a long settle result is timeout/stuck"},
+        {"severity": 3, "condition": "loading remains visible for 15000ms or more, or a commit-stage action is stuck"}
       ],
-      "confidence_rule": "Use direct settle observation confidence; keep lower confidence when only weak state-change evidence exists.",
+      "exceptions": [
+        "Suppress when the same checkpoint has a settled/success/complete result or the expected count is reached.",
+        "Suppress when network or console failures are present, because RELIABILITY-TECH-001 should explain the primary technical failure."
+      ],
+      "confidence_rule": "High when direct loading_state DOM/layout evidence exists; lower when using settle_response fallback only.",
       "fix_leverage_default": 1.0,
-      "output_template": "The goal action was attempted, but the expected result was not confirmed.",
-      "source_refs": ["docs/10_rule_journey_observation_strategy.md#rule-scoring"]
+      "output_template": "The action appears to stay in a loading state without a clear result.",
+      "source_refs": ["docs/12_analyzer_rule_catalog.md#reliability-loading-stuck-001", "docs/13_analyzer_rule_required_data.md#reliability-loading-stuck-001"]
     },
     {
       "criterion_id": "JOURNEY-GOAL-CTA-MISMATCH-001",
