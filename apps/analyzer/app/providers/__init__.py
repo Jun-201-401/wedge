@@ -22,6 +22,7 @@ from app.providers.semantic import (
     should_fallback_to_semantic_provider,
 )
 from app.providers.gms import GMSClient, GMSClientError, GMSConfig, extract_openai_response_text, extract_openai_response_text_from_body
+from app.providers.label_integrity import GMSLabelIntegrityProvider, LabelIntegrityIssueResult, LabelIntegrityProviderPort
 
 __all__ = [
     "ACTION_SPECIFICITY_LABELS",
@@ -44,6 +45,9 @@ __all__ = [
     "GMSClient",
     "GMSClientError",
     "GMSConfig",
+    "GMSLabelIntegrityProvider",
+    "LabelIntegrityIssueResult",
+    "LabelIntegrityProviderPort",
     "extract_openai_response_text",
     "extract_openai_response_text_from_body",
     "sanitize_semantic_label_result",
