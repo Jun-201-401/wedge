@@ -700,6 +700,7 @@
       "artifact_id": "screenshot_cp_001",
       "type": "screenshot",
       "uri": "s3://wedge-artifacts/runs/run_001/cp_001.png",
+      "signed_url": "https://wedge-artifacts.s3.ap-northeast-2.amazonaws.com/runs/run_001/cp_001.png?X-Amz-Signature=example",
       "mime_type": "image/png",
       "size_bytes": 12345,
       "metadata": {
