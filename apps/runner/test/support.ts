@@ -138,6 +138,9 @@ export function createRunnerTestConfig(overrides: Partial<RunnerConfig> = {}): R
     agentLlmApiKey: undefined,
     agentLlmModel: "agent-decision",
     agentLlmTimeoutMs: 10_000,
+    agentMcpGatewayUrl: undefined,
+    agentMcpServiceToken: undefined,
+    agentMcpGatewayTimeoutMs: 10_000,
     ...overrides,
     mqMaxDeliveryAttempts: overrides.mqMaxDeliveryAttempts ?? 3
   };

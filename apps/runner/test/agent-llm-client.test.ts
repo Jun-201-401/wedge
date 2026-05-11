@@ -41,6 +41,7 @@ test("[Agent LLM Decision] LLM 응답 targetKey를 관찰된 click target으로�
   });
 
   const decision = await client.decide({
+    runId: "00000000-0000-4000-8000-000000000401",
     goal: "Find checkout",
     startUrl: "https://example.com/product",
     state: {
@@ -130,6 +131,7 @@ test("[Agent LLM Decision] selector 없는 민감 텍스트 후보는 opaque can
   });
 
   const decision = await client.decide({
+    runId: "00000000-0000-4000-8000-000000000402",
     goal: "Find checkout",
     startUrl: "https://example.com/product",
     state: {
@@ -188,6 +190,7 @@ test("[Agent LLM Decision] transport 실패는 heuristic으로 fallback한다", 
   });
 
   const decision = await client.decide({
+    runId: "00000000-0000-4000-8000-000000000403",
     goal: "Find checkout",
     startUrl: "https://example.com/product",
     state: {
@@ -341,6 +344,7 @@ test("[Agent LLM Decision] invalid JSON 응답만 재시도한다", async () => 
   });
 
   const decision = await client.decide({
+    runId: "00000000-0000-4000-8000-000000000406",
     goal: "Find checkout",
     startUrl: "https://example.com/product",
     state: {
@@ -392,6 +396,7 @@ test("[Agent LLM Decision] unsafe decision은 재시도나 heuristic fallback �
 
   await assert.rejects(
     () => client.decide({
+      runId: "00000000-0000-4000-8000-000000000407",
       goal: "Find checkout",
       startUrl: "https://example.com/product",
       state: {
@@ -448,6 +453,7 @@ test("[Agent LLM Decision] checkpoint 응답은 heuristic click으로 변환하�
   });
 
   const decision = await client.decide({
+    runId: "00000000-0000-4000-8000-000000000404",
     goal: "Find checkout",
     startUrl: "https://example.com/product",
     state: {
@@ -508,6 +514,7 @@ test("[Agent LLM Decision] prompt payload는 민감 문자열을 redaction 후 �
   });
 
   await client.decide({
+    runId: "00000000-0000-4000-8000-000000000405",
     goal: "Find checkout for mvp.tester@example.com and 010-1234-5678 near 123 Main Street coupon code SAVE-SECRET-50",
     startUrl: "https://example.com/product?email=mvp.tester@example.com&token=secret-token&session_id=session-secret&coupon_code=SAVE-SECRET-50",
     state: {
@@ -564,6 +571,7 @@ function createFixtureDecisionInput(
   clickedTargetKeys: string[] = []
 ): AgentDecisionInput {
   return {
+    runId: "00000000-0000-4000-8000-000000000499",
     goal: "Find the checkout entry path without submitting payment or final order.",
     startUrl: "https://example.com/product",
     state: {
@@ -617,9 +625,12 @@ function selectPromptCandidateId(payload: Record<string, unknown>, expectedText:
     message !== null &&
     (message as Record<string, unknown>).role === "user"
   ) as { content?: unknown } | undefined;
-  assert.ok(userMessage && typeof userMessage.content === "string");
+  if (typeof userMessage?.content !== "string") {
+    throw new Error("User prompt message was not captured.");
+  }
+  const userMessageContent = userMessage.content;
 
-  const parsed = JSON.parse(userMessage.content) as {
+  const parsed = JSON.parse(userMessageContent) as {
     page?: {
       candidates?: Array<{
         targetKey?: string;
@@ -628,6 +639,9 @@ function selectPromptCandidateId(payload: Record<string, unknown>, expectedText:
     };
   };
   const candidate = parsed.page?.candidates?.find((entry) => entry.text === expectedText);
-  assert.ok(candidate && typeof candidate.targetKey === "string");
-  return candidate.targetKey;
+  if (typeof candidate?.targetKey !== "string") {
+    throw new Error(`Prompt candidate was not found for text: ${expectedText}`);
+  }
+  const targetKey = candidate.targetKey;
+  return targetKey;
 }

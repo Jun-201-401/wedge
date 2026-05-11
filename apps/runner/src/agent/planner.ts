@@ -49,6 +49,7 @@ export interface AgentDecision {
 }
 
 export interface AgentDecisionInput {
+  runId: string;
   goal: string;
   startUrl: string;
   state: AgentExecutionState;
