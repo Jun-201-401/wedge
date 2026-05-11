@@ -2,10 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import type { ApiResponse } from '../../src/api/http';
-import { getReport, generateRunReport, getRunReport, listRunReports } from '../../src/api/reports';
+import { createRunReportExport, downloadReportExport, getReport, generateRunReport, getRunReport, listRunReports } from '../../src/api/reports';
 import { requestRunAnalysis } from '../../src/api/runs';
 import type { AnalysisRequestResponse } from '../../src/entities/run';
-import type { ReportDetail, ReportSummary, RunReportProjection } from '../../src/entities/report';
+import type { ReportDetail, ReportExport, ReportSummary, RunReportProjection } from '../../src/entities/report';
 
 const runId = '11111111-1111-4111-8111-111111111111';
 const reportId = '22222222-2222-4222-8222-222222222222';
@@ -124,6 +124,20 @@ const reportDetailResponse = {
   meta: { requestId: 'req_report_detail' },
 } satisfies ApiResponse<ReportDetail>;
 
+const reportExportResponse = {
+  data: {
+    reportId,
+    runId,
+    analysisJobId,
+    format: 'MARKDOWN',
+    status: 'READY',
+    artifactId: '55555555-5555-4555-8555-555555555555',
+    downloadUrl: `/api/runs/${runId}/artifacts/55555555-5555-4555-8555-555555555555/content`,
+    createdAt: '2026-05-11T01:00:00Z',
+  },
+  meta: { requestId: 'req_report_export' },
+} satisfies ApiResponse<ReportExport>;
+
 test('analysis and report api clients call implemented backend endpoints', async () => {
   const originalFetch = globalThis.fetch;
   const calls: Array<{ url: string; method: string }> = [];
@@ -135,6 +149,10 @@ test('analysis and report api clients call implemented backend endpoints', async
 
     if (url.endsWith('/analysis')) {
       return response(analysisResponse);
+    }
+
+    if (url.endsWith('/reports') && method === 'POST') {
+      return response(reportExportResponse);
     }
 
     if (url.endsWith('/reports')) {
@@ -153,6 +171,7 @@ test('analysis and report api clients call implemented backend endpoints', async
     const runReport = await getRunReport(runId);
     const generatedReport = await generateRunReport(runId);
     const reportSummaries = await listRunReports(runId);
+    const reportExport = await createRunReportExport(runId, { format: 'MARKDOWN', analysisJobId });
     const reportDetail = await getReport(reportId);
 
     assert.deepEqual(calls, [
@@ -160,13 +179,40 @@ test('analysis and report api clients call implemented backend endpoints', async
       { url: `/api/runs/${runId}/report`, method: 'GET' },
       { url: `/api/runs/${runId}/report`, method: 'POST' },
       { url: `/api/runs/${runId}/reports`, method: 'GET' },
+      { url: `/api/runs/${runId}/reports`, method: 'POST' },
       { url: `/api/reports/${reportId}`, method: 'GET' },
     ]);
     assert.equal(analysis.data.status, 'QUEUED');
     assert.equal(runReport.data.reportStatus, 'READY');
     assert.equal(generatedReport.data.reportId, reportId);
     assert.equal(reportSummaries.data[0].topFindings[0].rank, 1);
+    assert.equal(reportExport.data.format, 'MARKDOWN');
+    assert.equal(reportExport.data.downloadUrl, `/api/runs/${runId}/artifacts/55555555-5555-4555-8555-555555555555/content`);
     assert.equal(reportDetail.data.findings[0].nudges[0].recommendation, null);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('downloadReportExport fetches same-origin report artifact content as a blob', async () => {
+  const originalFetch = globalThis.fetch;
+  const calls: Array<{ url: string; method: string }> = [];
+
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    calls.push({ url: String(input), method: init?.method ?? 'GET' });
+    return new Response('# 리포트\n', {
+      status: 200,
+      headers: { 'Content-Type': 'text/markdown; charset=utf-8' },
+    });
+  }) as typeof fetch;
+
+  try {
+    const blob = await downloadReportExport(`/api/runs/${runId}/artifacts/artifact-1/content`);
+
+    assert.equal(blob.type, 'text/markdown;charset=utf-8');
+    assert.deepEqual(calls, [
+      { url: `/api/runs/${runId}/artifacts/artifact-1/content`, method: 'GET' },
+    ]);
   } finally {
     globalThis.fetch = originalFetch;
   }

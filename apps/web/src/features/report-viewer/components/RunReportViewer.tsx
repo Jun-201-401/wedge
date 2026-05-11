@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { useAuthenticatedResourceUrl } from '../../../shared/lib/authenticatedResourceUrl';
 import { RUNS_PATH } from '../../../shared/lib/appPaths';
@@ -8,6 +8,10 @@ import '../styles/run-report-viewer.css';
 
 interface RunReportViewerProps {
   report: RunReportViewModel;
+  canDownloadReport?: boolean;
+  isReportDownloading?: boolean;
+  reportDownloadMessage?: string;
+  onDownloadReport?: () => void;
 }
 
 function formatIssueCount(issueCount: number) {
@@ -103,6 +107,10 @@ function linkedFinding(findings: ReportFinding[], recommendation: ReportRecommen
   return findingId ? findings.find((finding) => finding.id === findingId) ?? null : null;
 }
 
+function previewUrlForFinding(finding: ReportFinding, fallbackUrl: string | null | undefined) {
+  return finding.previewImageUrl ?? fallbackUrl ?? null;
+}
+
 function recommendationReason(recommendation: ReportRecommendation, finding: ReportFinding | null) {
   return recommendation.rationale ?? finding?.summary ?? recommendation.expectedImpact;
 }
@@ -136,7 +144,13 @@ export function RunReportBrand() {
   );
 }
 
-export function RunReportViewer({ report }: RunReportViewerProps) {
+export function RunReportViewer({
+  report,
+  canDownloadReport = false,
+  isReportDownloading = false,
+  reportDownloadMessage = '',
+  onDownloadReport,
+}: RunReportViewerProps) {
   const evidencePreviewRef = useRef<HTMLDivElement | null>(null);
   const [hoveredFindingId, setHoveredFindingId] = useState<string | null>(null);
   const [selectedFindingId, setSelectedFindingId] = useState<string | null>(report.findings[0]?.id ?? null);
@@ -164,7 +178,53 @@ export function RunReportViewer({ report }: RunReportViewerProps) {
     const activeId = hoveredFindingId ?? selectedFindingId;
     return resolveActiveFinding(report.findings, activeId);
   }, [hoveredFindingId, report.findings, selectedFindingId]);
+  const activeFindingId = activeFinding?.id ?? null;
+
+  const recommendationByFindingId = useMemo(() => {
+    const map = new Map<string, ReportRecommendation>();
+    for (const recommendation of recommendations) {
+      if (recommendation.findingId && !map.has(recommendation.findingId)) {
+        map.set(recommendation.findingId, recommendation);
+      }
+    }
+    return map;
+  }, [recommendations]);
+
+  const hintedRecommendationId = useMemo(() => {
+    if (!hoveredFindingId) {
+      return null;
+    }
+    const recommendation = recommendationByFindingId.get(hoveredFindingId);
+    return recommendation?.id ?? null;
+  }, [hoveredFindingId, recommendationByFindingId]);
+
   const selectedEvidencePreviewUrl = activeFinding?.previewImageUrl ?? report.evidencePreviewUrl;
+
+  const markerCandidates = useMemo(() => {
+    if (!selectedEvidencePreviewUrl) {
+      return report.findings.filter((finding) => finding.highlight !== null);
+    }
+
+    return report.findings.filter(
+      (finding) =>
+        finding.highlight !== null &&
+        previewUrlForFinding(finding, report.evidencePreviewUrl) === selectedEvidencePreviewUrl,
+    );
+  }, [report.evidencePreviewUrl, report.findings, selectedEvidencePreviewUrl]);
+
+  const selectFindingMarker = useCallback(
+    (finding: ReportFinding) => {
+      const linked = recommendationByFindingId.get(finding.id);
+      if (!linked) {
+        setSelectedFindingId(finding.id);
+        return;
+      }
+      setSelectedRecommendationId(linked.id);
+      setSelectedFindingId(finding.id);
+    },
+    [recommendationByFindingId],
+  );
+
   const evidencePreviewUrl = useAuthenticatedResourceUrl(selectedEvidencePreviewUrl);
   const isEvidencePreviewResolving = Boolean(selectedEvidencePreviewUrl && !evidencePreviewUrl);
   const browserModeLabel = isEvidencePreviewResolving ? '캡처 로딩' : evidencePreviewUrl ? '페이지 캡처' : '모의 프리뷰';
@@ -226,6 +286,42 @@ export function RunReportViewer({ report }: RunReportViewerProps) {
     }
   }
 
+  const frictionMarkers = isEvidencePreviewResolving
+    ? null
+    : markerCandidates.map((finding) => {
+        const highlight = finding.highlight;
+        if (!highlight) {
+          return null;
+        }
+        const isActive = finding.id === activeFindingId;
+        const markerClass = `run-report-friction-marker run-report-friction-marker--${finding.severity} ${
+          isActive ? 'run-report-friction-marker--active' : 'run-report-friction-marker--inactive'
+        }`;
+
+        return (
+          <button
+            key={finding.id}
+            type="button"
+            className={markerClass}
+            style={{
+              top: highlight.top,
+              left: highlight.left,
+              width: highlight.width,
+              height: highlight.height,
+            }}
+            onClick={() => selectFindingMarker(finding)}
+            onMouseEnter={() => setHoveredFindingId(finding.id)}
+            onMouseLeave={() => setHoveredFindingId(null)}
+            onFocus={() => setHoveredFindingId(finding.id)}
+            onBlur={() => setHoveredFindingId(null)}
+            aria-label={`마찰 지점: ${finding.title}`}
+            aria-pressed={isActive}
+          >
+            {isActive ? <span>{markerLabel(highlight.label)}</span> : null}
+          </button>
+        );
+      });
+
   return (
     <div className="run-report-page">
       <div className="run-report-grid-bg" aria-hidden="true" />
@@ -237,9 +333,18 @@ export function RunReportViewer({ report }: RunReportViewerProps) {
 
         <div className="run-report-topbar__right">
           <a href={RUNS_PATH} className="run-report-topbar__link run-report-topbar__link--secondary">실행 목록</a>
-          <button type="button" className="run-report-topbar__export" disabled title="리포트 내보내기 기능 준비 중">내보내기 · 준비 중</button>
+          <button
+            type="button"
+            className="run-report-topbar__export"
+            disabled={!canDownloadReport || isReportDownloading}
+            onClick={onDownloadReport}
+            title={canDownloadReport ? '리포트를 Markdown 파일로 다운로드합니다' : '실제 생성된 서버 리포트에서 다운로드를 사용할 수 있습니다'}
+          >
+            {isReportDownloading ? '리포트 준비 중' : '리포트 다운로드'}
+          </button>
         </div>
       </header>
+      {reportDownloadMessage ? <p className="run-report-export-status" role="status">{reportDownloadMessage}</p> : null}
 
       <main className="run-report-shell" aria-labelledby="run-report-title">
         <header className="run-report-hero">
@@ -299,49 +404,27 @@ export function RunReportViewer({ report }: RunReportViewerProps) {
                   {evidencePreviewUrl ? (
                     <div className="run-report-evidence-preview__canvas">
                       <img className="run-report-evidence-preview__image" src={evidencePreviewUrl} alt="실제 실행에서 수집된 화면" />
-                      {activeFinding?.highlight && !isEvidencePreviewResolving ? (
-                        <div
-                          className={`run-report-friction-marker run-report-friction-marker--${activeFinding.severity}`}
-                          style={{
-                            top: activeFinding.highlight.top,
-                            left: activeFinding.highlight.left,
-                            width: activeFinding.highlight.width,
-                            height: activeFinding.highlight.height,
-                          }}
-                        >
-                          <span>{markerLabel(activeFinding.highlight.label)}</span>
-                        </div>
-                      ) : null}
+                      {frictionMarkers}
                     </div>
                   ) : isEvidencePreviewResolving ? (
                     <div className="run-report-sr-only" role="status">근거 화면을 불러오는 중입니다.</div>
                   ) : (
-                    <div className="run-report-evidence-preview__site">
-                      <div className="run-report-evidence-preview__nav" aria-hidden="true">
-                        <span />
-                        <span />
-                        <span />
+                    <>
+                      <div className="run-report-evidence-preview__site">
+                        <div className="run-report-evidence-preview__nav" aria-hidden="true">
+                          <span />
+                          <span />
+                          <span />
+                        </div>
+                        <div className="run-report-evidence-preview__hero">
+                          <small>{report.heroSubtitle}</small>
+                          <strong>{report.heroTitle}</strong>
+                          <button type="button">{report.heroCallToAction}</button>
+                        </div>
                       </div>
-                      <div className="run-report-evidence-preview__hero">
-                        <small>{report.heroSubtitle}</small>
-                        <strong>{report.heroTitle}</strong>
-                        <button type="button">{report.heroCallToAction}</button>
-                      </div>
-                    </div>
+                      {frictionMarkers}
+                    </>
                   )}
-                  {!evidencePreviewUrl && activeFinding?.highlight && !isEvidencePreviewResolving ? (
-                    <div
-                      className={`run-report-friction-marker run-report-friction-marker--${activeFinding.severity}`}
-                      style={{
-                        top: activeFinding.highlight.top,
-                        left: activeFinding.highlight.left,
-                        width: activeFinding.highlight.width,
-                        height: activeFinding.highlight.height,
-                      }}
-                    >
-                      <span>{markerLabel(activeFinding.highlight.label)}</span>
-                    </div>
-                  ) : null}
                 </div>
               </div>
             </article>
@@ -375,12 +458,13 @@ export function RunReportViewer({ report }: RunReportViewerProps) {
                       const relatedFinding = linkedFinding(report.findings, recommendation);
                       const relatedFindingId = relatedFinding?.id ?? null;
                       const isSelected = selectedRecommendationId === recommendation.id;
+                      const isHinted = !isSelected && hintedRecommendationId === recommendation.id;
 
                       return (
                         <li key={recommendation.id}>
                           <button
                             type="button"
-                            className={`run-report-recommendation-tab${isSelected ? ' run-report-recommendation-tab--active' : ''}`}
+                            className={`run-report-recommendation-tab${isSelected ? ' run-report-recommendation-tab--active' : ''}${isHinted ? ' run-report-recommendation-tab--hinted' : ''}`}
                             aria-pressed={isSelected}
                             onClick={() => selectRecommendation(recommendation)}
                             onFocus={() => setHoveredFindingId(relatedFindingId)}
@@ -420,13 +504,14 @@ export function RunReportViewer({ report }: RunReportViewerProps) {
                           const relatedFinding = linkedFinding(report.findings, recommendation);
                           const relatedFindingId = relatedFinding?.id ?? null;
                           const isSelected = selectedRecommendationId === recommendation.id;
+                          const isHinted = !isSelected && hintedRecommendationId === recommendation.id;
                           const metaParts = recommendationMeta(recommendation, relatedFinding).split(' · ');
 
                           return (
                             <button
                               key={recommendation.id}
                               type="button"
-                              className={`run-report-all-recommendations__row${isSelected ? ' run-report-all-recommendations__row--active' : ''}`}
+                              className={`run-report-all-recommendations__row${isSelected ? ' run-report-all-recommendations__row--active' : ''}${isHinted ? ' run-report-all-recommendations__row--hinted' : ''}`}
                               tabIndex={isAllRecommendationsOpen ? 0 : -1}
                               onClick={() => selectRecommendation(recommendation)}
                               onFocus={() => setHoveredFindingId(relatedFindingId)}
@@ -471,32 +556,34 @@ export function RunReportViewer({ report }: RunReportViewerProps) {
                     </div>
                   </div>
 
-                  <h2 id="run-report-selected-action-title">{selectedRecommendation.title}</h2>
-                  <div className="run-report-selected-action__reason">
-                    <strong>전환이 끊기는 지점입니다</strong>
-                    <p>{recommendationReason(selectedRecommendation, selectedRecommendationFinding)}</p>
-                  </div>
+                  <div className="run-report-selected-action__body" key={selectedRecommendation.id}>
+                    <h2 id="run-report-selected-action-title">{selectedRecommendation.title}</h2>
+                    <div className="run-report-selected-action__reason">
+                      <strong>전환이 끊기는 지점입니다</strong>
+                      <p>{recommendationReason(selectedRecommendation, selectedRecommendationFinding)}</p>
+                    </div>
 
-                  <span className="run-report-selected-action__location">
-                    화면 위치 <strong>{recommendationLocationLabel(selectedRecommendationFinding)}</strong>
-                  </span>
+                    <span className="run-report-selected-action__location">
+                      화면 위치 <strong>{recommendationLocationLabel(selectedRecommendationFinding)}</strong>
+                    </span>
 
-                  <div className="run-report-selected-action__steps">
-                    <article>
-                      <span>1</span>
-                      <strong>문제</strong>
-                      <p>{recommendationProblem(selectedRecommendation, selectedRecommendationFinding)}</p>
-                    </article>
-                    <article>
-                      <span>2</span>
-                      <strong>바꿀 것</strong>
-                      <p>{selectedRecommendation.detail}</p>
-                    </article>
-                    <article>
-                      <span>3</span>
-                      <strong>확인할 신호</strong>
-                      <p>{selectedRecommendation.validationQuestion ?? selectedRecommendation.expectedImpact}</p>
-                    </article>
+                    <div className="run-report-selected-action__steps">
+                      <article>
+                        <span>1</span>
+                        <strong>문제</strong>
+                        <p>{recommendationProblem(selectedRecommendation, selectedRecommendationFinding)}</p>
+                      </article>
+                      <article>
+                        <span>2</span>
+                        <strong>바꿀 것</strong>
+                        <p>{selectedRecommendation.detail}</p>
+                      </article>
+                      <article>
+                        <span>3</span>
+                        <strong>확인할 신호</strong>
+                        <p>{selectedRecommendation.validationQuestion ?? selectedRecommendation.expectedImpact}</p>
+                      </article>
+                    </div>
                   </div>
                 </div>
               </section>

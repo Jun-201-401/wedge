@@ -61,7 +61,7 @@ test('run report page follows the report.html result-first layout', () => {
   assert.match(source, /preview\.scrollTo\(\{ top: targetScrollTop, behavior: 'smooth' \}\)/);
   assert.match(source, /run-report-evidence-preview__canvas/);
   assert.match(source, /run-report-evidence-preview--resolving/);
-  assert.match(source, /activeFinding\?\.highlight && !isEvidencePreviewResolving/);
+  assert.match(source, /frictionMarkers/);
   assert.match(source, /role="status"/);
   assert.match(source, /if \(isMockRun\)/);
   assert.match(source, /리포트 준비 중입니다/);
@@ -77,7 +77,10 @@ test('run report page follows the report.html result-first layout', () => {
   assert.doesNotMatch(viewer, /\{report\.reportId\}/);
   assert.match(source, /RUNS_PATH/);
   assert.match(source, /실행 목록/);
-  assert.match(source, /내보내기 · 준비 중/);
+  assert.match(source, /리포트 다운로드/);
+  assert.match(source, /createRunReportExport/);
+  assert.match(source, /downloadReportExport/);
+  assert.match(source, /REPORT_EXPORT_PENDING_MESSAGE/);
   assert.doesNotMatch(viewer, /Share Report/);
   assert.match(source, /isMockRunId\(runId\)/);
   assert.match(source, /aria-label="분석 화면 미리보기"/);
@@ -93,6 +96,9 @@ test('run report page follows the report.html result-first layout', () => {
   assert.match(source, /selectedFindingId/);
   assert.match(source, /setSelectedFindingId\(findingId\)/);
   assert.match(source, /activeFinding\?\.previewImageUrl \?\? report\.evidencePreviewUrl/);
+  assert.match(source, /function previewUrlForFinding\(finding: ReportFinding, fallbackUrl: string \| null \| undefined\)/);
+  assert.match(source, /recommendation\.findingId && !map\.has\(recommendation\.findingId\)/);
+  assert.match(source, /previewUrlForFinding\(finding, report\.evidencePreviewUrl\) === selectedEvidencePreviewUrl/);
   assert.match(source, /evidencePreviewUrl \? ' run-report-evidence-preview--image' : ''/);
   assert.match(source, /TOP_RECOMMENDATION_COUNT/);
   assert.match(source, /topRecommendations/);
@@ -155,6 +161,7 @@ test('run report css keeps result-first content in the live simulation cockpit t
   assert.match(css, /\.run-report-grid-bg\s*\{[\s\S]*?radial-gradient\(#f1f5f9 1px/);
   assert.match(css, /\.run-report-brand\s*\{[\s\S]*?color: #7dd3fc/);
   assert.match(css, /\.run-report-topbar__export\s*\{[\s\S]*?background: #334155/);
+  assert.match(css, /\.run-report-export-status\s*\{[\s\S]*?font-size: 0\.78rem/);
   assert.doesNotMatch(css, /topbar__share/);
   assert.match(css, /\.run-report-topbar__link--secondary\s*\{[\s\S]*?background: transparent/);
   assert.match(css, /\.run-report-topbar__link--secondary\s*\{[\s\S]*?text-transform: none/);
@@ -233,6 +240,7 @@ test('run report css keeps result-first content in the live simulation cockpit t
   assert.match(css, /\.run-report-stage-chip\s*\{[\s\S]*?text-overflow: ellipsis/);
   assert.match(css, /\.run-report-stage-chip--active\s*\{[\s\S]*?border-color: #7dd3fc/);
   assert.match(css, /\.run-report-stage-chip--active\s*\{[\s\S]*?background: #e0f2fe/);
+  assert.doesNotMatch(css, /runReportStageChipGlow/);
   assert.match(css, /\.run-report-selected-action__reason\s*\{[\s\S]*?box-shadow: inset 0 0 0 1px var\(--run-report-line-soft\)/);
   assert.match(css, /\.run-report-selected-action__steps article\s*\{[\s\S]*?transition: background 140ms ease/);
   assert.match(css, /\.run-report-selected-action__steps article:hover\s*\{[\s\S]*?transform: translateY\(-1px\)/);
@@ -245,6 +253,9 @@ test('run report css keeps result-first content in the live simulation cockpit t
   assert.match(css, /\.run-report-friction-marker::before\s*\{[\s\S]*?border-radius: 999px/);
   assert.match(css, /\.run-report-friction-marker::before\s*\{[\s\S]*?rgba\(245, 158, 11, 0\.72\)/);
   assert.match(css, /\.run-report-friction-marker span\s*\{[\s\S]*?background: #78350f/);
+  assert.match(css, /\.run-report-friction-marker span\s*\{[\s\S]*?font-size: 0\.62rem/);
+  assert.match(css, /\.run-report-friction-marker span\s*\{[\s\S]*?text-transform: none/);
+  assert.doesNotMatch(css, /runReportMarkerRipple|runReportMarkerBreath/);
   assert.doesNotMatch(css.match(/\.run-report-friction-marker\s*\{[^}]*\}/)?.[0] ?? '', /#0ea5e9/);
   assert.match(css, /@media \(max-width: 760px\)[\s\S]*?\.run-report-browser__mode-pill\s*\{[\s\S]*?display: none/);
   assert.match(css, /\.run-report-evidence-preview__image\s*\{[\s\S]*?height: auto/);

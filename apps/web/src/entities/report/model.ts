@@ -159,3 +159,19 @@ export interface ReportDetail {
   findings: ReportDetailFinding[];
   createdAt: string;
 }
+
+export interface ReportCreateRequest {
+  format: ReportFormat;
+  analysisJobId?: string | null;
+}
+
+export interface ReportExport {
+  reportId: string;
+  runId: string;
+  analysisJobId?: string | null;
+  format: ReportFormat;
+  status: 'READY';
+  artifactId: string;
+  downloadUrl: string;
+  createdAt?: string | null;
+}

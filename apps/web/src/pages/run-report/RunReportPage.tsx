@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 
-import { generateRunReport, getReport, getRunReport } from '../../api/reports';
+import { createRunReportExport, downloadReportExport, generateRunReport, getReport, getRunReport } from '../../api/reports';
 import { getRun, getRunEvidencePacket, listRunArtifacts, requestRunAnalysis } from '../../api/runs';
 import type { ReportDetail, RunReportProjection } from '../../entities/report';
 import type { EvidencePacket, Run } from '../../entities/run';
@@ -35,6 +35,9 @@ const GENERATE_REPORT_ERROR_MESSAGE = '리포트 생성 요청에 실패했습�
 const REQUEST_ANALYSIS_PENDING_MESSAGE = '분석 요청 중입니다.';
 const REQUEST_ANALYSIS_SUCCESS_MESSAGE = '분석 요청이 접수됐습니다. 분석이 완료되면 리포트를 생성할 수 있습니다.';
 const REQUEST_ANALYSIS_ERROR_MESSAGE = '분석 요청에 실패했습니다. 실행 상태 또는 접근 권한을 확인해주세요.';
+const REPORT_EXPORT_PENDING_MESSAGE = 'Markdown 리포트 파일을 준비하고 있습니다.';
+const REPORT_EXPORT_SUCCESS_MESSAGE = '리포트 다운로드가 시작됐습니다.';
+const REPORT_EXPORT_ERROR_MESSAGE = '리포트 다운로드에 실패했습니다. 잠시 후 다시 시도해주세요.';
 
 async function fetchRunReportPreviewUrl(runId: string) {
   const artifactsResponse = await listRunArtifacts(runId);
@@ -51,6 +54,25 @@ function readQueryParam(name: string) {
 
 function getFallbackUrl() {
   return readQueryParam('url') ?? 'https://example.com/';
+}
+
+function safeMarkdownReportFilename(runId: string) {
+  return `wedge-report-${runId.replace(/[^a-zA-Z0-9_-]/g, '-')}.md`;
+}
+
+function triggerBrowserDownload(blob: Blob, filename: string) {
+  if (typeof document === 'undefined') {
+    return;
+  }
+
+  const objectUrl = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = objectUrl;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(objectUrl);
 }
 
 function RunReportStatePage({
@@ -236,6 +258,7 @@ export function RunReportPage({ runId }: RunReportPageProps) {
   const [isReportLoading, setIsReportLoading] = useState(false);
   const [reportLoadError, setReportLoadError] = useState('');
   const [reportActionState, setReportActionState] = useState<ReportActionState>(IDLE_REPORT_ACTION_STATE);
+  const [reportExportActionState, setReportExportActionState] = useState<ReportActionState>(IDLE_REPORT_ACTION_STATE);
   const report = useMemo(() => {
     if (isMockRun) {
       return buildMockRunReportData(runId, targetUrl, scenarioId);
@@ -267,6 +290,7 @@ export function RunReportPage({ runId }: RunReportPageProps) {
       setIsReportLoading(false);
       setReportLoadError('');
       setReportActionState(IDLE_REPORT_ACTION_STATE);
+      setReportExportActionState(IDLE_REPORT_ACTION_STATE);
       return;
     }
 
@@ -284,6 +308,7 @@ export function RunReportPage({ runId }: RunReportPageProps) {
       setIsReportLoading(false);
       setReportLoadError('');
       setReportActionState(IDLE_REPORT_ACTION_STATE);
+      setReportExportActionState(IDLE_REPORT_ACTION_STATE);
 
       try {
         const response = await getRun(runId);
@@ -476,6 +501,31 @@ export function RunReportPage({ runId }: RunReportPageProps) {
     }
   };
 
+  const canDownloadReport = !isMockRun
+    && reportProjection?.reportStatus === 'READY'
+    && Boolean(reportProjection.reportId)
+    && Boolean(reportProjection.analysisJobId);
+
+  const handleDownloadReport = async () => {
+    if (!canDownloadReport || reportExportActionState.kind === 'pending') {
+      return;
+    }
+
+    setReportExportActionState({ kind: 'pending', message: REPORT_EXPORT_PENDING_MESSAGE });
+
+    try {
+      const exportResponse = await createRunReportExport(runId, {
+        format: 'MARKDOWN',
+        analysisJobId: reportProjection?.analysisJobId ?? null,
+      });
+      const reportBlob = await downloadReportExport(exportResponse.data.downloadUrl);
+      triggerBrowserDownload(reportBlob, safeMarkdownReportFilename(runId));
+      setReportExportActionState({ kind: 'success', message: REPORT_EXPORT_SUCCESS_MESSAGE });
+    } catch {
+      setReportExportActionState({ kind: 'error', message: REPORT_EXPORT_ERROR_MESSAGE });
+    }
+  };
+
   const stateAction = (() => {
     if (reportProjection?.reportStatus === 'GENERATABLE') {
       return (
@@ -524,5 +574,13 @@ export function RunReportPage({ runId }: RunReportPageProps) {
     );
   }
 
-  return <RunReportViewer report={report} />;
+  return (
+    <RunReportViewer
+      report={report}
+      canDownloadReport={canDownloadReport}
+      isReportDownloading={reportExportActionState.kind === 'pending'}
+      reportDownloadMessage={reportExportActionState.message}
+      onDownloadReport={handleDownloadReport}
+    />
+  );
 }

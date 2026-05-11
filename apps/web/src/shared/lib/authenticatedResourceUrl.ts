@@ -1,29 +1,7 @@
 import { useEffect, useState } from 'react';
 
 import { requestBlob } from '../../api/http';
-
-const API_PREFIX = '/api';
-
-function toApiPath(resourceUrl: string) {
-  if (resourceUrl.startsWith(`${API_PREFIX}/`)) {
-    return resourceUrl.slice(API_PREFIX.length);
-  }
-
-  if (resourceUrl.startsWith('/runs/')) {
-    return resourceUrl;
-  }
-
-  try {
-    const url = new URL(resourceUrl, window.location.origin);
-    if (url.origin === window.location.origin && url.pathname.startsWith(`${API_PREFIX}/`)) {
-      return `${url.pathname.slice(API_PREFIX.length)}${url.search}`;
-    }
-  } catch {
-    return null;
-  }
-
-  return null;
-}
+import { toSameOriginApiPath } from './apiResourcePath';
 
 export function useAuthenticatedResourceUrl(resourceUrl: string | null | undefined) {
   const [resolvedUrl, setResolvedUrl] = useState<string | null>(null);
@@ -34,7 +12,7 @@ export function useAuthenticatedResourceUrl(resourceUrl: string | null | undefin
       return undefined;
     }
 
-    const apiPath = toApiPath(resourceUrl);
+    const apiPath = toSameOriginApiPath(resourceUrl);
     if (!apiPath) {
       setResolvedUrl(resourceUrl);
       return undefined;

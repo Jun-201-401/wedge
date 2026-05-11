@@ -165,6 +165,24 @@
   color: #fff;
 }
 
+.run-report-export-status {
+  position: fixed;
+  top: 4.4rem;
+  right: 1.75rem;
+  z-index: 6;
+  max-width: min(24rem, calc(100vw - 3.5rem));
+  border: 1px solid #bae6fd;
+  border-radius: 999px;
+  background: rgba(240, 249, 255, 0.96);
+  margin: 0;
+  padding: 0.58rem 0.86rem;
+  color: #0369a1;
+  font-size: 0.78rem;
+  font-weight: 850;
+  line-height: 1.35;
+  box-shadow: 0 12px 28px rgba(14, 165, 233, 0.12);
+}
+
 .run-report-shell {
   display: flex;
   height: calc(100vh - 4rem);
@@ -539,6 +557,11 @@
   box-shadow: inset 0 0 0 1px #bae6fd;
 }
 
+.run-report-recommendation-tab--hinted {
+  background: #f8fafc;
+  box-shadow: inset 0 0 0 1px #cbd5e1;
+}
+
 .run-report-recommendation-tab__rank {
   display: grid;
   width: 1.5rem;
@@ -676,6 +699,10 @@
   background: #f0f9ff;
 }
 
+.run-report-all-recommendations__row--hinted {
+  background: #f8fafc;
+}
+
 .run-report-all-recommendations__row span,
 .run-report-all-recommendations__row small {
   color: #64748b;
@@ -695,6 +722,60 @@
 .run-report-selected-action {
   display: grid;
   gap: 0.85rem;
+}
+
+.run-report-selected-action__body {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.run-report-selected-action__body > * {
+  animation: runReportBodyFadeIn 220ms cubic-bezier(0.2, 0.65, 0.3, 1) both;
+}
+
+.run-report-selected-action__body > *:nth-child(1) {
+  animation-delay: 0ms;
+}
+
+.run-report-selected-action__body > *:nth-child(2) {
+  animation-delay: 40ms;
+}
+
+.run-report-selected-action__body > *:nth-child(3) {
+  animation-delay: 80ms;
+}
+
+.run-report-selected-action__body > .run-report-selected-action__steps {
+  animation: none;
+  opacity: 1;
+  transform: none;
+}
+
+.run-report-selected-action__body > .run-report-selected-action__steps > article {
+  animation: runReportBodyFadeIn 220ms cubic-bezier(0.2, 0.65, 0.3, 1) both;
+}
+
+.run-report-selected-action__body > .run-report-selected-action__steps > article:nth-child(1) {
+  animation-delay: 100ms;
+}
+
+.run-report-selected-action__body > .run-report-selected-action__steps > article:nth-child(2) {
+  animation-delay: 120ms;
+}
+
+.run-report-selected-action__body > .run-report-selected-action__steps > article:nth-child(3) {
+  animation-delay: 140ms;
+}
+
+@keyframes runReportBodyFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .run-report-stage-group {
@@ -732,6 +813,7 @@
   position: relative;
   min-width: 0;
   flex: 1 1 0;
+  transition: flex-grow 360ms cubic-bezier(0.2, 0.65, 0.3, 1);
 }
 
 .run-report-stage-chips li + li {
@@ -768,6 +850,8 @@
   text-align: center;
   text-overflow: ellipsis;
   white-space: nowrap;
+  transition: background 240ms ease, color 240ms ease, border-color 240ms ease,
+    box-shadow 240ms ease;
 }
 
 .run-report-stage-chip--active {
@@ -1173,9 +1257,22 @@
   place-items: center;
   border: 0;
   background: transparent;
-  box-shadow: 0 0 0 999px rgba(15, 23, 42, 0.12);
-  pointer-events: none;
-  transition: inset 180ms ease, width 180ms ease, height 180ms ease;
+  padding: 0;
+  margin: 0;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  pointer-events: auto;
+  transition: inset 220ms cubic-bezier(0.2, 0.65, 0.3, 1),
+    width 220ms cubic-bezier(0.2, 0.65, 0.3, 1),
+    height 220ms cubic-bezier(0.2, 0.65, 0.3, 1),
+    box-shadow 240ms ease;
+}
+
+.run-report-friction-marker:focus-visible {
+  outline: 3px solid rgba(14, 165, 233, 0.35);
+  outline-offset: 4px;
+  border-radius: 999px;
 }
 
 .run-report-friction-marker::before {
@@ -1183,13 +1280,16 @@
   position: absolute;
   top: 50%;
   left: 50%;
-  width: clamp(2.4rem, 42%, 5.2rem);
+  width: 0.95rem;
   aspect-ratio: 1;
-  border: 2px solid rgba(245, 158, 11, 0.72);
+  border: 2px solid rgba(245, 158, 11, 0.5);
   border-radius: 999px;
-  background: rgba(245, 158, 11, 0.14);
-  box-shadow: 0 0 0 0.42rem rgba(245, 158, 11, 0.12), 0 18px 42px rgba(120, 53, 15, 0.2);
+  background: rgba(245, 158, 11, 0.16);
   transform: translate(-50%, -50%);
+  transition: width 260ms cubic-bezier(0.2, 0.65, 0.3, 1),
+    border-color 220ms ease,
+    background 220ms ease,
+    box-shadow 240ms ease;
 }
 
 .run-report-friction-marker::after {
@@ -1197,11 +1297,59 @@
   position: absolute;
   top: 50%;
   left: 50%;
+  width: 0.32rem;
+  height: 0.32rem;
+  border-radius: 999px;
+  background: #b45309;
+  opacity: 0.7;
+  transform: translate(-50%, -50%);
+  transition: width 220ms cubic-bezier(0.2, 0.65, 0.3, 1),
+    height 220ms cubic-bezier(0.2, 0.65, 0.3, 1),
+    background 220ms ease,
+    opacity 220ms ease;
+}
+
+.run-report-friction-marker--inactive {
+  z-index: 2;
+  box-shadow: none;
+}
+
+.run-report-friction-marker--active {
+  z-index: 1;
+}
+
+.run-report-friction-marker--inactive:hover::before,
+.run-report-friction-marker--inactive:focus-visible::before {
+  width: 1.45rem;
+  border-color: rgba(245, 158, 11, 0.85);
+  background: rgba(245, 158, 11, 0.3);
+  box-shadow: 0 0 0 0.24rem rgba(245, 158, 11, 0.14);
+}
+
+.run-report-friction-marker--inactive:hover::after,
+.run-report-friction-marker--inactive:focus-visible::after {
+  width: 0.4rem;
+  height: 0.4rem;
+  background: #92400e;
+  opacity: 1;
+}
+
+.run-report-friction-marker--active {
+  box-shadow: 0 0 0 999px rgba(15, 23, 42, 0.12);
+}
+
+.run-report-friction-marker--active::before {
+  width: clamp(2.4rem, 42%, 5.2rem);
+  border-color: rgba(245, 158, 11, 0.72);
+  background: rgba(245, 158, 11, 0.14);
+  box-shadow: 0 0 0 0.36rem rgba(245, 158, 11, 0.13), 0 14px 34px rgba(120, 53, 15, 0.18);
+}
+
+.run-report-friction-marker--active::after {
   width: 0.42rem;
   height: 0.42rem;
-  border-radius: 999px;
   background: #92400e;
-  transform: translate(-50%, -50%);
+  opacity: 1;
 }
 
 .run-report-friction-marker span {
@@ -1214,11 +1362,23 @@
   background: #78350f;
   padding: 0.22rem 0.52rem;
   color: #fff;
-  font-size: 0.5rem;
+  font-size: 0.62rem;
   font-weight: 900;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  letter-spacing: 0;
+  text-transform: none;
   white-space: nowrap;
+  animation: runReportMarkerLabelIn 220ms cubic-bezier(0.2, 0.65, 0.3, 1) both;
+}
+
+@keyframes runReportMarkerLabelIn {
+  from {
+    opacity: 0;
+    transform: translate(0.32rem, -50%);
+  }
+  to {
+    opacity: 1;
+    transform: translate(0, -50%);
+  }
 }
 
 .run-report-evidence-card__summary {
@@ -1586,10 +1746,18 @@
   .run-report-hero-stats--skeleton dd,
   .run-report-skeleton-line,
   .run-report-evidence-preview--skeleton,
-  .run-report-evidence-preview--resolving {
+  .run-report-evidence-preview--resolving,
+  .run-report-friction-marker span,
+  .run-report-selected-action__body > *,
+  .run-report-selected-action__body > .run-report-selected-action__steps > article {
     animation: none;
   }
 
+  .run-report-friction-marker,
+  .run-report-friction-marker::before,
+  .run-report-friction-marker::after,
+  .run-report-stage-chips li,
+  .run-report-stage-chip,
   .run-report-all-recommendations__panel,
   .run-report-selected-action__steps article {
     transition: none;
