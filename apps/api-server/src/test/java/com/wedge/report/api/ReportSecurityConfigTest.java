@@ -16,6 +16,7 @@ import com.wedge.common.security.JwtAuthenticationFilter;
 import com.wedge.common.security.JwtTokenProvider;
 import com.wedge.report.api.dto.ReportDetailResponse;
 import com.wedge.report.application.ReportDetailQueryService;
+import com.wedge.report.application.ReportExportService;
 import com.wedge.report.application.ReportGenerationService;
 import com.wedge.report.application.ReportShareService;
 import com.wedge.report.application.ReportSummaryQueryService;
@@ -51,6 +52,8 @@ class ReportSecurityConfigTest {
     private ReportDetailQueryService reportDetailQueryService;
     @MockBean
     private ReportGenerationService reportGenerationService;
+    @MockBean
+    private ReportExportService reportExportService;
     @MockBean
     private ReportShareService reportShareService;
     @MockBean

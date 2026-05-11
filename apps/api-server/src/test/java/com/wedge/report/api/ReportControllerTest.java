@@ -20,10 +20,12 @@ import com.wedge.report.api.dto.DecisionMapItemResponse;
 import com.wedge.report.api.dto.ReportDetailFindingResponse;
 import com.wedge.report.api.dto.ReportDetailNudgeResponse;
 import com.wedge.report.api.dto.ReportDetailResponse;
+import com.wedge.report.api.dto.ReportExportResponse;
 import com.wedge.report.api.dto.ReportShareResponse;
 import com.wedge.report.api.dto.ReportSummaryResponse;
 import com.wedge.report.api.dto.RunReportResponse;
 import com.wedge.report.application.ReportDetailQueryService;
+import com.wedge.report.application.ReportExportService;
 import com.wedge.report.application.ReportGenerationService;
 import com.wedge.report.application.ReportShareCreationResult;
 import com.wedge.report.application.ReportShareService;
@@ -62,12 +64,14 @@ class ReportControllerTest {
     private final ReportSummaryQueryService reportSummaryQueryService = mock(ReportSummaryQueryService.class);
     private final ReportDetailQueryService reportDetailQueryService = mock(ReportDetailQueryService.class);
     private final ReportGenerationService reportGenerationService = mock(ReportGenerationService.class);
+    private final ReportExportService reportExportService = mock(ReportExportService.class);
     private final ReportShareService reportShareService = mock(ReportShareService.class);
     private final MockMvc mockMvc = MockMvcBuilders.standaloneSetup(
                     new ReportController(
                             reportSummaryQueryService,
                             reportDetailQueryService,
                             reportGenerationService,
+                            reportExportService,
                             reportShareService
                     )
             )
@@ -123,6 +127,41 @@ class ReportControllerTest {
                 .andExpect(jsonPath("$.data.reportStatus").value("READY"))
                 .andExpect(jsonPath("$.data.reportId").value(reportId.toString()))
                 .andExpect(jsonPath("$.meta.requestId").value(RUN_REPORT_REQUEST_ID));
+    }
+
+    @Test
+    void createRunReportExportReturnsAcceptedMarkdownArtifactEnvelope() throws Exception {
+        UUID runId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        UUID reportId = UUID.randomUUID();
+        UUID analysisJobId = UUID.randomUUID();
+        UUID artifactId = UUID.randomUUID();
+        when(reportExportService.createRunReportExport(
+                org.mockito.Mockito.eq(runId),
+                org.mockito.Mockito.eq(userId),
+                org.mockito.Mockito.any()
+        )).thenReturn(new ReportExportResponse(
+                reportId,
+                runId,
+                analysisJobId,
+                ReportFormat.MARKDOWN,
+                ReportStatus.READY,
+                artifactId,
+                "/api/runs/" + runId + "/artifacts/" + artifactId + "/content",
+                CREATED_AT
+        ));
+
+        mockMvc.perform(post("/api/runs/{runId}/reports", runId)
+                        .principal(authentication(userId))
+                        .contentType("application/json")
+                        .content("{\"format\":\"MARKDOWN\",\"analysisJobId\":\"" + analysisJobId + "\"}")
+                        .header("X-Request-Id", "req_report_export"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.reportId").value(reportId.toString()))
+                .andExpect(jsonPath("$.data.format").value("MARKDOWN"))
+                .andExpect(jsonPath("$.data.artifactId").value(artifactId.toString()))
+                .andExpect(jsonPath("$.data.downloadUrl").value("/api/runs/" + runId + "/artifacts/" + artifactId + "/content"))
+                .andExpect(jsonPath("$.meta.requestId").value("req_report_export"));
     }
 
     @Test
