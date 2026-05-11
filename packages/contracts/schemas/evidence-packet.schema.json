@@ -282,6 +282,7 @@
             "settle_item_count_change",
             "journey_action_raw",
             "product_card",
+            "product_detail_signal",
             "goal_action_candidate",
             "goal_action_result",
             "category_filter_signal",

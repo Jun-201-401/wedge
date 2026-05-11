@@ -879,6 +879,43 @@ export interface ProductCardObservation {
   cards: Record<string, unknown>[];
 }
 
+export type ProductDetailEvidence =
+  | "matched_product_card"
+  | "url_changed"
+  | "title_changed"
+  | "breadcrumb_changed"
+  | "price_visible"
+  | "product_image_visible"
+  | "goal_action_candidate_visible"
+  | "dom_changed";
+
+export interface ProductDetailSignalObservation {
+  observation_id: string;
+  type: "product_detail_signal";
+  stage: ScenarioStage;
+  source: ("scenario_log" | "dom" | "browser" | "screenshot")[];
+  confidence: number;
+  step_order: number;
+  step_key: string;
+  action_type: ScenarioActionType;
+  clicked_text?: string | null;
+  clicked_selector?: string | null;
+  matched_product_card: MatchedProductCardSignal;
+  url_before: string;
+  url_after: string;
+  title_before: string;
+  title_after: string;
+  breadcrumb_before: string[];
+  breadcrumb_after: string[];
+  visible_price: string[];
+  visible_product_image: Record<string, unknown>[];
+  goal_action_candidate_count: number;
+  add_to_cart_like_button_count: number;
+  dom_changed: boolean;
+  screenshot_artifact_id?: string | null;
+  evidence: ProductDetailEvidence[];
+}
+
 export interface GoalActionCandidateObservation {
   observation_id: string;
   type: "goal_action_candidate";

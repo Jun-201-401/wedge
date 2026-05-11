@@ -62,6 +62,7 @@ export type {
   InteractiveComponentObservationItem,
   InteractiveComponentsObservation,
   JourneyActionRawObservation,
+  ProductDetailSignalObservation,
   ProductCardObservation,
   RunExecuteMessage,
   RunnerAcceptedPayload,

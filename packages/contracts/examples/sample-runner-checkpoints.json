@@ -180,6 +180,68 @@
           "category_url_changed": true
         },
         {
+          "observation_id": "step_004_expand_benefits.obs_product_detail_signal",
+          "type": "product_detail_signal",
+          "stage": "VALUE",
+          "source": [
+            "scenario_log",
+            "dom",
+            "browser",
+            "screenshot"
+          ],
+          "confidence": 0.84,
+          "step_order": 4,
+          "step_key": "step_004_expand_benefits",
+          "action_type": "click",
+          "clicked_text": "혜택 보기",
+          "clicked_selector": "#signup-benefits-toggle",
+          "matched_product_card": {
+            "element_text": "혜택 플랜 무료 체험",
+            "clicked_selector": "#signup-benefits-toggle",
+            "visible_price": null,
+            "visible_product_image": false,
+            "bbox": {
+              "x": 500,
+              "y": 320,
+              "width": 260,
+              "height": 140,
+              "unit": "css_px"
+            },
+            "match_reason": "selector_exact",
+            "match_confidence": 0.94
+          },
+          "url_before": "https://example.com/signup",
+          "url_after": "https://example.com/signup?category=benefits",
+          "title_before": "Sign up",
+          "title_after": "Sign up - Benefits",
+          "breadcrumb_before": [
+            "Home",
+            "Sign up"
+          ],
+          "breadcrumb_after": [
+            "Home",
+            "Sign up",
+            "Benefits"
+          ],
+          "visible_price": [
+            "무료 체험"
+          ],
+          "visible_product_image": [],
+          "goal_action_candidate_count": 1,
+          "add_to_cart_like_button_count": 1,
+          "dom_changed": true,
+          "screenshot_artifact_id": "artifact-item-count-screenshot",
+          "evidence": [
+            "matched_product_card",
+            "url_changed",
+            "title_changed",
+            "breadcrumb_changed",
+            "price_visible",
+            "goal_action_candidate_visible",
+            "dom_changed"
+          ]
+        },
+        {
           "observation_id": "step_004_expand_benefits.obs_goal_action_result",
           "type": "goal_action_result",
           "stage": "VALUE",

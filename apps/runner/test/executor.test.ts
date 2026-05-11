@@ -1056,6 +1056,133 @@ test("[수집 pipeline] Journey raw signal은 click 전후 상태와 artifact/bb
   );
 });
 
+test("[수집 pipeline] 상품 카드 클릭 후 상세 진입 근거를 product_detail_signal로 남긴다", async () => {
+  const capturePipeline = createCapturePipeline();
+  const plan = createMinimalPlan();
+  const productCard = {
+    element_text: "Runner Shoes ₩12,000",
+    clicked_selector: "a.product-card[href='/products/runner-shoes']",
+    visible_price: "₩12,000",
+    visible_product_image: true,
+    bbox: {
+      x: 80,
+      y: 180,
+      width: 260,
+      height: 320,
+      unit: "css_px" as const
+    }
+  };
+  const beforeSnapshot = createSimulatedPageSnapshot(plan, {
+    finalUrl: "https://example.com/products",
+    title: "Products",
+    breadcrumb: ["Home", "Products"],
+    productCards: [productCard],
+    domSignature: "list-dom"
+  });
+  const afterSnapshot = createSimulatedPageSnapshot(plan, {
+    finalUrl: "https://example.com/products/runner-shoes",
+    title: "Runner Shoes",
+    breadcrumb: ["Home", "Products", "Runner Shoes"],
+    visiblePrices: ["₩12,000"],
+    productImages: [
+      {
+        src: "https://example.com/runner-shoes.png",
+        alt: "Runner Shoes",
+        bounds: {
+          x: 120,
+          y: 180,
+          width: 420,
+          height: 360,
+          unit: "css_px"
+        }
+      }
+    ],
+    interactiveComponents: [
+      {
+        text: "장바구니 담기",
+        selector: "button.add-cart",
+        role: "button",
+        tag: "button",
+        clickable: true,
+        clicked_in_scenario: false,
+        is_cta_candidate: true,
+        is_primary_like: true,
+        bounds: {
+          x: 620,
+          y: 540,
+          width: 180,
+          height: 48,
+          unit: "css_px"
+        }
+      }
+    ],
+    domSignature: "detail-dom"
+  });
+
+  const collection = await capturePipeline.collectCheckpoint({
+    step: {
+      step_id: "step_open_product_detail",
+      stage: "VALUE",
+      description: "상품 상세 보기",
+      action: {
+        type: "click",
+        target: {
+          selector: "a.product-card[href='/products/runner-shoes']"
+        }
+      },
+      settle_strategy: {
+        type: "url_change",
+        timeout_ms: 500
+      },
+      checkpoint: true
+    },
+    stepOrder: 2,
+    plan,
+    beforeSnapshot,
+    pageSnapshot: afterSnapshot,
+    actionResult: {
+      actionType: "click",
+      targetSummary: "selector=a.product-card[href='/products/runner-shoes']",
+      stopRequested: false,
+      details: {
+        clickedText: "Runner Shoes",
+        clickedSelector: "a.product-card[href='/products/runner-shoes']",
+        bbox: productCard.bbox
+      }
+    },
+    settleResult: createSettledResult({
+      strategy: "url_change",
+      status: "settled",
+      durationMs: 120
+    })
+  });
+
+  const observation = collection.checkpoint.observations.find(
+    (candidate) => candidate.type === "product_detail_signal"
+  );
+
+  assert.ok(observation);
+  assert.equal(observation.url_before, "https://example.com/products");
+  assert.equal(observation.url_after, "https://example.com/products/runner-shoes");
+  assert.equal(observation.goal_action_candidate_count, 1);
+  assert.equal(observation.add_to_cart_like_button_count, 1);
+  assert.deepEqual(observation.evidence, [
+    "matched_product_card",
+    "url_changed",
+    "title_changed",
+    "breadcrumb_changed",
+    "price_visible",
+    "product_image_visible",
+    "goal_action_candidate_visible",
+    "dom_changed"
+  ]);
+  assert.deepEqual(observation.matched_product_card, {
+    ...productCard,
+    match_reason: "selector_exact",
+    match_confidence: 0.94
+  });
+});
+
 test("[수집 pipeline] 카테고리/필터/검색 변화는 category_filter_signal observation으로 남긴다", async () => {
   const capturePipeline = createCapturePipeline();
   const plan = createMinimalPlan();
