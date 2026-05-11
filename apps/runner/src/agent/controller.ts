@@ -70,7 +70,7 @@ export async function executeAgentRun(input: AgentExecutorInput): Promise<AgentE
     });
     const turnTrace: AgentTurnTrace = {
       turn,
-      observation: summarizeObservation(observation.snapshot),
+      observation: summarizeObservation(observation.snapshot, input.task.observation_budget),
       preDecisionVerification
     };
     trace.turns.push(turnTrace);

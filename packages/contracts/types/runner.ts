@@ -272,10 +272,52 @@ export interface AgentDecision {
   metadata?: Record<string, unknown>;
 }
 
+export interface AgentObservationCandidateSummary {
+  candidateId: string;
+  candidateFingerprint: string;
+  role: string | null;
+  tag: string;
+  text: string;
+  clickable: boolean;
+  isCtaCandidate: boolean;
+  isPrimaryLike: boolean;
+  frameId: string | null;
+  shadowRoot: boolean;
+  hrefOrigin?: string | null;
+  hrefPathHint?: string | null;
+  riskHint: string | null;
+  bounds: InteractiveComponentBounds;
+}
+
+export interface AgentObservationFormControlSummary {
+  controlKey: string;
+  controlType: "field" | "select";
+  hasValue: boolean;
+}
+
+export interface AgentObservationPageSignals {
+  visitedUrlCount: number;
+  consoleErrorCount: number;
+  networkErrorCount: number;
+  breadcrumbCount: number;
+  toastCount: number;
+  visiblePriceCount: number;
+  productCardCount: number;
+  cartCount: number | null;
+  hasLoginWallSignal: boolean;
+  hasCaptchaSignal: boolean;
+  hasPaymentOrCommitSignal: boolean;
+}
+
 export interface AgentObservation {
   finalUrl: string;
   title: string;
   candidateCount: number;
+  visibleTextSample?: string[];
+  candidates?: AgentObservationCandidateSummary[];
+  formControls?: AgentObservationFormControlSummary[];
+  pageSignals?: AgentObservationPageSignals;
+  artifactRefs?: string[];
 }
 
 export interface AgentTurnTrace {

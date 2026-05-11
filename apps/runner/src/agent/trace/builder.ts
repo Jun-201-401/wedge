@@ -14,6 +14,7 @@ import type {
 import { errorMessage } from "../../shared/utils.ts";
 import type { AgentObservation } from "../observation.ts";
 import type { AgentDecision } from "../planner.ts";
+import { summarizeObservation } from "../trace.ts";
 import type { AgentVerificationResult } from "../verifier.ts";
 import { createAgentOutcome, type AgentOutcomeInput } from "./outcome.ts";
 
@@ -75,11 +76,7 @@ export function createAgentTraceBuilder(task: AgentTask): AgentTraceBuilder {
     recordObservation(stepIndex, observation) {
       const observationId = randomUUID();
       const turn = ensureTurn(stepIndex);
-      turn.observation = {
-        finalUrl: observation.snapshot.finalUrl,
-        title: observation.snapshot.title,
-        candidateCount: observation.snapshot.interactiveComponents.length
-      };
+      turn.observation = summarizeObservation(observation.snapshot, task.observation_budget);
       addEvent(stepIndex, "PRE_DECISION_VERIFIED", {
         observation_id: observationId,
         url: observation.snapshot.finalUrl,
