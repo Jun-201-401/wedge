@@ -180,41 +180,19 @@ class SemanticClassificationContractTest(unittest.TestCase):
 
 
 class RuleEngineTest(unittest.TestCase):
-    def test_sample_packet_emits_cta_competition_and_journey_timeout(self) -> None:
+    def test_sample_packet_emits_cta_competition(self) -> None:
         result = analyze_evidence_packet(load_sample_packet())
         criteria = [issue["criterion_id"] for issue in result["issues"]]
-        self.assertEqual(criteria, ["PATH-CTA-002", "JOURNEY-ACTION-RESULT-001"])
+        self.assertEqual(criteria, ["PATH-CTA-002"])
         cta_issue = result["issues"][0]
         self.assertEqual(cta_issue["stage"], "CTA")
         self.assertEqual(cta_issue["evidence_refs"], ["cp_001.obs_002"])
         self.assertEqual(cta_issue["priority_score"], 2.03)
-        journey_issue = result["issues"][1]
-        self.assertEqual(journey_issue["stage"], "VALUE")
-        self.assertEqual(journey_issue["evidence_refs"], ["cp_005.obs_010"])
         decision_by_stage = {item["stage"]: item for item in result["decision_map"]}
         self.assertEqual(decision_by_stage["CTA"]["status"], "WARNING")
         self.assertEqual(decision_by_stage["FIRST_VIEW"]["status"], "PASS")
         self.assertEqual(decision_by_stage["COMMIT"]["status"], "NOT_APPLICABLE")
         self.assertEqual(result["summary"]["task_success"], "partial")
-
-    def test_journey_action_result_ignores_non_click_timeout(self) -> None:
-        packet = load_sample_packet()
-        packet["checkpoints"][4]["settle"]["status"] = "settled"
-        packet["checkpoints"][4]["observations"][1]["data"]["settle_status"] = "settled"
-        packet["checkpoints"][4]["observations"][1]["data"]["current_count"] = 5
-        result = analyze_evidence_packet(packet)
-        criteria = [issue["criterion_id"] for issue in result["issues"]]
-        self.assertNotIn("JOURNEY-ACTION-RESULT-001", criteria)
-
-    def test_journey_action_result_ignores_settled_unmet_count(self) -> None:
-        packet = load_sample_packet()
-        packet["checkpoints"][4]["settle"]["status"] = "settled"
-        packet["checkpoints"][4]["observations"][1]["data"]["settle_status"] = "settled"
-        packet["checkpoints"][4]["observations"][1]["data"]["current_count"] = 3
-        packet["checkpoints"][4]["observations"][1]["data"]["expected_count"] = 5
-        result = analyze_evidence_packet(packet)
-        criteria = [issue["criterion_id"] for issue in result["issues"]]
-        self.assertNotIn("JOURNEY-ACTION-RESULT-001", criteria)
 
     def test_journey_goal_cta_mismatch_uses_semantic_label(self) -> None:
         class IrrelevantCtaProvider:
@@ -448,6 +426,95 @@ class RuleEngineTest(unittest.TestCase):
         self.assertEqual(issue["evidence_locations"][0]["problem_components"][0]["selector"], "a.hero-start")
         self.assertNotIn("problem_components", issue)
 
+    def test_target_size_emits_for_small_search_form_field(self) -> None:
+        packet = load_sample_packet()
+        packet["checkpoints"][0]["observations"].append(
+            {
+                "observation_id": "obs_small_search",
+                "type": "form_field",
+                "stage": "FIRST_VIEW",
+                "source": ["dom", "layout"],
+                "data": {
+                    "role": "searchbox",
+                    "input_type": "search",
+                    "placeholder": "Search",
+                    "selector": "header input[type='search']",
+                    "bounds": {"x": 24, "y": 16, "width": 96, "height": 30},
+                    "typed_in_scenario": True,
+                },
+                "confidence": 0.88,
+            }
+        )
+
+        result = analyze_evidence_packet(packet)
+
+        target_size = [issue for issue in result["issues"] if issue["criterion_id"] == "TARGET-SIZE-001"]
+        self.assertEqual(len(target_size), 1)
+        self.assertEqual(target_size[0]["stage"], "FIRST_VIEW")
+        self.assertEqual(target_size[0]["severity"], 3)
+        self.assertEqual(target_size[0]["confidence"], 0.88)
+        self.assertEqual(target_size[0]["evidence_refs"], ["cp_001.obs_small_search"])
+        self.assertIn("search_width=96", target_size[0]["signals"])
+        self.assertIn("search_height=30", target_size[0]["signals"])
+        self.assertIn("search_used_in_scenario=true", target_size[0]["signals"])
+        self.assertEqual(target_size[0]["evidence_locations"][0]["bounds"], {"x": 24, "y": 16, "width": 96, "height": 30})
+        self.assertEqual(target_size[0]["problem_components"][0]["selector"], "header input[type='search']")
+        self.assertEqual(target_size[0]["problem_components"][0]["bounding_box"], {"x": 24, "y": 16, "width": 96, "height": 30, "unit": "css_px"})
+        self.assertEqual(target_size[0]["problem_components"][0]["screenshot_artifact_id"], "screenshot_cp_001")
+
+    def test_target_size_uses_interactive_component_search_candidate(self) -> None:
+        packet = load_sample_packet()
+        packet["checkpoints"][0]["observations"].append(
+            {
+                "observation_id": "obs_search_components",
+                "type": "interactive_components",
+                "stage": "FIRST_VIEW",
+                "source": ["dom", "layout"],
+                "data": {
+                    "components": [
+                        {
+                            "role": "searchbox",
+                            "input_type": "search",
+                            "placeholder": "검색",
+                            "selector": "header .search-input",
+                            "bounds": {"x": 32, "y": 20, "width": 430, "height": 38},
+                        }
+                    ]
+                },
+                "confidence": 0.84,
+            }
+        )
+
+        result = analyze_evidence_packet(packet)
+
+        target_size = [issue for issue in result["issues"] if issue["criterion_id"] == "TARGET-SIZE-001"]
+        self.assertEqual(len(target_size), 1)
+        self.assertEqual(target_size[0]["severity"], 1)
+        self.assertIn("search_width=430", target_size[0]["signals"])
+        self.assertIn("width_ratio=0.74", target_size[0]["signals"])
+
+    def test_target_size_requires_search_bounds(self) -> None:
+        packet = load_sample_packet()
+        packet["checkpoints"][0]["observations"].append(
+            {
+                "observation_id": "obs_search_without_bounds",
+                "type": "form_field",
+                "stage": "FIRST_VIEW",
+                "source": ["dom"],
+                "data": {
+                    "role": "searchbox",
+                    "input_type": "search",
+                    "placeholder": "Search",
+                },
+                "confidence": 0.88,
+            }
+        )
+
+        result = analyze_evidence_packet(packet)
+
+        target_size = [issue for issue in result["issues"] if issue["criterion_id"] == "TARGET-SIZE-001"]
+        self.assertEqual(target_size, [])
+
     def test_missing_cta_evidence_is_not_user_facing_issue(self) -> None:
         packet = load_sample_packet()
         packet["aggregate_signals"]["primary_cta_count_by_stage"] = {"CTA": 0}
@@ -565,6 +632,123 @@ class RuleEngineTest(unittest.TestCase):
         self.assertEqual(len(reliability), 1)
         self.assertEqual(reliability[0]["stage"], "INPUT")
         self.assertIn("cp_002.state.network_summary", reliability[0]["evidence_refs"])
+
+    def test_loading_stuck_emits_from_visible_loading_state(self) -> None:
+        packet = load_sample_packet()
+        packet["aggregate_signals"]["primary_cta_count_by_stage"] = {"CTA": 1}
+        packet["checkpoints"][0]["observations"].append(
+            {
+                "observation_id": "obs_loading_state",
+                "type": "loading_state",
+                "stage": "CTA",
+                "source": ["dom", "layout"],
+                "data": {
+                    "loading_visible": True,
+                    "duration_ms": 9_500,
+                    "selector": ".spinner",
+                    "text": "Loading",
+                    "loading_role": "spinner",
+                    "bounds": {"x": 700, "y": 440, "width": 40, "height": 40},
+                },
+                "confidence": 0.88,
+            }
+        )
+
+        result = analyze_evidence_packet(packet)
+
+        loading = [issue for issue in result["issues"] if issue["criterion_id"] == "RELIABILITY-LOADING-STUCK-001"]
+        self.assertEqual(len(loading), 1)
+        self.assertEqual(loading[0]["stage"], "CTA")
+        self.assertEqual(loading[0]["severity"], 2)
+        self.assertEqual(loading[0]["evidence_refs"], ["cp_001.obs_loading_state"])
+        self.assertIn("loading_state.duration_ms=9500", loading[0]["signals"])
+        self.assertEqual(loading[0]["evidence_locations"][0]["type"], "loading_state")
+        self.assertEqual(loading[0]["problem_components"][0]["selector"], ".spinner")
+        self.assertEqual(loading[0]["problem_components"][0]["bounding_box"], {"x": 700, "y": 440, "width": 40, "height": 40, "unit": "css_px"})
+
+    def test_loading_stuck_uses_long_settle_timeout_as_fallback(self) -> None:
+        packet = load_sample_packet()
+        packet["aggregate_signals"]["primary_cta_count_by_stage"] = {"CTA": 1}
+        packet["checkpoints"][3]["settle"]["duration_ms"] = 9_000
+
+        result = analyze_evidence_packet(packet)
+
+        loading = [issue for issue in result["issues"] if issue["criterion_id"] == "RELIABILITY-LOADING-STUCK-001"]
+        self.assertEqual(len(loading), 1)
+        self.assertEqual(loading[0]["stage"], "INPUT")
+        self.assertEqual(loading[0]["severity"], 2)
+        self.assertEqual(loading[0]["confidence"], 0.7)
+        self.assertEqual(loading[0]["evidence_refs"], ["cp_004.obs_008"])
+        self.assertIn("settle_response.settle_status=timeout", loading[0]["signals"])
+
+    def test_loading_stuck_ignores_short_settle_timeout_without_loading_state(self) -> None:
+        packet = load_sample_packet()
+        packet["aggregate_signals"]["primary_cta_count_by_stage"] = {"CTA": 1}
+
+        result = analyze_evidence_packet(packet)
+
+        loading = [issue for issue in result["issues"] if issue["criterion_id"] == "RELIABILITY-LOADING-STUCK-001"]
+        self.assertEqual(loading, [])
+
+    def test_loading_stuck_suppresses_when_result_settled(self) -> None:
+        packet = load_sample_packet()
+        packet["aggregate_signals"]["primary_cta_count_by_stage"] = {"CTA": 1}
+        packet["checkpoints"][0]["observations"].extend(
+            [
+                {
+                    "observation_id": "obs_loading_state",
+                    "type": "loading_state",
+                    "stage": "CTA",
+                    "source": ["dom", "layout"],
+                    "data": {"loading_visible": True, "duration_ms": 12_000},
+                    "confidence": 0.88,
+                },
+                {
+                    "observation_id": "obs_settled_result",
+                    "type": "settle_response",
+                    "stage": "CTA",
+                    "source": ["network", "scenario_log"],
+                    "data": {"settle_status": "settled", "duration_ms": 300},
+                    "confidence": 0.9,
+                },
+            ]
+        )
+
+        result = analyze_evidence_packet(packet)
+
+        loading = [issue for issue in result["issues"] if issue["criterion_id"] == "RELIABILITY-LOADING-STUCK-001"]
+        self.assertEqual(loading, [])
+
+    def test_loading_stuck_suppresses_when_technical_failure_exists(self) -> None:
+        packet = load_sample_packet()
+        packet["aggregate_signals"]["primary_cta_count_by_stage"] = {"CTA": 1}
+        packet["checkpoints"][0]["observations"].extend(
+            [
+                {
+                    "observation_id": "obs_loading_state",
+                    "type": "loading_state",
+                    "stage": "CTA",
+                    "source": ["dom", "layout"],
+                    "data": {"loading_visible": True, "duration_ms": 12_000},
+                    "confidence": 0.88,
+                },
+                {
+                    "observation_id": "obs_network_failure",
+                    "type": "network_failure",
+                    "stage": "CTA",
+                    "source": ["network"],
+                    "data": {"url": "https://example.com/api/signup", "status": "failed"},
+                    "confidence": 0.9,
+                },
+            ]
+        )
+
+        result = analyze_evidence_packet(packet)
+
+        loading = [issue for issue in result["issues"] if issue["criterion_id"] == "RELIABILITY-LOADING-STUCK-001"]
+        reliability = [issue for issue in result["issues"] if issue["criterion_id"] == "RELIABILITY-TECH-001"]
+        self.assertEqual(loading, [])
+        self.assertEqual(len(reliability), 1)
 
     def test_reliability_issue_links_clicked_component_bounds(self) -> None:
         packet = load_sample_packet()

@@ -30,7 +30,6 @@
 | FRICTION-FORM-001 | Friction | INPUT | 입력 필드에 목적을 알 수 있는 라벨이나 설명이 있는지 판단한다. |
 | RELIABILITY-TECH-001 | Reliability | CTA, INPUT, COMMIT | 사용자 행동 직후 네트워크 실패나 콘솔 오류가 있는지 판단한다. |
 | RELIABILITY-LOADING-STUCK-001 | Reliability | CTA, INPUT, COMMIT | 사용자 행동 이후 로딩 상태가 오래 지속되고 결과가 확인되지 않는지 판단한다. |
-| JOURNEY-ACTION-RESULT-001 | Path | VALUE, CTA, INPUT, COMMIT | 클릭한 여정 행동이 기대한 상태 변화나 결과로 이어졌는지 판단한다. |
 | JOURNEY-GOAL-CTA-MISMATCH-001 | Path | VALUE, CTA, COMMIT | 실제 선택된 버튼이 시나리오 목표와 의미적으로 맞는지 판단한다. |
 | COPY-FLOW-QUALITY-001 | Clarity | FIRST_VIEW, VALUE, CTA, INPUT, COMMIT | 라벨이 요소의 역할과 주변 맥락을 제대로 설명하는지 판단한다. |
 | COPY-LABEL-INTEGRITY-001 | Clarity | FIRST_VIEW, VALUE, CTA, INPUT, COMMIT | 라벨이나 짧은 문구가 깨지거나 잘리거나 겹치지 않고 읽히는지 판단한다. |
@@ -51,8 +50,8 @@ Analyzer는 URL을 직접 방문해 화면을 수집하지 않는다. Spring이 
 | `checkpoints[]` | 필수 | Rule은 checkpoint 단위 observation을 stage context로 묶어 평가한다. |
 | `checkpoints[].checkpoint_id` | 필수 | `evidence_refs`를 `checkpoint_id.observation_id`로 만들기 위해 필요하다. |
 | `checkpoints[].primaryStage` | 권장 | checkpoint state/network/console/settle 증거를 어느 stage에 귀속할지 결정한다. |
-| `checkpoints[].trigger.type` | 권장 | `click`, `input`, `goto` 같은 행동 구분. journey/action-result Rule은 click checkpoint를 우선 본다. |
-| `checkpoints[].settle.status`, `checkpoints[].settle.duration_ms` | 권장 | action result, loading stuck 판단의 보조 근거다. |
+| `checkpoints[].trigger.type` | 권장 | `click`, `input`, `goto` 같은 행동 구분. 클릭 이후 reliability, CTA mismatch 등 행동 관련 Rule에서 stage attribution에 사용한다. |
+| `checkpoints[].settle.status`, `checkpoints[].settle.duration_ms` | 권장 | loading stuck 판단의 보조 근거다. |
 | `checkpoints[].state.page.title`, `state.page.url`, `state.page.ready_state` | 권장 | 리포트 문맥과 디버깅에 사용한다. |
 | `checkpoints[].state.viewport.width`, `state.viewport.height` | 필수에 가까움 | viewport 기반 Rule, target size, problem component projection에 필요하다. 없으면 일부 Rule confidence가 낮아진다. |
 | `checkpoints[].state.layout_summary.first_view.width`, `height` | 권장 | `state.viewport`가 없을 때 viewport fallback으로 사용한다. |
@@ -84,7 +83,6 @@ Analyzer는 URL을 직접 방문해 화면을 수집하지 않는다. Spring이 
 | `FRICTION-FORM-001` | `form_field` 또는 `missing_label` | `data.label_association`와 `source`에 `dom` 또는 `ax` 포함 | `label_text`, `accessible_name`, `placeholder`, `visible`, `bounds` | label association 근거가 없으면 의도적으로 `NOT_EVALUABLE` 처리한다. |
 | `RELIABILITY-TECH-001` | `network_failure`, `console_error` 또는 checkpoint state summary | `state.network_summary.failed_request_count` 또는 `state.console_summary.error_count` | observation 직접 제공 시 `type=network_failure/console_error`, `stage`, `source=["network"|"console"]` | run-level aggregate만 있으면 stage issue로 내지 않는다. checkpoint stage attribution이 필요하다. |
 | `RELIABILITY-LOADING-STUCK-001` | `loading_state`, 보조로 `settle_response` | `loading_visible=true`, `duration_ms` 또는 `settle_status` | `text`, `selector`, `bounds`, `source=["dom","layout","screenshot"]` | 로딩 지속과 결과 미확인을 구분하지 못한다. |
-| `JOURNEY-ACTION-RESULT-001` | `settle_response`, `settle_item_count_change` | click checkpoint의 `trigger.type="click"`와 같은 checkpoint의 `data.settle_status` | `status_code`, `duration_ms`, `current_count`, `expected_count` | 클릭 후 결과 실패/timeout을 stage issue로 잡기 어렵다. |
 | `JOURNEY-GOAL-CTA-MISMATCH-001` | `cta_candidate` | click checkpoint 안의 clicked CTA observation | `visible_text`, `accessible_name`, `target`, `clicked_in_scenario`, `scenario.goal`, semantic classification result | clicked CTA와 목표 불일치를 판단할 근거가 부족하다. |
 | `COPY-FLOW-QUALITY-001` | `cta_candidate`, `interactive_components`, `form_field`, `form_error`, `required_field`, `missing_label`, `error_recovery`, `final_submit_candidate`, `other` | 명시 신호 `label_role_alignment.status="mismatch"` 또는 `issue_type`/`label_issue_type` | `expected_meaning`, `visual_prominence`, `clicked_in_scenario`, `is_primary_like`, `bounds`, screenshot URL for GMS | 라벨-역할 불일치 issue를 만들지 못한다. GMS 이미지 보조도 screenshot URL 없이는 동작하지 않는다. |
 | `COPY-LABEL-INTEGRITY-001` | `first_view_message`, `value_proposition`, `feature_summary`, `cta_candidate`, `interactive_components`, `form_field`, `form_error`, `required_field`, `missing_label`, `final_submit_candidate` | 명시 신호 `label_integrity.status="issue"` 또는 `issue_type`/`integrity_issue_type` | `text`/`visible_text`, `visual_prominence`, `clicked_in_scenario`, `is_primary_like`, `bounds`, screenshot URL for GMS | 깨짐/잘림/겹침/가독성 issue를 만들지 못한다. 단, replacement character 등 일부는 deterministic resolver가 보강할 수 있다. |
