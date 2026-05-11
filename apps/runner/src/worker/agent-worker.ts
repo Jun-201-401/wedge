@@ -1,4 +1,4 @@
-import { createAgentDecisionClient, createAgentRuntimePlan, executeAgentRun, type AgentTraceScenarioPlanExport } from "../agent/index.ts";
+import { createAgentDecisionClient, createAgentRuntimePlan, executeAgentRun, type AgentTrace, type AgentTraceScenarioPlanExport } from "../agent/index.ts";
 import type { BrowserSessionFactory } from "../browser/playwright/index.ts";
 import type { CallbackClient } from "../callback/index.ts";
 import type { CapturePipeline } from "../capture/index.ts";
@@ -8,7 +8,6 @@ import { ScenarioExecutionError, type ScenarioExecutionSummary } from "../scenar
 import type { AgentExecuteMessage, Artifact } from "../shared/contracts.ts";
 import { classifyRunnerFailure, errorMessage, logOperationalEvent } from "../shared/utils.ts";
 import type { ArtifactStore } from "../storage/index.ts";
-import type { AgentTrace } from "../agent/trace.ts";
 import {
   AgentIdempotencyInProgressError,
   createApiAgentIdempotencyStore,

@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { exportAgentTraceToScenarioPlan } from "../src/agent/trace-export.ts";
+import { exportAgentTraceToScenarioPlan } from "../src/agent/trace/export.ts";
 import { parseRunExecuteMessage } from "../src/messaging/index.ts";
-import type { AgentTrace } from "../src/agent/trace.ts";
+import type { AgentTrace } from "../src/agent/trace/index.ts";
 import { loadAgentExampleMessage } from "./support.ts";
 
 test("[Agent Trace Export] 성공한 checkout trace를 payment 직전 stop이 포함된 ScenarioPlan 후보로 변환한다", async () => {

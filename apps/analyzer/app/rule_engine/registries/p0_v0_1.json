@@ -42,6 +42,26 @@
       "source_refs": ["docs/05_judge_scoring_validation.md#11-나머지-p0-rule-최소-정책"]
     },
     {
+      "criterion_id": "PATH-CHOICE-OVERLOAD-001",
+      "axis": "Path",
+      "applicableStages": ["FIRST_VIEW", "VALUE", "CTA"],
+      "evidence_level": "Operational",
+      "definition": "A viewport should not expose an excessive number of simultaneous interactive choices.",
+      "required_observations": ["interactive_components"],
+      "measurement_sources": ["dom", "layout"],
+      "signal_rule": "Count visible, enabled, clickable interactive components intersecting the viewport.",
+      "severity_rules": [
+        {"severity": 0, "condition": "interactive choice count is 10 or fewer"},
+        {"severity": 1, "condition": "interactive choice count is 11 or more"},
+        {"severity": 2, "condition": "interactive choice count is 15 or more"},
+        {"severity": 3, "condition": "interactive choice count is 20 or more in a high-impact action stage"}
+      ],
+      "confidence_rule": "Use observation confidence and cap confidence when viewport dimensions are missing.",
+      "fix_leverage_default": 1.0,
+      "output_template": "Too many interactive choices are visible at once.",
+      "source_refs": ["docs/12_analyzer_rule_catalog.md#path-choice-overload-001", "docs/13_analyzer_rule_required_data.md#path-choice-overload-001"]
+    },
+    {
       "criterion_id": "FRICTION-FORM-001",
       "axis": "Friction",
       "applicableStages": ["INPUT"],
@@ -79,6 +99,26 @@
       "fix_leverage_default": 1.0,
       "output_template": "A visible label does not match the element role or expected next action.",
       "source_refs": ["docs/12_analyzer_rule_catalog.md#copy-flow-quality-001"]
+    },
+    {
+      "criterion_id": "COPY-LABEL-INTEGRITY-001",
+      "axis": "Clarity",
+      "applicableStages": ["FIRST_VIEW", "VALUE", "CTA", "INPUT", "COMMIT"],
+      "evidence_level": "Standard",
+      "definition": "Visible labels and short copy should be readable without broken, clipped, overlapped, or truncated rendering.",
+      "required_observations": ["label_integrity", "screenshot"],
+      "measurement_sources": ["screenshot", "dom", "layout", "ax"],
+      "signal_rule": "A deterministic or GMS label_integrity result marks a candidate as status=issue with an allowed integrity issue type.",
+      "severity_rules": [
+        {"severity": 0, "condition": "label_integrity is ok or unavailable"},
+        {"severity": 1, "condition": "low-impact readability issue"},
+        {"severity": 2, "condition": "broken, clipped, overlapped, or path-related label issue"},
+        {"severity": 3, "condition": "commit-stage high-leverage integrity issue"}
+      ],
+      "confidence_rule": "Use sanitized label_integrity confidence when present; deterministic text corruption signals may also emit.",
+      "fix_leverage_default": 1.0,
+      "output_template": "A visible label or short copy is difficult to read.",
+      "source_refs": ["docs/12_analyzer_rule_catalog.md#copy-label-integrity-001"]
     },
     {
       "criterion_id": "TARGET-SIZE-001",

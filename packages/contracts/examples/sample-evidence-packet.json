@@ -333,6 +333,70 @@
           "confidence": 0.68
         },
         {
+          "observation_id": "obs_005_product_detail",
+          "type": "product_detail_signal",
+          "stage": "VALUE",
+          "source": [
+            "scenario_log",
+            "dom",
+            "browser",
+            "screenshot"
+          ],
+          "data": {
+            "step_order": 4,
+            "step_key": "step_004_expand_benefits",
+            "action_type": "click",
+            "clicked_text": "혜택 보기",
+            "clicked_selector": "#signup-benefits-toggle",
+            "matched_product_card": {
+              "element_text": "혜택 플랜 무료 체험",
+              "clicked_selector": "#signup-benefits-toggle",
+              "visible_price": null,
+              "visible_product_image": false,
+              "bbox": {
+                "x": 500,
+                "y": 320,
+                "width": 260,
+                "height": 140,
+                "unit": "css_px"
+              },
+              "match_reason": "selector_exact",
+              "match_confidence": 0.94
+            },
+            "url_before": "https://example.com/signup",
+            "url_after": "https://example.com/signup?category=benefits",
+            "title_before": "Sign up",
+            "title_after": "Sign up - Benefits",
+            "breadcrumb_before": [
+              "Home",
+              "Sign up"
+            ],
+            "breadcrumb_after": [
+              "Home",
+              "Sign up",
+              "Benefits"
+            ],
+            "visible_price": [
+              "무료 체험"
+            ],
+            "visible_product_image": [],
+            "goal_action_candidate_count": 1,
+            "add_to_cart_like_button_count": 1,
+            "dom_changed": true,
+            "screenshot_artifact_id": "artifact-item-count-screenshot",
+            "evidence": [
+              "matched_product_card",
+              "url_changed",
+              "title_changed",
+              "breadcrumb_changed",
+              "price_visible",
+              "goal_action_candidate_visible",
+              "dom_changed"
+            ]
+          },
+          "confidence": 0.84
+        },
+        {
           "observation_id": "obs_005_goal_action_result",
           "type": "goal_action_result",
           "stage": "VALUE",
@@ -619,7 +683,8 @@
       "VALUE": 1
     },
     "depth_from_discovery_count": 1,
-    "goal_action_result_count": 1
+    "goal_action_result_count": 1,
+    "product_detail_signal_count": 1
   },
   "scenario_fit": {
     "scenario_type": "SIGNUP_LEAD_FORM",
@@ -635,6 +700,7 @@
       "artifact_id": "screenshot_cp_001",
       "type": "screenshot",
       "uri": "s3://wedge-artifacts/runs/run_001/cp_001.png",
+      "signed_url": "https://wedge-artifacts.s3.ap-northeast-2.amazonaws.com/runs/run_001/cp_001.png?X-Amz-Signature=example",
       "mime_type": "image/png",
       "size_bytes": 12345,
       "metadata": {

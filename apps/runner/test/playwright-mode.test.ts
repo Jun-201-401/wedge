@@ -11,8 +11,8 @@ import { executeScenario } from "../src/scenario/executor/index.ts";
 import { executeScenarioStep } from "../src/scenario/executor/step-executor.ts";
 import { createArtifactStore } from "../src/storage/index.ts";
 import { registerAgentWorker } from "../src/worker/agent-worker.ts";
-import { exportAgentTraceToScenarioPlan } from "../src/agent/trace-export.ts";
-import type { AgentTrace } from "../src/agent/trace.ts";
+import { exportAgentTraceToScenarioPlan } from "../src/agent/trace/export.ts";
+import type { AgentTrace } from "../src/agent/trace/index.ts";
 import type {
   AgentEvent,
   AgentTask,
@@ -94,6 +94,28 @@ test("[Playwright 실제 실행] goto/fill/select를 수행하고 실제 screens
     assert.equal(snapshot.fields.Email, "test@example.com");
     assert.equal(snapshot.selectedOptions.Plan, "pro");
     assert.deepEqual(snapshot.visitedUrls, [formUrl]);
+
+    const emailCandidate = snapshot.interactiveComponents.find((component) => component.selector === "#email");
+    const planCandidate = snapshot.interactiveComponents.find((component) => component.selector === "#plan");
+    const messageCandidate = snapshot.interactiveComponents.find((component) => component.selector === "#message");
+
+    assert.equal(emailCandidate?.is_form_control, true);
+    assert.equal(emailCandidate?.role, "textbox");
+    assert.equal(emailCandidate?.input_type, "email");
+    assert.equal(emailCandidate?.label_text, "Email");
+    assert.equal(emailCandidate?.placeholder, "Work email");
+    assert.equal(emailCandidate?.name, "email");
+    assert.equal(emailCandidate?.required, true);
+    assert.equal(emailCandidate?.disabled, false);
+    assert.equal(emailCandidate?.clickable, false);
+    assert.equal(planCandidate?.is_form_control, true);
+    assert.equal(planCandidate?.role, "combobox");
+    assert.equal(planCandidate?.input_type, "select");
+    assert.equal(planCandidate?.label_text, "Plan");
+    assert.equal(messageCandidate?.is_form_control, true);
+    assert.equal(messageCandidate?.input_type, "textarea");
+    assert.equal(messageCandidate?.placeholder, "Tell us about your team");
+
     assert.equal(capturedArtifacts.screenshot?.mimeType, "image/png");
     assert.equal(capturedArtifacts.screenshot?.fileExtension, "png");
     assert.ok((capturedArtifacts.screenshot?.contentBase64.length ?? 0) > 0);
@@ -200,6 +222,63 @@ test("[Playwright 실제 실행] scroll 액션 후 snapshot에 scroll position�
 
     assert.equal(snapshot.lastAction?.type, "scroll");
     assert.ok(snapshot.scrollY >= 600);
+  } finally {
+    await session?.close();
+    await rm(fixtureRoot, { recursive: true, force: true });
+    await rm(artifactsRoot, { recursive: true, force: true });
+  }
+});
+
+test("[Playwright signal] breadcrumb/toast/cart count를 다양한 DOM 패턴에서 추출한다", async () => {
+  const fixtureRoot = await mkdtemp(join(tmpdir(), "wedge-runner-playwright-signals-"));
+  const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-playwright-artifacts-"));
+  let session: Awaited<ReturnType<ReturnType<typeof createPlaywrightSessionFactory>["createSession"]>> | undefined;
+
+  try {
+    const signalFile = join(fixtureRoot, "signals.html");
+    await writeFile(
+      signalFile,
+      `<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <title>Runner Signal Fixture</title>
+  </head>
+  <body>
+    <nav aria-label="Breadcrumb">
+      <ol>
+        <li><a href="/">Home</a></li>
+        <li><a href="/shop">Shop</a></li>
+        <li aria-current="page">Runner Shoes</li>
+      </ol>
+    </nav>
+    <a id="cart-link" aria-label="장바구니 3개" href="/cart">
+      Cart <span class="cart-badge">3</span>
+    </a>
+    <div role="status" class="flash-message">장바구니에 담았습니다</div>
+    <main>
+      <h1>Runner Shoes</h1>
+    </main>
+  </body>
+</html>`,
+      "utf8"
+    );
+
+    const signalUrl = pathToFileURL(signalFile).toString();
+    const plan = createPlaywrightPlan(signalUrl);
+    const browserFactory = createPlaywrightBrowserFactory(artifactsRoot);
+
+    session = await browserFactory.createSession({
+      runId: "run-playwright-signals",
+      plan
+    });
+
+    await executeGotoStep(session, signalUrl, "step_open_signals");
+    const snapshot = session.snapshot();
+
+    assert.deepEqual(snapshot.breadcrumb, ["Home", "Shop", "Runner Shoes"]);
+    assert.deepEqual(snapshot.toastTexts, ["장바구니에 담았습니다"]);
+    assert.equal(snapshot.cartCount, 3);
   } finally {
     await session?.close();
     await rm(fixtureRoot, { recursive: true, force: true });
@@ -1831,7 +1910,7 @@ async function createFixtureSite(root: string): Promise<{ formUrl: string; doneU
       <h1>Runner Playwright Form</h1>
       <form>
         <label for="email">Email</label>
-        <input id="email" name="email" type="email" />
+        <input id="email" name="email" type="email" placeholder="Work email" required />
 
         <label for="plan">Plan</label>
         <select id="plan" name="plan">
@@ -1839,6 +1918,9 @@ async function createFixtureSite(root: string): Promise<{ formUrl: string; doneU
           <option value="starter">Starter</option>
           <option value="pro">Pro</option>
         </select>
+
+        <label for="message">Message</label>
+        <textarea id="message" name="message" placeholder="Tell us about your team"></textarea>
       </form>
 
       <a href="./done.html">Continue</a>

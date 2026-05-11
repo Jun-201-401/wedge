@@ -5,7 +5,9 @@ from typing import Any
 
 from app.contracts.stages import DECISION_STAGE_DISPLAY_NAMES, DECISION_STAGES, DecisionStage
 from app.providers import SemanticProviderPort
+from app.providers.label_integrity import LabelIntegrityProviderPort
 from app.providers.label_role import LabelRoleProviderPort
+from app.normalization.label_integrity_resolver import LabelIntegrityResolver
 from app.normalization.label_role_resolver import LabelRoleResolver
 from app.normalization import SemanticLabelResolver
 from app.rule_engine.evaluator import RuleEngine
@@ -17,7 +19,7 @@ from app.stage.stage_context_builder import StageContext, StageContextBuilder
 
 RELIABILITY_ACTION_CONTEXT_CRITERION_IDS = {"RELIABILITY-TECH-001", "RELIABILITY-LOADING-STUCK-001"}
 RELIABILITY_LOCATION_TYPES = {"network_failure", "console_error", "loading_state"}
-TOP_LEVEL_BOUNDS_COMPONENT_CRITERION_IDS = {"TARGET-SIZE-001"}
+TOP_LEVEL_BOUNDS_COMPONENT_CRITERION_IDS = {"TARGET-SIZE-001", "COPY-LABEL-INTEGRITY-001"}
 
 
 def analyze_evidence_packet(
@@ -25,8 +27,11 @@ def analyze_evidence_packet(
     registry: dict[str, Any] | None = None,
     semantic_provider: SemanticProviderPort | None = None,
     label_role_provider: LabelRoleProviderPort | None = None,
+    label_integrity_provider: LabelIntegrityProviderPort | None = None,
 ) -> dict[str, Any]:
     registry = registry or load_default_registry()
+    if label_integrity_provider is not None:
+        packet = LabelIntegrityResolver(label_integrity_provider).enrich_packet(packet)
     if label_role_provider is not None:
         packet = LabelRoleResolver(label_role_provider).enrich_packet(packet)
     contexts = StageContextBuilder().build(packet)

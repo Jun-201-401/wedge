@@ -23,6 +23,7 @@ from app.providers import (
     SemanticProviderChain,
     sanitize_semantic_label_result,
 )
+from app.providers.label_integrity import LabelIntegrityIssueResult
 from app.providers.label_role import LabelRoleIssueResult
 from app.rule_engine import analyze_evidence_packet, load_default_registry
 from app.rule_engine.contract_schema import schema_enum, schema_properties
@@ -425,6 +426,48 @@ class RuleEngineTest(unittest.TestCase):
         issue = [issue for issue in result["issues"] if issue["criterion_id"] == "PATH-CTA-002"][0]
         self.assertEqual(issue["evidence_locations"][0]["problem_components"][0]["selector"], "a.hero-start")
         self.assertNotIn("problem_components", issue)
+
+    def test_path_choice_overload_emits_for_many_visible_choices(self) -> None:
+        packet = load_sample_packet()
+        packet["aggregate_signals"]["primary_cta_count_by_stage"] = {}
+        packet["checkpoints"][0]["observations"] = [
+            observation
+            for observation in packet["checkpoints"][0]["observations"]
+            if observation["type"] != "cta_cluster"
+        ]
+        packet["checkpoints"][0]["observations"].append(
+            {
+                "observation_id": "obs_many_choices",
+                "type": "interactive_components",
+                "stage": "FIRST_VIEW",
+                "source": ["dom", "layout"],
+                "confidence": 0.86,
+                "data": {
+                    "components": [
+                        {
+                            "text": f"Menu {index}",
+                            "selector": f"a.menu-{index}",
+                            "role": "link",
+                            "clickable": True,
+                            "visible": True,
+                            "is_primary_like": index == 0,
+                            "bounds": {"x": 20 + (index * 64), "y": 80, "width": 56, "height": 40},
+                        }
+                        for index in range(15)
+                    ]
+                },
+            }
+        )
+
+        result = analyze_evidence_packet(packet)
+
+        overload = [issue for issue in result["issues"] if issue["criterion_id"] == "PATH-CHOICE-OVERLOAD-001"]
+        self.assertEqual(len(overload), 1)
+        self.assertEqual(overload[0]["stage"], "FIRST_VIEW")
+        self.assertEqual(overload[0]["severity"], 2)
+        self.assertEqual(overload[0]["confidence"], 0.86)
+        self.assertEqual(overload[0]["evidence_refs"], ["cp_001.obs_many_choices"])
+        self.assertIn("viewport_interactive_choice_count=15", overload[0]["signals"])
 
     def test_target_size_emits_for_small_search_form_field(self) -> None:
         packet = load_sample_packet()
@@ -980,6 +1023,97 @@ class RuleEngineTest(unittest.TestCase):
         self.assertEqual(copy_issues[0]["evidence_refs"], ["cp_001.obs_custom_label_role"])
         self.assertIn("expected_meaning=Open account settings", copy_issues[0]["signals"])
         self.assertIn("cp_001.obs_custom_label_role", provider.calls[0]["candidate_ids"])
+
+    def test_copy_label_integrity_uses_gms_integrity_provider(self) -> None:
+        class FakeLabelIntegrityProvider:
+            def __init__(self) -> None:
+                self.calls: list[dict] = []
+
+            def classify_label_integrity(self, *, scenario_goal: str, stage: str, checkpoint_id: str, screenshot_url: str, candidates: list[dict]):
+                self.calls.append(
+                    {
+                        "stage": stage,
+                        "checkpoint_id": checkpoint_id,
+                        "screenshot_url": screenshot_url,
+                        "candidate_ids": [candidate["candidate_id"] for candidate in candidates],
+                    }
+                )
+                if checkpoint_id != "cp_001":
+                    return []
+                return [
+                    LabelIntegrityIssueResult(
+                        candidate_id="cp_001.obs_clipped_label",
+                        has_issue=True,
+                        issue_type="text_clipped",
+                        reason="The CTA label is visually clipped.",
+                        fix_leverage=1.15,
+                        confidence=0.83,
+                        source="gms_image",
+                        affected_bounds={"x": 20, "y": 20, "width": 120, "height": 44},
+                    )
+                ]
+
+        packet = load_sample_packet()
+        packet["artifacts"][0]["signed_url"] = "https://example.com/cp_001.png"
+        packet["checkpoints"][0]["observations"].append(
+            {
+                "observation_id": "obs_clipped_label",
+                "type": "cta_candidate",
+                "stage": "CTA",
+                "source": ["dom", "screenshot"],
+                "data": {
+                    "visible_text": "Start application",
+                    "role": "button",
+                    "clicked_in_scenario": True,
+                    "bounds": {"x": 20, "y": 20, "width": 120, "height": 44},
+                },
+                "confidence": 0.7,
+            }
+        )
+        provider = FakeLabelIntegrityProvider()
+
+        result = analyze_evidence_packet(packet, label_integrity_provider=provider)
+
+        integrity_issues = [issue for issue in result["issues"] if issue["criterion_id"] == "COPY-LABEL-INTEGRITY-001"]
+        self.assertEqual(len(integrity_issues), 1)
+        self.assertEqual(integrity_issues[0]["stage"], "CTA")
+        self.assertEqual(integrity_issues[0]["severity"], 2)
+        self.assertEqual(integrity_issues[0]["confidence"], 0.83)
+        self.assertEqual(integrity_issues[0]["fix_leverage"], 1.15)
+        self.assertEqual(integrity_issues[0]["evidence_refs"], ["cp_001.obs_clipped_label"])
+        self.assertIn("label_integrity_issue_type=text_clipped", integrity_issues[0]["signals"])
+        self.assertIn("cp_001.obs_clipped_label", provider.calls[0]["candidate_ids"])
+
+    def test_copy_label_integrity_emits_from_direct_signal(self) -> None:
+        packet = load_sample_packet()
+        packet["checkpoints"][0]["observations"].append(
+            {
+                "observation_id": "obs_direct_integrity_issue",
+                "type": "cta_candidate",
+                "stage": "CTA",
+                "source": ["dom"],
+                "data": {
+                    "visible_text": "가입...",
+                    "role": "button",
+                    "bounds": {"x": 20, "y": 20, "width": 120, "height": 44},
+                    "label_integrity": {
+                        "status": "issue",
+                        "issue_type": "text_truncated",
+                        "confidence": 0.81,
+                        "fix_leverage": 1.0,
+                        "source": "deterministic",
+                    },
+                },
+                "confidence": 0.7,
+            }
+        )
+
+        result = analyze_evidence_packet(packet)
+
+        integrity_issues = [issue for issue in result["issues"] if issue["criterion_id"] == "COPY-LABEL-INTEGRITY-001"]
+        self.assertEqual(len(integrity_issues), 1)
+        self.assertEqual(integrity_issues[0]["confidence"], 0.81)
+        self.assertEqual(integrity_issues[0]["evidence_refs"], ["cp_001.obs_direct_integrity_issue"])
 
     def test_registry_rule_without_handler_fails_fast(self) -> None:
         registry = load_default_registry()

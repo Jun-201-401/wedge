@@ -10,6 +10,7 @@ import type {
   InteractiveComponentsObservation,
   JourneyActionRawObservation,
   ProductCardObservation,
+  ProductDetailSignalObservation,
   ScenarioPlan,
   ScenarioStep
 } from "../shared/contracts.ts";
@@ -196,6 +197,15 @@ function createCheckpointObservations({
     pageSnapshot,
     actionResult
   });
+  const productDetailSignalObservation = createProductDetailSignalObservation({
+    step,
+    stepOrder,
+    beforeSnapshot,
+    pageSnapshot,
+    actionResult,
+    screenshotArtifactId,
+    matchedProductCard: journeyActionObservation?.matched_product_card ?? null
+  });
   const goalActionResultObservation = createGoalActionResultObservation({
     step,
     stepOrder,
@@ -219,6 +229,7 @@ function createCheckpointObservations({
   return [
     ...(journeyActionObservation ? [{ ...journeyActionObservation }] : []),
     ...(categoryFilterObservation ? [{ ...categoryFilterObservation }] : []),
+    ...(productDetailSignalObservation ? [{ ...productDetailSignalObservation }] : []),
     ...(goalActionResultObservation ? [{ ...goalActionResultObservation }] : []),
     ...(depthFromDiscoveryObservation ? [{ ...depthFromDiscoveryObservation }] : []),
     ...createInteractiveComponentsObservations(step, pageSnapshot).map((observation) => ({ ...observation })),
@@ -266,8 +277,8 @@ function createJourneyActionRawObservation({
   const elementRole = readOptionalString(actionDetails, "elementRole") ?? clickedComponent(pageSnapshot)?.role ?? null;
   const bbox = readBounds(actionDetails.bbox) ?? clickedComponent(pageSnapshot)?.bounds ?? null;
   const networkResult = createNetworkResult(pageSnapshot, settleResult);
-  const matchedProductCard = matchProductCard({
-    pageSnapshot,
+  const matchedProductCard = matchProductCardAcrossSnapshots({
+    snapshots: [beforeSnapshot, pageSnapshot],
     clickedText,
     clickedSelector,
     bbox
@@ -299,9 +310,7 @@ function createJourneyActionRawObservation({
     visible_price: pageSnapshot.visiblePrices,
     visible_product_image: pageSnapshot.productImages.map((image) => ({ ...image })),
     add_to_cart_like_button: isAddToCartLike(clickedText),
-    dom_changed: Boolean(baselineSnapshot.domSignature && pageSnapshot.domSignature)
-      ? baselineSnapshot.domSignature !== pageSnapshot.domSignature
-      : baselineSnapshot.finalUrl !== pageSnapshot.finalUrl || baselineSnapshot.title !== pageSnapshot.title,
+    dom_changed: domChangedBetween(baselineSnapshot, pageSnapshot),
     network_result: networkResult,
     settle_status: settleResult.status,
     screenshot_artifact_id: screenshotArtifactId,
@@ -451,6 +460,73 @@ function createDepthFromDiscoveryObservation({
     current_url: pageSnapshot.finalUrl,
     current_product_card_count: pageSnapshot.productCards.length,
     product_card_count_at_discovery: journeyDepthContext.productCardCountAtDiscovery ?? pageSnapshot.productCards.length
+  };
+}
+
+function createProductDetailSignalObservation({
+  step,
+  stepOrder,
+  beforeSnapshot,
+  pageSnapshot,
+  actionResult,
+  screenshotArtifactId,
+  matchedProductCard
+}: {
+  step: ScenarioStep;
+  stepOrder: number;
+  beforeSnapshot?: BrowserPageSnapshot;
+  pageSnapshot: BrowserPageSnapshot;
+  actionResult?: BrowserActionResult;
+  screenshotArtifactId: string;
+  matchedProductCard: JourneyActionRawObservation["matched_product_card"];
+}): ProductDetailSignalObservation | null {
+  if (!beforeSnapshot || step.action.type === "checkpoint" || !actionResult || !matchedProductCard) {
+    return null;
+  }
+
+  const actionDetails = actionResult.details ?? {};
+  const clickedText = readOptionalString(actionDetails, "clickedText") ?? clickedComponent(pageSnapshot)?.text ?? null;
+  const clickedSelector = readOptionalString(actionDetails, "clickedSelector") ?? clickedComponent(pageSnapshot)?.selector ?? null;
+  const goalActionCandidateCount = pageSnapshot.interactiveComponents.filter((component) => component.is_cta_candidate).length;
+  const addToCartLikeButtonCount = pageSnapshot.interactiveComponents.filter((component) => isAddToCartLike(component.text)).length;
+  const domChanged = domChangedBetween(beforeSnapshot, pageSnapshot);
+  const evidence = collectProductDetailEvidence({
+    beforeSnapshot,
+    pageSnapshot,
+    goalActionCandidateCount,
+    addToCartLikeButtonCount,
+    domChanged
+  });
+
+  if (!isLikelyProductDetailTransition(evidence)) {
+    return null;
+  }
+
+  return {
+    observation_id: `${step.step_id}.obs_product_detail_signal`,
+    type: "product_detail_signal",
+    stage: step.stage,
+    source: ["scenario_log", "dom", "browser", "screenshot"],
+    confidence: productDetailConfidence(evidence),
+    step_order: stepOrder,
+    step_key: step.step_id,
+    action_type: step.action.type,
+    clicked_text: clickedText,
+    clicked_selector: clickedSelector,
+    matched_product_card: matchedProductCard,
+    url_before: beforeSnapshot.finalUrl,
+    url_after: pageSnapshot.finalUrl,
+    title_before: beforeSnapshot.title,
+    title_after: pageSnapshot.title,
+    breadcrumb_before: beforeSnapshot.breadcrumb,
+    breadcrumb_after: pageSnapshot.breadcrumb,
+    visible_price: pageSnapshot.visiblePrices,
+    visible_product_image: pageSnapshot.productImages.map((image) => ({ ...image })),
+    goal_action_candidate_count: goalActionCandidateCount,
+    add_to_cart_like_button_count: addToCartLikeButtonCount,
+    dom_changed: domChanged,
+    screenshot_artifact_id: screenshotArtifactId,
+    evidence
   };
 }
 
@@ -768,6 +844,94 @@ function isCategoryFilterSearchText(text: string): boolean {
   return /category|categories|collection|filter|sort|search|카테고리|분류|필터|정렬|검색|상품|제품/i.test(text);
 }
 
+function domChangedBetween(beforeSnapshot: BrowserPageSnapshot, pageSnapshot: BrowserPageSnapshot): boolean {
+  return Boolean(beforeSnapshot.domSignature && pageSnapshot.domSignature)
+    ? beforeSnapshot.domSignature !== pageSnapshot.domSignature
+    : beforeSnapshot.finalUrl !== pageSnapshot.finalUrl || beforeSnapshot.title !== pageSnapshot.title;
+}
+
+function collectProductDetailEvidence({
+  beforeSnapshot,
+  pageSnapshot,
+  goalActionCandidateCount,
+  addToCartLikeButtonCount,
+  domChanged
+}: {
+  beforeSnapshot: BrowserPageSnapshot;
+  pageSnapshot: BrowserPageSnapshot;
+  goalActionCandidateCount: number;
+  addToCartLikeButtonCount: number;
+  domChanged: boolean;
+}): ProductDetailSignalObservation["evidence"] {
+  return [
+    "matched_product_card",
+    ...(beforeSnapshot.finalUrl !== pageSnapshot.finalUrl ? ["url_changed" as const] : []),
+    ...(beforeSnapshot.title !== pageSnapshot.title ? ["title_changed" as const] : []),
+    ...(!sameStringArray(beforeSnapshot.breadcrumb, pageSnapshot.breadcrumb) ? ["breadcrumb_changed" as const] : []),
+    ...(pageSnapshot.visiblePrices.length > 0 ? ["price_visible" as const] : []),
+    ...(pageSnapshot.productImages.length > 0 ? ["product_image_visible" as const] : []),
+    ...(goalActionCandidateCount > 0 || addToCartLikeButtonCount > 0 ? ["goal_action_candidate_visible" as const] : []),
+    ...(domChanged ? ["dom_changed" as const] : [])
+  ];
+}
+
+function isLikelyProductDetailTransition(evidence: ProductDetailSignalObservation["evidence"]): boolean {
+  const transitionEvidenceCount = [
+    "url_changed",
+    "title_changed",
+    "breadcrumb_changed",
+    "dom_changed"
+  ].filter((candidate) => evidence.includes(candidate as ProductDetailSignalObservation["evidence"][number])).length;
+  const detailEvidenceCount = [
+    "price_visible",
+    "product_image_visible",
+    "goal_action_candidate_visible"
+  ].filter((candidate) => evidence.includes(candidate as ProductDetailSignalObservation["evidence"][number])).length;
+
+  return transitionEvidenceCount > 0 && detailEvidenceCount > 0;
+}
+
+function productDetailConfidence(evidence: ProductDetailSignalObservation["evidence"]): number {
+  const evidenceCount = evidence.length;
+  if (evidenceCount >= 6) {
+    return 0.84;
+  }
+  if (evidenceCount >= 4) {
+    return 0.76;
+  }
+  return 0.68;
+}
+
+function matchProductCardAcrossSnapshots({
+  snapshots,
+  clickedText,
+  clickedSelector,
+  bbox
+}: {
+  snapshots: Array<BrowserPageSnapshot | undefined>;
+  clickedText: string | null;
+  clickedSelector: string | null;
+  bbox: BrowserPageSnapshot["interactiveComponents"][number]["bounds"] | null;
+}): JourneyActionRawObservation["matched_product_card"] {
+  for (const snapshot of snapshots) {
+    if (!snapshot || snapshot.productCards.length === 0) {
+      continue;
+    }
+
+    const match = matchProductCard({
+      pageSnapshot: snapshot,
+      clickedText,
+      clickedSelector,
+      bbox
+    });
+    if (match) {
+      return match;
+    }
+  }
+
+  return null;
+}
+
 function matchProductCard({
   pageSnapshot,
   clickedText,
@@ -906,9 +1070,7 @@ function createGoalActionResultSignal({
   const cartCountDelta = typeof baselineSnapshot.cartCount === "number" && typeof pageSnapshot.cartCount === "number"
     ? pageSnapshot.cartCount - baselineSnapshot.cartCount
     : null;
-  const domChanged = Boolean(baselineSnapshot.domSignature && pageSnapshot.domSignature)
-    ? baselineSnapshot.domSignature !== pageSnapshot.domSignature
-    : baselineSnapshot.finalUrl !== pageSnapshot.finalUrl || baselineSnapshot.title !== pageSnapshot.title;
+  const domChanged = domChangedBetween(baselineSnapshot, pageSnapshot);
 
   return {
     action_attempted: step.action.type !== "checkpoint",

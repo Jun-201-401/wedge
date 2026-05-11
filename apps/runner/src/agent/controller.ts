@@ -7,7 +7,7 @@ import { executeScenarioStep } from "../scenario/executor/step-executor.ts";
 import type { ArtifactStore } from "../storage/index.ts";
 import type { AgentTask, Artifact, ScenarioPlan, ScenarioStep } from "../shared/contracts.ts";
 import { classifyRunnerFailure, errorMessage, logOperationalEvent } from "../shared/utils.ts";
-import { persistAgentScenarioPlanExportArtifact, persistAgentTraceArtifact } from "./artifacts.ts";
+import { persistAgentScenarioPlanExportArtifact, persistAgentTraceArtifact } from "./trace/artifacts.ts";
 import { emitAgentEventBestEffort, emitAgentTraceBestEffort } from "./callbacks.ts";
 import { AgentBudgetExceededError, assertAgentDeadline, createAgentDeadline, remainingAgentBudgetMs, runSideEffectWithDeadlineCleanup, runWithinAgentDeadline } from "./deadline.ts";
 import { ensureAgentDecisionMetadata, HeuristicDecisionClient, type AgentDecision, type AgentDecisionClient } from "./planner.ts";
@@ -15,8 +15,8 @@ import { observePage } from "./observation.ts";
 import { evaluateAgentPolicy } from "./policy.ts";
 import { createInitialAgentState } from "./state.ts";
 import { shouldReportStopped, traceStatusFromVerification } from "./outcome.ts";
-import { exportAgentTraceToScenarioPlan, type AgentTraceScenarioPlanExport } from "./trace-export.ts";
-import { createAgentTrace, summarizeObservation, type AgentTrace, type AgentTurnTrace } from "./trace.ts";
+import { exportAgentTraceToScenarioPlan, type AgentTraceScenarioPlanExport } from "./trace/export.ts";
+import { createAgentTrace, summarizeObservation, type AgentTrace, type AgentTurnTrace } from "./trace/index.ts";
 import { verifyGoal } from "./verifier.ts";
 
 export interface AgentExecutionResult {
@@ -70,7 +70,7 @@ export async function executeAgentRun(input: AgentExecutorInput): Promise<AgentE
     });
     const turnTrace: AgentTurnTrace = {
       turn,
-      observation: summarizeObservation(observation.snapshot),
+      observation: summarizeObservation(observation.snapshot, input.task.observation_budget),
       preDecisionVerification
     };
     trace.turns.push(turnTrace);

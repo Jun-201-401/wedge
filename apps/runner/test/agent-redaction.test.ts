@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createAgentEventBatch } from "../src/agent/callbacks.ts";
 import { containsSensitiveValue, redactSensitiveValue } from "../src/agent/redaction.ts";
-import { createAgentTraceArtifact, type AgentTrace } from "../src/agent/trace.ts";
-import { createAgentScenarioPlanExportArtifact, exportAgentTraceToScenarioPlan } from "../src/agent/trace-export.ts";
+import { createAgentTraceArtifact, type AgentTrace } from "../src/agent/trace/index.ts";
+import { createAgentScenarioPlanExportArtifact, exportAgentTraceToScenarioPlan } from "../src/agent/trace/export.ts";
 import { cloneAgentMessage, loadAgentExampleMessage } from "./support.ts";
 
 test("[Agent Redaction] TRACE artifact는 decision/URL의 민감값을 저장 전에 마스킹한다", () => {

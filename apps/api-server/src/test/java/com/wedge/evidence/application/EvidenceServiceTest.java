@@ -85,14 +85,17 @@ class EvidenceServiceTest {
     }
 
     @Test
-    void getRunEvidencePacketAssemblesPersistedCallbacks() {
+    void getRunEvidencePacketAssemblesPersistedCallbacks() throws Exception {
         UUID runId = UUID.randomUUID();
         UUID checkpointId = UUID.randomUUID();
         UUID artifactId = UUID.randomUUID();
+        Artifact artifact = sampleArtifact(runId, artifactId);
         when(runService.getRun(runId)).thenReturn(sampleRun(runId));
-        when(artifactMapper.findByRunId(runId)).thenReturn(List.of(sampleArtifact(runId, artifactId)));
+        when(artifactMapper.findByRunId(runId)).thenReturn(List.of(artifact));
         when(checkpointMapper.findByRunId(runId)).thenReturn(List.of(sampleCheckpoint(runId, checkpointId, artifactId)));
         when(observationMapper.findByRunId(runId)).thenReturn(List.of(sampleObservation(runId, checkpointId)));
+        when(artifactPresignedUrlGenerator.generateGetUrl(artifact, Duration.ofSeconds(3600)))
+                .thenReturn(new URL("https://wedge-artifacts.s3.ap-northeast-2.amazonaws.com/runs/a.png?X-Amz-Signature=test"));
         EvidenceService evidenceService = newService();
 
         Map<String, Object> packet = evidenceService.getRunEvidencePacket(runId);
@@ -102,6 +105,10 @@ class EvidenceServiceTest {
         assertThat(packet.get("run_id")).isEqualTo(runId.toString());
         assertThat((List<?>) packet.get("checkpoints")).hasSize(1);
         assertThat((List<?>) packet.get("artifacts")).hasSize(1);
+        assertThat(firstArtifact(packet)).containsEntry(
+                "signed_url",
+                "https://wedge-artifacts.s3.ap-northeast-2.amazonaws.com/runs/a.png?X-Amz-Signature=test"
+        );
         assertEvidenceObservation(packet);
         @SuppressWarnings("unchecked")
         Map<String, Object> aggregateSignals = (Map<String, Object>) packet.get("aggregate_signals");
@@ -133,6 +140,39 @@ class EvidenceServiceTest {
         assertThat(snapshot.getObservationCount()).isEqualTo(1);
         assertThat(snapshot.getArtifactCount()).isEqualTo(1);
         assertThat(snapshot.getPacketJsonb()).contains("\"run_id\":\"" + runId + "\"");
+        assertThat(snapshot.getPacketJsonb()).doesNotContain("signed_url");
+    }
+
+    @Test
+    void getEvidencePacketSnapshotAddsFreshSignedUrlsWithoutPersistingThem() throws Exception {
+        UUID runId = UUID.randomUUID();
+        UUID checkpointId = UUID.randomUUID();
+        UUID artifactId = UUID.randomUUID();
+        Artifact artifact = sampleArtifact(runId, artifactId);
+        Map<String, Object> storedPacket = new EvidencePacketAssembler(new ObjectMapper()).assemble(
+                sampleRun(runId),
+                List.of(artifact),
+                List.of(sampleCheckpoint(runId, checkpointId, artifactId)),
+                List.of(sampleObservation(runId, checkpointId))
+        );
+        EvidencePacketSnapshot snapshot = new EvidencePacketSnapshot();
+        snapshot.setId(UUID.randomUUID());
+        snapshot.setExecutionType("RUN");
+        snapshot.setRunId(runId);
+        snapshot.setPacketJsonb(new ObjectMapper().writeValueAsString(storedPacket));
+        when(evidencePacketMapper.findById(snapshot.getId())).thenReturn(Optional.of(snapshot));
+        when(artifactMapper.findByRunId(runId)).thenReturn(List.of(artifact));
+        when(artifactPresignedUrlGenerator.generateGetUrl(artifact, Duration.ofSeconds(3600)))
+                .thenReturn(new URL("https://wedge-artifacts.s3.ap-northeast-2.amazonaws.com/runs/fresh.png?X-Amz-Signature=fresh"));
+        EvidenceService evidenceService = newService();
+
+        Map<String, Object> packet = evidenceService.getEvidencePacketSnapshot(snapshot.getId());
+
+        assertThat(snapshot.getPacketJsonb()).doesNotContain("signed_url");
+        assertThat(firstArtifact(packet)).containsEntry(
+                "signed_url",
+                "https://wedge-artifacts.s3.ap-northeast-2.amazonaws.com/runs/fresh.png?X-Amz-Signature=fresh"
+        );
     }
 
     @Test
@@ -260,6 +300,11 @@ class EvidenceServiceTest {
                 observationMapper,
                 evidencePacketMapper,
                 new EvidencePacketAssembler(new ObjectMapper()),
+                new EvidencePacketSignedUrlDecorator(
+                        artifactPresignedUrlGenerator,
+                        Duration.ofSeconds(3600),
+                        20
+                ),
                 artifactContentStore,
                 artifactPresignedUrlGenerator,
                 new ObjectMapper(),
@@ -284,6 +329,11 @@ class EvidenceServiceTest {
         Map<String, Object> decisionStageSummary = (Map<String, Object>) packet.get("decisionStageSummary");
         assertThat((Map<String, Object>) decisionStageSummary.get("FIRST_VIEW")).containsEntry("status", "OBSERVED");
         assertThat((Map<String, Object>) decisionStageSummary.get("VALUE")).containsEntry("status", "NOT_OBSERVED");
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> firstArtifact(Map<String, Object> packet) {
+        return ((List<Map<String, Object>>) packet.get("artifacts")).get(0);
     }
 
     private RunResponse sampleRun(UUID runId) {

@@ -272,10 +272,59 @@ export interface AgentDecision {
   metadata?: Record<string, unknown>;
 }
 
+export interface AgentObservationCandidateSummary {
+  candidateId: string;
+  candidateFingerprint: string;
+  role: string | null;
+  tag: string;
+  text: string;
+  inputType?: string | null;
+  labelText?: string | null;
+  placeholder?: string | null;
+  name?: string | null;
+  required?: boolean;
+  disabled?: boolean;
+  isFormControl?: boolean;
+  clickable: boolean;
+  isCtaCandidate: boolean;
+  isPrimaryLike: boolean;
+  frameId: string | null;
+  shadowRoot: boolean;
+  hrefOrigin?: string | null;
+  hrefPathHint?: string | null;
+  riskHint: string | null;
+  bounds: InteractiveComponentBounds;
+}
+
+export interface AgentObservationFormControlSummary {
+  controlKey: string;
+  controlType: "field" | "select";
+  hasValue: boolean;
+}
+
+export interface AgentObservationPageSignals {
+  visitedUrlCount: number;
+  consoleErrorCount: number;
+  networkErrorCount: number;
+  breadcrumbCount: number;
+  toastCount: number;
+  visiblePriceCount: number;
+  productCardCount: number;
+  cartCount: number | null;
+  hasLoginWallSignal: boolean;
+  hasCaptchaSignal: boolean;
+  hasPaymentOrCommitSignal: boolean;
+}
+
 export interface AgentObservation {
   finalUrl: string;
   title: string;
   candidateCount: number;
+  visibleTextSample?: string[];
+  candidates?: AgentObservationCandidateSummary[];
+  formControls?: AgentObservationFormControlSummary[];
+  pageSignals?: AgentObservationPageSignals;
+  artifactRefs?: string[];
 }
 
 export interface AgentTurnTrace {
@@ -806,6 +855,13 @@ export interface InteractiveComponentObservationItem {
   selector: string | null;
   role: string | null;
   href?: string | null;
+  input_type?: string | null;
+  label_text?: string | null;
+  placeholder?: string | null;
+  name?: string | null;
+  required?: boolean;
+  disabled?: boolean;
+  is_form_control?: boolean;
   frame_id?: string | null;
   shadow_root?: boolean;
   tag: string;
@@ -877,6 +933,43 @@ export interface ProductCardObservation {
   source: ("dom" | "layout" | "screenshot")[];
   confidence: number;
   cards: Record<string, unknown>[];
+}
+
+export type ProductDetailEvidence =
+  | "matched_product_card"
+  | "url_changed"
+  | "title_changed"
+  | "breadcrumb_changed"
+  | "price_visible"
+  | "product_image_visible"
+  | "goal_action_candidate_visible"
+  | "dom_changed";
+
+export interface ProductDetailSignalObservation {
+  observation_id: string;
+  type: "product_detail_signal";
+  stage: ScenarioStage;
+  source: ("scenario_log" | "dom" | "browser" | "screenshot")[];
+  confidence: number;
+  step_order: number;
+  step_key: string;
+  action_type: ScenarioActionType;
+  clicked_text?: string | null;
+  clicked_selector?: string | null;
+  matched_product_card: MatchedProductCardSignal;
+  url_before: string;
+  url_after: string;
+  title_before: string;
+  title_after: string;
+  breadcrumb_before: string[];
+  breadcrumb_after: string[];
+  visible_price: string[];
+  visible_product_image: Record<string, unknown>[];
+  goal_action_candidate_count: number;
+  add_to_cart_like_button_count: number;
+  dom_changed: boolean;
+  screenshot_artifact_id?: string | null;
+  evidence: ProductDetailEvidence[];
 }
 
 export interface GoalActionCandidateObservation {
