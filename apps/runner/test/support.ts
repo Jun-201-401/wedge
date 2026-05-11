@@ -19,6 +19,7 @@ import type {
   RunExecuteMessage,
   RunnerAcceptedPayload,
   RunnerCheckpointsRequest,
+  RunnerControlStatePayload,
   RunnerFailedPayload,
   RunnerFinishedPayload,
   ScenarioPlan,
@@ -188,6 +189,7 @@ export function createSimulatedPageSnapshot(
     consoleErrors: [],
     networkErrors: [],
     networkEvents: [],
+    performanceSummary: null,
     breadcrumb: [],
     toastTexts: [],
     cartCount: null,
@@ -197,6 +199,11 @@ export function createSimulatedPageSnapshot(
     selectedFilters: [],
     searchQuery: null,
     domSignature: null,
+    browserHealth: {
+      status: "ok",
+      reason: null,
+      observedAt: null
+    },
     cdpSession: {
       protocol: "cdp",
       transport: "simulated",
@@ -263,4 +270,5 @@ export interface StubCallbackClient {
   sendFailed: (runId: string, payload: RunnerFailedPayload) => Promise<void>;
   sendAgentEvents: (runId: string, payload: AgentEventBatch) => Promise<void>;
   sendAgentTrace: (runId: string, payload: AgentTraceCallbackPayload) => Promise<void>;
+  readRunControlState?: (runId: string) => Promise<RunnerControlStatePayload>;
 }

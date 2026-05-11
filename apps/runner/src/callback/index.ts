@@ -15,9 +15,12 @@ export type { CallbackClient, CallbackType } from "./client.ts";
 export function createCallbackClient(config: RunnerConfig): CallbackClient {
   const transportClient = createCallbackTransportClient(config);
 
-  return createCallbackClientFromHandler((callbackType, runId, payload) =>
-    sendWithRetry(config, transportClient, callbackType, runId, payload)
-  );
+  return {
+    ...createCallbackClientFromHandler((callbackType, runId, payload) =>
+      sendWithRetry(config, transportClient, callbackType, runId, payload)
+    ),
+    readRunControlState: transportClient.readRunControlState
+  };
 }
 
 export function createCallbackTransportClient(

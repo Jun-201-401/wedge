@@ -10,6 +10,7 @@ import com.wedge.evidence.application.command.SaveRunCheckpointCommand;
 import com.wedge.evidence.application.command.SaveRunCheckpointsCommand;
 import com.wedge.evidence.domain.ArtifactType;
 import com.wedge.run.api.dto.RunResponse;
+import com.wedge.run.api.internal.runner.dto.RunnerControlStateResponse;
 import com.wedge.run.application.command.RunnerAcceptedCommand;
 import com.wedge.run.application.command.RunnerAgentEventsCommand;
 import com.wedge.run.application.command.RunnerAgentTraceCommand;
@@ -177,6 +178,17 @@ public class RunnerCallbackService {
         RunResponse run = runService.getRun(runId);
         runPersistenceAdapter.saveAgentTrace(runId, command);
         return RunnerCallbackAckResponse.accepted(run);
+    }
+
+    @Transactional(readOnly = true)
+    public RunnerControlStateResponse getControlState(UUID runId) {
+        RunResponse run = runService.getRun(runId);
+        return new RunnerControlStateResponse(
+                run.id(),
+                run.status(),
+                run.status() == RunStatus.STOP_REQUESTED,
+                run.resultCompleteness()
+        );
     }
 
     private void applyStepEvent(UUID runId, RunnerStepEventCommand event) {

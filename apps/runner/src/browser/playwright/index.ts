@@ -8,12 +8,14 @@ import {
   type Frame,
   type Locator,
   type BrowserType,
-  type Page
+  type Page,
+  type Request
 } from "playwright";
 import { createCdpSession, type CdpSessionMetadata } from "../cdp/index.ts";
 import type { RunnerBrowserName, RunnerConfig } from "../../config/index.ts";
 import type {
   AxTreeSummary,
+  BrowserPerformanceSummary,
   InteractiveComponentBounds,
   InteractiveComponentLayout,
   InteractiveComponentVisibility,
@@ -75,6 +77,13 @@ export interface BrowserNetworkEventSignal {
   status?: number;
   failed?: boolean;
   errorText?: string;
+  occurredAt?: string;
+  resourceType?: string;
+  requestStartMs?: number | null;
+  responseEndMs?: number | null;
+  durationMs?: number | null;
+  transferSizeBytes?: number | null;
+  encodedBodySizeBytes?: number | null;
 }
 
 export interface BrowserPageSnapshot {
@@ -106,6 +115,7 @@ export interface BrowserPageSnapshot {
   consoleErrors: string[];
   networkErrors: string[];
   networkEvents: BrowserNetworkEventSignal[];
+  performanceSummary: BrowserPerformanceSummary | null;
   breadcrumb: string[];
   toastTexts: string[];
   cartCount: number | null;
@@ -115,7 +125,14 @@ export interface BrowserPageSnapshot {
   selectedFilters: BrowserFilterSignal[];
   searchQuery: string | null;
   domSignature: string | null;
+  browserHealth: BrowserHealthState;
   cdpSession: CdpSessionMetadata;
+}
+
+export interface BrowserHealthState {
+  status: "ok" | "crashed" | "closed";
+  reason: string | null;
+  observedAt: string | null;
 }
 
 export interface BrowserCapturedArtifacts {
@@ -141,6 +158,9 @@ export interface BrowserCapturedArtifacts {
 
 export interface BrowserCaptureOptions {
   captureAxTree?: boolean;
+  captureHar?: boolean;
+  captureTrace?: boolean;
+  capturePerformance?: boolean;
 }
 
 export interface PreparedBrowserSettle {
@@ -239,6 +259,7 @@ interface MutableBrowserState {
   consoleErrors: string[];
   networkErrors: string[];
   networkEvents: BrowserNetworkEventSignal[];
+  performanceSummary: BrowserPerformanceSummary | null;
   breadcrumb: string[];
   toastTexts: string[];
   cartCount: number | null;
@@ -248,6 +269,7 @@ interface MutableBrowserState {
   selectedFilters: BrowserFilterSignal[];
   searchQuery: string | null;
   domSignature: string | null;
+  browserHealth: BrowserHealthState;
 }
 
 function readPngDimensions(buffer: Buffer) {
@@ -517,6 +539,7 @@ class RealPlaywrightSession implements BrowserSession {
   readonly page: Page;
   readonly cdpSession: CdpSessionMetadata;
   readonly state: MutableBrowserState;
+  private closing = false;
 
   private constructor(plan: ScenarioPlan, browser: Browser, context: BrowserContext, page: Page) {
     this.id = randomUUID();
@@ -552,6 +575,7 @@ class RealPlaywrightSession implements BrowserSession {
   }
 
   async execute(action: ScenarioAction, step: ScenarioStep): Promise<BrowserActionResult> {
+    assertBrowserHealthy(this.state);
     const targetSummary = describeTarget(action.target);
     recordLastAction(this.state, action, targetSummary);
 
@@ -659,6 +683,7 @@ class RealPlaywrightSession implements BrowserSession {
   }
 
   async prepareSettle(strategy: SettleStrategy): Promise<PreparedBrowserSettle | null> {
+    assertBrowserHealthy(this.state);
     if (strategy.type === "response") {
       return this.createPreparedSettle(strategy, this.createResponseSettleAttempt(strategy));
     }
@@ -676,6 +701,7 @@ class RealPlaywrightSession implements BrowserSession {
   }
 
   async settle(strategy: SettleStrategy): Promise<BrowserSettleResult> {
+    assertBrowserHealthy(this.state);
     const startedAt = Date.now();
     const targetSummary = describeTarget(strategy.target);
 
@@ -777,6 +803,7 @@ class RealPlaywrightSession implements BrowserSession {
   }
 
   async captureArtifacts(options: BrowserCaptureOptions = {}): Promise<BrowserCapturedArtifacts> {
+    assertBrowserHealthy(this.state);
     await preparePageForScreenshot(this.page);
 
     const screenshotBuffer = await this.page.screenshot({
@@ -805,8 +832,9 @@ class RealPlaywrightSession implements BrowserSession {
   }
 
   async close(): Promise<void> {
-    await this.context.close();
-    await this.browser.close();
+    this.closing = true;
+    await this.context.close().catch(() => {});
+    await this.browser.close().catch(() => {});
   }
 
   private async initializeContext(plan: ScenarioPlan): Promise<void> {
@@ -846,6 +874,28 @@ class RealPlaywrightSession implements BrowserSession {
   }
 
   private attachPageObservers(): void {
+    this.browser.on("disconnected", () => {
+      if (!this.closing) {
+        markBrowserUnhealthy(this.state, "closed", "browser_disconnected");
+      }
+    });
+
+    this.context.on("close", () => {
+      if (!this.closing) {
+        markBrowserUnhealthy(this.state, "closed", "context_closed");
+      }
+    });
+
+    this.page.on("crash", () => {
+      markBrowserUnhealthy(this.state, "crashed", "page_crash");
+    });
+
+    this.page.on("close", () => {
+      if (!this.closing) {
+        markBrowserUnhealthy(this.state, "closed", "page_closed");
+      }
+    });
+
     this.page.on("console", (message) => {
       if (message.type() === "error") {
         this.state.consoleErrors.push(message.text());
@@ -863,16 +913,23 @@ class RealPlaywrightSession implements BrowserSession {
         method: request.method(),
         url: request.url(),
         failed: true,
-        errorText: failureText
+        errorText: failureText,
+        occurredAt: toIsoTimestamp(),
+        resourceType: request.resourceType(),
+        ...networkTimingDetails(request)
       });
     });
 
     this.page.on("response", (response) => {
+      const request = response.request();
       appendNetworkEvent(this.state, {
-        method: response.request().method(),
+        method: request.method(),
         url: response.url(),
         status: response.status(),
-        failed: false
+        failed: false,
+        occurredAt: toIsoTimestamp(),
+        resourceType: request.resourceType(),
+        ...networkTimingDetails(request)
       });
     });
 
@@ -1153,6 +1210,7 @@ class RealPlaywrightSession implements BrowserSession {
     this.state.selectedFilters = await safeSelectedFilters(this.page, this.state.selectedFilters);
     this.state.searchQuery = await safeSearchQuery(this.page, this.state.searchQuery);
     this.state.domSignature = await safeDomSignature(this.page, this.state.domSignature);
+    this.state.performanceSummary = await safePerformanceSummary(this.page, this.state.performanceSummary);
     appendVisitedUrl(this.state.visitedUrls, currentUrl);
   }
 
@@ -1281,6 +1339,7 @@ function createInitialBrowserState(plan: ScenarioPlan): MutableBrowserState {
     consoleErrors: [],
     networkErrors: [],
     networkEvents: [],
+    performanceSummary: null,
     breadcrumb: [],
     toastTexts: [],
     cartCount: null,
@@ -1289,7 +1348,12 @@ function createInitialBrowserState(plan: ScenarioPlan): MutableBrowserState {
     productCards: [],
     selectedFilters: [],
     searchQuery: null,
-    domSignature: null
+    domSignature: null,
+    browserHealth: {
+      status: "ok",
+      reason: null,
+      observedAt: null
+    }
   };
 }
 
@@ -1326,6 +1390,7 @@ function createBrowserPageSnapshot(
     consoleErrors: [...state.consoleErrors],
     networkErrors: [...state.networkErrors],
     networkEvents: state.networkEvents.map((event) => ({ ...event })),
+    performanceSummary: state.performanceSummary ? { ...state.performanceSummary } : null,
     breadcrumb: [...state.breadcrumb],
     toastTexts: [...state.toastTexts],
     cartCount: state.cartCount,
@@ -1341,8 +1406,36 @@ function createBrowserPageSnapshot(
     selectedFilters: state.selectedFilters.map((filter) => ({ ...filter })),
     searchQuery: state.searchQuery,
     domSignature: state.domSignature,
+    browserHealth: { ...state.browserHealth },
     cdpSession
   };
+}
+
+function markBrowserUnhealthy(
+  state: MutableBrowserState,
+  status: Exclude<BrowserHealthState["status"], "ok">,
+  reason: string
+): void {
+  if (state.browserHealth.status !== "ok") {
+    return;
+  }
+
+  state.browserHealth = {
+    status,
+    reason,
+    observedAt: toIsoTimestamp()
+  };
+  state.consoleErrors.push(`browser ${status}: ${reason}`);
+}
+
+function assertBrowserHealthy(state: MutableBrowserState): void {
+  if (state.browserHealth.status === "ok") {
+    return;
+  }
+
+  const error = new Error(`browser ${state.browserHealth.status}: ${state.browserHealth.reason ?? "unknown"}`);
+  error.name = "BrowserCrashError";
+  throw error;
 }
 
 function createDomVisibilitySummary(state: MutableBrowserState): DomVisibilitySummary {
@@ -1448,6 +1541,40 @@ function appendNetworkEvent(state: MutableBrowserState, event: BrowserNetworkEve
   if (state.networkEvents.length > 50) {
     state.networkEvents.shift();
   }
+}
+
+function networkTimingDetails(request: Request): Pick<
+  BrowserNetworkEventSignal,
+  "requestStartMs" | "responseEndMs" | "durationMs" | "transferSizeBytes" | "encodedBodySizeBytes"
+> {
+  try {
+    const timing = request.timing();
+    const requestStartMs = normalizeTimingValue(timing.startTime);
+    const responseEndMs = normalizeTimingValue(timing.responseEnd);
+    const durationMs = requestStartMs !== null && responseEndMs !== null && responseEndMs >= requestStartMs
+      ? Math.round((responseEndMs - requestStartMs) * 100) / 100
+      : null;
+
+    return {
+      requestStartMs,
+      responseEndMs,
+      durationMs,
+      transferSizeBytes: null,
+      encodedBodySizeBytes: null
+    };
+  } catch {
+    return {
+      requestStartMs: null,
+      responseEndMs: null,
+      durationMs: null,
+      transferSizeBytes: null,
+      encodedBodySizeBytes: null
+    };
+  }
+}
+
+function normalizeTimingValue(value: number): number | null {
+  return Number.isFinite(value) && value >= 0 ? Math.round(value * 100) / 100 : null;
 }
 
 function appendVisitedUrl(visitedUrls: string[], url: string): void {
@@ -2504,6 +2631,41 @@ async function safeDomSignature(page: Page, fallbackValue: string | null): Promi
         document.querySelectorAll("a,button,input,select,textarea,[role='button'],[role='link']").length,
         bodyText
       ].join("|");
+    });
+  } catch {
+    return fallbackValue;
+  }
+}
+
+async function safePerformanceSummary(page: Page, fallbackValue: BrowserPerformanceSummary | null): Promise<BrowserPerformanceSummary | null> {
+  try {
+    return await page.evaluate(() => {
+      const navigation = performance.getEntriesByType("navigation")[0] as PerformanceNavigationTiming | undefined;
+      const paintEntries = performance.getEntriesByType("paint");
+      const resources = performance.getEntriesByType("resource") as PerformanceResourceTiming[];
+      const firstContentfulPaint = paintEntries.find((entry) => entry.name === "first-contentful-paint");
+      const sum = (values: number[]) => values.reduce((total, value) => total + (Number.isFinite(value) ? value : 0), 0);
+
+      return {
+        navigation_type: navigation?.type ?? null,
+        time_origin: Number.isFinite(performance.timeOrigin) ? performance.timeOrigin : null,
+        dom_content_loaded_ms: navigation ? durationFromStart(navigation.domContentLoadedEventEnd, navigation.startTime) : null,
+        load_event_ms: navigation ? durationFromStart(navigation.loadEventEnd, navigation.startTime) : null,
+        first_contentful_paint_ms: firstContentfulPaint ? roundMetric(firstContentfulPaint.startTime) : null,
+        resource_count: resources.length,
+        transfer_size_bytes: sum(resources.map((resource) => resource.transferSize)),
+        encoded_body_size_bytes: sum(resources.map((resource) => resource.encodedBodySize)),
+        decoded_body_size_bytes: sum(resources.map((resource) => resource.decodedBodySize))
+      };
+
+      function durationFromStart(value: number, startTime: number): number | null {
+        const duration = value - startTime;
+        return Number.isFinite(duration) && duration >= 0 ? roundMetric(duration) : null;
+      }
+
+      function roundMetric(value: number): number {
+        return Math.round(value * 100) / 100;
+      }
     });
   } catch {
     return fallbackValue;

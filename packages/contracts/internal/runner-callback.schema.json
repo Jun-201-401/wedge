@@ -251,6 +251,13 @@
         },
         "summary": {
           "$ref": "#/$defs/Finished/properties/summary"
+        },
+        "failureArtifactRefs": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
         }
       },
       "required": [
@@ -259,6 +266,44 @@
         "failureCode",
         "failureMessage",
         "resultCompleteness"
+      ]
+    },
+    "ControlState": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "runId": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "CREATED",
+            "QUEUED",
+            "STARTING",
+            "RUNNING",
+            "STOP_REQUESTED",
+            "STOPPED",
+            "COMPLETED",
+            "FAILED"
+          ]
+        },
+        "stopRequested": {
+          "type": "boolean"
+        },
+        "resultCompleteness": {
+          "type": "string",
+          "enum": [
+            "NONE",
+            "PARTIAL",
+            "FINAL"
+          ]
+        }
+      },
+      "required": [
+        "runId",
+        "status",
+        "stopRequested"
       ]
     },
     "Checkpoint": {

@@ -189,7 +189,9 @@ close()
 - `item_count_change`는 현재 selector 기반 count polling + optional `expected_count`, `min_count`, `max_count`, `count_delta` 조건으로 동작한다.
 
 보류:
-- trace/HAR/performance collector는 아직 본격 구현하지 않는다.
+- trace/HAR/performance collector는 `artifact_policy.capture_trace`, `capture_har`,
+  `capture_performance` 기반 1차 checkpoint 수집까지 구현되어 있다. 다만 full browser tracing,
+  complete HAR timing/body capture, Core Web Vitals calibration은 별도 후속 범위다.
 - AX collector는 `capture_ax_tree` 기반 1차 artifact/summary 수집까지만 구현되어 있다.
 - `item_count_change`는 현재 count 변화 검출까지 구현되었고, 필요하면 이후 DOM collection contract와 observation 구조를 더 정교화한다.
 
@@ -371,12 +373,12 @@ LLM이 활성화되어도 pre-decision verifier, risk policy, fixed browser tool
 
 ## 4.4 Expanded collectors
 
-다음 collector는 아직 최소 skeleton 또는 미구현 상태다.
+다음 collector는 production-grade 확장 여지가 남아 있지만, checkpoint evidence용 1차 collector는 연결되어 있다.
 
-- layout collector
-- network timeline/HAR
-- trace
-- performance metric
+- layout collector: checkpoint `layout_collector` observation과 `state.layout_collector_summary`
+- network timeline/HAR: bounded `network_timeline` observation과 `capture_har=true`일 때 `HAR` artifact
+- trace: `capture_trace=true`일 때 checkpoint runtime `TRACE` artifact
+- performance metric: `capture_performance=true`일 때 `performance_metric` observation과 state summary
 
 `AX tree collector`는 1차 구현으로 `artifact_policy.capture_ax_tree=true`인 checkpoint에서
 `AX_TREE` artifact, `state.ax_tree_summary`, `ax_tree` observation을 남긴다. 단, WCAG
@@ -393,12 +395,18 @@ signal을 남긴다. 단, 전체 layout tree/paint order 수준의 production la
 
 아직 runner reliability는 production 수준으로 고정하지 않았다.
 
+현재 구현:
+- step 실행 실패 후에도 session snapshot/capture가 가능하면 failure checkpoint를 남긴다.
+- failure checkpoint는 일반 checkpoint와 같은 artifact 저장/콜백 경로를 사용하며, failed callback에는 저장에 성공한 `failureArtifactRefs`를 포함한다.
+- browser/session이 이미 깨져 failure evidence capture가 실패하면 원래 실패를 덮지 않고 `failure-capture` delivery issue로 degrade 처리한다.
+- HTTP callback mode에서는 step 사이에 `/internal/runner/runs/{runId}/control-state`를 조회해 `STOP_REQUESTED`를 소비하고, 다음 step 실행 전 stopped summary로 정상 종료한다.
+- Playwright page crash/browser disconnect/context close 신호는 `browser_health` state/observation으로 남기며, 실행 실패는 `RUNNER_BROWSER_CRASH`로 분류한다. Crash 이후 screenshot/DOM capture가 실패해도 원래 crash failure를 보존한다.
+- `run.execute.request`와 `discovery.execute.request`의 `idempotencyKey`가 있으면 runner-local terminal record를 `artifactsRoot/message-idempotency/{scope}`에 남기고, 같은 key의 재전달은 browser/session을 새로 열지 않고 이전 결과를 재사용한다.
+
 추후 정리할 항목:
 - callback partial failure policy
 - per-step timeout policy
-- browser crash recovery
-- screenshot-on-failure policy
-- run cancellation / stop signal consume
+- API/DB 기반 cross-runner idempotency lease
 
 # 5. Agent 구현 규칙
 

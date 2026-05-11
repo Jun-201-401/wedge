@@ -184,6 +184,106 @@ test("[Agent Worker] AgentTask로 CTA 후보를 관찰해 클릭한다", async (
   assert.equal(closed, true);
 });
 
+test("[Agent Worker] replay_hints를 먼저 시도하고 실패하면 heuristic으로 fallback한다", async () => {
+  const message = await loadAgentExampleMessage();
+  const task = message.payload.agentTask;
+  task.goal = "checkout entry";
+  task.budget.max_steps = 4;
+  task.budget.max_same_page_attempts = 0;
+  task.artifact_policy = {
+    capture_screenshots: false,
+    capture_dom_snapshots: false,
+    capture_ax_tree: false,
+    capture_trace: true
+  };
+  task.replay_hints = {
+    source_trace_id: "prior-trace-1",
+    source_plan_id: "prior-plan-1",
+    steps: [
+      {
+        description: "Try a prior checkout selector before fresh exploration.",
+        action: {
+          type: "click",
+          target: {
+            selector: "#stale-checkout"
+          }
+        },
+        target_key: "#stale-checkout",
+        confidence: 0.93
+      }
+    ]
+  };
+
+  const executedActions: string[] = [];
+  const agentEvents: AgentEvent[] = [];
+  let currentUrl = task.start_url;
+  let loaded = false;
+
+  const worker = createAgentWorkerHarness({
+    name: "replay-hint-fallback",
+    browserFactory: {
+      kind: "simulated-playwright",
+      createSession: async ({ plan }) =>
+        createSimulatedSession(plan, {
+          execute: async (action) => {
+            if (action.type === "goto") {
+              executedActions.push("goto");
+              loaded = true;
+              currentUrl = task.start_url;
+            }
+            if (action.type === "click") {
+              const selector = action.target && typeof action.target === "object" && "selector" in action.target
+                ? String(action.target.selector)
+                : "unknown";
+              executedActions.push(selector);
+              if (selector === "#stale-checkout") {
+                throw new Error("stale replay hint target");
+              }
+              currentUrl = "https://example.com/checkout";
+            }
+            return {
+              actionType: action.type,
+              targetSummary: null,
+              stopRequested: false,
+              details: {
+                currentUrl
+              }
+            };
+          },
+          settle: async () => createSettledResult(),
+          snapshot: () => createSimulatedPageSnapshot(plan, {
+            currentUrl,
+            finalUrl: currentUrl,
+            interactiveComponents: createCheckoutHeuristicComponents(currentUrl, loaded, false)
+          })
+        })
+    },
+    callbackClient: createStubCallbackClient({
+      sendAgentEvents: async (_runId, payload) => {
+        agentEvents.push(...payload.events);
+      }
+    }),
+    capturePipeline: {
+      collectCheckpoint: async () => {
+        throw new Error("checkpoint collection should not run when capture_screenshots is false");
+      }
+    },
+    artifactStore: {
+      persistArtifacts: async () => []
+    }
+  });
+
+  const result = await worker.handleMessage(message);
+
+  assert.deepEqual(executedActions, ["goto", "#stale-checkout", "#add-to-cart"]);
+  assert.equal(result.trace.outcome.status, "SUCCESS");
+  assert.equal(result.trace.turns[1].decision?.metadata?.decisionSource, "replay_hint");
+  assert.equal(result.trace.turns[1].actionResult?.completed, false);
+  assert.equal(result.trace.turns[2].decision?.metadata?.decisionSource, "heuristic");
+  assert.equal(result.trace.turns[2].decision?.targetKey, "#add-to-cart");
+  assert.ok(agentEvents.some((event) => event.eventType === "ACTION_FAILED"));
+});
+
 test("[Agent Worker] 이미 목표 상태면 새 decision 전에 중단한다", async () => {
   const message = await loadAgentExampleMessage();
   const task = message.payload.agentTask;

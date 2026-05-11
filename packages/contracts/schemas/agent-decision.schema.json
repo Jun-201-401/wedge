@@ -51,7 +51,7 @@
         },
         "decisionSource": {
           "type": "string",
-          "enum": ["heuristic", "llm"]
+          "enum": ["heuristic", "llm", "replay_hint"]
         },
         "model": {
           "type": "string",

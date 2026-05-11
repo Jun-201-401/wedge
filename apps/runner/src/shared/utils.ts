@@ -49,7 +49,7 @@ export function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-export type RunnerFailureCode = "RUNNER_EXECUTION_FAILED" | "RUNNER_TIMEOUT";
+export type RunnerFailureCode = "RUNNER_EXECUTION_FAILED" | "RUNNER_TIMEOUT" | "RUNNER_BROWSER_CRASH";
 
 export function classifyRunnerFailure(error: unknown): RunnerFailureCode {
   const name = error instanceof Error ? error.name.toLowerCase() : "";
@@ -61,6 +61,19 @@ export function classifyRunnerFailure(error: unknown): RunnerFailureCode {
     message.includes("timed out")
   ) {
     return "RUNNER_TIMEOUT";
+  }
+
+  if (
+    name.includes("browsercrash") ||
+    name.includes("targetclosed") ||
+    message.includes("page crashed") ||
+    message.includes("browser has been closed") ||
+    message.includes("target page, context or browser has been closed") ||
+    message.includes("browser closed") ||
+    message.includes("context closed") ||
+    message.includes("page closed")
+  ) {
+    return "RUNNER_BROWSER_CRASH";
   }
 
   return "RUNNER_EXECUTION_FAILED";

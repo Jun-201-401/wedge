@@ -48,6 +48,7 @@ test("[Agent Planner] non-goto replay hint는 bootstrap 이후 먼저 시도한�
   };
 
   const bootstrapDecision = replayHintAgentPlanner.decideNextAction({
+    runId: "run-replay-hint-test",
     goal: "checkout entry",
     startUrl: plan.start_url,
     state,
@@ -67,6 +68,7 @@ test("[Agent Planner] non-goto replay hint는 bootstrap 이후 먼저 시도한�
   });
 
   const replayDecision = replayHintAgentPlanner.decideNextAction({
+    runId: "run-replay-hint-test",
     goal: "checkout entry",
     startUrl: plan.start_url,
     state,
@@ -81,6 +83,7 @@ test("[Agent Planner] non-goto replay hint는 bootstrap 이후 먼저 시도한�
   assert.equal(replayDecision.confidence, 0.91);
   assert.equal(replayDecision.settleStrategy.type, "fixed_short");
   assert.match(replayDecision.reason, /Replay hint/);
+  assert.equal(replayDecision.metadata?.decisionSource, "replay_hint");
 });
 
 test("[Agent Planner] replay hint가 소진되면 rule-based planner로 fallback한다", () => {
@@ -103,6 +106,7 @@ test("[Agent Planner] replay hint가 소진되면 rule-based planner로 fallback
   });
 
   const decision = replayHintAgentPlanner.decideNextAction({
+    runId: "run-replay-hint-test",
     goal: "checkout entry",
     startUrl: plan.start_url,
     state,

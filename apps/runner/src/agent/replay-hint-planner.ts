@@ -1,5 +1,5 @@
 import type { AgentReplayHintStep, AgentReplayHints, ScenarioAction, ScenarioStage, SettleStrategy } from "../shared/contracts.ts";
-import { decideNextAction, type AgentDecision, type AgentDecisionInput } from "./planner.ts";
+import { decideNextAction, ensureAgentDecisionMetadata, type AgentDecision, type AgentDecisionInput } from "./planner.ts";
 
 export interface AgentPlanner {
   decideNextAction: (input: AgentDecisionInputWithReplayHints) => AgentDecision;
@@ -20,9 +20,9 @@ export function createReplayHintPlanner(fallbackPlanner: AgentPlanner = { decide
 
 export const replayHintAgentPlanner = createReplayHintPlanner();
 
-function decideFromReplayHints(input: AgentDecisionInputWithReplayHints): AgentDecision | null {
+export function decideFromReplayHints(input: AgentDecisionInputWithReplayHints): AgentDecision | null {
   const replayHints = input.replayHints;
-  if ((input.state as { replayHintsDisabled?: boolean }).replayHintsDisabled || !replayHints || replayHints.steps.length === 0) {
+  if (input.state.replayHintsDisabled || !replayHints || replayHints.steps.length === 0) {
     return null;
   }
 
@@ -44,7 +44,7 @@ function decideFromReplayHints(input: AgentDecisionInputWithReplayHints): AgentD
     return null;
   }
 
-  return {
+  return ensureAgentDecisionMetadata({
     kind: "act",
     description: step.description ?? replayDescription(step),
     reason: replayReason(replayHints, step),
@@ -53,7 +53,7 @@ function decideFromReplayHints(input: AgentDecisionInputWithReplayHints): AgentD
     settleStrategy: step.settle_strategy ?? defaultSettleStrategy(step.action),
     stage: step.stage ?? defaultStage(step.action),
     targetKey
-  };
+  }, "replay_hint");
 }
 
 function resolveReplayStepIndex(input: AgentDecisionInputWithReplayHints, replayHints: AgentReplayHints): number {

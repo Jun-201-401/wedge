@@ -1618,6 +1618,40 @@ paths:
           $ref: '#/components/responses/Conflict'
         '422':
           $ref: '#/components/responses/ValidationError'
+  /internal/runner/runs/{runId}/control-state:
+    get:
+      tags:
+      - InternalRunner
+      operationId: runnerControlState
+      summary: Runner 실행 제어 상태 조회
+      description: Runner가 step 사이에서 STOP_REQUESTED 상태를 소비할 수 있도록 현재 Run 제어 상태를 조회한다.
+      security:
+      - InternalBearer: []
+      parameters:
+      - $ref: '#/components/parameters/RunId'
+      - name: X-Worker-Id
+        in: header
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Current control state
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/ApiResponse'
+                - type: object
+                  properties:
+                    data:
+                      $ref: '#/components/schemas/RunnerControlStateResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
   /internal/runner/runs/{runId}/agent-events:
     post:
       tags:
@@ -5390,12 +5424,46 @@ components:
           - completedStepCount
           - failedStepCount
           - stopped
+        failureArtifactRefs:
+          type: array
+          items:
+            type: string
       required:
       - workerId
       - failedAt
       - failureCode
       - failureMessage
       - resultCompleteness
+    RunnerControlStateResponse:
+      type: object
+      properties:
+        runId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum:
+          - CREATED
+          - QUEUED
+          - STARTING
+          - RUNNING
+          - STOP_REQUESTED
+          - STOPPED
+          - COMPLETED
+          - FAILED
+        stopRequested:
+          type: boolean
+        resultCompleteness:
+          type: string
+          enum:
+          - NONE
+          - PARTIAL
+          - FINAL
+          nullable: true
+      required:
+      - runId
+      - status
+      - stopRequested
     JudgeResult:
       $ref: ../schemas/judge-result.schema.json
     AnalyzerStartedRequest:

@@ -17,7 +17,7 @@ import {
 import { plannerSemantics } from "./semantics.ts";
 
 export type AgentDecisionKind = "act" | "checkpoint" | "finish";
-export type AgentDecisionSource = "heuristic" | "llm";
+export type AgentDecisionSource = "heuristic" | "llm" | "replay_hint";
 
 export interface AgentDecisionPromptMetadata {
   payloadShapeVersion: string;
