@@ -81,9 +81,10 @@ If `migrate` fails, stop the deployment and inspect the failed migration before 
 
 The Jenkins pipeline includes a `RUN_DB_MIGRATION` boolean parameter.
 
-- Default value: `false`
-- Before production baseline: keep it `false`
-- After production baseline: set it to `true` only for deployments that should run Flyway
+- Default value: `true`
+- If `infra/db/migrations` has no changes, Jenkins skips the `Database Migration` stage.
+- If `infra/db/migrations` has changes and `RUN_DB_MIGRATION=true`, Jenkins runs Flyway.
+- If `infra/db/migrations` has changes and `RUN_DB_MIGRATION=false`, Jenkins fails the deployment to require an explicit migration decision.
 
 When `RUN_DB_MIGRATION=true`, Jenkins runs:
 
@@ -93,4 +94,4 @@ flyway migrate
 application deploy
 ```
 
-When `RUN_DB_MIGRATION=false`, Jenkins skips the `Database Migration` stage and continues the normal application deploy.
+When there are no migration file changes, Jenkins skips the `Database Migration` stage and continues the normal application deploy.
