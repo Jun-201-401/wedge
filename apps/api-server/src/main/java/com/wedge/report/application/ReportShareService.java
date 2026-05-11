@@ -91,7 +91,7 @@ public class ReportShareService {
         ReportShare share = findActiveShare(shareToken);
         Report report = reportMapper.findById(share.getReportId())
                 .orElseThrow(() -> new BusinessException(ErrorCode.REPORT_NOT_FOUND));
-        return evidenceService.getRunArtifactContent(report.getRunId(), artifactId);
+        return evidenceService.getRunImageArtifactContent(report.getRunId(), artifactId);
     }
 
     private void ensureReportAccessible(UUID reportId, UUID userId) {

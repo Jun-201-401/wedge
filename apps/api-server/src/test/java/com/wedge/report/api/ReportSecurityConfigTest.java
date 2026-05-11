@@ -103,6 +103,13 @@ class ReportSecurityConfigTest {
                 .andExpect(jsonPath("$.error.code").value("unauthorized"));
     }
 
+    @Test
+    void unexpectedGetUnderReportSharesIsNotPubliclyPermitted() throws Exception {
+        mockMvc.perform(get("/api/report-shares/{shareToken}/unexpected", "share-token"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.error.code").value("unauthorized"));
+    }
+
     private ReportDetailResponse detail(UUID reportId, UUID runId) {
         return new ReportDetailResponse(
                 reportId,

@@ -183,12 +183,12 @@ class ReportShareServiceTest {
         );
         when(reportShareMapper.findActiveByToken(SHARE_TOKEN, NOW)).thenReturn(Optional.of(share));
         when(reportMapper.findById(reportId)).thenReturn(Optional.of(report(reportId, runId)));
-        when(evidenceService.getRunArtifactContent(runId, artifactId)).thenReturn(content);
+        when(evidenceService.getRunImageArtifactContent(runId, artifactId)).thenReturn(content);
 
         EvidenceService.ArtifactContent response = reportShareService.getSharedArtifactContent(SHARE_TOKEN, artifactId);
 
         assertThat(response).isSameAs(content);
-        verify(evidenceService).getRunArtifactContent(runId, artifactId);
+        verify(evidenceService).getRunImageArtifactContent(runId, artifactId);
     }
 
     @Test
@@ -201,7 +201,7 @@ class ReportShareServiceTest {
                         assertThat(exception.errorCode()).isEqualTo(ErrorCode.REPORT_NOT_FOUND)
                 );
 
-        verify(evidenceService, never()).getRunArtifactContent(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
+        verify(evidenceService, never()).getRunImageArtifactContent(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
     }
 
     @Test

@@ -576,7 +576,7 @@ GET /api/report-shares/{shareToken}/artifacts/{artifactId}/content
 
 - 인증 헤더 없이 공유 token으로 리포트 캡처/이미지 artifact를 조회한다.
 - 해당 artifact는 공유 리포트가 연결된 run에 속해야 한다.
-- token이 만료/폐기되었거나 artifact가 공유 리포트의 run에 속하지 않으면 `404`를 반환한다.
+- token이 만료/폐기되었거나 artifact가 공유 리포트의 run에 속하지 않거나 이미지 artifact가 아니면 `404`를 반환한다.
 
 ### Scenario fit UX policy
 

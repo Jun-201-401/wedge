@@ -2531,8 +2531,8 @@ paths:
       tags:
       - Reports
       operationId: getSharedReportArtifactContent
-      summary: 공유 token 리포트 artifact content 조회
-      description: 인증 헤더 없이 공유 token만으로 공유 리포트에 연결된 run의 artifact content를 조회한다. share token이 만료/폐기되었거나 artifact가 공유 리포트의 run에 속하지 않으면 조회할 수 없다.
+      summary: 공유 token 리포트 이미지 artifact content 조회
+      description: 인증 헤더 없이 공유 token만으로 공유 리포트에 연결된 run의 이미지 artifact content를 조회한다. share token이 만료/폐기되었거나 artifact가 공유 리포트의 run에 속하지 않거나 이미지 artifact가 아니면 조회할 수 없다.
       security: []
       parameters:
       - name: shareToken
