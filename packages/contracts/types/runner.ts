@@ -857,6 +857,17 @@ export interface JourneyActionRawObservation {
   settle_status: "settled" | "timeout" | "failed";
   screenshot_artifact_id?: string | null;
   bbox?: InteractiveComponentBounds | null;
+  matched_product_card?: MatchedProductCardSignal | null;
+}
+
+export interface MatchedProductCardSignal {
+  element_text: string;
+  clicked_selector: string | null;
+  visible_price: string | null;
+  visible_product_image: boolean;
+  bbox: InteractiveComponentBounds;
+  match_reason: "selector_exact" | "selector_related" | "text_overlap" | "bbox_overlap";
+  match_confidence: number;
 }
 
 export interface ProductCardObservation {

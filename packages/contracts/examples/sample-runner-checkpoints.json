@@ -122,6 +122,21 @@
             "width": 220,
             "height": 56,
             "unit": "css_px"
+          },
+          "matched_product_card": {
+            "element_text": "혜택 플랜 무료 체험",
+            "clicked_selector": "#signup-benefits-toggle",
+            "visible_price": null,
+            "visible_product_image": false,
+            "bbox": {
+              "x": 500,
+              "y": 320,
+              "width": 260,
+              "height": 140,
+              "unit": "css_px"
+            },
+            "match_reason": "selector_exact",
+            "match_confidence": 0.94
           }
         },
         {

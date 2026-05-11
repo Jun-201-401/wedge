@@ -905,6 +905,21 @@ test("[수집 pipeline] Journey raw signal은 click 전후 상태와 artifact/bb
         }
       }
     ],
+    productCards: [
+      {
+        element_text: "SKU 1 ₩12,000 장바구니 담기",
+        clicked_selector: "button.add-cart",
+        visible_price: "₩12,000",
+        visible_product_image: true,
+        bbox: {
+          x: 480,
+          y: 600,
+          width: 260,
+          height: 180,
+          unit: "css_px"
+        }
+      }
+    ],
     networkEvents: [
       {
         method: "POST",
@@ -987,6 +1002,21 @@ test("[수집 pipeline] Journey raw signal은 click 전후 상태와 artifact/bb
   assert.equal(observation.settle_status, "settled");
   assert.equal(observation.add_to_cart_like_button, true);
   assert.equal(typeof observation.screenshot_artifact_id, "string");
+  assert.deepEqual(observation.matched_product_card, {
+    element_text: "SKU 1 ₩12,000 장바구니 담기",
+    clicked_selector: "button.add-cart",
+    visible_price: "₩12,000",
+    visible_product_image: true,
+    bbox: {
+      x: 480,
+      y: 600,
+      width: 260,
+      height: 180,
+      unit: "css_px"
+    },
+    match_reason: "selector_exact",
+    match_confidence: 0.94
+  });
   assert.deepEqual(observation.bbox, {
     x: 520,
     y: 640,

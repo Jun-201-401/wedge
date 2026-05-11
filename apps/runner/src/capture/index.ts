@@ -255,6 +255,12 @@ function createJourneyActionRawObservation({
   const elementRole = readOptionalString(actionDetails, "elementRole") ?? clickedComponent(pageSnapshot)?.role ?? null;
   const bbox = readBounds(actionDetails.bbox) ?? clickedComponent(pageSnapshot)?.bounds ?? null;
   const networkResult = createNetworkResult(pageSnapshot, settleResult);
+  const matchedProductCard = matchProductCard({
+    pageSnapshot,
+    clickedText,
+    clickedSelector,
+    bbox
+  });
 
   return {
     observation_id: `${step.step_id}.obs_journey_action_raw`,
@@ -288,7 +294,8 @@ function createJourneyActionRawObservation({
     network_result: networkResult,
     settle_status: settleResult.status,
     screenshot_artifact_id: screenshotArtifactId,
-    bbox
+    bbox,
+    matched_product_card: matchedProductCard
   };
 }
 
@@ -686,6 +693,125 @@ function parseCategoryUrlSignal(urlString: string): string | null {
 
 function isCategoryFilterSearchText(text: string): boolean {
   return /category|categories|collection|filter|sort|search|카테고리|분류|필터|정렬|검색|상품|제품/i.test(text);
+}
+
+function matchProductCard({
+  pageSnapshot,
+  clickedText,
+  clickedSelector,
+  bbox
+}: {
+  pageSnapshot: BrowserPageSnapshot;
+  clickedText: string | null;
+  clickedSelector: string | null;
+  bbox: BrowserPageSnapshot["interactiveComponents"][number]["bounds"] | null;
+}): JourneyActionRawObservation["matched_product_card"] {
+  const matches = pageSnapshot.productCards
+    .map((card) => {
+      const selectorScore = matchSelectorScore(clickedSelector, card.clicked_selector);
+      const textScore = matchTextScore(clickedText, card.element_text);
+      const bboxScore = bbox ? boundsOverlapRatio(bbox, card.bbox) : 0;
+      const bestScore = Math.max(selectorScore, textScore, bboxScore);
+      return {
+        card,
+        bestScore,
+        matchReason: matchReason({ selectorScore, textScore, bboxScore })
+      };
+    })
+    .filter((candidate) => candidate.bestScore >= 0.48)
+    .sort((left, right) => right.bestScore - left.bestScore);
+
+  const bestMatch = matches[0];
+  if (!bestMatch) {
+    return null;
+  }
+
+  return {
+    ...bestMatch.card,
+    match_reason: bestMatch.matchReason,
+    match_confidence: Number(bestMatch.bestScore.toFixed(2))
+  };
+}
+
+function matchSelectorScore(clickedSelector: string | null, cardSelector: string | null): number {
+  if (!clickedSelector || !cardSelector) {
+    return 0;
+  }
+
+  if (clickedSelector === cardSelector) {
+    return 0.94;
+  }
+
+  return clickedSelector.includes(cardSelector) || cardSelector.includes(clickedSelector) ? 0.72 : 0;
+}
+
+function matchTextScore(clickedText: string | null, cardText: string): number {
+  const clickedTokens = meaningfulTokens(clickedText ?? "");
+  const cardTokens = meaningfulTokens(cardText);
+  if (clickedTokens.length === 0 || cardTokens.length === 0) {
+    return 0;
+  }
+
+  const matchingTokenCount = clickedTokens.filter((token) => cardTokens.includes(token)).length;
+  const overlapRatio = matchingTokenCount / clickedTokens.length;
+  return overlapRatio >= 0.5 ? Math.min(0.86, 0.42 + overlapRatio * 0.44) : 0;
+}
+
+function meaningfulTokens(value: string): string[] {
+  return normalizeTextForMatch(value)
+    .split(" ")
+    .filter((token) => token.length >= 2 && !/^(add|to|the|for|보기|상세|선택|담기)$/.test(token));
+}
+
+function boundsOverlapRatio(
+  left: BrowserPageSnapshot["interactiveComponents"][number]["bounds"],
+  right: BrowserPageSnapshot["interactiveComponents"][number]["bounds"]
+): number {
+  const overlapLeft = Math.max(left.x, right.x);
+  const overlapTop = Math.max(left.y, right.y);
+  const overlapRight = Math.min(left.x + left.width, right.x + right.width);
+  const overlapBottom = Math.min(left.y + left.height, right.y + right.height);
+  const overlapWidth = Math.max(0, overlapRight - overlapLeft);
+  const overlapHeight = Math.max(0, overlapBottom - overlapTop);
+  const overlapArea = overlapWidth * overlapHeight;
+  const leftArea = left.width * left.height;
+
+  if (leftArea <= 0) {
+    return 0;
+  }
+
+  const ratio = overlapArea / leftArea;
+  return ratio >= 0.5 ? Math.min(0.84, 0.36 + ratio * 0.48) : 0;
+}
+
+function matchReason({
+  selectorScore,
+  textScore,
+  bboxScore
+}: {
+  selectorScore: number;
+  textScore: number;
+  bboxScore: number;
+}): NonNullable<JourneyActionRawObservation["matched_product_card"]>["match_reason"] {
+  const bestScore = Math.max(selectorScore, textScore, bboxScore);
+  if (bestScore === selectorScore && selectorScore >= 0.9) {
+    return "selector_exact";
+  }
+  if (bestScore === selectorScore) {
+    return "selector_related";
+  }
+  if (bestScore === textScore) {
+    return "text_overlap";
+  }
+  return "bbox_overlap";
+}
+
+function normalizeTextForMatch(value: string): string {
+  return value
+    .toLowerCase()
+    .replaceAll(/[^\p{Letter}\p{Number}]+/gu, " ")
+    .trim()
+    .replaceAll(/\s+/g, " ");
 }
 
 function createGoalActionResultSignal({
