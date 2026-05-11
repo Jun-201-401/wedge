@@ -923,6 +923,39 @@ paths:
           $ref: '#/components/responses/Conflict'
         '422':
           $ref: '#/components/responses/ValidationError'
+  /api/runs/{runId}/agent/start:
+    post:
+      tags:
+      - Runs
+      operationId: startAgentRun
+      summary: Agent 실행 시작
+      description: CREATED 상태의 Run을 QUEUED로 전환하고 AgentTask 기반 Runner Agent 실행 요청 outbox를 발행한다. 이전 성공 AgentTrace가 있으면 replay_hints로 주입한다.
+      security:
+      - HumanBearer: []
+      parameters:
+      - $ref: '#/components/parameters/RunId'
+      - name: Idempotency-Key
+        in: header
+        required: false
+        schema:
+          type: string
+      responses:
+        '202':
+          description: Agent run start accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AckResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
   /api/runs/{runId}/stop:
     post:
       tags:
@@ -1955,6 +1988,106 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/RunnerFailedRequest'
+      responses:
+        '200':
+          description: Accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AckResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /internal/runner/runs/{runId}/agent-events:
+    post:
+      tags:
+      - InternalRunner
+      operationId: runnerAgentEvents
+      summary: Runner Agent 이벤트 callback
+      description: Runner Agent Runtime이 관찰/결정/정책/검증 이벤트 batch를 API 서버에 알리는 내부 callback이다.
+      security:
+      - InternalBearer: []
+      parameters:
+      - $ref: '#/components/parameters/RunId'
+      - name: X-Worker-Id
+        in: header
+        required: true
+        schema:
+          type: string
+      - name: X-Event-Id
+        in: header
+        required: true
+        schema:
+          type: string
+      - name: X-Signature
+        in: header
+        description: HMAC-SHA256 digest of the raw JSON request body using the shared runner callback signature secret. The preferred format is `hmac-sha256=<hex>`; raw hex is accepted for compatibility.
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RunnerAgentEventsRequest'
+      responses:
+        '200':
+          description: Accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AckResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /internal/runner/runs/{runId}/agent-traces:
+    post:
+      tags:
+      - InternalRunner
+      operationId: runnerAgentTrace
+      summary: Runner Agent trace callback
+      description: Runner Agent Runtime이 최종 AgentTrace를 API 서버에 알리는 내부 callback이다. TRACE artifact와 같은 trace 계약을 사용한다.
+      security:
+      - InternalBearer: []
+      parameters:
+      - $ref: '#/components/parameters/RunId'
+      - name: X-Worker-Id
+        in: header
+        required: true
+        schema:
+          type: string
+      - name: X-Event-Id
+        in: header
+        required: true
+        schema:
+          type: string
+      - name: X-Signature
+        in: header
+        description: HMAC-SHA256 digest of the raw JSON request body using the shared runner callback signature secret. The preferred format is `hmac-sha256=<hex>`; raw hex is accepted for compatibility.
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RunnerAgentTraceRequest'
       responses:
         '200':
           description: Accepted
@@ -5004,6 +5137,27 @@ components:
             - createdAt
       required:
       - artifacts
+    AgentEvent:
+      $ref: ../schemas/agent-event.schema.json
+    AgentTrace:
+      $ref: ../schemas/agent-trace.schema.json
+    RunnerAgentEventsRequest:
+      type: object
+      properties:
+        events:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/AgentEvent'
+      required:
+      - events
+    RunnerAgentTraceRequest:
+      type: object
+      properties:
+        trace:
+          $ref: '#/components/schemas/AgentTrace'
+      required:
+      - trace
     RunnerFinishedRequest:
       type: object
       properties:

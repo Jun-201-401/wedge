@@ -137,72 +137,6 @@ class RunnerCallbackServiceTest {
     }
 
     @Test
-    void agentEventsCallbackAppendsRunEventWithoutStepResolution() {
-        UUID runId = UUID.randomUUID();
-        OffsetDateTime occurredAt = OffsetDateTime.parse("2026-05-07T10:01:00+09:00");
-        RunResponse running = sampleRun(runId, RunStatus.RUNNING, ResultCompleteness.NONE);
-        when(processedMessagePersistenceAdapter.tryMarkProcessed("runner.agent-events", "evt_agent_batch_001")).thenReturn(true);
-        when(runService.markRunningIfStarting(runId)).thenReturn(running);
-
-        RunnerCallbackAckResponse result = runnerCallbackService.handleAgentEvents(
-                runId,
-                new RunnerAgentEventsCommand(List.of(new RunnerAgentEventCommand(
-                        UUID.randomUUID(),
-                        "task-1",
-                        "attempt-1",
-                        2,
-                        "DECISION_MADE",
-                        occurredAt,
-                        Map.of("actionType", "click")
-                ))),
-                headers("evt_agent_batch_001")
-        );
-
-        assertThat(result.status()).isEqualTo(RunStatus.RUNNING);
-        assertThat(result.eventCount()).isEqualTo(1);
-        verify(runPersistenceAdapter).appendRunEvent(
-                eq(runId),
-                eq(null),
-                eq("AGENT_DECISION_MADE"),
-                any(),
-                eq(occurredAt)
-        );
-        verify(runPersistenceAdapter, never()).resolveStep(eq(runId), any());
-    }
-
-    @Test
-    void agentTraceCallbackAppendsTraceEventWithoutStepResolution() {
-        UUID runId = UUID.randomUUID();
-        UUID artifactId = UUID.randomUUID();
-        OffsetDateTime occurredAt = OffsetDateTime.parse("2026-05-07T10:02:00+09:00");
-        RunResponse running = sampleRun(runId, RunStatus.RUNNING, ResultCompleteness.NONE);
-        when(processedMessagePersistenceAdapter.tryMarkProcessed("runner.agent-traces", "evt_agent_trace_001")).thenReturn(true);
-        when(runService.markRunningIfStarting(runId)).thenReturn(running);
-
-        RunnerCallbackAckResponse result = runnerCallbackService.handleAgentTrace(
-                runId,
-                new RunnerAgentTraceCommand(
-                        "task-1",
-                        "attempt-1",
-                        occurredAt,
-                        Map.of("outcome", Map.of("status", "SUCCESS")),
-                        artifactId
-                ),
-                headers("evt_agent_trace_001")
-        );
-
-        assertThat(result.eventCount()).isEqualTo(1);
-        verify(runPersistenceAdapter).appendRunEvent(
-                eq(runId),
-                eq(null),
-                eq("AGENT_TRACE_PERSISTED"),
-                any(),
-                eq(occurredAt)
-        );
-        verify(runPersistenceAdapter, never()).resolveStep(eq(runId), any());
-    }
-
-    @Test
     void stepEventsCallbackMarksFailedStep() {
         UUID runId = UUID.randomUUID();
         UUID stepId = UUID.randomUUID();
@@ -296,6 +230,59 @@ class RunnerCallbackServiceTest {
         ))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("Worker id header does not match payload.");
+    }
+
+    @Test
+    void agentEventsCallbackPersistsEvents() {
+        UUID runId = UUID.randomUUID();
+        RunResponse running = sampleRun(runId, RunStatus.RUNNING, ResultCompleteness.PARTIAL);
+        RunnerAgentEventsCommand command = new RunnerAgentEventsCommand(List.of(
+                new RunnerAgentEventCommand(
+                        "0.1",
+                        "agent-event-1",
+                        UUID.randomUUID(),
+                        UUID.randomUUID(),
+                        runId,
+                        1,
+                        "AGENT_STOPPED",
+                        OffsetDateTime.parse("2026-05-06T10:00:00+09:00"),
+                        Map.of("final_outcome", "SUCCESS_CHECKOUT_ENTRY_REACHED")
+                )
+        ));
+        when(processedMessagePersistenceAdapter.tryMarkProcessed("runner.agent-events", "evt_agent_events_001")).thenReturn(true);
+        when(runService.getRun(runId)).thenReturn(running);
+
+        RunnerCallbackAckResponse result = runnerCallbackService.handleAgentEvents(
+                runId,
+                command,
+                headers("evt_agent_events_001")
+        );
+
+        assertThat(result.eventCount()).isEqualTo(1);
+        verify(runPersistenceAdapter).saveAgentEvents(runId, command.events());
+    }
+
+    @Test
+    void agentTraceCallbackPersistsTrace() {
+        UUID runId = UUID.randomUUID();
+        UUID traceId = UUID.randomUUID();
+        RunResponse running = sampleRun(runId, RunStatus.RUNNING, ResultCompleteness.PARTIAL);
+        RunnerAgentTraceCommand command = new RunnerAgentTraceCommand(Map.of(
+                "trace_id", traceId.toString(),
+                "run_id", runId.toString(),
+                "final_outcome", "SUCCESS_CHECKOUT_ENTRY_REACHED"
+        ));
+        when(processedMessagePersistenceAdapter.tryMarkProcessed("runner.agent-traces", "evt_agent_trace_001")).thenReturn(true);
+        when(runService.getRun(runId)).thenReturn(running);
+
+        RunnerCallbackAckResponse result = runnerCallbackService.handleAgentTrace(
+                runId,
+                command,
+                headers("evt_agent_trace_001")
+        );
+
+        assertThat(result.runId()).isEqualTo(runId);
+        verify(runPersistenceAdapter).saveAgentTrace(runId, command);
     }
 
     @Test
@@ -407,58 +394,6 @@ class RunnerCallbackServiceTest {
             assertThat(artifact.key()).isEqualTo("runs/a/shot.png");
         });
         verify(runPersistenceAdapter).updateLatestArtifact(runId, artifactId);
-    }
-
-    @Test
-    void agentRunScopedArtifactsPersistWithoutScenarioStepResolution() {
-        UUID runId = UUID.randomUUID();
-        UUID traceArtifactId = UUID.randomUUID();
-        UUID exportArtifactId = UUID.randomUUID();
-        OffsetDateTime occurredAt = OffsetDateTime.parse("2026-05-07T10:02:00+09:00");
-        RunnerArtifactsCommand command = new RunnerArtifactsCommand(List.of(
-                new RunnerArtifactCommand(
-                        traceArtifactId,
-                        "agent_trace",
-                        "TRACE",
-                        "bucket-a",
-                        "runs/a/agent_trace/trace.json",
-                        "application/json",
-                        null,
-                        null,
-                        42L,
-                        "abc123",
-                        occurredAt
-                ),
-                new RunnerArtifactCommand(
-                        exportArtifactId,
-                        "agent_scenario_plan_export",
-                        "OTHER",
-                        "bucket-a",
-                        "runs/a/agent_scenario_plan_export/export.json",
-                        "application/json",
-                        null,
-                        null,
-                        84L,
-                        "def456",
-                        occurredAt
-                )
-        ));
-
-        when(processedMessagePersistenceAdapter.tryMarkProcessed("runner.artifacts", "evt_agent_artifacts_001")).thenReturn(true);
-        when(runService.getRun(runId)).thenReturn(sampleRun(runId, RunStatus.RUNNING, ResultCompleteness.NONE));
-        when(artifactPersistenceService.saveRunArtifacts(eq(runId), any(SaveRunArtifactsCommand.class), eq(Map.of())))
-                .thenReturn(2);
-
-        RunnerCallbackAckResponse result = runnerCallbackService.handleArtifacts(
-                runId,
-                command,
-                headers("evt_agent_artifacts_001")
-        );
-
-        assertThat(result.artifactCount()).isEqualTo(2);
-        verify(runPersistenceAdapter, never()).resolveStep(eq(runId), any());
-        verify(artifactPersistenceService).saveRunArtifacts(eq(runId), any(SaveRunArtifactsCommand.class), eq(Map.of()));
-        verify(runPersistenceAdapter).updateLatestArtifact(runId, exportArtifactId);
     }
 
     @Test

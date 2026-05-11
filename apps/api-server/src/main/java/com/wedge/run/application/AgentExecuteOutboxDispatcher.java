@@ -12,45 +12,44 @@ import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
 
 @Component
-public class RunExecuteOutboxDispatcher {
-    private static final Logger log = LoggerFactory.getLogger(RunExecuteOutboxDispatcher.class);
+public class AgentExecuteOutboxDispatcher {
+    private static final Logger log = LoggerFactory.getLogger(AgentExecuteOutboxDispatcher.class);
     private static final int RETRY_BATCH_SIZE = 50;
 
     private final OutboxMessagePersistenceAdapter outboxMessagePersistenceAdapter;
-    private final RunRequestPublisher runRequestPublisher;
+    private final AgentRequestPublisher agentRequestPublisher;
 
-    public RunExecuteOutboxDispatcher(
+    public AgentExecuteOutboxDispatcher(
             OutboxMessagePersistenceAdapter outboxMessagePersistenceAdapter,
-            RunRequestPublisher runRequestPublisher
+            AgentRequestPublisher agentRequestPublisher
     ) {
         this.outboxMessagePersistenceAdapter = outboxMessagePersistenceAdapter;
-        this.runRequestPublisher = runRequestPublisher;
+        this.agentRequestPublisher = agentRequestPublisher;
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
-    public void handle(RunExecuteOutboxEnqueuedEvent event) {
-        outboxMessagePersistenceAdapter.findRunnerRequestMessageForPublish(event.outboxMessageId()).ifPresent(message -> {
+    public void handle(AgentExecuteOutboxEnqueuedEvent event) {
+        outboxMessagePersistenceAdapter.findAgentExecuteMessageForPublish(event.outboxMessageId()).ifPresent(message -> {
             dispatch(event.outboxMessageId(), message);
         });
     }
 
-    @Scheduled(fixedDelayString = "${wedge.outbox.run-execute.retry-fixed-delay-ms:5000}")
+    @Scheduled(fixedDelayString = "${wedge.outbox.agent-execute.retry-fixed-delay-ms:5000}")
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void retryDueMessages() {
-        outboxMessagePersistenceAdapter.findDueRunExecuteMessages(RETRY_BATCH_SIZE)
-                .forEach(message -> dispatch(message.outboxMessageId(), message.runExecuteRequestMessage()));
+        outboxMessagePersistenceAdapter.findDueAgentExecuteMessages(RETRY_BATCH_SIZE)
+                .forEach(message -> dispatch(message.outboxMessageId(), message.agentExecuteRequestMessage()));
     }
 
-    private void dispatch(UUID outboxMessageId, RunExecuteRequestMessage message) {
+    private void dispatch(UUID outboxMessageId, AgentExecuteRequestMessage message) {
         try {
-            runRequestPublisher.publish(message);
+            agentRequestPublisher.publish(message);
             outboxMessagePersistenceAdapter.markPublished(outboxMessageId);
         } catch (RuntimeException exception) {
             log.warn(
-                    "Failed to publish runner request outbox message id={} messageType={} messageId={} correlationId={} idempotencyKey={}",
+                    "Failed to publish agent.execute.request outbox message id={} messageId={} correlationId={} idempotencyKey={}",
                     outboxMessageId,
-                    message.messageType(),
                     message.messageId(),
                     message.correlationId(),
                     message.idempotencyKey(),

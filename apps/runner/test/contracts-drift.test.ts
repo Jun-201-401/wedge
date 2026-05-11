@@ -137,6 +137,39 @@ test("[계약 동기화] runner callback literal이 packages/contracts callback 
     callbackSchema,
     callbackSchema.$defs.Checkpoint.properties.stage
   );
+  assert.equal(callbackSchema.$defs.AgentEventBatch.properties.events.items.$ref, "../schemas/agent-event.schema.json");
+  assert.equal(callbackSchema.$defs.AgentTraceRequest.properties.trace.$ref, "../schemas/agent-trace.schema.json");
+  assert.ok(runnerTypesSource.includes("export interface AgentEventBatch"));
+  assert.ok(runnerTypesSource.includes("export interface AgentTraceRequest"));
+});
+
+test("[계약 동기화] AgentTrace TS mirror가 packages/contracts trace schema와 어긋나지 않는다", async () => {
+  const runnerTypesSource = await readRunnerTypesSource();
+  const callbackSchema = await readJson(resolve(repoRoot, "packages/contracts/internal/runner-callback.schema.json"));
+  const outcomeSchema = await readJson(resolve(repoRoot, "packages/contracts/schemas/agent-outcome.schema.json"));
+  const policySchema = await readJson(resolve(repoRoot, "packages/contracts/schemas/agent-policy-result.schema.json"));
+  const traceExample = await readJson(resolve(repoRoot, "packages/contracts/examples/sample-agent-trace-checkout-entry.json"));
+
+  assertTypeAliasMatchesSchemaEnum(
+    runnerTypesSource,
+    "AgentEventType",
+    callbackSchema,
+    callbackSchema.$defs.AgentEvent.properties.eventType
+  );
+  assertTypeAliasMatchesSchemaEnum(
+    runnerTypesSource,
+    "AgentOutcomeStatus",
+    outcomeSchema,
+    outcomeSchema.properties.status
+  );
+  assertTypeAliasMatchesSchemaEnum(
+    runnerTypesSource,
+    "AgentRiskClass",
+    policySchema,
+    policySchema.properties.riskClass
+  );
+  assert.equal(traceExample.outcome.status, "SUCCESS");
+  assert.ok(traceExample.turns.some((turn: any) => turn.postActionVerification?.terminal === true));
 });
 
 async function readRunnerTypesSource(): Promise<string> {

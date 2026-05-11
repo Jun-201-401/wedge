@@ -173,6 +173,141 @@ export interface AgentArtifactPolicy {
   capture_trace?: boolean;
 }
 
+export interface AgentReplayHintStep {
+  step_id?: string;
+  stage?: ScenarioStage;
+  description?: string;
+  action: ScenarioAction;
+  settle_strategy?: SettleStrategy;
+  target_key?: string | null;
+  confidence?: number;
+}
+
+export interface AgentReplayHints {
+  source_trace_id?: string | null;
+  source_plan_id?: string | null;
+  steps: AgentReplayHintStep[];
+}
+
+export type AgentEventType =
+  | "PRE_DECISION_VERIFIED"
+  | "DECISION_MADE"
+  | "POLICY_CHECKED"
+  | "ACTION_COMPLETED"
+  | "ACTION_FAILED"
+  | "GOAL_VERIFIED"
+  | "TRACE_PERSISTED";
+
+export type AgentOutcomeStatus = "RUNNING" | "SUCCESS" | "POLICY_BLOCKED" | "BLOCKED" | "FAILED" | "EXHAUSTED";
+export type AgentFinalOutcome = AgentOutcomeStatus;
+export type AgentOutcomeCategory = AgentOutcomeStatus;
+
+export type AgentRiskClass =
+  | "LOW"
+  | "EXTERNAL_NAVIGATION"
+  | "CHECKOUT_NAVIGATION"
+  | "CART_MUTATION"
+  | "SHIPPING_FORM_ENTRY"
+  | "PAYMENT_INFO_ENTRY"
+  | "PAYMENT_COMMIT"
+  | "DESTRUCTIVE_ACTION"
+  | "EXTERNAL_MESSAGE_SEND";
+
+export type AgentPolicyDecision = "ALLOW" | "BLOCK";
+
+export interface AgentPolicyResult {
+  allowed: boolean;
+  reason: string;
+  riskClass: AgentRiskClass;
+}
+
+export interface AgentOutcome {
+  status: AgentOutcomeStatus;
+  reason: string;
+}
+
+export type AgentVerificationOutcome =
+  | "CONTINUE"
+  | "SUCCESS"
+  | "BLOCKED_LOGIN"
+  | "BLOCKED_CAPTCHA"
+  | "BLOCKED_NO_PATH"
+  | "POLICY_BLOCKED_PAYMENT"
+  | "POLICY_BLOCKED_DESTRUCTIVE"
+  | "EXHAUSTED";
+
+export interface AgentVerificationResult {
+  satisfied: boolean;
+  terminal: boolean;
+  outcome: AgentVerificationOutcome;
+  reason: string;
+  confidence: number;
+  phase: "pre_decision" | "post_action";
+}
+
+export type AgentDecisionKind = "act" | "checkpoint";
+
+export interface AgentReplayHintLocatorRecipe {
+  strategy: string;
+  selector?: string;
+  role?: string;
+  text?: string;
+  frame_id?: string;
+  confidence: number;
+}
+
+export interface AgentDecisionReplayHint {
+  candidate_fingerprint?: string | null;
+  locator_recipe?: AgentReplayHintLocatorRecipe[];
+}
+
+export interface AgentDecision {
+  kind: AgentDecisionKind;
+  description: string;
+  reason: string;
+  confidence: number;
+  action: ScenarioAction;
+  settleStrategy: SettleStrategy;
+  stage: ScenarioStage;
+  targetKey?: string | null;
+  replayHint?: AgentDecisionReplayHint;
+  metadata?: Record<string, unknown>;
+}
+
+export interface AgentObservation {
+  finalUrl: string;
+  title: string;
+  candidateCount: number;
+}
+
+export interface AgentTurnTrace {
+  turn: number;
+  observation: AgentObservation;
+  preDecisionVerification: AgentVerificationResult;
+  decision?: AgentDecision;
+  policy?: AgentPolicyResult;
+  actionResult?: {
+    actionType: ScenarioAction["type"];
+    finalUrl: string;
+    completed: boolean;
+  };
+  postActionVerification?: AgentVerificationResult;
+}
+
+export interface AgentTrace {
+  schema_version: "0.1";
+  task_id: string;
+  attempt_id: string;
+  attempt_index: number;
+  run_id: string;
+  turns: AgentTurnTrace[];
+  outcome: AgentOutcome;
+}
+
+export interface AgentTraceRequest {
+  trace: AgentTrace;
+}
+
 export interface AgentTask {
   schema_version: "0.1";
   task_id: string;
@@ -192,6 +327,7 @@ export interface AgentTask {
   risk_policy: AgentRiskPolicy;
   test_data?: AgentTestData;
   artifact_policy?: AgentArtifactPolicy;
+  replay_hints?: AgentReplayHints;
 }
 
 export interface AgentExecuteMessage {
