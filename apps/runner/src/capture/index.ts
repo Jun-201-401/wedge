@@ -4,6 +4,7 @@ import type {
   ArtifactDraft,
   CategoryFilterSignalObservation,
   Checkpoint,
+  DepthFromDiscoveryObservation,
   GoalActionCandidateObservation,
   InteractiveComponentsObservation,
   JourneyActionRawObservation,
@@ -17,6 +18,14 @@ export interface CheckpointCollection {
   artifacts: ArtifactDraft[];
 }
 
+export interface JourneyDepthContext {
+  discoveryStepOrder?: number;
+  discoveryStepKey?: string;
+  discoveryStage?: ScenarioStep["stage"];
+  discoveryUrl?: string;
+  productCardCountAtDiscovery?: number;
+}
+
 export interface CapturePipeline {
   collectCheckpoint: (input: {
     step: ScenarioStep;
@@ -27,12 +36,23 @@ export interface CapturePipeline {
     actionResult?: BrowserActionResult;
     settleResult: BrowserSettleResult;
     capturedArtifacts?: BrowserCapturedArtifacts;
+    journeyDepthContext?: JourneyDepthContext;
   }) => Promise<CheckpointCollection>;
 }
 
 export function createCapturePipeline(): CapturePipeline {
   return {
-    async collectCheckpoint({ step, stepOrder, plan, beforeSnapshot, pageSnapshot, actionResult, settleResult, capturedArtifacts }) {
+    async collectCheckpoint({
+      step,
+      stepOrder,
+      plan,
+      beforeSnapshot,
+      pageSnapshot,
+      actionResult,
+      settleResult,
+      capturedArtifacts,
+      journeyDepthContext
+    }) {
       const screenshotArtifact = createScreenshotArtifact({
         artifactId: randomUUID(),
         pageSnapshot,
@@ -73,7 +93,8 @@ export function createCapturePipeline(): CapturePipeline {
             pageSnapshot,
             actionResult,
             settleResult,
-            screenshotArtifactId: screenshotArtifact.artifactId
+            screenshotArtifactId: screenshotArtifact.artifactId,
+            journeyDepthContext
           }),
           deltas: createCheckpointDeltas(pageSnapshot)
         },
@@ -146,7 +167,8 @@ function createCheckpointObservations({
   pageSnapshot,
   actionResult,
   settleResult,
-  screenshotArtifactId
+  screenshotArtifactId,
+  journeyDepthContext
 }: {
   step: ScenarioStep;
   stepOrder: number;
@@ -155,6 +177,7 @@ function createCheckpointObservations({
   actionResult?: BrowserActionResult;
   settleResult: BrowserSettleResult;
   screenshotArtifactId: string;
+  journeyDepthContext?: JourneyDepthContext;
 }): Record<string, unknown>[] {
   const journeyActionObservation = createJourneyActionRawObservation({
     step,
@@ -172,10 +195,21 @@ function createCheckpointObservations({
     pageSnapshot,
     actionResult
   });
+  const depthFromDiscoveryObservation = createDepthFromDiscoveryObservation({
+    step,
+    stepOrder,
+    beforeSnapshot,
+    pageSnapshot,
+    actionResult,
+    settleResult,
+    categoryFilterObservation,
+    journeyDepthContext
+  });
 
   return [
     ...(journeyActionObservation ? [{ ...journeyActionObservation }] : []),
     ...(categoryFilterObservation ? [{ ...categoryFilterObservation }] : []),
+    ...(depthFromDiscoveryObservation ? [{ ...depthFromDiscoveryObservation }] : []),
     ...createInteractiveComponentsObservations(step, pageSnapshot).map((observation) => ({ ...observation })),
     ...createFormFieldObservations(pageSnapshot.fields),
     ...createCtaCandidateObservations(step, pageSnapshot),
@@ -310,6 +344,95 @@ function createCategoryFilterSignalObservation({
     filter_changed: filterChanged,
     search_submitted: searchSubmitted,
     category_url_changed: categoryUrlChanged
+  };
+}
+
+function createDepthFromDiscoveryObservation({
+  step,
+  stepOrder,
+  beforeSnapshot,
+  pageSnapshot,
+  actionResult,
+  settleResult,
+  categoryFilterObservation,
+  journeyDepthContext
+}: {
+  step: ScenarioStep;
+  stepOrder: number;
+  beforeSnapshot?: BrowserPageSnapshot;
+  pageSnapshot: BrowserPageSnapshot;
+  actionResult?: BrowserActionResult;
+  settleResult: BrowserSettleResult;
+  categoryFilterObservation: CategoryFilterSignalObservation | null;
+  journeyDepthContext?: JourneyDepthContext;
+}): DepthFromDiscoveryObservation | null {
+  if (!journeyDepthContext) {
+    return null;
+  }
+
+  if (!journeyDepthContext.discoveryStepOrder && pageSnapshot.productCards.length > 0) {
+    journeyDepthContext.discoveryStepOrder = stepOrder;
+    journeyDepthContext.discoveryStepKey = step.step_id;
+    journeyDepthContext.discoveryStage = step.stage;
+    journeyDepthContext.discoveryUrl = pageSnapshot.finalUrl;
+    journeyDepthContext.productCardCountAtDiscovery = pageSnapshot.productCards.length;
+  }
+
+  if (!journeyDepthContext.discoveryStepOrder) {
+    return null;
+  }
+
+  const categoryChanged = categoryFilterObservation?.category_url_changed ?? false;
+  const filterChanged = categoryFilterObservation?.filter_changed ?? false;
+  const searchSubmitted = categoryFilterObservation?.search_submitted ?? false;
+  const goalActionResult = createGoalActionResultSignal({
+    step,
+    beforeSnapshot,
+    pageSnapshot,
+    actionResult,
+    settleResult
+  });
+  const intentCandidate = inferJourneyIntentCandidate({
+    stepOrder,
+    discoveryStepOrder: journeyDepthContext.discoveryStepOrder,
+    pageSnapshot,
+    categoryChanged,
+    filterChanged,
+    searchSubmitted,
+    goalActionResult
+  });
+
+  return {
+    observation_id: `${step.step_id}.obs_depth_from_discovery`,
+    type: "depth_from_discovery",
+    stage: step.stage,
+    source: ["scenario_log", "dom", "browser", "network"],
+    confidence: intentCandidate === "goal_action" || filterChanged || searchSubmitted || categoryChanged ? 0.78 : 0.66,
+    step_order: stepOrder,
+    step_key: step.step_id,
+    action_type: step.action.type,
+    discovery_step_order: journeyDepthContext.discoveryStepOrder,
+    discovery_step_key: journeyDepthContext.discoveryStepKey ?? step.step_id,
+    discovery_stage: journeyDepthContext.discoveryStage ?? step.stage,
+    discovery_url: journeyDepthContext.discoveryUrl ?? pageSnapshot.finalUrl,
+    depth_from_discovery: Math.max(0, stepOrder - journeyDepthContext.discoveryStepOrder),
+    intent_candidate: intentCandidate,
+    is_detour_candidate: isDetourCandidate({
+      intentCandidate,
+      categoryChanged,
+      filterChanged,
+      searchSubmitted,
+      goalActionResult,
+      beforeSnapshot,
+      pageSnapshot
+    }),
+    category_changed: categoryChanged,
+    filter_changed: filterChanged,
+    search_submitted: searchSubmitted,
+    goal_action_result: goalActionResult,
+    current_url: pageSnapshot.finalUrl,
+    current_product_card_count: pageSnapshot.productCards.length,
+    product_card_count_at_discovery: journeyDepthContext.productCardCountAtDiscovery ?? pageSnapshot.productCards.length
   };
 }
 
@@ -563,6 +686,129 @@ function parseCategoryUrlSignal(urlString: string): string | null {
 
 function isCategoryFilterSearchText(text: string): boolean {
   return /category|categories|collection|filter|sort|search|카테고리|분류|필터|정렬|검색|상품|제품/i.test(text);
+}
+
+function createGoalActionResultSignal({
+  step,
+  beforeSnapshot,
+  pageSnapshot,
+  actionResult,
+  settleResult
+}: {
+  step: ScenarioStep;
+  beforeSnapshot?: BrowserPageSnapshot;
+  pageSnapshot: BrowserPageSnapshot;
+  actionResult?: BrowserActionResult;
+  settleResult: BrowserSettleResult;
+}): DepthFromDiscoveryObservation["goal_action_result"] {
+  const baselineSnapshot = beforeSnapshot ?? pageSnapshot;
+  const actionDetails = actionResult?.details ?? {};
+  const clickedText = readOptionalString(actionDetails, "clickedText") ?? clickedComponent(pageSnapshot)?.text ?? step.description;
+  const cartCountDelta = typeof baselineSnapshot.cartCount === "number" && typeof pageSnapshot.cartCount === "number"
+    ? pageSnapshot.cartCount - baselineSnapshot.cartCount
+    : null;
+  const domChanged = Boolean(baselineSnapshot.domSignature && pageSnapshot.domSignature)
+    ? baselineSnapshot.domSignature !== pageSnapshot.domSignature
+    : baselineSnapshot.finalUrl !== pageSnapshot.finalUrl || baselineSnapshot.title !== pageSnapshot.title;
+
+  return {
+    action_attempted: step.action.type !== "checkpoint",
+    add_to_cart_like_button: isAddToCartLike(clickedText),
+    cart_count_delta: cartCountDelta,
+    toast_present: pageSnapshot.toastTexts.length > 0,
+    url_changed: baselineSnapshot.finalUrl !== pageSnapshot.finalUrl,
+    dom_changed: domChanged,
+    network_success: hasSuccessfulNetworkSignal(pageSnapshot, settleResult),
+    settle_status: settleResult.status
+  };
+}
+
+function inferJourneyIntentCandidate({
+  stepOrder,
+  discoveryStepOrder,
+  pageSnapshot,
+  categoryChanged,
+  filterChanged,
+  searchSubmitted,
+  goalActionResult
+}: {
+  stepOrder: number;
+  discoveryStepOrder: number;
+  pageSnapshot: BrowserPageSnapshot;
+  categoryChanged: boolean;
+  filterChanged: boolean;
+  searchSubmitted: boolean;
+  goalActionResult: DepthFromDiscoveryObservation["goal_action_result"];
+}): DepthFromDiscoveryObservation["intent_candidate"] {
+  if (stepOrder === discoveryStepOrder && pageSnapshot.productCards.length > 0) {
+    return "product_discovery";
+  }
+  if (searchSubmitted) {
+    return "search_submitted";
+  }
+  if (filterChanged) {
+    return "filter_changed";
+  }
+  if (categoryChanged) {
+    return "category_changed";
+  }
+  if (
+    goalActionResult.add_to_cart_like_button ||
+    (goalActionResult.cart_count_delta ?? 0) > 0 ||
+    goalActionResult.toast_present
+  ) {
+    return "goal_action";
+  }
+  if (goalActionResult.url_changed) {
+    return "navigation";
+  }
+  return "other";
+}
+
+function isDetourCandidate({
+  intentCandidate,
+  categoryChanged,
+  filterChanged,
+  searchSubmitted,
+  goalActionResult,
+  beforeSnapshot,
+  pageSnapshot
+}: {
+  intentCandidate: DepthFromDiscoveryObservation["intent_candidate"];
+  categoryChanged: boolean;
+  filterChanged: boolean;
+  searchSubmitted: boolean;
+  goalActionResult: DepthFromDiscoveryObservation["goal_action_result"];
+  beforeSnapshot?: BrowserPageSnapshot;
+  pageSnapshot: BrowserPageSnapshot;
+}): boolean {
+  if (
+    intentCandidate === "product_discovery" ||
+    intentCandidate === "goal_action" ||
+    categoryChanged ||
+    filterChanged ||
+    searchSubmitted
+  ) {
+    return false;
+  }
+
+  const baselineSnapshot = beforeSnapshot ?? pageSnapshot;
+  const changedAfterDiscovery = goalActionResult.url_changed ||
+    goalActionResult.dom_changed ||
+    !sameStringArray(baselineSnapshot.breadcrumb, pageSnapshot.breadcrumb);
+
+  return changedAfterDiscovery;
+}
+
+function hasSuccessfulNetworkSignal(pageSnapshot: BrowserPageSnapshot, settleResult: BrowserSettleResult): boolean {
+  const settledStatus = readNumberDetail(settleResult.details ?? {}, "status");
+  if (typeof settledStatus === "number" && settledStatus >= 200 && settledStatus < 400) {
+    return true;
+  }
+
+  return pageSnapshot.networkEvents.some((event) =>
+    event.failed !== true && typeof event.status === "number" && event.status >= 200 && event.status < 400
+  );
 }
 
 function createNetworkResult(

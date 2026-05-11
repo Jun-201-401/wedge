@@ -1,6 +1,6 @@
 import type { BrowserSession } from "../../browser/playwright/index.ts";
 import type { CallbackClient } from "../../callback/index.ts";
-import type { CapturePipeline } from "../../capture/index.ts";
+import type { CapturePipeline, JourneyDepthContext } from "../../capture/index.ts";
 import type { DeliveryIssue } from "../../delivery/index.ts";
 import type { ArtifactStore } from "../../storage/index.ts";
 import type { ScenarioPlan, ScenarioStep } from "../../shared/contracts.ts";
@@ -18,6 +18,7 @@ export interface ScenarioStepExecutorInput {
   capturePipeline: CapturePipeline;
   artifactStore: ArtifactStore;
   emitStepEvents?: boolean;
+  journeyDepthContext?: JourneyDepthContext;
 }
 
 export interface ScenarioStepExecutionResult {
@@ -34,7 +35,8 @@ export async function executeScenarioStep({
   callbackClient,
   capturePipeline,
   artifactStore,
-  emitStepEvents = true
+  emitStepEvents = true,
+  journeyDepthContext
 }: ScenarioStepExecutorInput): Promise<ScenarioStepExecutionResult> {
   const deliveryIssues: DeliveryIssue[] = [];
   const preparedSettle = await session.prepareSettle?.(step.settle_strategy);
@@ -78,6 +80,7 @@ export async function executeScenarioStep({
       actionResult,
       settleResult,
       capturedArtifacts,
+      journeyDepthContext,
       callbackClient,
       capturePipeline,
       artifactStore

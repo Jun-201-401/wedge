@@ -55,6 +55,7 @@ export type {
   DiscoveryObservationData,
   DiscoveryScenarioRecommendation,
   DiscoveryShallowNavigationVerification,
+  DepthFromDiscoveryObservation,
   GoalActionCandidateObservation,
   InteractiveComponentBounds,
   InteractiveComponentObservationItem,

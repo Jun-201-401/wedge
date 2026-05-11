@@ -165,6 +165,44 @@
           "category_url_changed": true
         },
         {
+          "observation_id": "step_004_expand_benefits.obs_depth_from_discovery",
+          "type": "depth_from_discovery",
+          "stage": "VALUE",
+          "source": [
+            "scenario_log",
+            "dom",
+            "browser",
+            "network"
+          ],
+          "confidence": 0.78,
+          "step_order": 4,
+          "step_key": "step_004_expand_benefits",
+          "action_type": "click",
+          "discovery_step_order": 2,
+          "discovery_step_key": "step_002_product_list",
+          "discovery_stage": "VALUE",
+          "discovery_url": "https://example.com/signup",
+          "depth_from_discovery": 2,
+          "intent_candidate": "filter_changed",
+          "is_detour_candidate": false,
+          "category_changed": true,
+          "filter_changed": true,
+          "search_submitted": false,
+          "goal_action_result": {
+            "action_attempted": true,
+            "add_to_cart_like_button": false,
+            "cart_count_delta": null,
+            "toast_present": false,
+            "url_changed": true,
+            "dom_changed": true,
+            "network_success": false,
+            "settle_status": "settled"
+          },
+          "current_url": "https://example.com/signup?category=benefits",
+          "current_product_card_count": 1,
+          "product_card_count_at_discovery": 1
+        },
+        {
           "type": "settle_item_count_change",
           "settle_status": "settled",
           "target": "selector=#signup-benefits li",

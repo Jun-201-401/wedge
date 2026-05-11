@@ -901,6 +901,51 @@ export interface CategoryFilterSignalObservation {
   category_url_changed: boolean;
 }
 
+export type JourneyIntentCandidate =
+  | "product_discovery"
+  | "category_changed"
+  | "filter_changed"
+  | "search_submitted"
+  | "goal_action"
+  | "navigation"
+  | "other";
+
+export interface JourneyGoalActionResultSignal {
+  action_attempted: boolean;
+  add_to_cart_like_button: boolean;
+  cart_count_delta: number | null;
+  toast_present: boolean;
+  url_changed: boolean;
+  dom_changed: boolean;
+  network_success: boolean;
+  settle_status: "settled" | "timeout" | "failed";
+}
+
+export interface DepthFromDiscoveryObservation {
+  observation_id: string;
+  type: "depth_from_discovery";
+  stage: ScenarioStage;
+  source: ("scenario_log" | "dom" | "browser" | "network")[];
+  confidence: number;
+  step_order: number;
+  step_key: string;
+  action_type: ScenarioActionType;
+  discovery_step_order: number;
+  discovery_step_key: string;
+  discovery_stage: ScenarioStage;
+  discovery_url: string;
+  depth_from_discovery: number;
+  intent_candidate: JourneyIntentCandidate;
+  is_detour_candidate: boolean;
+  category_changed: boolean;
+  filter_changed: boolean;
+  search_submitted: boolean;
+  goal_action_result: JourneyGoalActionResultSignal;
+  current_url: string;
+  current_product_card_count: number;
+  product_card_count_at_discovery: number;
+}
+
 export interface RunnerCheckpointsRequest {
   checkpoints: Checkpoint[];
 }

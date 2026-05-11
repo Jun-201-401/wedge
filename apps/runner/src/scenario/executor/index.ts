@@ -1,6 +1,6 @@
 import type { BrowserSession } from "../../browser/playwright/index.ts";
 import type { CallbackClient } from "../../callback/index.ts";
-import type { CapturePipeline } from "../../capture/index.ts";
+import type { CapturePipeline, JourneyDepthContext } from "../../capture/index.ts";
 import { createDeliverySummary, mergeDeliveryIssues, type DeliveryIssue, type DeliverySummary } from "../../delivery/index.ts";
 import type { ArtifactStore } from "../../storage/index.ts";
 import type { ScenarioPlan } from "../../shared/contracts.ts";
@@ -66,6 +66,7 @@ export async function executeScenario({
   let completedStepCount = 0;
   let stopped = false;
   const deliveryIssues: DeliveryIssue[] = [];
+  const journeyDepthContext: JourneyDepthContext = {};
 
   for (const [index, step] of plan.steps.entries()) {
     const stepOrder = index + 1;
@@ -79,7 +80,8 @@ export async function executeScenario({
         session,
         callbackClient,
         capturePipeline,
-        artifactStore
+        artifactStore,
+        journeyDepthContext
       });
     } catch (error) {
       const failureCode = classifyRunnerFailure(error);

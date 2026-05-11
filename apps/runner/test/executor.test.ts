@@ -409,6 +409,123 @@ test("[증거 payload] checkpoint callback payload는 artifact 원본 metadata�
   });
 });
 
+test("[증거 전달] scenario 실행 중 발견 depth context를 checkpoint 간 유지한다", async () => {
+  const plan = createMinimalPlan();
+  plan.steps = [
+    {
+      step_id: "step_discover_products",
+      stage: "VALUE",
+      description: "상품 목록 확인",
+      action: {
+        type: "checkpoint"
+      },
+      settle_strategy: {
+        type: "none",
+        timeout_ms: 0
+      },
+      checkpoint: true
+    },
+    {
+      step_id: "step_filter_products",
+      stage: "VALUE",
+      description: "필터 적용",
+      action: {
+        type: "click",
+        target: {
+          selector: "button.filter"
+        }
+      },
+      settle_strategy: {
+        type: "url_change",
+        timeout_ms: 500
+      },
+      checkpoint: true
+    }
+  ];
+
+  const productCards = [
+    {
+      element_text: "Runner Shoes ₩12,000",
+      clicked_selector: "a.product-card",
+      visible_price: "₩12,000",
+      visible_product_image: true,
+      bbox: {
+        x: 80,
+        y: 180,
+        width: 260,
+        height: 320,
+        unit: "css_px" as const
+      }
+    }
+  ];
+  const snapshots = [
+    createSimulatedPageSnapshot(plan),
+    createSimulatedPageSnapshot(plan, {
+      finalUrl: "https://example.com/products",
+      productCards
+    }),
+    createSimulatedPageSnapshot(plan, {
+      finalUrl: "https://example.com/products",
+      productCards
+    }),
+    createSimulatedPageSnapshot(plan, {
+      finalUrl: "https://example.com/products?filter=runner",
+      selectedFilters: [
+        {
+          key: "tag",
+          value: "runner",
+          selector: "button.filter"
+        }
+      ],
+      productCards
+    })
+  ];
+  let snapshotIndex = 0;
+  const checkpointPayloads: Array<{ checkpoints: Array<{ observations: Record<string, unknown>[] }> }> = [];
+
+  await executeScenario({
+    runId: "run-depth-1",
+    plan,
+    session: createSimulatedSession(plan, {
+      execute: async (action) => ({
+        actionType: action.type,
+        targetSummary: action.type === "click" ? "selector=button.filter" : null,
+        stopRequested: false,
+        details: action.type === "click"
+          ? {
+              clickedText: "필터",
+              clickedSelector: "button.filter"
+            }
+          : {}
+      }),
+      settle: async (strategy) => createSettledResult({ strategy: strategy.type, status: "settled" }),
+      snapshot: () => snapshots[Math.min(snapshotIndex++, snapshots.length - 1)],
+      captureArtifacts: async () => ({})
+    }),
+    callbackClient: createStubCallbackClient({
+      sendCheckpoints: async (_runId, payload) => {
+        checkpointPayloads.push(payload);
+      }
+    }),
+    capturePipeline: createCapturePipeline(),
+    artifactStore: {
+      persistArtifacts: async () => []
+    }
+  });
+
+  const depthObservations = checkpointPayloads.flatMap((payload) =>
+    payload.checkpoints.flatMap((checkpoint) =>
+      checkpoint.observations.filter((observation) => observation.type === "depth_from_discovery")
+    )
+  );
+
+  assert.equal(depthObservations.length, 2);
+  assert.equal(depthObservations[0]?.depth_from_discovery, 0);
+  assert.equal(depthObservations[1]?.discovery_step_key, "step_discover_products");
+  assert.equal(depthObservations[1]?.depth_from_discovery, 1);
+  assert.equal(depthObservations[1]?.intent_candidate, "filter_changed");
+});
+
 test("[수집 pipeline] response/item_count settle 결과를 observation으로 구조화한다", async () => {
   const capturePipeline = createCapturePipeline();
   const plan = createMinimalPlan();
@@ -962,6 +1079,128 @@ test("[수집 pipeline] 카테고리/필터/검색 변화는 category_filter_sig
   assert.equal(observation.filter_changed, true);
   assert.equal(observation.search_submitted, true);
   assert.equal(observation.category_url_changed, true);
+});
+
+test("[수집 pipeline] 상품 발견 이후 depth_from_discovery를 누적 관찰값으로 남긴다", async () => {
+  const capturePipeline = createCapturePipeline();
+  const journeyDepthContext = {};
+  const plan = createMinimalPlan();
+  const productListSnapshot = createSimulatedPageSnapshot(plan, {
+    finalUrl: "https://example.com/products",
+    title: "Products",
+    productCards: [
+      {
+        element_text: "Runner Shoes ₩12,000",
+        clicked_selector: "a.product-card[href='/products/runner-shoes']",
+        visible_price: "₩12,000",
+        visible_product_image: true,
+        bbox: {
+          x: 80,
+          y: 180,
+          width: 260,
+          height: 320,
+          unit: "css_px"
+        }
+      }
+    ]
+  });
+
+  const discoveryCollection = await capturePipeline.collectCheckpoint({
+    step: {
+      step_id: "step_discover_products",
+      stage: "VALUE",
+      description: "상품 목록 확인",
+      action: {
+        type: "checkpoint"
+      },
+      settle_strategy: {
+        type: "none",
+        timeout_ms: 0
+      },
+      checkpoint: true
+    },
+    stepOrder: 1,
+    plan,
+    pageSnapshot: productListSnapshot,
+    settleResult: createSettledResult(),
+    journeyDepthContext
+  });
+
+  const discoveryObservation = discoveryCollection.checkpoint.observations.find(
+    (candidate) => candidate.type === "depth_from_discovery"
+  );
+  assert.ok(discoveryObservation);
+  assert.equal(discoveryObservation.discovery_step_order, 1);
+  assert.equal(discoveryObservation.depth_from_discovery, 0);
+  assert.equal(discoveryObservation.intent_candidate, "product_discovery");
+  assert.equal(discoveryObservation.is_detour_candidate, false);
+  assert.equal(discoveryObservation.current_product_card_count, 1);
+
+  const beforeFilterSnapshot = createSimulatedPageSnapshot(plan, {
+    finalUrl: "https://example.com/products",
+    breadcrumb: ["Home", "Products"],
+    productCards: productListSnapshot.productCards
+  });
+  const afterFilterSnapshot = createSimulatedPageSnapshot(plan, {
+    finalUrl: "https://example.com/products?filter=size-270",
+    breadcrumb: ["Home", "Products"],
+    selectedFilters: [
+      {
+        key: "size",
+        value: "270",
+        selector: "input[name='size'][value='270']"
+      }
+    ],
+    productCards: productListSnapshot.productCards
+  });
+
+  const filterCollection = await capturePipeline.collectCheckpoint({
+    step: {
+      step_id: "step_filter_products",
+      stage: "VALUE",
+      description: "사이즈 필터 적용",
+      action: {
+        type: "click",
+        target: {
+          selector: "input[name='size'][value='270']"
+        }
+      },
+      settle_strategy: {
+        type: "url_change",
+        timeout_ms: 500
+      },
+      checkpoint: true
+    },
+    stepOrder: 2,
+    plan,
+    beforeSnapshot: beforeFilterSnapshot,
+    pageSnapshot: afterFilterSnapshot,
+    actionResult: {
+      actionType: "click",
+      targetSummary: "selector=input[name='size'][value='270']",
+      stopRequested: false,
+      details: {
+        clickedText: "270",
+        clickedSelector: "input[name='size'][value='270']"
+      }
+    },
+    settleResult: createSettledResult({
+      strategy: "url_change",
+      status: "settled",
+      durationMs: 100
+    }),
+    journeyDepthContext
+  });
+
+  const filterDepthObservation = filterCollection.checkpoint.observations.find(
+    (candidate) => candidate.type === "depth_from_discovery"
+  );
+  assert.ok(filterDepthObservation);
+  assert.equal(filterDepthObservation.discovery_step_key, "step_discover_products");
+  assert.equal(filterDepthObservation.depth_from_discovery, 1);
+  assert.equal(filterDepthObservation.intent_candidate, "filter_changed");
+  assert.equal(filterDepthObservation.filter_changed, true);
+  assert.equal(filterDepthObservation.is_detour_candidate, false);
 });
 
 test("[전달 정책] optional delivery 이슈를 병합하고 finished callback 실패는 fatal로 분류한다", () => {

@@ -219,6 +219,7 @@ public class CheckpointPersistenceService {
             case "product_card" -> List.of("dom", "layout", "screenshot");
             case "goal_action_candidate" -> List.of("dom", "layout");
             case "category_filter_signal" -> List.of("scenario_log", "dom", "browser");
+            case "depth_from_discovery" -> List.of("scenario_log", "dom", "browser", "network");
             case "text_block_metrics" -> List.of("dom", "layout");
             default -> List.of("scenario_log");
         };

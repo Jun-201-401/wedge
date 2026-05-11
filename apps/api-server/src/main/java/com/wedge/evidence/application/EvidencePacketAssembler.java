@@ -143,6 +143,7 @@ public class EvidencePacketAssembler {
         signals.put("artifact_count", artifacts.size());
         signals.put("task_success", taskSuccess(checkpoints));
         signals.put("cta_candidate_count", countObservations(observations, "cta_candidate"));
+        signals.put("depth_from_discovery_count", countObservations(observations, "depth_from_discovery"));
         signals.put("console_error_count", consoleErrorCount(checkpoints, observations));
         signals.put("failed_request_count", failedRequestCount(checkpoints, observations));
         signals.put("network_failure_count", countObservations(observations, "network_failure"));
