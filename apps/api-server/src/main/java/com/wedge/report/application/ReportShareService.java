@@ -2,6 +2,7 @@ package com.wedge.report.application;
 
 import com.wedge.common.error.BusinessException;
 import com.wedge.common.error.ErrorCode;
+import com.wedge.evidence.application.EvidenceService;
 import com.wedge.report.api.dto.ReportDetailResponse;
 import com.wedge.report.api.dto.ReportShareResponse;
 import com.wedge.report.domain.Report;
@@ -28,6 +29,7 @@ public class ReportShareService {
     private final RunService runService;
     private final ReportAccessGuard reportAccessGuard;
     private final ReportDetailQueryService reportDetailQueryService;
+    private final EvidenceService evidenceService;
     private final ReportProperties reportProperties;
     private final ReportShareTokenGenerator tokenGenerator;
     private final Clock clock;
@@ -80,9 +82,16 @@ public class ReportShareService {
 
     @Transactional(readOnly = true)
     public ReportDetailResponse getSharedReport(String shareToken) {
-        ReportShare share = reportShareMapper.findActiveByToken(shareToken, now())
-                .orElseThrow(() -> new BusinessException(ErrorCode.REPORT_NOT_FOUND, "Report share was not found or expired."));
+        ReportShare share = findActiveShare(shareToken);
         return reportDetailQueryService.getSharedReportDetail(share.getReportId());
+    }
+
+    @Transactional(readOnly = true)
+    public EvidenceService.ArtifactContent getSharedArtifactContent(String shareToken, UUID artifactId) {
+        ReportShare share = findActiveShare(shareToken);
+        Report report = reportMapper.findById(share.getReportId())
+                .orElseThrow(() -> new BusinessException(ErrorCode.REPORT_NOT_FOUND));
+        return evidenceService.getRunImageArtifactContent(report.getRunId(), artifactId);
     }
 
     private void ensureReportAccessible(UUID reportId, UUID userId) {
@@ -94,6 +103,11 @@ public class ReportShareService {
 
     private ReportShareResponse toResponse(ReportShare share) {
         return ReportShareResponse.from(share, reportProperties.shareUrl(share.getShareToken()));
+    }
+
+    private ReportShare findActiveShare(String shareToken) {
+        return reportShareMapper.findActiveByToken(shareToken, now())
+                .orElseThrow(() -> new BusinessException(ErrorCode.REPORT_NOT_FOUND, "Report share was not found or expired."));
     }
 
     private OffsetDateTime now() {

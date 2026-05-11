@@ -40,8 +40,6 @@ public class RunExecuteOutboxDispatcher {
     public void retryDueMessages() {
         outboxMessagePersistenceAdapter.findDueRunExecuteMessages(RETRY_BATCH_SIZE)
                 .forEach(message -> dispatch(message.outboxMessageId(), message.runExecuteRequestMessage()));
-        outboxMessagePersistenceAdapter.findDueAgentExecuteMessages(RETRY_BATCH_SIZE)
-                .forEach(message -> dispatch(message.outboxMessageId(), message.runExecuteRequestMessage()));
     }
 
     private void dispatch(UUID outboxMessageId, RunExecuteRequestMessage message) {

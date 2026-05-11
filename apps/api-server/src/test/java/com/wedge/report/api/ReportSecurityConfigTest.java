@@ -4,6 +4,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -14,6 +15,7 @@ import com.wedge.common.security.JsonAccessDeniedHandler;
 import com.wedge.common.security.JsonAuthenticationEntryPoint;
 import com.wedge.common.security.JwtAuthenticationFilter;
 import com.wedge.common.security.JwtTokenProvider;
+import com.wedge.evidence.application.EvidenceService;
 import com.wedge.report.api.dto.ReportDetailResponse;
 import com.wedge.report.application.ReportDetailQueryService;
 import com.wedge.report.application.ReportGenerationService;
@@ -31,6 +33,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.Import;
+import org.springframework.core.io.ByteArrayResource;
 import org.springframework.test.web.servlet.MockMvc;
 
 @WebMvcTest(controllers = ReportController.class)
@@ -70,6 +73,19 @@ class ReportSecurityConfigTest {
     }
 
     @Test
+    void sharedReportArtifactContentEndpointIsPublicWithoutBearerToken() throws Exception {
+        UUID artifactId = UUID.randomUUID();
+        byte[] imageBytes = "fake-png".getBytes();
+        when(reportShareService.getSharedArtifactContent("share-token", artifactId))
+                .thenReturn(new EvidenceService.ArtifactContent(new ByteArrayResource(imageBytes), "image/png"));
+
+        mockMvc.perform(get("/api/report-shares/{shareToken}/artifacts/{artifactId}/content", "share-token", artifactId))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType("image/png"))
+                .andExpect(content().bytes(imageBytes));
+    }
+
+    @Test
     void reportShareManagementEndpointRequiresAuthentication() throws Exception {
         UUID reportId = UUID.randomUUID();
 
@@ -83,6 +99,13 @@ class ReportSecurityConfigTest {
     @Test
     void nonGetSharedReportEndpointIsNotPubliclyPermitted() throws Exception {
         mockMvc.perform(post("/api/report-shares/{shareToken}", "share-token"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.error.code").value("unauthorized"));
+    }
+
+    @Test
+    void unexpectedGetUnderReportSharesIsNotPubliclyPermitted() throws Exception {
+        mockMvc.perform(get("/api/report-shares/{shareToken}/unexpected", "share-token"))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.error.code").value("unauthorized"));
     }

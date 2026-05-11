@@ -5,6 +5,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.wedge.analysis.application.AnalysisRequestMessage;
 import com.wedge.discovery.application.DiscoveryExecuteRequestMessage;
+import com.wedge.run.application.AgentExecuteRequestMessage;
 import com.wedge.run.application.RunExecuteRequestMessage;
 import java.time.OffsetDateTime;
 import java.util.LinkedHashMap;
@@ -39,6 +40,10 @@ public class OutboxMessagePersistenceAdapter {
         return appendMessage(RUN_AGGREGATE_TYPE, UUID.fromString(message.correlationId()), message);
     }
 
+    public UUID appendAgentExecuteMessage(AgentExecuteRequestMessage message) {
+        return appendMessage(RUN_AGGREGATE_TYPE, UUID.fromString(message.correlationId()), message);
+    }
+
     public UUID appendAnalysisRequestMessage(AnalysisRequestMessage message, UUID analysisJobId) {
         return appendMessage(ANALYSIS_JOB_AGGREGATE_TYPE, analysisJobId, message);
     }
@@ -48,6 +53,10 @@ public class OutboxMessagePersistenceAdapter {
     }
 
     private UUID appendMessage(String aggregateType, UUID aggregateId, RunExecuteRequestMessage message) {
+        return appendEnvelope(aggregateType, aggregateId, toEnvelope(message));
+    }
+
+    private UUID appendMessage(String aggregateType, UUID aggregateId, AgentExecuteRequestMessage message) {
         return appendEnvelope(aggregateType, aggregateId, toEnvelope(message));
     }
 
@@ -76,13 +85,13 @@ public class OutboxMessagePersistenceAdapter {
     }
 
     public Optional<RunExecuteRequestMessage> findRunnerRequestMessageForPublish(UUID outboxMessageId) {
-        Optional<RunExecuteRequestMessage> runExecuteMessage = outboxMessageMapper.findById(outboxMessageId, RUN_EXECUTE_EVENT_TYPE, MAX_PUBLISH_ATTEMPTS)
+        return outboxMessageMapper.findById(outboxMessageId, RUN_EXECUTE_EVENT_TYPE, MAX_PUBLISH_ATTEMPTS)
                 .map(this::toRunExecuteRequestMessage);
-        if (runExecuteMessage.isPresent()) {
-            return runExecuteMessage;
-        }
+    }
+
+    public Optional<AgentExecuteRequestMessage> findAgentExecuteMessageForPublish(UUID outboxMessageId) {
         return outboxMessageMapper.findById(outboxMessageId, AGENT_EXECUTE_EVENT_TYPE, MAX_PUBLISH_ATTEMPTS)
-                .map(this::toRunExecuteRequestMessage);
+                .map(this::toAgentExecuteRequestMessage);
     }
 
     public Optional<AnalysisRequestMessage> findAnalysisRequestMessageForPublish(UUID outboxMessageId) {
@@ -99,10 +108,6 @@ public class OutboxMessagePersistenceAdapter {
         return findDueMessages(RUN_EXECUTE_EVENT_TYPE, limit);
     }
 
-    public List<RunExecuteOutboxMessage> findDueAgentExecuteMessages(int limit) {
-        return findDueMessages(AGENT_EXECUTE_EVENT_TYPE, limit);
-    }
-
     private List<RunExecuteOutboxMessage> findDueMessages(String eventType, int limit) {
         OffsetDateTime now = OffsetDateTime.now();
         OffsetDateTime pendingBefore = now.minusSeconds(PENDING_RETRY_GRACE_SECONDS);
@@ -115,6 +120,21 @@ public class OutboxMessagePersistenceAdapter {
                 )
                 .stream()
                 .map(record -> new RunExecuteOutboxMessage(record.getId(), toRunExecuteRequestMessage(record)))
+                .toList();
+    }
+
+    public List<AgentExecuteOutboxMessage> findDueAgentExecuteMessages(int limit) {
+        OffsetDateTime now = OffsetDateTime.now();
+        OffsetDateTime pendingBefore = now.minusSeconds(PENDING_RETRY_GRACE_SECONDS);
+        return outboxMessageMapper.findDueMessages(
+                        AGENT_EXECUTE_EVENT_TYPE,
+                        now,
+                        pendingBefore,
+                        MAX_PUBLISH_ATTEMPTS,
+                        limit
+                )
+                .stream()
+                .map(record -> new AgentExecuteOutboxMessage(record.getId(), toAgentExecuteRequestMessage(record)))
                 .toList();
     }
 
@@ -184,6 +204,20 @@ public class OutboxMessagePersistenceAdapter {
         );
     }
 
+    private AgentExecuteRequestMessage toAgentExecuteRequestMessage(OutboxMessageRecord record) {
+        OutboxEnvelope envelope = readEnvelope(record);
+        return new AgentExecuteRequestMessage(
+                envelope.messageId(),
+                envelope.messageType(),
+                envelope.schemaVersion(),
+                envelope.createdAt(),
+                envelope.producer(),
+                envelope.correlationId(),
+                envelope.idempotencyKey(),
+                envelope.payload()
+        );
+    }
+
     private AnalysisRequestMessage toAnalysisRequestMessage(OutboxMessageRecord record) {
         OutboxEnvelope envelope = readEnvelope(record);
         return new AnalysisRequestMessage(
@@ -232,6 +266,19 @@ public class OutboxMessagePersistenceAdapter {
     }
 
     private static OutboxEnvelope toEnvelope(AnalysisRequestMessage message) {
+        return new OutboxEnvelope(
+                message.messageId(),
+                message.messageType(),
+                message.schemaVersion(),
+                message.createdAt(),
+                message.producer(),
+                message.correlationId(),
+                message.idempotencyKey(),
+                message.payload()
+        );
+    }
+
+    private static OutboxEnvelope toEnvelope(AgentExecuteRequestMessage message) {
         return new OutboxEnvelope(
                 message.messageId(),
                 message.messageType(),
@@ -309,6 +356,12 @@ public class OutboxMessagePersistenceAdapter {
     public record AnalysisRequestOutboxMessage(
             UUID outboxMessageId,
             AnalysisRequestMessage analysisRequestMessage
+    ) {
+    }
+
+    public record AgentExecuteOutboxMessage(
+            UUID outboxMessageId,
+            AgentExecuteRequestMessage agentExecuteRequestMessage
     ) {
     }
 

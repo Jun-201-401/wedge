@@ -16,7 +16,7 @@ public final class RunStatusTransitionPolicy {
         ALLOWED_TRANSITIONS.put(RunStatus.CREATED, EnumSet.of(RunStatus.QUEUED, RunStatus.FAILED));
         ALLOWED_TRANSITIONS.put(RunStatus.QUEUED, EnumSet.of(RunStatus.STARTING, RunStatus.RUNNING, RunStatus.FAILED, RunStatus.STOP_REQUESTED));
         ALLOWED_TRANSITIONS.put(RunStatus.STARTING, EnumSet.of(RunStatus.RUNNING, RunStatus.FAILED, RunStatus.STOP_REQUESTED));
-        ALLOWED_TRANSITIONS.put(RunStatus.RUNNING, EnumSet.of(RunStatus.STOP_REQUESTED, RunStatus.COMPLETED, RunStatus.FAILED));
+        ALLOWED_TRANSITIONS.put(RunStatus.RUNNING, EnumSet.of(RunStatus.STOP_REQUESTED, RunStatus.STOPPED, RunStatus.COMPLETED, RunStatus.FAILED));
         ALLOWED_TRANSITIONS.put(RunStatus.STOP_REQUESTED, EnumSet.of(RunStatus.STOPPED, RunStatus.FAILED));
         ALLOWED_TRANSITIONS.put(RunStatus.STOPPED, EnumSet.noneOf(RunStatus.class));
         ALLOWED_TRANSITIONS.put(RunStatus.COMPLETED, EnumSet.noneOf(RunStatus.class));

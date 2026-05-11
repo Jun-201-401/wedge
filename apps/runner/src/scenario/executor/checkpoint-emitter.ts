@@ -1,6 +1,6 @@
-import type { BrowserCapturedArtifacts, BrowserSession } from "../../browser/playwright/index.ts";
+import type { BrowserActionResult, BrowserCapturedArtifacts, BrowserSession } from "../../browser/playwright/index.ts";
 import type { CallbackClient } from "../../callback/index.ts";
-import type { CapturePipeline } from "../../capture/index.ts";
+import type { CapturePipeline, JourneyDepthContext } from "../../capture/index.ts";
 import type { DeliveryIssue } from "../../delivery/index.ts";
 import type { ArtifactStore } from "../../storage/index.ts";
 import type { ScenarioPlan, ScenarioStep } from "../../shared/contracts.ts";
@@ -12,9 +12,12 @@ export interface CheckpointEmissionInput {
   stepOrder: number;
   step: ScenarioStep;
   plan: ScenarioPlan;
+  beforeSnapshot?: ReturnType<BrowserSession["snapshot"]>;
   pageSnapshot: ReturnType<BrowserSession["snapshot"]>;
+  actionResult?: BrowserActionResult;
   settleResult: Awaited<ReturnType<BrowserSession["settle"]>>;
   capturedArtifacts?: BrowserCapturedArtifacts;
+  journeyDepthContext?: JourneyDepthContext;
   callbackClient: CallbackClient;
   capturePipeline: CapturePipeline;
   artifactStore: ArtifactStore;
@@ -25,9 +28,12 @@ export async function emitCheckpointArtifactsAndCallbacks({
   stepOrder,
   step,
   plan,
+  beforeSnapshot,
   pageSnapshot,
+  actionResult,
   settleResult,
   capturedArtifacts,
+  journeyDepthContext,
   callbackClient,
   capturePipeline,
   artifactStore
@@ -37,9 +43,12 @@ export async function emitCheckpointArtifactsAndCallbacks({
     step,
     stepOrder,
     plan,
+    beforeSnapshot,
     pageSnapshot,
+    actionResult,
     settleResult,
-    capturedArtifacts
+    capturedArtifacts,
+    journeyDepthContext
   });
 
   let storedArtifacts = [] as Awaited<ReturnType<ArtifactStore["persistArtifacts"]>>;

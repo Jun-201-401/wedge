@@ -190,8 +190,18 @@ public class EvidenceService {
     @Transactional(readOnly = true)
     public ArtifactContent getRunArtifactContent(UUID runId, UUID artifactId) {
         runService.getRun(runId);
-        Artifact artifact = artifactMapper.findByRunIdAndId(runId, artifactId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.RUN_NOT_FOUND, "Artifact was not found."));
+        Artifact artifact = findRunArtifact(runId, artifactId);
+        Resource resource = artifactContentStore.load(artifact);
+        return new ArtifactContent(resource, artifact.getMimeType());
+    }
+
+    @Transactional(readOnly = true)
+    public ArtifactContent getRunImageArtifactContent(UUID runId, UUID artifactId) {
+        runService.getRun(runId);
+        Artifact artifact = findRunArtifact(runId, artifactId);
+        if (!isPresignableImage(artifact)) {
+            throw new BusinessException(ErrorCode.RUN_NOT_FOUND, "Image artifact was not found for the run.");
+        }
         Resource resource = artifactContentStore.load(artifact);
         return new ArtifactContent(resource, artifact.getMimeType());
     }
@@ -253,6 +263,11 @@ public class EvidenceService {
     private boolean isPresignableImage(Artifact artifact) {
         String mimeType = artifact.getMimeType();
         return mimeType != null && PRESIGNABLE_IMAGE_MIME_TYPES.contains(mimeType.toLowerCase());
+    }
+
+    private Artifact findRunArtifact(UUID runId, UUID artifactId) {
+        return artifactMapper.findByRunIdAndId(runId, artifactId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.RUN_NOT_FOUND, "Artifact was not found."));
     }
 
     private Artifact findLatestFrameArtifact(List<Artifact> artifacts) {

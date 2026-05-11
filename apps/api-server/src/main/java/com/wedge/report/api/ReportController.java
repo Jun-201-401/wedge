@@ -2,6 +2,7 @@ package com.wedge.report.api;
 
 import com.wedge.common.response.ApiResponse;
 import com.wedge.common.security.WedgePrincipal;
+import com.wedge.evidence.application.EvidenceService;
 import com.wedge.report.api.dto.ReportDetailResponse;
 import com.wedge.report.api.dto.ReportShareResponse;
 import com.wedge.report.api.dto.ReportSummaryResponse;
@@ -14,6 +15,8 @@ import com.wedge.report.application.ReportShareService;
 import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import org.springframework.core.io.Resource;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -97,6 +100,17 @@ public class ReportController {
             @PathVariable String shareToken
     ) {
         return ApiResponse.ok(reportShareService.getSharedReport(shareToken));
+    }
+
+    @GetMapping("/api/report-shares/{shareToken}/artifacts/{artifactId}/content")
+    public ResponseEntity<Resource> getSharedReportArtifactContent(
+            @PathVariable String shareToken,
+            @PathVariable UUID artifactId
+    ) {
+        EvidenceService.ArtifactContent artifactContent = reportShareService.getSharedArtifactContent(shareToken, artifactId);
+        return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType(artifactContent.mimeType()))
+                .body(artifactContent.resource());
     }
 
     private WedgePrincipal principal(Authentication authentication) {

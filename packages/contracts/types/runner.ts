@@ -173,6 +173,139 @@ export interface AgentArtifactPolicy {
   capture_trace?: boolean;
 }
 
+export interface AgentReplayHintStep {
+  step_id?: string;
+  stage?: ScenarioStage;
+  description?: string;
+  action: ScenarioAction;
+  settle_strategy?: SettleStrategy;
+  target_key?: string | null;
+  confidence?: number;
+}
+
+export interface AgentReplayHints {
+  source_trace_id?: string | null;
+  source_plan_id?: string | null;
+  steps: AgentReplayHintStep[];
+}
+
+export type AgentEventType =
+  | "PRE_DECISION_VERIFIED"
+  | "DECISION_MADE"
+  | "POLICY_CHECKED"
+  | "ACTION_COMPLETED"
+  | "ACTION_FAILED"
+  | "GOAL_VERIFIED"
+  | "TRACE_PERSISTED";
+
+export type AgentOutcomeStatus = "RUNNING" | "SUCCESS" | "POLICY_BLOCKED" | "BLOCKED" | "FAILED" | "EXHAUSTED";
+export type AgentFinalOutcome = AgentOutcomeStatus;
+export type AgentOutcomeCategory = AgentOutcomeStatus;
+
+export type AgentRiskClass =
+  | "LOW"
+  | "EXTERNAL_NAVIGATION"
+  | "CHECKOUT_NAVIGATION"
+  | "CART_MUTATION"
+  | "SHIPPING_FORM_ENTRY"
+  | "PAYMENT_INFO_ENTRY"
+  | "PAYMENT_COMMIT"
+  | "DESTRUCTIVE_ACTION"
+  | "EXTERNAL_MESSAGE_SEND";
+
+export type AgentPolicyDecision = "ALLOW" | "BLOCK";
+
+export interface AgentPolicyResult {
+  allowed: boolean;
+  reason: string;
+  riskClass: AgentRiskClass;
+}
+
+export interface AgentOutcome {
+  status: AgentOutcomeStatus;
+  reason: string;
+}
+
+export type AgentVerificationOutcome =
+  | "CONTINUE"
+  | "SUCCESS"
+  | "BLOCKED_LOGIN"
+  | "BLOCKED_CAPTCHA"
+  | "POLICY_BLOCKED"
+  | "EXHAUSTED";
+
+export interface AgentVerificationResult {
+  satisfied: boolean;
+  terminal: boolean;
+  outcome: AgentVerificationOutcome;
+  reason: string;
+  confidence: number;
+  phase: "pre_decision" | "post_action";
+}
+
+export type AgentDecisionKind = "act" | "checkpoint" | "finish";
+
+export interface AgentReplayHintLocatorRecipe {
+  strategy: string;
+  selector?: string;
+  role?: string;
+  text?: string;
+  frame_id?: string;
+  confidence: number;
+}
+
+export interface AgentDecisionReplayHint {
+  candidate_fingerprint?: string | null;
+  locator_recipe?: AgentReplayHintLocatorRecipe[];
+}
+
+export interface AgentDecision {
+  kind: AgentDecisionKind;
+  description: string;
+  reason: string;
+  confidence: number;
+  action: ScenarioAction;
+  settleStrategy: SettleStrategy;
+  stage: ScenarioStage;
+  targetKey?: string | null;
+  replayHint?: AgentDecisionReplayHint;
+  metadata?: Record<string, unknown>;
+}
+
+export interface AgentObservation {
+  finalUrl: string;
+  title: string;
+  candidateCount: number;
+}
+
+export interface AgentTurnTrace {
+  turn: number;
+  observation: AgentObservation;
+  preDecisionVerification: AgentVerificationResult;
+  decision?: AgentDecision;
+  policy?: AgentPolicyResult;
+  actionResult?: {
+    actionType: ScenarioAction["type"];
+    finalUrl: string;
+    completed: boolean;
+  };
+  postActionVerification?: AgentVerificationResult;
+}
+
+export interface AgentTrace {
+  schema_version: "0.1";
+  task_id: string;
+  attempt_id: string;
+  attempt_index: number;
+  run_id: string;
+  turns: AgentTurnTrace[];
+  outcome: AgentOutcome;
+}
+
+export interface AgentTraceRequest {
+  trace: AgentTrace;
+}
+
 export interface AgentTask {
   schema_version: "0.1";
   task_id: string;
@@ -192,6 +325,7 @@ export interface AgentTask {
   risk_policy: AgentRiskPolicy;
   test_data?: AgentTestData;
   artifact_policy?: AgentArtifactPolicy;
+  replay_hints?: AgentReplayHints;
 }
 
 export interface AgentExecuteMessage {
@@ -690,6 +824,163 @@ export interface InteractiveComponentsObservation {
   confidence: number;
   primary_like_component_count: number;
   components: InteractiveComponentObservationItem[];
+}
+
+export interface JourneyActionRawObservation {
+  observation_id: string;
+  type: "journey_action_raw";
+  stage: ScenarioStage;
+  source: ("scenario_log" | "dom" | "browser" | "network" | "screenshot")[];
+  confidence: number;
+  step_order: number;
+  step_key: string;
+  action_type: ScenarioActionType;
+  clicked_text?: string | null;
+  clicked_selector?: string | null;
+  element_role?: string | null;
+  element_text?: string | null;
+  aria_label?: string | null;
+  url_before: string;
+  url_after: string;
+  title_before: string;
+  title_after: string;
+  breadcrumb_before?: string[];
+  breadcrumb_after?: string[];
+  cart_count_before?: number | null;
+  cart_count_after?: number | null;
+  toast_text?: string[];
+  visible_price?: string[];
+  visible_product_image?: Record<string, unknown>[];
+  add_to_cart_like_button?: boolean;
+  dom_changed: boolean;
+  network_result?: Record<string, unknown>[];
+  settle_status: "settled" | "timeout" | "failed";
+  screenshot_artifact_id?: string | null;
+  bbox?: InteractiveComponentBounds | null;
+  matched_product_card?: MatchedProductCardSignal | null;
+}
+
+export interface MatchedProductCardSignal {
+  element_text: string;
+  clicked_selector: string | null;
+  visible_price: string | null;
+  visible_product_image: boolean;
+  bbox: InteractiveComponentBounds;
+  match_reason: "selector_exact" | "selector_related" | "text_overlap" | "bbox_overlap";
+  match_confidence: number;
+}
+
+export interface ProductCardObservation {
+  observation_id: string;
+  type: "product_card";
+  stage: "VALUE";
+  source: ("dom" | "layout" | "screenshot")[];
+  confidence: number;
+  cards: Record<string, unknown>[];
+}
+
+export interface GoalActionCandidateObservation {
+  observation_id: string;
+  type: "goal_action_candidate";
+  stage: "CTA";
+  source: ("dom" | "layout")[];
+  confidence: number;
+  candidates: Record<string, unknown>[];
+}
+
+export type GoalActionSuccessEvidence =
+  | "cart_count_increased"
+  | "toast_present"
+  | "network_success"
+  | "url_changed"
+  | "dom_changed";
+
+export interface GoalActionResultObservation {
+  observation_id: string;
+  type: "goal_action_result";
+  stage: ScenarioStage;
+  source: ("scenario_log" | "dom" | "browser" | "network")[];
+  confidence: number;
+  step_order: number;
+  step_key: string;
+  action_type: ScenarioActionType;
+  clicked_text?: string | null;
+  clicked_selector?: string | null;
+  url_before: string;
+  url_after: string;
+  goal_action_like: boolean;
+  success_evidence: GoalActionSuccessEvidence[];
+  result: JourneyGoalActionResultSignal;
+  matched_product_card?: MatchedProductCardSignal | null;
+}
+
+export interface CategoryFilterSignalObservation {
+  observation_id: string;
+  type: "category_filter_signal";
+  stage: ScenarioStage;
+  source: ("scenario_log" | "dom" | "browser")[];
+  confidence: number;
+  step_order: number;
+  step_key: string;
+  action_type: ScenarioActionType;
+  clicked_text?: string | null;
+  clicked_selector?: string | null;
+  url_before: string;
+  url_after: string;
+  breadcrumb_before: string[];
+  breadcrumb_after: string[];
+  selected_filter_before: Record<string, unknown>[];
+  selected_filter_after: Record<string, unknown>[];
+  search_query_before: string | null;
+  search_query_after: string | null;
+  filter_changed: boolean;
+  search_submitted: boolean;
+  category_url_changed: boolean;
+}
+
+export type JourneyIntentCandidate =
+  | "product_discovery"
+  | "category_changed"
+  | "filter_changed"
+  | "search_submitted"
+  | "goal_action"
+  | "navigation"
+  | "other";
+
+export interface JourneyGoalActionResultSignal {
+  action_attempted: boolean;
+  add_to_cart_like_button: boolean;
+  cart_count_delta: number | null;
+  toast_present: boolean;
+  url_changed: boolean;
+  dom_changed: boolean;
+  network_success: boolean;
+  settle_status: "settled" | "timeout" | "failed";
+}
+
+export interface DepthFromDiscoveryObservation {
+  observation_id: string;
+  type: "depth_from_discovery";
+  stage: ScenarioStage;
+  source: ("scenario_log" | "dom" | "browser" | "network")[];
+  confidence: number;
+  step_order: number;
+  step_key: string;
+  action_type: ScenarioActionType;
+  discovery_step_order: number;
+  discovery_step_key: string;
+  discovery_stage: ScenarioStage;
+  discovery_url: string;
+  depth_from_discovery: number;
+  intent_candidate: JourneyIntentCandidate;
+  is_detour_candidate: boolean;
+  category_changed: boolean;
+  filter_changed: boolean;
+  search_submitted: boolean;
+  goal_action_result: JourneyGoalActionResultSignal;
+  current_url: string;
+  current_product_card_count: number;
+  product_card_count_at_discovery: number;
 }
 
 export interface RunnerCheckpointsRequest {

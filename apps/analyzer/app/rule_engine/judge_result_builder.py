@@ -15,8 +15,9 @@ from app.rule_engine.registry_loader import load_default_registry
 from app.rule_engine.scoring import friction_score, overall_risk, stage_scores_from_issues
 from app.stage.stage_context_builder import StageContext, StageContextBuilder
 
-RELIABILITY_CRITERION_ID = "RELIABILITY-TECH-001"
-RELIABILITY_LOCATION_TYPES = {"network_failure", "console_error"}
+RELIABILITY_ACTION_CONTEXT_CRITERION_IDS = {"RELIABILITY-TECH-001", "RELIABILITY-LOADING-STUCK-001"}
+RELIABILITY_LOCATION_TYPES = {"network_failure", "console_error", "loading_state"}
+TOP_LEVEL_BOUNDS_COMPONENT_CRITERION_IDS = {"TARGET-SIZE-001"}
 
 
 def analyze_evidence_packet(
@@ -83,8 +84,10 @@ def _attach_evidence_locations(
             for ref in issue.get("evidence_refs") or []
             if isinstance(ref, str) and ref in location_index
         ]
-        if issue.get("criterion_id") == RELIABILITY_CRITERION_ID:
+        if issue.get("criterion_id") in RELIABILITY_ACTION_CONTEXT_CRITERION_IDS:
             locations = _with_related_action_locations(locations, action_locations_by_checkpoint)
+        if issue.get("criterion_id") in TOP_LEVEL_BOUNDS_COMPONENT_CRITERION_IDS:
+            locations = _with_top_level_bounds_problem_components(locations)
         problem_components = _problem_components_from_locations(locations, screenshot_artifact_ids)
         if locations:
             located_issue = {**issue, "evidence_locations": locations}
@@ -188,6 +191,21 @@ def _with_related_action_locations(
                 continue
             result.append(action_location)
             seen_refs.add(evidence_ref)
+    return result
+
+
+def _with_top_level_bounds_problem_components(locations: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    result: list[dict[str, Any]] = []
+    for location in locations:
+        if not isinstance(location.get("bounds"), dict) or location.get("problem_components"):
+            result.append(location)
+            continue
+        component: dict[str, Any] = {"bounds": location["bounds"]}
+        for key in ("text", "visible_text", "selector", "role"):
+            value = location.get(key)
+            if isinstance(value, str) and value:
+                component["text" if key == "visible_text" else key] = value
+        result.append({**location, "problem_components": [component]})
     return result
 
 
@@ -302,6 +320,16 @@ def _location_from_observation_record(record: Any, checkpoint: dict[str, Any] | 
         value = data.get(key)
         if value is not None:
             location[key] = value
+    if location.get("type") == "loading_state" and isinstance(data.get("bounds"), dict):
+        component = {"bounds": data["bounds"]}
+        for key in ("text", "selector", "role"):
+            value = data.get(key)
+            if isinstance(value, str) and value:
+                component[key] = value
+        loading_role = data.get("loading_role")
+        if "role" not in component and isinstance(loading_role, str) and loading_role:
+            component["role"] = loading_role
+        location["problem_components"] = [component]
 
     components = _component_locations(data.get("components"))
     if components:

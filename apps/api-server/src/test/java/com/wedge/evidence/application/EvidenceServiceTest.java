@@ -3,6 +3,7 @@ package com.wedge.evidence.application;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -150,6 +151,24 @@ class EvidenceServiceTest {
         assertThat(content.resource()).isSameAs(resource);
         assertThat(content.mimeType()).isEqualTo("image/png");
         verify(artifactContentStore).load(artifact);
+    }
+
+    @Test
+    void getRunImageArtifactContentRejectsNonImageBeforeLoadingStore() {
+        UUID runId = UUID.randomUUID();
+        UUID artifactId = UUID.randomUUID();
+        Artifact artifact = sampleArtifact(runId, artifactId);
+        artifact.setMimeType("text/html");
+        when(runService.getRun(runId)).thenReturn(sampleRun(runId));
+        when(artifactMapper.findByRunIdAndId(runId, artifactId)).thenReturn(Optional.of(artifact));
+        EvidenceService evidenceService = newService();
+
+        assertThatThrownBy(() -> evidenceService.getRunImageArtifactContent(runId, artifactId))
+                .isInstanceOfSatisfying(BusinessException.class, exception -> {
+                    assertThat(exception.errorCode()).isEqualTo(ErrorCode.RUN_NOT_FOUND);
+                    assertThat(exception.getMessage()).isEqualTo("Image artifact was not found for the run.");
+                });
+        verify(artifactContentStore, never()).load(any());
     }
 
     @Test

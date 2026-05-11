@@ -32,6 +32,7 @@ Canonical machine-readable contracts belong here. Human-readable design rational
 - `examples/sample-scenario-authoring-job.json`: queued ScenarioAuthoring job fixture
 - `examples/sample-scenario-authoring-result.json`: completed ScenarioAuthoring result fixture with a `custom_compiled` ScenarioPlan candidate
 - Runner Agent Runtime schemas for the official `agent.execute.request` path:
+  - `AgentTask` and `AgentExecuteMessage` live in `mq/messages.schema.json`; `mq/agent.execute.request.schema.json` is the thin payload entrypoint.
   - `schemas/agent-task.schema.json`
   - `schemas/agent-observation.schema.json`
   - `schemas/agent-decision.schema.json`
@@ -50,7 +51,10 @@ Canonical machine-readable contracts belong here. Human-readable design rational
 - `examples/sample-runner-checkpoints.json`: runner callback checkpoint example including settle observation subtypes
 - Runner Agent Runtime examples:
   - `examples/sample-agent-execute-checkout-entry.request.json`
+  - `examples/sample-agent-execute-checkout-entry-replay-hints.request.json`
   - `examples/sample-agent-trace-checkout-entry.json`
+  - Successful AgentTrace executions may also produce replay `ScenarioPlan` artifacts using the existing `schemas/scenario-plan.schema.json` contract.
+  - Agent runtime callbacks use `internal/runner-callback.schema.json` `AgentEventBatch` and `AgentTraceRequest` over `/internal/runner/runs/{runId}/agent-events` and `/internal/runner/runs/{runId}/agent-traces`.
 - `mq/messages.schema.json`: RabbitMQ common envelope and message type contract; this is the canonical MQ source. `agent.execute.request` is the official Runner Agent path; `run.execute.request` remains ScenarioPlan scripted/replay execution.
 - `mq/run.execute.request.schema.json`: thin `$ref` entrypoint to `messages.schema.json#/$defs/RunExecutePayload`
 - `mq/agent.execute.request.schema.json`: thin `$ref` entrypoint to `messages.schema.json#/$defs/AgentExecutePayload`
@@ -61,7 +65,7 @@ Canonical machine-readable contracts belong here. Human-readable design rational
 - `internal/analyzer-callback.schema.json`: analyzer callback payload definitions
 - `mcp/tools.schema.json`: MCP tool metadata contract, including asynchronous ScenarioAuthoring job/result tools
 - `enums/run-status.json`: shared lifecycle enums
-- `types/runner.ts`: TypeScript mirror for ScenarioPlan, MQ run request, and runner callback payloads
+- `types/runner.ts`: TypeScript mirror for ScenarioPlan, MQ run/agent requests, and runner callback payloads
 
 ## Notes
 

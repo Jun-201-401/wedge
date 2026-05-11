@@ -105,65 +105,6 @@ class RunnerCallbackControllerTest {
         });
     }
 
-
-    @Test
-    void agentEventsCallbackMapsRequestToCommand() throws Exception {
-        UUID runId = UUID.randomUUID();
-        UUID eventId = UUID.randomUUID();
-        when(runnerCallbackService.handleAgentEvents(eq(runId), any(), any()))
-                .thenReturn(new RunnerCallbackAckResponse(runId, RunStatus.RUNNING, null, 1, null, null, null));
-
-        postJson(runId, "agent-events", "req_agent_events", "evt_agent_batch_001", Map.of(
-                        "events", List.of(Map.of(
-                                "eventId", eventId.toString(),
-                                "taskId", "task-1",
-                                "attemptId", "attempt-1",
-                                "turn", 2,
-                                "eventType", "DECISION_MADE",
-                                "occurredAt", "2026-05-07T10:01:00+09:00",
-                                "payload", Map.of("actionType", "click")
-                        ))
-                ))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.eventCount").value(1));
-
-        ArgumentCaptor<RunnerAgentEventsCommand> commandCaptor = ArgumentCaptor.forClass(RunnerAgentEventsCommand.class);
-        verify(runnerCallbackService).handleAgentEvents(eq(runId), commandCaptor.capture(), any());
-        assertThat(commandCaptor.getValue().events()).singleElement().satisfies(event -> {
-            assertThat(event.eventId()).isEqualTo(eventId);
-            assertThat(event.taskId()).isEqualTo("task-1");
-            assertThat(event.attemptId()).isEqualTo("attempt-1");
-            assertThat(event.turn()).isEqualTo(2);
-            assertThat(event.eventType()).isEqualTo("DECISION_MADE");
-            assertThat(event.payload()).isEqualTo(Map.of("actionType", "click"));
-        });
-    }
-
-    @Test
-    void agentTraceCallbackMapsRequestToCommand() throws Exception {
-        UUID runId = UUID.randomUUID();
-        UUID artifactId = UUID.randomUUID();
-        when(runnerCallbackService.handleAgentTrace(eq(runId), any(), any()))
-                .thenReturn(new RunnerCallbackAckResponse(runId, RunStatus.RUNNING, null, 1, null, null, null));
-
-        postJson(runId, "agent-traces", "req_agent_trace", "evt_agent_trace_001", Map.of(
-                        "taskId", "task-1",
-                        "attemptId", "attempt-1",
-                        "occurredAt", "2026-05-07T10:02:00+09:00",
-                        "trace", Map.of("outcome", Map.of("status", "SUCCESS")),
-                        "traceArtifact", artifactBody(artifactId)
-                ))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.eventCount").value(1));
-
-        ArgumentCaptor<RunnerAgentTraceCommand> commandCaptor = ArgumentCaptor.forClass(RunnerAgentTraceCommand.class);
-        verify(runnerCallbackService).handleAgentTrace(eq(runId), commandCaptor.capture(), any());
-        assertThat(commandCaptor.getValue().taskId()).isEqualTo("task-1");
-        assertThat(commandCaptor.getValue().attemptId()).isEqualTo("attempt-1");
-        assertThat(commandCaptor.getValue().trace()).isEqualTo(Map.of("outcome", Map.of("status", "SUCCESS")));
-        assertThat(commandCaptor.getValue().traceArtifactId()).isEqualTo(artifactId);
-    }
-
     @Test
     void checkpointCallbackMapsRequestToRunCommandAndReturnsAcceptedStatus() throws Exception {
         UUID runId = UUID.randomUUID();
@@ -276,6 +217,69 @@ class RunnerCallbackControllerTest {
         assertThat(commandCaptor.getValue().completedStepCount()).isEqualTo(3);
         assertThat(commandCaptor.getValue().failedStepCount()).isEqualTo(1);
         assertThat(commandCaptor.getValue().stopped()).isFalse();
+    }
+
+    @Test
+    void agentEventsCallbackMapsRequestToCommand() throws Exception {
+        UUID runId = UUID.randomUUID();
+        UUID taskId = UUID.randomUUID();
+        UUID attemptId = UUID.randomUUID();
+        when(runnerCallbackService.handleAgentEvents(eq(runId), any(), any()))
+                .thenReturn(new RunnerCallbackAckResponse(runId, RunStatus.RUNNING, null, 1, null, null, null));
+
+        postJson(runId, "agent-events", "req_agent_events", "evt_agent_batch_001", Map.of(
+                        "events", List.of(Map.of(
+                                "schema_version", "0.1",
+                                "event_id", "agent-event-1",
+                                "task_id", taskId.toString(),
+                                "attempt_id", attemptId.toString(),
+                                "run_id", runId.toString(),
+                                "step_index", 1,
+                                "event_type", "AGENT_STOPPED",
+                                "occurred_at", "2026-05-06T09:00:00+09:00",
+                                "payload", Map.of("final_outcome", "SUCCESS_CHECKOUT_ENTRY_REACHED")
+                        ))
+                ))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.eventCount").value(1));
+
+        ArgumentCaptor<RunnerAgentEventsCommand> commandCaptor = ArgumentCaptor.forClass(RunnerAgentEventsCommand.class);
+        verify(runnerCallbackService).handleAgentEvents(eq(runId), commandCaptor.capture(), any());
+        assertThat(commandCaptor.getValue().events()).singleElement().satisfies(event -> {
+            assertThat(event.schemaVersion()).isEqualTo("0.1");
+            assertThat(event.eventId()).isEqualTo("agent-event-1");
+            assertThat(event.taskId()).isEqualTo(taskId);
+            assertThat(event.attemptId()).isEqualTo(attemptId);
+            assertThat(event.runId()).isEqualTo(runId);
+            assertThat(event.stepIndex()).isEqualTo(1);
+            assertThat(event.eventType()).isEqualTo("AGENT_STOPPED");
+            assertThat(event.occurredAt().toString()).isEqualTo("2026-05-06T00:00Z");
+            assertThat(event.payload()).isEqualTo(Map.of("final_outcome", "SUCCESS_CHECKOUT_ENTRY_REACHED"));
+        });
+    }
+
+    @Test
+    void agentTraceCallbackMapsRequestToCommand() throws Exception {
+        UUID runId = UUID.randomUUID();
+        UUID traceId = UUID.randomUUID();
+        when(runnerCallbackService.handleAgentTrace(eq(runId), any(), any()))
+                .thenReturn(new RunnerCallbackAckResponse(runId, RunStatus.RUNNING, null, null, null, null, null));
+
+        postJson(runId, "agent-traces", "req_agent_trace", "evt_agent_trace_001", Map.of(
+                        "trace", Map.of(
+                                "schema_version", "0.1",
+                                "trace_id", traceId.toString(),
+                                "run_id", runId.toString(),
+                                "final_outcome", "SUCCESS_CHECKOUT_ENTRY_REACHED",
+                                "events", List.of()
+                        )
+                ))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.runId").value(runId.toString()));
+
+        ArgumentCaptor<RunnerAgentTraceCommand> commandCaptor = ArgumentCaptor.forClass(RunnerAgentTraceCommand.class);
+        verify(runnerCallbackService).handleAgentTrace(eq(runId), commandCaptor.capture(), any());
+        assertThat(commandCaptor.getValue().trace()).containsEntry("trace_id", traceId.toString());
     }
 
     @Test

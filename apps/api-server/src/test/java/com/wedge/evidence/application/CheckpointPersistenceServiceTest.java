@@ -129,6 +129,53 @@ class CheckpointPersistenceServiceTest {
     }
 
     @Test
+    void saveRunCheckpointsPreservesJourneyRawObservationDataAndDefaultSources() {
+        UUID runId = UUID.randomUUID();
+        SaveRunCheckpointsCommand command = new SaveRunCheckpointsCommand(List.of(new SaveRunCheckpointCommand(
+                "cp_journey",
+                "step_click_cart",
+                "CTA",
+                Map.of("actionType", "click"),
+                Map.of("strategy", "response", "durationMs", 180, "status", "settled"),
+                180,
+                Map.of("url", "https://example.com/products/sku-1"),
+                List.of(Map.ofEntries(
+                        Map.entry("observation_id", "step_click_cart.obs_journey_action_raw"),
+                        Map.entry("type", "journey_action_raw"),
+                        Map.entry("confidence", 0.82),
+                        Map.entry("clicked_text", "장바구니 담기"),
+                        Map.entry("clicked_selector", "button.add-cart"),
+                        Map.entry("url_before", "https://example.com"),
+                        Map.entry("url_after", "https://example.com/products/sku-1"),
+                        Map.entry("cart_count_before", 0),
+                        Map.entry("cart_count_after", 1),
+                        Map.entry("dom_changed", true),
+                        Map.entry("settle_status", "settled")
+                )),
+                List.of(),
+                List.of("artifact-screenshot")
+        )));
+        when(checkpointMapper.insert(any(Checkpoint.class))).thenReturn(1);
+
+        checkpointPersistenceService.saveRunCheckpoints(runId, command);
+
+        verify(observationMapper).insert(observationCaptor.capture());
+        Observation observation = observationCaptor.getValue();
+        assertThat(observation.getObservationKey()).isEqualTo("step_click_cart.obs_journey_action_raw");
+        assertThat(observation.getObservationType()).isEqualTo("journey_action_raw");
+        assertThat(observation.getStage()).isEqualTo("CTA");
+        assertThat(observation.getSourcesJsonb()).contains("scenario_log", "dom", "browser", "network");
+        assertThat(observation.getDataJsonb()).contains(
+                "장바구니 담기",
+                "button.add-cart",
+                "url_before",
+                "cart_count_after",
+                "dom_changed"
+        );
+        assertThat(observation.getDataJsonb()).doesNotContain("observation_id", "\"type\"", "\"confidence\"");
+    }
+
+    @Test
     void saveRunCheckpointsSkipsAlreadyStoredCheckpointKeyWithoutLatestCandidate() {
         UUID runId = UUID.randomUUID();
         UUID checkpointId = UUID.randomUUID();

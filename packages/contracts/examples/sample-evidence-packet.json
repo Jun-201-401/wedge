@@ -250,6 +250,179 @@
           "confidence": 0.84
         },
         {
+          "observation_id": "obs_005_journey",
+          "type": "journey_action_raw",
+          "stage": "VALUE",
+          "source": [
+            "scenario_log",
+            "dom",
+            "browser",
+            "network"
+          ],
+          "data": {
+            "step_order": 4,
+            "step_key": "step_004_expand_benefits",
+            "action_type": "click",
+            "clicked_text": "혜택 보기",
+            "clicked_selector": "#signup-benefits-toggle",
+            "url_before": "https://example.com/signup",
+            "url_after": "https://example.com/signup",
+            "title_before": "Sign up",
+            "title_after": "Sign up",
+            "dom_changed": true,
+            "settle_status": "settled",
+            "screenshot_artifact_id": "artifact:screenshot_cp_003",
+            "matched_product_card": {
+              "element_text": "혜택 플랜 무료 체험",
+              "clicked_selector": "#signup-benefits-toggle",
+              "visible_price": null,
+              "visible_product_image": false,
+              "bbox": {
+                "x": 500,
+                "y": 320,
+                "width": 260,
+                "height": 140,
+                "unit": "css_px"
+              },
+              "match_reason": "selector_exact",
+              "match_confidence": 0.94
+            }
+          },
+          "confidence": 0.82
+        },
+        {
+          "observation_id": "obs_005_category_filter",
+          "type": "category_filter_signal",
+          "stage": "VALUE",
+          "source": [
+            "scenario_log",
+            "dom",
+            "browser"
+          ],
+          "data": {
+            "step_order": 4,
+            "step_key": "step_004_expand_benefits",
+            "action_type": "click",
+            "clicked_text": "혜택 보기",
+            "clicked_selector": "#signup-benefits-toggle",
+            "url_before": "https://example.com/signup",
+            "url_after": "https://example.com/signup?category=benefits",
+            "breadcrumb_before": [
+              "Home",
+              "Sign up"
+            ],
+            "breadcrumb_after": [
+              "Home",
+              "Sign up",
+              "Benefits"
+            ],
+            "selected_filter_before": [],
+            "selected_filter_after": [
+              {
+                "key": "category",
+                "value": "Benefits",
+                "selector": "button.benefits"
+              }
+            ],
+            "search_query_before": null,
+            "search_query_after": null,
+            "filter_changed": true,
+            "search_submitted": false,
+            "category_url_changed": true
+          },
+          "confidence": 0.68
+        },
+        {
+          "observation_id": "obs_005_goal_action_result",
+          "type": "goal_action_result",
+          "stage": "VALUE",
+          "source": [
+            "scenario_log",
+            "dom",
+            "browser",
+            "network"
+          ],
+          "data": {
+            "step_order": 4,
+            "step_key": "step_004_expand_benefits",
+            "action_type": "click",
+            "clicked_text": "혜택 보기",
+            "clicked_selector": "#signup-benefits-toggle",
+            "url_before": "https://example.com/signup",
+            "url_after": "https://example.com/signup",
+            "goal_action_like": true,
+            "success_evidence": [
+              "dom_changed"
+            ],
+            "result": {
+              "action_attempted": true,
+              "add_to_cart_like_button": false,
+              "cart_count_delta": null,
+              "toast_present": false,
+              "url_changed": false,
+              "dom_changed": true,
+              "network_success": false,
+              "settle_status": "settled"
+            },
+            "matched_product_card": {
+              "element_text": "혜택 플랜 무료 체험",
+              "clicked_selector": "#signup-benefits-toggle",
+              "visible_price": null,
+              "visible_product_image": false,
+              "bbox": {
+                "x": 500,
+                "y": 320,
+                "width": 260,
+                "height": 140,
+                "unit": "css_px"
+              },
+              "match_reason": "selector_exact",
+              "match_confidence": 0.94
+            }
+          },
+          "confidence": 0.7
+        },
+        {
+          "observation_id": "obs_005_depth_from_discovery",
+          "type": "depth_from_discovery",
+          "stage": "VALUE",
+          "source": [
+            "scenario_log",
+            "dom",
+            "browser",
+            "network"
+          ],
+          "data": {
+            "step_order": 4,
+            "step_key": "step_004_expand_benefits",
+            "action_type": "click",
+            "discovery_step_order": 2,
+            "discovery_step_key": "step_002_product_list",
+            "discovery_stage": "VALUE",
+            "discovery_url": "https://example.com/signup",
+            "depth_from_discovery": 2,
+            "intent_candidate": "filter_changed",
+            "is_detour_candidate": false,
+            "category_changed": true,
+            "filter_changed": true,
+            "search_submitted": false,
+            "goal_action_result": {
+              "action_attempted": true,
+              "add_to_cart_like_button": false,
+              "cart_count_delta": null,
+              "toast_present": false,
+              "url_changed": true,
+              "dom_changed": true,
+              "network_success": false,
+              "settle_status": "settled"
+            },
+            "current_url": "https://example.com/signup?category=benefits",
+            "current_product_card_count": 1,
+            "product_card_count_at_discovery": 1
+          },
+          "confidence": 0.78
+        },
+        {
           "observation_id": "obs_006",
           "type": "settle_item_count_change",
           "stage": "VALUE",
@@ -444,7 +617,9 @@
     "primary_cta_count_by_stage": {
       "CTA": 3,
       "VALUE": 1
-    }
+    },
+    "depth_from_discovery_count": 1,
+    "goal_action_result_count": 1
   },
   "scenario_fit": {
     "scenario_type": "SIGNUP_LEAD_FORM",

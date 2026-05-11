@@ -261,6 +261,38 @@ CREATE TABLE test_run_event (
     created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- Runner Agent Runtime event log. Keeps AgentEvent callbacks queryable without
+-- overloading scripted ScenarioPlan step events.
+CREATE TABLE runner_agent_event (
+    id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    run_id              UUID NOT NULL REFERENCES test_run(id) ON DELETE CASCADE,
+    task_id             UUID NOT NULL,
+    attempt_id          UUID NOT NULL,
+    agent_event_id      VARCHAR(160) NOT NULL,
+    step_index          INTEGER NOT NULL CHECK (step_index >= 0),
+    event_type          VARCHAR(80) NOT NULL,
+    payload_jsonb       JSONB NOT NULL DEFAULT '{}'::jsonb,
+    occurred_at         TIMESTAMPTZ NOT NULL,
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (run_id, agent_event_id)
+);
+
+-- Runner Agent Runtime terminal trace snapshot. Full trace remains JSONB so
+-- schema evolution follows packages/contracts/schemas/agent-trace.schema.json.
+CREATE TABLE runner_agent_trace (
+    id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    run_id              UUID NOT NULL REFERENCES test_run(id) ON DELETE CASCADE,
+    trace_id            UUID NOT NULL,
+    task_id             UUID,
+    attempt_id          UUID,
+    final_outcome       VARCHAR(120),
+    trace_jsonb         JSONB NOT NULL,
+    started_at          TIMESTAMPTZ,
+    finished_at         TIMESTAMPTZ,
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (run_id, trace_id)
+);
+
 -- ---------------------------------------------------------------------------
 -- 4. Evidence Storage
 -- ---------------------------------------------------------------------------
@@ -576,5 +608,7 @@ CREATE INDEX idx_agent_idempotency_lease ON agent_idempotency_record(status, lea
 CREATE INDEX idx_worker_heartbeat ON worker_instance(worker_type, last_heartbeat_at);
 
 CREATE INDEX idx_test_run_event_run_time ON test_run_event(run_id, occurred_at DESC);
+CREATE INDEX idx_runner_agent_event_run_time ON runner_agent_event(run_id, occurred_at DESC);
+CREATE INDEX idx_runner_agent_trace_run_created ON runner_agent_trace(run_id, created_at DESC);
 CREATE INDEX idx_report_share_report ON report_share(report_id, created_at DESC);
 CREATE INDEX idx_checkpoint_run_step ON checkpoint(source_type, run_id, step_id, created_at);

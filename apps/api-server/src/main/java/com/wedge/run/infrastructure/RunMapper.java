@@ -93,5 +93,38 @@ public interface RunMapper {
             @Param("occurredAt") OffsetDateTime occurredAt
     );
 
+    int insertAgentEvent(
+            @Param("id") UUID id,
+            @Param("runId") UUID runId,
+            @Param("taskId") UUID taskId,
+            @Param("attemptId") UUID attemptId,
+            @Param("agentEventId") String agentEventId,
+            @Param("stepIndex") int stepIndex,
+            @Param("eventType") String eventType,
+            @Param("payloadJson") String payloadJson,
+            @Param("occurredAt") OffsetDateTime occurredAt
+    );
+
+    Optional<String> findLatestSuccessfulAgentTraceJsonForReplay(
+            @Param("projectId") UUID projectId,
+            @Param("startUrl") String startUrl,
+            @Param("goal") String goal,
+            @Param("excludeRunId") UUID excludeRunId
+    );
+
+    int countAgentTraces(@Param("runId") UUID runId);
+
+    int insertAgentTrace(
+            @Param("id") UUID id,
+            @Param("runId") UUID runId,
+            @Param("traceId") UUID traceId,
+            @Param("taskId") UUID taskId,
+            @Param("attemptId") UUID attemptId,
+            @Param("finalOutcome") String finalOutcome,
+            @Param("traceJson") String traceJson,
+            @Param("startedAt") OffsetDateTime startedAt,
+            @Param("finishedAt") OffsetDateTime finishedAt
+    );
+
     int softDelete(@Param("runId") UUID runId);
 }
