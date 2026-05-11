@@ -85,6 +85,15 @@ RUNNER_AGENT_MCP_SERVICE_TOKEN=<internal gateway token>
 RUNNER_AGENT_MCP_GATEWAY_TIMEOUT_MS=10000
 ```
 
+The Runner MCP transport resolves the configured gateway URL to the pending decision endpoint. Existing `/decision` URLs are mapped to:
+
+```text
+POST /internal/agent/mcp/pending-decisions
+GET /internal/agent/mcp/pending-decisions/{pendingDecisionId}
+```
+
+Runner MCP mode fails closed when the gateway is unavailable, a pending decision expires, or polling times out. It does not silently fall back to heuristic decisions in MCP mode.
+
 The API Server currently exposes the internal gateway entrypoint:
 
 ```text
@@ -140,11 +149,12 @@ resolve_mcp_pending_decision
 
 That tool only runs sampling inside the fresh MCP tool call where `McpSyncRequestContext` is available. The sampling result is parsed as `AgentDecision`, validated against allowed action types and observed candidate `targetKey` values, and then stored back on the pending decision.
 
-Production MCP mode must remain disabled until Runner transport is wired to the pending flow:
+Production MCP mode must remain disabled until the pending flow is verified end-to-end with an active MCP Host:
 
 ```text
-1. Runner creates a pending decision instead of calling /decision for MCP mode
-2. Runner waits for completion using bounded polling or long polling
+1. MCP Host registers the run with register_mcp_decision_session
+2. Runner creates a pending decision in MCP mode
 3. MCP Host runs resolve_mcp_pending_decision while the run is waiting
-4. Runner receives the completed AgentDecision and applies its existing parser, candidate allow-list, verifier, and policy checks
+4. Runner receives the completed AgentDecision
+5. Runner applies its existing parser, candidate allow-list, verifier, and policy checks
 ```

@@ -1,10 +1,13 @@
 import { errorMessage, logOperationalEvent } from "../shared/utils.ts";
 import { parseLlmDecision } from "./llm-decision-parser.ts";
 import { createLlmCandidateReferences, createLlmPromptMetadata, type LlmCandidateReference } from "./llm-prompt.ts";
-import { HeuristicDecisionClient, type AgentDecision, type AgentDecisionClient, type AgentDecisionInput } from "./planner.ts";
+import { type AgentDecision, type AgentDecisionClient, type AgentDecisionInput } from "./planner.ts";
 import { redactSensitiveValue } from "./redaction.ts";
 
 const DEFAULT_MCP_GATEWAY_TIMEOUT_MS = 10_000;
+const DEFAULT_PENDING_DECISION_POLL_INTERVAL_MS = 500;
+const MCP_DECISION_ENDPOINT_SUFFIX = "/decision";
+const MCP_PENDING_DECISIONS_ENDPOINT_SUFFIX = "/pending-decisions";
 
 export interface AgentMcpDecisionGatewayRequest {
   gatewayUrl: string;
@@ -56,7 +59,6 @@ export interface AgentMcpDecisionClientOptions {
   gatewayUrl?: string;
   serviceToken?: string;
   timeoutMs?: number;
-  fallbackClient?: AgentDecisionClient;
   transport?: AgentMcpDecisionGatewayTransport;
 }
 
@@ -64,28 +66,18 @@ export class AgentMcpDecisionClient implements AgentDecisionClient {
   private readonly gatewayUrl?: string;
   private readonly serviceToken?: string;
   private readonly timeoutMs: number;
-  private readonly fallbackClient: AgentDecisionClient;
   private readonly transport: AgentMcpDecisionGatewayTransport;
 
   constructor(options: AgentMcpDecisionClientOptions = {}) {
     this.gatewayUrl = options.gatewayUrl;
     this.serviceToken = options.serviceToken;
     this.timeoutMs = options.timeoutMs ?? DEFAULT_MCP_GATEWAY_TIMEOUT_MS;
-    this.fallbackClient = options.fallbackClient ?? new HeuristicDecisionClient();
     this.transport = options.transport ?? createFetchMcpDecisionGatewayTransport();
   }
 
   async decide(input: AgentDecisionInput): Promise<AgentDecision> {
     if (!this.gatewayUrl) {
-      logOperationalEvent(
-        "agent-mcp-decision",
-        "fallback_to_heuristic",
-        {
-          reason: "MCP decision gateway URL is not configured"
-        },
-        "warn"
-      );
-      return this.fallbackClient.decide(input);
+      throw new Error("MCP decision gateway URL is not configured");
     }
 
     try {
@@ -104,13 +96,13 @@ export class AgentMcpDecisionClient implements AgentDecisionClient {
     } catch (error) {
       logOperationalEvent(
         "agent-mcp-decision",
-        "fallback_to_heuristic",
+        "decision_failed",
         {
           reason: errorMessage(error)
         },
-        "warn"
+        "error"
       );
-      return this.fallbackClient.decide(input);
+      throw error;
     }
   }
 }
@@ -158,30 +150,145 @@ export function createMcpDecisionGatewayPayload(
 export function createFetchMcpDecisionGatewayTransport(): AgentMcpDecisionGatewayTransport {
   return {
     decide: async (request) => {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), request.timeoutMs);
+      const pendingDecisionsUrl = resolvePendingDecisionsUrl(request.gatewayUrl);
+      const deadline = Date.now() + request.timeoutMs;
 
-      try {
-        const response = await fetch(request.gatewayUrl, {
+      const createResponse = asPendingDecisionResponse(await fetchJsonWithinDeadline(
+        pendingDecisionsUrl,
+        {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            ...(request.serviceToken ? { Authorization: `Bearer ${request.serviceToken}` } : {})
-          },
-          body: JSON.stringify(request.payload),
-          signal: controller.signal
-        });
+          headers: createMcpGatewayHeaders(request.serviceToken),
+          body: JSON.stringify(request.payload)
+        },
+        deadline,
+        "create MCP pending decision"
+      ));
 
-        if (!response.ok) {
-          throw new Error(`MCP decision gateway failed with status ${response.status}`);
+      if (!createResponse.pendingDecisionId) {
+        throw new Error("MCP pending decision response is missing pendingDecisionId");
+      }
+
+      let current = createResponse;
+      while (true) {
+        if (current.status === "COMPLETED") {
+          if (current.decision === undefined || current.decision === null) {
+            throw new Error("MCP pending decision completed without decision payload");
+          }
+          return { decision: current.decision };
         }
 
-        return unwrapApiResponseData(await response.json() as unknown);
-      } finally {
-        clearTimeout(timeout);
+        if (current.status === "EXPIRED") {
+          throw new Error(`MCP pending decision expired: ${current.pendingDecisionId}`);
+        }
+
+        const remainingMs = deadline - Date.now();
+        if (remainingMs <= 0) {
+          throw new Error(`MCP pending decision timed out: ${current.pendingDecisionId}`);
+        }
+
+        await sleep(Math.min(DEFAULT_PENDING_DECISION_POLL_INTERVAL_MS, remainingMs));
+        current = asPendingDecisionResponse(await fetchJsonWithinDeadline(
+          resolvePendingDecisionStatusUrl(pendingDecisionsUrl, current.pendingDecisionId),
+          {
+            method: "GET",
+            headers: createMcpGatewayHeaders(request.serviceToken)
+          },
+          deadline,
+          "get MCP pending decision"
+        ));
       }
     }
   };
+}
+
+interface AgentMcpPendingDecisionResponse {
+  pendingDecisionId: string;
+  status: "PENDING" | "COMPLETED" | "EXPIRED";
+  decision?: unknown;
+}
+
+async function fetchJsonWithinDeadline(
+  url: string,
+  init: RequestInit,
+  deadline: number,
+  operation: string
+): Promise<unknown> {
+  const remainingMs = deadline - Date.now();
+  if (remainingMs <= 0) {
+    throw new Error(`MCP pending decision timed out before ${operation}`);
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), remainingMs);
+
+  try {
+    const response = await fetch(url, {
+      ...init,
+      signal: controller.signal
+    });
+
+    if (!response.ok) {
+      throw new Error(`MCP decision gateway ${operation} failed with status ${response.status}`);
+    }
+
+    return unwrapApiResponseData(await response.json() as unknown);
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function createMcpGatewayHeaders(serviceToken: string | undefined): HeadersInit {
+  return {
+    "Content-Type": "application/json",
+    ...(serviceToken ? { Authorization: `Bearer ${serviceToken}` } : {})
+  };
+}
+
+function asPendingDecisionResponse(value: unknown): AgentMcpPendingDecisionResponse {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("MCP pending decision response must be an object");
+  }
+
+  const record = value as Record<string, unknown>;
+  const pendingDecisionId = record.pendingDecisionId;
+  const status = record.status;
+  if (typeof pendingDecisionId !== "string" || pendingDecisionId.length === 0) {
+    throw new Error("MCP pending decision response pendingDecisionId must be a string");
+  }
+  if (status !== "PENDING" && status !== "COMPLETED" && status !== "EXPIRED") {
+    throw new Error("MCP pending decision response status must be PENDING, COMPLETED, or EXPIRED");
+  }
+
+  return {
+    pendingDecisionId,
+    status,
+    decision: record.decision
+  };
+}
+
+function resolvePendingDecisionsUrl(gatewayUrl: string): string {
+  const url = new URL(gatewayUrl);
+  if (url.pathname.endsWith(MCP_PENDING_DECISIONS_ENDPOINT_SUFFIX)) {
+    return url.toString();
+  }
+
+  if (url.pathname.endsWith(MCP_DECISION_ENDPOINT_SUFFIX)) {
+    url.pathname = url.pathname.slice(0, -MCP_DECISION_ENDPOINT_SUFFIX.length) + MCP_PENDING_DECISIONS_ENDPOINT_SUFFIX;
+    return url.toString();
+  }
+
+  url.pathname = `${url.pathname.replace(/\/$/, "")}${MCP_PENDING_DECISIONS_ENDPOINT_SUFFIX}`;
+  return url.toString();
+}
+
+function resolvePendingDecisionStatusUrl(pendingDecisionsUrl: string, pendingDecisionId: string): string {
+  const url = new URL(pendingDecisionsUrl);
+  url.pathname = `${url.pathname.replace(/\/$/, "")}/${encodeURIComponent(pendingDecisionId)}`;
+  return url.toString();
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function unwrapApiResponseData(value: unknown): unknown {
