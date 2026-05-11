@@ -1,7 +1,5 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { registerWorker } from "../src/worker/index.ts";
 import {
   createRunnerTestConfig,
@@ -19,10 +17,7 @@ test("[Worker lifecycle] accepted callback 실패 시 session을 닫고 failed c
   let failedPayload: RunnerFailedPayload | null = null;
 
   const worker = registerWorker({
-    config: createRunnerTestConfig({
-      artifactsRoot: join(tmpdir(), "runner-test-artifacts"),
-      callbackLogFile: join(tmpdir(), "runner-test-callbacks.jsonl")
-    }),
+    config: createRunnerTestConfig(),
     browserFactory: {
       kind: "simulated-playwright",
       createSession: async () =>
@@ -99,10 +94,7 @@ test("[Worker 관측성] step timeout 실패는 timeout code와 runId/stepKey �
 
   try {
     const worker = registerWorker({
-      config: createRunnerTestConfig({
-        artifactsRoot: join(tmpdir(), "runner-test-artifacts"),
-        callbackLogFile: join(tmpdir(), "runner-test-callbacks.jsonl")
-      }),
+      config: createRunnerTestConfig(),
       browserFactory: {
         kind: "simulated-playwright",
         createSession: async () =>
@@ -193,10 +185,7 @@ test("[Worker lifecycle] 실행 자체가 성공했다면 finished callback 실�
   ];
 
   const worker = registerWorker({
-    config: createRunnerTestConfig({
-      artifactsRoot: join(tmpdir(), "runner-test-artifacts"),
-      callbackLogFile: join(tmpdir(), "runner-test-callbacks.jsonl")
-    }),
+    config: createRunnerTestConfig(),
     browserFactory: {
       kind: "simulated-playwright",
       createSession: async () =>

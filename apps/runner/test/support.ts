@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -75,7 +76,7 @@ export function createMinimalPlan(): ScenarioPlan {
 }
 
 export function createRunnerTestConfig(overrides: Partial<RunnerConfig> = {}): RunnerConfig {
-  const artifactsRoot = overrides.artifactsRoot ?? join(tmpdir(), "runner-test-artifacts");
+  const artifactsRoot = overrides.artifactsRoot ?? join(tmpdir(), `runner-test-artifacts-${process.pid}-${randomUUID()}`);
 
   return {
     serviceName: "runner",

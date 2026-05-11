@@ -145,6 +145,7 @@ export interface BrowserSessionFactory {
 }
 
 const DEFAULT_LOCATOR_TIMEOUT_MS = 1_500;
+const DEFAULT_LOCATOR_METADATA_TIMEOUT_MS = 100;
 const DEFAULT_WAIT_FOR_TIMEOUT_MS = 1_500;
 const ITEM_COUNT_POLL_INTERVAL_MS = 50;
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
@@ -1323,14 +1324,16 @@ function buildCandidateLocators(
   target: TargetDescriptor | undefined,
   options?: Record<string, unknown>
 ): Locator[] {
+  const replayHintLocators = buildReplayHintLocators(page, options);
+
   if (!target) {
-    return buildReplayHintLocators(page, options);
+    return replayHintLocators;
   }
 
   if (typeof target === "string") {
     return [
+      ...replayHintLocators,
       page.getByText(target),
-      ...buildReplayHintLocators(page, options)
     ];
   }
 
@@ -1415,8 +1418,8 @@ function buildCandidateLocators(
   }
 
   return [
-    ...candidates,
-    ...buildReplayHintLocators(page, options)
+    ...replayHintLocators,
+    ...candidates
   ];
 }
 
@@ -1565,6 +1568,8 @@ async function safeLocatorElementDetails(locator: Locator): Promise<Record<strin
           unit: "css_px" as const
         }
       };
+    }, {
+      timeout: DEFAULT_LOCATOR_METADATA_TIMEOUT_MS
     });
   } catch {
     return {};

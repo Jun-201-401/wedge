@@ -10,10 +10,7 @@ import { createRunnerTestConfig, loadExampleMessage } from "./support.ts";
 test("[브라우저 어댑터] simulated goto는 target.url 객체 값을 실제 이동 URL로 사용한다", async () => {
   const message = await loadExampleMessage();
   const browserFactory = createPlaywrightSessionFactory(
-    createRunnerTestConfig({
-      artifactsRoot: join(tmpdir(), "runner-test-artifacts"),
-      callbackLogFile: join(tmpdir(), "runner-test-callbacks.jsonl")
-    })
+    createRunnerTestConfig()
   );
   const session = await browserFactory.createSession({
     runId: message.payload.runId,
@@ -79,10 +76,7 @@ test("[아티팩트 저장] 파일시스템 artifact key는 OS와 무관하게 f
 test("[안전 중단] stop_when 조건이 맞지 않으면 simulated session은 중단하지 않는다", async () => {
   const message = await loadExampleMessage();
   const browserFactory = createPlaywrightSessionFactory(
-    createRunnerTestConfig({
-      artifactsRoot: join(tmpdir(), "runner-test-artifacts"),
-      callbackLogFile: join(tmpdir(), "runner-test-callbacks.jsonl")
-    })
+    createRunnerTestConfig()
   );
   const session = await browserFactory.createSession({
     runId: message.payload.runId,
@@ -138,10 +132,7 @@ test("[안전 중단] stop_when 조건이 맞지 않으면 simulated session은 
 test("[안전 중단] stop_when 제출/결제 직전 조건은 URL 매칭 없이 simulated session을 중단한다", async () => {
   const message = await loadExampleMessage();
   const browserFactory = createPlaywrightSessionFactory(
-    createRunnerTestConfig({
-      artifactsRoot: join(tmpdir(), "runner-test-artifacts"),
-      callbackLogFile: join(tmpdir(), "runner-test-callbacks.jsonl")
-    })
+    createRunnerTestConfig()
   );
   const session = await browserFactory.createSession({
     runId: message.payload.runId,
