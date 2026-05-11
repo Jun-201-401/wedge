@@ -12,6 +12,10 @@ public interface AgentIdempotencyMapper {
 
     int claimExpired(AgentIdempotencyRecord record);
 
+    int renewClaimed(AgentIdempotencyRecord record);
+
+    int releaseClaimed(AgentIdempotencyRecord record);
+
     int completeClaimed(AgentIdempotencyRecord record);
 
     int insertCompletedIgnoreDuplicate(AgentIdempotencyRecord record);

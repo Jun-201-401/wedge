@@ -294,6 +294,7 @@ RUNNER_MQ_ARTIFACT_OUTBOX_WORKER_ENABLED=false
 
 - agent worker는 동일 `AgentTask.idempotency_key` 중복 delivery를 같은 process 안에서 재실행하지 않고 기존 실행 promise/result를 재사용한다.
 - terminal agent execution result는 `artifactsRoot/agent-idempotency/`에 저장되어 runner process 재시작 후에도 같은 idempotency key를 재실행하지 않는다.
+- API-backed idempotency mode는 agent 실행 전 CLAIMED lease를 잡고, 긴 실행 중 lease를 renew하며, terminal record 없이 실패한 attempt는 owned claim을 release한다.
 - MQ consumer는 `RUNNER_MQ_REQUEUE_ON_FAILURE=true`여도 `RUNNER_MQ_MAX_DELIVERY_ATTEMPTS` 이상 관측된 poison message를 requeue 없이 reject한다.
 - worker concurrency 정책은 static run/discovery는 `RUNNER_MQ_PREFETCH`, agent는 `RUNNER_AGENT_CONCURRENCY`로 분리한다.
 

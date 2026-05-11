@@ -27,6 +27,7 @@ const MQ_RUNTIME_ENV_KEYS = [
   "RUNNER_AGENT_IDEMPOTENCY_STORE_ENABLED",
   "RUNNER_AGENT_IDEMPOTENCY_STORE_MODE",
   "RUNNER_AGENT_IDEMPOTENCY_LEASE_TTL_MS",
+  "RUNNER_AGENT_IDEMPOTENCY_RENEW_INTERVAL_MS",
   "RUNNER_MQ_MAX_DELIVERY_ATTEMPTS"
 ] as const;
 
@@ -190,13 +191,15 @@ test("[설정] Agent idempotency store mode는 API 저장소 모드를 읽는다
   withMqRuntimeEnv(
     {
       RUNNER_AGENT_IDEMPOTENCY_STORE_MODE: "api",
-      RUNNER_AGENT_IDEMPOTENCY_LEASE_TTL_MS: "120000"
+      RUNNER_AGENT_IDEMPOTENCY_LEASE_TTL_MS: "120000",
+      RUNNER_AGENT_IDEMPOTENCY_RENEW_INTERVAL_MS: "30000"
     },
     () => {
       const config = loadRunnerConfig({ serviceName: "runner-test" });
 
       assert.equal(config.agentIdempotencyStoreMode, "api");
       assert.equal(config.agentIdempotencyLeaseTtlMs, 120_000);
+      assert.equal(config.agentIdempotencyRenewIntervalMs, 30_000);
     }
   );
 });

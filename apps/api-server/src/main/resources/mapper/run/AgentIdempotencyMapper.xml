@@ -75,6 +75,30 @@
           AND lease_expires_at &lt;= #{claimedAt}
     </update>
 
+    <update id="renewClaimed" parameterType="com.wedge.run.infrastructure.AgentIdempotencyRecord">
+        UPDATE agent_idempotency_record
+        SET lease_expires_at = #{leaseExpiresAt},
+            updated_at = NOW()
+        WHERE idempotency_key_hash = #{idempotencyKeyHash}
+          AND status = 'CLAIMED'
+          AND claimed_by = #{claimedBy}
+          AND run_id = #{runId}
+          AND task_id = #{taskId}
+          AND attempt_id = #{attemptId}
+          AND attempt_index = #{attemptIndex}
+    </update>
+
+    <delete id="releaseClaimed" parameterType="com.wedge.run.infrastructure.AgentIdempotencyRecord">
+        DELETE FROM agent_idempotency_record
+        WHERE idempotency_key_hash = #{idempotencyKeyHash}
+          AND status = 'CLAIMED'
+          AND claimed_by = #{claimedBy}
+          AND run_id = #{runId}
+          AND task_id = #{taskId}
+          AND attempt_id = #{attemptId}
+          AND attempt_index = #{attemptIndex}
+    </delete>
+
     <update id="completeClaimed" parameterType="com.wedge.run.infrastructure.AgentIdempotencyRecord">
         UPDATE agent_idempotency_record
         SET status = 'COMPLETED',

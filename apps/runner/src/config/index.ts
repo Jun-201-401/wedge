@@ -66,6 +66,7 @@ export interface RunnerConfig {
   agentIdempotencyStoreEnabled: boolean;
   agentIdempotencyStoreMode: RunnerAgentIdempotencyStoreMode;
   agentIdempotencyLeaseTtlMs: number;
+  agentIdempotencyRenewIntervalMs: number;
   mqRequeueOnFailure: boolean;
   mqMaxDeliveryAttempts: number;
   mqCallbackOutboxWorkerEnabled: boolean;
@@ -185,6 +186,11 @@ export function loadRunnerConfig(overrides: Partial<RunnerConfig> = {}): RunnerC
     process.env.RUNNER_AGENT_IDEMPOTENCY_LEASE_TTL_MS,
     DEFAULT_AGENT_IDEMPOTENCY_LEASE_TTL_MS
   );
+  const agentIdempotencyRenewIntervalMs = parsePositiveInteger(
+    overrides.agentIdempotencyRenewIntervalMs,
+    process.env.RUNNER_AGENT_IDEMPOTENCY_RENEW_INTERVAL_MS,
+    Math.max(1_000, Math.floor(agentIdempotencyLeaseTtlMs / 2))
+  );
   const mqRequeueOnFailure = parseBoolean(
     overrides.mqRequeueOnFailure,
     process.env.RUNNER_MQ_REQUEUE_ON_FAILURE,
@@ -287,6 +293,7 @@ export function loadRunnerConfig(overrides: Partial<RunnerConfig> = {}): RunnerC
     agentIdempotencyStoreEnabled,
     agentIdempotencyStoreMode,
     agentIdempotencyLeaseTtlMs,
+    agentIdempotencyRenewIntervalMs,
     mqRequeueOnFailure,
     mqMaxDeliveryAttempts,
     mqCallbackOutboxWorkerEnabled,

@@ -8,6 +8,8 @@ import com.wedge.common.error.ErrorCode;
 import com.wedge.run.api.internal.runner.dto.RunnerAgentIdempotencyClaimRequest;
 import com.wedge.run.api.internal.runner.dto.RunnerAgentIdempotencyRecordRequest;
 import com.wedge.run.api.internal.runner.dto.RunnerAgentIdempotencyRecordResponse;
+import com.wedge.run.api.internal.runner.dto.RunnerAgentIdempotencyReleaseRequest;
+import com.wedge.run.api.internal.runner.dto.RunnerAgentIdempotencyRenewRequest;
 import com.wedge.run.infrastructure.AgentIdempotencyMapper;
 import com.wedge.run.infrastructure.AgentIdempotencyRecord;
 import java.time.OffsetDateTime;
@@ -46,6 +48,34 @@ public class RunnerAgentIdempotencyService {
         AgentIdempotencyRecord claim = claimRecord(idempotencyKeyHash, request, workerId, OffsetDateTime.now());
         agentIdempotencyMapper.insertClaimIgnoreDuplicate(claim);
         agentIdempotencyMapper.claimExpired(claim);
+        return findRecord(idempotencyKeyHash);
+    }
+
+    @Transactional
+    public RunnerAgentIdempotencyRecordResponse renewRecord(
+            String idempotencyKeyHash,
+            RunnerAgentIdempotencyRenewRequest request,
+            String workerId
+    ) {
+        validateKeyHash(idempotencyKeyHash);
+        validateWorkerId(workerId);
+
+        AgentIdempotencyRecord renewal = renewedRecord(idempotencyKeyHash, request, workerId, OffsetDateTime.now());
+        agentIdempotencyMapper.renewClaimed(renewal);
+        return findRecord(idempotencyKeyHash);
+    }
+
+    @Transactional
+    public RunnerAgentIdempotencyRecordResponse releaseRecord(
+            String idempotencyKeyHash,
+            RunnerAgentIdempotencyReleaseRequest request,
+            String workerId
+    ) {
+        validateKeyHash(idempotencyKeyHash);
+        validateWorkerId(workerId);
+
+        AgentIdempotencyRecord release = releasedRecord(idempotencyKeyHash, request, workerId);
+        agentIdempotencyMapper.releaseClaimed(release);
         return findRecord(idempotencyKeyHash);
     }
 
@@ -117,6 +147,38 @@ public class RunnerAgentIdempotencyService {
         record.setClaimedBy(workerId);
         record.setResultJson(writeJson(request.result()));
         record.setOutcomeStatus(resolveOutcomeStatus(request.result()));
+        return record;
+    }
+
+    private AgentIdempotencyRecord renewedRecord(
+            String idempotencyKeyHash,
+            RunnerAgentIdempotencyRenewRequest request,
+            String workerId,
+            OffsetDateTime renewedAt
+    ) {
+        AgentIdempotencyRecord record = new AgentIdempotencyRecord();
+        record.setIdempotencyKeyHash(idempotencyKeyHash);
+        record.setRunId(request.runId());
+        record.setTaskId(request.taskId());
+        record.setAttemptId(request.attemptId());
+        record.setAttemptIndex(request.attemptIndex());
+        record.setClaimedBy(workerId);
+        record.setLeaseExpiresAt(renewedAt.plusNanos(request.normalizedLeaseTtlMs() * 1_000_000L));
+        return record;
+    }
+
+    private AgentIdempotencyRecord releasedRecord(
+            String idempotencyKeyHash,
+            RunnerAgentIdempotencyReleaseRequest request,
+            String workerId
+    ) {
+        AgentIdempotencyRecord record = new AgentIdempotencyRecord();
+        record.setIdempotencyKeyHash(idempotencyKeyHash);
+        record.setRunId(request.runId());
+        record.setTaskId(request.taskId());
+        record.setAttemptId(request.attemptId());
+        record.setAttemptIndex(request.attemptIndex());
+        record.setClaimedBy(workerId);
         return record;
     }
 

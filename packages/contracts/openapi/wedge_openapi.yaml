@@ -1855,6 +1855,102 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '422':
           $ref: '#/components/responses/ValidationError'
+  /internal/runner/agent-idempotency/{idempotencyKeyHash}/renew:
+    post:
+      tags:
+      - InternalRunner
+      operationId: renewRunnerAgentIdempotencyRecord
+      summary: Agent idempotency lease renew
+      description: 현재 CLAIMED lease를 보유한 Runner replica가 긴 agent.execute 실행 중 lease 만료 시각을 연장한다. worker/run/task/attempt가 일치하지 않으면 record를 변경하지 않고 현재 record를 반환한다.
+      security:
+      - InternalBearer: []
+      parameters:
+      - name: idempotencyKeyHash
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: ^[0-9a-f]{64}$
+      - name: X-Worker-Id
+        in: header
+        required: true
+        schema:
+          type: string
+      - name: X-Event-Id
+        in: header
+        required: true
+        schema:
+          type: string
+      - name: X-Signature
+        in: header
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RunnerAgentIdempotencyRenewRequest'
+      responses:
+        '200':
+          description: Renewed or current Agent idempotency record
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RunnerAgentIdempotencyRecordEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /internal/runner/agent-idempotency/{idempotencyKeyHash}/release:
+    post:
+      tags:
+      - InternalRunner
+      operationId: releaseRunnerAgentIdempotencyRecord
+      summary: Agent idempotency lease release
+      description: terminal record를 저장하지 못한 실패/예외 attempt가 현재 CLAIMED lease를 명시적으로 해제한다. worker/run/task/attempt가 일치하지 않거나 이미 COMPLETED이면 record를 변경하지 않고 현재 record를 반환한다.
+      security:
+      - InternalBearer: []
+      parameters:
+      - name: idempotencyKeyHash
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: ^[0-9a-f]{64}$
+      - name: X-Worker-Id
+        in: header
+        required: true
+        schema:
+          type: string
+      - name: X-Event-Id
+        in: header
+        required: true
+        schema:
+          type: string
+      - name: X-Signature
+        in: header
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RunnerAgentIdempotencyReleaseRequest'
+      responses:
+        '200':
+          description: Released or current Agent idempotency record
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RunnerAgentIdempotencyRecordEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
   /internal/runner/runs/{runId}/artifacts:
     post:
       tags:
@@ -5009,6 +5105,48 @@ components:
           maximum: 86400000
           nullable: true
           default: 300000
+      required:
+      - runId
+      - taskId
+      - attemptId
+      - attemptIndex
+    RunnerAgentIdempotencyRenewRequest:
+      type: object
+      properties:
+        runId:
+          type: string
+          format: uuid
+        taskId:
+          type: string
+        attemptId:
+          type: string
+        attemptIndex:
+          type: integer
+          minimum: 1
+        leaseTtlMs:
+          type: integer
+          minimum: 1000
+          maximum: 86400000
+          nullable: true
+          default: 300000
+      required:
+      - runId
+      - taskId
+      - attemptId
+      - attemptIndex
+    RunnerAgentIdempotencyReleaseRequest:
+      type: object
+      properties:
+        runId:
+          type: string
+          format: uuid
+        taskId:
+          type: string
+        attemptId:
+          type: string
+        attemptIndex:
+          type: integer
+          minimum: 1
       required:
       - runId
       - taskId

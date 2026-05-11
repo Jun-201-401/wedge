@@ -4,6 +4,8 @@ import com.wedge.common.response.ApiResponse;
 import com.wedge.run.api.internal.runner.dto.RunnerAgentIdempotencyClaimRequest;
 import com.wedge.run.api.internal.runner.dto.RunnerAgentIdempotencyRecordRequest;
 import com.wedge.run.api.internal.runner.dto.RunnerAgentIdempotencyRecordResponse;
+import com.wedge.run.api.internal.runner.dto.RunnerAgentIdempotencyReleaseRequest;
+import com.wedge.run.api.internal.runner.dto.RunnerAgentIdempotencyRenewRequest;
 import com.wedge.run.application.RunnerAgentIdempotencyService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -46,5 +48,23 @@ public class RunnerAgentIdempotencyController {
             @RequestHeader("X-Worker-Id") String workerId
     ) {
         return ApiResponse.ok(runnerAgentIdempotencyService.claimRecord(idempotencyKeyHash, request, workerId));
+    }
+
+    @PostMapping("/renew")
+    public ResponseEntity<ApiResponse<RunnerAgentIdempotencyRecordResponse>> renewRecord(
+            @PathVariable String idempotencyKeyHash,
+            @Valid @RequestBody RunnerAgentIdempotencyRenewRequest request,
+            @RequestHeader("X-Worker-Id") String workerId
+    ) {
+        return ApiResponse.ok(runnerAgentIdempotencyService.renewRecord(idempotencyKeyHash, request, workerId));
+    }
+
+    @PostMapping("/release")
+    public ResponseEntity<ApiResponse<RunnerAgentIdempotencyRecordResponse>> releaseRecord(
+            @PathVariable String idempotencyKeyHash,
+            @Valid @RequestBody RunnerAgentIdempotencyReleaseRequest request,
+            @RequestHeader("X-Worker-Id") String workerId
+    ) {
+        return ApiResponse.ok(runnerAgentIdempotencyService.releaseRecord(idempotencyKeyHash, request, workerId));
     }
 }

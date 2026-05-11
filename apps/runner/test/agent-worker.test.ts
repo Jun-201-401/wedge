@@ -748,6 +748,118 @@ test("[Agent Worker] 다른 runner가 idempotency lease를 보유하면 새 실�
   assert.equal(createSessionCount, 0);
 });
 
+test("[Agent Worker] API-backed idempotency lease는 긴 실행 중 renew된다", async () => {
+  const message = await loadAgentExampleMessage();
+  const task = message.payload.agentTask;
+  task.goal = "checkout 진입 여부를 확인한다";
+  task.idempotency_key = "agent-idempotency-renew";
+  const renewInputs: unknown[] = [];
+  let persisted = false;
+  let released = false;
+  const store: AgentIdempotencyStore = {
+    claim: async () => ({ status: "CLAIMED" }),
+    renew: async (_idempotencyKey, input) => {
+      renewInputs.push(input);
+      return { status: "CLAIMED" };
+    },
+    release: async () => {
+      released = true;
+    },
+    read: async () => null,
+    persist: async () => {
+      persisted = true;
+    }
+  };
+
+  const worker = registerAgentWorker({
+    config: createRunnerTestConfig({
+      agentIdempotencyStoreEnabled: true,
+      agentIdempotencyRenewIntervalMs: 5
+    }),
+    browserFactory: {
+      kind: "simulated-playwright",
+      createSession: async ({ plan }) => {
+        await delay(25);
+        return createSimulatedSession(plan, {
+          snapshot: () => createSimulatedPageSnapshot(plan, {
+            currentUrl: "https://example.com/checkout",
+            finalUrl: "https://example.com/checkout",
+            title: "Checkout"
+          })
+        });
+      }
+    },
+    callbackClient: createStubCallbackClient(),
+    capturePipeline: {
+      collectCheckpoint: async () => {
+        throw new Error("checkpoint collection should not run when checkout is already visible");
+      }
+    },
+    artifactStore: {
+      persistArtifacts: async () => []
+    },
+    agentIdempotencyStore: store
+  });
+
+  const result = await worker.handleMessage(message);
+
+  assert.equal(result.trace.outcome.status, "SUCCESS");
+  assert.ok(renewInputs.length >= 1);
+  assert.equal(persisted, true);
+  assert.equal(released, false);
+});
+
+test("[Agent Worker] terminal record 없는 실패는 owned idempotency lease를 release한다", async () => {
+  const message = await loadAgentExampleMessage();
+  const task = message.payload.agentTask;
+  task.idempotency_key = "agent-idempotency-release-on-failure";
+  const releasedInputs: unknown[] = [];
+  const store: AgentIdempotencyStore = {
+    claim: async () => ({ status: "CLAIMED" }),
+    renew: async () => ({ status: "CLAIMED" }),
+    release: async (_idempotencyKey, input) => {
+      releasedInputs.push(input);
+    },
+    read: async () => null,
+    persist: async () => {
+      throw new Error("terminal persist should not run after createSession failure");
+    }
+  };
+
+  const worker = registerAgentWorker({
+    config: createRunnerTestConfig({
+      agentIdempotencyStoreEnabled: true,
+      agentIdempotencyRenewIntervalMs: 5
+    }),
+    browserFactory: {
+      kind: "simulated-playwright",
+      createSession: async () => {
+        throw new Error("browser launch failed");
+      }
+    },
+    callbackClient: createStubCallbackClient(),
+    capturePipeline: {
+      collectCheckpoint: async () => {
+        throw new Error("checkpoint collection should not run after createSession failure");
+      }
+    },
+    artifactStore: {
+      persistArtifacts: async () => []
+    },
+    agentIdempotencyStore: store
+  });
+
+  await assert.rejects(() => worker.handleMessage(message), /browser launch failed/);
+  assert.deepEqual(releasedInputs, [
+    {
+      runId: task.run_id,
+      taskId: task.task_id,
+      attemptId: task.attempt_id,
+      attemptIndex: task.attempt_index
+    }
+  ]);
+});
+
 test("[Agent Worker] 로그인 벽을 감지하면 decision 전에 중단한다", async () => {
   const message = await loadAgentExampleMessage();
   const task = message.payload.agentTask;

@@ -231,6 +231,93 @@ test("[Agent Idempotency] API store claim은 다른 worker lease를 in-progress�
   }
 });
 
+test("[Agent Idempotency] API store는 owned lease를 renew하고 실패 claim을 release한다", async () => {
+  const result = createSensitiveAgentResult();
+  const idempotencyKey = "api-renew-release-idempotency-key";
+  const expectedKeyHash = createHash("sha256").update(idempotencyKey).digest("hex");
+  const requests: Array<{ method: string; path: string; body: string }> = [];
+  const server = createServer(async (request, response) => {
+    const body = await readRequestBody(request);
+    requests.push({
+      method: request.method ?? "",
+      path: request.url ?? "",
+      body
+    });
+
+    if (request.method === "POST" && request.url === `/internal/runner/agent-idempotency/${expectedKeyHash}/renew`) {
+      const payload = JSON.parse(body) as { leaseTtlMs: number };
+      assert.equal(payload.leaseTtlMs, 300_000);
+      sendJson(response, {
+        data: {
+          idempotencyKeyHash: expectedKeyHash,
+          found: true,
+          status: "CLAIMED",
+          runId: result.runId,
+          taskId: result.trace.task_id,
+          attemptId: result.trace.attempt_id,
+          attemptIndex: result.trace.attempt_index,
+          claimedBy: "runner-test-worker",
+          leaseExpiresAt: "2026-05-08T10:07:00+09:00"
+        }
+      });
+      return;
+    }
+
+    if (request.method === "POST" && request.url === `/internal/runner/agent-idempotency/${expectedKeyHash}/release`) {
+      const payload = JSON.parse(body) as { leaseTtlMs?: number };
+      assert.equal(payload.leaseTtlMs, undefined);
+      sendJson(response, {
+        data: {
+          idempotencyKeyHash: expectedKeyHash,
+          found: false,
+          status: null,
+          runId: null,
+          taskId: null,
+          attemptId: null,
+          attemptIndex: null,
+          claimedBy: null,
+          claimedAt: null,
+          leaseExpiresAt: null,
+          result: null,
+          completedAt: null
+        }
+      });
+      return;
+    }
+
+    response.statusCode = 404;
+    response.end();
+  });
+
+  await listen(server);
+
+  try {
+    const address = server.address();
+    assert.ok(address && typeof address === "object");
+    const store = createApiAgentIdempotencyStore(createRunnerTestConfig({
+      callbackBaseUrl: `http://127.0.0.1:${address.port}`,
+      callbackTimeoutMs: 1_000
+    }));
+    const claimInput = {
+      runId: result.runId,
+      taskId: result.trace.task_id,
+      attemptId: result.trace.attempt_id,
+      attemptIndex: result.trace.attempt_index
+    };
+
+    const renewal = await store.renew?.(idempotencyKey, claimInput);
+    await store.release?.(idempotencyKey, claimInput);
+
+    assert.deepEqual(renewal, { status: "CLAIMED" });
+    assert.deepEqual(requests.map((request) => request.path), [
+      `/internal/runner/agent-idempotency/${expectedKeyHash}/renew`,
+      `/internal/runner/agent-idempotency/${expectedKeyHash}/release`
+    ]);
+  } finally {
+    await closeServer(server);
+  }
+});
+
 function createSensitiveAgentResult(): AgentRunnerExecutionResult {
   return {
     runId: "00000000-0000-4000-8000-000000000905",
