@@ -15,6 +15,7 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -31,6 +32,7 @@ public class EvidencePacketSignedUrlDecorator {
     private final Duration signedUrlTtl;
     private final int maxSignedUrlCount;
 
+    @Autowired
     public EvidencePacketSignedUrlDecorator(
             ArtifactPresignedUrlGenerator artifactPresignedUrlGenerator,
             @Value("${wedge.artifacts.presigned-url.ttl-seconds:3600}") long signedUrlTtlSeconds,
