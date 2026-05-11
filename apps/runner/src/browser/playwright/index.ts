@@ -31,6 +31,7 @@ import {
   assertVisitedUrlAllowed
 } from "../../scenario/policy.ts";
 import { describeTarget, sleep, toIsoTimestamp } from "../../shared/utils.ts";
+import { preparePageForScreenshot } from "./screenshot.ts";
 
 export interface BrowserActionResult {
   actionType: ScenarioAction["type"];
@@ -634,6 +635,8 @@ class RealPlaywrightSession implements BrowserSession {
   }
 
   async captureArtifacts(): Promise<BrowserCapturedArtifacts> {
+    await preparePageForScreenshot(this.page);
+
     const screenshotBuffer = await this.page.screenshot({
       type: "png",
       fullPage: true

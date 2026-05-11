@@ -11,6 +11,7 @@ import { randomUUID } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import type { CallbackClient } from "../callback/index.ts";
+import { preparePageForScreenshot } from "../browser/playwright/screenshot.ts";
 import type { RunnerBrowserName, RunnerConfig } from "../config/index.ts";
 import { createArtifactStore, type ArtifactStore } from "../storage/index.ts";
 import type {
@@ -399,6 +400,8 @@ async function createDiscoveryArtifactDrafts(
   stepKey: string,
   viewport: { width: number; height: number }
 ): Promise<ArtifactDraft[]> {
+  await preparePageForScreenshot(page);
+
   const [screenshotBuffer, domSnapshot] = await Promise.all([
     page.screenshot({ type: "png" }),
     page.content()

@@ -139,6 +139,34 @@ test("[Playwright 실제 실행] goto/fill/select를 수행하고 실제 screens
   }
 });
 
+test("[Playwright 실제 실행] screenshot 캡처 전에 lazy image를 스크롤 로딩한다", async () => {
+  const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-playwright-artifacts-"));
+  const fixtureServer = await createLazyImageFixtureServer();
+  let session: Awaited<ReturnType<ReturnType<typeof createPlaywrightSessionFactory>["createSession"]>> | undefined;
+
+  try {
+    const browserFactory = createPlaywrightBrowserFactory(artifactsRoot);
+
+    session = await browserFactory.createSession({
+      runId: "run-playwright-lazy-image",
+      plan: createPlaywrightPlan(fixtureServer.url)
+    });
+
+    await executeGotoStep(session, fixtureServer.url, "step_goto_lazy_image");
+
+    assert.equal(fixtureServer.imageRequestCount(), 0);
+
+    const capturedArtifacts = await session.captureArtifacts();
+
+    assert.equal(capturedArtifacts.screenshot?.mimeType, "image/png");
+    assert.ok(fixtureServer.imageRequestCount() > 0);
+  } finally {
+    await session?.close();
+    await fixtureServer.close();
+    await rm(artifactsRoot, { recursive: true, force: true });
+  }
+});
+
 test("[Playwright 실제 실행] select value가 없으면 option label 매칭으로 선택한다", async () => {
   const fixtureRoot = await mkdtemp(join(tmpdir(), "wedge-runner-playwright-site-"));
   const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-playwright-artifacts-"));
@@ -1920,6 +1948,71 @@ function readBoolean(source: unknown, key: string): boolean | undefined {
 
 function createPlaywrightBrowserFactory(artifactsRoot: string) {
   return createPlaywrightSessionFactory(createPlaywrightConfig(artifactsRoot));
+}
+
+async function createLazyImageFixtureServer(): Promise<{
+  url: string;
+  imageRequestCount: () => number;
+  close: () => Promise<void>;
+}> {
+  let imageRequests = 0;
+  const lazyImagePng = Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=",
+    "base64"
+  );
+  const server = createServer((request: IncomingMessage, response: ServerResponse) => {
+    const requestUrl = new URL(request.url ?? "/", "http://127.0.0.1");
+
+    if (requestUrl.pathname === "/lazy.png") {
+      imageRequests += 1;
+      response.writeHead(200, {
+        "content-type": "image/png",
+        "cache-control": "no-store"
+      });
+      response.end(lazyImagePng);
+      return;
+    }
+
+    response.writeHead(200, {
+      "content-type": "text/html; charset=utf-8",
+      "cache-control": "no-store"
+    });
+    response.end(`<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Lazy Image Fixture</title>
+  </head>
+  <body style="margin:0;">
+    <main>
+      <h1>Lazy Image Fixture</h1>
+      <div style="height:2600px;"></div>
+      <img id="lazy-image" data-src="/lazy.png" width="80" height="80" alt="Lazy product" />
+    </main>
+    <script>
+      const image = document.getElementById("lazy-image");
+      const observer = new IntersectionObserver((entries) => {
+        if (entries.some((entry) => entry.isIntersecting) && image && !image.getAttribute("src")) {
+          image.setAttribute("src", image.dataset.src);
+          observer.disconnect();
+        }
+      });
+      observer.observe(image);
+    </script>
+  </body>
+</html>`);
+  });
+
+  await new Promise<void>((resolve, reject) => {
+    server.listen(0, "127.0.0.1", () => resolve());
+    server.once("error", reject);
+  });
+
+  return {
+    url: `${serverOrigin(server)}/`,
+    imageRequestCount: () => imageRequests,
+    close: () => closeServer(server)
+  };
 }
 
 async function createFixtureSite(root: string): Promise<{ formUrl: string; doneUrl: string }> {
