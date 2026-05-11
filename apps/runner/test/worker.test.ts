@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 import { registerWorker } from "../src/worker/index.ts";
 import {
@@ -191,6 +194,64 @@ test("[Worker cancellation] STOP_REQUESTED control state면 다음 step 실행 �
     stopped: true
   });
   assert.deepEqual(finishedSummary, result.summary);
+});
+
+test("[Worker idempotency] run idempotencyKey terminal result는 재실행 없이 재사용한다", async () => {
+  const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-run-idempotency-"));
+  const message = await loadExampleMessage();
+  message.idempotencyKey = "run-idempotency-smoke";
+  message.payload.scenarioPlan!.steps = [
+    {
+      step_id: "step_001_checkpoint",
+      stage: "FIRST_VIEW",
+      description: "checkpoint",
+      action: {
+        type: "checkpoint"
+      },
+      settle_strategy: {
+        type: "none",
+        timeout_ms: 0
+      },
+      checkpoint: false
+    }
+  ];
+  let sessionCreateCount = 0;
+  let acceptedCount = 0;
+
+  try {
+    const worker = registerWorker({
+      config: createRunnerTestConfig({ artifactsRoot }),
+      browserFactory: {
+        kind: "simulated-playwright",
+        createSession: async () => {
+          sessionCreateCount += 1;
+          return createSimulatedSession(message.payload.scenarioPlan!);
+        }
+      },
+      callbackClient: createStubCallbackClient({
+        sendAccepted: async () => {
+          acceptedCount += 1;
+        }
+      }),
+      capturePipeline: {
+        collectCheckpoint: async () => {
+          throw new Error("checkpoint collection should not be needed");
+        }
+      },
+      artifactStore: {
+        persistArtifacts: async () => []
+      }
+    });
+
+    const first = await worker.handleMessage(message);
+    const second = await worker.handleMessage(message);
+
+    assert.deepEqual(second, first);
+    assert.equal(sessionCreateCount, 1);
+    assert.equal(acceptedCount, 1);
+  } finally {
+    await rm(artifactsRoot, { recursive: true, force: true });
+  }
 });
 
 test("[Worker 관측성] step timeout 실패는 timeout code와 runId/stepKey 로그를 남긴다", async () => {

@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { createRunnerApp } from "../src/app.ts";
+import { readDiscoveryExecuteMessage } from "../src/messaging/index.ts";
 import { loadExampleMessage } from "./support.ts";
 
 interface ReceivedCallbackRequest {
@@ -82,6 +83,31 @@ test("createRunnerApp processes discovery message files and writes SiteDiscovery
       force: true
     });
     await rm(fixtureRoot, {
+      recursive: true,
+      force: true
+    });
+  }
+});
+
+test("createRunnerApp reuses discovery idempotencyKey terminal result", async () => {
+  const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-discovery-idempotency-"));
+
+  try {
+    const app = createRunnerApp({
+      artifactsRoot,
+      simulatedDelayCapMs: 1
+    });
+    const message = await readDiscoveryExecuteMessage("examples/discovery-execute.request.json");
+    message.idempotencyKey = "discovery-idempotency-smoke";
+
+    const first = await app.processDiscoveryMessage(message);
+    const second = await app.processDiscoveryMessage(message);
+
+    assert.equal(second.discoveryId, first.discoveryId);
+    assert.equal(second.resultFile, first.resultFile);
+    assert.deepEqual(second.result, first.result);
+  } finally {
+    await rm(artifactsRoot, {
       recursive: true,
       force: true
     });
