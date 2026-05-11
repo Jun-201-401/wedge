@@ -888,6 +888,32 @@ export interface GoalActionCandidateObservation {
   candidates: Record<string, unknown>[];
 }
 
+export type GoalActionSuccessEvidence =
+  | "cart_count_increased"
+  | "toast_present"
+  | "network_success"
+  | "url_changed"
+  | "dom_changed";
+
+export interface GoalActionResultObservation {
+  observation_id: string;
+  type: "goal_action_result";
+  stage: ScenarioStage;
+  source: ("scenario_log" | "dom" | "browser" | "network")[];
+  confidence: number;
+  step_order: number;
+  step_key: string;
+  action_type: ScenarioActionType;
+  clicked_text?: string | null;
+  clicked_selector?: string | null;
+  url_before: string;
+  url_after: string;
+  goal_action_like: boolean;
+  success_evidence: GoalActionSuccessEvidence[];
+  result: JourneyGoalActionResultSignal;
+  matched_product_card?: MatchedProductCardSignal | null;
+}
+
 export interface CategoryFilterSignalObservation {
   observation_id: string;
   type: "category_filter_signal";

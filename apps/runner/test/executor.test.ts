@@ -988,6 +988,9 @@ test("[수집 pipeline] Journey raw signal은 click 전후 상태와 artifact/bb
   const observation = collection.checkpoint.observations.find(
     (candidate) => candidate.type === "journey_action_raw"
   );
+  const goalActionResult = collection.checkpoint.observations.find(
+    (candidate) => candidate.type === "goal_action_result"
+  );
 
   assert.ok(observation);
   assert.equal(observation.clicked_text, "장바구니 담기");
@@ -1025,6 +1028,32 @@ test("[수집 pipeline] Journey raw signal은 click 전후 상태와 artifact/bb
     unit: "css_px"
   });
   assert.ok(Array.isArray(observation.network_result));
+
+  assert.ok(goalActionResult);
+  assert.equal(goalActionResult.clicked_text, "장바구니 담기");
+  assert.equal(goalActionResult.goal_action_like, true);
+  assert.deepEqual(goalActionResult.success_evidence, [
+    "cart_count_increased",
+    "toast_present",
+    "network_success",
+    "url_changed",
+    "dom_changed"
+  ]);
+  assert.deepEqual(goalActionResult.result, {
+    action_attempted: true,
+    add_to_cart_like_button: true,
+    cart_count_delta: 1,
+    toast_present: true,
+    url_changed: true,
+    dom_changed: true,
+    network_success: true,
+    settle_status: "settled"
+  });
+  assert.ok(goalActionResult.matched_product_card && typeof goalActionResult.matched_product_card === "object");
+  assert.equal(
+    (goalActionResult.matched_product_card as { match_reason?: unknown }).match_reason,
+    "selector_exact"
+  );
 });
 
 test("[수집 pipeline] 카테고리/필터/검색 변화는 category_filter_signal observation으로 남긴다", async () => {

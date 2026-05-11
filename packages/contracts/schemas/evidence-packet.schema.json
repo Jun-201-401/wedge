@@ -283,6 +283,7 @@
             "journey_action_raw",
             "product_card",
             "goal_action_candidate",
+            "goal_action_result",
             "category_filter_signal",
             "depth_from_discovery",
             "text_block_metrics",

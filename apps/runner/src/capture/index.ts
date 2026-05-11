@@ -6,6 +6,7 @@ import type {
   Checkpoint,
   DepthFromDiscoveryObservation,
   GoalActionCandidateObservation,
+  GoalActionResultObservation,
   InteractiveComponentsObservation,
   JourneyActionRawObservation,
   ProductCardObservation,
@@ -195,6 +196,15 @@ function createCheckpointObservations({
     pageSnapshot,
     actionResult
   });
+  const goalActionResultObservation = createGoalActionResultObservation({
+    step,
+    stepOrder,
+    beforeSnapshot,
+    pageSnapshot,
+    actionResult,
+    settleResult,
+    matchedProductCard: journeyActionObservation?.matched_product_card ?? null
+  });
   const depthFromDiscoveryObservation = createDepthFromDiscoveryObservation({
     step,
     stepOrder,
@@ -209,6 +219,7 @@ function createCheckpointObservations({
   return [
     ...(journeyActionObservation ? [{ ...journeyActionObservation }] : []),
     ...(categoryFilterObservation ? [{ ...categoryFilterObservation }] : []),
+    ...(goalActionResultObservation ? [{ ...goalActionResultObservation }] : []),
     ...(depthFromDiscoveryObservation ? [{ ...depthFromDiscoveryObservation }] : []),
     ...createInteractiveComponentsObservations(step, pageSnapshot).map((observation) => ({ ...observation })),
     ...createFormFieldObservations(pageSnapshot.fields),
@@ -440,6 +451,68 @@ function createDepthFromDiscoveryObservation({
     current_url: pageSnapshot.finalUrl,
     current_product_card_count: pageSnapshot.productCards.length,
     product_card_count_at_discovery: journeyDepthContext.productCardCountAtDiscovery ?? pageSnapshot.productCards.length
+  };
+}
+
+function createGoalActionResultObservation({
+  step,
+  stepOrder,
+  beforeSnapshot,
+  pageSnapshot,
+  actionResult,
+  settleResult,
+  matchedProductCard
+}: {
+  step: ScenarioStep;
+  stepOrder: number;
+  beforeSnapshot?: BrowserPageSnapshot;
+  pageSnapshot: BrowserPageSnapshot;
+  actionResult?: BrowserActionResult;
+  settleResult: BrowserSettleResult;
+  matchedProductCard: JourneyActionRawObservation["matched_product_card"];
+}): GoalActionResultObservation | null {
+  if (step.action.type === "checkpoint" || !actionResult) {
+    return null;
+  }
+
+  const baselineSnapshot = beforeSnapshot ?? pageSnapshot;
+  const actionDetails = actionResult.details ?? {};
+  const clickedText = readOptionalString(actionDetails, "clickedText") ?? clickedComponent(pageSnapshot)?.text ?? null;
+  const clickedSelector = readOptionalString(actionDetails, "clickedSelector") ?? clickedComponent(pageSnapshot)?.selector ?? null;
+  const result = createGoalActionResultSignal({
+    step,
+    beforeSnapshot,
+    pageSnapshot,
+    actionResult,
+    settleResult
+  });
+  const successEvidence = collectGoalActionSuccessEvidence(result);
+  const goalActionLike = result.add_to_cart_like_button || isAddToCartLike(step.description);
+  const strongResultEvidence = (result.cart_count_delta ?? 0) > 0 ||
+    result.toast_present ||
+    (step.stage === "COMMIT" && (result.network_success || result.url_changed));
+
+  if (!goalActionLike && !strongResultEvidence) {
+    return null;
+  }
+
+  return {
+    observation_id: `${step.step_id}.obs_goal_action_result`,
+    type: "goal_action_result",
+    stage: step.stage,
+    source: ["scenario_log", "dom", "browser", "network"],
+    confidence: goalActionLike && successEvidence.length > 0 ? 0.84 : 0.7,
+    step_order: stepOrder,
+    step_key: step.step_id,
+    action_type: step.action.type,
+    clicked_text: clickedText,
+    clicked_selector: clickedSelector,
+    url_before: baselineSnapshot.finalUrl,
+    url_after: pageSnapshot.finalUrl,
+    goal_action_like: goalActionLike,
+    success_evidence: successEvidence,
+    result,
+    matched_product_card: matchedProductCard
   };
 }
 
@@ -847,6 +920,18 @@ function createGoalActionResultSignal({
     network_success: hasSuccessfulNetworkSignal(pageSnapshot, settleResult),
     settle_status: settleResult.status
   };
+}
+
+function collectGoalActionSuccessEvidence(
+  result: DepthFromDiscoveryObservation["goal_action_result"]
+): GoalActionResultObservation["success_evidence"] {
+  return [
+    ...((result.cart_count_delta ?? 0) > 0 ? ["cart_count_increased" as const] : []),
+    ...(result.toast_present ? ["toast_present" as const] : []),
+    ...(result.network_success ? ["network_success" as const] : []),
+    ...(result.url_changed ? ["url_changed" as const] : []),
+    ...(result.dom_changed ? ["dom_changed" as const] : [])
+  ];
 }
 
 function inferJourneyIntentCandidate({
