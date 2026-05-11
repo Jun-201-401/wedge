@@ -74,6 +74,11 @@ export async function executeScenario({
 
   for (const [index, step] of plan.steps.entries()) {
     const stepOrder = index + 1;
+    if (await shouldStopForControlSignal(callbackClient, runId, stepOrder, step.step_id)) {
+      stopped = true;
+      break;
+    }
+
     let stepResult;
     try {
       stepResult = await executeScenarioStep({
@@ -165,4 +170,48 @@ export async function executeScenario({
     },
     delivery: createDeliverySummary(mergeDeliveryIssues(deliveryIssues))
   };
+}
+
+async function shouldStopForControlSignal(
+  callbackClient: CallbackClient,
+  runId: string,
+  nextStepOrder: number,
+  nextStepKey: string
+): Promise<boolean> {
+  if (!callbackClient.readRunControlState) {
+    return false;
+  }
+
+  try {
+    const controlState = await callbackClient.readRunControlState(runId);
+    const stopRequested = controlState.stopRequested === true || controlState.status === "STOP_REQUESTED";
+    if (stopRequested) {
+      logOperationalEvent(
+        "scenario-executor",
+        "stop_requested",
+        {
+          runId,
+          nextStepOrder,
+          nextStepKey,
+          status: controlState.status,
+          resultCompleteness: controlState.resultCompleteness ?? null
+        },
+        "warn"
+      );
+    }
+    return stopRequested;
+  } catch (error) {
+    logOperationalEvent(
+      "scenario-executor",
+      "control_state_read_failed",
+      {
+        runId,
+        nextStepOrder,
+        nextStepKey,
+        errorMessage: errorMessage(error)
+      },
+      "warn"
+    );
+    return false;
+  }
 }

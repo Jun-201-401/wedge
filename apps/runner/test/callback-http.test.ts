@@ -137,6 +137,74 @@ test("[콜백:http] runner callback을 HTTP로 보내고 worker/event/signature 
   }
 });
 
+test("[콜백:http] control-state 조회로 STOP_REQUESTED 신호를 읽는다", async () => {
+  const received: Array<{ method: string; url: string; headers: Record<string, string | string[] | undefined> }> = [];
+  const server = createServer((request, response) => {
+    received.push({
+      method: request.method ?? "",
+      url: request.url ?? "",
+      headers: request.headers
+    });
+
+    response.writeHead(200, {
+      "content-type": "application/json"
+    });
+    response.end(JSON.stringify({
+      data: {
+        runId: "run-1",
+        status: "STOP_REQUESTED",
+        stopRequested: true,
+        resultCompleteness: "PARTIAL"
+      }
+    }));
+  });
+
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      server.off("error", reject);
+      resolve();
+    });
+  });
+
+  try {
+    const address = server.address();
+    assert.ok(address && typeof address !== "string");
+
+    const callbackClient = createCallbackClient(
+      createRunnerTestConfig({
+        callbackMode: "http",
+        callbackBaseUrl: `http://127.0.0.1:${address.port}`,
+        callbackAuthToken: "internal-token"
+      })
+    );
+
+    const controlState = await callbackClient.readRunControlState?.("run-1");
+
+    assert.deepEqual(controlState, {
+      runId: "run-1",
+      status: "STOP_REQUESTED",
+      stopRequested: true,
+      resultCompleteness: "PARTIAL"
+    });
+    assert.equal(received[0]?.method, "GET");
+    assert.equal(received[0]?.url, "/internal/runner/runs/run-1/control-state");
+    assert.equal(received[0]?.headers["x-worker-id"], "runner-test-worker");
+    assert.equal(received[0]?.headers.authorization, "Bearer internal-token");
+  } finally {
+    await new Promise<void>((resolve, reject) => {
+      server.close((error) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+
+        resolve();
+      });
+    });
+  }
+});
+
 test("createCallbackClient sends discovery callbacks to discovery endpoint", async () => {
   const received: Array<{ url: string; headers: Record<string, string | string[] | undefined>; body: string }> = [];
   const server = createServer((request, response) => {

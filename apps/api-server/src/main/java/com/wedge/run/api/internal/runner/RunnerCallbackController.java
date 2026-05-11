@@ -8,6 +8,7 @@ import com.wedge.run.api.internal.runner.dto.RunnerAgentEventsRequest;
 import com.wedge.run.api.internal.runner.dto.RunnerAgentTraceRequest;
 import com.wedge.run.api.internal.runner.dto.RunnerArtifactsRequest;
 import com.wedge.run.api.internal.runner.dto.RunnerCheckpointsRequest;
+import com.wedge.run.api.internal.runner.dto.RunnerControlStateResponse;
 import com.wedge.run.api.internal.runner.dto.RunnerFailedRequest;
 import com.wedge.run.api.internal.runner.dto.RunnerFinishedRequest;
 import com.wedge.run.api.internal.runner.dto.RunnerFinishedSummary;
@@ -33,6 +34,7 @@ import java.util.Map;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -110,6 +112,14 @@ public class RunnerCallbackController {
             @RequestHeader("X-Signature") String signature
     ) {
         return ApiResponse.ok(runnerCallbackService.handleFailed(runId, toFailedCommand(request), callbackContext(workerId, eventId, signature)));
+    }
+
+    @GetMapping("/control-state")
+    public ResponseEntity<ApiResponse<RunnerControlStateResponse>> getRunnerControlState(
+            @PathVariable UUID runId,
+            @RequestHeader("X-Worker-Id") String workerId
+    ) {
+        return ApiResponse.ok(runnerCallbackService.getControlState(runId));
     }
 
     @PostMapping("/agent-events")

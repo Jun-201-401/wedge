@@ -251,7 +251,11 @@ async function createCallbackCaptureServer(): Promise<{
       response.writeHead(200, {
         "content-type": "application/json"
       });
-      response.end(JSON.stringify({ ok: true }));
+      response.end(JSON.stringify(
+        request.url?.endsWith("/control-state")
+          ? { data: { runId: "dd5f9c57-84e2-4ea6-b0c3-27b7f8a5b3e2", status: "RUNNING", stopRequested: false } }
+          : { ok: true }
+      ));
     });
   });
 

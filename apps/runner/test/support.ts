@@ -19,6 +19,7 @@ import type {
   RunExecuteMessage,
   RunnerAcceptedPayload,
   RunnerCheckpointsRequest,
+  RunnerControlStatePayload,
   RunnerFailedPayload,
   RunnerFinishedPayload,
   ScenarioPlan,
@@ -264,4 +265,5 @@ export interface StubCallbackClient {
   sendFailed: (runId: string, payload: RunnerFailedPayload) => Promise<void>;
   sendAgentEvents: (runId: string, payload: AgentEventBatch) => Promise<void>;
   sendAgentTrace: (runId: string, payload: AgentTraceCallbackPayload) => Promise<void>;
+  readRunControlState?: (runId: string) => Promise<RunnerControlStatePayload>;
 }

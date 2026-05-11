@@ -1271,3 +1271,18 @@ export interface RunnerFailedPayload {
   };
   failureArtifactRefs?: string[];
 }
+
+export interface RunnerControlStatePayload {
+  runId: string;
+  status:
+    | "CREATED"
+    | "QUEUED"
+    | "STARTING"
+    | "RUNNING"
+    | "STOP_REQUESTED"
+    | "STOPPED"
+    | "COMPLETED"
+    | "FAILED";
+  stopRequested: boolean;
+  resultCompleteness?: "NONE" | "PARTIAL" | "FINAL";
+}

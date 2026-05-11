@@ -125,6 +125,74 @@ test("[Worker capture policy] run artifactPolicy.captureAxTree를 ScenarioPlan c
   assert.deepEqual(capturedOptions, [{ captureAxTree: true }]);
 });
 
+test("[Worker cancellation] STOP_REQUESTED control state면 다음 step 실행 전 stopped로 종료한다", async () => {
+  const message = await loadExampleMessage();
+  message.payload.scenarioPlan!.steps = [
+    {
+      step_id: "step_001_should_not_execute",
+      stage: "CTA",
+      description: "should not execute",
+      action: {
+        type: "click",
+        target: {
+          selector: "#submit"
+        }
+      },
+      settle_strategy: {
+        type: "none",
+        timeout_ms: 0
+      },
+      checkpoint: false
+    }
+  ];
+
+  let executed = false;
+  let finishedSummary: unknown = null;
+
+  const worker = registerWorker({
+    config: createRunnerTestConfig(),
+    browserFactory: {
+      kind: "simulated-playwright",
+      createSession: async () =>
+        createSimulatedSession(message.payload.scenarioPlan!, {
+          execute: async () => {
+            executed = true;
+            throw new Error("step should not execute after stop request");
+          }
+        })
+    },
+    callbackClient: createStubCallbackClient({
+      readRunControlState: async () => ({
+        runId: message.payload.runId,
+        status: "STOP_REQUESTED",
+        stopRequested: true,
+        resultCompleteness: "PARTIAL"
+      }),
+      sendFinished: async (_runId, payload) => {
+        finishedSummary = payload.summary;
+      }
+    }),
+    capturePipeline: {
+      collectCheckpoint: async () => {
+        throw new Error("checkpoint collection should not run after stop request");
+      }
+    },
+    artifactStore: {
+      persistArtifacts: async () => []
+    }
+  });
+
+  const result = await worker.handleMessage(message);
+
+  assert.equal(executed, false);
+  assert.deepEqual(result.summary, {
+    completedStepCount: 0,
+    failedStepCount: 0,
+    stopped: true
+  });
+  assert.deepEqual(finishedSummary, result.summary);
+});
+
 test("[Worker 관측성] step timeout 실패는 timeout code와 runId/stepKey 로그를 남긴다", async () => {
   const message = await loadExampleMessage();
   message.payload.scenarioPlan!.steps = [

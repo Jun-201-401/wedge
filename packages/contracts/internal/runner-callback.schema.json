@@ -268,6 +268,44 @@
         "resultCompleteness"
       ]
     },
+    "ControlState": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "runId": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "CREATED",
+            "QUEUED",
+            "STARTING",
+            "RUNNING",
+            "STOP_REQUESTED",
+            "STOPPED",
+            "COMPLETED",
+            "FAILED"
+          ]
+        },
+        "stopRequested": {
+          "type": "boolean"
+        },
+        "resultCompleteness": {
+          "type": "string",
+          "enum": [
+            "NONE",
+            "PARTIAL",
+            "FINAL"
+          ]
+        }
+      },
+      "required": [
+        "runId",
+        "status",
+        "stopRequested"
+      ]
+    },
     "Checkpoint": {
       "type": "object",
       "required": [

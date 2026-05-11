@@ -84,6 +84,7 @@ export type {
   RunExecuteMessage,
   RunnerAcceptedPayload,
   RunnerCheckpointsRequest,
+  RunnerControlStatePayload,
   RunnerFailedPayload,
   RunnerFinishedPayload,
   ScenarioAuthoringCandidate,

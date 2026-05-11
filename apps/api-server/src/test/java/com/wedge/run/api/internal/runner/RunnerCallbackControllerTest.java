@@ -7,6 +7,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -16,6 +17,7 @@ import com.wedge.common.error.GlobalExceptionHandler;
 import com.wedge.common.web.RequestIdFilter;
 import com.wedge.evidence.domain.ArtifactType;
 import com.wedge.run.api.internal.runner.dto.RunnerArtifactType;
+import com.wedge.run.api.internal.runner.dto.RunnerControlStateResponse;
 import com.wedge.run.application.RunnerCallbackAckResponse;
 import com.wedge.run.application.RunnerCallbackService;
 import com.wedge.run.application.command.RunnerAcceptedCommand;
@@ -217,6 +219,25 @@ class RunnerCallbackControllerTest {
         assertThat(commandCaptor.getValue().completedStepCount()).isEqualTo(3);
         assertThat(commandCaptor.getValue().failedStepCount()).isEqualTo(1);
         assertThat(commandCaptor.getValue().stopped()).isFalse();
+    }
+
+    @Test
+    void controlStateReturnsStopRequestedForRunnerPolling() throws Exception {
+        UUID runId = UUID.randomUUID();
+        when(runnerCallbackService.getControlState(runId))
+                .thenReturn(new RunnerControlStateResponse(runId, RunStatus.STOP_REQUESTED, true, ResultCompleteness.PARTIAL));
+
+        mockMvc.perform(get("/internal/runner/runs/{runId}/control-state", runId)
+                        .header("X-Worker-Id", "runner_001")
+                        .header("X-Request-Id", "req_runner_control"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.runId").value(runId.toString()))
+                .andExpect(jsonPath("$.data.status").value("STOP_REQUESTED"))
+                .andExpect(jsonPath("$.data.stopRequested").value(true))
+                .andExpect(jsonPath("$.data.resultCompleteness").value("PARTIAL"))
+                .andExpect(jsonPath("$.meta.requestId").value("req_runner_control"));
+
+        verify(runnerCallbackService).getControlState(runId);
     }
 
     @Test

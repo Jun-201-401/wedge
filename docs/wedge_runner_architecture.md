@@ -399,12 +399,12 @@ signal을 남긴다. 단, 전체 layout tree/paint order 수준의 production la
 - step 실행 실패 후에도 session snapshot/capture가 가능하면 failure checkpoint를 남긴다.
 - failure checkpoint는 일반 checkpoint와 같은 artifact 저장/콜백 경로를 사용하며, failed callback에는 저장에 성공한 `failureArtifactRefs`를 포함한다.
 - browser/session이 이미 깨져 failure evidence capture가 실패하면 원래 실패를 덮지 않고 `failure-capture` delivery issue로 degrade 처리한다.
+- HTTP callback mode에서는 step 사이에 `/internal/runner/runs/{runId}/control-state`를 조회해 `STOP_REQUESTED`를 소비하고, 다음 step 실행 전 stopped summary로 정상 종료한다.
 
 추후 정리할 항목:
 - callback partial failure policy
 - per-step timeout policy
 - browser crash recovery
-- run cancellation / stop signal consume
 
 # 5. Agent 구현 규칙
 
