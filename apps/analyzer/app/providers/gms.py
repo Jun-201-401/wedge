@@ -52,15 +52,33 @@ class GMSClient:
         self._config = config or GMSConfig.from_env()
 
     def generate_text(self, *, prompt: str) -> str:
+        body = {
+            "model": self._config.model,
+            "input": prompt,
+        }
+        return self._generate(body)
+
+    def generate_with_image(self, *, prompt: str, image_url: str) -> str:
+        body = {
+            "model": self._config.model,
+            "input": [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "input_text", "text": prompt},
+                        {"type": "input_image", "image_url": image_url},
+                    ],
+                }
+            ],
+        }
+        return self._generate(body)
+
+    def _generate(self, body: dict[str, Any]) -> str:
         if not self._config.enabled:
             raise GMSClientError("GMS is disabled")
         if not self._config.api_key:
             raise GMSClientError("ANALYZER_GMS_API_KEY is not configured")
 
-        body = {
-            "model": self._config.model,
-            "input": prompt,
-        }
         request_body = json.dumps(body, ensure_ascii=False).encode("utf-8")
         http_request = request.Request(
             self._config.endpoint,

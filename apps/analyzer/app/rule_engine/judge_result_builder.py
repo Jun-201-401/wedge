@@ -5,6 +5,8 @@ from typing import Any
 
 from app.contracts.stages import DECISION_STAGE_DISPLAY_NAMES, DECISION_STAGES, DecisionStage
 from app.providers import SemanticProviderPort
+from app.providers.label_role import LabelRoleProviderPort
+from app.normalization.label_role_resolver import LabelRoleResolver
 from app.normalization import SemanticLabelResolver
 from app.rule_engine.evaluator import RuleEngine
 from app.rule_engine.models import RuleHit
@@ -21,8 +23,11 @@ def analyze_evidence_packet(
     packet: dict[str, Any],
     registry: dict[str, Any] | None = None,
     semantic_provider: SemanticProviderPort | None = None,
+    label_role_provider: LabelRoleProviderPort | None = None,
 ) -> dict[str, Any]:
     registry = registry or load_default_registry()
+    if label_role_provider is not None:
+        packet = LabelRoleResolver(label_role_provider).enrich_packet(packet)
     contexts = StageContextBuilder().build(packet)
     if semantic_provider is not None:
         contexts = SemanticLabelResolver(semantic_provider).enrich(contexts)

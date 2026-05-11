@@ -61,6 +61,26 @@
       "source_refs": ["docs/05_judge_scoring_validation.md#10-friction-form-001-상세"]
     },
     {
+      "criterion_id": "COPY-FLOW-QUALITY-001",
+      "axis": "Clarity",
+      "applicableStages": ["FIRST_VIEW", "VALUE", "CTA", "INPUT", "COMMIT"],
+      "evidence_level": "Standard",
+      "definition": "Visible labels should match the UI element role, function, or surrounding context.",
+      "required_observations": ["label_role_alignment", "screenshot"],
+      "measurement_sources": ["screenshot", "dom", "layout", "ax"],
+      "signal_rule": "A GMS label-role alignment result marks a candidate as status=mismatch with sufficient confidence.",
+      "severity_rules": [
+        {"severity": 0, "condition": "label_role_alignment is aligned or unavailable"},
+        {"severity": 1, "condition": "GMS reports a low-impact label-role mismatch"},
+        {"severity": 2, "condition": "GMS reports a mismatch on a primary, clicked, or high-leverage element"},
+        {"severity": 3, "condition": "GMS reports a high-leverage mismatch on a commit-stage action"}
+      ],
+      "confidence_rule": "Use sanitized GMS label-role confidence only; deterministic observation type or direct label_issue_type fields do not emit this rule.",
+      "fix_leverage_default": 1.0,
+      "output_template": "A visible label does not match the element role or expected next action.",
+      "source_refs": ["docs/12_analyzer_rule_catalog.md#copy-flow-quality-001"]
+    },
+    {
       "criterion_id": "RELIABILITY-TECH-001",
       "axis": "Reliability",
       "applicableStages": ["CTA", "INPUT", "COMMIT"],

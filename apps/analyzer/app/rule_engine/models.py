@@ -20,6 +20,7 @@ class RuleHit:
     evidence_refs: list[str]
     observations: list[str] = field(default_factory=list)
     signals: list[str] = field(default_factory=list)
+    fix_leverage: float = 1.0
     summary: str = ""
     impact_hypothesis: str = ""
     recommendations: list[str] = field(default_factory=list)
@@ -39,6 +40,7 @@ class RuleHit:
             "evidence_refs": list(self.evidence_refs),
             "observations": list(self.observations),
             "signals": list(self.signals),
+            "fix_leverage": self.fix_leverage,
             "summary": self.summary,
             "impact_hypothesis": self.impact_hypothesis,
             "recommendations": list(self.recommendations),
