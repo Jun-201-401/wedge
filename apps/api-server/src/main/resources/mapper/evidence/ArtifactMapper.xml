@@ -83,5 +83,6 @@
             #{id}, #{runId}, #{stepId}, #{artifactType}, #{s3Bucket}, #{s3Key}, #{publicUrl}, #{mimeType},
             #{width}, #{height}, #{sizeBytes}, #{sha256}, #{capturedAt}
         )
+        ON CONFLICT (id) DO NOTHING
     </insert>
 </mapper>

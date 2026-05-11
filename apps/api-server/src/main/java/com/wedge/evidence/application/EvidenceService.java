@@ -193,7 +193,7 @@ public class EvidenceService {
         Artifact artifact = artifactMapper.findByRunIdAndId(runId, artifactId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.RUN_NOT_FOUND, "Artifact was not found."));
         Resource resource = artifactContentStore.load(artifact);
-        return new ArtifactContent(resource, artifact.getMimeType());
+        return new ArtifactContent(resource, artifact.getMimeType(), artifactFilename(artifact));
     }
 
     @Transactional(readOnly = true)
@@ -302,6 +302,15 @@ public class EvidenceService {
         }
     }
 
-    public record ArtifactContent(Resource resource, String mimeType) {
+    private String artifactFilename(Artifact artifact) {
+        String key = artifact.getS3Key();
+        if (key == null || key.isBlank()) {
+            return artifact.getId().toString();
+        }
+        int separatorIndex = key.lastIndexOf('/');
+        return separatorIndex >= 0 ? key.substring(separatorIndex + 1) : key;
+    }
+
+    public record ArtifactContent(Resource resource, String mimeType, String filename) {
     }
 }

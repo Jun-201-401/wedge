@@ -1,10 +1,12 @@
 package com.wedge.run.api;
 
+import static org.hamcrest.Matchers.containsString;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -38,7 +40,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import org.springframework.core.io.ByteArrayResource;
 import org.springframework.http.MediaType;
+import org.springframework.http.converter.ResourceHttpMessageConverter;
 import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.test.web.servlet.MockMvc;
@@ -57,7 +61,7 @@ class RunControllerTest {
     private final ProjectAccessService projectAccessService = org.mockito.Mockito.mock(ProjectAccessService.class);
     private final MockMvc mockMvc = MockMvcBuilders.standaloneSetup(new RunController(runService, evidenceService, projectAccessService))
             .setControllerAdvice(new GlobalExceptionHandler())
-            .setMessageConverters(JSON_CONVERTER)
+            .setMessageConverters(JSON_CONVERTER, new ResourceHttpMessageConverter())
             .addFilters(new RequestIdFilter())
             .build();
 
@@ -334,6 +338,25 @@ class RunControllerTest {
                 .andExpect(jsonPath("$.data.urls[0].expiresAt").value("2026-05-08T08:00:00Z"))
                 .andExpect(jsonPath("$.meta.requestId").value("req_run_artifact_presigned_urls"));
         verify(projectAccessService).ensureProjectAccessible(projectId, USER_ID);
+    }
+
+    @Test
+    void artifactContentReturnsMarkdownReportAsAttachment() throws Exception {
+        UUID runId = UUID.randomUUID();
+        UUID artifactId = UUID.randomUUID();
+        when(runService.getRun(runId)).thenReturn(sampleRun(runId));
+        when(evidenceService.getRunArtifactContent(runId, artifactId)).thenReturn(new EvidenceService.ArtifactContent(
+                new ByteArrayResource("# 리포트\n".getBytes(java.nio.charset.StandardCharsets.UTF_8)),
+                "text/markdown; charset=utf-8",
+                "wedge-report.md"
+        ));
+
+        mockMvc.perform(get("/api/runs/{runId}/artifacts/{artifactId}/content", runId, artifactId)
+                        .principal(authentication()))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Content-Type", containsString("text/markdown")))
+                .andExpect(header().string("Content-Disposition", containsString("attachment")))
+                .andExpect(header().string("Content-Disposition", containsString("wedge-report.md")));
     }
 
     @Test

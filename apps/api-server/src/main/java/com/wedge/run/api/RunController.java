@@ -30,6 +30,7 @@ import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.core.io.Resource;
 import org.springframework.http.MediaType;
+import org.springframework.http.ContentDisposition;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -198,9 +199,23 @@ public class RunController {
     ) {
         ensureRunAccessible(runId, authentication);
         EvidenceService.ArtifactContent artifactContent = evidenceService.getRunArtifactContent(runId, artifactId);
-        return ResponseEntity.ok()
-                .contentType(MediaType.parseMediaType(artifactContent.mimeType()))
-                .body(artifactContent.resource());
+        ResponseEntity.BodyBuilder response = ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType(artifactContent.mimeType()));
+        if (isDownloadAttachmentMime(artifactContent.mimeType())) {
+            response.header("Content-Disposition", ContentDisposition.attachment()
+                    .filename(artifactContent.filename())
+                    .build()
+                    .toString());
+        }
+        return response.body(artifactContent.resource());
+    }
+
+    private boolean isDownloadAttachmentMime(String mimeType) {
+        if (mimeType == null) {
+            return false;
+        }
+        String normalized = mimeType.toLowerCase(java.util.Locale.ROOT);
+        return normalized.equals("application/pdf") || normalized.startsWith("text/markdown");
     }
 
     @GetMapping("/{runId}/signals")
