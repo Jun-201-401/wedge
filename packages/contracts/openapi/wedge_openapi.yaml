@@ -1147,6 +1147,15 @@ paths:
               schema:
                 type: string
                 format: binary
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+              description: Legacy PDF report export content is returned as an attachment with Content-Disposition.
+            text/markdown:
+              schema:
+                type: string
+              description: Markdown report export content is returned as a UTF-8 attachment with Content-Disposition.
             text/html:
               schema:
                 type: string
@@ -1421,18 +1430,13 @@ paths:
     post:
       tags:
       - Reports
-      operationId: createReport
-      summary: 리포트 내보내기 작업 생성
-      description: PDF/공유 등 export 작업 생성을 위한 계약 API다. 현재 MVP 핵심 화면 테스트에서는 필수는 아니다.
+      operationId: createRunReportExport
+      summary: 리포트 Markdown export 생성 또는 재사용
+      description: 완료된 리포트를 즉시 Markdown artifact로 생성하거나 기존 Markdown artifact를 재사용한다. MVP에서는 format=MARKDOWN만 지원하며, 생성된 downloadUrl은 같은 origin의 artifact content URL이다.
       security:
       - HumanBearer: []
       parameters:
       - $ref: '#/components/parameters/RunId'
-      - name: Idempotency-Key
-        in: header
-        required: false
-        schema:
-          type: string
       requestBody:
         required: true
         content:
@@ -1440,12 +1444,12 @@ paths:
             schema:
               $ref: '#/components/schemas/ReportCreateRequest'
       responses:
-        '202':
-          description: Report export accepted
+        '200':
+          description: Report Markdown export ready
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/AckResponse'
+                $ref: '#/components/schemas/SingleReportExportResponse'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -4613,6 +4617,44 @@ components:
       required:
       - artifact
       - source
+    ReportExport:
+      type: object
+      properties:
+        reportId:
+          type: string
+          format: uuid
+        runId:
+          type: string
+          format: uuid
+        analysisJobId:
+          type: string
+          format: uuid
+          nullable: true
+        format:
+          type: string
+          enum:
+          - MARKDOWN
+        status:
+          type: string
+          enum:
+          - READY
+        artifactId:
+          type: string
+          format: uuid
+        downloadUrl:
+          type: string
+          description: Same-origin artifact content URL.
+        createdAt:
+          type: string
+          format: date-time
+          nullable: true
+      required:
+      - reportId
+      - runId
+      - format
+      - status
+      - artifactId
+      - downloadUrl
     ReportCreateRequest:
       type: object
       properties:
@@ -5311,6 +5353,16 @@ components:
       properties:
         data:
           $ref: '#/components/schemas/ReportDetail'
+        meta:
+          $ref: '#/components/schemas/Meta'
+      required:
+      - data
+      - meta
+    SingleReportExportResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/ReportExport'
         meta:
           $ref: '#/components/schemas/Meta'
       required:
