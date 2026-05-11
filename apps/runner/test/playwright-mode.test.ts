@@ -94,6 +94,28 @@ test("[Playwright 실제 실행] goto/fill/select를 수행하고 실제 screens
     assert.equal(snapshot.fields.Email, "test@example.com");
     assert.equal(snapshot.selectedOptions.Plan, "pro");
     assert.deepEqual(snapshot.visitedUrls, [formUrl]);
+
+    const emailCandidate = snapshot.interactiveComponents.find((component) => component.selector === "#email");
+    const planCandidate = snapshot.interactiveComponents.find((component) => component.selector === "#plan");
+    const messageCandidate = snapshot.interactiveComponents.find((component) => component.selector === "#message");
+
+    assert.equal(emailCandidate?.is_form_control, true);
+    assert.equal(emailCandidate?.role, "textbox");
+    assert.equal(emailCandidate?.input_type, "email");
+    assert.equal(emailCandidate?.label_text, "Email");
+    assert.equal(emailCandidate?.placeholder, "Work email");
+    assert.equal(emailCandidate?.name, "email");
+    assert.equal(emailCandidate?.required, true);
+    assert.equal(emailCandidate?.disabled, false);
+    assert.equal(emailCandidate?.clickable, false);
+    assert.equal(planCandidate?.is_form_control, true);
+    assert.equal(planCandidate?.role, "combobox");
+    assert.equal(planCandidate?.input_type, "select");
+    assert.equal(planCandidate?.label_text, "Plan");
+    assert.equal(messageCandidate?.is_form_control, true);
+    assert.equal(messageCandidate?.input_type, "textarea");
+    assert.equal(messageCandidate?.placeholder, "Tell us about your team");
+
     assert.equal(capturedArtifacts.screenshot?.mimeType, "image/png");
     assert.equal(capturedArtifacts.screenshot?.fileExtension, "png");
     assert.ok((capturedArtifacts.screenshot?.contentBase64.length ?? 0) > 0);
@@ -1888,7 +1910,7 @@ async function createFixtureSite(root: string): Promise<{ formUrl: string; doneU
       <h1>Runner Playwright Form</h1>
       <form>
         <label for="email">Email</label>
-        <input id="email" name="email" type="email" />
+        <input id="email" name="email" type="email" placeholder="Work email" required />
 
         <label for="plan">Plan</label>
         <select id="plan" name="plan">
@@ -1896,6 +1918,9 @@ async function createFixtureSite(root: string): Promise<{ formUrl: string; doneU
           <option value="starter">Starter</option>
           <option value="pro">Pro</option>
         </select>
+
+        <label for="message">Message</label>
+        <textarea id="message" name="message" placeholder="Tell us about your team"></textarea>
       </form>
 
       <a href="./done.html">Continue</a>

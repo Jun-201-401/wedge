@@ -2327,25 +2327,114 @@ async function extractInteractiveComponentsFromFrame(
         if (tag === "button") {
           return "button";
         }
+        if (tag === "select") {
+          return "combobox";
+        }
+        if (tag === "textarea") {
+          return "textbox";
+        }
         if (tag === "input") {
           const type = (element.getAttribute("type") ?? "").toLowerCase();
-          return ["button", "submit", "reset"].includes(type) ? "button" : null;
+          if (["button", "submit", "reset"].includes(type)) {
+            return "button";
+          }
+          if (type === "search") {
+            return "searchbox";
+          }
+          if (type === "checkbox") {
+            return "checkbox";
+          }
+          if (type === "radio") {
+            return "radio";
+          }
+          return "textbox";
         }
         return null;
       }
 
       function textFor(element: Element): string {
-        const inputValue = element instanceof HTMLInputElement ? element.value : "";
+        const inputValue = element instanceof HTMLInputElement && ["button", "submit", "reset"].includes(element.type.toLowerCase())
+          ? element.value
+          : "";
         return [
           element.textContent,
           element.getAttribute("aria-label"),
           element.getAttribute("title"),
-          inputValue
+          labelTextFor(element),
+          placeholderFor(element),
+          inputValue,
+          nameFor(element)
         ]
           .find((value) => typeof value === "string" && value.trim().length > 0)
           ?.trim()
           .replaceAll(/\\s+/g, " ")
           .slice(0, 120) ?? "";
+      }
+
+      function labelTextFor(element: Element): string | null {
+        const explicitAria = element.getAttribute("aria-label");
+        if (explicitAria?.trim()) {
+          return explicitAria.trim();
+        }
+
+        const id = element.getAttribute("id");
+        if (id) {
+          const explicitLabel = document.querySelector(`label[for="${escapeSelector(id)}"]`);
+          const explicitLabelText = explicitLabel?.textContent?.trim();
+          if (explicitLabelText) {
+            return explicitLabelText.replaceAll(/\\s+/g, " ");
+          }
+        }
+
+        const wrappingLabelText = element.closest("label")?.textContent?.trim();
+        if (wrappingLabelText) {
+          return wrappingLabelText.replaceAll(/\\s+/g, " ");
+        }
+
+        return null;
+      }
+
+      function placeholderFor(element: Element): string | null {
+        return element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement
+          ? element.getAttribute("placeholder")
+          : null;
+      }
+
+      function nameFor(element: Element): string | null {
+        const name = element.getAttribute("name");
+        return name && name.trim().length > 0 ? name.trim() : null;
+      }
+
+      function inputTypeFor(element: Element, tag: string): string | null {
+        if (element instanceof HTMLInputElement) {
+          return element.type || "text";
+        }
+        if (tag === "select") {
+          return "select";
+        }
+        if (tag === "textarea") {
+          return "textarea";
+        }
+        return null;
+      }
+
+      function isFormControl(element: Element, tag: string): boolean {
+        if (element instanceof HTMLInputElement && ["button", "submit", "reset", "image"].includes(element.type.toLowerCase())) {
+          return false;
+        }
+        return tag === "input" || tag === "select" || tag === "textarea" || element.getAttribute("role") === "textbox" || element.getAttribute("role") === "searchbox";
+      }
+
+      function isDisabled(element: Element): boolean {
+        return (
+          element.hasAttribute("disabled") ||
+          element.getAttribute("aria-disabled") === "true" ||
+          Boolean((element as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement).disabled)
+        );
+      }
+
+      function isRequired(element: Element): boolean {
+        return element.hasAttribute("required") || element.getAttribute("aria-required") === "true";
       }
 
       function selectorFor(element: Element, tag: string): string | null {
@@ -2407,7 +2496,7 @@ async function extractInteractiveComponentsFromFrame(
         );
       }
 
-      const INTERACTIVE_SELECTOR = "a[href], button, input[type='button'], input[type='submit'], [role='button'], [role='link'], [onclick], [tabindex='0']";
+      const INTERACTIVE_SELECTOR = "a[href], button, input:not([type='hidden']), select, textarea, [role='button'], [role='link'], [role='textbox'], [role='searchbox'], [onclick], [tabindex='0']";
 
       function collectInteractiveElements(root: Document | ShadowRoot, shadowRoot: boolean): Array<{ element: Element; shadowRoot: boolean }> {
         const direct = Array.from(root.querySelectorAll(INTERACTIVE_SELECTOR)).map((element) => ({
@@ -2432,19 +2521,32 @@ async function extractInteractiveComponentsFromFrame(
           const text = textFor(element);
           const selector = selectorFor(element, tag);
           const href = hrefFor(element, tag);
+          const inputType = inputTypeFor(element, tag);
+          const labelText = labelTextFor(element);
+          const placeholder = placeholderFor(element);
+          const name = nameFor(element);
+          const formControl = isFormControl(element, tag);
+          const disabled = isDisabled(element);
           const clickable = isClickable(element, tag, role);
           const visible = rect.width > 0 && rect.height > 0 && rect.bottom >= 0 && rect.right >= 0 && rect.top <= viewportHeight && rect.left <= viewportWidth;
-          const isCtaCandidate = clickable && Boolean(text.match(CTA_TEXT_PATTERN) || role === "button" || tag === "button");
+          const isCtaCandidate = clickable && !formControl && !disabled && Boolean(text.match(CTA_TEXT_PATTERN) || role === "button" || tag === "button");
 
           return {
             text,
             selector,
             role,
             href,
+            input_type: inputType,
+            label_text: labelText,
+            placeholder,
+            name,
+            required: isRequired(element),
+            disabled,
+            is_form_control: formControl,
             frame_id: frameId,
             shadow_root: shadowRoot,
             tag,
-            clickable,
+            clickable: clickable && !formControl && !disabled,
             clicked_in_scenario: isClickedInScenario({ text, selector, role }),
             is_cta_candidate: isCtaCandidate,
             is_primary_like: false,
@@ -2456,10 +2558,10 @@ async function extractInteractiveComponentsFromFrame(
               unit: "css_px" as const
             },
             visible,
-            score: (isCtaCandidate ? 1000 : 0) + rect.width * rect.height + (text.match(CTA_TEXT_PATTERN) ? 500 : 0)
+            score: (isCtaCandidate ? 1000 : 0) + (formControl ? 100 : 0) + rect.width * rect.height + (text.match(CTA_TEXT_PATTERN) ? 500 : 0)
           };
         })
-        .filter((component) => component.visible && component.clickable && component.bounds.width > 0 && component.bounds.height > 0)
+        .filter((component) => component.visible && (component.clickable || component.is_form_control) && component.bounds.width > 0 && component.bounds.height > 0)
         .sort((left, right) => right.score - left.score)
         .slice(0, 20);
 
@@ -2468,6 +2570,13 @@ async function extractInteractiveComponentsFromFrame(
         selector: component.selector,
         role: component.role,
         href: component.href,
+        input_type: component.input_type,
+        label_text: component.label_text,
+        placeholder: component.placeholder,
+        name: component.name,
+        required: component.required,
+        disabled: component.disabled,
+        is_form_control: component.is_form_control,
         frame_id: component.frame_id,
         shadow_root: component.shadow_root,
         tag: component.tag,

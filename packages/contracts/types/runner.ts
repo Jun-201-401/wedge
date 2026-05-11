@@ -278,6 +278,13 @@ export interface AgentObservationCandidateSummary {
   role: string | null;
   tag: string;
   text: string;
+  inputType?: string | null;
+  labelText?: string | null;
+  placeholder?: string | null;
+  name?: string | null;
+  required?: boolean;
+  disabled?: boolean;
+  isFormControl?: boolean;
   clickable: boolean;
   isCtaCandidate: boolean;
   isPrimaryLike: boolean;
@@ -848,6 +855,13 @@ export interface InteractiveComponentObservationItem {
   selector: string | null;
   role: string | null;
   href?: string | null;
+  input_type?: string | null;
+  label_text?: string | null;
+  placeholder?: string | null;
+  name?: string | null;
+  required?: boolean;
+  disabled?: boolean;
+  is_form_control?: boolean;
   frame_id?: string | null;
   shadow_root?: boolean;
   tag: string;

@@ -95,6 +95,27 @@
         "text": {
           "type": "string"
         },
+        "inputType": {
+          "type": ["string", "null"]
+        },
+        "labelText": {
+          "type": ["string", "null"]
+        },
+        "placeholder": {
+          "type": ["string", "null"]
+        },
+        "name": {
+          "type": ["string", "null"]
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "disabled": {
+          "type": "boolean"
+        },
+        "isFormControl": {
+          "type": "boolean"
+        },
         "clickable": {
           "type": "boolean"
         },
