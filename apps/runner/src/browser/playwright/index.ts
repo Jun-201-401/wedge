@@ -1833,22 +1833,70 @@ async function safeScrollY(page: Page, fallbackValue: number): Promise<number> {
 async function safeBreadcrumb(page: Page, fallbackValue: string[]): Promise<string[]> {
   try {
     return await page.evaluate(() => {
+      function normalizeText(value: string | null | undefined): string {
+        return (value ?? "").trim().replaceAll(/\s+/g, " ");
+      }
+
+      function visibleText(element: Element): string {
+        const rect = element.getBoundingClientRect();
+        if (rect.width <= 0 || rect.height <= 0) {
+          return "";
+        }
+        return normalizeText(element.textContent);
+      }
+
+      function splitBreadcrumbText(value: string): string[] {
+        return normalizeText(value)
+          .split(/\s*(?:>|›|\/|→|»|⟩)\s*/)
+          .map((entry) => normalizeText(entry))
+          .filter((entry) => entry.length > 0)
+          .slice(0, 10);
+      }
+
+      const structuredItems = Array.from(document.querySelectorAll("[itemtype*='BreadcrumbList' i] [itemprop='itemListElement'], [typeof*='BreadcrumbList' i] [property='itemListElement']"))
+        .map((element) => visibleText(element))
+        .filter((text) => text.length > 0)
+        .slice(0, 10);
+      if (structuredItems.length > 0) {
+        return structuredItems;
+      }
+
       const selectors = [
         "[aria-label*='breadcrumb' i]",
-        "nav[aria-label]",
+        "[aria-label*='경로' i]",
+        "[aria-label*='탐색' i]",
         "nav.breadcrumb",
         ".breadcrumb",
-        "[class*='breadcrumb' i]"
+        "[class*='breadcrumb' i]",
+        "[data-testid*='breadcrumb' i]",
+        "[data-test*='breadcrumb' i]",
+        "ol.breadcrumb",
+        "ul.breadcrumb"
       ];
       const element = selectors
         .flatMap((selector) => Array.from(document.querySelectorAll(selector)))
-        .find((candidate) => (candidate.textContent ?? "").trim().length > 0);
-      const text = (element?.textContent ?? "").trim().replaceAll(/\s+/g, " ");
-      return text
-        .split(/\s*(?:>|›|\/|→)\s*/)
-        .map((entry) => entry.trim())
-        .filter((entry) => entry.length > 0)
-        .slice(0, 10);
+        .find((candidate) => visibleText(candidate).length > 0);
+
+      if (element) {
+        const listItems = Array.from(element.querySelectorAll("li, [role='listitem'], a, span"))
+          .map((candidate) => visibleText(candidate))
+          .filter((text) => text.length > 0 && !/^(>|›|\/|→|»|⟩)$/.test(text));
+        const uniqueItems = Array.from(new Set(listItems));
+        if (uniqueItems.length > 1) {
+          return uniqueItems.slice(0, 10);
+        }
+        return splitBreadcrumbText(visibleText(element));
+      }
+
+      const currentPage = document.querySelector("[aria-current='page'], [aria-current='step']");
+      if (currentPage) {
+        const container = currentPage.closest("nav, ol, ul, [class*='breadcrumb' i], [data-testid*='breadcrumb' i]");
+        if (container) {
+          return splitBreadcrumbText(visibleText(container));
+        }
+      }
+
+      return [];
     });
   } catch {
     return fallbackValue;
@@ -1858,18 +1906,42 @@ async function safeBreadcrumb(page: Page, fallbackValue: string[]): Promise<stri
 async function safeToastTexts(page: Page, fallbackValue: string[]): Promise<string[]> {
   try {
     return await page.evaluate(() => {
+      function normalizeText(value: string | null | undefined): string {
+        return (value ?? "").trim().replaceAll(/\s+/g, " ");
+      }
+
+      function isVisible(element: Element): boolean {
+        const rect = element.getBoundingClientRect();
+        const style = globalThis.getComputedStyle(element);
+        return rect.width > 0 &&
+          rect.height > 0 &&
+          style.visibility !== "hidden" &&
+          style.display !== "none" &&
+          Number(style.opacity || "1") > 0;
+      }
+
       const selectors = [
         "[role='alert']",
+        "[role='status']",
         "[aria-live]",
         ".toast",
         "[class*='toast' i]",
         "[class*='snackbar' i]",
-        "[class*='notification' i]"
+        "[class*='notification' i]",
+        "[class*='notice' i]",
+        "[class*='flash' i]",
+        "[class*='message' i]",
+        "[data-testid*='toast' i]",
+        "[data-testid*='snackbar' i]",
+        "[data-testid*='notification' i]",
+        "[data-test*='toast' i]",
+        "[data-test*='alert' i]"
       ];
       return Array.from(new Set(selectors
         .flatMap((selector) => Array.from(document.querySelectorAll(selector)))
-        .map((element) => (element.textContent ?? "").trim().replaceAll(/\s+/g, " "))
-        .filter((text) => text.length > 0)))
+        .filter((element) => isVisible(element))
+        .map((element) => normalizeText(element.textContent))
+        .filter((text) => text.length > 0 && text.length <= 240)))
         .slice(0, 10);
     });
   } catch {
@@ -1880,15 +1952,93 @@ async function safeToastTexts(page: Page, fallbackValue: string[]): Promise<stri
 async function safeCartCount(page: Page, fallbackValue: number | null): Promise<number | null> {
   try {
     return await page.evaluate(() => {
-      const candidates = Array.from(document.querySelectorAll("[class*='cart' i], [id*='cart' i], [aria-label*='cart' i], [class*='basket' i], [id*='basket' i], [aria-label*='basket' i]"))
-        .map((element) => [
-          element.textContent,
+      function normalizeText(value: string | null | undefined): string {
+        return (value ?? "").trim().replaceAll(/\s+/g, " ");
+      }
+
+      function isVisible(element: Element): boolean {
+        const rect = element.getBoundingClientRect();
+        const style = globalThis.getComputedStyle(element);
+        return rect.width > 0 &&
+          rect.height > 0 &&
+          style.visibility !== "hidden" &&
+          style.display !== "none";
+      }
+
+      function readCount(value: string): number | null {
+        const normalized = normalizeText(value);
+        if (normalized.length === 0) {
+          return null;
+        }
+
+        const explicitMatch = normalized.match(/(?:cart|basket|bag|장바구니|카트|바구니|쇼핑백)[^\d]{0,16}(\d{1,3})|(\d{1,3})[^\d]{0,8}(?:items?|개|건)/i);
+        const fallbackMatch = normalized.match(/^\s*(\d{1,3})\s*$/);
+        const valueText = explicitMatch?.[1] ?? explicitMatch?.[2] ?? fallbackMatch?.[1];
+        if (!valueText) {
+          return null;
+        }
+
+        const count = Number(valueText);
+        return Number.isInteger(count) && count >= 0 && count <= 999 ? count : null;
+      }
+
+      const explicitAttributeSelectors = [
+        "[data-cart-count]",
+        "[data-basket-count]",
+        "[data-bag-count]",
+        "[data-count][class*='cart' i]",
+        "[data-count][id*='cart' i]"
+      ];
+      for (const element of explicitAttributeSelectors.flatMap((selector) => Array.from(document.querySelectorAll(selector)))) {
+        const count = readCount(
+          element.getAttribute("data-cart-count") ??
+          element.getAttribute("data-basket-count") ??
+          element.getAttribute("data-bag-count") ??
+          element.getAttribute("data-count") ??
+          ""
+        );
+        if (count !== null) {
+          return count;
+        }
+      }
+
+      const cartSelectors = [
+        "[class*='cart' i]",
+        "[id*='cart' i]",
+        "[aria-label*='cart' i]",
+        "[class*='basket' i]",
+        "[id*='basket' i]",
+        "[aria-label*='basket' i]",
+        "[class*='bag' i]",
+        "[id*='bag' i]",
+        "[aria-label*='bag' i]",
+        "[aria-label*='장바구니' i]",
+        "[aria-label*='카트' i]",
+        "[title*='cart' i]",
+        "[title*='basket' i]",
+        "[title*='장바구니' i]",
+        "[data-testid*='cart' i]",
+        "[data-testid*='basket' i]"
+      ];
+      const cartElements = Array.from(new Set(cartSelectors.flatMap((selector) => Array.from(document.querySelectorAll(selector)))))
+        .filter((element) => isVisible(element));
+
+      for (const element of cartElements) {
+        const badge = element.querySelector("[class*='badge' i], [class*='count' i], [data-count], [aria-label]");
+        const count = readCount([
+          badge?.textContent,
+          badge?.getAttribute("data-count"),
+          badge?.getAttribute("aria-label"),
           element.getAttribute("aria-label"),
-          element.getAttribute("title")
-        ].filter(Boolean).join(" "))
-        .join(" ");
-      const match = candidates.match(/\b(\d{1,4})\b/);
-      return match ? Number(match[1]) : null;
+          element.getAttribute("title"),
+          element.textContent
+        ].filter(Boolean).join(" "));
+        if (count !== null) {
+          return count;
+        }
+      }
+
+      return null;
     });
   } catch {
     return fallbackValue;

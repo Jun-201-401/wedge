@@ -207,6 +207,63 @@ test("[Playwright 실제 실행] scroll 액션 후 snapshot에 scroll position�
   }
 });
 
+test("[Playwright signal] breadcrumb/toast/cart count를 다양한 DOM 패턴에서 추출한다", async () => {
+  const fixtureRoot = await mkdtemp(join(tmpdir(), "wedge-runner-playwright-signals-"));
+  const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-playwright-artifacts-"));
+  let session: Awaited<ReturnType<ReturnType<typeof createPlaywrightSessionFactory>["createSession"]>> | undefined;
+
+  try {
+    const signalFile = join(fixtureRoot, "signals.html");
+    await writeFile(
+      signalFile,
+      `<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <title>Runner Signal Fixture</title>
+  </head>
+  <body>
+    <nav aria-label="Breadcrumb">
+      <ol>
+        <li><a href="/">Home</a></li>
+        <li><a href="/shop">Shop</a></li>
+        <li aria-current="page">Runner Shoes</li>
+      </ol>
+    </nav>
+    <a id="cart-link" aria-label="장바구니 3개" href="/cart">
+      Cart <span class="cart-badge">3</span>
+    </a>
+    <div role="status" class="flash-message">장바구니에 담았습니다</div>
+    <main>
+      <h1>Runner Shoes</h1>
+    </main>
+  </body>
+</html>`,
+      "utf8"
+    );
+
+    const signalUrl = pathToFileURL(signalFile).toString();
+    const plan = createPlaywrightPlan(signalUrl);
+    const browserFactory = createPlaywrightBrowserFactory(artifactsRoot);
+
+    session = await browserFactory.createSession({
+      runId: "run-playwright-signals",
+      plan
+    });
+
+    await executeGotoStep(session, signalUrl, "step_open_signals");
+    const snapshot = session.snapshot();
+
+    assert.deepEqual(snapshot.breadcrumb, ["Home", "Shop", "Runner Shoes"]);
+    assert.deepEqual(snapshot.toastTexts, ["장바구니에 담았습니다"]);
+    assert.equal(snapshot.cartCount, 3);
+  } finally {
+    await session?.close();
+    await rm(fixtureRoot, { recursive: true, force: true });
+    await rm(artifactsRoot, { recursive: true, force: true });
+  }
+});
+
 test("[Playwright 실제 실행] click target이 링크일 때 목적지 페이지로 이동한다", async () => {
   const fixtureRoot = await mkdtemp(join(tmpdir(), "wedge-runner-playwright-site-"));
   const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-playwright-artifacts-"));
