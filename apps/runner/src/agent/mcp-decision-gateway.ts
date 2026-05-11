@@ -1,6 +1,6 @@
 import { errorMessage, logOperationalEvent } from "../shared/utils.ts";
 import { parseLlmDecision } from "./llm-decision-parser.ts";
-import { createLlmCandidateReferences, type LlmCandidateReference } from "./llm-prompt.ts";
+import { createLlmCandidateReferences, createLlmPromptMetadata, type LlmCandidateReference } from "./llm-prompt.ts";
 import { HeuristicDecisionClient, type AgentDecision, type AgentDecisionClient, type AgentDecisionInput } from "./planner.ts";
 import { redactSensitiveValue } from "./redaction.ts";
 
@@ -97,7 +97,10 @@ export class AgentMcpDecisionClient implements AgentDecisionClient {
         payload: createMcpDecisionGatewayPayload(input, candidateReferences)
       });
 
-      return parseLlmDecision(rawResponse, input, candidateReferences);
+      return parseLlmDecision(rawResponse, input, candidateReferences, {
+        model: "mcp-decision-gateway",
+        promptMetadata: createLlmPromptMetadata(candidateReferences)
+      });
     } catch (error) {
       logOperationalEvent(
         "agent-mcp-decision",

@@ -17,6 +17,10 @@
       "type": "string",
       "minLength": 1
     },
+    "attempt_index": {
+      "type": "integer",
+      "minimum": 1
+    },
     "run_id": {
       "type": "string",
       "minLength": 1
@@ -31,7 +35,7 @@
       "$ref": "agent-outcome.schema.json"
     }
   },
-  "required": ["schema_version", "task_id", "attempt_id", "run_id", "turns", "outcome"],
+  "required": ["schema_version", "task_id", "attempt_id", "attempt_index", "run_id", "turns", "outcome"],
   "$defs": {
     "AgentTurnTrace": {
       "type": "object",

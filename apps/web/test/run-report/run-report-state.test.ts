@@ -82,7 +82,7 @@ test('resolveRunReportState treats missing real run data as an error', () => {
   });
 
   assert.equal(missingRun.kind, 'error');
-  assert.equal(missingRun.title, 'Run을 찾을 수 없습니다');
+  assert.equal(missingRun.title, '실행 결과를 찾을 수 없습니다');
 });
 
 test('resolveRunReportState blocks incomplete real runs and completed real runs without evidence data', () => {
@@ -129,7 +129,7 @@ test('resolveRunReportState uses backend report readiness before evidence fallba
     report: { ...baseReport, reportStatus: 'GENERATABLE', reportId: null, status: null },
   });
   assert.equal(generatable.kind, 'api-pending');
-  assert.match(generatable.message, /리포트 생성/);
+  assert.equal(generatable.message, '분석이 완료됐습니다. 리포트를 생성해주세요.');
 
   const notReady = resolveRunReportState({
     isMockRun: false,
@@ -139,7 +139,7 @@ test('resolveRunReportState uses backend report readiness before evidence fallba
     report: { ...baseReport, reportStatus: 'NOT_READY', analysisStatus: 'NOT_STARTED', reportId: null, status: null },
   });
   assert.equal(notReady.kind, 'api-pending');
-  assert.match(notReady.message, /분석 요청/);
+  assert.match(notReady.message, /아직 분석이 시작되지 않았습니다/);
 
   const failed = resolveRunReportState({
     isMockRun: false,

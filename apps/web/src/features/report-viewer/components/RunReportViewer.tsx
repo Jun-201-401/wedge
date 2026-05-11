@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { useAuthenticatedResourceUrl } from '../../../shared/lib/authenticatedResourceUrl';
+import { RUNS_PATH } from '../../../shared/lib/appPaths';
 import { resolveActiveFinding, resolveLinkedFindingId } from '../lib/runReportInteractions';
-import type { RunReportViewModel } from '../lib/runReportViewModel';
+import type { ReportDecisionNode, ReportFinding, ReportRecommendation, RunReportViewModel } from '../lib/runReportViewModel';
 import '../styles/run-report-viewer.css';
 
 interface RunReportViewerProps {
@@ -13,88 +14,250 @@ function formatIssueCount(issueCount: number) {
   return String(issueCount).padStart(2, '0');
 }
 
-function severityLabel(severity: string) {
+function markerLabel(label: string) {
   return {
-    high: 'High',
-    medium: 'Medium',
-    low: 'Low',
-  }[severity] ?? 'Medium';
+    'EVIDENCE POINT': '근거 지점',
+    CHECKPOINT: '점검 지점',
+    'FOLLOW-UP': '추가 확인',
+    'REPORT FINDING': '마찰 지점',
+    'DECISION POINT': '판단 지점',
+    'NUDGE TARGET': '개선 지점',
+    'EVIDENCE TARGET': '근거 대상',
+  }[label] ?? label;
 }
 
-function formatConfidence(confidence: number) {
-  return `${Math.round(confidence * 100)}%`;
+const TOP_RECOMMENDATION_COUNT = 3;
+
+function normalizeStageLabel(value: string | null | undefined) {
+  return (value ?? '').replace(/[\s/·_-]/g, '').toLowerCase();
+}
+
+function stageBucket(value: string | null | undefined) {
+  const normalized = normalizeStageLabel(value);
+
+  if (/첫|first|view|보기|발견/.test(normalized)) {
+    return 'first';
+  }
+
+  if (/가치|신뢰|이해|trust|value|비교/.test(normalized)) {
+    return 'value';
+  }
+
+  if (/행동|cta|전환|선택|입력|input|commit/.test(normalized)) {
+    return 'action';
+  }
+
+  return normalized || 'unknown';
+}
+
+function resolveActiveFlowNodeId(nodes: ReportDecisionNode[], finding: ReportFinding | null) {
+  if (nodes.length === 0) {
+    return null;
+  }
+
+  if (!finding) {
+    return nodes.find((node) => node.tone === 'friction')?.id ?? nodes[0].id;
+  }
+
+  const findingBucket = stageBucket(finding.stage);
+  const titleMatch = nodes.find((node) => stageBucket(node.title) === findingBucket);
+
+  if (titleMatch) {
+    return titleMatch.id;
+  }
+
+  const codeMatch = nodes.find((node) => stageBucket(node.code) === findingBucket);
+  return codeMatch?.id ?? nodes.find((node) => node.tone === 'friction')?.id ?? nodes[0].id;
+}
+
+function flowNodeLabel(node: ReportDecisionNode, index: number) {
+  const bucket = stageBucket(node.title);
+
+  if (bucket === 'first') {
+    return '첫 화면 발견';
+  }
+
+  if (bucket === 'value') {
+    return /신뢰|trust/.test(normalizeStageLabel(`${node.code} ${node.title}`)) ? '신뢰 형성' : '가치 이해';
+  }
+
+  if (bucket === 'action') {
+    return '행동 선택';
+  }
+
+  return ['첫 화면', '가치 판단', '행동 선택'][index] ?? node.title;
+}
+
+function shortFlowNodeLabel(label: string) {
+  return {
+    '첫 화면 발견': '첫 화면',
+    '가치 이해': '가치',
+    '신뢰 형성': '신뢰',
+    '행동 선택': '행동',
+    '가치 판단': '가치',
+  }[label] ?? label.replace(/\s+/g, '');
+}
+
+function linkedFinding(findings: ReportFinding[], recommendation: ReportRecommendation | null) {
+  const findingId = recommendation ? resolveLinkedFindingId(findings, recommendation.findingId) : null;
+  return findingId ? findings.find((finding) => finding.id === findingId) ?? null : null;
+}
+
+function recommendationReason(recommendation: ReportRecommendation, finding: ReportFinding | null) {
+  return recommendation.rationale ?? finding?.summary ?? recommendation.expectedImpact;
+}
+
+function recommendationProblem(recommendation: ReportRecommendation, finding: ReportFinding | null) {
+  return recommendation.rationale ?? finding?.summary ?? '사용자가 다음 행동을 판단하는 데 필요한 정보가 부족합니다.';
+}
+
+function recommendationMeta(recommendation: ReportRecommendation, finding: ReportFinding | null) {
+  const stage = finding?.stage ?? '분석 결과';
+  let signal = '판단 보강';
+
+  if (finding?.severity === 'high') {
+    signal = '전환 영향 큼';
+  } else if (recommendation.effort.toLowerCase() === 'low' || recommendation.effort === '낮음') {
+    signal = '빠른 수정';
+  }
+
+  return `${stage} · ${signal}`;
+}
+
+function recommendationLocationLabel(finding: ReportFinding | null) {
+  return finding?.evidenceLabel ?? finding?.title ?? '화면 근거 확인';
 }
 
 export function RunReportBrand() {
   return (
-    <a href="/" className="run-report-brand" aria-label="Wedge home">
+    <a href="/" className="run-report-brand" aria-label="Wedge 홈">
       <span>Wedge</span>
     </a>
   );
 }
 
 export function RunReportViewer({ report }: RunReportViewerProps) {
+  const evidencePreviewRef = useRef<HTMLDivElement | null>(null);
   const [hoveredFindingId, setHoveredFindingId] = useState<string | null>(null);
   const [selectedFindingId, setSelectedFindingId] = useState<string | null>(report.findings[0]?.id ?? null);
-  const [isFullFindingListOpen, setIsFullFindingListOpen] = useState(false);
-  const topFindings = report.findings.slice(0, 3);
-  const recommendations = report.recommendations.slice(0, 3);
-  const hiddenFindingCount = Math.max(0, report.findings.length - topFindings.length);
+  const [selectedRecommendationId, setSelectedRecommendationId] = useState<string | null>(report.recommendations[0]?.id ?? null);
+  const [isAllRecommendationsOpen, setIsAllRecommendationsOpen] = useState(false);
+  const recommendations = report.recommendations;
+  const topRecommendations = recommendations.slice(0, TOP_RECOMMENDATION_COUNT);
+  const hasMoreRecommendations = recommendations.length > TOP_RECOMMENDATION_COUNT;
+  const selectedRecommendation = recommendations.find((recommendation) => recommendation.id === selectedRecommendationId) ?? recommendations[0] ?? null;
+  const selectedRecommendationFinding = linkedFinding(report.findings, selectedRecommendation);
+  const selectedRecommendationFindingId = selectedRecommendation
+    ? resolveLinkedFindingId(report.findings, selectedRecommendation.findingId)
+    : null;
+  const activeFlowNodeId = resolveActiveFlowNodeId(report.decisionNodes, selectedRecommendationFinding);
+  const flowNodes = report.decisionNodes.map((node, index) => {
+    const label = flowNodeLabel(node, index);
+
+    return {
+      id: node.id,
+      label,
+      shortLabel: shortFlowNodeLabel(label),
+    };
+  });
   const activeFinding = useMemo(() => {
     const activeId = hoveredFindingId ?? selectedFindingId;
     return resolveActiveFinding(report.findings, activeId);
   }, [hoveredFindingId, report.findings, selectedFindingId]);
-  const activeFindingId = activeFinding?.id ?? null;
   const selectedEvidencePreviewUrl = activeFinding?.previewImageUrl ?? report.evidencePreviewUrl;
   const evidencePreviewUrl = useAuthenticatedResourceUrl(selectedEvidencePreviewUrl);
-  const highlightSourceLabel = !activeFinding?.highlight
-    ? '영역 없음'
-    : activeFinding.highlight.source === 'fallback' ? '추정 영역' : '실측 영역';
+  const isEvidencePreviewResolving = Boolean(selectedEvidencePreviewUrl && !evidencePreviewUrl);
+  const browserModeLabel = isEvidencePreviewResolving ? '캡처 로딩' : evidencePreviewUrl ? '페이지 캡처' : '모의 프리뷰';
+
+  useEffect(() => {
+    const preview = evidencePreviewRef.current;
+    const markerTop = activeFinding?.highlight?.top;
+    if (!preview || !markerTop || !evidencePreviewUrl) {
+      return;
+    }
+
+    const topRatio = Number.parseFloat(markerTop) / 100;
+    if (!Number.isFinite(topRatio)) {
+      return;
+    }
+
+    const maxScrollTop = preview.scrollHeight - preview.clientHeight;
+    if (maxScrollTop <= 0) {
+      return;
+    }
+
+    const targetScrollTop = Math.max(
+      0,
+      Math.min(maxScrollTop, preview.scrollHeight * topRatio - preview.clientHeight * 0.35),
+    );
+    preview.scrollTo({ top: targetScrollTop, behavior: 'smooth' });
+  }, [activeFinding?.id, activeFinding?.highlight?.top, evidencePreviewUrl]);
+
+  useEffect(() => {
+    if (recommendations.length === 0) {
+      setSelectedRecommendationId(null);
+    } else if (!selectedRecommendationId || !recommendations.some((recommendation) => recommendation.id === selectedRecommendationId)) {
+      setSelectedRecommendationId(recommendations[0].id);
+    }
+  }, [recommendations, selectedRecommendationId]);
 
   useEffect(() => {
     if (report.findings.length === 0) {
       setSelectedFindingId(null);
-      setIsFullFindingListOpen(false);
+      return;
+    }
+
+    if (selectedRecommendationFindingId && report.findings.some((finding) => finding.id === selectedRecommendationFindingId)) {
+      setSelectedFindingId(selectedRecommendationFindingId);
       return;
     }
 
     if (!selectedFindingId || !report.findings.some((finding) => finding.id === selectedFindingId)) {
       setSelectedFindingId(report.findings[0].id);
     }
-  }, [report.findings, selectedFindingId]);
+  }, [report.findings, selectedFindingId, selectedRecommendationFindingId]);
+
+  function selectRecommendation(recommendation: ReportRecommendation) {
+    const findingId = resolveLinkedFindingId(report.findings, recommendation.findingId);
+    setSelectedRecommendationId(recommendation.id);
+
+    if (findingId) {
+      setSelectedFindingId(findingId);
+    }
+  }
 
   return (
     <div className="run-report-page">
       <div className="run-report-grid-bg" aria-hidden="true" />
 
-      <header className="run-report-topbar" aria-label="Wedge analysis report">
+      <header className="run-report-topbar" aria-label="Wedge 분석 리포트">
         <div className="run-report-topbar__left">
           <RunReportBrand />
-          <span className="run-report-topbar__divider" aria-hidden="true" />
-          <div className="run-report-target-inline run-report-target-inline--optional">
-            <span>Report ID:</span>
-            <strong>{report.reportId}</strong>
-          </div>
         </div>
 
         <div className="run-report-topbar__right">
-          <button type="button" className="run-report-topbar__ghost" disabled title="PDF export API 연결 대기 중">Export PDF · 준비 중</button>
-          <button type="button" className="run-report-topbar__share" disabled title="Share report API 연결 대기 중">Share Report · 준비 중</button>
+          <a href={RUNS_PATH} className="run-report-topbar__link run-report-topbar__link--secondary">실행 목록</a>
+          <button type="button" className="run-report-topbar__export" disabled title="리포트 내보내기 기능 준비 중">내보내기 · 준비 중</button>
         </div>
       </header>
 
       <main className="run-report-shell" aria-labelledby="run-report-title">
         <header className="run-report-hero">
           <div className="run-report-hero__copy">
-            <span className="run-report-tag">분석 완료</span>
-            <h1 id="run-report-title">
-              랜딩 페이지 <span>CTA 전환 마찰 리포트</span>
-            </h1>
-            <p>
-              Target: <strong>{report.targetUrl}</strong>
-              <span aria-hidden="true">•</span>
-              시나리오: {report.scenarioLabel}
-            </p>
+            <div className="run-report-hero__meta">
+              <span className="run-report-tag">분석 완료</span>
+            </div>
+            <h1 id="run-report-title">CTA 전환 마찰 분석</h1>
+            <dl className="run-report-hero-context" aria-label="리포트 대상 정보">
+              <div>
+                <dt>분석 대상</dt>
+                <dd>{report.targetUrl}</dd>
+              </div>
+              <div>
+                <dt>점검 시나리오</dt>
+                <dd>{report.scenarioLabel}</dd>
+              </div>
+            </dl>
             {report.sourceNotice ? <p className="run-report-hero__notice" role="status">{report.sourceNotice}</p> : null}
           </div>
 
@@ -115,222 +278,229 @@ export function RunReportViewer({ report }: RunReportViewerProps) {
         </header>
 
         <div className="run-report-layout">
-          <section className="run-report-visual-panel" aria-labelledby="run-report-evidence-title">
-            <div className="run-report-section-heading run-report-section-heading--plain">
-              <h2 id="run-report-evidence-title">Evidence Screen</h2>
-            </div>
-
+          <section className="run-report-visual-panel" aria-label="분석 화면 미리보기">
             <article className="run-report-evidence-card">
-              <div className="run-report-evidence-card__head">
-                <div>
-                  <h3>{activeFinding?.title ?? '발견된 마찰이 없습니다'}</h3>
-                  <p>관련 지점: {activeFinding?.evidenceLabel ?? '추가 근거 없음'}</p>
-                </div>
-                <div>
-                  <span>Confidence</span>
-                  <strong>{activeFinding ? formatConfidence(activeFinding.confidence) : '0%'}</strong>
-                </div>
-              </div>
-
-              <div className="run-report-evidence-preview" aria-label="분석 근거 화면 미리보기">
-                {evidencePreviewUrl ? (
-                  <img className="run-report-evidence-preview__image" src={evidencePreviewUrl} alt="실제 실행에서 수집된 evidence 화면" />
-                ) : (
-                  <div className="run-report-evidence-preview__site">
-                    <div className="run-report-evidence-preview__nav" aria-hidden="true">
-                      <span />
-                      <span />
-                      <span />
-                    </div>
-                    <div className="run-report-evidence-preview__hero">
-                      <small>{report.heroSubtitle}</small>
-                      <strong>{report.heroTitle}</strong>
-                      <button type="button">{report.heroCallToAction}</button>
-                    </div>
+              <div className="run-report-browser" aria-label="최근 화면 캡처">
+                <div className="run-report-browser__bar">
+                  <div className="run-report-browser__dots" aria-hidden="true">
+                    <span />
+                    <span />
+                    <span />
                   </div>
-                )}
-                {activeFinding?.highlight ? (
-                  <div
-                    className={`run-report-friction-marker run-report-friction-marker--${activeFinding.severity}`}
-                    style={{
-                      top: activeFinding.highlight.top,
-                      left: activeFinding.highlight.left,
-                      width: activeFinding.highlight.width,
-                      height: activeFinding.highlight.height,
-                    }}
-                  >
-                    <span>{activeFinding.highlight.label}</span>
-                  </div>
-                ) : null}
-              </div>
+                  <div className="run-report-browser__address">{report.targetUrl}</div>
+                  <span className="run-report-browser__mode-pill">{browserModeLabel}</span>
+                </div>
 
-              <div className="run-report-evidence-card__summary">
-                <span>{activeFinding ? `${activeFinding.issueId} · ${highlightSourceLabel}` : 'NO ISSUE'}</span>
-                <p>{activeFinding?.summary ?? '이번 흐름에서는 우선 조치가 필요한 마찰을 찾지 못했습니다.'}</p>
+                <div
+                  ref={evidencePreviewRef}
+                  className={`run-report-evidence-preview${evidencePreviewUrl ? ' run-report-evidence-preview--image' : ''}${isEvidencePreviewResolving ? ' run-report-evidence-preview--resolving' : ''}`}
+                  aria-label="분석 근거 화면 미리보기"
+                >
+                  {evidencePreviewUrl ? (
+                    <div className="run-report-evidence-preview__canvas">
+                      <img className="run-report-evidence-preview__image" src={evidencePreviewUrl} alt="실제 실행에서 수집된 화면" />
+                      {activeFinding?.highlight && !isEvidencePreviewResolving ? (
+                        <div
+                          className={`run-report-friction-marker run-report-friction-marker--${activeFinding.severity}`}
+                          style={{
+                            top: activeFinding.highlight.top,
+                            left: activeFinding.highlight.left,
+                            width: activeFinding.highlight.width,
+                            height: activeFinding.highlight.height,
+                          }}
+                        >
+                          <span>{markerLabel(activeFinding.highlight.label)}</span>
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : isEvidencePreviewResolving ? (
+                    <div className="run-report-sr-only" role="status">근거 화면을 불러오는 중입니다.</div>
+                  ) : (
+                    <div className="run-report-evidence-preview__site">
+                      <div className="run-report-evidence-preview__nav" aria-hidden="true">
+                        <span />
+                        <span />
+                        <span />
+                      </div>
+                      <div className="run-report-evidence-preview__hero">
+                        <small>{report.heroSubtitle}</small>
+                        <strong>{report.heroTitle}</strong>
+                        <button type="button">{report.heroCallToAction}</button>
+                      </div>
+                    </div>
+                  )}
+                  {!evidencePreviewUrl && activeFinding?.highlight && !isEvidencePreviewResolving ? (
+                    <div
+                      className={`run-report-friction-marker run-report-friction-marker--${activeFinding.severity}`}
+                      style={{
+                        top: activeFinding.highlight.top,
+                        left: activeFinding.highlight.left,
+                        width: activeFinding.highlight.width,
+                        height: activeFinding.highlight.height,
+                      }}
+                    >
+                      <span>{markerLabel(activeFinding.highlight.label)}</span>
+                    </div>
+                  ) : null}
+                </div>
               </div>
             </article>
           </section>
 
-          <aside className="run-report-insight-panel" aria-label="Nudge and finding details">
-            <section className="run-report-section run-report-section--top-findings" aria-labelledby="run-report-top-findings-title">
+          <aside className="run-report-insight-panel" aria-label="먼저 고칠 항목">
+            <header className="run-report-insight-summary">
+              <span>먼저 고칠 항목</span>
+              <h2>{recommendations.length > 0 ? '개선 후보를 선택해 화면 근거를 확인하세요' : '이번 실행에서 바로 고칠 항목은 없습니다'}</h2>
+              <p>
+                {recommendations.length > 0
+                  ? '상단 후보를 선택하면 오른쪽 진단과 왼쪽 화면 위치가 함께 바뀝니다.'
+                  : '사용자가 지나간 단계에서 큰 전환 마찰이 발견되지 않았습니다.'}
+              </p>
+            </header>
+
+            <section className="run-report-section run-report-section--priority" aria-labelledby="run-report-actions-title">
               <div className="run-report-section-heading">
-                <h2 id="run-report-top-findings-title">Top Priority Findings</h2>
-                <span aria-hidden="true" />
+                <h2 id="run-report-actions-title">개선 후보 선택</h2>
               </div>
 
-              {topFindings.length > 0 ? (
-                <ol className="run-report-top-finding-list" onMouseLeave={() => setHoveredFindingId(null)}>
-                  {topFindings.map((finding, index) => (
-                    <li key={finding.id} className={`run-report-top-finding-card run-report-top-finding-card--${finding.severity}`}>
-                      <button
-                        type="button"
-                        className="run-report-top-finding-card__button"
-                        aria-pressed={activeFindingId === finding.id}
-                        onClick={() => setSelectedFindingId(finding.id)}
-                        onFocus={() => setHoveredFindingId(finding.id)}
-                        onMouseEnter={() => setHoveredFindingId(finding.id)}
-                      >
-                        <div className="run-report-top-finding-card__meta">
-                          <span>#{String(index + 1).padStart(2, '0')}</span>
-                          <strong>{severityLabel(finding.severity)}</strong>
-                        </div>
-                        <h3>{finding.title}</h3>
-                        <p>{finding.summary}</p>
-                        <dl>
-                          <div>
-                            <dt>Stage</dt>
-                            <dd>{finding.stage}</dd>
-                          </div>
-                          <div>
-                            <dt>Confidence</dt>
-                            <dd>{formatConfidence(finding.confidence)}</dd>
-                          </div>
-                          <div>
-                            <dt>Evidence</dt>
-                            <dd>{finding.evidenceCount}</dd>
-                          </div>
-                        </dl>
-                      </button>
-                    </li>
-                  ))}
-                </ol>
-              ) : (
-                <div className="run-report-top-finding-empty" role="status">
-                  <strong>우선순위 이슈 없음</strong>
-                  <p>이번 분석에서는 상위 3개로 표시할 마찰 지점이 발견되지 않았습니다.</p>
+              {recommendations.length === 0 ? (
+                <div className="run-report-nudge-empty" role="status">
+                  <strong>현재 우선 수정할 항목은 없습니다</strong>
+                  <p>이번 실행에서는 전환을 크게 막는 마찰이 발견되지 않았습니다.</p>
                 </div>
-              )}
+              ) : (
+                <div className="run-report-recommendation-picker" onMouseLeave={() => setHoveredFindingId(null)}>
+                  <ol className="run-report-recommendation-tabs">
+                    {topRecommendations.map((recommendation, index) => {
+                      const relatedFinding = linkedFinding(report.findings, recommendation);
+                      const relatedFindingId = relatedFinding?.id ?? null;
+                      const isSelected = selectedRecommendationId === recommendation.id;
 
-              {hiddenFindingCount > 0 ? (
-                <div className="run-report-finding-more">
-                  <button
-                    type="button"
-                    onClick={() => setIsFullFindingListOpen((value) => !value)}
-                    aria-expanded={isFullFindingListOpen}
-                  >
-                    {isFullFindingListOpen ? '전체 문제 접기' : `나머지 ${hiddenFindingCount}개 더보기`}
-                  </button>
-
-                  {isFullFindingListOpen ? (
-                    <ol className="run-report-finding-full-list" aria-label="전체 finding 목록">
-                      {report.findings.map((finding, index) => (
-                        <li key={finding.id}>
+                      return (
+                        <li key={recommendation.id}>
                           <button
                             type="button"
-                            className="run-report-finding-row"
-                            aria-pressed={activeFindingId === finding.id}
-                            onClick={() => setSelectedFindingId(finding.id)}
-                            onFocus={() => setHoveredFindingId(finding.id)}
-                            onMouseEnter={() => setHoveredFindingId(finding.id)}
+                            className={`run-report-recommendation-tab${isSelected ? ' run-report-recommendation-tab--active' : ''}`}
+                            aria-pressed={isSelected}
+                            onClick={() => selectRecommendation(recommendation)}
+                            onFocus={() => setHoveredFindingId(relatedFindingId)}
+                            onMouseEnter={() => setHoveredFindingId(relatedFindingId)}
                           >
-                            <span>#{String(index + 1).padStart(2, '0')}</span>
-                            <strong>{finding.title}</strong>
-                            <small>{finding.stage} · {formatConfidence(finding.confidence)}</small>
+                            <span className="run-report-recommendation-tab__rank">{index + 1}</span>
+                            <span className="run-report-recommendation-tab__copy">
+                              <strong>{recommendation.title}</strong>
+                              <small>{recommendationReason(recommendation, relatedFinding)}</small>
+                            </span>
+                            <span className="run-report-recommendation-tab__meta">
+                              {recommendationMeta(recommendation, relatedFinding)}
+                            </span>
                           </button>
                         </li>
-                      ))}
-                    </ol>
+                      );
+                    })}
+                  </ol>
+
+                  {hasMoreRecommendations ? (
+                    <div className="run-report-all-recommendations">
+                      <button
+                        type="button"
+                        className="run-report-all-recommendations__toggle"
+                        aria-expanded={isAllRecommendationsOpen}
+                        aria-controls="run-report-all-recommendations-panel"
+                        onClick={() => setIsAllRecommendationsOpen((isOpen) => !isOpen)}
+                      >
+                        전체 후보 {recommendations.length}개 보기
+                      </button>
+                      <div
+                        id="run-report-all-recommendations-panel"
+                        className={`run-report-all-recommendations__panel${isAllRecommendationsOpen ? ' run-report-all-recommendations__panel--open' : ''}`}
+                        aria-hidden={!isAllRecommendationsOpen}
+                      >
+                        {recommendations.map((recommendation, index) => {
+                          const relatedFinding = linkedFinding(report.findings, recommendation);
+                          const relatedFindingId = relatedFinding?.id ?? null;
+                          const isSelected = selectedRecommendationId === recommendation.id;
+                          const metaParts = recommendationMeta(recommendation, relatedFinding).split(' · ');
+
+                          return (
+                            <button
+                              key={recommendation.id}
+                              type="button"
+                              className={`run-report-all-recommendations__row${isSelected ? ' run-report-all-recommendations__row--active' : ''}`}
+                              tabIndex={isAllRecommendationsOpen ? 0 : -1}
+                              onClick={() => selectRecommendation(recommendation)}
+                              onFocus={() => setHoveredFindingId(relatedFindingId)}
+                              onMouseEnter={() => setHoveredFindingId(relatedFindingId)}
+                            >
+                              <span>{index + 1}</span>
+                              <strong>{recommendation.title}</strong>
+                              <small>{metaParts[1] ?? metaParts[0]}</small>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
                   ) : null}
                 </div>
-              ) : null}
+              )}
             </section>
 
-            <section className="run-report-section run-report-section--priority" aria-labelledby="run-report-nudge-title">
-              <div className="run-report-section-heading">
-                <h2 id="run-report-nudge-title">Recommended Nudge</h2>
-                <span aria-hidden="true" />
-              </div>
+            {selectedRecommendation ? (
+              <section className="run-report-section run-report-section--selected-recommendation" aria-labelledby="run-report-selected-action-title">
+                <div className="run-report-selected-action" onMouseLeave={() => setHoveredFindingId(null)}>
+                  <div className="run-report-stage-group">
+                    <span className="run-report-stage-group__title">전환 단계</span>
+                    <div className="run-report-stage-chips" aria-label="전환 단계">
+                      <ol>
+                        {flowNodes.map((node) => {
+                          const isActive = node.id === activeFlowNodeId;
 
-              <div className="run-report-nudge-list" onMouseLeave={() => setHoveredFindingId(null)}>
-                {recommendations.map((recommendation) => {
-                  const relatedFindingId = resolveLinkedFindingId(report.findings, recommendation.findingId);
-                  const isActive = relatedFindingId === activeFindingId;
-                  const isSelected = relatedFindingId === selectedFindingId;
-
-                  return (
-                    <button
-                      key={recommendation.id}
-                      type="button"
-                      className={`run-report-nudge-card${isActive ? ' run-report-nudge-card--active' : ''}`}
-                      aria-pressed={isSelected}
-                      onBlur={() => setHoveredFindingId(null)}
-                      onClick={() => {
-                        if (relatedFindingId) {
-                          setSelectedFindingId(relatedFindingId);
-                        }
-                      }}
-                      onFocus={() => {
-                        if (relatedFindingId) {
-                          setSelectedFindingId(relatedFindingId);
-                        }
-                      }}
-                      onMouseEnter={() => setHoveredFindingId(relatedFindingId)}
-                    >
-                      <span className="run-report-nudge-card__eyebrow">
-                        <span aria-hidden="true">+</span>
-                        <strong>{recommendation.priority}</strong>
-                      </span>
-                      <span className="run-report-nudge-card__title">{recommendation.title}</span>
-                      <span className="run-report-nudge-card__detail">{recommendation.detail}</span>
-                      <span className="run-report-nudge-card__meta">
-                        <span>
-                          <small>Expected Impact</small>
-                          <strong>{recommendation.expectedImpact}</strong>
-                        </span>
-                        <span>
-                          <small>Difficulty</small>
-                          <strong>{recommendation.effort}</strong>
-                        </span>
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            </section>
-
-            <section className="run-report-section" aria-labelledby="run-report-decision-title">
-              <div className="run-report-section-heading">
-                <h2 id="run-report-decision-title">Decision Map</h2>
-                <span aria-hidden="true" />
-              </div>
-
-              <ol className="run-report-decision-map">
-                {report.decisionNodes.map((node) => (
-                  <li key={node.id} className={`run-report-decision-node run-report-decision-node--${node.tone}`}>
-                    <div className="run-report-decision-node__badge">{node.code}</div>
-                    <div className="run-report-decision-node__body">
-                      <h3>{node.title}</h3>
-                      <p>{node.summary}</p>
-                      {node.tags.length > 0 ? (
-                        <div className="run-report-decision-node__tags">
-                          {node.tags.map((tag) => <span key={tag}>{tag}</span>)}
-                        </div>
-                      ) : null}
+                          return (
+                            <li key={node.id} className={isActive ? 'run-report-stage-chips__item--active' : undefined}>
+                              <span
+                                className={`run-report-stage-chip${isActive ? ' run-report-stage-chip--active' : ''}`}
+                                aria-current={isActive ? 'step' : undefined}
+                                title={node.label}
+                              >
+                                {isActive ? node.label : node.shortLabel}
+                              </span>
+                            </li>
+                          );
+                        })}
+                      </ol>
                     </div>
-                  </li>
-                ))}
-              </ol>
-            </section>
+                  </div>
+
+                  <h2 id="run-report-selected-action-title">{selectedRecommendation.title}</h2>
+                  <div className="run-report-selected-action__reason">
+                    <strong>전환이 끊기는 지점입니다</strong>
+                    <p>{recommendationReason(selectedRecommendation, selectedRecommendationFinding)}</p>
+                  </div>
+
+                  <span className="run-report-selected-action__location">
+                    화면 위치 <strong>{recommendationLocationLabel(selectedRecommendationFinding)}</strong>
+                  </span>
+
+                  <div className="run-report-selected-action__steps">
+                    <article>
+                      <span>1</span>
+                      <strong>문제</strong>
+                      <p>{recommendationProblem(selectedRecommendation, selectedRecommendationFinding)}</p>
+                    </article>
+                    <article>
+                      <span>2</span>
+                      <strong>바꿀 것</strong>
+                      <p>{selectedRecommendation.detail}</p>
+                    </article>
+                    <article>
+                      <span>3</span>
+                      <strong>확인할 신호</strong>
+                      <p>{selectedRecommendation.validationQuestion ?? selectedRecommendation.expectedImpact}</p>
+                    </article>
+                  </div>
+                </div>
+              </section>
+            ) : null}
           </aside>
         </div>
       </main>

@@ -34,7 +34,68 @@
     },
     "targetKey": {
       "type": ["string", "null"]
+    },
+    "metadata": {
+      "$ref": "#/$defs/decision_metadata"
     }
   },
-  "required": ["kind", "description", "reason", "confidence", "action", "settleStrategy", "stage", "targetKey"]
+  "required": ["kind", "description", "reason", "confidence", "action", "settleStrategy", "stage", "targetKey"],
+  "$defs": {
+    "decision_metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "decisionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "decisionSource": {
+          "type": "string",
+          "enum": ["heuristic", "llm"]
+        },
+        "model": {
+          "type": "string",
+          "minLength": 1
+        },
+        "promptMetadata": {
+          "$ref": "#/$defs/prompt_metadata"
+        }
+      },
+      "required": ["decisionId", "decisionSource"]
+    },
+    "prompt_metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "payloadShapeVersion": {
+          "type": "string",
+          "minLength": 1
+        },
+        "candidateCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "redacted": {
+          "const": true
+        },
+        "rawPromptStored": {
+          "const": false
+        },
+        "rawCandidateSelectorsIncluded": {
+          "const": false
+        },
+        "rawCandidateHrefsIncluded": {
+          "const": false
+        }
+      },
+      "required": [
+        "payloadShapeVersion",
+        "candidateCount",
+        "redacted",
+        "rawPromptStored",
+        "rawCandidateSelectorsIncluded",
+        "rawCandidateHrefsIncluded"
+      ]
+    }
+  }
 }

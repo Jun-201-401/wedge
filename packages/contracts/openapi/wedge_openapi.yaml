@@ -1685,6 +1685,143 @@ paths:
           $ref: '#/components/responses/Conflict'
         '422':
           $ref: '#/components/responses/ValidationError'
+  /internal/runner/agent-idempotency/{idempotencyKeyHash}:
+    get:
+      tags:
+      - InternalRunner
+      operationId: getRunnerAgentIdempotencyRecord
+      summary: Agent terminal idempotency record 조회
+      description: Runner replica가 agent.execute 중복 실행 전 DB-backed terminal result를 조회한다. idempotencyKey 원문 대신 SHA-256 hex digest를 사용한다.
+      security:
+      - InternalBearer: []
+      parameters:
+      - name: idempotencyKeyHash
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: ^[0-9a-f]{64}$
+      - name: X-Worker-Id
+        in: header
+        required: true
+        schema:
+          type: string
+      - name: X-Event-Id
+        in: header
+        required: true
+        schema:
+          type: string
+      - name: X-Signature
+        in: header
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Agent idempotency lookup result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RunnerAgentIdempotencyRecordEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+    put:
+      tags:
+      - InternalRunner
+      operationId: putRunnerAgentIdempotencyRecord
+      summary: Agent terminal idempotency record 저장
+      description: Runner가 terminal agent.execute 결과를 first-writer-wins 방식으로 저장한다. 이미 같은 key hash가 있으면 기존 record를 반환한다.
+      security:
+      - InternalBearer: []
+      parameters:
+      - name: idempotencyKeyHash
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: ^[0-9a-f]{64}$
+      - name: X-Worker-Id
+        in: header
+        required: true
+        schema:
+          type: string
+      - name: X-Event-Id
+        in: header
+        required: true
+        schema:
+          type: string
+      - name: X-Signature
+        in: header
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RunnerAgentIdempotencyRecordRequest'
+      responses:
+        '200':
+          description: Stored or pre-existing Agent idempotency record
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RunnerAgentIdempotencyRecordEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /internal/runner/agent-idempotency/{idempotencyKeyHash}/claim:
+    post:
+      tags:
+      - InternalRunner
+      operationId: claimRunnerAgentIdempotencyRecord
+      summary: Agent idempotency lease claim
+      description: Runner replica가 agent.execute 시작 전 같은 idempotency key hash의 진행 중 lease를 선점한다. 완료 record가 있으면 terminal result를 반환하고, 다른 worker의 유효 lease가 있으면 CLAIMED record를 반환한다.
+      security:
+      - InternalBearer: []
+      parameters:
+      - name: idempotencyKeyHash
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: ^[0-9a-f]{64}$
+      - name: X-Worker-Id
+        in: header
+        required: true
+        schema:
+          type: string
+      - name: X-Event-Id
+        in: header
+        required: true
+        schema:
+          type: string
+      - name: X-Signature
+        in: header
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RunnerAgentIdempotencyClaimRequest'
+      responses:
+        '200':
+          description: Claimed, in-progress, or pre-existing completed Agent idempotency record
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RunnerAgentIdempotencyRecordEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
   /internal/runner/runs/{runId}/artifacts:
     post:
       tags:
@@ -2177,14 +2314,20 @@ paths:
       - Reports
       operationId: createReportShare
       summary: 리포트 공유 링크 생성
-      description: 외부 공유용 링크를 생성한다. 만료 시간은 클라이언트가 지정하지 않으며 서버 기본값으로 생성 후 10분을 사용한다.
+      description: 외부 공유용 링크를 생성하거나, 만료 전 유효한 공유 링크가 이미 있으면 기존 링크를 반환한다. 만료 시간은 클라이언트가 지정하지 않으며 새로 생성되는 링크는 서버 기본값으로 생성 후 10분을 사용한다.
       security:
       - HumanBearer: []
       parameters:
       - $ref: '#/components/parameters/ReportId'
       responses:
+        '200':
+          description: Existing active report share reused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SingleReportShareResponse'
         '201':
-          description: Report share created
+          description: New report share created
           content:
             application/json:
               schema:
@@ -4681,6 +4824,122 @@ components:
       - attemptId
       - occurredAt
       - trace
+    RunnerAgentIdempotencyClaimRequest:
+      type: object
+      properties:
+        runId:
+          type: string
+          format: uuid
+        taskId:
+          type: string
+        attemptId:
+          type: string
+        attemptIndex:
+          type: integer
+          minimum: 1
+        leaseTtlMs:
+          type: integer
+          minimum: 1000
+          maximum: 86400000
+          nullable: true
+          default: 300000
+      required:
+      - runId
+      - taskId
+      - attemptId
+      - attemptIndex
+    RunnerAgentIdempotencyRecordRequest:
+      type: object
+      properties:
+        runId:
+          type: string
+          format: uuid
+        taskId:
+          type: string
+        attemptId:
+          type: string
+        attemptIndex:
+          type: integer
+          minimum: 1
+        result:
+          type: object
+          additionalProperties: true
+      required:
+      - runId
+      - taskId
+      - attemptId
+      - attemptIndex
+      - result
+    RunnerAgentIdempotencyRecord:
+      type: object
+      properties:
+        idempotencyKeyHash:
+          type: string
+          pattern: ^[0-9a-f]{64}$
+        found:
+          type: boolean
+        status:
+          type: string
+          enum:
+          - CLAIMED
+          - COMPLETED
+          nullable: true
+        runId:
+          type: string
+          format: uuid
+          nullable: true
+        taskId:
+          type: string
+          nullable: true
+        attemptId:
+          type: string
+          nullable: true
+        attemptIndex:
+          type: integer
+          minimum: 1
+          nullable: true
+        claimedBy:
+          type: string
+          nullable: true
+        claimedAt:
+          type: string
+          format: date-time
+          nullable: true
+        leaseExpiresAt:
+          type: string
+          format: date-time
+          nullable: true
+        result:
+          type: object
+          additionalProperties: true
+          nullable: true
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+      required:
+      - idempotencyKeyHash
+      - found
+      - status
+      - runId
+      - taskId
+      - attemptId
+      - attemptIndex
+      - claimedBy
+      - claimedAt
+      - leaseExpiresAt
+      - result
+      - completedAt
+    RunnerAgentIdempotencyRecordEnvelope:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/RunnerAgentIdempotencyRecord'
+        meta:
+          $ref: '#/components/schemas/ApiMeta'
+      required:
+      - data
+      - meta
     RunnerArtifactsRequest:
       type: object
       properties:

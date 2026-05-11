@@ -24,8 +24,9 @@ def base_hit(
     impact_hypothesis: str,
     recommendations: list[str],
     validation_questions: list[str],
+    fix_leverage: float | None = None,
 ) -> RuleHit:
-    fix_leverage = float(rule.get("fix_leverage_default", 1.0))
+    hit_fix_leverage = float(fix_leverage if fix_leverage is not None else rule.get("fix_leverage_default", 1.0))
     return RuleHit(
         criterion_id=str(rule["criterion_id"]),
         stage=context.stage,
@@ -36,12 +37,13 @@ def base_hit(
             severity=severity,
             stage=context.stage,
             confidence=confidence,
-            fix_leverage=fix_leverage,
+            fix_leverage=hit_fix_leverage,
         ),
         evidence_level=str(rule["evidence_level"]),
         evidence_refs=evidence_refs,
         observations=observations,
         signals=signals,
+        fix_leverage=hit_fix_leverage,
         summary=summary,
         impact_hypothesis=impact_hypothesis,
         recommendations=recommendations,

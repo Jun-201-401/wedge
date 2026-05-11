@@ -27,7 +27,7 @@ export interface ReportFinding {
   recommendation: string;
   highlight: {
     label: string;
-    source?: 'fallback' | 'artifact-coordinate';
+    source?: 'artifact-coordinate';
     top: string;
     left: string;
     width: string;
@@ -41,8 +41,10 @@ export interface ReportRecommendation {
   priority: string;
   title: string;
   detail: string;
+  rationale?: string | null;
   expectedImpact: string;
   effort: string;
+  validationQuestion?: string | null;
 }
 
 export interface RunReportViewModel {

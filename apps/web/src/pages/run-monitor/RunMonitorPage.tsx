@@ -1,7 +1,18 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type KeyboardEvent,
+  type MouseEvent,
+  type PointerEvent,
+  type ReactNode,
+} from 'react';
 
 import { generateRunReport, getRunReport } from '../../api/reports';
-import { replaceAppPath } from '../../shared/lib/navigation';
+import { handleSpaNavigationClick, replaceAppPath } from '../../shared/lib/navigation';
 import { useAuthenticatedResourceUrl } from '../../shared/lib/authenticatedResourceUrl';
 import { deleteRun, requestRunAnalysis, stopRun } from '../../api/runs';
 import type { RunReportProjection } from '../../entities/report';
@@ -52,6 +63,11 @@ const GENERATE_REPORT_ERROR_MESSAGE = '리포트 생성 요청에 실패했습�
 const REQUEST_ANALYSIS_PENDING_MESSAGE = '분석 요청 중입니다.';
 const REQUEST_ANALYSIS_SUCCESS_MESSAGE = '분석 요청이 접수됐습니다. 분석이 완료되면 리포트를 생성할 수 있습니다.';
 const REQUEST_ANALYSIS_ERROR_MESSAGE = '분석 요청에 실패했습니다. Run 상태 또는 접근 권한을 확인해주세요.';
+const RUN_MONITOR_PANEL_DEFAULT_WIDTH = 448;
+const RUN_MONITOR_PANEL_MIN_WIDTH = 336;
+const RUN_MONITOR_PANEL_MAX_WIDTH = 640;
+const RUN_MONITOR_CAPTURE_MIN_WIDTH = 560;
+const RUN_MONITOR_RESIZE_STEP = 24;
 
 function readQueryParam(name: string) {
   if (typeof window === 'undefined') {
@@ -63,6 +79,27 @@ function readQueryParam(name: string) {
 
 function getFallbackUrl() {
   return readQueryParam('url') ?? 'https://example.com/';
+}
+
+function clampNumber(value: number, min: number, max: number) {
+  return Math.min(Math.max(value, min), max);
+}
+
+function getResizablePanelBounds(cockpit: HTMLDivElement | null) {
+  if (!cockpit) {
+    return {
+      min: RUN_MONITOR_PANEL_MIN_WIDTH,
+      max: RUN_MONITOR_PANEL_MAX_WIDTH,
+    };
+  }
+
+  const availableWidth = cockpit.getBoundingClientRect().width;
+  const maxByCaptureWidth = Math.max(RUN_MONITOR_PANEL_MIN_WIDTH, availableWidth - RUN_MONITOR_CAPTURE_MIN_WIDTH);
+
+  return {
+    min: RUN_MONITOR_PANEL_MIN_WIDTH,
+    max: Math.min(RUN_MONITOR_PANEL_MAX_WIDTH, maxByCaptureWidth),
+  };
 }
 
 function StepNode({ status }: { status: StepStatus }) {
@@ -95,8 +132,8 @@ function RunMonitorTopbar() {
       </div>
 
       <nav className="run-monitor-topbar__right" aria-label="주요 이동">
-        <a href={RUNS_PATH} className="run-monitor-stop-link">실행 목록</a>
-        <a href="/create-analysis" className="run-monitor-stop-link">새 분석</a>
+        <a href={RUNS_PATH} className="run-monitor-topbar__link run-monitor-topbar__link--secondary">실행 목록</a>
+        <a href="/create-analysis" className="run-monitor-topbar__link run-monitor-topbar__link--primary">새 분석</a>
       </nav>
     </header>
   );
@@ -120,12 +157,12 @@ function RunContextBar({ runId, targetUrl, statusTone, statusLabel, deviceLabel,
           <strong>{targetUrl}</strong>
         </div>
         <div className="run-monitor-target-inline run-monitor-target-inline--optional">
-          <span>실행 ID</span>
-          <strong>{runId}</strong>
-        </div>
-        <div className="run-monitor-target-inline run-monitor-target-inline--optional">
           <span>디바이스</span>
           <strong>{deviceLabel}</strong>
+        </div>
+        <div className="run-monitor-target-inline run-monitor-target-inline--id">
+          <span>실행 ID</span>
+          <strong>{runId}</strong>
         </div>
       </div>
 
@@ -193,6 +230,111 @@ function RunMonitorStatePage({ title, message }: { title: string; message: strin
   );
 }
 
+function RunMonitorSkeletonLine({ className = '' }: { className?: string }) {
+  const skeletonClassName = className ? `run-monitor-skeleton-line ${className}` : 'run-monitor-skeleton-line';
+  return <span className={skeletonClassName} aria-hidden="true" />;
+}
+
+function RunMonitorLoadingShell({ runId, targetUrl }: { runId: string; targetUrl: string }) {
+  return (
+    <div className="run-monitor-page run-monitor-page--loading" aria-busy="true">
+      <div className="run-monitor-grid-bg" aria-hidden="true" />
+
+      <RunMonitorTopbar />
+
+      <main className="run-monitor-workspace" aria-labelledby="run-monitor-title">
+        <RunContextBar
+          runId={runId}
+          targetUrl={targetUrl}
+          deviceLabel="확인 중"
+        />
+
+        <div className="run-monitor-cockpit">
+          <section className="run-monitor-simulation" aria-labelledby="run-monitor-title">
+            <span className="run-monitor-sr-only" role="status">실제 실행 데이터를 연결하고 있습니다.</span>
+
+            <div className="run-monitor-simulation__header">
+              <div className="run-monitor-section-title">
+                <h1 id="run-monitor-title">실시간 시뮬레이션</h1>
+                <span aria-hidden="true" />
+                <RunMonitorSkeletonLine className="run-monitor-skeleton-line--checkpoint" />
+              </div>
+              <span className="run-monitor-viewport-label">1440px 뷰포트</span>
+            </div>
+
+            <div className="run-monitor-browser" aria-hidden="true">
+              <div className="run-monitor-browser__bar">
+                <div className="run-monitor-browser__dots">
+                  <span />
+                  <span />
+                  <span />
+                </div>
+                <div className="run-monitor-browser__address">{targetUrl}</div>
+                <span className="run-monitor-browser__mode-pill">실제 캡처</span>
+              </div>
+
+              <div className="run-monitor-browser__stage run-monitor-browser__stage--skeleton" />
+            </div>
+          </section>
+
+          <aside className="run-monitor-analysis-panel" aria-hidden="true">
+            <section className="run-monitor-progress-panel">
+              <div className="run-monitor-panel-heading">
+                <h2>전체 진행률</h2>
+                <RunMonitorSkeletonLine className="run-monitor-skeleton-line--metric" />
+              </div>
+              <div className="run-monitor-progress__track run-monitor-progress__track--skeleton">
+                <span />
+              </div>
+            </section>
+
+            <section className="run-monitor-live-insight">
+              <div className="run-monitor-live-insight__label">
+                <span />
+                <h2>분석 상태</h2>
+              </div>
+              <div className="run-monitor-live-insight__card run-monitor-live-insight__card--skeleton">
+                <RunMonitorSkeletonLine className="run-monitor-skeleton-line--title" />
+                <RunMonitorSkeletonLine />
+                <RunMonitorSkeletonLine className="run-monitor-skeleton-line--short" />
+              </div>
+            </section>
+
+            <div className="run-monitor-panel-scroll">
+              <section className="run-monitor-context run-monitor-context--skeleton">
+                <h2>실행 정보</h2>
+                <dl>
+                  {[0, 1, 2, 3].map((item) => (
+                    <div key={item}>
+                      <dt><RunMonitorSkeletonLine className="run-monitor-skeleton-line--label" /></dt>
+                      <dd><RunMonitorSkeletonLine /></dd>
+                    </div>
+                  ))}
+                </dl>
+              </section>
+
+              <section className="run-monitor-timeline">
+                <h2>시나리오 경로</h2>
+                <ol className="run-monitor-timeline__list">
+                  {[0, 1, 2].map((item) => (
+                    <li key={item} className="run-monitor-step run-monitor-step--skeleton">
+                      <div className="run-monitor-step__node" />
+                      <div className="run-monitor-step__content">
+                        <RunMonitorSkeletonLine className="run-monitor-skeleton-line--title" />
+                        <RunMonitorSkeletonLine />
+                      </div>
+                    </li>
+                  ))}
+                </ol>
+              </section>
+            </div>
+          </aside>
+        </div>
+      </main>
+    </div>
+  );
+}
+
 interface EvidenceSummaryStats {
   checkpointCount: number;
   observationCount: number;
@@ -237,15 +379,15 @@ function EvidenceCollectionSummary({
 
   return (
     <div className="run-monitor-evidence-summary" aria-label="수집 상태 요약">
-      <span>수집 상태</span>
+      <span>수집</span>
       {stats ? (
         <dl>
           <div>
-            <dt>체크포인트</dt>
+            <dt>체크</dt>
             <dd>{stats.checkpointCount}</dd>
           </div>
           <div>
-            <dt>관찰 신호</dt>
+            <dt>신호</dt>
             <dd>{stats.observationCount}</dd>
           </div>
           <div>
@@ -293,6 +435,8 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
   const [reportActionState, setReportActionState] = useState<MonitorActionState>(IDLE_MONITOR_ACTION_STATE);
   const activeRouteRunIdRef = useRef(runId);
   const isMonitorMountedRef = useRef(false);
+  const cockpitRef = useRef<HTMLDivElement | null>(null);
+  const [analysisPanelWidth, setAnalysisPanelWidth] = useState(RUN_MONITOR_PANEL_DEFAULT_WIDTH);
 
   useEffect(() => {
     isMonitorMountedRef.current = true;
@@ -387,17 +531,67 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
     };
   }, [canApplyReportResponse, isMockRun, reportProjection, run.id, run.status, runId]);
 
+  const updateAnalysisPanelWidth = useCallback((nextWidth: number) => {
+    const bounds = getResizablePanelBounds(cockpitRef.current);
+    setAnalysisPanelWidth(clampNumber(nextWidth, bounds.min, bounds.max));
+  }, []);
+
+  const updateAnalysisPanelWidthFromPointer = useCallback((clientX: number) => {
+    const cockpit = cockpitRef.current;
+
+    if (!cockpit) {
+      return;
+    }
+
+    const rect = cockpit.getBoundingClientRect();
+    updateAnalysisPanelWidth(rect.right - clientX);
+  }, [updateAnalysisPanelWidth]);
+
+  const handleAnalysisPanelResizePointerDown = useCallback((event: PointerEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    updateAnalysisPanelWidthFromPointer(event.clientX);
+  }, [updateAnalysisPanelWidthFromPointer]);
+
+  const handleAnalysisPanelResizePointerMove = useCallback((event: PointerEvent<HTMLButtonElement>) => {
+    if (event.buttons !== 1) {
+      return;
+    }
+
+    updateAnalysisPanelWidthFromPointer(event.clientX);
+  }, [updateAnalysisPanelWidthFromPointer]);
+
+  const handleAnalysisPanelResizeKeyDown = useCallback((event: KeyboardEvent<HTMLButtonElement>) => {
+    if (event.key === 'ArrowLeft') {
+      event.preventDefault();
+      updateAnalysisPanelWidth(analysisPanelWidth + RUN_MONITOR_RESIZE_STEP);
+      return;
+    }
+
+    if (event.key === 'ArrowRight') {
+      event.preventDefault();
+      updateAnalysisPanelWidth(analysisPanelWidth - RUN_MONITOR_RESIZE_STEP);
+      return;
+    }
+
+    if (event.key === 'Home') {
+      event.preventDefault();
+      updateAnalysisPanelWidth(RUN_MONITOR_PANEL_DEFAULT_WIDTH);
+      return;
+    }
+
+    if (event.key === 'End') {
+      event.preventDefault();
+      updateAnalysisPanelWidth(RUN_MONITOR_PANEL_MAX_WIDTH);
+    }
+  }, [analysisPanelWidth, updateAnalysisPanelWidth]);
+
   const evidenceScreenshotUrl = findEvidenceScreenshotArtifact(evidencePacket)?.uri ?? null;
   const snapshotUrl = live.latestFrame?.url ?? run.latestSnapshot?.url ?? evidenceScreenshotUrl;
   const authenticatedSnapshotUrl = useAuthenticatedResourceUrl(snapshotUrl);
 
   if (isRealRunLoading) {
-    return (
-      <RunMonitorStatePage
-        title="Run 상태를 불러오는 중입니다"
-        message="실제 실행 데이터와 최신 화면 캡처를 연결하고 있습니다."
-      />
-    );
+    return <RunMonitorLoadingShell runId={runId} targetUrl={fallbackUrl} />;
   }
 
   if (apiLoadError && !isApiFallback && !hasRealRunSnapshot) {
@@ -408,7 +602,7 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
   const statusLabel = RUN_STATUS_LABEL[live.status];
   const progressPercent = isApiFallback ? mockData.progressPercent : getApiProgressPercent(live);
   const currentCheckpoint = isApiFallback ? (live.currentAction ?? mockData.currentCheckpoint) : getApiCheckpoint(live);
-  const traceModeLabel = isApiFallback ? '모의 실행' : 'API 상태 스냅샷';
+  const traceModeLabel = isApiFallback ? '모의 실행' : '실제 실행 상태';
   const reportCtaState = resolveRunMonitorReportCtaState({
     isMockRun,
     report: reportProjection,
@@ -427,20 +621,28 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
   const deviceLabel = getDevicePresetLabel(run.devicePreset);
   const evidenceStats = getEvidenceSummaryStats(evidencePacket, live.evidenceCounts);
   const timelineNote = isApiFallback
-    ? '모의 실행 화면 · 실제 event API 연동 시 교체됩니다.'
+    ? '예시 실행 경로입니다. 실제 실행이 시작되면 수집한 단계로 교체됩니다.'
     : eventLoadError || (isEventLoading && runEvents.length === 0)
-      ? (eventLoadError || '실제 event timeline을 불러오는 중입니다.')
+      ? (eventLoadError || '확인 경로를 불러오는 중입니다.')
       : runEvents.length > 0
-        ? 'API event timeline · Runner callback으로 저장된 실제 이벤트를 표시합니다.'
+        ? '실제 실행 이벤트를 바탕으로 확인한 경로입니다.'
         : stepLoadError || (isStepLoading && runSteps.length === 0)
-          ? (stepLoadError || '실제 step timeline을 불러오는 중입니다.')
-          : 'API step timeline · Runner callback으로 저장된 실제 step 상태를 표시합니다.';
+          ? (stepLoadError || '확인 단계를 불러오는 중입니다.')
+          : '실제 실행 단계 상태를 바탕으로 확인한 경로입니다.';
   const isRunActionPending = runActionState.kind === 'pending';
   const canStopCurrentRun = !isMockRun && canRequestRunStop(live.status);
   const canDeleteCurrentRun = !isMockRun && canRequestRunDelete(live.status);
   const isReportActionPending = reportActionState.kind === 'pending';
   const canGenerateReport = !isMockRun && reportCtaState.kind === 'generate';
   const canRequestAnalysis = !isMockRun && reportCtaState.kind === 'request-analysis';
+
+  const openReport = (event: MouseEvent<HTMLAnchorElement>) => {
+    if (!reportPath) {
+      return;
+    }
+
+    handleSpaNavigationClick(event, reportPath);
+  };
 
   const requestStopRun = () => {
     if (!canStopCurrentRun || isRunActionPending) {
@@ -536,6 +738,43 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
       {reportActionState.message}
     </p>
   ) : null;
+  let reportCtaStatusLabel = '준비 중';
+  if (reportPath) {
+    reportCtaStatusLabel = '준비됨';
+  } else if (isReportActionPending) {
+    reportCtaStatusLabel = canRequestAnalysis ? '요청 중' : '생성 중';
+  } else if (canGenerateReport) {
+    reportCtaStatusLabel = '생성 가능';
+  } else if (canRequestAnalysis) {
+    reportCtaStatusLabel = '분석 필요';
+  } else if (reportCtaState.kind === 'waiting' || reportCtaState.kind === 'loading') {
+    reportCtaStatusLabel = '대기 중';
+  } else if (reportCtaState.kind === 'failed' || reportCtaState.kind === 'error') {
+    reportCtaStatusLabel = '확인 필요';
+  }
+
+  let reportCtaActionLabel = '대기 중';
+  if (reportPath) {
+    reportCtaActionLabel = '리포트 보기';
+  } else if (canGenerateReport) {
+    reportCtaActionLabel = isReportActionPending ? '생성 중' : '리포트 생성';
+  } else if (canRequestAnalysis) {
+    reportCtaActionLabel = isReportActionPending ? '요청 중' : '분석 시작';
+  }
+
+  const reportCtaAction = reportPath ? (
+    <a href={reportPath} onClick={openReport}>{reportCtaActionLabel}</a>
+  ) : canGenerateReport ? (
+    <button type="button" onClick={requestGenerateReport} disabled={isReportActionPending}>
+      {reportCtaActionLabel}
+    </button>
+  ) : canRequestAnalysis ? (
+    <button type="button" onClick={requestAnalysisForReport} disabled={isReportActionPending}>
+      {reportCtaActionLabel}
+    </button>
+  ) : (
+    <button type="button" disabled>{reportCtaActionLabel}</button>
+  );
 
   return (
     <div className="run-monitor-page">
@@ -561,7 +800,11 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
           )}
         />
 
-        <div className="run-monitor-cockpit">
+        <div
+          ref={cockpitRef}
+          className="run-monitor-cockpit run-monitor-cockpit--resizable"
+          style={{ '--run-monitor-analysis-panel-width': `${analysisPanelWidth}px` } as CSSProperties}
+        >
           <section className="run-monitor-simulation" aria-labelledby="run-monitor-title">
             {runActionState.message ? (
               <p className={`run-monitor-action-message run-monitor-action-message--${runActionState.kind}`} role="status">
@@ -592,10 +835,10 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
                   <span />
                 </div>
                 <div className="run-monitor-browser__address">{run.startUrl}</div>
-                <span className="run-monitor-browser__mode-pill">{isApiFallback ? '모의 프리뷰' : '실제 캡처'}</span>
+                <span className="run-monitor-browser__mode-pill">{isApiFallback ? '모의 프리뷰' : '페이지 캡처'}</span>
               </div>
 
-              <div className="run-monitor-browser__stage">
+              <div className={authenticatedSnapshotUrl ? 'run-monitor-browser__stage run-monitor-browser__stage--snapshot' : 'run-monitor-browser__stage'}>
                 {authenticatedSnapshotUrl ? (
                   <img className="run-monitor-browser__image" src={authenticatedSnapshotUrl} alt="최근 캡처된 분석 화면" />
                 ) : isApiFallback ? (
@@ -646,14 +889,26 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
                   <div className="run-monitor-browser__empty-state">
                     <span aria-hidden="true" />
                     <strong>화면 캡처 대기 중</strong>
-                    <p>실제 run에서 latestFrame 또는 latestSnapshot이 도착하면 이 영역에 표시됩니다.</p>
+                    <p>분석 화면이 준비되면 이 영역에서 바로 확인할 수 있습니다.</p>
                   </div>
                 )}
               </div>
             </div>
           </section>
 
-        <aside className="run-monitor-analysis-panel" aria-label="실시간 분석 상태">
+          <button
+            type="button"
+            className="run-monitor-panel-resizer"
+            aria-label="캡처 화면과 분석 메뉴 폭 조절"
+            title="좌우로 드래그해서 패널 폭 조절"
+            onKeyDown={handleAnalysisPanelResizeKeyDown}
+            onPointerDown={handleAnalysisPanelResizePointerDown}
+            onPointerMove={handleAnalysisPanelResizePointerMove}
+          >
+            <span aria-hidden="true" />
+          </button>
+
+          <aside className="run-monitor-analysis-panel" aria-label="실시간 분석 상태">
           <section className="run-monitor-progress-panel" aria-labelledby="run-progress-title">
             <div className="run-monitor-panel-heading">
               <h2 id="run-progress-title">전체 진행률</h2>
@@ -678,33 +933,28 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
             </div>
             {reportCtaState.kind !== 'hidden' ? (
               <div className="run-monitor-live-insight__card run-monitor-live-insight__card--report run-monitor-report-cta">
-                <span>{reportCtaState.eyebrow}</span>
+                <div className="run-monitor-report-cta__state">
+                  <span>{reportCtaState.eyebrow}</span>
+                  <b>{reportCtaStatusLabel}</b>
+                </div>
                 <strong>분석 결과 리포트</strong>
                 <p>{reportCtaState.message}</p>
-                <EvidenceCollectionSummary
-                  stats={evidenceStats}
-                  isLoading={isEvidenceLoading}
-                  errorMessage={evidenceLoadError}
-                />
-                {reportActionMessage}
-                {reportPath ? <a href={reportPath}>리포트 보기</a> : null}
-                {canGenerateReport ? (
-                  <button type="button" onClick={requestGenerateReport} disabled={isReportActionPending}>
-                    {isReportActionPending ? '생성 중' : '리포트 생성'}
-                  </button>
-                ) : null}
-                {canRequestAnalysis ? (
-                  <button type="button" onClick={requestAnalysisForReport} disabled={isReportActionPending}>
-                    {isReportActionPending ? '요청 중' : '분석 시작'}
-                  </button>
-                ) : null}
+                <div className="run-monitor-report-cta__footer">
+                  <EvidenceCollectionSummary
+                    stats={evidenceStats}
+                    isLoading={isEvidenceLoading}
+                    errorMessage={evidenceLoadError}
+                  />
+                  {reportActionMessage}
+                  <div className="run-monitor-report-cta__actions">
+                    {reportCtaAction}
+                  </div>
+                </div>
               </div>
             ) : (
               <div className="run-monitor-live-insight__card">
                 <strong>{currentCheckpoint}</strong>
-                <p>
-                  선택한 <span>{run.goal ?? run.name}</span> 흐름에서 화면 위계와 전환 마찰 근거를 수집하고 있습니다.
-                </p>
+                <p>선택한 흐름을 준비하고 있습니다. 곧 근거 수집을 시작합니다.</p>
                 <EvidenceCollectionSummary
                   stats={evidenceStats}
                   isLoading={isEvidenceLoading}
@@ -750,9 +1000,10 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
                       <span className="run-monitor-sr-only">{getStepStatusLabel(step.status)}</span>
                       <div className="run-monitor-step__head">
                         <h3>{step.label}</h3>
-                        <time>{step.timestamp}</time>
+                        <span className="run-monitor-step__status">{getStepStatusLabel(step.status)}</span>
                       </div>
                       <p>{step.detail}</p>
+                      <time>{step.timestamp}</time>
                     </div>
                   </li>
                 ))}
@@ -760,12 +1011,13 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
             </section>
 
             <section className="run-monitor-log" aria-labelledby="action-log-title">
-              <h2 id="action-log-title">작업 로그</h2>
+              <h2 id="action-log-title">진행 요약</h2>
               <ul className="run-monitor-log__list">
                 {visibleLogs.map((log) => (
                   <li key={log.id} className={`run-monitor-log__item run-monitor-log__item--${log.tone}`}>
+                    <span className="run-monitor-log__dot" aria-hidden="true" />
+                    <span className="run-monitor-log__message">{log.message}</span>
                     <time>{log.time}</time>
-                    <span>{log.message}</span>
                   </li>
                 ))}
               </ul>

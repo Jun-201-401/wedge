@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { AgentLlmDecisionClient, createAgentDecisionClient, type AgentLlmDecisionTransport } from "../src/agent/llm-client.ts";
+import { HeuristicDecisionClient, type AgentDecisionInput } from "../src/agent/planner.ts";
 import { createInitialAgentState } from "../src/agent/state.ts";
+import type { InteractiveComponentObservationItem, ScenarioStage } from "../src/shared/contracts.ts";
 import { createMinimalPlan, createRunnerTestConfig, createSimulatedPageSnapshot } from "./support.ts";
 
 test("[Agent LLM Decision] config가 heuristic이면 LLM endpoint가 있어도 heuristic client를 사용한다", () => {
@@ -84,6 +86,17 @@ test("[Agent LLM Decision] LLM 응답 targetKey를 관찰된 click target으로�
   });
   assert.equal(decision.targetKey, "#checkout");
   assert.equal(decision.stage, "COMMIT");
+  assert.match(decision.metadata?.decisionId ?? "", /^[0-9a-f-]{36}$/);
+  assert.equal(decision.metadata?.decisionSource, "llm");
+  assert.equal(decision.metadata?.model, "agent-model");
+  assert.deepEqual(decision.metadata?.promptMetadata, {
+    payloadShapeVersion: "llm-prompt-v1",
+    candidateCount: 1,
+    redacted: true,
+    rawPromptStored: false,
+    rawCandidateSelectorsIncluded: false,
+    rawCandidateHrefsIncluded: false
+  });
   assert.match(decision.replayHint?.candidate_fingerprint ?? "", /^candidate:[a-f0-9]{16}$/);
   assert.deepEqual(decision.replayHint?.locator_recipe[0], {
     strategy: "selector",
@@ -212,6 +225,81 @@ test("[Agent LLM Decision] transport 실패는 heuristic으로 fallback한다", 
 
   assert.equal(decision.action.type, "click");
   assert.equal(decision.targetKey, "#real-checkout");
+});
+
+test("[Agent LLM Decision] broader checkout fixture에서 LLM 선택은 heuristic 기준선과 일치한다", async () => {
+  const heuristic = new HeuristicDecisionClient();
+  const fixtures: Array<{
+    name: string;
+    clickedTargetKeys?: string[];
+    expectedText: string;
+    expectedTargetKey: string;
+    expectedStage: ScenarioStage;
+    components: InteractiveComponentObservationItem[];
+  }> = [
+    {
+      name: "product page add-to-cart beats generic CTA",
+      expectedText: "Add to cart",
+      expectedTargetKey: "#add-to-cart",
+      expectedStage: "CTA",
+      components: [
+        component({ text: "Learn more", selector: "#learn-more", role: "link", href: "https://example.com/product#details", tag: "a" }),
+        component({ text: "Add to cart", selector: "#add-to-cart", role: "button", tag: "button", primary: true })
+      ]
+    },
+    {
+      name: "cart link follows completed add-to-cart",
+      clickedTargetKeys: ["#add-to-cart"],
+      expectedText: "View cart",
+      expectedTargetKey: "#cart-link",
+      expectedStage: "CTA",
+      components: [
+        component({ text: "Add to cart", selector: "#add-to-cart", role: "button", tag: "button" }),
+        component({ text: "View cart", selector: "#cart-link", role: "link", href: "https://example.com/cart", tag: "a", primary: true })
+      ]
+    },
+    {
+      name: "checkout link is the terminal checkout-entry candidate",
+      clickedTargetKeys: ["#add-to-cart", "#cart-link"],
+      expectedText: "Proceed to checkout",
+      expectedTargetKey: "#checkout-link",
+      expectedStage: "COMMIT",
+      components: [
+        component({ text: "Continue shopping", selector: "#continue-shopping", role: "link", href: "https://example.com/product", tag: "a" }),
+        component({ text: "Proceed to checkout", selector: "#checkout-link", role: "link", href: "https://example.com/checkout", tag: "a", primary: true })
+      ]
+    }
+  ];
+
+  for (const fixture of fixtures) {
+    const input = createFixtureDecisionInput(fixture.components, fixture.clickedTargetKeys);
+    const llm = new AgentLlmDecisionClient({
+      endpoint: "https://llm.example/decision",
+      model: "agent-model",
+      timeoutMs: 1_000,
+      transport: {
+        complete: async (request) => ({
+          decision: {
+            kind: "act",
+            actionType: "click",
+            targetKey: selectPromptCandidateId(request.payload, fixture.expectedText),
+            stage: fixture.expectedStage,
+            reason: `Fixture ${fixture.name}`,
+            confidence: 0.9
+          }
+        })
+      }
+    });
+
+    const heuristicDecision = heuristic.decide(input);
+    const llmDecision = await llm.decide(input);
+
+    assert.equal(heuristicDecision.action.type, "click", fixture.name);
+    assert.equal(llmDecision.action.type, "click", fixture.name);
+    assert.equal(heuristicDecision.targetKey, fixture.expectedTargetKey, fixture.name);
+    assert.equal(llmDecision.targetKey, heuristicDecision.targetKey, fixture.name);
+    assert.equal(llmDecision.stage, heuristicDecision.stage, fixture.name);
+  }
 });
 
 
@@ -427,8 +515,8 @@ test("[Agent LLM Decision] prompt payload는 민감 문자열을 redaction 후 �
 
   await client.decide({
     runId: "00000000-0000-4000-8000-000000000405",
-    goal: "Find checkout for mvp.tester@example.com and 010-1234-5678",
-    startUrl: "https://example.com/product?email=mvp.tester@example.com&token=secret-token",
+    goal: "Find checkout for mvp.tester@example.com and 010-1234-5678 near 123 Main Street coupon code SAVE-SECRET-50",
+    startUrl: "https://example.com/product?email=mvp.tester@example.com&token=secret-token&session_id=session-secret&coupon_code=SAVE-SECRET-50",
     state: {
       ...createInitialAgentState(),
       started: true
@@ -440,10 +528,10 @@ test("[Agent LLM Decision] prompt payload는 민감 문자열을 redaction 후 �
         title: "Account mvp.tester@example.com",
         interactiveComponents: [
           {
-            text: "Checkout with card 4242 4242 4242 4242",
-            selector: "#checkout",
+            text: "Checkout with card 4242 4242 4242 4242 at 123 Main Street coupon code SAVE-SECRET-50",
+            selector: "#checkout-session-secret-SAVE-SECRET-50",
             role: "link",
-            href: "https://checkout.example/session?token=checkout-secret&email=mvp.tester@example.com",
+            href: "https://checkout.example/session/checkout-secret?token=checkout-secret&email=mvp.tester@example.com&coupon_code=SAVE-SECRET-50",
             tag: "a",
             clickable: true,
             clicked_in_scenario: false,
@@ -467,8 +555,93 @@ test("[Agent LLM Decision] prompt payload는 민감 문자열을 redaction 후 �
   assert.doesNotMatch(serializedPayload, /010-?1234-?5678/);
   assert.doesNotMatch(serializedPayload, /4242 4242 4242 4242/);
   assert.doesNotMatch(serializedPayload, /checkout-secret|secret-token/);
+  assert.doesNotMatch(serializedPayload, /session-secret|SAVE-SECRET-50|123 Main Street/);
+  assert.doesNotMatch(serializedPayload, /checkout-session-secret-SAVE-SECRET-50/);
   assert.match(serializedPayload, /REDACTED_EMAIL/);
   assert.match(serializedPayload, /REDACTED_PHONE/);
   assert.match(serializedPayload, /REDACTED_CARD/);
   assert.match(serializedPayload, /REDACTED_SECRET/);
+  assert.match(serializedPayload, /REDACTED_ADDRESS/);
+  assert.match(serializedPayload, /REDACTED_COUPON/);
+  assert.match(serializedPayload, /selectorHint/);
 });
+
+function createFixtureDecisionInput(
+  components: InteractiveComponentObservationItem[],
+  clickedTargetKeys: string[] = []
+): AgentDecisionInput {
+  return {
+    runId: "00000000-0000-4000-8000-000000000499",
+    goal: "Find the checkout entry path without submitting payment or final order.",
+    startUrl: "https://example.com/product",
+    state: {
+      ...createInitialAgentState(),
+      started: true,
+      clickedTargetKeys: new Set(clickedTargetKeys)
+    },
+    maxScrolls: 1,
+    observation: {
+      snapshot: createSimulatedPageSnapshot(createMinimalPlan(), {
+        finalUrl: "https://example.com/product",
+        interactiveComponents: components
+      })
+    }
+  };
+}
+
+function component(input: {
+  text: string;
+  selector: string;
+  role: string;
+  tag: string;
+  href?: string;
+  primary?: boolean;
+}): InteractiveComponentObservationItem {
+  return {
+    text: input.text,
+    selector: input.selector,
+    role: input.role,
+    href: input.href,
+    tag: input.tag,
+    clickable: true,
+    clicked_in_scenario: false,
+    is_cta_candidate: true,
+    is_primary_like: input.primary ?? false,
+    bounds: {
+      x: 0,
+      y: 0,
+      width: 100,
+      height: 40,
+      unit: "css_px"
+    }
+  };
+}
+
+function selectPromptCandidateId(payload: Record<string, unknown>, expectedText: string): string {
+  const messages = payload.messages;
+  assert.ok(Array.isArray(messages));
+  const userMessage = messages.find((message) =>
+    typeof message === "object" &&
+    message !== null &&
+    (message as Record<string, unknown>).role === "user"
+  ) as { content?: unknown } | undefined;
+  if (typeof userMessage?.content !== "string") {
+    throw new Error("User prompt message was not captured.");
+  }
+  const userMessageContent = userMessage.content;
+
+  const parsed = JSON.parse(userMessageContent) as {
+    page?: {
+      candidates?: Array<{
+        targetKey?: string;
+        text?: string;
+      }>;
+    };
+  };
+  const candidate = parsed.page?.candidates?.find((entry) => entry.text === expectedText);
+  if (typeof candidate?.targetKey !== "string") {
+    throw new Error(`Prompt candidate was not found for text: ${expectedText}`);
+  }
+  const targetKey = candidate.targetKey;
+  return targetKey;
+}

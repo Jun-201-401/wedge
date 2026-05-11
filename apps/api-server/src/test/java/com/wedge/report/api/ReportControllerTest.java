@@ -25,6 +25,7 @@ import com.wedge.report.api.dto.ReportSummaryResponse;
 import com.wedge.report.api.dto.RunReportResponse;
 import com.wedge.report.application.ReportDetailQueryService;
 import com.wedge.report.application.ReportGenerationService;
+import com.wedge.report.application.ReportShareCreationResult;
 import com.wedge.report.application.ReportShareService;
 import com.wedge.report.application.ReportSummaryQueryService;
 import com.wedge.report.domain.ReportFormat;
@@ -189,7 +190,7 @@ class ReportControllerTest {
                 null,
                 CREATED_AT
         );
-        when(reportShareService.createReportShare(reportId, userId)).thenReturn(response);
+        when(reportShareService.createReportShare(reportId, userId)).thenReturn(ReportShareCreationResult.created(response));
 
         mockMvc.perform(post("/api/reports/{reportId}/shares", reportId)
                         .principal(authentication(userId))
@@ -199,6 +200,23 @@ class ReportControllerTest {
                 .andExpect(jsonPath("$.data.accessLevel").value("VIEW"))
                 .andExpect(jsonPath("$.data.expiresAt").exists())
                 .andExpect(jsonPath("$.meta.requestId").value("req_report_share_create"));
+    }
+
+    @Test
+    void createReportShareReturnsOkEnvelopeWhenExistingActiveShareIsReused() throws Exception {
+        UUID reportId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        UUID shareId = UUID.randomUUID();
+        ReportShareResponse response = share(reportId, shareId);
+        when(reportShareService.createReportShare(reportId, userId)).thenReturn(ReportShareCreationResult.reused(response));
+
+        mockMvc.perform(post("/api/reports/{reportId}/shares", reportId)
+                        .principal(authentication(userId))
+                        .header("X-Request-Id", "req_report_share_reuse"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.id").value(shareId.toString()))
+                .andExpect(jsonPath("$.data.shareUrl").value("https://wedge.example.com/api/report-shares/share-token"))
+                .andExpect(jsonPath("$.meta.requestId").value("req_report_share_reuse"));
     }
 
     @Test

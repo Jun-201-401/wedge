@@ -6,6 +6,7 @@ export type RunnerBrowserName = "chromium" | "firefox" | "webkit";
 export type RunnerCallbackMode = "file" | "http";
 export type RunnerArtifactStoreMode = "filesystem" | "s3";
 export type RunnerAgentDecisionMode = "heuristic" | "llm" | "mcp";
+export type RunnerAgentIdempotencyStoreMode = "local" | "api";
 
 const DEFAULT_RETRY_DELAYS_MS = [200, 1000, 3000] as const;
 const DEFAULT_OUTBOX_LOCK_STALE_MS = 30_000;
@@ -19,6 +20,7 @@ const DEFAULT_SIMULATED_DELAY_CAP_MS = 25;
 const DEFAULT_MQ_MAX_DELIVERY_ATTEMPTS = 3;
 const DEFAULT_AGENT_LLM_TIMEOUT_MS = 10_000;
 const DEFAULT_AGENT_MCP_GATEWAY_TIMEOUT_MS = 10_000;
+const DEFAULT_AGENT_IDEMPOTENCY_LEASE_TTL_MS = 300_000;
 export const RUNNER_MQ_CALLBACK_OUTBOX_WORKER_ENABLED_ENV = "RUNNER_MQ_CALLBACK_OUTBOX_WORKER_ENABLED";
 export const RUNNER_MQ_ARTIFACT_OUTBOX_WORKER_ENABLED_ENV = "RUNNER_MQ_ARTIFACT_OUTBOX_WORKER_ENABLED";
 
@@ -63,6 +65,8 @@ export interface RunnerConfig {
   mqPrefetch: number;
   agentConcurrency: number;
   agentIdempotencyStoreEnabled: boolean;
+  agentIdempotencyStoreMode: RunnerAgentIdempotencyStoreMode;
+  agentIdempotencyLeaseTtlMs: number;
   mqRequeueOnFailure: boolean;
   mqMaxDeliveryAttempts: number;
   mqCallbackOutboxWorkerEnabled: boolean;
@@ -177,6 +181,14 @@ export function loadRunnerConfig(overrides: Partial<RunnerConfig> = {}): RunnerC
     process.env.RUNNER_AGENT_IDEMPOTENCY_STORE_ENABLED,
     true
   );
+  const agentIdempotencyStoreMode = resolveAgentIdempotencyStoreMode(
+    overrides.agentIdempotencyStoreMode ?? process.env.RUNNER_AGENT_IDEMPOTENCY_STORE_MODE
+  );
+  const agentIdempotencyLeaseTtlMs = parsePositiveInteger(
+    overrides.agentIdempotencyLeaseTtlMs,
+    process.env.RUNNER_AGENT_IDEMPOTENCY_LEASE_TTL_MS,
+    DEFAULT_AGENT_IDEMPOTENCY_LEASE_TTL_MS
+  );
   const mqRequeueOnFailure = parseBoolean(
     overrides.mqRequeueOnFailure,
     process.env.RUNNER_MQ_REQUEUE_ON_FAILURE,
@@ -282,6 +294,8 @@ export function loadRunnerConfig(overrides: Partial<RunnerConfig> = {}): RunnerC
     mqPrefetch,
     agentConcurrency,
     agentIdempotencyStoreEnabled,
+    agentIdempotencyStoreMode,
+    agentIdempotencyLeaseTtlMs,
     mqRequeueOnFailure,
     mqMaxDeliveryAttempts,
     mqCallbackOutboxWorkerEnabled,
@@ -354,6 +368,10 @@ function parseBrowserName(value: RunnerConfig["browserName"] | string | undefine
 
 function resolveAgentDecisionMode(value: RunnerAgentDecisionMode | string | undefined): RunnerAgentDecisionMode {
   return value === "llm" || value === "mcp" ? value : "heuristic";
+}
+
+function resolveAgentIdempotencyStoreMode(value: RunnerAgentIdempotencyStoreMode | string | undefined): RunnerAgentIdempotencyStoreMode {
+  return value === "api" ? "api" : "local";
 }
 
 function parseBoolean(

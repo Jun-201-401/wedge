@@ -9,10 +9,16 @@ html {
 body {
   margin: 0;
   min-width: 320px;
-  font-family: 'Inter', sans-serif;
+  background: #fff;
+  font-family: 'Pretendard Variable', Pretendard, 'Inter', sans-serif;
   -webkit-font-smoothing: antialiased;
   overflow-x: hidden;
   overflow-x: clip;
+}
+
+#root {
+  min-height: 100vh;
+  background: #fff;
 }
 
 a {
@@ -21,7 +27,8 @@ a {
 }
 
 button,
-input {
+input,
+select,
+textarea {
   font: inherit;
 }
-

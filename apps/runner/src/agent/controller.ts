@@ -10,7 +10,7 @@ import { classifyRunnerFailure, errorMessage, logOperationalEvent } from "../sha
 import { persistAgentScenarioPlanExportArtifact, persistAgentTraceArtifact } from "./artifacts.ts";
 import { emitAgentEventBestEffort, emitAgentTraceBestEffort } from "./callbacks.ts";
 import { AgentBudgetExceededError, assertAgentDeadline, createAgentDeadline, remainingAgentBudgetMs, runSideEffectWithDeadlineCleanup, runWithinAgentDeadline } from "./deadline.ts";
-import { HeuristicDecisionClient, type AgentDecision, type AgentDecisionClient } from "./planner.ts";
+import { ensureAgentDecisionMetadata, HeuristicDecisionClient, type AgentDecision, type AgentDecisionClient } from "./planner.ts";
 import { observePage } from "./observation.ts";
 import { evaluateAgentPolicy } from "./policy.ts";
 import { createInitialAgentState } from "./state.ts";
@@ -93,7 +93,7 @@ export async function executeAgentRun(input: AgentExecutorInput): Promise<AgentE
 
     let decision: AgentDecision;
     try {
-      decision = await runWithinAgentDeadline(deadline, "decision", () => decisionClient.decide({
+      decision = ensureAgentDecisionMetadata(await runWithinAgentDeadline(deadline, "decision", () => decisionClient.decide({
         runId: input.runId,
         goal: resolveTaskGoal(input.task),
         startUrl: input.task.start_url,
@@ -101,7 +101,7 @@ export async function executeAgentRun(input: AgentExecutorInput): Promise<AgentE
         observation,
         maxScrolls: config.maxScrolls,
         remainingTimeMs: remainingAgentBudgetMs(deadline)
-      }));
+      })));
     } catch (error) {
       if (markBudgetExceeded(trace, error)) {
         break;
@@ -116,7 +116,10 @@ export async function executeAgentRun(input: AgentExecutorInput): Promise<AgentE
       decisionReason: decision.reason,
       confidence: decision.confidence,
       actionType: decision.action.type,
-      targetKey: decision.targetKey
+      targetKey: decision.targetKey,
+      decisionId: decision.metadata?.decisionId,
+      decisionSource: decision.metadata?.decisionSource,
+      model: decision.metadata?.model
     }, turn)));
 
     const policy = evaluateAgentPolicy({

@@ -1,0 +1,137 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wedge.example.com/contracts/internal/runner-agent-idempotency.schema.json",
+  "title": "Runner Agent Idempotency Internal API",
+  "description": "Internal API payloads for DB-backed agent.execute claim lease and terminal idempotency shared by Runner replicas.",
+  "$defs": {
+    "KeyHash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "RecordStatus": {
+      "type": "string",
+      "enum": ["CLAIMED", "COMPLETED"]
+    },
+    "ClaimRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "runId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "taskId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "attemptId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "attemptIndex": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "leaseTtlMs": {
+          "type": ["integer", "null"],
+          "minimum": 1000,
+          "maximum": 86400000,
+          "default": 300000
+        }
+      },
+      "required": ["runId", "taskId", "attemptId", "attemptIndex"]
+    },
+    "RecordRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "runId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "taskId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "attemptId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "attemptIndex": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "result": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "required": ["runId", "taskId", "attemptId", "attemptIndex", "result"]
+    },
+    "RecordResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "idempotencyKeyHash": {
+          "$ref": "#/$defs/KeyHash"
+        },
+        "found": {
+          "type": "boolean"
+        },
+        "status": {
+          "anyOf": [
+            { "$ref": "#/$defs/RecordStatus" },
+            { "type": "null" }
+          ]
+        },
+        "runId": {
+          "type": ["string", "null"],
+          "format": "uuid"
+        },
+        "taskId": {
+          "type": ["string", "null"]
+        },
+        "attemptId": {
+          "type": ["string", "null"]
+        },
+        "attemptIndex": {
+          "type": ["integer", "null"],
+          "minimum": 1
+        },
+        "claimedBy": {
+          "type": ["string", "null"]
+        },
+        "claimedAt": {
+          "type": ["string", "null"],
+          "format": "date-time"
+        },
+        "leaseExpiresAt": {
+          "type": ["string", "null"],
+          "format": "date-time"
+        },
+        "result": {
+          "type": ["object", "null"],
+          "additionalProperties": true
+        },
+        "completedAt": {
+          "type": ["string", "null"],
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "idempotencyKeyHash",
+        "found",
+        "status",
+        "runId",
+        "taskId",
+        "attemptId",
+        "attemptIndex",
+        "claimedBy",
+        "claimedAt",
+        "leaseExpiresAt",
+        "result",
+        "completedAt"
+      ]
+    }
+  }
+}

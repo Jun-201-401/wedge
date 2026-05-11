@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import json
 import math
 from dataclasses import dataclass, field
 from typing import Any, Callable, Protocol
 
 from app.contracts import semantic_enum, semantic_label_keys, semantic_schema_version, semantic_task_type
+from app.providers.gms import GMSClient, GMSClientError
 
 SEMANTIC_CLASSIFICATION_SCHEMA_VERSION = semantic_schema_version()
 SEMANTIC_TASK_TYPE_CTA = semantic_task_type()
@@ -189,6 +191,36 @@ class MCPSemanticProvider:
         )
 
 
+class GMSSemanticProvider:
+    """GMS-backed CTA semantic classifier for journey-goal mismatch rules."""
+
+    provider_type = "internal_llm"
+    provider_name = "gms_semantic_provider"
+
+    def __init__(self, client: GMSClient | None = None, *, enabled: bool = True) -> None:
+        self._client = client or GMSClient()
+        self._enabled = enabled
+
+    @classmethod
+    def from_env(cls) -> "GMSSemanticProvider":
+        return cls()
+
+    def classify_cta(self, *, text: str, scenario_goal: str, target_ref: str) -> SemanticLabelResult:
+        if not self._enabled:
+            return _unavailable_semantic_result(target_ref, provider_name=self.provider_name)
+        prompt = build_gms_semantic_prompt(text=text, scenario_goal=scenario_goal, target_ref=target_ref)
+        try:
+            raw_text = self._client.generate_text(prompt=prompt)
+        except GMSClientError:
+            return _unavailable_semantic_result(target_ref, provider_name=self.provider_name)
+        return sanitize_semantic_label_result(
+            _parse_json_object(raw_text),
+            target_ref=target_ref,
+            provider_type=self.provider_type,
+            provider_name=self.provider_name,
+        )
+
+
 class SemanticProviderChain:
     """Fast-path provider with optional semantic fallback for unknown labels."""
 
@@ -256,6 +288,69 @@ def should_fallback_to_semantic_provider(
         result.confidence < min_confidence
         or labels.get("scenario_relevance_label") == "UNKNOWN"
         or labels.get("action_specificity_label") == "UNKNOWN"
+    )
+
+
+def build_gms_semantic_prompt(*, text: str, scenario_goal: str, target_ref: str) -> str:
+    return (
+        "You are Wedge's CTA semantic classifier.\n"
+        "Classify only whether the CTA text advances the selected scenario goal.\n"
+        "Return label-only JSON. Do not include severity, stage, priority, evidence_refs, recommendations, or issue fields.\n"
+        f"Allowed scenario_relevance_label values: {', '.join(sorted(SCENARIO_RELEVANCE_LABELS))}.\n"
+        f"Allowed action_specificity_label values: {', '.join(sorted(ACTION_SPECIFICITY_LABELS))}.\n"
+        "Use scenario_relevance_label as:\n"
+        "- DIRECT_GOAL_ACTION: directly completes or starts the goal.\n"
+        "- RELATED_GOAL_ACTION: strongly related to the goal but not the direct action.\n"
+        "- PREREQUISITE_ACTION: required before the goal can continue.\n"
+        "- EXPLORATORY_ACTION: informational exploration before deciding.\n"
+        "- AUXILIARY_ACTION: secondary account/navigation/help action.\n"
+        "- IRRELEVANT_ACTION: unrelated to the scenario goal.\n"
+        "- UNKNOWN: not enough evidence.\n"
+        "Use action_specificity_label as:\n"
+        "- SPECIFIC_ACTION: concrete action text.\n"
+        "- GENERIC_BUT_ACTIONABLE: generic but still action-oriented.\n"
+        "- PROGRESSION_ONLY: only moves forward/back without naming the goal.\n"
+        "- EXPLORATORY_LABEL: learn/read/view style label.\n"
+        "- WEAK_OR_ICON_ONLY: weak, vague, or icon-only label.\n"
+        "- NO_LABEL: no readable CTA text.\n"
+        "- UNKNOWN: not enough evidence.\n"
+        f"Target observation ref: {target_ref}\n"
+        f"Scenario goal: {scenario_goal or 'unknown'}\n"
+        f"CTA text: {text or 'unknown'}\n"
+        "Return this JSON shape exactly:\n"
+        "{\n"
+        '  "labels": {\n'
+        '    "scenario_relevance_label": "DIRECT_GOAL_ACTION",\n'
+        '    "action_specificity_label": "SPECIFIC_ACTION"\n'
+        "  },\n"
+        '  "confidence": 0.0\n'
+        "}\n"
+    )
+
+
+def _parse_json_object(raw_text: str) -> dict[str, Any]:
+    try:
+        payload = json.loads(raw_text)
+    except json.JSONDecodeError:
+        start = raw_text.find("{")
+        end = raw_text.rfind("}")
+        if start < 0 or end <= start:
+            return {}
+        try:
+            payload = json.loads(raw_text[start : end + 1])
+        except json.JSONDecodeError:
+            return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def _unavailable_semantic_result(target_ref: str, *, provider_name: str) -> SemanticLabelResult:
+    return SemanticLabelResult(
+        target_observation_ref=target_ref,
+        provider_type="internal_llm",
+        provider_name=provider_name,
+        labels=dict(_UNKNOWN_LABELS),
+        confidence=0.0,
+        provider_error="provider_unavailable",
     )
 
 

@@ -2,6 +2,7 @@
   "schema_version": "0.1",
   "task_id": "00000000-0000-4000-8000-000000000903",
   "attempt_id": "00000000-0000-4000-8000-000000000904",
+  "attempt_index": 1,
   "run_id": "00000000-0000-4000-8000-000000000905",
   "turns": [
     {
@@ -35,7 +36,11 @@
           "timeout_ms": 1000
         },
         "stage": "FIRST_VIEW",
-        "targetKey": "https://example.com/product/sample"
+        "targetKey": "https://example.com/product/sample",
+        "metadata": {
+          "decisionId": "decision-sample-001",
+          "decisionSource": "heuristic"
+        }
       },
       "policy": {
         "allowed": true,
@@ -89,7 +94,11 @@
           "timeout_ms": 500
         },
         "stage": "CTA",
-        "targetKey": "#add-to-cart"
+        "targetKey": "#add-to-cart",
+        "metadata": {
+          "decisionId": "decision-sample-002",
+          "decisionSource": "heuristic"
+        }
       },
       "policy": {
         "allowed": true,

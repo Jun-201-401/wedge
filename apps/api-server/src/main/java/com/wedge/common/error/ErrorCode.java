@@ -16,6 +16,7 @@ public enum ErrorCode {
     SCENARIO_AUTHORING_JOB_NOT_FOUND(HttpStatus.NOT_FOUND, "scenario_authoring_job_not_found", "ScenarioAuthoring job was not found."),
     MCP_SESSION_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "mcp_session_unavailable", "No active MCP host session is available."),
     MCP_SAMPLING_BRIDGE_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "mcp_sampling_bridge_unavailable", "MCP sampling bridge is unavailable."),
+    ARTIFACT_PRESIGNED_URL_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "artifact_presigned_url_unavailable", "Artifact presigned URL generation is unavailable."),
     EMAIL_ALREADY_EXISTS(HttpStatus.CONFLICT, "email_already_exists", "Email is already registered."),
     STATE_CONFLICT(HttpStatus.CONFLICT, "state_conflict", "Resource state conflict."),
     INTERNAL_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "internal_error", "Unexpected server error.");

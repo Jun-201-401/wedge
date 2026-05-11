@@ -5,6 +5,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.wedge.common.error.BusinessException;
 import com.wedge.common.error.ErrorCode;
 import com.wedge.evidence.api.dto.ArtifactResponse;
+import com.wedge.evidence.api.dto.ArtifactPresignedUrlItemResponse;
+import com.wedge.evidence.api.dto.ArtifactPresignedUrlsResponse;
 import com.wedge.evidence.api.dto.EvidenceCountsResponse;
 import com.wedge.evidence.api.dto.LatestCheckpointResponse;
 import com.wedge.evidence.api.dto.RunEvidenceSummaryResponse;
@@ -19,9 +21,18 @@ import com.wedge.evidence.infrastructure.EvidencePacketMapper;
 import com.wedge.evidence.infrastructure.ObservationMapper;
 import com.wedge.run.api.dto.RunResponse;
 import com.wedge.run.application.RunService;
+import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
+import java.util.function.Function;
+import java.util.stream.Collectors;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -29,6 +40,11 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class EvidenceService {
     private static final String EVIDENCE_SCHEMA_VERSION = "0.5";
+    private static final Set<String> PRESIGNABLE_IMAGE_MIME_TYPES = Set.of(
+            "image/png",
+            "image/jpeg",
+            "image/webp"
+    );
 
     private final RunService runService;
     private final ArtifactMapper artifactMapper;
@@ -37,8 +53,13 @@ public class EvidenceService {
     private final EvidencePacketMapper evidencePacketMapper;
     private final EvidencePacketAssembler evidencePacketAssembler;
     private final ArtifactContentStore artifactContentStore;
+    private final ArtifactPresignedUrlGenerator artifactPresignedUrlGenerator;
     private final ObjectMapper objectMapper;
+    private final Clock clock;
+    private final int presignedUrlMaxCount;
+    private final Duration presignedUrlTtl;
 
+    @Autowired
     public EvidenceService(
             RunService runService,
             ArtifactMapper artifactMapper,
@@ -47,7 +68,40 @@ public class EvidenceService {
             EvidencePacketMapper evidencePacketMapper,
             EvidencePacketAssembler evidencePacketAssembler,
             ArtifactContentStore artifactContentStore,
-            ObjectMapper objectMapper
+            ArtifactPresignedUrlGenerator artifactPresignedUrlGenerator,
+            ObjectMapper objectMapper,
+            @Value("${wedge.artifacts.presigned-url.max-count:20}") int presignedUrlMaxCount,
+            @Value("${wedge.artifacts.presigned-url.ttl-seconds:3600}") long presignedUrlTtlSeconds
+    ) {
+        this(
+                runService,
+                artifactMapper,
+                checkpointMapper,
+                observationMapper,
+                evidencePacketMapper,
+                evidencePacketAssembler,
+                artifactContentStore,
+                artifactPresignedUrlGenerator,
+                objectMapper,
+                Clock.systemUTC(),
+                presignedUrlMaxCount,
+                Duration.ofSeconds(presignedUrlTtlSeconds)
+        );
+    }
+
+    EvidenceService(
+            RunService runService,
+            ArtifactMapper artifactMapper,
+            CheckpointMapper checkpointMapper,
+            ObservationMapper observationMapper,
+            EvidencePacketMapper evidencePacketMapper,
+            EvidencePacketAssembler evidencePacketAssembler,
+            ArtifactContentStore artifactContentStore,
+            ArtifactPresignedUrlGenerator artifactPresignedUrlGenerator,
+            ObjectMapper objectMapper,
+            Clock clock,
+            int presignedUrlMaxCount,
+            Duration presignedUrlTtl
     ) {
         this.runService = runService;
         this.artifactMapper = artifactMapper;
@@ -56,7 +110,11 @@ public class EvidenceService {
         this.evidencePacketMapper = evidencePacketMapper;
         this.evidencePacketAssembler = evidencePacketAssembler;
         this.artifactContentStore = artifactContentStore;
+        this.artifactPresignedUrlGenerator = artifactPresignedUrlGenerator;
         this.objectMapper = objectMapper;
+        this.clock = clock;
+        this.presignedUrlMaxCount = presignedUrlMaxCount;
+        this.presignedUrlTtl = presignedUrlTtl;
     }
 
     @Transactional(readOnly = true)
@@ -136,6 +194,65 @@ public class EvidenceService {
                 .orElseThrow(() -> new BusinessException(ErrorCode.RUN_NOT_FOUND, "Artifact was not found."));
         Resource resource = artifactContentStore.load(artifact);
         return new ArtifactContent(resource, artifact.getMimeType());
+    }
+
+    @Transactional(readOnly = true)
+    public ArtifactPresignedUrlsResponse createRunArtifactPresignedUrls(UUID runId, List<UUID> artifactIds) {
+        runService.getRun(runId);
+        List<UUID> requestedArtifactIds = normalizeRequestedArtifactIds(artifactIds);
+        Map<UUID, Artifact> artifactsById = artifactMapper.findByRunId(runId).stream()
+                .collect(Collectors.toMap(Artifact::getId, Function.identity()));
+        Instant expiresAt = Instant.now(clock).plus(presignedUrlTtl);
+
+        List<ArtifactPresignedUrlItemResponse> urls = requestedArtifactIds.stream()
+                .map(artifactId -> toPresignedUrlItem(runId, artifactId, artifactsById, expiresAt))
+                .toList();
+        return new ArtifactPresignedUrlsResponse(urls);
+    }
+
+    private List<UUID> normalizeRequestedArtifactIds(List<UUID> artifactIds) {
+        if (artifactIds == null || artifactIds.isEmpty()) {
+            throw new BusinessException(ErrorCode.INVALID_REQUEST, "artifactIds is required.");
+        }
+        if (presignedUrlMaxCount < 1) {
+            throw new BusinessException(ErrorCode.ARTIFACT_PRESIGNED_URL_UNAVAILABLE, "Artifact presigned URL max count must be positive.");
+        }
+
+        List<UUID> distinctArtifactIds = new LinkedHashSet<>(artifactIds).stream().toList();
+        if (distinctArtifactIds.size() > presignedUrlMaxCount) {
+            throw new BusinessException(
+                    ErrorCode.INVALID_REQUEST,
+                    "artifactIds must contain at most " + presignedUrlMaxCount + " items."
+            );
+        }
+        return distinctArtifactIds;
+    }
+
+    private ArtifactPresignedUrlItemResponse toPresignedUrlItem(
+            UUID runId,
+            UUID artifactId,
+            Map<UUID, Artifact> artifactsById,
+            Instant expiresAt
+    ) {
+        Artifact artifact = artifactsById.get(artifactId);
+        if (artifact == null) {
+            throw new BusinessException(ErrorCode.RUN_NOT_FOUND, "Artifact was not found for the run.");
+        }
+        if (!isPresignableImage(artifact)) {
+            throw new BusinessException(ErrorCode.INVALID_REQUEST, "Only PNG, JPEG, and WebP image artifacts can be presigned.");
+        }
+        return new ArtifactPresignedUrlItemResponse(
+                artifact.getId(),
+                artifact.getArtifactType(),
+                artifact.getMimeType(),
+                artifactPresignedUrlGenerator.generateGetUrl(artifact, presignedUrlTtl).toString(),
+                expiresAt
+        );
+    }
+
+    private boolean isPresignableImage(Artifact artifact) {
+        String mimeType = artifact.getMimeType();
+        return mimeType != null && PRESIGNABLE_IMAGE_MIME_TYPES.contains(mimeType.toLowerCase());
     }
 
     private Artifact findLatestFrameArtifact(List<Artifact> artifacts) {

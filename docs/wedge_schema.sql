@@ -502,6 +502,23 @@ CREATE TABLE processed_message (
     PRIMARY KEY (consumer_name, message_id)
 );
 
+CREATE TABLE agent_idempotency_record (
+    idempotency_key_hash VARCHAR(64) PRIMARY KEY,
+    run_id              UUID NOT NULL REFERENCES test_run(id) ON DELETE CASCADE,
+    task_id             VARCHAR(160) NOT NULL,
+    attempt_id          VARCHAR(160) NOT NULL,
+    attempt_index       INTEGER NOT NULL CHECK (attempt_index >= 1),
+    status              VARCHAR(32) NOT NULL DEFAULT 'COMPLETED' CHECK (status IN ('CLAIMED','COMPLETED')),
+    claimed_by          VARCHAR(128),
+    claimed_at          TIMESTAMPTZ,
+    lease_expires_at    TIMESTAMPTZ,
+    result_jsonb        JSONB,
+    outcome_status      VARCHAR(32),
+    completed_at        TIMESTAMPTZ,
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 CREATE TABLE worker_instance (
     id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     worker_id           VARCHAR(128) NOT NULL UNIQUE,
@@ -554,6 +571,8 @@ CREATE UNIQUE INDEX ux_report_active_analysis_job ON report(analysis_job_id) WHE
 
 CREATE INDEX idx_mcp_invocation_started ON mcp_invocation_log(started_at DESC);
 CREATE INDEX idx_outbox_pending ON outbox_message(status, next_attempt_at);
+CREATE INDEX idx_agent_idempotency_run ON agent_idempotency_record(run_id, completed_at DESC);
+CREATE INDEX idx_agent_idempotency_lease ON agent_idempotency_record(status, lease_expires_at);
 CREATE INDEX idx_worker_heartbeat ON worker_instance(worker_type, last_heartbeat_at);
 
 CREATE INDEX idx_test_run_event_run_time ON test_run_event(run_id, occurred_at DESC);

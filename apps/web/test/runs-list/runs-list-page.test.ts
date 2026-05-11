@@ -14,12 +14,15 @@ test('runs list page connects the implemented listRuns API to monitor/report nav
   assert.match(pages, /runsList/);
   assert.match(page, /import \{ listRuns \}/);
   assert.match(page, /await listRuns\(\)/);
-  assert.match(page, /실제 Run 목록/);
-  assert.match(page, /Monitor/);
-  assert.match(page, /Report/);
+  assert.match(page, /실행 목록/);
+  assert.match(page, /저장된 실행/);
+  assert.match(page, /실시간 보기/);
+  assert.match(page, /리포트/);
   assert.match(page, /buildRunReportPath/);
   assert.match(page, /RUN_STATUS_LABEL/);
   assert.match(page, /getSafeHttpUrl/);
+  assert.match(page, /formatRunUrlLabel/);
+  assert.match(page, /title=\{run\.startUrl\}/);
   assert.match(page, /aria-pressed=\{statusFilter === filter\.value\}/);
   assert.match(page, /로그아웃/);
 });
@@ -31,6 +34,8 @@ test('runs list css keeps the run dashboard in the light cockpit visual system',
   assert.match(css, /\.runs-list-topbar\s*\{[\s\S]*?height: 4rem/);
   assert.match(css, /\.runs-list-card\s*\{[\s\S]*?box-shadow: 0 28px 80px/);
   assert.match(css, /\.runs-list-row\s*\{[\s\S]*?grid-template-columns:/);
+  assert.match(css, /\.runs-list-url\s*\{[\s\S]*?text-decoration: none/);
   assert.match(css, /\.runs-list-status--complete/);
+  assert.match(css, /\.runs-list-status--active/);
   assert.match(css, /@media \(max-width: 920px\)/);
 });
