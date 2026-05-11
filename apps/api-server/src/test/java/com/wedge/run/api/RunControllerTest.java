@@ -309,7 +309,9 @@ class RunControllerTest {
     @Test
     void artifactPresignedUrlsReturnsTimeLimitedImageUrls() throws Exception {
         UUID runId = UUID.randomUUID();
+        UUID projectId = UUID.randomUUID();
         UUID artifactId = UUID.randomUUID();
+        when(runService.getRun(runId)).thenReturn(sampleRun(runId, projectId));
         when(evidenceService.createRunArtifactPresignedUrls(runId, List.of(artifactId))).thenReturn(
                 new ArtifactPresignedUrlsResponse(List.of(new ArtifactPresignedUrlItemResponse(
                         artifactId,
@@ -321,6 +323,7 @@ class RunControllerTest {
         );
 
         mockMvc.perform(post("/api/runs/{runId}/artifacts/presigned-urls", runId)
+                        .principal(authentication())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"artifactIds\":[\"" + artifactId + "\"]}")
                         .header("X-Request-Id", "req_run_artifact_presigned_urls"))
@@ -330,6 +333,7 @@ class RunControllerTest {
                 .andExpect(jsonPath("$.data.urls[0].url").value("https://wedge-artifacts-prod.s3.ap-northeast-2.amazonaws.com/runs/a.png?X-Amz-Signature=test"))
                 .andExpect(jsonPath("$.data.urls[0].expiresAt").value("2026-05-08T08:00:00Z"))
                 .andExpect(jsonPath("$.meta.requestId").value("req_run_artifact_presigned_urls"));
+        verify(projectAccessService).ensureProjectAccessible(projectId, USER_ID);
     }
 
     @Test

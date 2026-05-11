@@ -183,8 +183,10 @@ public class RunController {
     @PostMapping("/{runId}/artifacts/presigned-urls")
     public ResponseEntity<ApiResponse<ArtifactPresignedUrlsResponse>> createRunArtifactPresignedUrls(
             @PathVariable UUID runId,
-            @Valid @RequestBody ArtifactPresignedUrlRequest request
+            @Valid @RequestBody ArtifactPresignedUrlRequest request,
+            Authentication authentication
     ) {
+        ensureRunAccessible(runId, authentication);
         return ApiResponse.ok(evidenceService.createRunArtifactPresignedUrls(runId, request.artifactIds()));
     }
 
