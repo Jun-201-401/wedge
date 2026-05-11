@@ -559,6 +559,25 @@ Response:
 }
 ```
 
+### Shared report 조회
+
+```http
+GET /api/report-shares/{shareToken}
+```
+
+- 인증 헤더 없이 공유 token만으로 리포트 상세를 조회한다.
+- token이 만료되었거나 폐기되었거나 연결된 report가 삭제된 경우 `404`를 반환한다.
+
+### Shared report artifact content 조회
+
+```http
+GET /api/report-shares/{shareToken}/artifacts/{artifactId}/content
+```
+
+- 인증 헤더 없이 공유 token으로 리포트 캡처/이미지 artifact를 조회한다.
+- 해당 artifact는 공유 리포트가 연결된 run에 속해야 한다.
+- token이 만료/폐기되었거나 artifact가 공유 리포트의 run에 속하지 않거나 이미지 artifact가 아니면 `404`를 반환한다.
+
 ### Scenario fit UX policy
 
 - Discovery recommendationLevel이 LOW여도 사용자는 강제로 실행할 수 있다.
