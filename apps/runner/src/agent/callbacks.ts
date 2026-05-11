@@ -4,7 +4,7 @@ import type { DeliveryIssue } from "../delivery/index.ts";
 import type { AgentCallbackEventType, AgentEventBatch, AgentTask, AgentTraceCallbackPayload, Artifact } from "../shared/contracts.ts";
 import { errorMessage, toIsoTimestamp } from "../shared/utils.ts";
 import { redactAgentTrace, redactSensitiveValue } from "./redaction.ts";
-import type { AgentTrace } from "./trace.ts";
+import type { AgentTrace } from "./trace/index.ts";
 
 export function createAgentEventBatch(input: {
   task: AgentTask;

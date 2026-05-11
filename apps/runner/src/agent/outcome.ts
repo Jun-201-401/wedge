@@ -1,4 +1,4 @@
-import type { AgentTrace } from "./trace.ts";
+import type { AgentTrace } from "./trace/index.ts";
 import type { AgentVerificationOutcome } from "./verifier.ts";
 
 export function traceStatusFromVerification(outcome: AgentVerificationOutcome): AgentTrace["outcome"]["status"] {

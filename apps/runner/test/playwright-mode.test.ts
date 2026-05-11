@@ -11,8 +11,8 @@ import { executeScenario } from "../src/scenario/executor/index.ts";
 import { executeScenarioStep } from "../src/scenario/executor/step-executor.ts";
 import { createArtifactStore } from "../src/storage/index.ts";
 import { registerAgentWorker } from "../src/worker/agent-worker.ts";
-import { exportAgentTraceToScenarioPlan } from "../src/agent/trace-export.ts";
-import type { AgentTrace } from "../src/agent/trace.ts";
+import { exportAgentTraceToScenarioPlan } from "../src/agent/trace/export.ts";
+import type { AgentTrace } from "../src/agent/trace/index.ts";
 import type {
   AgentEvent,
   AgentTask,

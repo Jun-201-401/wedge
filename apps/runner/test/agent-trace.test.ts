@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createAgentTrace, createAgentTraceArtifact, summarizeObservation } from "../src/agent/trace.ts";
+import { createAgentTrace, createAgentTraceArtifact, summarizeObservation } from "../src/agent/trace/index.ts";
 import type { InteractiveComponentObservationItem } from "../src/shared/contracts.ts";
 import { createMinimalPlan, createSimulatedPageSnapshot, loadAgentExampleMessage } from "./support.ts";
 
