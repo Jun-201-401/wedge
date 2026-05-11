@@ -1,5 +1,7 @@
 package com.wedge.run.api.internal.runner;
 
+import com.wedge.common.error.BusinessException;
+import com.wedge.common.error.ErrorCode;
 import com.wedge.common.response.ApiResponse;
 import com.wedge.run.api.internal.runner.dto.RunnerAcceptedRequest;
 import com.wedge.run.api.internal.runner.dto.RunnerAgentEventsRequest;
@@ -219,7 +221,7 @@ public class RunnerCallbackController {
                         event.taskId(),
                         event.attemptId(),
                         event.turn() == null ? 0 : event.turn(),
-                        event.eventType(),
+                        event.eventType().name(),
                         event.occurredAt(),
                         event.payload()
                 ))
@@ -228,16 +230,23 @@ public class RunnerCallbackController {
 
     private RunnerAgentTraceCommand toAgentTraceCommand(UUID runId, RunnerAgentTraceRequest request) {
         Map<String, Object> trace = new LinkedHashMap<>(request.trace());
-        trace.putIfAbsent("run_id", runId.toString());
-        trace.putIfAbsent("task_id", request.taskId().toString());
-        trace.putIfAbsent("attempt_id", request.attemptId().toString());
-        trace.putIfAbsent("finished_at", request.occurredAt().toString());
+        putCanonicalIdentity(trace, "run_id", runId.toString());
+        putCanonicalIdentity(trace, "task_id", request.taskId().toString());
+        putCanonicalIdentity(trace, "attempt_id", request.attemptId().toString());
         return new RunnerAgentTraceCommand(
                 request.taskId(),
                 request.attemptId(),
                 request.occurredAt(),
                 trace
         );
+    }
+
+    private void putCanonicalIdentity(Map<String, Object> trace, String key, String expectedValue) {
+        Object existingValue = trace.get(key);
+        if (existingValue != null && !expectedValue.equals(existingValue.toString())) {
+            throw new BusinessException(ErrorCode.INVALID_REQUEST, "AgentTrace." + key + " must match callback envelope.");
+        }
+        trace.put(key, expectedValue);
     }
 
     private InternalCallbackContext callbackContext(String workerId, String eventId, String signature) {
