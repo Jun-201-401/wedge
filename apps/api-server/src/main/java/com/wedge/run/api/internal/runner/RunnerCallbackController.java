@@ -26,6 +26,7 @@ import com.wedge.run.application.command.RunnerFinishedCommand;
 import com.wedge.run.application.command.RunnerStepEventCommand;
 import com.wedge.run.application.command.RunnerStepEventsCommand;
 import jakarta.validation.Valid;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
@@ -128,7 +129,7 @@ public class RunnerCallbackController {
             @RequestHeader("X-Event-Id") String eventId,
             @RequestHeader("X-Signature") String signature
     ) {
-        return ApiResponse.ok(runnerCallbackService.handleAgentTrace(runId, new RunnerAgentTraceCommand(request.trace()), callbackContext(workerId, eventId, signature)));
+        return ApiResponse.ok(runnerCallbackService.handleAgentTrace(runId, toAgentTraceCommand(runId, request), callbackContext(workerId, eventId, signature)));
     }
 
     private RunnerAcceptedCommand toAcceptedCommand(RunnerAcceptedRequest request) {
@@ -214,17 +215,29 @@ public class RunnerCallbackController {
     private RunnerAgentEventsCommand toAgentEventsCommand(RunnerAgentEventsRequest request) {
         return new RunnerAgentEventsCommand(request.events().stream()
                 .map(event -> new RunnerAgentEventCommand(
-                        event.schemaVersion(),
                         event.eventId(),
                         event.taskId(),
                         event.attemptId(),
-                        event.runId(),
-                        event.stepIndex(),
+                        event.turn() == null ? 0 : event.turn(),
                         event.eventType(),
                         event.occurredAt(),
                         event.payload()
                 ))
                 .toList());
+    }
+
+    private RunnerAgentTraceCommand toAgentTraceCommand(UUID runId, RunnerAgentTraceRequest request) {
+        Map<String, Object> trace = new LinkedHashMap<>(request.trace());
+        trace.putIfAbsent("run_id", runId.toString());
+        trace.putIfAbsent("task_id", request.taskId().toString());
+        trace.putIfAbsent("attempt_id", request.attemptId().toString());
+        trace.putIfAbsent("finished_at", request.occurredAt().toString());
+        return new RunnerAgentTraceCommand(
+                request.taskId(),
+                request.attemptId(),
+                request.occurredAt(),
+                trace
+        );
     }
 
     private InternalCallbackContext callbackContext(String workerId, String eventId, String signature) {
