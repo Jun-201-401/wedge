@@ -19,9 +19,9 @@ Runner Agent Runtime
   -> AgentMcpDecisionClient
   -> API Server MCP Decision Gateway
   -> runId-based MCP decision session registry
-  -> McpSamplingBridge
-  -> active MCP Host session
-  -> sampling/createMessage
+  -> pending decision registry
+  -> active MCP Host polls resolve_mcp_pending_decision
+  -> sampling/createMessage inside the current MCP tool request
   -> AgentDecision JSON
   -> Runner parser / candidate allow-list / policy
   -> fixed browser tool execution
@@ -110,7 +110,7 @@ registeredAt
 expiresAt
 ```
 
-It intentionally does not persist SDK request context or execute sampling from the internal HTTP request yet. Therefore, `/internal/agent/mcp/decision` still returns a typed `mcp_session_unavailable` failure after resolving the route until the actual server-to-client sampling bridge is implemented.
+It intentionally does not persist SDK request context or execute sampling from the internal HTTP request yet. Therefore, `/internal/agent/mcp/decision` still fails closed: it returns `mcp_session_unavailable` when no route exists, or `mcp_sampling_bridge_unavailable` after route resolution until a documented direct bridge is implemented.
 
 MCP session selection now has a first in-memory boundary and `McpSamplingBridge` has a first interface boundary. The default bridge implementation intentionally returns `mcp_sampling_bridge_unavailable`.
 
@@ -123,9 +123,28 @@ McpSyncServerExchange.createMessage(...)
 
 These are public APIs for bidirectional sampling while handling a stateful MCP request. No public Spring AI or Java MCP SDK API has been wired here that resolves a later HTTP request's `sessionId` back into an active `McpSyncServerExchange`. Because of that, Wedge must not store `McpSyncRequestContext` itself in the registry and call it later.
 
-Production MCP mode must remain disabled until one of these is implemented:
+To avoid storing request-scoped MCP context, the API Server now also provides a host-driven pending decision boundary:
 
 ```text
-1. a documented direct bridge from registered session to createMessage
-2. a host-driven pending decision flow that performs sampling inside a fresh MCP tool call
+POST /internal/agent/mcp/pending-decisions
+GET /internal/agent/mcp/pending-decisions/{pendingDecisionId}
+```
+
+The first endpoint stores the constrained Runner observation as a short-lived pending decision for the run's registered MCP session. The second endpoint lets Runner-side transport code poll the current pending decision status later.
+
+The MCP Host resolves pending work through this tool:
+
+```text
+resolve_mcp_pending_decision
+```
+
+That tool only runs sampling inside the fresh MCP tool call where `McpSyncRequestContext` is available. The sampling result is parsed as `AgentDecision`, validated against allowed action types and observed candidate `targetKey` values, and then stored back on the pending decision.
+
+Production MCP mode must remain disabled until Runner transport is wired to the pending flow:
+
+```text
+1. Runner creates a pending decision instead of calling /decision for MCP mode
+2. Runner waits for completion using bounded polling or long polling
+3. MCP Host runs resolve_mcp_pending_decision while the run is waiting
+4. Runner receives the completed AgentDecision and applies its existing parser, candidate allow-list, verifier, and policy checks
 ```
