@@ -76,3 +76,21 @@ application deploy
 ```
 
 If `migrate` fails, stop the deployment and inspect the failed migration before starting application containers that depend on the new schema.
+
+## Jenkins Gate
+
+The Jenkins pipeline includes a `RUN_DB_MIGRATION` boolean parameter.
+
+- Default value: `false`
+- Before production baseline: keep it `false`
+- After production baseline: set it to `true` only for deployments that should run Flyway
+
+When `RUN_DB_MIGRATION=true`, Jenkins runs:
+
+```text
+flyway info
+flyway migrate
+application deploy
+```
+
+When `RUN_DB_MIGRATION=false`, Jenkins skips the `Database Migration` stage and continues the normal application deploy.
