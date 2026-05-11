@@ -1,9 +1,12 @@
 import { randomUUID } from "node:crypto";
-import type { BrowserCapturedArtifacts, BrowserPageSnapshot, BrowserSettleResult } from "../browser/playwright/index.ts";
+import type { BrowserActionResult, BrowserCapturedArtifacts, BrowserPageSnapshot, BrowserSettleResult } from "../browser/playwright/index.ts";
 import type {
   ArtifactDraft,
   Checkpoint,
+  GoalActionCandidateObservation,
   InteractiveComponentsObservation,
+  JourneyActionRawObservation,
+  ProductCardObservation,
   ScenarioPlan,
   ScenarioStep
 } from "../shared/contracts.ts";
@@ -18,7 +21,9 @@ export interface CapturePipeline {
     step: ScenarioStep;
     stepOrder: number;
     plan: ScenarioPlan;
+    beforeSnapshot?: BrowserPageSnapshot;
     pageSnapshot: BrowserPageSnapshot;
+    actionResult?: BrowserActionResult;
     settleResult: BrowserSettleResult;
     capturedArtifacts?: BrowserCapturedArtifacts;
   }) => Promise<CheckpointCollection>;
@@ -26,7 +31,7 @@ export interface CapturePipeline {
 
 export function createCapturePipeline(): CapturePipeline {
   return {
-    async collectCheckpoint({ step, stepOrder, plan, pageSnapshot, settleResult, capturedArtifacts }) {
+    async collectCheckpoint({ step, stepOrder, plan, beforeSnapshot, pageSnapshot, actionResult, settleResult, capturedArtifacts }) {
       const screenshotArtifact = createScreenshotArtifact({
         artifactId: randomUUID(),
         pageSnapshot,
@@ -60,7 +65,15 @@ export function createCapturePipeline(): CapturePipeline {
             status: settleResult.status
           },
           state: createCheckpointState(pageSnapshot),
-          observations: createCheckpointObservations(step, pageSnapshot, settleResult),
+          observations: createCheckpointObservations({
+            step,
+            stepOrder,
+            beforeSnapshot,
+            pageSnapshot,
+            actionResult,
+            settleResult,
+            screenshotArtifactId: screenshotArtifact.artifactId
+          }),
           deltas: createCheckpointDeltas(pageSnapshot)
         },
         artifacts: buildCheckpointArtifacts(screenshotArtifact, domArtifact, consoleLogArtifact)
@@ -111,19 +124,52 @@ function createCheckpointState(pageSnapshot: BrowserPageSnapshot): Checkpoint["s
     visitedUrls: pageSnapshot.visitedUrls,
     fields: pageSnapshot.fields,
     selectedOptions: pageSnapshot.selectedOptions,
+    breadcrumb: pageSnapshot.breadcrumb,
+    toastTexts: pageSnapshot.toastTexts,
+    cartCount: pageSnapshot.cartCount,
+    visiblePrices: pageSnapshot.visiblePrices,
+    network_summary: {
+      event_count: pageSnapshot.networkEvents.length,
+      failed_request_count: pageSnapshot.networkEvents.filter((event) => event.failed).length
+    },
     cdpSession: pageSnapshot.cdpSession
   };
 }
 
-function createCheckpointObservations(
-  step: ScenarioStep,
-  pageSnapshot: BrowserPageSnapshot,
-  settleResult: BrowserSettleResult
-): Record<string, unknown>[] {
+function createCheckpointObservations({
+  step,
+  stepOrder,
+  beforeSnapshot,
+  pageSnapshot,
+  actionResult,
+  settleResult,
+  screenshotArtifactId
+}: {
+  step: ScenarioStep;
+  stepOrder: number;
+  beforeSnapshot?: BrowserPageSnapshot;
+  pageSnapshot: BrowserPageSnapshot;
+  actionResult?: BrowserActionResult;
+  settleResult: BrowserSettleResult;
+  screenshotArtifactId: string;
+}): Record<string, unknown>[] {
+  const journeyActionObservation = createJourneyActionRawObservation({
+    step,
+    stepOrder,
+    beforeSnapshot,
+    pageSnapshot,
+    actionResult,
+    settleResult,
+    screenshotArtifactId
+  });
+
   return [
+    ...(journeyActionObservation ? [{ ...journeyActionObservation }] : []),
     ...createInteractiveComponentsObservations(step, pageSnapshot).map((observation) => ({ ...observation })),
     ...createFormFieldObservations(pageSnapshot.fields),
     ...createCtaCandidateObservations(step, pageSnapshot),
+    ...createProductCardObservations(step, pageSnapshot, screenshotArtifactId).map((observation) => ({ ...observation })),
+    ...createGoalActionCandidateObservations(step, pageSnapshot).map((observation) => ({ ...observation })),
     ...pageSnapshot.consoleErrors.map((message) => ({
       type: "console_error",
       message
@@ -134,6 +180,71 @@ function createCheckpointObservations(
     })),
     ...createSettleObservations(settleResult)
   ];
+}
+
+function createJourneyActionRawObservation({
+  step,
+  stepOrder,
+  beforeSnapshot,
+  pageSnapshot,
+  actionResult,
+  settleResult,
+  screenshotArtifactId
+}: {
+  step: ScenarioStep;
+  stepOrder: number;
+  beforeSnapshot?: BrowserPageSnapshot;
+  pageSnapshot: BrowserPageSnapshot;
+  actionResult?: BrowserActionResult;
+  settleResult: BrowserSettleResult;
+  screenshotArtifactId: string;
+}): JourneyActionRawObservation | null {
+  if (!beforeSnapshot && !actionResult) {
+    return null;
+  }
+
+  const baselineSnapshot = beforeSnapshot ?? pageSnapshot;
+  const actionDetails = actionResult?.details ?? {};
+  const clickedText = readOptionalString(actionDetails, "clickedText") ?? clickedComponent(pageSnapshot)?.text ?? null;
+  const clickedSelector = readOptionalString(actionDetails, "clickedSelector") ?? clickedComponent(pageSnapshot)?.selector ?? null;
+  const elementRole = readOptionalString(actionDetails, "elementRole") ?? clickedComponent(pageSnapshot)?.role ?? null;
+  const bbox = readBounds(actionDetails.bbox) ?? clickedComponent(pageSnapshot)?.bounds ?? null;
+  const networkResult = createNetworkResult(pageSnapshot, settleResult);
+
+  return {
+    observation_id: `${step.step_id}.obs_journey_action_raw`,
+    type: "journey_action_raw",
+    stage: step.stage,
+    source: ["scenario_log", "dom", "browser", "network"],
+    confidence: actionResult ? 0.82 : 0.72,
+    step_order: stepOrder,
+    step_key: step.step_id,
+    action_type: step.action.type,
+    clicked_text: clickedText,
+    clicked_selector: clickedSelector,
+    element_role: elementRole,
+    element_text: readOptionalString(actionDetails, "elementText") ?? clickedText,
+    aria_label: readOptionalString(actionDetails, "ariaLabel"),
+    url_before: baselineSnapshot.finalUrl,
+    url_after: pageSnapshot.finalUrl,
+    title_before: baselineSnapshot.title,
+    title_after: pageSnapshot.title,
+    breadcrumb_before: baselineSnapshot.breadcrumb,
+    breadcrumb_after: pageSnapshot.breadcrumb,
+    cart_count_before: baselineSnapshot.cartCount,
+    cart_count_after: pageSnapshot.cartCount,
+    toast_text: pageSnapshot.toastTexts,
+    visible_price: pageSnapshot.visiblePrices,
+    visible_product_image: pageSnapshot.productImages.map((image) => ({ ...image })),
+    add_to_cart_like_button: isAddToCartLike(clickedText),
+    dom_changed: Boolean(baselineSnapshot.domSignature && pageSnapshot.domSignature)
+      ? baselineSnapshot.domSignature !== pageSnapshot.domSignature
+      : baselineSnapshot.finalUrl !== pageSnapshot.finalUrl || baselineSnapshot.title !== pageSnapshot.title,
+    network_result: networkResult,
+    settle_status: settleResult.status,
+    screenshot_artifact_id: screenshotArtifactId,
+    bbox
+  };
 }
 
 function createInteractiveComponentsObservations(
@@ -154,6 +265,61 @@ function createInteractiveComponentsObservations(
       confidence: primaryLikeComponentCount > 0 ? 0.82 : 0.65,
       primary_like_component_count: primaryLikeComponentCount,
       components: pageSnapshot.interactiveComponents
+    }
+  ];
+}
+
+function createProductCardObservations(
+  step: ScenarioStep,
+  pageSnapshot: BrowserPageSnapshot,
+  screenshotArtifactId: string
+): ProductCardObservation[] {
+  if (pageSnapshot.productCards.length === 0) {
+    return [];
+  }
+
+  return [
+    {
+      observation_id: `${step.step_id}.obs_product_cards`,
+      type: "product_card",
+      stage: "VALUE",
+      source: ["dom", "layout", "screenshot"],
+      confidence: 0.66,
+      cards: pageSnapshot.productCards.map((card) => ({
+        ...card,
+        screenshot_artifact_id: screenshotArtifactId
+      }))
+    }
+  ];
+}
+
+function createGoalActionCandidateObservations(
+  step: ScenarioStep,
+  pageSnapshot: BrowserPageSnapshot
+): GoalActionCandidateObservation[] {
+  const candidates = pageSnapshot.interactiveComponents
+    .filter((component) => component.is_cta_candidate)
+    .slice(0, 10)
+    .map((component) => ({
+      element_text: component.text,
+      element_role: component.role,
+      clicked_selector: component.selector,
+      add_to_cart_like_button: isAddToCartLike(component.text),
+      bbox: component.bounds
+    }));
+
+  if (candidates.length === 0) {
+    return [];
+  }
+
+  return [
+    {
+      observation_id: `${step.step_id}.obs_goal_action_candidates`,
+      type: "goal_action_candidate",
+      stage: "CTA",
+      source: ["dom", "layout"],
+      confidence: 0.7,
+      candidates
     }
   ];
 }
@@ -250,6 +416,63 @@ function createItemCountSettleObservation(settleResult: BrowserSettleResult): Re
     max_count: readNumberDetail(details, "maxCount"),
     count_delta: readNumberDetail(details, "countDelta")
   };
+}
+
+function clickedComponent(pageSnapshot: BrowserPageSnapshot): BrowserPageSnapshot["interactiveComponents"][number] | null {
+  return pageSnapshot.interactiveComponents.find((component) => component.clicked_in_scenario) ?? null;
+}
+
+function readOptionalString(source: Record<string, unknown>, key: string): string | null {
+  const value = source[key];
+  return typeof value === "string" && value.length > 0 ? value : null;
+}
+
+function readBounds(value: unknown): BrowserPageSnapshot["interactiveComponents"][number]["bounds"] | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+
+  const candidate = value as Partial<BrowserPageSnapshot["interactiveComponents"][number]["bounds"]>;
+  return typeof candidate.x === "number" &&
+    typeof candidate.y === "number" &&
+    typeof candidate.width === "number" &&
+    typeof candidate.height === "number" &&
+    typeof candidate.unit === "string"
+    ? {
+        x: candidate.x,
+        y: candidate.y,
+        width: candidate.width,
+        height: candidate.height,
+        unit: candidate.unit
+      }
+    : null;
+}
+
+function isAddToCartLike(text: string | null | undefined): boolean {
+  return /add to cart|add to basket|장바구니|카트|담기|신청|예약|문의|결제|무료 체험|다운로드|가입/i.test(text ?? "");
+}
+
+function createNetworkResult(
+  pageSnapshot: BrowserPageSnapshot,
+  settleResult: BrowserSettleResult
+): Record<string, unknown>[] {
+  const networkEvents = pageSnapshot.networkEvents.map((event) => ({ ...event }));
+  if (settleResult.strategy !== "response" || !settleResult.details) {
+    return networkEvents;
+  }
+
+  return [
+    ...networkEvents,
+    {
+      type: "settle_response",
+      settle_status: settleResult.status,
+      target: settleResult.targetSummary ?? null,
+      matched_url: readStringDetail(settleResult.details, "matchedUrl"),
+      method: readStringDetail(settleResult.details, "method"),
+      status_code: readNumberDetail(settleResult.details, "status"),
+      url_includes: readStringDetail(settleResult.details, "urlIncludes")
+    }
+  ];
 }
 
 function createScreenshotArtifact({

@@ -828,6 +828,57 @@ export interface InteractiveComponentsObservation {
   components: InteractiveComponentObservationItem[];
 }
 
+export interface JourneyActionRawObservation {
+  observation_id: string;
+  type: "journey_action_raw";
+  stage: ScenarioStage;
+  source: ("scenario_log" | "dom" | "browser" | "network" | "screenshot")[];
+  confidence: number;
+  step_order: number;
+  step_key: string;
+  action_type: ScenarioActionType;
+  clicked_text?: string | null;
+  clicked_selector?: string | null;
+  element_role?: string | null;
+  element_text?: string | null;
+  aria_label?: string | null;
+  url_before: string;
+  url_after: string;
+  title_before: string;
+  title_after: string;
+  breadcrumb_before?: string[];
+  breadcrumb_after?: string[];
+  cart_count_before?: number | null;
+  cart_count_after?: number | null;
+  toast_text?: string[];
+  visible_price?: string[];
+  visible_product_image?: Record<string, unknown>[];
+  add_to_cart_like_button?: boolean;
+  dom_changed: boolean;
+  network_result?: Record<string, unknown>[];
+  settle_status: "settled" | "timeout" | "failed";
+  screenshot_artifact_id?: string | null;
+  bbox?: InteractiveComponentBounds | null;
+}
+
+export interface ProductCardObservation {
+  observation_id: string;
+  type: "product_card";
+  stage: "VALUE";
+  source: ("dom" | "layout" | "screenshot")[];
+  confidence: number;
+  cards: Record<string, unknown>[];
+}
+
+export interface GoalActionCandidateObservation {
+  observation_id: string;
+  type: "goal_action_candidate";
+  stage: "CTA";
+  source: ("dom" | "layout")[];
+  confidence: number;
+  candidates: Record<string, unknown>[];
+}
+
 export interface RunnerCheckpointsRequest {
   checkpoints: Checkpoint[];
 }

@@ -46,6 +46,7 @@ export async function executeScenarioStep({
     })));
   }
 
+  const beforeSnapshot = step.checkpoint ? session.snapshot() : undefined;
   let actionResult;
   try {
     actionResult = await executeScenarioAction(session, step);
@@ -72,7 +73,9 @@ export async function executeScenarioStep({
       stepOrder,
       step,
       plan,
+      beforeSnapshot,
       pageSnapshot,
+      actionResult,
       settleResult,
       capturedArtifacts,
       callbackClient,

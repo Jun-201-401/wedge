@@ -1,4 +1,4 @@
-import type { BrowserCapturedArtifacts, BrowserSession } from "../../browser/playwright/index.ts";
+import type { BrowserActionResult, BrowserCapturedArtifacts, BrowserSession } from "../../browser/playwright/index.ts";
 import type { CallbackClient } from "../../callback/index.ts";
 import type { CapturePipeline } from "../../capture/index.ts";
 import type { DeliveryIssue } from "../../delivery/index.ts";
@@ -12,7 +12,9 @@ export interface CheckpointEmissionInput {
   stepOrder: number;
   step: ScenarioStep;
   plan: ScenarioPlan;
+  beforeSnapshot?: ReturnType<BrowserSession["snapshot"]>;
   pageSnapshot: ReturnType<BrowserSession["snapshot"]>;
+  actionResult?: BrowserActionResult;
   settleResult: Awaited<ReturnType<BrowserSession["settle"]>>;
   capturedArtifacts?: BrowserCapturedArtifacts;
   callbackClient: CallbackClient;
@@ -25,7 +27,9 @@ export async function emitCheckpointArtifactsAndCallbacks({
   stepOrder,
   step,
   plan,
+  beforeSnapshot,
   pageSnapshot,
+  actionResult,
   settleResult,
   capturedArtifacts,
   callbackClient,
@@ -37,7 +41,9 @@ export async function emitCheckpointArtifactsAndCallbacks({
     step,
     stepOrder,
     plan,
+    beforeSnapshot,
     pageSnapshot,
+    actionResult,
     settleResult,
     capturedArtifacts
   });

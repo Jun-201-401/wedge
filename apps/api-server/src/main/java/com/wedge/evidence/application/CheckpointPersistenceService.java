@@ -192,7 +192,8 @@ public class CheckpointPersistenceService {
             case "cta_candidate", "cta_cluster", "cta_text_specificity" -> "CTA";
             case "form_field", "form_error", "required_field", "missing_label", "error_recovery", "submit_disabled" -> "INPUT";
             case "trust_signal", "final_submit_candidate", "terms_privacy_signal", "payment_or_sensitive_action" -> "COMMIT";
-            case "value_proposition", "feature_summary", "audience_signal" -> "VALUE";
+            case "value_proposition", "feature_summary", "audience_signal", "product_card", "text_block_metrics" -> "VALUE";
+            case "goal_action_candidate" -> "CTA";
             default -> fallbackStage;
         };
     }
@@ -214,6 +215,11 @@ public class CheckpointPersistenceService {
             case "network_failure", "settle_response" -> List.of("network");
             case "cta_candidate", "form_field" -> List.of("dom");
             case "settle_item_count_change" -> List.of("scenario_log");
+            case "journey_action_raw" -> List.of("scenario_log", "dom", "browser", "network");
+            case "product_card" -> List.of("dom", "layout", "screenshot");
+            case "goal_action_candidate" -> List.of("dom", "layout");
+            case "category_filter_signal" -> List.of("scenario_log", "dom", "browser");
+            case "text_block_metrics" -> List.of("dom", "layout");
             default -> List.of("scenario_log");
         };
     }

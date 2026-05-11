@@ -13,6 +13,7 @@ import {
 import { createCdpSession, type CdpSessionMetadata } from "../cdp/index.ts";
 import type { RunnerBrowserName, RunnerConfig } from "../../config/index.ts";
 import type {
+  InteractiveComponentBounds,
   ScenarioAction,
   ScenarioPlan,
   ScenarioStep,
@@ -41,6 +42,28 @@ export interface BrowserSettleResult {
   details?: Record<string, unknown>;
 }
 
+export interface BrowserProductImageSignal {
+  src: string | null;
+  alt: string | null;
+  bounds: InteractiveComponentBounds;
+}
+
+export interface BrowserProductCardSignal {
+  element_text: string;
+  clicked_selector: string | null;
+  visible_price: string | null;
+  visible_product_image: boolean;
+  bbox: InteractiveComponentBounds;
+}
+
+export interface BrowserNetworkEventSignal {
+  method: string;
+  url: string;
+  status?: number;
+  failed?: boolean;
+  errorText?: string;
+}
+
 export interface BrowserPageSnapshot {
   currentUrl: string;
   finalUrl: string;
@@ -56,10 +79,24 @@ export interface BrowserPageSnapshot {
     type: ScenarioAction["type"];
     target: string | null;
     at: string;
+    clickedText?: string | null;
+    clickedSelector?: string | null;
+    elementRole?: string | null;
+    elementText?: string | null;
+    ariaLabel?: string | null;
+    bbox?: InteractiveComponentBounds | null;
   } | null;
   interactiveComponents: InteractiveComponentObservationItem[];
   consoleErrors: string[];
   networkErrors: string[];
+  networkEvents: BrowserNetworkEventSignal[];
+  breadcrumb: string[];
+  toastTexts: string[];
+  cartCount: number | null;
+  visiblePrices: string[];
+  productImages: BrowserProductImageSignal[];
+  productCards: BrowserProductCardSignal[];
+  domSignature: string | null;
   cdpSession: CdpSessionMetadata;
 }
 
@@ -161,6 +198,14 @@ interface MutableBrowserState {
   interactiveComponents: InteractiveComponentObservationItem[];
   consoleErrors: string[];
   networkErrors: string[];
+  networkEvents: BrowserNetworkEventSignal[];
+  breadcrumb: string[];
+  toastTexts: string[];
+  cartCount: number | null;
+  visiblePrices: string[];
+  productImages: BrowserProductImageSignal[];
+  productCards: BrowserProductCardSignal[];
+  domSignature: string | null;
 }
 
 function readPngDimensions(buffer: Buffer) {
@@ -359,8 +404,8 @@ class RealPlaywrightSession implements BrowserSession {
       }
       case "click": {
         assertScenarioActionAllowed(this.plan, this.state.currentUrl, action);
-        const clicked = await this.tryClickTarget(action);
-        if (!clicked) {
+        const clickDetails = await this.tryClickTarget(action);
+        if (!clickDetails.clicked) {
           const nextUrl = inferNavigationUrl(this.state.currentUrl, action.target);
           assertScenarioActionAllowed(this.plan, this.state.currentUrl, action, nextUrl);
           if (!nextUrl) {
@@ -444,6 +489,7 @@ class RealPlaywrightSession implements BrowserSession {
         currentUrl: this.state.currentUrl,
         finalUrl: this.state.finalUrl,
         title: this.state.title,
+        ...(action.type === "click" ? readLastClickedDetails(this.state) : {}),
         executionMode: "playwright"
       }
     };
@@ -616,6 +662,21 @@ class RealPlaywrightSession implements BrowserSession {
     this.page.on("requestfailed", (request) => {
       const failureText = request.failure()?.errorText ?? "request failed";
       this.state.networkErrors.push(`${request.method()} ${request.url()} ${failureText}`);
+      appendNetworkEvent(this.state, {
+        method: request.method(),
+        url: request.url(),
+        failed: true,
+        errorText: failureText
+      });
+    });
+
+    this.page.on("response", (response) => {
+      appendNetworkEvent(this.state, {
+        method: response.request().method(),
+        url: response.url(),
+        status: response.status(),
+        failed: false
+      });
     });
 
     this.page.on("framenavigated", (frame) => {
@@ -625,18 +686,23 @@ class RealPlaywrightSession implements BrowserSession {
     });
   }
 
-  private async tryClickTarget(action: ScenarioAction): Promise<boolean> {
+  private async tryClickTarget(action: ScenarioAction): Promise<{ clicked: boolean }> {
+    let clickedDetails: Record<string, unknown> = {};
     const clicked = await tryCandidateLocators(this.page, action.target, action.options, async (locator) => {
-      await locator.click({
+      const candidateLocator = locator.first();
+      const nextClickedDetails = await safeLocatorElementDetails(candidateLocator);
+      await candidateLocator.click({
         timeout: DEFAULT_LOCATOR_TIMEOUT_MS
       });
+      clickedDetails = nextClickedDetails;
     });
 
     if (clicked) {
+      mergeLastActionDetails(this.state, clickedDetails);
       await this.refreshPageState();
     }
 
-    return clicked;
+    return { clicked };
   }
 
   private async tryFillTarget(target: TargetDescriptor | undefined, value: unknown, fallbackKey: string): Promise<boolean> {
@@ -880,6 +946,13 @@ class RealPlaywrightSession implements BrowserSession {
     this.state.title = await safePageTitle(this.page, currentUrl);
     this.state.scrollY = await safeScrollY(this.page, this.state.scrollY);
     this.state.interactiveComponents = await safeInteractiveComponents(this.page, this.state.lastAction, this.state.interactiveComponents);
+    this.state.breadcrumb = await safeBreadcrumb(this.page, this.state.breadcrumb);
+    this.state.toastTexts = await safeToastTexts(this.page, this.state.toastTexts);
+    this.state.cartCount = await safeCartCount(this.page, this.state.cartCount);
+    this.state.visiblePrices = await safeVisiblePrices(this.page, this.state.visiblePrices);
+    this.state.productImages = await safeProductImages(this.page, this.state.productImages);
+    this.state.productCards = await safeProductCards(this.page, this.state.productCards);
+    this.state.domSignature = await safeDomSignature(this.page, this.state.domSignature);
     appendVisitedUrl(this.state.visitedUrls, currentUrl);
   }
 
@@ -1005,7 +1078,15 @@ function createInitialBrowserState(plan: ScenarioPlan): MutableBrowserState {
     lastAction: null,
     interactiveComponents: [],
     consoleErrors: [],
-    networkErrors: []
+    networkErrors: [],
+    networkEvents: [],
+    breadcrumb: [],
+    toastTexts: [],
+    cartCount: null,
+    visiblePrices: [],
+    productImages: [],
+    productCards: [],
+    domSignature: null
   };
 }
 
@@ -1032,6 +1113,20 @@ function createBrowserPageSnapshot(
     })),
     consoleErrors: [...state.consoleErrors],
     networkErrors: [...state.networkErrors],
+    networkEvents: state.networkEvents.map((event) => ({ ...event })),
+    breadcrumb: [...state.breadcrumb],
+    toastTexts: [...state.toastTexts],
+    cartCount: state.cartCount,
+    visiblePrices: [...state.visiblePrices],
+    productImages: state.productImages.map((image) => ({
+      ...image,
+      bounds: { ...image.bounds }
+    })),
+    productCards: state.productCards.map((card) => ({
+      ...card,
+      bbox: { ...card.bbox }
+    })),
+    domSignature: state.domSignature,
     cdpSession
   };
 }
@@ -1042,6 +1137,61 @@ function recordLastAction(state: MutableBrowserState, action: ScenarioAction, ta
     target: targetSummary,
     at: toIsoTimestamp()
   };
+}
+
+function mergeLastActionDetails(state: MutableBrowserState, details: Record<string, unknown>): void {
+  if (!state.lastAction) {
+    return;
+  }
+
+  state.lastAction = {
+    ...state.lastAction,
+    clickedText: readNullableString(details.clickedText),
+    clickedSelector: readNullableString(details.clickedSelector),
+    elementRole: readNullableString(details.elementRole),
+    elementText: readNullableString(details.elementText),
+    ariaLabel: readNullableString(details.ariaLabel),
+    bbox: isBounds(details.bbox) ? details.bbox : null
+  };
+}
+
+function readLastClickedDetails(state: MutableBrowserState): Record<string, unknown> {
+  if (!state.lastAction || state.lastAction.type !== "click") {
+    return {};
+  }
+
+  return {
+    clickedText: state.lastAction.clickedText ?? null,
+    clickedSelector: state.lastAction.clickedSelector ?? null,
+    elementRole: state.lastAction.elementRole ?? null,
+    elementText: state.lastAction.elementText ?? null,
+    ariaLabel: state.lastAction.ariaLabel ?? null,
+    bbox: state.lastAction.bbox ?? null
+  };
+}
+
+function readNullableString(value: unknown): string | null {
+  return typeof value === "string" && value.length > 0 ? value : null;
+}
+
+function isBounds(value: unknown): value is InteractiveComponentBounds {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+
+  const candidate = value as Partial<InteractiveComponentBounds>;
+  return typeof candidate.x === "number" &&
+    typeof candidate.y === "number" &&
+    typeof candidate.width === "number" &&
+    typeof candidate.height === "number" &&
+    typeof candidate.unit === "string";
+}
+
+function appendNetworkEvent(state: MutableBrowserState, event: BrowserNetworkEventSignal): void {
+  state.networkEvents.push(event);
+  if (state.networkEvents.length > 50) {
+    state.networkEvents.shift();
+  }
 }
 
 function appendVisitedUrl(visitedUrls: string[], url: string): void {
@@ -1346,6 +1496,65 @@ function escapeCssString(value: string): string {
   return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
 }
 
+async function safeLocatorElementDetails(locator: Locator): Promise<Record<string, unknown>> {
+  try {
+    return await locator.evaluate((element) => {
+      function selectorFor(target: Element): string | null {
+        const id = target.getAttribute("id");
+        if (id) {
+          return `#${id.replace(/[^a-zA-Z0-9_-]/g, "\\$&")}`;
+        }
+        const className = Array.from(target.classList).find((entry) => entry.length > 0);
+        if (className) {
+          return `${target.tagName.toLowerCase()}.${className.replace(/[^a-zA-Z0-9_-]/g, "\\$&")}`;
+        }
+        const href = target.getAttribute("href");
+        if (target.tagName.toLowerCase() === "a" && href) {
+          return `a[href="${href.replace(/"/g, '\\"')}"]`;
+        }
+        return target.tagName.toLowerCase();
+      }
+
+      function textFor(target: Element): string {
+        const inputValue = target instanceof HTMLInputElement ? target.value : "";
+        return [
+          target.textContent,
+          target.getAttribute("aria-label"),
+          target.getAttribute("title"),
+          inputValue
+        ]
+          .find((value) => typeof value === "string" && value.trim().length > 0)
+          ?.trim()
+          .replaceAll(/\s+/g, " ")
+          .slice(0, 160) ?? "";
+      }
+
+      const rect = element.getBoundingClientRect();
+      const tag = element.tagName.toLowerCase();
+      const role = element.getAttribute("role") ?? (tag === "button" ? "button" : tag === "a" ? "link" : null);
+      const text = textFor(element);
+      const ariaLabel = element.getAttribute("aria-label");
+
+      return {
+        clickedText: text,
+        clickedSelector: selectorFor(element),
+        elementRole: role,
+        elementText: text,
+        ariaLabel,
+        bbox: {
+          x: Math.round(rect.x),
+          y: Math.round(rect.y),
+          width: Math.round(rect.width),
+          height: Math.round(rect.height),
+          unit: "css_px" as const
+        }
+      };
+    });
+  } catch {
+    return {};
+  }
+}
+
 async function tryCandidateLocators(
   page: Page,
   target: TargetDescriptor | undefined,
@@ -1600,6 +1809,187 @@ async function safeScrollY(page: Page, fallbackValue: number): Promise<number> {
       return scope.scrollY ?? 0;
     });
     return typeof scrollY === "number" && Number.isFinite(scrollY) ? scrollY : fallbackValue;
+  } catch {
+    return fallbackValue;
+  }
+}
+
+async function safeBreadcrumb(page: Page, fallbackValue: string[]): Promise<string[]> {
+  try {
+    return await page.evaluate(() => {
+      const selectors = [
+        "[aria-label*='breadcrumb' i]",
+        "nav[aria-label]",
+        "nav.breadcrumb",
+        ".breadcrumb",
+        "[class*='breadcrumb' i]"
+      ];
+      const element = selectors
+        .flatMap((selector) => Array.from(document.querySelectorAll(selector)))
+        .find((candidate) => (candidate.textContent ?? "").trim().length > 0);
+      const text = (element?.textContent ?? "").trim().replaceAll(/\s+/g, " ");
+      return text
+        .split(/\s*(?:>|›|\/|→)\s*/)
+        .map((entry) => entry.trim())
+        .filter((entry) => entry.length > 0)
+        .slice(0, 10);
+    });
+  } catch {
+    return fallbackValue;
+  }
+}
+
+async function safeToastTexts(page: Page, fallbackValue: string[]): Promise<string[]> {
+  try {
+    return await page.evaluate(() => {
+      const selectors = [
+        "[role='alert']",
+        "[aria-live]",
+        ".toast",
+        "[class*='toast' i]",
+        "[class*='snackbar' i]",
+        "[class*='notification' i]"
+      ];
+      return Array.from(new Set(selectors
+        .flatMap((selector) => Array.from(document.querySelectorAll(selector)))
+        .map((element) => (element.textContent ?? "").trim().replaceAll(/\s+/g, " "))
+        .filter((text) => text.length > 0)))
+        .slice(0, 10);
+    });
+  } catch {
+    return fallbackValue;
+  }
+}
+
+async function safeCartCount(page: Page, fallbackValue: number | null): Promise<number | null> {
+  try {
+    return await page.evaluate(() => {
+      const candidates = Array.from(document.querySelectorAll("[class*='cart' i], [id*='cart' i], [aria-label*='cart' i], [class*='basket' i], [id*='basket' i], [aria-label*='basket' i]"))
+        .map((element) => [
+          element.textContent,
+          element.getAttribute("aria-label"),
+          element.getAttribute("title")
+        ].filter(Boolean).join(" "))
+        .join(" ");
+      const match = candidates.match(/\b(\d{1,4})\b/);
+      return match ? Number(match[1]) : null;
+    });
+  } catch {
+    return fallbackValue;
+  }
+}
+
+async function safeVisiblePrices(page: Page, fallbackValue: string[]): Promise<string[]> {
+  try {
+    return await page.evaluate(() => {
+      const text = document.body?.innerText ?? "";
+      const matches = text.match(/(?:[$€£₩]\\s?\\d[\\d,.]*|\\d[\\d,.]*\\s?(?:원|달러|USD|KRW|만원|천원))/gi) ?? [];
+      return Array.from(new Set(matches.map((match) => match.trim()))).slice(0, 20);
+    });
+  } catch {
+    return fallbackValue;
+  }
+}
+
+async function safeProductImages(page: Page, fallbackValue: BrowserProductImageSignal[]): Promise<BrowserProductImageSignal[]> {
+  try {
+    return await page.evaluate(() => {
+      const viewportWidth = globalThis.innerWidth || 0;
+      const viewportHeight = globalThis.innerHeight || 0;
+      return Array.from(document.images)
+        .map((image) => {
+          const rect = image.getBoundingClientRect();
+          return {
+            src: image.currentSrc || image.src || null,
+            alt: image.alt || null,
+            bounds: {
+              x: Math.round(rect.x),
+              y: Math.round(rect.y),
+              width: Math.round(rect.width),
+              height: Math.round(rect.height),
+              unit: "css_px" as const
+            },
+            visible: rect.width > 24 && rect.height > 24 && rect.bottom >= 0 && rect.right >= 0 && rect.top <= viewportHeight && rect.left <= viewportWidth
+          };
+        })
+        .filter((image) => image.visible)
+        .slice(0, 20)
+        .map(({ visible, ...image }) => image);
+    });
+  } catch {
+    return fallbackValue;
+  }
+}
+
+async function safeProductCards(page: Page, fallbackValue: BrowserProductCardSignal[]): Promise<BrowserProductCardSignal[]> {
+  try {
+    return await page.evaluate(() => {
+      const pricePattern = /(?:[$€£₩]\s?\d[\d,.]*|\d[\d,.]*\s?(?:원|달러|USD|KRW|만원|천원))/i;
+      const candidates = Array.from(document.querySelectorAll("article, li, [class*='card' i], [class*='product' i], [class*='item' i], [data-product], [data-testid*='product' i]"));
+      const viewportWidth = globalThis.innerWidth || 0;
+      const viewportHeight = globalThis.innerHeight || 0;
+
+      function selectorFor(element: Element): string | null {
+        const link = element.matches("a[href]") ? element : element.querySelector("a[href]");
+        const target = link ?? element;
+        const id = target.getAttribute("id");
+        if (id) {
+          return `#${id.replace(/[^a-zA-Z0-9_-]/g, "\\$&")}`;
+        }
+        const href = target.getAttribute("href");
+        if (href) {
+          return `a[href="${href.replace(/"/g, '\\"')}"]`;
+        }
+        const className = Array.from(target.classList).find((entry) => entry.length > 0);
+        return className ? `${target.tagName.toLowerCase()}.${className.replace(/[^a-zA-Z0-9_-]/g, "\\$&")}` : target.tagName.toLowerCase();
+      }
+
+      return candidates
+        .map((element) => {
+          const rect = element.getBoundingClientRect();
+          const text = (element.textContent ?? "").trim().replaceAll(/\s+/g, " ").slice(0, 240);
+          const price = text.match(pricePattern)?.[0] ?? null;
+          const visibleImage = Array.from(element.querySelectorAll("img")).some((image) => {
+            const imageRect = image.getBoundingClientRect();
+            return imageRect.width > 24 && imageRect.height > 24;
+          });
+          return {
+            element_text: text,
+            clicked_selector: selectorFor(element),
+            visible_price: price,
+            visible_product_image: visibleImage,
+            bbox: {
+              x: Math.round(rect.x),
+              y: Math.round(rect.y),
+              width: Math.round(rect.width),
+              height: Math.round(rect.height),
+              unit: "css_px" as const
+            },
+            visible: rect.width > 40 && rect.height > 40 && rect.bottom >= 0 && rect.right >= 0 && rect.top <= viewportHeight && rect.left <= viewportWidth,
+            likely: Boolean(price || visibleImage)
+          };
+        })
+        .filter((card) => card.visible && card.likely && card.element_text.length > 0)
+        .slice(0, 20)
+        .map(({ visible, likely, ...card }) => card);
+    });
+  } catch {
+    return fallbackValue;
+  }
+}
+
+async function safeDomSignature(page: Page, fallbackValue: string | null): Promise<string | null> {
+  try {
+    return await page.evaluate(() => {
+      const bodyText = (document.body?.innerText ?? "").replaceAll(/\s+/g, " ").slice(0, 4_000);
+      return [
+        document.location.href,
+        document.title,
+        document.querySelectorAll("*").length,
+        document.querySelectorAll("a,button,input,select,textarea,[role='button'],[role='link']").length,
+        bodyText
+      ].join("|");
+    });
   } catch {
     return fallbackValue;
   }

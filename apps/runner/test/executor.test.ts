@@ -758,6 +758,128 @@ test("[수집 pipeline] CTA 분석용 interactive_components observation을 chec
   });
 });
 
+test("[수집 pipeline] Journey raw signal은 click 전후 상태와 artifact/bbox 근거를 observation으로 남긴다", async () => {
+  const capturePipeline = createCapturePipeline();
+  const plan = createMinimalPlan();
+  const beforeSnapshot = createSimulatedPageSnapshot(plan, {
+    title: "Landing",
+    finalUrl: "https://example.com",
+    breadcrumb: ["Home"],
+    cartCount: 0,
+    domSignature: "before-dom"
+  });
+  const afterSnapshot = createSimulatedPageSnapshot(plan, {
+    title: "Product",
+    finalUrl: "https://example.com/products/sku-1",
+    breadcrumb: ["Home", "Products", "SKU 1"],
+    cartCount: 1,
+    toastTexts: ["장바구니에 담았습니다"],
+    visiblePrices: ["₩12,000"],
+    productImages: [
+      {
+        src: "https://example.com/sku-1.png",
+        alt: "SKU 1",
+        bounds: {
+          x: 100,
+          y: 140,
+          width: 320,
+          height: 240,
+          unit: "css_px"
+        }
+      }
+    ],
+    networkEvents: [
+      {
+        method: "POST",
+        url: "https://example.com/api/cart",
+        status: 200,
+        failed: false
+      }
+    ],
+    domSignature: "after-dom"
+  });
+
+  const collection = await capturePipeline.collectCheckpoint({
+    step: {
+      step_id: "step_click_cart",
+      stage: "CTA",
+      description: "add item to cart",
+      action: {
+        type: "click",
+        target: {
+          selector: "button.add-cart"
+        }
+      },
+      settle_strategy: {
+        type: "response",
+        timeout_ms: 500,
+        url_includes: "/api/cart"
+      },
+      checkpoint: true
+    },
+    stepOrder: 2,
+    plan,
+    beforeSnapshot,
+    pageSnapshot: afterSnapshot,
+    actionResult: {
+      actionType: "click",
+      targetSummary: "selector=button.add-cart",
+      stopRequested: false,
+      details: {
+        clickedText: "장바구니 담기",
+        clickedSelector: "button.add-cart",
+        elementRole: "button",
+        ariaLabel: "장바구니 담기",
+        bbox: {
+          x: 520,
+          y: 640,
+          width: 180,
+          height: 48,
+          unit: "css_px"
+        }
+      }
+    },
+    settleResult: createSettledResult({
+      strategy: "response",
+      status: "settled",
+      durationMs: 180,
+      targetSummary: "url=/api/cart",
+      details: {
+        matchedUrl: "https://example.com/api/cart",
+        method: "POST",
+        status: 200,
+        urlIncludes: "/api/cart"
+      }
+    })
+  });
+
+  const observation = collection.checkpoint.observations.find(
+    (candidate) => candidate.type === "journey_action_raw"
+  );
+
+  assert.ok(observation);
+  assert.equal(observation.clicked_text, "장바구니 담기");
+  assert.equal(observation.clicked_selector, "button.add-cart");
+  assert.equal(observation.url_before, "https://example.com");
+  assert.equal(observation.url_after, "https://example.com/products/sku-1");
+  assert.equal(observation.title_before, "Landing");
+  assert.equal(observation.title_after, "Product");
+  assert.equal(observation.cart_count_before, 0);
+  assert.equal(observation.cart_count_after, 1);
+  assert.equal(observation.dom_changed, true);
+  assert.equal(observation.settle_status, "settled");
+  assert.equal(observation.add_to_cart_like_button, true);
+  assert.equal(typeof observation.screenshot_artifact_id, "string");
+  assert.deepEqual(observation.bbox, {
+    x: 520,
+    y: 640,
+    width: 180,
+    height: 48,
+    unit: "css_px"
+  });
+  assert.ok(Array.isArray(observation.network_result));
+});
+
 test("[전달 정책] optional delivery 이슈를 병합하고 finished callback 실패는 fatal로 분류한다", () => {
   const merged = mergeDeliveryIssues(
     [
