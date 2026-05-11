@@ -38,8 +38,25 @@ public class AgentReplayHintsFactory {
             return Optional.empty();
         }
 
-        List<String> completedDecisionIds = completedDecisionIds(trace);
+        List<Map<String, Object>> steps = new ArrayList<>(legacyReplaySteps(trace));
+        if (steps.isEmpty()) {
+            steps.addAll(turnReplaySteps(trace));
+        }
+
+        if (steps.isEmpty()) {
+            return Optional.empty();
+        }
+
+        Map<String, Object> replayHints = new LinkedHashMap<>();
+        replayHints.put("source_trace_id", traceId);
+        replayHints.put("source_plan_id", "agent-trace-replay-" + traceId);
+        replayHints.put("steps", steps);
+        return Optional.of(replayHints);
+    }
+
+    private List<Map<String, Object>> legacyReplaySteps(Map<String, Object> trace) {
         List<Map<String, Object>> steps = new ArrayList<>();
+        List<String> completedDecisionIds = completedDecisionIds(trace);
         for (Object value : listValue(trace.get("decisions"))) {
             if (!(value instanceof Map<?, ?> rawDecision)) {
                 continue;
@@ -67,16 +84,43 @@ public class AgentReplayHintsFactory {
 
             steps.add(toReplayHintStep(steps.size() + 1, decision, actionRecord, action));
         }
+        return steps;
+    }
 
-        if (steps.isEmpty()) {
-            return Optional.empty();
+    private List<Map<String, Object>> turnReplaySteps(Map<String, Object> trace) {
+        List<Map<String, Object>> steps = new ArrayList<>();
+        for (Object value : listValue(trace.get("turns"))) {
+            if (!(value instanceof Map<?, ?> rawTurn)) {
+                continue;
+            }
+            Map<String, Object> turn = castMap(rawTurn);
+            Object decisionValue = turn.get("decision");
+            Object policyValue = turn.get("policy");
+            Object actionResultValue = turn.get("actionResult");
+            if (!(decisionValue instanceof Map<?, ?> rawDecision)
+                    || !(policyValue instanceof Map<?, ?> rawPolicy)
+                    || !(actionResultValue instanceof Map<?, ?> rawActionResult)) {
+                continue;
+            }
+            Map<String, Object> decision = castMap(rawDecision);
+            Map<String, Object> policy = castMap(rawPolicy);
+            Map<String, Object> actionResult = castMap(rawActionResult);
+            if (!"act".equals(stringValue(decision.get("kind")))
+                    || !Boolean.TRUE.equals(policy.get("allowed"))
+                    || !Boolean.TRUE.equals(actionResult.get("completed"))) {
+                continue;
+            }
+            Object actionValue = decision.get("action");
+            if (!(actionValue instanceof Map<?, ?> rawAction)) {
+                continue;
+            }
+            Map<String, Object> action = new LinkedHashMap<>(castMap(rawAction));
+            if (isUnsafeReplayAction(action)) {
+                continue;
+            }
+            steps.add(toTurnReplayHintStep(steps.size() + 1, decision, action));
         }
-
-        Map<String, Object> replayHints = new LinkedHashMap<>();
-        replayHints.put("source_trace_id", traceId);
-        replayHints.put("source_plan_id", "agent-trace-replay-" + traceId);
-        replayHints.put("steps", steps);
-        return Optional.of(replayHints);
+        return steps;
     }
 
     private List<String> completedDecisionIds(Map<String, Object> trace) {
@@ -115,6 +159,28 @@ public class AgentReplayHintsFactory {
         step.put("action", action);
         step.put("settle_strategy", defaultSettleStrategy(actionType));
         String targetKey = stringValue(actionRecord.get("target_key"));
+        if (targetKey != null) {
+            step.put("target_key", targetKey);
+        }
+        Object confidence = decision.get("confidence");
+        if (confidence instanceof Number number && number.doubleValue() >= 0 && number.doubleValue() <= 1) {
+            step.put("confidence", number.doubleValue());
+        }
+        return step;
+    }
+
+    private Map<String, Object> toTurnReplayHintStep(
+            int index,
+            Map<String, Object> decision,
+            Map<String, Object> action
+    ) {
+        Map<String, Object> step = new LinkedHashMap<>();
+        String actionType = stringValue(action.get("type"));
+        step.put("step_id", "agent_replay_" + String.format("%03d", index));
+        step.put("stage", Optional.ofNullable(stringValue(decision.get("stage"))).orElse(defaultStage(actionType)));
+        step.put("description", replayDescription(decision, index));
+        step.put("action", action);
+        String targetKey = stringValue(decision.get("targetKey"));
         if (targetKey != null) {
             step.put("target_key", targetKey);
         }

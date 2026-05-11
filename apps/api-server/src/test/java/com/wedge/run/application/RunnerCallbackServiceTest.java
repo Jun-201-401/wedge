@@ -238,13 +238,11 @@ class RunnerCallbackServiceTest {
         RunResponse running = sampleRun(runId, RunStatus.RUNNING, ResultCompleteness.PARTIAL);
         RunnerAgentEventsCommand command = new RunnerAgentEventsCommand(List.of(
                 new RunnerAgentEventCommand(
-                        "0.1",
                         "agent-event-1",
                         UUID.randomUUID(),
                         UUID.randomUUID(),
-                        runId,
                         1,
-                        "AGENT_STOPPED",
+                        "POLICY_CHECKED",
                         OffsetDateTime.parse("2026-05-06T10:00:00+09:00"),
                         Map.of("final_outcome", "SUCCESS_CHECKOUT_ENTRY_REACHED")
                 )
@@ -265,13 +263,18 @@ class RunnerCallbackServiceTest {
     @Test
     void agentTraceCallbackPersistsTrace() {
         UUID runId = UUID.randomUUID();
-        UUID traceId = UUID.randomUUID();
+        UUID taskId = UUID.randomUUID();
+        UUID attemptId = UUID.randomUUID();
         RunResponse running = sampleRun(runId, RunStatus.RUNNING, ResultCompleteness.PARTIAL);
-        RunnerAgentTraceCommand command = new RunnerAgentTraceCommand(Map.of(
-                "trace_id", traceId.toString(),
-                "run_id", runId.toString(),
-                "final_outcome", "SUCCESS_CHECKOUT_ENTRY_REACHED"
-        ));
+        RunnerAgentTraceCommand command = new RunnerAgentTraceCommand(
+                taskId,
+                attemptId,
+                OffsetDateTime.parse("2026-05-06T10:00:05+09:00"),
+                Map.<String, Object>of(
+                        "run_id", runId.toString(),
+                        "final_outcome", "SUCCESS_CHECKOUT_ENTRY_REACHED"
+                )
+        );
         when(processedMessagePersistenceAdapter.tryMarkProcessed("runner.agent-traces", "evt_agent_trace_001")).thenReturn(true);
         when(runService.getRun(runId)).thenReturn(running);
 

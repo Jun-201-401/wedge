@@ -367,7 +367,7 @@
     </insert>
 
     <select id="findLatestSuccessfulAgentTraceJsonForReplay" resultType="string">
-        SELECT CAST(t.trace_jsonb AS TEXT) AS trace_jsonb
+        SELECT CAST(jsonb_set(t.trace_jsonb, '{trace_id}', to_jsonb(t.trace_id::text), true) AS TEXT) AS trace_jsonb
         FROM runner_agent_trace t
         JOIN test_run r ON r.id = t.run_id
         WHERE r.project_id = #{projectId}
@@ -375,7 +375,7 @@
           AND COALESCE(r.goal, '') = COALESCE(#{goal}, '')
           AND r.deleted_at IS NULL
           AND t.run_id != #{excludeRunId}
-          AND t.final_outcome LIKE 'SUCCESS\_%' ESCAPE '\'
+          AND (t.final_outcome = 'SUCCESS' OR t.final_outcome LIKE 'SUCCESS\_%' ESCAPE '\')
         ORDER BY t.finished_at DESC NULLS LAST, t.created_at DESC
         LIMIT 1
     </select>

@@ -1,5 +1,7 @@
 package com.wedge.run.api.internal.runner;
 
+import com.wedge.common.error.BusinessException;
+import com.wedge.common.error.ErrorCode;
 import com.wedge.common.response.ApiResponse;
 import com.wedge.run.api.internal.runner.dto.RunnerAcceptedRequest;
 import com.wedge.run.api.internal.runner.dto.RunnerAgentEventsRequest;
@@ -26,6 +28,7 @@ import com.wedge.run.application.command.RunnerFinishedCommand;
 import com.wedge.run.application.command.RunnerStepEventCommand;
 import com.wedge.run.application.command.RunnerStepEventsCommand;
 import jakarta.validation.Valid;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
@@ -128,7 +131,7 @@ public class RunnerCallbackController {
             @RequestHeader("X-Event-Id") String eventId,
             @RequestHeader("X-Signature") String signature
     ) {
-        return ApiResponse.ok(runnerCallbackService.handleAgentTrace(runId, new RunnerAgentTraceCommand(request.trace()), callbackContext(workerId, eventId, signature)));
+        return ApiResponse.ok(runnerCallbackService.handleAgentTrace(runId, toAgentTraceCommand(runId, request), callbackContext(workerId, eventId, signature)));
     }
 
     private RunnerAcceptedCommand toAcceptedCommand(RunnerAcceptedRequest request) {
@@ -214,17 +217,36 @@ public class RunnerCallbackController {
     private RunnerAgentEventsCommand toAgentEventsCommand(RunnerAgentEventsRequest request) {
         return new RunnerAgentEventsCommand(request.events().stream()
                 .map(event -> new RunnerAgentEventCommand(
-                        event.schemaVersion(),
                         event.eventId(),
                         event.taskId(),
                         event.attemptId(),
-                        event.runId(),
-                        event.stepIndex(),
-                        event.eventType(),
+                        event.turn() == null ? 0 : event.turn(),
+                        event.eventType().name(),
                         event.occurredAt(),
                         event.payload()
                 ))
                 .toList());
+    }
+
+    private RunnerAgentTraceCommand toAgentTraceCommand(UUID runId, RunnerAgentTraceRequest request) {
+        Map<String, Object> trace = new LinkedHashMap<>(request.trace());
+        putCanonicalIdentity(trace, "run_id", runId.toString());
+        putCanonicalIdentity(trace, "task_id", request.taskId().toString());
+        putCanonicalIdentity(trace, "attempt_id", request.attemptId().toString());
+        return new RunnerAgentTraceCommand(
+                request.taskId(),
+                request.attemptId(),
+                request.occurredAt(),
+                trace
+        );
+    }
+
+    private void putCanonicalIdentity(Map<String, Object> trace, String key, String expectedValue) {
+        Object existingValue = trace.get(key);
+        if (existingValue != null && !expectedValue.equals(existingValue.toString())) {
+            throw new BusinessException(ErrorCode.INVALID_REQUEST, "AgentTrace." + key + " must match callback envelope.");
+        }
+        trace.put(key, expectedValue);
     }
 
     private InternalCallbackContext callbackContext(String workerId, String eventId, String signature) {
