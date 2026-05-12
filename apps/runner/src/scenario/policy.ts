@@ -90,7 +90,11 @@ export function assertVisitedUrlAllowed(plan: ScenarioPlan, currentUrl: string):
 
 function resolveOrigin(candidateUrl: string, baseUrl: string): string | null {
   try {
-    return new URL(candidateUrl, baseUrl).origin;
+    const parsedUrl = new URL(candidateUrl, baseUrl);
+    if (parsedUrl.protocol !== "http:" && parsedUrl.protocol !== "https:") {
+      return null;
+    }
+    return parsedUrl.origin === "null" ? null : parsedUrl.origin;
   } catch {
     return null;
   }

@@ -50,6 +50,28 @@ test("[Agent Policy] allowed checkout redirect origins permit external navigatio
   assert.equal(result.riskClass, "EXTERNAL_NAVIGATION");
 });
 
+test("[Agent Policy] null-origin snapshot은 외부 navigation 차단으로 오인하지 않는다", async () => {
+  const message = cloneAgentMessage(await loadAgentExampleMessage());
+  const task = message.payload.agentTask;
+  const snapshot = createSimulatedPageSnapshot(createAgentRuntimePlan(task), {
+    finalUrl: "about:blank"
+  });
+
+  const result = evaluateAgentPolicy({
+    task,
+    snapshot,
+    decision: createDecision({
+      type: "goto",
+      target: {
+        url: task.start_url
+      }
+    })
+  });
+
+  assert.equal(result.allowed, true);
+  assert.notEqual(result.riskClass, "EXTERNAL_NAVIGATION");
+});
+
 test("[Agent Policy] final payment semantics override allowed external checkout redirects", async () => {
   const message = cloneAgentMessage(await loadAgentExampleMessage());
   const task = message.payload.agentTask;

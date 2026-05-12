@@ -3,6 +3,7 @@ import type { CallbackClient } from "../callback/index.ts";
 import type { CapturePipeline } from "../capture/index.ts";
 import { createDeliverySummary, mergeDeliveryIssues, type DeliveryIssue, type DeliverySummary } from "../delivery/index.ts";
 import { createEmptyCollectorStatusSummary, mergeCollectorStatusSummaries } from "../observability/collectors.ts";
+import { emitFailureCheckpointArtifactsAndCallbacks } from "../scenario/executor/checkpoint-emitter.ts";
 import { ScenarioExecutionError, type ScenarioExecutionSummary } from "../scenario/executor/index.ts";
 import { executeScenarioStep } from "../scenario/executor/step-executor.ts";
 import type { ArtifactStore } from "../storage/index.ts";
@@ -230,6 +231,21 @@ export async function executeAgentRun(input: AgentExecutorInput): Promise<AgentE
           continue;
         }
 
+        const failureEvidence = await emitFailureCheckpointArtifactsAndCallbacks({
+          runId: input.runId,
+          stepOrder: turn,
+          step,
+          plan: input.runtimePlan,
+          failureCode,
+          failureMessage,
+          session: input.session,
+          callbackClient: input.callbackClient,
+          capturePipeline: input.capturePipeline,
+          artifactStore: input.artifactStore
+        });
+        deliveryIssues.push(...failureEvidence.deliveryIssues);
+        collectorStatus = mergeCollectorStatusSummaries(collectorStatus, failureEvidence.collectorStatus);
+
         throw new ScenarioExecutionError({
           cause: error,
           summary: {
@@ -241,7 +257,8 @@ export async function executeAgentRun(input: AgentExecutorInput): Promise<AgentE
           delivery: createDeliverySummary(mergeDeliveryIssues(deliveryIssues)),
           failedStepKey: step.step_id,
           failedStepOrder: turn,
-          failureCode
+          failureCode,
+          failureArtifactRefs: failureEvidence.artifactRefs
         });
       }
 

@@ -161,7 +161,11 @@ function resolveDecisionNavigationUrl(decision: AgentDecision, baseUrl: string):
 
 function resolveOrigin(url: string): string | null {
   try {
-    return new URL(url).origin;
+    const parsedUrl = new URL(url);
+    if (parsedUrl.protocol !== "http:" && parsedUrl.protocol !== "https:") {
+      return null;
+    }
+    return parsedUrl.origin === "null" ? null : parsedUrl.origin;
   } catch {
     return null;
   }
@@ -169,7 +173,11 @@ function resolveOrigin(url: string): string | null {
 
 function normalizeOrigin(value: string): string | null {
   try {
-    return new URL(value).origin;
+    const parsedUrl = new URL(value);
+    if (parsedUrl.protocol !== "http:" && parsedUrl.protocol !== "https:") {
+      return null;
+    }
+    return parsedUrl.origin === "null" ? null : parsedUrl.origin;
   } catch {
     return null;
   }

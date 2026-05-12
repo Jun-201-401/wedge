@@ -9,6 +9,7 @@ import { createAgentWorkerHarness, createCheckoutHeuristicComponents } from "./a
 import { registerAgentWorker } from "../src/worker/agent-worker.ts";
 import type { AgentRunnerExecutionResult } from "../src/worker/agent-worker.ts";
 import type { AgentIdempotencyStore } from "../src/worker/agent-idempotency.ts";
+import { ScenarioExecutionError } from "../src/scenario/executor/index.ts";
 import {
   cloneMessage,
   createRunnerTestConfig,
@@ -545,6 +546,120 @@ test("[Agent Worker] checkpoint decision도 캡처 정책이 켜져 있으면 ch
     artifactCallbacks.some((artifact) => artifact.artifactId === artifactId && artifact.artifactType === "SCREENSHOT")
   ));
   assert.equal(agentEvents.some((event) => event.eventType === "ACTION_COMPLETED"), true);
+});
+
+test("[Agent Worker] 첫 turn action 실패도 failure checkpoint artifact를 남긴다", async () => {
+  const message = await loadAgentExampleMessage();
+  const task = message.payload.agentTask;
+  task.budget.max_steps = 1;
+  task.artifact_policy = {
+    capture_screenshots: true,
+    capture_dom_snapshots: true,
+    capture_ax_tree: false,
+    capture_trace: false
+  };
+
+  const runtimePlan = createAgentRuntimePlan(task);
+  const persistedArtifacts: ArtifactDraft[] = [];
+  const artifactCallbacks: Artifact[] = [];
+  const checkpointCallbacks: RunnerCheckpointsRequest[] = [];
+  const agentEvents: AgentEvent[] = [];
+  const decisionClient: AgentDecisionClient = {
+    decide: () => ({
+      kind: "act",
+      description: "Click a missing CTA.",
+      reason: "Exercise first-turn failure capture.",
+      confidence: 0.9,
+      action: {
+        type: "click",
+        target: {
+          selector: "#missing-cta"
+        }
+      },
+      settleStrategy: {
+        type: "fixed_short",
+        timeout_ms: 1
+      },
+      stage: "CTA",
+      targetKey: "#missing-cta"
+    })
+  };
+
+  let caught: unknown;
+  try {
+    await executeAgentRun({
+      runId: task.run_id,
+      task,
+      runtimePlan,
+      session: createSimulatedSession(runtimePlan, {
+        execute: async () => {
+          throw new Error("missing CTA target");
+        },
+        settle: async () => createSettledResult(),
+        snapshot: () => createSimulatedPageSnapshot(runtimePlan, {
+          finalUrl: task.start_url,
+          interactiveComponents: []
+        }),
+        captureArtifacts: async () => ({
+          screenshot: {
+            mimeType: "image/png",
+            fileExtension: "png",
+            contentBase64: Buffer.from("failure png").toString("base64"),
+            width: 1440,
+            height: 900
+          }
+        })
+      }),
+      callbackClient: createStubCallbackClient({
+        sendArtifacts: async (_runId, payload) => {
+          artifactCallbacks.push(...payload.artifacts);
+        },
+        sendCheckpoints: async (_runId, payload) => {
+          checkpointCallbacks.push(payload);
+        },
+        sendAgentEvents: async (_runId, payload) => {
+          agentEvents.push(...payload.events);
+        }
+      }),
+      capturePipeline: createCapturePipeline(),
+      artifactStore: {
+        persistArtifacts: async ({ artifacts }) => {
+          persistedArtifacts.push(...artifacts);
+          return artifacts.map((artifact) => ({
+            artifactId: artifact.artifactId,
+            artifactType: artifact.artifactType,
+            bucket: "local-runner",
+            key: `runs/${task.run_id}/${artifact.stepKey}/${artifact.artifactId}-${artifact.artifactType.toLowerCase()}.${artifact.fileExtension}`,
+            mimeType: artifact.mimeType,
+            width: artifact.width,
+            height: artifact.height,
+            sizeBytes: artifact.content.length,
+            sha256: "failure-sha",
+            createdAt: "2026-05-12T00:00:00.000Z",
+            stepKey: artifact.stepKey
+          }));
+        }
+      },
+      decisionClient
+    });
+  } catch (error) {
+    caught = error;
+  }
+
+  assert.ok(caught instanceof ScenarioExecutionError);
+  assert.equal(caught.summary.completedStepCount, 0);
+  assert.equal(caught.summary.failedStepCount, 1);
+  assert.equal(caught.summary.collectorStatus?.screenshot.status, "success");
+  assert.equal(caught.summary.collectorStatus?.dom_snapshot.status, "success");
+  assert.ok(persistedArtifacts.some((artifact) => artifact.artifactType === "SCREENSHOT"));
+  assert.ok(artifactCallbacks.some((artifact) => artifact.artifactType === "SCREENSHOT"));
+  assert.equal(checkpointCallbacks.length, 1);
+  assert.equal(checkpointCallbacks[0]?.checkpoints[0]?.settle.status, "failed");
+  assert.deepEqual(
+    caught.failureArtifactRefs.sort(),
+    artifactCallbacks.map((artifact) => artifact.artifactId).sort()
+  );
+  assert.equal(agentEvents.some((event) => event.eventType === "ACTION_FAILED"), true);
 });
 
 test("[Agent Worker] max_duration_ms를 넘긴 decision은 action 전에 EXHAUSTED로 종료한다", async () => {
