@@ -47,6 +47,7 @@ __pycache__/
 venv/
 
 # Test / tooling artifacts
+.gemini/
 .playwright-mcp/
 playwright-report/
 test-results/
