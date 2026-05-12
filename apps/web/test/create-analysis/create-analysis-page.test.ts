@@ -15,8 +15,10 @@ test('create analysis preflight renders an agent-style progress card', () => {
   assert.doesNotMatch(source, /preflight-agent__header-status/);
   assert.match(source, /className="preflight-agent__progress"/);
   assert.match(source, /분석할 흐름을 찾고 있어요/);
-  assert.match(source, /className="preflight-agent__scope"/);
-  assert.match(source, /첫 화면과 주요 진입점 중심/);
+  assert.doesNotMatch(source, /className="preflight-agent__scope"/);
+  assert.doesNotMatch(source, /전체 분석 전 확인/);
+  assert.doesNotMatch(source, /첫 화면과 주요 진입점 중심/);
+  assert.doesNotMatch(source, /추천 흐름 자동 정리/);
   assert.match(source, /className="preflight-agent__timeline"/);
   assert.match(source, /preflight-agent__step preflight-agent__step--\$\{step\.status\}/);
   assert.match(source, /className="preflight-agent__rail"/);
@@ -73,8 +75,7 @@ test('create analysis preflight css keeps the landing-agent card language', () =
   assert.match(css, /\.preflight-agent,\s*\n\.recommendation-agent,\s*\n\.manual-choice-agent,\s*\n\.scenario-setup-agent,\s*\n\.ready-agent\s*\{[\s\S]*?font-family: 'Pretendard Variable', Pretendard, 'Inter', sans-serif/);
   assert.match(css, /\.preflight-agent,\s*\n\.recommendation-agent,\s*\n\.manual-choice-agent,\s*\n\.scenario-setup-agent,\s*\n\.ready-agent\s*\{[\s\S]*?box-shadow: 0 12px 40px -10px/);
   assert.match(css, /\.preflight-agent__header-copy p,\s*\n\.recommendation-agent__header-copy p,\s*\n\.manual-choice-agent__header-copy p\s*\{[\s\S]*?margin-bottom: 0\.48rem/);
-  assert.match(css, /\.preflight-agent__scope\s*\{[\s\S]*?flex-wrap: wrap/);
-  assert.match(css, /\.preflight-agent__scope span\s*\{[\s\S]*?border-radius: 999px/);
+  assert.doesNotMatch(css, /\.preflight-agent__scope/);
   assert.match(css, /\.preflight-agent__step--active \.preflight-agent__content\s*\{[\s\S]*?background: rgba\(248, 250, 252, 0\.5\)/);
   assert.match(css, /@keyframes createAnalysisPreflightFlowData/);
   assert.match(css, /@keyframes createAnalysisPreflightPing/);

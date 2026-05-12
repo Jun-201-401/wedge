@@ -651,27 +651,6 @@
   white-space: nowrap;
 }
 
-.preflight-agent__scope {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.45rem;
-  margin-top: 0.7rem;
-}
-
-.preflight-agent__scope span {
-  display: inline-flex;
-  min-height: 1.85rem;
-  align-items: center;
-  border: 1px solid rgba(226, 232, 240, 0.82);
-  border-radius: 999px;
-  padding: 0.34rem 0.66rem;
-  color: #475569;
-  background: #ffffff;
-  font-size: 0.75rem;
-  font-weight: 700;
-  line-height: 1.2;
-}
-
 .preflight-agent__divider,
 .recommendation-agent__divider,
 .manual-choice-agent__divider,
@@ -1494,11 +1473,6 @@
   .scenario-setup-agent__selected-flow,
   .ready-agent__url-card {
     margin-top: 1rem;
-  }
-
-  .preflight-agent__scope span {
-    min-height: 1.7rem;
-    font-size: 0.72rem;
   }
 
   .preflight-agent__divider,

@@ -381,11 +381,6 @@ function PreflightAgent({ submittedUrl, discoveryState, onRetry, onEditUrl }: Pr
         </div>
 
         <p className="preflight-agent__url">{submittedUrl}</p>
-        <div className="preflight-agent__scope" aria-label="사전 탐색 범위">
-          <span>전체 분석 전 확인</span>
-          <span>첫 화면과 주요 진입점 중심</span>
-          <span>추천 흐름 자동 정리</span>
-        </div>
         <div className="preflight-agent__divider" aria-hidden="true" />
 
         <ol className="preflight-agent__timeline" aria-label="Discovery 진행 상태">
