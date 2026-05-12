@@ -512,7 +512,7 @@ export function resolveRunMonitorReportCtaState({
       titleLabel: '현재 체크포인트',
       eyebrow: '리포트 상태',
       message: report.analysisStatus === 'NOT_STARTED'
-        ? '아직 분석이 시작되지 않았습니다. 분석 요청 후 리포트를 자동으로 준비합니다.'
+        ? '분석을 요청하고 있습니다. 완료되면 리포트를 자동으로 준비합니다.'
         : '분석 결과를 기다리는 중입니다. 완료되면 리포트를 자동으로 준비합니다.',
     };
   }

@@ -64,6 +64,7 @@ const GENERATE_REPORT_ERROR_MESSAGE = '리포트를 준비하지 못했습니다
 const REQUEST_ANALYSIS_PENDING_MESSAGE = '분석 요청 중입니다.';
 const REQUEST_ANALYSIS_SUCCESS_MESSAGE = '분석 요청이 접수됐습니다. 분석이 완료되면 리포트를 자동으로 준비합니다.';
 const REQUEST_ANALYSIS_ERROR_MESSAGE = '분석 요청에 실패했습니다. Run 상태 또는 접근 권한을 확인해주세요.';
+const PREPARE_REPORT_PENDING_LABEL = '리포트 준비 중';
 const RUN_MONITOR_PANEL_DEFAULT_WIDTH = 448;
 const RUN_MONITOR_PANEL_MIN_WIDTH = 336;
 const RUN_MONITOR_PANEL_MAX_WIDTH = 640;
@@ -434,6 +435,7 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
   const [reportStatusError, setReportStatusError] = useState('');
   const [reportActionState, setReportActionState] = useState<MonitorActionState>(IDLE_MONITOR_ACTION_STATE);
   const activeRouteRunIdRef = useRef(runId);
+  const autoReportAnalysisRunIdRef = useRef<string | null>(null);
   const autoReportGenerationRunIdRef = useRef<string | null>(null);
   const isMonitorMountedRef = useRef(false);
   const cockpitRef = useRef<HTMLDivElement | null>(null);
@@ -449,6 +451,7 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
 
   useEffect(() => {
     activeRouteRunIdRef.current = runId;
+    autoReportAnalysisRunIdRef.current = null;
     autoReportGenerationRunIdRef.current = null;
   }, [runId]);
 
@@ -460,6 +463,12 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
     () => getCurrentRunReportProjection(reportProjection, run.id),
     [reportProjection, run.id],
   );
+  const shouldRefreshCurrentReport = shouldRefreshRunReport(currentReportProjection)
+    || (
+      currentReportProjection?.reportStatus === 'NOT_READY'
+      && currentReportProjection.analysisStatus === 'NOT_STARTED'
+      && autoReportAnalysisRunIdRef.current === run.id
+    );
 
   const generateReportForRun = useCallback((requestedRunId: string) => {
     setReportActionState({ kind: 'pending', message: GENERATE_REPORT_PENDING_MESSAGE });
@@ -479,6 +488,28 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
         }
 
         setReportActionState({ kind: 'error', message: GENERATE_REPORT_ERROR_MESSAGE });
+      });
+  }, [canApplyReportResponse]);
+
+  const requestAnalysisForRun = useCallback((requestedRunId: string) => {
+    setReportActionState({ kind: 'pending', message: REQUEST_ANALYSIS_PENDING_MESSAGE });
+    void requestRunAnalysis(requestedRunId)
+      .then(() => getRunReport(requestedRunId))
+      .then((response) => {
+        if (!canApplyReportResponse(requestedRunId)) {
+          return;
+        }
+
+        setReportProjection(response.data);
+        setReportStatusError('');
+        setReportActionState({ kind: 'success', message: REQUEST_ANALYSIS_SUCCESS_MESSAGE });
+      })
+      .catch(() => {
+        if (!canApplyReportResponse(requestedRunId)) {
+          return;
+        }
+
+        setReportActionState({ kind: 'error', message: REQUEST_ANALYSIS_ERROR_MESSAGE });
       });
   }, [canApplyReportResponse]);
 
@@ -529,7 +560,7 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
   }, [canApplyReportResponse, isMockRun, run.id, run.status, runId]);
 
   useEffect(() => {
-    if (isMockRun || run.status !== 'COMPLETED' || run.id !== runId || !shouldRefreshRunReport(currentReportProjection)) {
+    if (isMockRun || run.status !== 'COMPLETED' || run.id !== runId || !shouldRefreshCurrentReport) {
       return;
     }
 
@@ -557,7 +588,33 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
       isActive = false;
       window.clearTimeout(refreshTimerId);
     };
-  }, [canApplyReportResponse, currentReportProjection, isMockRun, run.id, run.status, runId]);
+  }, [canApplyReportResponse, currentReportProjection, isMockRun, run.id, run.status, runId, shouldRefreshCurrentReport]);
+
+  useEffect(() => {
+    if (
+      isMockRun
+      || run.status !== 'COMPLETED'
+      || run.id !== runId
+      || currentReportProjection?.reportStatus !== 'NOT_READY'
+      || currentReportProjection.analysisStatus !== 'NOT_STARTED'
+      || reportActionState.kind === 'pending'
+      || autoReportAnalysisRunIdRef.current === run.id
+    ) {
+      return;
+    }
+
+    autoReportAnalysisRunIdRef.current = run.id;
+    requestAnalysisForRun(run.id);
+  }, [
+    currentReportProjection?.analysisStatus,
+    currentReportProjection?.reportStatus,
+    isMockRun,
+    reportActionState.kind,
+    requestAnalysisForRun,
+    run.id,
+    run.status,
+    runId,
+  ]);
 
   useEffect(() => {
     if (
@@ -731,32 +788,13 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
     generateReportForRun(run.id);
   };
 
-  const requestAnalysisForReport = () => {
+  const retryRequestAnalysisForReport = () => {
     if (!canRequestAnalysis || isReportActionPending) {
       return;
     }
 
-    const requestedRunId = run.id;
-
-    setReportActionState({ kind: 'pending', message: REQUEST_ANALYSIS_PENDING_MESSAGE });
-    void requestRunAnalysis(requestedRunId)
-      .then(() => getRunReport(requestedRunId))
-      .then((response) => {
-        if (!canApplyReportResponse(requestedRunId)) {
-          return;
-        }
-
-        setReportProjection(response.data);
-        setReportStatusError('');
-        setReportActionState({ kind: 'success', message: REQUEST_ANALYSIS_SUCCESS_MESSAGE });
-      })
-      .catch(() => {
-        if (!canApplyReportResponse(requestedRunId)) {
-          return;
-        }
-
-        setReportActionState({ kind: 'error', message: REQUEST_ANALYSIS_ERROR_MESSAGE });
-      });
+    autoReportAnalysisRunIdRef.current = run.id;
+    requestAnalysisForRun(run.id);
   };
 
   const reportActionMessage = reportActionState.message ? (
@@ -769,12 +807,14 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
     reportCtaStatusLabel = '준비됨';
   } else if (isReportActionPending) {
     reportCtaStatusLabel = canRequestAnalysis ? '요청 중' : '준비 중';
+  } else if (reportActionState.kind === 'error' && canRequestAnalysis) {
+    reportCtaStatusLabel = '확인 필요';
   } else if (reportActionState.kind === 'error' && canGenerateReport) {
     reportCtaStatusLabel = '확인 필요';
   } else if (canGenerateReport) {
     reportCtaStatusLabel = '준비 중';
   } else if (canRequestAnalysis) {
-    reportCtaStatusLabel = '분석 필요';
+    reportCtaStatusLabel = '요청 중';
   } else if (reportCtaState.kind === 'waiting' || reportCtaState.kind === 'loading') {
     reportCtaStatusLabel = '대기 중';
   } else if (reportCtaState.kind === 'failed' || reportCtaState.kind === 'error') {
@@ -785,9 +825,9 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
   if (reportPath) {
     reportCtaActionLabel = '리포트 보기';
   } else if (canGenerateReport) {
-    reportCtaActionLabel = reportActionState.kind === 'error' ? '다시 시도' : '리포트 준비 중';
+    reportCtaActionLabel = reportActionState.kind === 'error' ? '다시 시도' : PREPARE_REPORT_PENDING_LABEL;
   } else if (canRequestAnalysis) {
-    reportCtaActionLabel = isReportActionPending ? '요청 중' : '분석 시작';
+    reportCtaActionLabel = reportActionState.kind === 'error' ? '다시 시도' : PREPARE_REPORT_PENDING_LABEL;
   }
 
   const reportCtaAction = reportPath ? (
@@ -796,8 +836,8 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
     <button type="button" onClick={retryGenerateReport} disabled={isReportActionPending}>
       {reportCtaActionLabel}
     </button>
-  ) : canRequestAnalysis ? (
-    <button type="button" onClick={requestAnalysisForReport} disabled={isReportActionPending}>
+  ) : canRequestAnalysis && reportActionState.kind === 'error' ? (
+    <button type="button" onClick={retryRequestAnalysisForReport} disabled={isReportActionPending}>
       {reportCtaActionLabel}
     </button>
   ) : (

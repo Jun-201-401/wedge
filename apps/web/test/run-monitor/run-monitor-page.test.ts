@@ -100,12 +100,14 @@ test('run monitor page exposes Sprint 2 live cockpit essentials with Korean-faci
   assert.match(source, /replaceAppPath\(RUNS_PATH\)/);
   assert.match(source, /handleSpaNavigationClick\(event, reportPath\)/);
   assert.match(source, /resolveRunMonitorReportCtaState/);
-  assert.match(source, /shouldRefreshRunReport\(currentReportProjection\)/);
+  assert.match(source, /const shouldRefreshCurrentReport = shouldRefreshRunReport\(currentReportProjection\)/);
   assert.match(source, /RUN_MONITOR_REFRESH_INTERVAL_MS/);
   assert.match(source, /activeRouteRunIdRef/);
+  assert.match(source, /autoReportAnalysisRunIdRef/);
   assert.match(source, /autoReportGenerationRunIdRef/);
   assert.match(source, /isMonitorMountedRef/);
   assert.match(source, /canApplyReportResponse\(requestedRunId\)/);
+  assert.match(source, /requestAnalysisForRun\(run\.id\)/);
   assert.match(source, /generateReportForRun\(run\.id\)/);
   assert.match(source, /reportCtaState\.kind === 'generate'/);
   assert.match(source, /reportCtaState\.kind === 'request-analysis'/);
@@ -118,7 +120,7 @@ test('run monitor page exposes Sprint 2 live cockpit essentials with Korean-faci
   assert.match(source, /리포트 준비 중/);
   assert.match(source, /다시 시도/);
   assert.doesNotMatch(source, /'리포트 생성'/);
-  assert.match(source, /분석 시작/);
+  assert.doesNotMatch(source, /'분석 시작'/);
   assert.match(source, /RunLifecycleActions/);
   assert.match(viewModel, /데스크톱/);
   assert.doesNotMatch(source, /<button type="button">\{mockData\.previewCallToAction\}<\/button>/);
