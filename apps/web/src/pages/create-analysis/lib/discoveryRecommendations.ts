@@ -22,6 +22,8 @@ export interface ScenarioRecommendationViewModel {
   evidenceSummary: ApiScenarioRecommendation['evidenceSummary'];
   signalLabels: string[];
   limitationLabels: string[];
+  targetLabel: string | null;
+  previewSteps: string[];
   suggestedStartUrl?: string | null;
   suggestedTarget?: Record<string, unknown> | null;
 }
@@ -164,6 +166,54 @@ function evidenceLabel(recommendation: ApiScenarioRecommendation) {
   return text ?? selector ?? href ?? '발견된 근거 없음';
 }
 
+function targetLabelFor(target: Record<string, unknown> | null | undefined) {
+  if (!target) {
+    return null;
+  }
+
+  const candidateKeys = ['text', 'aria_label', 'label', 'placeholder', 'name', 'href_contains', 'href', 'selector'];
+  for (const key of candidateKeys) {
+    const value = target[key];
+    if (typeof value === 'string' && value.trim().length > 0) {
+      return value.trim();
+    }
+  }
+
+  return null;
+}
+
+function scenarioActionLabel(scenarioType: DiscoveryScenarioType) {
+  switch (scenarioType) {
+    case 'SIGNUP_LEAD_FORM':
+      return '폼 진입점과 입력 부담을 확인';
+    case 'CONTACT':
+      return '문의/상담 신청 진입점을 확인';
+    case 'PRICING':
+      return '가격/요금제 진입점을 확인';
+    case 'PURCHASE_CHECKOUT':
+      return '구매/결제 전 단계까지 확인';
+    case 'CONTENT_ONLY':
+      return '핵심 정보 탐색 흐름을 확인';
+    default:
+      return '전환 CTA 진입점을 확인';
+  }
+}
+
+function previewStepsFor(recommendation: ApiScenarioRecommendation) {
+  const targetLabel = targetLabelFor(recommendation.suggestedTarget);
+  const steps = [
+    recommendation.suggestedStartUrl
+      ? `추천 시작 URL에서 첫 화면을 열어요`
+      : '입력한 URL의 첫 화면을 열어요',
+    targetLabel
+      ? `"${targetLabel}" 요소를 따라가요`
+      : scenarioActionLabel(recommendation.scenarioType),
+    '위험 행동 전 멈추고 마찰 근거를 기록해요',
+  ];
+
+  return steps;
+}
+
 function signalLabelsFor(recommendation: ApiScenarioRecommendation) {
   const summary = recommendation.evidenceSummary;
   const signals = summary?.matched_signals ?? [];
@@ -232,6 +282,7 @@ export function toScenarioRecommendationViewModel(recommendation: ApiScenarioRec
   const copy = SCENARIO_COPY[recommendation.scenarioType] ?? SCENARIO_COPY.CUSTOM_GUIDED;
   const isRunnable = recommendation.recommendationLevel !== 'NOT_AVAILABLE';
   const summaryPrefix = isRunnable ? copy.availableSummary : copy.unavailableSummary;
+  const targetLabel = targetLabelFor(recommendation.suggestedTarget);
 
   return {
     id: copy.id,
@@ -252,6 +303,8 @@ export function toScenarioRecommendationViewModel(recommendation: ApiScenarioRec
     evidenceSummary: recommendation.evidenceSummary ?? null,
     signalLabels: signalLabelsFor(recommendation),
     limitationLabels: limitationLabelsFor(recommendation),
+    targetLabel,
+    previewSteps: previewStepsFor(recommendation),
     suggestedStartUrl: recommendation.suggestedStartUrl ?? null,
     suggestedTarget: recommendation.suggestedTarget ?? null,
   };
@@ -281,6 +334,12 @@ export function toManualScenarioRecommendationViewModels(excludedScenarioIds: re
         evidenceSummary: null,
         signalLabels: [],
         limitationLabels: [],
+        targetLabel: null,
+        previewSteps: [
+          '입력한 URL의 첫 화면을 열어요',
+          scenarioActionLabel(scenarioType),
+          '위험 행동 전 멈추고 마찰 근거를 기록해요',
+        ],
         suggestedStartUrl: null,
         suggestedTarget: null,
       } satisfies ScenarioRecommendationViewModel;

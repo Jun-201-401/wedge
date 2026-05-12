@@ -41,6 +41,12 @@ test('discovery recommendation mapper exposes canonical levels and CONTACT copy'
   assert.equal(card.evidence, 'aria-label: Book a demo');
   assert.deepEqual(card.signalLabels, ['aria-label: Book a demo']);
   assert.deepEqual(card.limitationLabels, ['이미지 안 텍스트는 OCR하지 않음']);
+  assert.equal(card.targetLabel, 'Book a demo');
+  assert.deepEqual(card.previewSteps, [
+    '추천 시작 URL에서 첫 화면을 열어요',
+    '"Book a demo" 요소를 따라가요',
+    '위험 행동 전 멈추고 마찰 근거를 기록해요',
+  ]);
   assert.equal(card.isRunnable, true);
   assert.equal(card.actionLabel, '이 흐름으로 시작하기');
   assert.equal(card.sourceDiscoveryId, undefined);

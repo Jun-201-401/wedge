@@ -99,6 +99,10 @@ test('create analysis recommendations use a wider agent-style results card', () 
   assert.doesNotMatch(source, /탐색 완료 · 추천 흐름을 선택하세요/);
   assert.match(source, /사이트 화면에서 확인한 버튼, 링크, 폼 신호/);
   assert.match(source, /scenario\.levelLabel/);
+  assert.match(source, /className="scenario-card__site-context"/);
+  assert.match(source, /추천 근거/);
+  assert.match(source, /추천 진입점/);
+  assert.match(source, /scenario\.previewSteps\.map/);
   assert.doesNotMatch(source, /scenario-card__confidence/);
   assert.doesNotMatch(source, /scenario-card__limitations/);
   assert.match(source, /recommendation-agent__empty/);
@@ -116,7 +120,9 @@ test('create analysis recommendations use a wider agent-style results card', () 
   assert.match(css, /\.recommendation-agent__limitation\s*\{[\s\S]*?margin: 0\.9rem 0 0/);
   assert.match(css, /\.recommendation-agent \.scenario-card button\s*\{[\s\S]*?margin-top: auto/);
   assert.match(css, /\.recommendation-agent \.scenario-card button\s*\{[\s\S]*?background: #334155/);
-  assert.match(css, /\.recommendation-agent \.scenario-card p\s*\{[\s\S]*?margin-bottom: 1\.35rem/);
+  assert.match(css, /\.recommendation-agent \.scenario-card > p\s*\{[\s\S]*?margin-bottom: 1\.35rem/);
+  assert.match(css, /\.scenario-card__site-context\s*\{[\s\S]*?background: rgba\(248, 250, 252, 0\.72\)/);
+  assert.match(css, /\.scenario-card__preview-steps\s*\{[\s\S]*?font-size: 0\.76rem/);
   assert.doesNotMatch(css, /\.recommendation-agent \.scenario-card--recommended\s*\{[\s\S]*?background:/);
   assert.match(css, /\.recommendation-agent \.scenario-card:hover,\s*\n\.recommendation-agent \.scenario-card:focus-within,\s*\n\.manual-choice-agent__option:hover,\s*\n\.manual-choice-agent__option:focus-visible\s*\{[\s\S]*?box-shadow: 0 14px 30px rgba\(15, 23, 42, 0\.06\)/);
   assert.match(css, /\.recommendation-agent__manual-entry\s*\{[\s\S]*?border-top: 1px solid rgba\(226, 232, 240, 0\.78\)/);

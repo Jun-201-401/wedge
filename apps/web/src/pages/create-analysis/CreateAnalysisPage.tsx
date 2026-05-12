@@ -501,6 +501,28 @@ function RecommendationAgent({ submittedUrl, scenarios, emptyMessage, onChooseSc
                 <span className="scenario-card__level">{scenario.levelLabel}</span>
                 <h3>{scenario.title}</h3>
                 <p>{scenario.summary}</p>
+                <div className="scenario-card__site-context" aria-label={`${scenario.title} 추천 근거`}>
+                  <div className="scenario-card__context-row">
+                    <span>추천 근거</span>
+                    <strong>{scenario.signalLabels[0] ?? scenario.evidence}</strong>
+                  </div>
+                  {scenario.targetLabel || scenario.suggestedStartUrl ? (
+                    <div className="scenario-card__context-row">
+                      <span>추천 진입점</span>
+                      <strong>{scenario.targetLabel ?? scenario.suggestedStartUrl}</strong>
+                    </div>
+                  ) : null}
+                  <ol className="scenario-card__preview-steps">
+                    {scenario.previewSteps.map((step) => (
+                      <li key={step}>{step}</li>
+                    ))}
+                  </ol>
+                  {scenario.limitationLabels.length > 0 ? (
+                    <p className="scenario-card__context-note">
+                      제한: {scenario.limitationLabels.join(', ')}
+                    </p>
+                  ) : null}
+                </div>
                 <button
                   type="button"
                   aria-label={`${scenario.title} 흐름으로 진단`}
