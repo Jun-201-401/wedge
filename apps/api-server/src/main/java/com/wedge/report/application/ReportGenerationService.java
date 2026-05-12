@@ -38,6 +38,7 @@ public class ReportGenerationService {
     private static final String GENERATABLE = "GENERATABLE";
     private static final String NOT_READY = "NOT_READY";
     private static final String FAILED = "FAILED";
+    private static final String SAFE_ANALYSIS_FAILURE_MESSAGE = "Analysis failed before report generation.";
 
     private final RunService runService;
     private final AnalysisJobMapper analysisJobMapper;
@@ -144,13 +145,36 @@ public class ReportGenerationService {
             return statusResponse(run.id(), GENERATABLE, analysisJob.getStatus().name(), analysisJob.getId(), null, null);
         }
         if (analysisJob.getStatus() == AnalysisJobStatus.FAILED) {
-            return statusResponse(run.id(), FAILED, analysisJob.getStatus().name(), analysisJob.getId(), analysisJob.getErrorCode(), analysisJob.getErrorMessage());
+            return statusResponse(run.id(), FAILED, analysisJob.getStatus().name(), analysisJob.getId(), analysisJob.getErrorCode(), safeAnalysisFailureMessage(analysisJob.getErrorMessage()));
         }
         return statusResponse(run.id(), NOT_READY, analysisJob.getStatus().name(), analysisJob.getId(), null, null);
     }
 
     private RunReportResponse emptyResponse(RunResponse run) {
         return statusResponse(run.id(), NOT_READY, run.analysisStatus().name(), null, null, null);
+    }
+
+    private String safeAnalysisFailureMessage(String errorMessage) {
+        if (errorMessage == null || errorMessage.isBlank()) {
+            return SAFE_ANALYSIS_FAILURE_MESSAGE;
+        }
+        String normalized = errorMessage.strip();
+        if (looksLikeInternalErrorDetails(normalized)) {
+            return SAFE_ANALYSIS_FAILURE_MESSAGE;
+        }
+        return normalized;
+    }
+
+    private boolean looksLikeInternalErrorDetails(String errorMessage) {
+        String lower = errorMessage.toLowerCase();
+        return errorMessage.contains("\n")
+                || errorMessage.contains("\tat ")
+                || lower.contains("exception")
+                || lower.contains("traceback")
+                || lower.contains("stack trace")
+                || lower.contains("com.wedge")
+                || lower.contains("org.springframework")
+                || lower.contains("java.");
     }
 
     private RunReportResponse statusResponse(

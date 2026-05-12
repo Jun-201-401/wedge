@@ -133,6 +133,29 @@ class ReportControllerTest {
                 .andExpect(jsonPath("$.meta.requestId").value(RUN_REPORT_REQUEST_ID));
     }
 
+
+    @Test
+    void getRunReportReturnsFailedProjectionWithoutInternalErrorDetails() throws Exception {
+        UUID runId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        UUID analysisJobId = UUID.randomUUID();
+        when(reportGenerationService.getRunReport(runId, userId)).thenReturn(failedRunReport(runId, analysisJobId));
+
+        mockMvc.perform(get("/api/runs/{runId}/report", runId)
+                        .principal(authentication(userId))
+                        .header("X-Request-Id", "req_run_report_failed"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.reportStatus").value("FAILED"))
+                .andExpect(jsonPath("$.data.analysisStatus").value("FAILED"))
+                .andExpect(jsonPath("$.data.analysisJobId").value(analysisJobId.toString()))
+                .andExpect(jsonPath("$.data.reportId").doesNotExist())
+                .andExpect(jsonPath("$.data.errorCode").value("ANALYZER_EXCEPTION"))
+                .andExpect(jsonPath("$.data.errorMessage").value("Analysis failed before report generation."))
+                .andExpect(jsonPath("$.data.errorMessage").value(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("java.lang"))))
+                .andExpect(jsonPath("$.data.errorMessage").value(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("com.wedge"))))
+                .andExpect(jsonPath("$.meta.requestId").value("req_run_report_failed"));
+    }
+
     @Test
     void createRunReportExportReturnsAcceptedMarkdownArtifactEnvelope() throws Exception {
         UUID runId = UUID.randomUUID();
@@ -393,6 +416,28 @@ class ReportControllerTest {
                 "LOW",
                 "Users understand the next step faster.",
                 "Does the click-through rate improve?"
+        );
+    }
+
+
+    private RunReportResponse failedRunReport(UUID runId, UUID analysisJobId) {
+        return new RunReportResponse(
+                runId,
+                "FAILED",
+                "FAILED",
+                analysisJobId,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                List.of(),
+                List.of(),
+                "ANALYZER_EXCEPTION",
+                "Analysis failed before report generation.",
+                null,
+                null
         );
     }
 
