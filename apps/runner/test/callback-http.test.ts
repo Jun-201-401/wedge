@@ -175,7 +175,8 @@ test("[콜백:http] control-state 조회로 STOP_REQUESTED 신호를 읽는다",
       createRunnerTestConfig({
         callbackMode: "http",
         callbackBaseUrl: `http://127.0.0.1:${address.port}`,
-        callbackAuthToken: "internal-token"
+        callbackAuthToken: "internal-token",
+        callbackSignatureSecret: "secret-key"
       })
     );
 
@@ -191,6 +192,10 @@ test("[콜백:http] control-state 조회로 STOP_REQUESTED 신호를 읽는다",
     assert.equal(received[0]?.url, "/internal/runner/runs/run-1/control-state");
     assert.equal(received[0]?.headers["x-worker-id"], "runner-test-worker");
     assert.equal(received[0]?.headers.authorization, "Bearer internal-token");
+    assert.equal(
+      received[0]?.headers["x-signature"],
+      `hmac-sha256=${createHmac("sha256", "secret-key").update("").digest("hex")}`
+    );
   } finally {
     await new Promise<void>((resolve, reject) => {
       server.close((error) => {

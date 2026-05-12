@@ -258,8 +258,16 @@ class RunnerCallbackServiceTest {
         );
 
         assertThat(result.eventCount()).isEqualTo(1);
+        assertThat(result.status()).isEqualTo(RunStatus.RUNNING);
         verify(runService).markRunningIfStarting(runId);
         verify(runPersistenceAdapter).saveAgentEvents(runId, command.events());
+        verify(runPersistenceAdapter).appendRunEvent(
+                eq(runId),
+                eq(null),
+                eq("AGENT_POLICY_CHECKED"),
+                any(Map.class),
+                eq(OffsetDateTime.parse("2026-05-06T10:00:00+09:00"))
+        );
     }
 
     @Test
@@ -287,6 +295,7 @@ class RunnerCallbackServiceTest {
         );
 
         assertThat(result.runId()).isEqualTo(runId);
+        assertThat(result.status()).isEqualTo(RunStatus.RUNNING);
         verify(runService).markRunningIfStarting(runId);
         verify(runPersistenceAdapter).saveAgentTrace(runId, command);
     }
@@ -366,7 +375,8 @@ class RunnerCallbackServiceTest {
                 .thenReturn(new RunPersistenceAdapter.ResolvedStep(stepId, 2, "step_002_click_signup", StepStatus.RUNNING));
         when(runPersistenceAdapter.resolveOrCreateAgentStep(runId, "step_002_click_signup", "VALUE"))
                 .thenReturn(new RunPersistenceAdapter.ResolvedStep(stepId, 2, "step_002_click_signup", StepStatus.RUNNING));
-        when(runService.getRun(runId)).thenReturn(sampleRun(runId, RunStatus.RUNNING, ResultCompleteness.NONE));
+        when(runService.markRunningIfStarting(runId))
+                .thenReturn(sampleRun(runId, RunStatus.RUNNING, ResultCompleteness.NONE));
         when(checkpointPersistenceService.saveRunCheckpoints(
                 eq(runId),
                 any(SaveRunCheckpointsCommand.class),
@@ -407,6 +417,7 @@ class RunnerCallbackServiceTest {
         runnerCallbackService.handleCheckpoints(runId, checkpointsCommand, headers("evt_checkpoint_001"));
         runnerCallbackService.handleArtifacts(runId, artifactsCommand, headers("evt_artifact_001"));
 
+        verify(runService, times(2)).markRunningIfStarting(runId);
         verify(runPersistenceAdapter, times(2)).updateCurrentStepOrder(runId, 2);
         ArgumentCaptor<SaveRunCheckpointsCommand> checkpointsCaptor = ArgumentCaptor.forClass(SaveRunCheckpointsCommand.class);
         verify(checkpointPersistenceService).saveRunCheckpoints(eq(runId), checkpointsCaptor.capture(), eq(Map.of("step_002_click_signup", stepId)));
@@ -436,7 +447,8 @@ class RunnerCallbackServiceTest {
         when(processedMessagePersistenceAdapter.tryMarkProcessed("runner.checkpoints", "evt_checkpoint_001")).thenReturn(true);
         when(runPersistenceAdapter.resolveOrCreateAgentStep(runId, "step_003_fill_email", "INPUT"))
                 .thenReturn(new RunPersistenceAdapter.ResolvedStep(stepId, 3, "step_003_fill_email", StepStatus.RUNNING));
-        when(runService.getRun(runId)).thenReturn(sampleRun(runId, RunStatus.RUNNING, ResultCompleteness.NONE));
+        when(runService.markRunningIfStarting(runId))
+                .thenReturn(sampleRun(runId, RunStatus.RUNNING, ResultCompleteness.NONE));
         when(checkpointPersistenceService.saveRunCheckpoints(
                 eq(runId),
                 any(SaveRunCheckpointsCommand.class),

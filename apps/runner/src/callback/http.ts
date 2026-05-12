@@ -111,7 +111,7 @@ function buildRunnerCallbackUrl(baseUrl: string, resourceId: string, callbackTyp
 async function getRunnerControlState(
   config: Pick<
     RunnerConfig,
-    "workerId" | "callbackBaseUrl" | "callbackTimeoutMs" | "callbackAuthToken"
+    "workerId" | "callbackBaseUrl" | "callbackTimeoutMs" | "callbackAuthToken" | "callbackSignatureSecret"
   >,
   runId: string
 ): Promise<RunnerControlStatePayload> {
@@ -144,11 +144,12 @@ async function getRunnerControlState(
 }
 
 function createRunnerControlHeaders(
-  config: Pick<RunnerConfig, "workerId" | "callbackAuthToken">
+  config: Pick<RunnerConfig, "workerId" | "callbackAuthToken" | "callbackSignatureSecret">
 ): Record<string, string> {
   const headers: Record<string, string> = {
     accept: "application/json",
-    "x-worker-id": config.workerId
+    "x-worker-id": config.workerId,
+    "x-signature": createRunnerCallbackSignature("", config.callbackSignatureSecret)
   };
 
   if (config.callbackAuthToken) {

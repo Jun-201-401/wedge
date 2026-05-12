@@ -12,6 +12,7 @@ import com.wedge.evidence.domain.ArtifactType;
 import com.wedge.run.api.dto.RunResponse;
 import com.wedge.run.api.internal.runner.dto.RunnerControlStateResponse;
 import com.wedge.run.application.command.RunnerAcceptedCommand;
+import com.wedge.run.application.command.RunnerAgentEventCommand;
 import com.wedge.run.application.command.RunnerAgentEventsCommand;
 import com.wedge.run.application.command.RunnerAgentTraceCommand;
 import com.wedge.run.application.command.RunnerArtifactCommand;
@@ -96,7 +97,7 @@ public class RunnerCallbackService {
             return RunnerCallbackAckResponse.duplicateCheckpoints(runId, command.checkpoints().size());
         }
 
-        runService.getRun(runId);
+        runService.markRunningIfStarting(runId);
         SaveRunCheckpointsCommand saveCommand = toSaveRunCheckpointsCommand(command);
         Map<String, UUID> stepIdsByKey = resolveCheckpointSteps(runId, saveCommand);
         SaveRunCheckpointsResult result = checkpointPersistenceService.saveRunCheckpoints(runId, saveCommand, stepIdsByKey);
@@ -114,7 +115,7 @@ public class RunnerCallbackService {
             return RunnerCallbackAckResponse.duplicateArtifacts(runId, command.artifacts().size());
         }
 
-        runService.getRun(runId);
+        runService.markRunningIfStarting(runId);
         SaveRunArtifactsCommand saveCommand = toSaveRunArtifactsCommand(command);
         Map<String, UUID> stepIdsByKey = resolveArtifactSteps(runId, saveCommand);
         int artifactCount = artifactPersistenceService.saveRunArtifacts(runId, saveCommand, stepIdsByKey);
@@ -165,6 +166,7 @@ public class RunnerCallbackService {
 
         RunResponse run = runService.markRunningIfStarting(runId);
         runPersistenceAdapter.saveAgentEvents(runId, command.events());
+        command.events().forEach(event -> appendAgentRunEvent(runId, event));
         return RunnerCallbackAckResponse.stepEvents(run, command.events().size());
     }
 
@@ -207,6 +209,17 @@ public class RunnerCallbackService {
                     nextStatus == StepStatus.FAILED ? stringPayloadValue(event.payload(), "failureMessage") : null
             );
         }
+    }
+
+    private void appendAgentRunEvent(UUID runId, RunnerAgentEventCommand event) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("agentEventId", event.eventId());
+        payload.put("taskId", event.taskId().toString());
+        payload.put("attemptId", event.attemptId().toString());
+        payload.put("stepIndex", event.stepIndex());
+        payload.put("agentEventType", event.eventType());
+        payload.put("payload", event.payload());
+        runPersistenceAdapter.appendRunEvent(runId, null, "AGENT_" + event.eventType(), payload, event.occurredAt());
     }
 
     private String stringPayloadValue(Map<String, Object> payload, String key) {
