@@ -242,6 +242,7 @@ function hasFailedCollectorStatus(collectorStatus: CollectorStatusSummary): bool
 
 function createFailureBrowserCaptureOptions(plan: ScenarioPlan) {
   return {
+    screenshotMode: plan.artifact_policy?.screenshot_mode,
     captureAxTree: plan.artifact_policy?.capture_ax_tree === true || undefined,
     captureHar: plan.artifact_policy?.capture_har === true || undefined,
     capturePerformance: plan.artifact_policy?.capture_performance === true || undefined,

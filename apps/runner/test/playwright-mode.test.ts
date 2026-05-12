@@ -170,6 +170,43 @@ test("[Playwright AX collector] capture_ax_tree 요청 시 CDP accessibility tre
   }
 });
 
+test("[Playwright screenshot] viewport_stitched 모드는 viewport 조각을 이어붙인 PNG를 캡처한다", async () => {
+  const fixtureRoot = await mkdtemp(join(tmpdir(), "wedge-runner-playwright-site-"));
+  const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-playwright-artifacts-"));
+  let session: Awaited<ReturnType<ReturnType<typeof createPlaywrightSessionFactory>["createSession"]>> | undefined;
+
+  try {
+    const { formUrl } = await createFixtureSite(fixtureRoot);
+    const plan = createPlaywrightPlan(formUrl);
+    const browserFactory = createPlaywrightBrowserFactory(artifactsRoot);
+
+    session = await browserFactory.createSession({
+      runId: "run-playwright-viewport-stitched",
+      plan
+    });
+
+    await executeGotoStep(session, formUrl, "step_goto_viewport_stitched");
+
+    const viewportArtifacts = await session.captureArtifacts({ screenshotMode: "viewport" });
+    const viewportBuffer = Buffer.from(viewportArtifacts.screenshot?.contentBase64 ?? "", "base64");
+    const viewportDimensions = readPngDimensions(viewportBuffer);
+
+    const stitchedArtifacts = await session.captureArtifacts({ screenshotMode: "viewport_stitched" });
+    const stitchedBuffer = Buffer.from(stitchedArtifacts.screenshot?.contentBase64 ?? "", "base64");
+    const stitchedDimensions = readPngDimensions(stitchedBuffer);
+
+    assert.equal(viewportDimensions.height, plan.environment.viewport.height);
+    assert.equal(stitchedArtifacts.screenshot?.width, stitchedDimensions.width);
+    assert.equal(stitchedArtifacts.screenshot?.height, stitchedDimensions.height);
+    assert.equal(stitchedDimensions.width, viewportDimensions.width);
+    assert.ok(stitchedDimensions.height > viewportDimensions.height);
+  } finally {
+    await session?.close();
+    await rm(fixtureRoot, { recursive: true, force: true });
+    await rm(artifactsRoot, { recursive: true, force: true });
+  }
+});
+
 test("[Playwright 실제 실행] screenshot 캡처 전에 lazy image를 스크롤 로딩한다", async () => {
   const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-playwright-artifacts-"));
   const fixtureServer = await createLazyImageFixtureServer();

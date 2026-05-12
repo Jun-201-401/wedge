@@ -5,10 +5,12 @@ import {
   assertNonEmptyString,
   assertOneOf,
   assertOptionalBoolean,
+  assertOptionalOneOf,
   assertScenarioPlan,
   assertScenarioPlanConsistency,
   PAYLOAD_DEVICE_PRESETS,
-  RunnerMessageValidationError
+  RunnerMessageValidationError,
+  SCREENSHOT_MODES
 } from "./common.ts";
 
 const RUNNER_MESSAGE_TYPE = "run.execute.request";
@@ -56,6 +58,8 @@ function assertRunArtifactPolicy(value: unknown): void {
   }
   assertOptionalBoolean(value.captureScreenshot, "runner payload.artifactPolicy.captureScreenshot");
   assertOptionalBoolean(value.captureScreenshots, "runner payload.artifactPolicy.captureScreenshots");
+  assertOptionalOneOf(value.screenshotMode, SCREENSHOT_MODES, "runner payload.artifactPolicy.screenshotMode");
+  assertOptionalOneOf(value.screenshot_mode, SCREENSHOT_MODES, "runner payload.artifactPolicy.screenshot_mode");
   assertOptionalBoolean(value.captureDomSnapshot, "runner payload.artifactPolicy.captureDomSnapshot");
   assertOptionalBoolean(value.captureDomSnapshots, "runner payload.artifactPolicy.captureDomSnapshots");
   assertOptionalBoolean(value.captureAxTree, "runner payload.artifactPolicy.captureAxTree");

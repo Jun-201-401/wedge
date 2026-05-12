@@ -259,6 +259,7 @@ function normalizeRunArtifactPolicy(
 
   const normalized: AgentArtifactPolicy = {};
   setOptionalBoolean(normalized, "capture_screenshots", readArtifactPolicyBoolean(artifactPolicy, "capture_screenshots", "captureScreenshot", "captureScreenshots"));
+  setOptionalString(normalized, "screenshot_mode", readArtifactPolicyString(artifactPolicy, "screenshot_mode", "screenshotMode"));
   setOptionalBoolean(normalized, "capture_dom_snapshots", readArtifactPolicyBoolean(artifactPolicy, "capture_dom_snapshots", "captureDomSnapshot", "captureDomSnapshots"));
   setOptionalBoolean(normalized, "capture_ax_tree", readArtifactPolicyBoolean(artifactPolicy, "capture_ax_tree", "captureAxTree"));
   setOptionalBoolean(normalized, "capture_trace", readArtifactPolicyBoolean(artifactPolicy, "capture_trace", "captureTrace"));
@@ -266,6 +267,23 @@ function normalizeRunArtifactPolicy(
   setOptionalBoolean(normalized, "capture_performance", readArtifactPolicyBoolean(artifactPolicy, "capture_performance", "capturePerformance"));
 
   return Object.keys(normalized).length > 0 ? normalized : null;
+}
+
+function readArtifactPolicyString(
+  artifactPolicy: RunExecuteMessage["payload"]["artifactPolicy"],
+  ...keys: string[]
+): string | undefined {
+  if (!artifactPolicy) {
+    return undefined;
+  }
+  const record = artifactPolicy as Record<string, unknown>;
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === "string") {
+      return value;
+    }
+  }
+  return undefined;
 }
 
 function readArtifactPolicyBoolean(
@@ -291,6 +309,16 @@ function setOptionalBoolean<K extends keyof AgentArtifactPolicy>(
   value: boolean | undefined
 ): void {
   if (value !== undefined) {
-    policy[key] = value;
+    policy[key] = value as never;
+  }
+}
+
+function setOptionalString<K extends keyof AgentArtifactPolicy>(
+  policy: AgentArtifactPolicy,
+  key: K,
+  value: string | undefined
+): void {
+  if (value !== undefined) {
+    policy[key] = value as never;
   }
 }

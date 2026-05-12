@@ -177,6 +177,9 @@ async function appendStepCompletedEvent({
 
 function createBrowserCaptureOptions(plan: ScenarioPlan): BrowserCaptureOptions {
   const options: BrowserCaptureOptions = {};
+  if (plan.artifact_policy?.screenshot_mode) {
+    options.screenshotMode = plan.artifact_policy.screenshot_mode;
+  }
   if (plan.artifact_policy?.capture_ax_tree === true) {
     options.captureAxTree = true;
   }

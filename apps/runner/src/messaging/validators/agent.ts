@@ -21,7 +21,8 @@ import {
   assertOptionalOneOf,
   assertOptionalStringArray,
   assertScenarioEnvironment,
-  RunnerMessageValidationError
+  RunnerMessageValidationError,
+  SCREENSHOT_MODES
 } from "./common.ts";
 
 const AGENT_MESSAGE_TYPE = "agent.execute.request";
@@ -188,6 +189,7 @@ function assertAgentArtifactPolicy(value: unknown): void {
   }
   assertAllowedObjectKeys(value, "agentTask.artifact_policy", [
     "capture_screenshots",
+    "screenshot_mode",
     "capture_dom_snapshots",
     "capture_ax_tree",
     "capture_trace",
@@ -195,6 +197,7 @@ function assertAgentArtifactPolicy(value: unknown): void {
     "capture_performance"
   ]);
   assertOptionalBoolean(value.capture_screenshots, "agentTask.artifact_policy.capture_screenshots");
+  assertOptionalOneOf(value.screenshot_mode, SCREENSHOT_MODES, "agentTask.artifact_policy.screenshot_mode");
   assertOptionalBoolean(value.capture_dom_snapshots, "agentTask.artifact_policy.capture_dom_snapshots");
   assertOptionalBoolean(value.capture_ax_tree, "agentTask.artifact_policy.capture_ax_tree");
   assertOptionalBoolean(value.capture_trace, "agentTask.artifact_policy.capture_trace");

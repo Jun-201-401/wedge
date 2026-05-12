@@ -66,7 +66,8 @@ test("[Worker lifecycle] accepted callback 실패 시 session을 닫고 failed c
 test("[Worker capture policy] run artifactPolicy.captureAxTree를 ScenarioPlan capture 옵션으로 전달한다", async () => {
   const message = await loadExampleMessage();
   message.payload.artifactPolicy = {
-    captureAxTree: true
+    captureAxTree: true,
+    screenshotMode: "viewport_stitched"
   };
   message.payload.scenarioPlan!.steps = [
     {
@@ -125,7 +126,7 @@ test("[Worker capture policy] run artifactPolicy.captureAxTree를 ScenarioPlan c
 
   await worker.handleMessage(message);
 
-  assert.deepEqual(capturedOptions, [{ captureAxTree: true }]);
+  assert.deepEqual(capturedOptions, [{ screenshotMode: "viewport_stitched", captureAxTree: true }]);
 });
 
 test("[Worker cancellation] STOP_REQUESTED control state면 다음 step 실행 전 stopped로 종료한다", async () => {

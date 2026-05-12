@@ -936,6 +936,15 @@
             "capture_screenshots": {
               "type": "boolean"
             },
+            "screenshot_mode": {
+              "type": "string",
+              "enum": [
+                "auto",
+                "viewport",
+                "full_page",
+                "viewport_stitched"
+              ]
+            },
             "capture_dom_snapshots": {
               "type": "boolean"
             },

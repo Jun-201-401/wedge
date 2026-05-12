@@ -169,6 +169,7 @@ export interface AgentTestData {
 
 export interface AgentArtifactPolicy {
   capture_screenshots?: boolean;
+  screenshot_mode?: "auto" | "viewport" | "full_page" | "viewport_stitched";
   capture_dom_snapshots?: boolean;
   capture_ax_tree?: boolean;
   capture_trace?: boolean;
@@ -400,6 +401,7 @@ export interface AgentExecuteMessage {
 export interface RunArtifactPolicy extends AgentArtifactPolicy {
   captureScreenshot?: boolean;
   captureScreenshots?: boolean;
+  screenshotMode?: "auto" | "viewport" | "full_page" | "viewport_stitched";
   captureDomSnapshot?: boolean;
   captureDomSnapshots?: boolean;
   captureAxTree?: boolean;

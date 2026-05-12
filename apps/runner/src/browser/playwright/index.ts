@@ -14,6 +14,7 @@ import {
 import { createCdpSession, type CdpSessionMetadata } from "../cdp/index.ts";
 import type { RunnerBrowserName, RunnerConfig } from "../../config/index.ts";
 import type {
+  AgentArtifactPolicy,
   AxTreeSummary,
   BrowserPerformanceSummary,
   InteractiveComponentBounds,
@@ -34,7 +35,7 @@ import {
   assertVisitedUrlAllowed
 } from "../../scenario/policy.ts";
 import { describeTarget, sleep, toIsoTimestamp } from "../../shared/utils.ts";
-import { preparePageForScreenshot } from "./screenshot.ts";
+import { capturePageScreenshot, preparePageForScreenshot } from "./screenshot.ts";
 
 export interface BrowserActionResult {
   actionType: ScenarioAction["type"];
@@ -157,6 +158,7 @@ export interface BrowserCapturedArtifacts {
 }
 
 export interface BrowserCaptureOptions {
+  screenshotMode?: NonNullable<AgentArtifactPolicy["screenshot_mode"]>;
   captureAxTree?: boolean;
   captureHar?: boolean;
   captureTrace?: boolean;
@@ -806,10 +808,7 @@ class RealPlaywrightSession implements BrowserSession {
     assertBrowserHealthy(this.state);
     await preparePageForScreenshot(this.page);
 
-    const screenshotBuffer = await this.page.screenshot({
-      type: "png",
-      fullPage: true
-    });
+    const screenshotBuffer = await capturePageScreenshot(this.page, options.screenshotMode ?? "auto");
     const screenshotDimensions = readPngDimensions(screenshotBuffer) ?? this.plan.environment.viewport;
     const domSnapshot = await this.page.content();
     const axTree = options.captureAxTree ? await this.captureAxTree() : undefined;

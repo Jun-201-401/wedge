@@ -12,6 +12,7 @@ export const SCENARIO_TYPES = ["template", "custom_compiled"] as const;
 export const SCENARIO_STEP_STAGES = ["FIRST_VIEW", "VALUE", "CTA", "INPUT", "COMMIT"] as const;
 export const ENVIRONMENT_DEVICES = ["desktop", "mobile", "tablet"] as const;
 export const AUTH_STATES = ["anonymous", "test_account", "stored_state"] as const;
+export const SCREENSHOT_MODES = ["auto", "viewport", "full_page", "viewport_stitched"] as const;
 
 export class RunnerMessageValidationError extends Error {
   constructor(message: string) {
@@ -52,6 +53,7 @@ function assertScenarioArtifactPolicy(value: unknown): void {
   }
   assertAllowedObjectKeys(value, "scenarioPlan.artifact_policy", [
     "capture_screenshots",
+    "screenshot_mode",
     "capture_dom_snapshots",
     "capture_ax_tree",
     "capture_trace",
@@ -59,6 +61,7 @@ function assertScenarioArtifactPolicy(value: unknown): void {
     "capture_performance"
   ]);
   assertOptionalBoolean(value.capture_screenshots, "scenarioPlan.artifact_policy.capture_screenshots");
+  assertOptionalOneOf(value.screenshot_mode, SCREENSHOT_MODES, "scenarioPlan.artifact_policy.screenshot_mode");
   assertOptionalBoolean(value.capture_dom_snapshots, "scenarioPlan.artifact_policy.capture_dom_snapshots");
   assertOptionalBoolean(value.capture_ax_tree, "scenarioPlan.artifact_policy.capture_ax_tree");
   assertOptionalBoolean(value.capture_trace, "scenarioPlan.artifact_policy.capture_trace");
