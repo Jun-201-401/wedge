@@ -47,6 +47,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -248,7 +249,7 @@ class RunnerCallbackServiceTest {
                 )
         ));
         when(processedMessagePersistenceAdapter.tryMarkProcessed("runner.agent-events", "evt_agent_events_001")).thenReturn(true);
-        when(runService.getRun(runId)).thenReturn(running);
+        when(runService.markRunningIfStarting(runId)).thenReturn(running);
 
         RunnerCallbackAckResponse result = runnerCallbackService.handleAgentEvents(
                 runId,
@@ -257,6 +258,7 @@ class RunnerCallbackServiceTest {
         );
 
         assertThat(result.eventCount()).isEqualTo(1);
+        verify(runService).markRunningIfStarting(runId);
         verify(runPersistenceAdapter).saveAgentEvents(runId, command.events());
     }
 
@@ -276,7 +278,7 @@ class RunnerCallbackServiceTest {
                 )
         );
         when(processedMessagePersistenceAdapter.tryMarkProcessed("runner.agent-traces", "evt_agent_trace_001")).thenReturn(true);
-        when(runService.getRun(runId)).thenReturn(running);
+        when(runService.markRunningIfStarting(runId)).thenReturn(running);
 
         RunnerCallbackAckResponse result = runnerCallbackService.handleAgentTrace(
                 runId,
@@ -285,6 +287,7 @@ class RunnerCallbackServiceTest {
         );
 
         assertThat(result.runId()).isEqualTo(runId);
+        verify(runService).markRunningIfStarting(runId);
         verify(runPersistenceAdapter).saveAgentTrace(runId, command);
     }
 
@@ -309,6 +312,33 @@ class RunnerCallbackServiceTest {
 
         assertThat(result.status()).isEqualTo(RunStatus.COMPLETED);
         assertThat(result.resultCompleteness()).isEqualTo(ResultCompleteness.FINAL);
+    }
+
+    @Test
+    void finishedCallbackPromotesStartingRunBeforeFinishing() {
+        UUID runId = UUID.randomUUID();
+        RunResponse running = sampleRun(runId, RunStatus.RUNNING, ResultCompleteness.NONE);
+        RunResponse completed = sampleRun(runId, RunStatus.COMPLETED, ResultCompleteness.FINAL);
+        when(processedMessagePersistenceAdapter.tryMarkProcessed("runner.finished", "evt_finished_002")).thenReturn(true);
+        when(runService.markRunningIfStarting(runId)).thenReturn(running);
+        when(runService.finishRun(runId, false)).thenReturn(completed);
+
+        RunnerCallbackAckResponse result = runnerCallbackService.handleFinished(
+                runId,
+                new RunnerFinishedCommand(
+                        WORKER_ID,
+                        OffsetDateTime.parse("2026-04-21T10:05:00+09:00"),
+                        5,
+                        0,
+                        false
+                ),
+                headers("evt_finished_002")
+        );
+
+        assertThat(result.status()).isEqualTo(RunStatus.COMPLETED);
+        InOrder inOrder = org.mockito.Mockito.inOrder(runService);
+        inOrder.verify(runService).markRunningIfStarting(runId);
+        inOrder.verify(runService).finishRun(runId, false);
     }
 
     @Test

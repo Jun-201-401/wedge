@@ -135,6 +135,7 @@ public class RunnerCallbackService {
             return duplicateResponse;
         }
 
+        runService.markRunningIfStarting(runId);
         RunResponse run = runService.finishRun(runId, command.stopped());
         return RunnerCallbackAckResponse.terminal(run);
     }
@@ -162,7 +163,7 @@ public class RunnerCallbackService {
             return RunnerCallbackAckResponse.stepEvents(run, command.events().size()).withEventCount(command.events().size());
         }
 
-        RunResponse run = runService.getRun(runId);
+        RunResponse run = runService.markRunningIfStarting(runId);
         runPersistenceAdapter.saveAgentEvents(runId, command.events());
         return RunnerCallbackAckResponse.stepEvents(run, command.events().size());
     }
@@ -175,7 +176,7 @@ public class RunnerCallbackService {
             return RunnerCallbackAckResponse.duplicateStatus(runService.getRun(runId));
         }
 
-        RunResponse run = runService.getRun(runId);
+        RunResponse run = runService.markRunningIfStarting(runId);
         runPersistenceAdapter.saveAgentTrace(runId, command);
         return RunnerCallbackAckResponse.accepted(run);
     }
