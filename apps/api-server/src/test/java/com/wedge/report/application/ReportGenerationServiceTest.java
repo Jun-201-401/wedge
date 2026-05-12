@@ -159,6 +159,106 @@ class ReportGenerationServiceTest {
     }
 
     @Test
+    void getRunReportReturnsFailedWhenLatestAnalysisFailedEvenIfReportExists() {
+        UUID runId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        UUID analysisJobId = UUID.randomUUID();
+        RunResponse run = sampleRun(runId);
+        AnalysisJob failedAnalysis = new AnalysisJob();
+        failedAnalysis.setId(analysisJobId);
+        failedAnalysis.setRunId(runId);
+        failedAnalysis.setStatus(AnalysisJobStatus.FAILED);
+        failedAnalysis.setErrorCode("ANALYZER_LATE_FAILURE");
+        failedAnalysis.setErrorMessage("late callback failed after report creation with internal details");
+        when(runService.getRun(runId)).thenReturn(run);
+        when(reportMapper.findByRunId(runId)).thenReturn(List.of(report(runId, analysisJobId, UUID.randomUUID())));
+        when(analysisJobMapper.findLatestByRunId(runId)).thenReturn(Optional.of(failedAnalysis));
+
+        RunReportResponse response = reportGenerationService.getRunReport(runId, userId);
+
+        assertThat(response.reportStatus()).isEqualTo("FAILED");
+        assertThat(response.analysisStatus()).isEqualTo(AnalysisJobStatus.FAILED.name());
+        assertThat(response.analysisJobId()).isEqualTo(analysisJobId);
+        assertThat(response.reportId()).isNull();
+        assertThat(response.errorCode()).isEqualTo("ANALYSIS_FAILED");
+        assertThat(response.errorMessage()).isEqualTo("Analysis failed before report generation.");
+        org.mockito.Mockito.verifyNoInteractions(analysisFindingMapper, nudgeMapper);
+    }
+
+    @Test
+    void getRunReportReturnsFailedWithoutLeakingInternalErrorDetails() {
+        UUID runId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        UUID analysisJobId = UUID.randomUUID();
+        RunResponse run = sampleRun(runId);
+        AnalysisJob failedAnalysis = new AnalysisJob();
+        failedAnalysis.setId(analysisJobId);
+        failedAnalysis.setRunId(runId);
+        failedAnalysis.setStatus(AnalysisJobStatus.FAILED);
+        failedAnalysis.setErrorCode("ANALYZER_EXCEPTION");
+        failedAnalysis.setErrorMessage("java.lang.IllegalStateException: secret stack trace\n\tat com.wedge.analyzer.Internal.run(Internal.java:42)");
+        when(runService.getRun(runId)).thenReturn(run);
+        when(reportMapper.findByRunId(runId)).thenReturn(List.of());
+        when(analysisJobMapper.findLatestByRunId(runId)).thenReturn(Optional.of(failedAnalysis));
+
+        RunReportResponse response = reportGenerationService.getRunReport(runId, userId);
+
+        verify(reportAccessGuard).ensureProjectAccessible(run.projectId(), userId);
+        assertThat(response.reportStatus()).isEqualTo("FAILED");
+        assertThat(response.analysisStatus()).isEqualTo(AnalysisJobStatus.FAILED.name());
+        assertThat(response.analysisJobId()).isEqualTo(analysisJobId);
+        assertThat(response.reportId()).isNull();
+        assertThat(response.errorCode()).isEqualTo("ANALYSIS_FAILED");
+        assertThat(response.errorMessage()).isEqualTo("Analysis failed before report generation.");
+        assertThat(response.errorMessage()).doesNotContain("java.lang", "com.wedge", "secret stack trace");
+    }
+
+    @Test
+    void getRunReportAlwaysUsesGenericMessageForOneLineFailedAnalysisDetails() {
+        UUID runId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        UUID analysisJobId = UUID.randomUUID();
+        RunResponse run = sampleRun(runId);
+        AnalysisJob failedAnalysis = new AnalysisJob();
+        failedAnalysis.setId(analysisJobId);
+        failedAnalysis.setRunId(runId);
+        failedAnalysis.setStatus(AnalysisJobStatus.FAILED);
+        failedAnalysis.setErrorCode("ANALYZER_TIMEOUT");
+        failedAnalysis.setErrorMessage("model gateway timeout at https://gms.internal with token abc123");
+        when(runService.getRun(runId)).thenReturn(run);
+        when(reportMapper.findByRunId(runId)).thenReturn(List.of());
+        when(analysisJobMapper.findLatestByRunId(runId)).thenReturn(Optional.of(failedAnalysis));
+
+        RunReportResponse response = reportGenerationService.getRunReport(runId, userId);
+
+        assertThat(response.reportStatus()).isEqualTo("FAILED");
+        assertThat(response.errorCode()).isEqualTo("ANALYSIS_FAILED");
+        assertThat(response.errorMessage()).isEqualTo("Analysis failed before report generation.");
+        assertThat(response.errorMessage()).doesNotContain("gms.internal", "token", "abc123");
+    }
+
+    @Test
+    void generateRunReportRejectsFailedAnalysisBeforeReportMutation() {
+        UUID runId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        AnalysisJob failedAnalysis = new AnalysisJob();
+        failedAnalysis.setId(UUID.randomUUID());
+        failedAnalysis.setRunId(runId);
+        failedAnalysis.setStatus(AnalysisJobStatus.FAILED);
+        failedAnalysis.setErrorCode("ANALYZER_EXCEPTION");
+        failedAnalysis.setErrorMessage("Traceback (most recent call last): internal details");
+        when(runService.getRun(runId)).thenReturn(sampleRun(runId));
+        when(analysisJobMapper.findLatestByRunId(runId)).thenReturn(Optional.of(failedAnalysis));
+
+        assertThatThrownBy(() -> reportGenerationService.generateRunReport(runId, userId))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.STATE_CONFLICT);
+
+        org.mockito.Mockito.verifyNoInteractions(reportMapper, analysisFindingMapper, nudgeMapper, runMapper);
+    }
+
+    @Test
     void generateRunReportRejectsMissingCompletedAnalysis() {
         UUID runId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
