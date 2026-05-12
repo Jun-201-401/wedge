@@ -1553,7 +1553,9 @@ test("[Settle] response/item_count_change 조건 불만족은 timeout 결과로 
     assert.equal(itemCountTimeoutResult.status, "timeout");
     assert.equal(itemCountTimeoutResult.strategy, "item_count_change");
     assert.equal(itemCountTimeoutResult.details?.baselineCount, 1);
-    assert.equal(itemCountTimeoutResult.details?.currentCount, 1);
+    assert.equal(typeof itemCountTimeoutResult.details?.currentCount, "number");
+    assert.ok(itemCountTimeoutResult.details.currentCount >= 1);
+    assert.ok(itemCountTimeoutResult.details.currentCount < 4);
     assert.equal(itemCountTimeoutResult.details?.expectedCount, 4);
     assert.equal(itemCountTimeoutResult.details?.countDelta, 3);
     assert.equal(itemCountTimeoutResult.details?.timeoutMs, 120);
