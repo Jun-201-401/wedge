@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { createAgentRuntimePlan, executeAgentRun, type AgentDecisionClient } from "../src/agent/index.ts";
+import { createCapturePipeline } from "../src/capture/index.ts";
 import { createAgentWorkerHarness, createCheckoutHeuristicComponents } from "./agent-support.ts";
 import { registerAgentWorker } from "../src/worker/agent-worker.ts";
 import type { AgentRunnerExecutionResult } from "../src/worker/agent-worker.ts";
@@ -17,7 +18,7 @@ import {
   createStubCallbackClient,
   loadAgentExampleMessage
 } from "./support.ts";
-import type { AgentEvent, AgentTraceCallbackPayload, Artifact, ArtifactDraft, StepEvent } from "../src/shared/contracts.ts";
+import type { AgentEvent, AgentTraceCallbackPayload, Artifact, ArtifactDraft, RunnerCheckpointsRequest, StepEvent } from "../src/shared/contracts.ts";
 
 test("[Agent Worker] AgentTask로 CTA 후보를 관찰해 클릭한다", async () => {
   const message = await loadAgentExampleMessage();
@@ -434,6 +435,116 @@ test("[Agent Worker] checkpoint decision은 browser action으로 실행하지 �
   assert.equal(result.trace.outcome.status, "EXHAUSTED");
   assert.equal(agentEvents.some((event) => event.eventType === "ACTION_COMPLETED"), false);
   assert.equal(agentEvents.some((event) => event.eventType === "GOAL_VERIFIED"), true);
+});
+
+test("[Agent Worker] checkpoint decision도 캡처 정책이 켜져 있으면 checkpoint artifact를 저장한다", async () => {
+  const message = await loadAgentExampleMessage();
+  const task = message.payload.agentTask;
+  task.goal = "현재 페이지 화면을 캡처한다";
+  task.budget.max_steps = 1;
+  task.artifact_policy = {
+    capture_screenshots: true,
+    capture_dom_snapshots: true,
+    capture_ax_tree: false,
+    capture_trace: false
+  };
+
+  const runtimePlan = createAgentRuntimePlan(task);
+  const executedActions: string[] = [];
+  const persistedArtifacts: ArtifactDraft[] = [];
+  const artifactCallbacks: Artifact[] = [];
+  const checkpointCallbacks: RunnerCheckpointsRequest[] = [];
+  const agentEvents: AgentEvent[] = [];
+  const decisionClient: AgentDecisionClient = {
+    decide: () => ({
+      kind: "checkpoint",
+      description: "Capture the current page before choosing a browser action.",
+      reason: "LLM requested visual evidence first.",
+      confidence: 0.9,
+      action: {
+        type: "checkpoint"
+      },
+      settleStrategy: {
+        type: "none",
+        timeout_ms: 0
+      },
+      stage: "FIRST_VIEW",
+      targetKey: null
+    })
+  };
+
+  const result = await executeAgentRun({
+    runId: task.run_id,
+    task,
+    runtimePlan,
+    session: createSimulatedSession(runtimePlan, {
+      execute: async (action) => {
+        executedActions.push(action.type);
+        return {
+          actionType: action.type,
+          targetSummary: null,
+          stopRequested: false,
+          details: {}
+        };
+      },
+      settle: async () => createSettledResult(),
+      snapshot: () => createSimulatedPageSnapshot(runtimePlan, {
+        finalUrl: task.start_url
+      }),
+      captureArtifacts: async () => ({
+        screenshot: {
+          mimeType: "image/png",
+          fileExtension: "png",
+          contentBase64: Buffer.from("png").toString("base64"),
+          width: 1440,
+          height: 900
+        }
+      })
+    }),
+    callbackClient: createStubCallbackClient({
+      sendArtifacts: async (_runId, payload) => {
+        artifactCallbacks.push(...payload.artifacts);
+      },
+      sendCheckpoints: async (_runId, payload) => {
+        checkpointCallbacks.push(payload);
+      },
+      sendAgentEvents: async (_runId, payload) => {
+        agentEvents.push(...payload.events);
+      }
+    }),
+    capturePipeline: createCapturePipeline(),
+    artifactStore: {
+      persistArtifacts: async ({ artifacts }) => {
+        persistedArtifacts.push(...artifacts);
+        return artifacts.map((artifact) => ({
+          artifactId: artifact.artifactId,
+          artifactType: artifact.artifactType,
+          bucket: "local-runner",
+          key: `runs/${task.run_id}/${artifact.stepKey}/${artifact.artifactId}-${artifact.artifactType.toLowerCase()}.${artifact.fileExtension}`,
+          mimeType: artifact.mimeType,
+          width: artifact.width,
+          height: artifact.height,
+          sizeBytes: artifact.content.length,
+          sha256: "checkpoint-sha",
+          createdAt: "2026-05-12T00:00:00.000Z",
+          stepKey: artifact.stepKey
+        }));
+      }
+    },
+    decisionClient
+  });
+
+  assert.deepEqual(executedActions, ["checkpoint"]);
+  assert.equal(result.summary.completedStepCount, 1);
+  assert.equal(result.trace.turns[0].decision?.kind, "checkpoint");
+  assert.equal(result.trace.turns[0].actionResult?.completed, true);
+  assert.ok(persistedArtifacts.some((artifact) => artifact.artifactType === "SCREENSHOT"));
+  assert.ok(artifactCallbacks.some((artifact) => artifact.artifactType === "SCREENSHOT"));
+  assert.equal(checkpointCallbacks.length, 1);
+  assert.ok(checkpointCallbacks[0]?.checkpoints[0]?.artifactRefs.some((artifactId) =>
+    artifactCallbacks.some((artifact) => artifact.artifactId === artifactId && artifact.artifactType === "SCREENSHOT")
+  ));
+  assert.equal(agentEvents.some((event) => event.eventType === "ACTION_COMPLETED"), true);
 });
 
 test("[Agent Worker] max_duration_ms를 넘긴 decision은 action 전에 EXHAUSTED로 종료한다", async () => {

@@ -153,7 +153,7 @@ export async function executeAgentRun(input: AgentExecutorInput): Promise<AgentE
     let stopRequested = false;
     let postActionSnapshot = observation.snapshot;
 
-    if (decision.kind === "act") {
+    if (decision.kind === "act" || (decision.kind === "checkpoint" && step.checkpoint)) {
       try {
         const stepResult = await runSideEffectWithDeadlineCleanup(deadline, "action", () => executeScenarioStep({
           runId: input.runId,
