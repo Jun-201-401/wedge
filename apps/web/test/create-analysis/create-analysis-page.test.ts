@@ -199,13 +199,19 @@ test('create analysis ready screen uses an agent card layout', () => {
   assert.match(source, /분석 시작 준비 완료/);
   assert.match(source, /선택한 흐름으로 바로 진단을 시작할 수 있어요/);
   assert.doesNotMatch(source, /ready-agent__header-icon/);
-  assert.doesNotMatch(source, /selectedDepth=\{selectedDepth\}/);
+  assert.match(source, /selectedDepth=\{selectedDepth\}/);
   assert.match(source, /className="ready-agent__summary-grid"/);
   assert.match(source, /className="ready-agent__launch-plan"/);
+  assert.match(source, /className="ready-agent__scenario-plan"/);
+  assert.match(source, /생성된 Scenario/);
+  assert.match(source, /preview\.steps\.map/);
+  assert.match(source, /scenarioAuthoringRequestKey/);
+  assert.match(source, /stage !== 'ready' \|\| !scenarioAuthoringRequestKey/);
 
   assert.match(css, /\.create-analysis-panel--ready\s*\{[\s\S]*?width: min\(100%, 48rem\)/);
   assert.match(css, /\.ready-agent__summary-grid\s*\{[\s\S]*?grid-template-columns: 1fr/);
   assert.match(css, /\.ready-agent__launch-plan\s*\{[\s\S]*?grid-template-columns: repeat\(3, minmax\(0, 1fr\)\)/);
+  assert.match(css, /\.ready-agent__scenario-plan\s*\{[\s\S]*?background: linear-gradient/);
   assert.match(css, /@media \(prefers-reduced-motion: reduce\)\s*\{[\s\S]*?\.ready-agent__header-status-dot::after[\s\S]*?animation: none/);
 });
 
@@ -253,13 +259,16 @@ test('create analysis ready run controls remain wired', () => {
   assert.match(source, /withoutCreateRunContext/);
   assert.match(source, /function clearCreateRunContext/);
   assert.match(source, /projectId: createRunIds\.projectId/);
-  assert.doesNotMatch(source, /scenarioTemplateVersionId: createRunIds\.scenarioTemplateVersionId/);
+  assert.match(source, /scenarioTemplateVersionId: scenarioPlan \? createRunIds\.scenarioTemplateVersionId : undefined/);
   assert.doesNotMatch(source, /import \{ buildPrototypeScenarioPlan \}/);
-  assert.doesNotMatch(source, /scenarioPlan,/);
-  assert.doesNotMatch(source, /sourceAuthoringJobId/);
+  assert.match(source, /scenarioPlan: scenarioPlan \?\? undefined/);
+  assert.match(source, /sourceAuthoringJobId/);
+  assert.match(source, /createAndConfirmScenarioPlan/);
+  assert.match(source, /createScenarioAuthoringJob/);
+  assert.match(source, /isCreatingRun=\{isCreatingRun \|\| scenarioAuthoringBusy\}/);
   assert.match(source, /selectedDepthId/);
   assert.match(source, /source: 'create-analysis-agent-ready'/);
-  assert.match(source, /const runStartUrl = selectedScenario\.suggestedStartUrl \?\? submittedUrl/);
+  assert.match(source, /const runStartUrl = scenarioPlan \? requireConfirmedScenarioPlanStartUrl\(scenarioPlan\) : selectedScenario\.suggestedStartUrl \?\? submittedUrl/);
   assert.match(source, /sourceDiscoveryId: selectedScenario\.sourceDiscoveryId/);
   assert.match(source, /suggestedTarget: selectedScenario\.suggestedTarget/);
   assert.match(source, /void runDiscovery\(normalizedUrl, routeState\)/);
@@ -276,7 +285,7 @@ test('create analysis ready run controls remain wired', () => {
   assert.match(source, /분석 준비는 완료됐지만 시작 요청에 실패했습니다/);
   assert.match(source, /pushAppPath\(buildRunMonitorPath\(createdRunId/);
   assert.doesNotMatch(source, /window\.location\.assign/);
-  assert.match(source, /화면 탐색/);
+  assert.match(source, /시나리오 생성/);
   assert.match(source, /마찰 기록/);
   assert.match(source, /리포트 생성/);
   assert.match(source, /onChooseDifferentScenario=\{chooseDifferentScenario\}/);

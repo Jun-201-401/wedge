@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  createScenarioPlanPreview,
   createScenarioAuthoringIdempotencyKey,
   isScenarioAuthoringSupportedType,
   readScenarioPlanString,
@@ -81,6 +82,37 @@ test('scenario authoring helper keeps idempotency bounded and authorable types e
   assert.equal(readScenarioPlanString({ goal: '' }, 'goal'), null);
   assert.equal(requireConfirmedScenarioPlanStartUrl({ start_url: 'https://example.com/contact' }), 'https://example.com/contact');
   assert.throws(() => requireConfirmedScenarioPlanStartUrl({}), /missing start_url/);
+});
+
+test('scenario authoring helper turns dynamic ScenarioPlan steps into a user preview', () => {
+  const preview = createScenarioPlanPreview({
+    goal: '랜딩 CTA 점검',
+    start_url: 'https://example.com',
+    safety: {
+      allow_payment_commit: false,
+      allow_destructive_action: false,
+      stop_before_real_payment: true,
+    },
+    steps: [
+      {
+        step_id: 'step_001_goto',
+        description: '추천 URL에 진입한다.',
+        action: { type: 'goto' },
+      },
+      {
+        step_id: 'step_002_click',
+        description: '추천 CTA를 클릭한다.',
+        action: { type: 'click' },
+      },
+    ],
+  });
+
+  assert.equal(preview?.title, '랜딩 CTA 점검');
+  assert.equal(preview?.startUrl, 'https://example.com');
+  assert.equal(preview?.stepCount, 2);
+  assert.equal(preview?.steps[0]?.label, '1. 페이지 진입');
+  assert.equal(preview?.steps[1]?.label, '2. 추천 요소 클릭');
+  assert.match(preview?.safetyLabel ?? '', /결제/);
 });
 
 test('scenario authoring helper does not fall back to invalid candidates', () => {

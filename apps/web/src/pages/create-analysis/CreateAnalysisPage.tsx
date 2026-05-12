@@ -4,6 +4,8 @@ import { createDiscovery, getDiscovery } from '../../api/discoveries';
 import { readCurrentUser } from '../../api/authSession';
 import { readApiValidationFields, WedgeApiError } from '../../api/http';
 import { createRun, startRun } from '../../api/runs';
+import { confirmScenarioAuthoringCandidate, createScenarioAuthoringJob, getScenarioAuthoringJob } from '../../api/scenario-authoring';
+import type { ScenarioAuthoringCandidate } from '../../entities/scenario-authoring';
 import { FIRST_WORD_DELAY_MS, WORD_ROTATION_INTERVAL_MS } from '../../features/landing-vision';
 import { LOGIN_PATH, RUNS_PATH } from '../../shared/lib/appPaths';
 import { pushAppPath } from '../../shared/lib/navigation';
@@ -30,6 +32,14 @@ import {
   type ScenarioRecommendationViewModel,
 } from './lib/discoveryRecommendations';
 import { createDiscoveryIdempotencyKey, isDiscoveryBusy } from './lib/discoveryPreflight';
+import {
+  createScenarioAuthoringIdempotencyKey,
+  createScenarioPlanPreview,
+  isScenarioAuthoringSupportedType,
+  requireConfirmedScenarioPlanStartUrl,
+  selectScenarioAuthoringCandidate,
+  type ScenarioPlanPreview,
+} from './lib/scenarioAuthoring';
 import './CreateAnalysisPage.css';
 
 type DiscoveryStepStatus = 'complete' | 'active' | 'pending';
@@ -103,6 +113,8 @@ interface ScenarioDepthOption {
 const HEADLINE_PHRASES = ['Find', 'Friction'] as const;
 const DISCOVERY_POLL_INTERVAL_MS = 1800;
 const DISCOVERY_TIMEOUT_MS = 90000;
+const SCENARIO_AUTHORING_POLL_INTERVAL_MS = 1200;
+const SCENARIO_AUTHORING_TIMEOUT_MS = 45000;
 const DISCOVERY_VIEWPORT = { width: 1440, height: 900 } as const;
 const PREFLIGHT_DISCOVERY_STEPS: DiscoveryStep[] = [
   {
@@ -162,7 +174,15 @@ const ENV_CREATE_RUN_CONTEXT = readCreateRunContextFromEnv(import.meta.env);
 
 interface CreateRunIds {
   projectId: string;
+  scenarioTemplateVersionId?: string;
 }
+
+type ScenarioAuthoringUiState =
+  | { kind: 'idle' }
+  | { kind: 'creating' }
+  | { kind: 'polling'; authoringJobId: string; status: string }
+  | { kind: 'succeeded'; authoringJobId: string; candidate: ScenarioAuthoringCandidate; preview: ScenarioPlanPreview | null }
+  | { kind: 'failed'; message: string };
 
 function readUserCreateRunContext(): Partial<CreateRunContext> {
   const currentUser = readCurrentUser();
@@ -253,6 +273,7 @@ function isUuid(value: string | null): value is string {
 
 function getCreateRunIds(routeState: CreateAnalysisPageRouteState): CreateRunIds | null {
   const projectId = routeState.projectId ?? null;
+  const scenarioTemplateVersionId = routeState.scenarioTemplateVersionId ?? null;
 
   if (!isUuid(projectId)) {
     return null;
@@ -260,6 +281,7 @@ function getCreateRunIds(routeState: CreateAnalysisPageRouteState): CreateRunIds
 
   return {
     projectId,
+    ...(isUuid(scenarioTemplateVersionId) ? { scenarioTemplateVersionId } : {}),
   };
 }
 
@@ -329,6 +351,9 @@ interface ScenarioSetupAgentProps {
 interface ReadyAgentProps {
   submittedUrl: string;
   selectedScenario: ScenarioRecommendation;
+  selectedDepth: ScenarioDepthOption;
+  scenarioAuthoringEnabled: boolean;
+  scenarioAuthoringState: ScenarioAuthoringUiState;
   isCreatingRun: boolean;
   runStartError: string;
   onChooseDifferentScenario: () => void;
@@ -602,18 +627,49 @@ function ScenarioSetupAgent({ selectedScenario, selectedDepthId, onDepthChange, 
   );
 }
 
-function ReadyAgent({ submittedUrl, selectedScenario, isCreatingRun, runStartError, onChooseDifferentScenario, onStartRun }: ReadyAgentProps) {
+function isScenarioAuthoringBusy(state: ScenarioAuthoringUiState) {
+  return state.kind === 'creating' || state.kind === 'polling';
+}
+
+function getAuthoringStatusText(state: ScenarioAuthoringUiState, isEnabled: boolean) {
+  switch (state.kind) {
+    case 'creating':
+      return '사이트 맞춤 시나리오 생성 요청 중';
+    case 'polling':
+      return `시나리오 생성 중 · ${state.status}`;
+    case 'succeeded':
+      return '사이트 맞춤 시나리오 준비 완료';
+    case 'failed':
+      return '기본 추천 흐름으로 시작 가능';
+    default:
+      return isEnabled ? '사이트 맞춤 Scenario 생성 대기 중' : '기본 추천 흐름으로 시작 가능';
+  }
+}
+
+function ReadyAgent({
+  submittedUrl,
+  selectedScenario,
+  selectedDepth,
+  scenarioAuthoringEnabled,
+  scenarioAuthoringState,
+  isCreatingRun,
+  runStartError,
+  onChooseDifferentScenario,
+  onStartRun,
+}: ReadyAgentProps) {
+  const preview = scenarioAuthoringState.kind === 'succeeded' ? scenarioAuthoringState.preview : null;
+
   return (
     <section className="create-analysis-panel create-analysis-panel--ready" aria-labelledby="ready-title">
       <div className="ready-agent">
         <div className="ready-agent__header">
           <div className="ready-agent__header-main">
             <div className="ready-agent__header-copy">
-              <p>분석 시작</p>
+              <p>선택한 흐름으로 바로 진단을 시작할 수 있어요</p>
               <h2 id="ready-title">분석 시작 준비 완료</h2>
               <div className="ready-agent__header-status">
                 <span className="ready-agent__header-status-dot" aria-hidden="true" />
-                <span>선택한 흐름으로 바로 진단을 시작할 수 있어요</span>
+                <span>{getAuthoringStatusText(scenarioAuthoringState, scenarioAuthoringEnabled)}</span>
               </div>
             </div>
           </div>
@@ -632,28 +688,60 @@ function ReadyAgent({ submittedUrl, selectedScenario, isCreatingRun, runStartErr
             <strong>{selectedScenario.title}</strong>
             <p>{selectedScenario.summary}</p>
           </article>
+          <article className="ready-agent__summary-card">
+            <span>확인 범위</span>
+            <strong>{selectedDepth.title}</strong>
+            <p>{selectedDepth.detail}</p>
+          </article>
         </div>
 
-        <div className="ready-agent__launch-plan" aria-label="분석 시작 후 진행 단계">
-          <div>
-            <span className="ready-agent__launch-step">1</span>
-            <p>화면 탐색</p>
+        {preview ? (
+          <div className="ready-agent__scenario-plan" aria-label="생성된 시나리오 단계 미리보기">
+            <div className="ready-agent__scenario-plan-head">
+              <div>
+                <span>생성된 Scenario</span>
+                <strong>{preview.title}</strong>
+              </div>
+              <small>{preview.stepCount} steps</small>
+            </div>
+            {preview.startUrl ? <p className="ready-agent__scenario-plan-url">{preview.startUrl}</p> : null}
+            <ol className="ready-agent__scenario-steps">
+              {preview.steps.map((step) => (
+                <li key={step.id}>
+                  <strong>{step.label}</strong>
+                  <p>{step.detail}</p>
+                </li>
+              ))}
+            </ol>
           </div>
-          <div>
-            <span className="ready-agent__launch-step">2</span>
-            <p>마찰 기록</p>
+        ) : (
+          <div className="ready-agent__launch-plan" aria-label="분석 시작 후 진행 단계">
+            <div>
+              <span className="ready-agent__launch-step">1</span>
+              <p>시나리오 생성</p>
+            </div>
+            <div>
+              <span className="ready-agent__launch-step">2</span>
+              <p>마찰 기록</p>
+            </div>
+            <div>
+              <span className="ready-agent__launch-step">3</span>
+              <p>리포트 생성</p>
+            </div>
           </div>
-          <div>
-            <span className="ready-agent__launch-step">3</span>
-            <p>리포트 생성</p>
-          </div>
-        </div>
+        )}
 
         <div className="ready-agent__notice">
           <span>안전 설정</span>
           <strong>안전하게 탐색합니다</strong>
-          <p>실제 결제, 삭제, 변경 같은 위험 행동은 수행하지 않아요.</p>
+          <p>{preview?.safetyLabel ?? '실제 결제, 삭제, 변경 같은 위험 행동은 수행하지 않아요.'}</p>
         </div>
+
+        {scenarioAuthoringState.kind === 'failed' ? (
+          <p className="ready-agent__warning" role="status">
+            {scenarioAuthoringState.message}
+          </p>
+        ) : null}
 
         {runStartError && (
           <p className="ready-agent__warning" role="status">
@@ -663,7 +751,7 @@ function ReadyAgent({ submittedUrl, selectedScenario, isCreatingRun, runStartErr
 
         <div className="ready-agent__actions">
           <button className="create-analysis-panel__action ready-agent__primary-action" type="button" onClick={onStartRun} disabled={isCreatingRun}>
-            {isCreatingRun ? '분석 시작 중…' : '분석 시작하기'}
+            {isCreatingRun ? '시나리오 준비 중…' : '분석 시작하기'}
           </button>
           <button className="create-analysis-secondary-action" type="button" onClick={onChooseDifferentScenario} disabled={isCreatingRun}>
             다른 흐름 선택
@@ -680,9 +768,11 @@ export function CreateAnalysisPage({ isAuthenticated = false, isAuthChecking = f
   const [urlInput, setUrlInput] = useState(routeState.submittedUrl ?? '');
   const [urlError, setUrlError] = useState('');
   const [discoveryState, setDiscoveryState] = useState<DiscoveryUiState>({ kind: 'idle' });
+  const [scenarioAuthoringState, setScenarioAuthoringState] = useState<ScenarioAuthoringUiState>({ kind: 'idle' });
   const [isCreatingRun, setIsCreatingRun] = useState(false);
   const [runStartError, setRunStartError] = useState('');
   const discoveryRequestSeq = useRef(0);
+  const scenarioAuthoringRequestSeq = useRef(0);
   const stage = routeState.stage;
   const submittedUrl = routeState.submittedUrl ?? '';
   const recommendationScenarios = useMemo(
@@ -704,6 +794,23 @@ export function CreateAnalysisPage({ isAuthenticated = false, isAuthChecking = f
   const selectedDepthId = routeState.depthId ?? DEFAULT_SCENARIO_DEPTH_ID;
   const selectedDepth = useMemo(() => findDepthById(selectedDepthId), [selectedDepthId]);
   const createRunIds = useMemo(() => getCreateRunIds(routeState), [routeState]);
+  const scenarioAuthoringRequestKey = useMemo(() => {
+    if (!selectedScenario || !createRunIds?.scenarioTemplateVersionId || !selectedScenario.sourceDiscoveryId) {
+      return null;
+    }
+
+    if (!isScenarioAuthoringSupportedType(selectedScenario.scenarioType)) {
+      return null;
+    }
+
+    return createScenarioAuthoringIdempotencyKey(
+      createRunIds.projectId,
+      selectedScenario.sourceDiscoveryId,
+      selectedScenario.scenarioType,
+      selectedDepthId,
+    );
+  }, [createRunIds, selectedDepthId, selectedScenario]);
+  const scenarioAuthoringBusy = isScenarioAuthoringBusy(scenarioAuthoringState);
 
   useEffect(() => {
     let rotationIntervalId = 0;
@@ -764,6 +871,11 @@ export function CreateAnalysisPage({ isAuthenticated = false, isAuthChecking = f
     setUrlInput(routeState.submittedUrl ?? '');
     setUrlError('');
   }, [routeState.submittedUrl]);
+
+  useEffect(() => {
+    scenarioAuthoringRequestSeq.current += 1;
+    setScenarioAuthoringState({ kind: 'idle' });
+  }, [routeState.scenarioId, routeState.depthId, routeState.submittedUrl]);
 
   useEffect(() => {
     if (stage !== 'discovering' || !submittedUrl || isAuthChecking || isAuthenticated) {
@@ -993,15 +1105,136 @@ export function CreateAnalysisPage({ isAuthenticated = false, isAuthChecking = f
   };
 
   const chooseDifferentScenario = () => {
-    if (!submittedUrl || isCreatingRun) {
+    if (!submittedUrl || isCreatingRun || scenarioAuthoringBusy) {
       return;
     }
 
     navigateToRouteState(createRecommendationChoiceRouteState(routeState, submittedUrl));
   };
 
+  const createAndConfirmScenarioPlan = useCallback(async () => {
+    if (!selectedScenario || !createRunIds?.scenarioTemplateVersionId || !selectedScenario.sourceDiscoveryId) {
+      return null;
+    }
+
+    if (!isScenarioAuthoringSupportedType(selectedScenario.scenarioType)) {
+      return null;
+    }
+
+    const requestSeq = scenarioAuthoringRequestSeq.current;
+    const isCurrentRequest = () => scenarioAuthoringRequestSeq.current === requestSeq;
+    setScenarioAuthoringState({ kind: 'creating' });
+    const created = await createScenarioAuthoringJob({
+      projectId: createRunIds.projectId,
+      sourceDiscoveryId: selectedScenario.sourceDiscoveryId,
+      selectedRecommendationId: selectedScenario.recommendationId ?? null,
+      requestedGoal: `${selectedScenario.title} · ${selectedDepth.title}`,
+      preferredScenarioType: selectedScenario.scenarioType,
+      selectedRecommendation: selectedScenario.recommendationId ? null : {
+        recommendationId: null,
+        scenarioType: selectedScenario.scenarioType,
+        recommendationLevel: selectedScenario.level,
+        confidence: selectedScenario.confidence,
+        evidenceRefs: selectedScenario.evidenceRefs,
+        evidenceSummary: selectedScenario.evidenceSummary ?? null,
+        suggestedStartUrl: selectedScenario.suggestedStartUrl ?? null,
+        suggestedTarget: selectedScenario.suggestedTarget ?? null,
+      },
+      constraints: {
+        depthId: selectedDepthId,
+        depthTitle: selectedDepth.title,
+      },
+      providerPolicy: {
+        providerOrder: ['RULE_BASED'],
+        timeoutMs: SCENARIO_AUTHORING_TIMEOUT_MS,
+        fallbackAllowed: true,
+        approvalRequired: true,
+      },
+    }, {
+      idempotencyKey: createScenarioAuthoringIdempotencyKey(
+        createRunIds.projectId,
+        selectedScenario.sourceDiscoveryId,
+        selectedScenario.scenarioType,
+        selectedDepthId,
+      ),
+    });
+
+    if (!isCurrentRequest()) {
+      return null;
+    }
+
+    let job = created.data;
+    const authoringJobId = job.authoringJobId;
+    const startedAt = Date.now();
+
+    while (Date.now() - startedAt <= SCENARIO_AUTHORING_TIMEOUT_MS) {
+      if (!isCurrentRequest()) {
+        return null;
+      }
+
+      setScenarioAuthoringState({ kind: 'polling', authoringJobId, status: job.status });
+
+      if (job.status === 'SUCCEEDED') {
+        const candidate = selectScenarioAuthoringCandidate(job);
+        if (!candidate) {
+          throw new Error('생성된 시나리오 후보가 검증을 통과하지 못했습니다.');
+        }
+
+        const confirmed = await confirmScenarioAuthoringCandidate(authoringJobId, {
+          candidateId: candidate.candidate_id,
+        });
+        const confirmedCandidate = confirmed.data.confirmedCandidate;
+        const preview = createScenarioPlanPreview(confirmedCandidate.scenario_plan);
+        if (!isCurrentRequest()) {
+          return null;
+        }
+
+        setScenarioAuthoringState({
+          kind: 'succeeded',
+          authoringJobId,
+          candidate: confirmedCandidate,
+          preview,
+        });
+        return {
+          authoringJobId,
+          candidate: confirmedCandidate,
+          preview,
+        };
+      }
+
+      if (job.status === 'FAILED' || job.status === 'CANCELED' || job.status === 'EXPIRED') {
+        throw new Error('사이트 맞춤 시나리오 생성이 완료되지 못했습니다.');
+      }
+
+      await wait(SCENARIO_AUTHORING_POLL_INTERVAL_MS);
+      if (!isCurrentRequest()) {
+        return null;
+      }
+
+      const polled = await getScenarioAuthoringJob(authoringJobId);
+      job = polled.data;
+    }
+
+    throw new Error('사이트 맞춤 시나리오 생성 시간이 초과됐습니다.');
+  }, [createRunIds, selectedDepth.title, selectedDepthId, selectedScenario]);
+
+  useEffect(() => {
+    if (stage !== 'ready' || !scenarioAuthoringRequestKey || scenarioAuthoringState.kind !== 'idle') {
+      return;
+    }
+
+    void createAndConfirmScenarioPlan().catch((error) => {
+      setScenarioAuthoringState({
+        kind: 'failed',
+        message: error instanceof Error
+          ? `${error.message} 기본 추천 흐름으로 분석을 시작할 수 있어요.`
+          : '사이트 맞춤 시나리오 생성에 실패해 기본 추천 흐름으로 분석을 시작할 수 있어요.',
+      });
+    });
+  }, [createAndConfirmScenarioPlan, scenarioAuthoringRequestKey, scenarioAuthoringState.kind, stage]);
+
   const startAnalysisRun = async () => {
-    if (!submittedUrl || !selectedScenario || isCreatingRun) {
+    if (!submittedUrl || !selectedScenario || isCreatingRun || scenarioAuthoringBusy) {
       return;
     }
 
@@ -1017,8 +1250,30 @@ export function CreateAnalysisPage({ isAuthenticated = false, isAuthChecking = f
     let createdRunId = '';
 
     try {
-      const runStartUrl = selectedScenario.suggestedStartUrl ?? submittedUrl;
-      const runGoal = selectedScenario.summary;
+      let authoredScenario = scenarioAuthoringState.kind === 'succeeded'
+        ? {
+          authoringJobId: scenarioAuthoringState.authoringJobId,
+          candidate: scenarioAuthoringState.candidate,
+          preview: scenarioAuthoringState.preview,
+        }
+        : null;
+
+      if (!authoredScenario && scenarioAuthoringState.kind !== 'failed') {
+        try {
+          authoredScenario = await createAndConfirmScenarioPlan();
+        } catch (error) {
+          setScenarioAuthoringState({
+            kind: 'failed',
+            message: error instanceof Error
+              ? `${error.message} 기본 추천 흐름으로 분석을 시작합니다.`
+              : '사이트 맞춤 시나리오 생성에 실패해 기본 추천 흐름으로 분석을 시작합니다.',
+          });
+        }
+      }
+
+      const scenarioPlan = authoredScenario?.candidate.scenario_plan ?? null;
+      const runStartUrl = scenarioPlan ? requireConfirmedScenarioPlanStartUrl(scenarioPlan) : selectedScenario.suggestedStartUrl ?? submittedUrl;
+      const runGoal = scenarioPlan ? selectedScenario.title : selectedScenario.summary;
       const scenarioOverrides: Record<string, unknown> = {
         depthId: selectedDepthId,
         source: 'create-analysis-agent-ready',
@@ -1029,6 +1284,8 @@ export function CreateAnalysisPage({ isAuthenticated = false, isAuthChecking = f
         evidenceSummary: selectedScenario.evidenceSummary ?? null,
         suggestedStartUrl: selectedScenario.suggestedStartUrl ?? null,
         suggestedTarget: selectedScenario.suggestedTarget ?? null,
+        sourceAuthoringJobId: authoredScenario?.authoringJobId ?? null,
+        sourceAuthoringCandidateId: authoredScenario?.candidate.candidate_id ?? null,
       };
 
       const response = await createRun({
@@ -1037,7 +1294,9 @@ export function CreateAnalysisPage({ isAuthenticated = false, isAuthChecking = f
         startUrl: runStartUrl,
         goal: runGoal,
         devicePreset: 'desktop',
+        scenarioTemplateVersionId: scenarioPlan ? createRunIds.scenarioTemplateVersionId : undefined,
         scenarioOverrides,
+        scenarioPlan: scenarioPlan ?? undefined,
       });
       createdRunId = response.data.id;
     } catch {
@@ -1184,7 +1443,10 @@ export function CreateAnalysisPage({ isAuthenticated = false, isAuthChecking = f
           <ReadyAgent
             submittedUrl={submittedUrl}
             selectedScenario={selectedScenario}
-            isCreatingRun={isCreatingRun}
+            selectedDepth={selectedDepth}
+            scenarioAuthoringEnabled={scenarioAuthoringRequestKey !== null}
+            scenarioAuthoringState={scenarioAuthoringState}
+            isCreatingRun={isCreatingRun || scenarioAuthoringBusy}
             runStartError={runStartError}
             onChooseDifferentScenario={chooseDifferentScenario}
             onStartRun={startAnalysisRun}

@@ -1169,6 +1169,7 @@
 
 .ready-agent__url-card span,
 .ready-agent__summary-card span,
+.ready-agent__scenario-plan-head span,
 .ready-agent__notice span {
   display: block;
   margin-bottom: 0.34rem;
@@ -1259,6 +1260,78 @@
   font-weight: 800;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.ready-agent__scenario-plan {
+  margin-top: 0.9rem;
+  padding: 1rem;
+  border: 1px solid rgba(186, 230, 253, 0.8);
+  border-radius: 1.15rem;
+  background: linear-gradient(180deg, rgba(240, 249, 255, 0.82), rgba(255, 255, 255, 0.94));
+}
+
+.ready-agent__scenario-plan-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.8rem;
+}
+
+.ready-agent__scenario-plan-head strong {
+  display: block;
+  color: #1e293b;
+  font-size: 0.98rem;
+  font-weight: 800;
+  letter-spacing: -0.025em;
+}
+
+.ready-agent__scenario-plan-head small {
+  flex: 0 0 auto;
+  padding: 0.32rem 0.54rem;
+  border-radius: 999px;
+  color: #0369a1;
+  background: rgba(224, 242, 254, 0.9);
+  font-size: 0.68rem;
+  font-weight: 900;
+}
+
+.ready-agent__scenario-plan-url {
+  overflow: hidden;
+  margin: 0.72rem 0 0;
+  color: #64748b;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ready-agent__scenario-steps {
+  display: grid;
+  gap: 0.55rem;
+  margin: 0.85rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ready-agent__scenario-steps li {
+  padding: 0.72rem 0.8rem;
+  border-radius: 0.9rem;
+  background: rgba(255, 255, 255, 0.82);
+}
+
+.ready-agent__scenario-steps strong {
+  display: block;
+  color: #334155;
+  font-size: 0.8rem;
+  font-weight: 900;
+}
+
+.ready-agent__scenario-steps p {
+  margin: 0.32rem 0 0;
+  color: #64748b;
+  font-size: 0.78rem;
+  font-weight: 500;
+  line-height: 1.45;
 }
 
 .ready-agent__notice {
