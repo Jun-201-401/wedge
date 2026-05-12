@@ -76,13 +76,13 @@ export class AgentLlmDecisionClient implements AgentDecisionClient {
         if (isUnsafeLlmDecisionError(error)) {
           logOperationalEvent(
             "agent-llm-decision",
-            "unsafe_decision_rejected",
+            "unsafe_decision_fallback_to_heuristic",
             {
               reason: errorMessage(error)
             },
             "warn"
           );
-          throw error;
+          return this.fallbackClient.decide(input);
         }
 
         logOperationalEvent(
