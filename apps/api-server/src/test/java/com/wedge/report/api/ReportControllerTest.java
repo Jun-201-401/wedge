@@ -149,7 +149,7 @@ class ReportControllerTest {
                 .andExpect(jsonPath("$.data.analysisStatus").value("FAILED"))
                 .andExpect(jsonPath("$.data.analysisJobId").value(analysisJobId.toString()))
                 .andExpect(jsonPath("$.data.reportId").doesNotExist())
-                .andExpect(jsonPath("$.data.errorCode").value("ANALYZER_EXCEPTION"))
+                .andExpect(jsonPath("$.data.errorCode").value("ANALYSIS_FAILED"))
                 .andExpect(jsonPath("$.data.errorMessage").value("Analysis failed before report generation."))
                 .andExpect(jsonPath("$.data.errorMessage").value(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("java.lang"))))
                 .andExpect(jsonPath("$.data.errorMessage").value(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("com.wedge"))))
@@ -434,7 +434,7 @@ class ReportControllerTest {
                 null,
                 List.of(),
                 List.of(),
-                "ANALYZER_EXCEPTION",
+                "ANALYSIS_FAILED",
                 "Analysis failed before report generation.",
                 null,
                 null

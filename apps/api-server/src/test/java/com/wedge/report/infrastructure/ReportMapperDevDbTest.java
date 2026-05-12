@@ -7,6 +7,7 @@ import com.wedge.report.domain.Report;
 import com.wedge.report.domain.ReportFormat;
 import com.wedge.run.domain.ReportStatus;
 import java.net.MalformedURLException;
+import java.net.URI;
 import java.net.URL;
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -21,6 +22,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
+import org.springframework.core.env.Environment;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 /**
@@ -75,15 +77,32 @@ class ReportMapperDevDbTest {
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
+    @Autowired
+    private Environment environment;
+
     @BeforeEach
     void setUp() {
+        assertDevDatabase();
         cleanupSeedData();
         seedReportData();
     }
 
     @AfterEach
     void tearDown() {
+        assertDevDatabase();
         cleanupSeedData();
+    }
+
+    private void assertDevDatabase() {
+        String datasourceUrl = environment.getRequiredProperty("spring.datasource.url");
+        URI jdbcUri = URI.create(datasourceUrl.replaceFirst("^jdbc:", ""));
+
+        assertThat(jdbcUri.getHost())
+                .as("dev-db opt-in tests may only target a local PostgreSQL host")
+                .isIn("localhost", "127.0.0.1", "::1");
+        assertThat(jdbcUri.getPath())
+                .as("dev-db opt-in tests may only mutate the exact wedge_dev database")
+                .isEqualTo("/wedge_dev");
     }
 
     @Test
