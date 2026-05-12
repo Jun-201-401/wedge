@@ -63,6 +63,7 @@ export interface RunnerConfig {
   mqQueueRunExecute: string;
   mqQueueAgentExecute: string;
   mqQueueDiscoveryExecute: string;
+  mqQueueScenarioAuthoringExecute: string;
   mqPrefetch: number;
   agentConcurrency: number;
   agentIdempotencyStoreEnabled: boolean;
@@ -177,6 +178,10 @@ export function loadRunnerConfig(overrides: Partial<RunnerConfig> = {}): RunnerC
     overrides.mqQueueAgentExecute ?? process.env.RUNNER_MQ_QUEUE_AGENT_EXECUTE ?? "agent.execute.request";
   const mqQueueDiscoveryExecute =
     overrides.mqQueueDiscoveryExecute ?? process.env.RUNNER_MQ_QUEUE_DISCOVERY_EXECUTE ?? "discovery.execute.request";
+  const mqQueueScenarioAuthoringExecute =
+    overrides.mqQueueScenarioAuthoringExecute ??
+    process.env.RUNNER_MQ_QUEUE_SCENARIO_AUTHORING_EXECUTE ??
+    "scenario-authoring.execute.request";
   const mqPrefetch = parseNumber(overrides.mqPrefetch, process.env.RUNNER_MQ_PREFETCH, 1);
   const agentConcurrency = parsePositiveInteger(overrides.agentConcurrency, process.env.RUNNER_AGENT_CONCURRENCY, 1);
   const agentIdempotencyStoreEnabled = parseBoolean(
@@ -302,6 +307,7 @@ export function loadRunnerConfig(overrides: Partial<RunnerConfig> = {}): RunnerC
     mqQueueRunExecute,
     mqQueueAgentExecute,
     mqQueueDiscoveryExecute,
+    mqQueueScenarioAuthoringExecute,
     mqPrefetch,
     agentConcurrency,
     agentIdempotencyStoreEnabled,

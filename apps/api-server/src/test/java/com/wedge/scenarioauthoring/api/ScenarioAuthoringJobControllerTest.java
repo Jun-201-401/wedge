@@ -60,8 +60,8 @@ class ScenarioAuthoringJobControllerTest {
                                 """.formatted(PROJECT_ID, DISCOVERY_ID)))
                 .andExpect(status().isAccepted())
                 .andExpect(jsonPath("$.data.authoringJobId").value(jobId.toString()))
-                .andExpect(jsonPath("$.data.status").value("SUCCEEDED"))
-                .andExpect(jsonPath("$.data.candidateCount").value(1))
+                .andExpect(jsonPath("$.data.status").value("QUEUED"))
+                .andExpect(jsonPath("$.data.candidateCount").value(0))
                 .andExpect(jsonPath("$.meta.requestId").value("req_authoring_create"));
     }
 
@@ -104,16 +104,16 @@ class ScenarioAuthoringJobControllerTest {
         return new ScenarioAuthoringJobResponse(
                 "0.5",
                 jobId,
-                ScenarioAuthoringStatus.SUCCEEDED,
+                ScenarioAuthoringStatus.QUEUED,
                 PROJECT_ID,
                 DISCOVERY_ID,
                 "corr_001",
-                1,
+                0,
                 List.of("RULE_BASED"),
                 Map.of(),
                 Map.of("provider_order", List.of("RULE_BASED")),
                 List.of(),
-                List.of(Map.of("candidate_id", "rule_based_landing_cta_001")),
+                List.of(),
                 Map.of("schema_valid", true),
                 Map.of("source_discovery_id", DISCOVERY_ID.toString()),
                 null,

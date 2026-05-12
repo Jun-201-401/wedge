@@ -1155,6 +1155,113 @@
         "network_timeline",
         "visibility"
       ]
+    },
+    "ScenarioAuthoringAccepted": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "eventId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "workerId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "acceptedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "eventId",
+        "workerId",
+        "acceptedAt"
+      ]
+    },
+    "ScenarioAuthoringFinished": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "eventId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "workerId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "finishedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "providerTrace": {
+          "type": "array",
+          "items": {
+            "$ref": "../schemas/scenario-authoring.schema.json#/$defs/provider_trace_entry"
+          }
+        },
+        "candidates": {
+          "type": "array",
+          "items": {
+            "$ref": "../schemas/scenario-authoring.schema.json#/$defs/authoring_candidate"
+          }
+        },
+        "validation": {
+          "$ref": "../schemas/scenario-authoring.schema.json#/$defs/authoring_validation"
+        },
+        "provenance": {
+          "$ref": "../schemas/scenario-authoring.schema.json#/$defs/authoring_provenance"
+        }
+      },
+      "required": [
+        "eventId",
+        "workerId",
+        "finishedAt",
+        "providerTrace",
+        "candidates",
+        "validation",
+        "provenance"
+      ]
+    },
+    "ScenarioAuthoringFailed": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "eventId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "workerId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "failedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "failure": {
+          "$ref": "../schemas/scenario-authoring.schema.json#/$defs/authoring_failure"
+        },
+        "providerTrace": {
+          "type": "array",
+          "items": {
+            "$ref": "../schemas/scenario-authoring.schema.json#/$defs/provider_trace_entry"
+          }
+        },
+        "validation": {
+          "$ref": "../schemas/scenario-authoring.schema.json#/$defs/authoring_validation"
+        },
+        "provenance": {
+          "$ref": "../schemas/scenario-authoring.schema.json#/$defs/authoring_provenance"
+        }
+      },
+      "required": [
+        "eventId",
+        "workerId",
+        "failedAt",
+        "failure"
+      ]
     }
   }
 }

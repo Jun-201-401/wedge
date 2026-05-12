@@ -58,6 +58,7 @@ Canonical machine-readable contracts belong here. Human-readable design rational
 - `mq/messages.schema.json`: RabbitMQ common envelope and message type contract; this is the canonical MQ source. `agent.execute.request` is the official Runner Agent path; `run.execute.request` remains ScenarioPlan scripted/replay execution.
 - `mq/run.execute.request.schema.json`: thin `$ref` entrypoint to `messages.schema.json#/$defs/RunExecutePayload`
 - `mq/agent.execute.request.schema.json`: thin `$ref` entrypoint to `messages.schema.json#/$defs/AgentExecutePayload`
+- `mq/scenario-authoring.execute.request.schema.json`: thin `$ref` entrypoint for Runner-owned ScenarioAuthoring compilation into `ScenarioPlan` candidates
 - `mq/analysis.request.schema.json`: thin `$ref` entrypoint to `messages.schema.json#/$defs/AnalysisRequestPayload`
 - `mq/report.export.request.schema.json`: thin `$ref` entrypoint to `messages.schema.json#/$defs/ReportExportRequestPayload`
 - `websocket/events.schema.json`: live event envelope and event variants

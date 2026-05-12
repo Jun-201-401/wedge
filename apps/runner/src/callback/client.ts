@@ -6,6 +6,9 @@ import type {
   DiscoveryCheckpointRequest,
   DiscoveryFailedPayload,
   DiscoveryFinishedPayload,
+  ScenarioAuthoringAcceptedPayload,
+  ScenarioAuthoringFailedPayload,
+  ScenarioAuthoringFinishedPayload,
   RunnerAcceptedPayload,
   RunnerCheckpointsRequest,
   RunnerControlStatePayload,
@@ -27,6 +30,9 @@ export type CallbackPayloadMap = {
   "discovery-checkpoints": DiscoveryCheckpointRequest;
   "discovery-finished": DiscoveryFinishedPayload;
   "discovery-failed": DiscoveryFailedPayload;
+  "scenario-authoring-accepted": ScenarioAuthoringAcceptedPayload;
+  "scenario-authoring-finished": ScenarioAuthoringFinishedPayload;
+  "scenario-authoring-failed": ScenarioAuthoringFailedPayload;
 };
 
 export type CallbackType = keyof CallbackPayloadMap;
@@ -44,6 +50,9 @@ export interface CallbackClient {
   sendDiscoveryCheckpoints?: (discoveryId: string, payload: DiscoveryCheckpointRequest) => Promise<void>;
   sendDiscoveryFinished?: (discoveryId: string, payload: DiscoveryFinishedPayload) => Promise<void>;
   sendDiscoveryFailed?: (discoveryId: string, payload: DiscoveryFailedPayload) => Promise<void>;
+  sendScenarioAuthoringAccepted?: (authoringJobId: string, payload: ScenarioAuthoringAcceptedPayload) => Promise<void>;
+  sendScenarioAuthoringFinished?: (authoringJobId: string, payload: ScenarioAuthoringFinishedPayload) => Promise<void>;
+  sendScenarioAuthoringFailed?: (authoringJobId: string, payload: ScenarioAuthoringFailedPayload) => Promise<void>;
   readRunControlState?: (runId: string) => Promise<RunnerControlStatePayload>;
 }
 
@@ -59,7 +68,10 @@ const CALLBACK_METHOD_NAMES = {
   "discovery-accepted": "sendDiscoveryAccepted",
   "discovery-checkpoints": "sendDiscoveryCheckpoints",
   "discovery-finished": "sendDiscoveryFinished",
-  "discovery-failed": "sendDiscoveryFailed"
+  "discovery-failed": "sendDiscoveryFailed",
+  "scenario-authoring-accepted": "sendScenarioAuthoringAccepted",
+  "scenario-authoring-finished": "sendScenarioAuthoringFinished",
+  "scenario-authoring-failed": "sendScenarioAuthoringFailed"
 } as const satisfies Record<CallbackType, keyof CallbackClient>;
 
 export function createCallbackClientFromHandler(
@@ -77,7 +89,10 @@ export function createCallbackClientFromHandler(
     sendDiscoveryAccepted: (discoveryId, payload) => handler("discovery-accepted", discoveryId, payload),
     sendDiscoveryCheckpoints: (discoveryId, payload) => handler("discovery-checkpoints", discoveryId, payload),
     sendDiscoveryFinished: (discoveryId, payload) => handler("discovery-finished", discoveryId, payload),
-    sendDiscoveryFailed: (discoveryId, payload) => handler("discovery-failed", discoveryId, payload)
+    sendDiscoveryFailed: (discoveryId, payload) => handler("discovery-failed", discoveryId, payload),
+    sendScenarioAuthoringAccepted: (authoringJobId, payload) => handler("scenario-authoring-accepted", authoringJobId, payload),
+    sendScenarioAuthoringFinished: (authoringJobId, payload) => handler("scenario-authoring-finished", authoringJobId, payload),
+    sendScenarioAuthoringFailed: (authoringJobId, payload) => handler("scenario-authoring-failed", authoringJobId, payload)
   };
 }
 

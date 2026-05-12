@@ -7,6 +7,7 @@ import com.wedge.analysis.application.AnalysisRequestMessage;
 import com.wedge.discovery.application.DiscoveryExecuteRequestMessage;
 import com.wedge.run.application.AgentExecuteRequestMessage;
 import com.wedge.run.application.RunExecuteRequestMessage;
+import com.wedge.scenarioauthoring.application.ScenarioAuthoringExecuteRequestMessage;
 import java.time.OffsetDateTime;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -20,9 +21,11 @@ public class OutboxMessagePersistenceAdapter {
     private static final String RUN_AGGREGATE_TYPE = "RUN";
     private static final String ANALYSIS_JOB_AGGREGATE_TYPE = "ANALYSIS_JOB";
     private static final String DISCOVERY_AGGREGATE_TYPE = "DISCOVERY";
+    private static final String SCENARIO_AUTHORING_AGGREGATE_TYPE = "SCENARIO_AUTHORING_JOB";
     private static final String RUN_EXECUTE_EVENT_TYPE = "run.execute.request";
     private static final String AGENT_EXECUTE_EVENT_TYPE = "agent.execute.request";
     private static final String DISCOVERY_EXECUTE_EVENT_TYPE = "discovery.execute.request";
+    private static final String SCENARIO_AUTHORING_EXECUTE_EVENT_TYPE = "scenario-authoring.execute.request";
     private static final String ANALYSIS_REQUEST_EVENT_TYPE = "analysis.request";
     private static final long PENDING_RETRY_GRACE_SECONDS = 5;
     private static final long RETRY_DELAY_SECONDS = 30;
@@ -52,6 +55,10 @@ public class OutboxMessagePersistenceAdapter {
         return appendMessage(DISCOVERY_AGGREGATE_TYPE, discoveryId, message);
     }
 
+    public UUID appendScenarioAuthoringExecuteMessage(ScenarioAuthoringExecuteRequestMessage message, UUID authoringJobId) {
+        return appendMessage(SCENARIO_AUTHORING_AGGREGATE_TYPE, authoringJobId, message);
+    }
+
     private UUID appendMessage(String aggregateType, UUID aggregateId, RunExecuteRequestMessage message) {
         return appendEnvelope(aggregateType, aggregateId, toEnvelope(message));
     }
@@ -65,6 +72,10 @@ public class OutboxMessagePersistenceAdapter {
     }
 
     private UUID appendMessage(String aggregateType, UUID aggregateId, DiscoveryExecuteRequestMessage message) {
+        return appendEnvelope(aggregateType, aggregateId, toEnvelope(message));
+    }
+
+    private UUID appendMessage(String aggregateType, UUID aggregateId, ScenarioAuthoringExecuteRequestMessage message) {
         return appendEnvelope(aggregateType, aggregateId, toEnvelope(message));
     }
 
@@ -102,6 +113,11 @@ public class OutboxMessagePersistenceAdapter {
     public Optional<DiscoveryExecuteRequestMessage> findDiscoveryExecuteMessageForPublish(UUID outboxMessageId) {
         return outboxMessageMapper.findById(outboxMessageId, DISCOVERY_EXECUTE_EVENT_TYPE, MAX_PUBLISH_ATTEMPTS)
                 .map(this::toDiscoveryExecuteRequestMessage);
+    }
+
+    public Optional<ScenarioAuthoringExecuteRequestMessage> findScenarioAuthoringExecuteMessageForPublish(UUID outboxMessageId) {
+        return outboxMessageMapper.findById(outboxMessageId, SCENARIO_AUTHORING_EXECUTE_EVENT_TYPE, MAX_PUBLISH_ATTEMPTS)
+                .map(this::toScenarioAuthoringExecuteRequestMessage);
     }
 
     public List<RunExecuteOutboxMessage> findDueRunExecuteMessages(int limit) {
@@ -168,6 +184,21 @@ public class OutboxMessagePersistenceAdapter {
                 .toList();
     }
 
+    public List<ScenarioAuthoringExecuteOutboxMessage> findDueScenarioAuthoringExecuteMessages(int limit) {
+        OffsetDateTime now = OffsetDateTime.now();
+        OffsetDateTime pendingBefore = now.minusSeconds(PENDING_RETRY_GRACE_SECONDS);
+        return outboxMessageMapper.findDueMessages(
+                        SCENARIO_AUTHORING_EXECUTE_EVENT_TYPE,
+                        now,
+                        pendingBefore,
+                        MAX_PUBLISH_ATTEMPTS,
+                        limit
+                )
+                .stream()
+                .map(record -> new ScenarioAuthoringExecuteOutboxMessage(record.getId(), toScenarioAuthoringExecuteRequestMessage(record)))
+                .toList();
+    }
+
     public void markPublished(UUID outboxMessageId) {
         outboxMessageMapper.markPublished(outboxMessageId, OffsetDateTime.now());
     }
@@ -221,6 +252,20 @@ public class OutboxMessagePersistenceAdapter {
     private AnalysisRequestMessage toAnalysisRequestMessage(OutboxMessageRecord record) {
         OutboxEnvelope envelope = readEnvelope(record);
         return new AnalysisRequestMessage(
+                envelope.messageId(),
+                envelope.messageType(),
+                envelope.schemaVersion(),
+                envelope.createdAt(),
+                envelope.producer(),
+                envelope.correlationId(),
+                envelope.idempotencyKey(),
+                envelope.payload()
+        );
+    }
+
+    private ScenarioAuthoringExecuteRequestMessage toScenarioAuthoringExecuteRequestMessage(OutboxMessageRecord record) {
+        OutboxEnvelope envelope = readEnvelope(record);
+        return new ScenarioAuthoringExecuteRequestMessage(
                 envelope.messageId(),
                 envelope.messageType(),
                 envelope.schemaVersion(),
@@ -304,6 +349,19 @@ public class OutboxMessagePersistenceAdapter {
         );
     }
 
+    private static OutboxEnvelope toEnvelope(ScenarioAuthoringExecuteRequestMessage message) {
+        return new OutboxEnvelope(
+                message.messageId(),
+                message.messageType(),
+                message.schemaVersion(),
+                message.createdAt(),
+                message.producer(),
+                message.correlationId(),
+                message.idempotencyKey(),
+                message.payload()
+        );
+    }
+
     private static String readString(Map<String, Object> payload, String key) {
         Object value = payload.get(key);
         return value == null ? null : value.toString();
@@ -368,6 +426,12 @@ public class OutboxMessagePersistenceAdapter {
     public record DiscoveryExecuteOutboxMessage(
             UUID outboxMessageId,
             DiscoveryExecuteRequestMessage discoveryExecuteRequestMessage
+    ) {
+    }
+
+    public record ScenarioAuthoringExecuteOutboxMessage(
+            UUID outboxMessageId,
+            ScenarioAuthoringExecuteRequestMessage scenarioAuthoringExecuteRequestMessage
     ) {
     }
 }

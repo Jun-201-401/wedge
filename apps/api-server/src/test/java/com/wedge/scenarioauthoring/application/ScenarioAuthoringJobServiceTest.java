@@ -3,18 +3,19 @@ package com.wedge.scenarioauthoring.application;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.wedge.common.error.BusinessException;
+import com.wedge.common.infrastructure.outbox.OutboxMessagePersistenceAdapter;
 import com.wedge.discovery.application.DiscoveryService;
-import com.wedge.discovery.application.DiscoveryUrlValidator;
 import com.wedge.discovery.domain.ScenarioRecommendation;
 import com.wedge.discovery.domain.SiteDiscovery;
 import com.wedge.discovery.infrastructure.ScenarioRecommendationMapper;
 import com.wedge.project.application.ProjectAccessService;
-import com.wedge.run.application.ScenarioPlanValidator;
 import com.wedge.scenarioauthoring.api.dto.ScenarioAuthoringConfirmRequest;
 import com.wedge.scenarioauthoring.api.dto.ScenarioAuthoringJobCreateRequest;
 import com.wedge.scenarioauthoring.api.dto.ScenarioAuthoringJobResponse;
@@ -32,6 +33,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -55,6 +57,12 @@ class ScenarioAuthoringJobServiceTest {
     @Mock
     private ProjectAccessService projectAccessService;
 
+    @Mock
+    private OutboxMessagePersistenceAdapter outboxMessagePersistenceAdapter;
+
+    @Mock
+    private ApplicationEventPublisher applicationEventPublisher;
+
     private ScenarioAuthoringJobService service;
     private ObjectMapper objectMapper;
 
@@ -67,32 +75,33 @@ class ScenarioAuthoringJobServiceTest {
                 scenarioRecommendationMapper,
                 projectAccessService,
                 objectMapper,
-                new RuleBasedScenarioPlanProvider(),
-                new ScenarioPlanCandidateValidator(new ScenarioPlanValidator(), new DiscoveryUrlValidator())
+                new ScenarioAuthoringExecuteRequestMessageFactory(),
+                outboxMessagePersistenceAdapter,
+                applicationEventPublisher
         );
+        lenient().when(outboxMessagePersistenceAdapter.appendScenarioAuthoringExecuteMessage(any(), any()))
+                .thenReturn(UUID.fromString("40000000-0000-4000-8000-000000000001"));
     }
 
     @Test
-    void createJobPersistsRuleBasedSucceededCandidate() {
+    void createJobQueuesRunnerAuthoringRequest() {
         when(discoveryService.findDiscovery(DISCOVERY_ID)).thenReturn(discovery());
         when(scenarioRecommendationMapper.findByDiscoveryId(DISCOVERY_ID)).thenReturn(List.of(recommendation()));
 
         ScenarioAuthoringJobResponse response = service.createJob(createRequest(), USER_ID, "idem-authoring-1");
 
-        assertThat(response.status()).isEqualTo(ScenarioAuthoringStatus.SUCCEEDED);
-        assertThat(response.candidateCount()).isEqualTo(1);
+        assertThat(response.status()).isEqualTo(ScenarioAuthoringStatus.QUEUED);
+        assertThat(response.candidateCount()).isZero();
         assertThat(response.providerOrder()).containsExactly("RULE_BASED");
-        assertThat(response.candidates().get(0).get("candidate_id")).isEqualTo("rule_based_landing_cta_001");
-        @SuppressWarnings("unchecked")
-        Map<String, Object> validation = (Map<String, Object>) response.candidates().get(0).get("validation");
-        assertThat(validation.get("schema_valid")).isEqualTo(true);
+        assertThat(response.validation().get("schema_valid")).isEqualTo(false);
 
         ArgumentCaptor<ScenarioAuthoringJob> jobCaptor = ArgumentCaptor.forClass(ScenarioAuthoringJob.class);
         verify(scenarioAuthoringJobMapper).insert(jobCaptor.capture());
         ScenarioAuthoringJob persisted = jobCaptor.getValue();
-        assertThat(persisted.getStatus()).isEqualTo(ScenarioAuthoringStatus.SUCCEEDED);
-        assertThat(persisted.getProviderTraceJsonb()).contains("RULE_BASED");
-        assertThat(persisted.getCandidatesJsonb()).contains("custom_compiled");
+        assertThat(persisted.getStatus()).isEqualTo(ScenarioAuthoringStatus.QUEUED);
+        assertThat(persisted.getProviderTraceJsonb()).isEqualTo("[]");
+        assertThat(persisted.getCandidatesJsonb()).isEqualTo("[]");
+        verify(outboxMessagePersistenceAdapter).appendScenarioAuthoringExecuteMessage(any(), eq(persisted.getId()));
         verify(projectAccessService).ensureProjectAccessible(PROJECT_ID, USER_ID);
     }
 
@@ -118,8 +127,8 @@ class ScenarioAuthoringJobServiceTest {
         ScenarioAuthoringJobResponse response = service.createJob(request, USER_ID, null);
 
         @SuppressWarnings("unchecked")
-        Map<String, Object> scenarioPlan = (Map<String, Object>) response.candidates().get(0).get("scenario_plan");
-        assertThat(scenarioPlan.get("start_url")).isEqualTo("https://example.com");
+        Map<String, Object> selectedRecommendation = (Map<String, Object>) response.input().get("selected_recommendation");
+        assertThat(selectedRecommendation.get("suggested_start_url")).isEqualTo("https://example.com");
         assertThat(response.provenance().get("source_evidence_refs")).asList().containsExactly("cp_001.obs_002");
     }
 
@@ -164,7 +173,7 @@ class ScenarioAuthoringJobServiceTest {
 
         ScenarioAuthoringJobResponse response = service.createJob(request, USER_ID, null);
 
-        assertThat(response.candidates().get(0).get("candidate_id")).isEqualTo("rule_based_pricing_001");
+        assertThat(response.status()).isEqualTo(ScenarioAuthoringStatus.QUEUED);
         @SuppressWarnings("unchecked")
         Map<String, Object> selectedRecommendation = (Map<String, Object>) response.input().get("selected_recommendation");
         assertThat(selectedRecommendation.get("recommendation_id")).isEqualTo(PRICING_RECOMMENDATION_ID.toString());
@@ -269,7 +278,7 @@ class ScenarioAuthoringJobServiceTest {
     }
 
     @Test
-    void createJobFailsValidationInsteadOfUsingHardCodedUrlWhenDiscoveryUrlIsMissing() {
+    void createJobQueuesRunnerAuthoringEvenWhenDiscoveryUrlIsMissing() {
         SiteDiscovery discovery = discovery();
         discovery.setInputUrl("");
         discovery.setFinalUrl("");
@@ -280,11 +289,9 @@ class ScenarioAuthoringJobServiceTest {
 
         ScenarioAuthoringJobResponse response = service.createJob(createRequest(), USER_ID, null);
 
-        assertThat(response.status()).isEqualTo(ScenarioAuthoringStatus.FAILED);
-        @SuppressWarnings("unchecked")
-        Map<String, Object> scenarioPlan = (Map<String, Object>) response.candidates().get(0).get("scenario_plan");
-        assertThat(scenarioPlan.get("start_url")).isEqualTo("");
-        assertThat(response.failure()).containsEntry("failure_code", "candidate_validation_failed");
+        assertThat(response.status()).isEqualTo(ScenarioAuthoringStatus.QUEUED);
+        assertThat(response.candidates()).isEmpty();
+        assertThat(response.failure()).isNull();
     }
 
     @Test

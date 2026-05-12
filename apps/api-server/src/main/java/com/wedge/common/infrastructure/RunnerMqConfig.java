@@ -83,6 +83,25 @@ public class RunnerMqConfig {
     }
 
     @Bean
+    public Queue scenarioAuthoringExecuteQueue(
+            @Value("${wedge.runner.mq.scenario-authoring-execute-queue:scenario-authoring.execute.request}") String queueName,
+            @Value("${wedge.runner.mq.dead-letter-exchange:wedge.dlq}") String deadLetterExchange,
+            @Value("${wedge.runner.mq.scenario-authoring-execute-dead-letter-routing-key:scenario-authoring.execute.dlq}") String deadLetterRoutingKey
+    ) {
+        return QueueBuilder.durable(queueName)
+                .deadLetterExchange(deadLetterExchange)
+                .deadLetterRoutingKey(deadLetterRoutingKey)
+                .build();
+    }
+
+    @Bean
+    public Queue scenarioAuthoringExecuteDeadLetterQueue(
+            @Value("${wedge.runner.mq.scenario-authoring-execute-dead-letter-queue:scenario-authoring.execute.dlq}") String queueName
+    ) {
+        return QueueBuilder.durable(queueName).build();
+    }
+
+    @Bean
     public Binding runExecuteBinding(DirectExchange wedgeDirectExchange, Queue runExecuteQueue) {
         return BindingBuilder.bind(runExecuteQueue).to(wedgeDirectExchange).with(runExecuteQueue.getName());
     }
@@ -110,5 +129,15 @@ public class RunnerMqConfig {
     @Bean
     public Binding discoveryExecuteDeadLetterBinding(DirectExchange wedgeDeadLetterExchange, Queue discoveryExecuteDeadLetterQueue) {
         return BindingBuilder.bind(discoveryExecuteDeadLetterQueue).to(wedgeDeadLetterExchange).with(discoveryExecuteDeadLetterQueue.getName());
+    }
+
+    @Bean
+    public Binding scenarioAuthoringExecuteBinding(DirectExchange wedgeDirectExchange, Queue scenarioAuthoringExecuteQueue) {
+        return BindingBuilder.bind(scenarioAuthoringExecuteQueue).to(wedgeDirectExchange).with(scenarioAuthoringExecuteQueue.getName());
+    }
+
+    @Bean
+    public Binding scenarioAuthoringExecuteDeadLetterBinding(DirectExchange wedgeDeadLetterExchange, Queue scenarioAuthoringExecuteDeadLetterQueue) {
+        return BindingBuilder.bind(scenarioAuthoringExecuteDeadLetterQueue).to(wedgeDeadLetterExchange).with(scenarioAuthoringExecuteDeadLetterQueue.getName());
     }
 }

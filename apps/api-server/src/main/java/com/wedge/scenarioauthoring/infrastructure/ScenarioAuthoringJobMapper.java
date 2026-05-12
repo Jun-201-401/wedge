@@ -18,6 +18,26 @@ public interface ScenarioAuthoringJobMapper {
 
     int insert(ScenarioAuthoringJob job);
 
+    int markRunning(@Param("id") UUID id);
+
+    int completeFromRunner(
+            @Param("id") UUID id,
+            @Param("status") String status,
+            @Param("providerTraceJsonb") String providerTraceJsonb,
+            @Param("candidatesJsonb") String candidatesJsonb,
+            @Param("validationJsonb") String validationJsonb,
+            @Param("provenanceJsonb") String provenanceJsonb,
+            @Param("failureJsonb") String failureJsonb
+    );
+
+    int failFromRunner(
+            @Param("id") UUID id,
+            @Param("providerTraceJsonb") String providerTraceJsonb,
+            @Param("validationJsonb") String validationJsonb,
+            @Param("provenanceJsonb") String provenanceJsonb,
+            @Param("failureJsonb") String failureJsonb
+    );
+
     int confirmCandidate(
             @Param("id") UUID id,
             @Param("confirmedCandidateId") String confirmedCandidateId,

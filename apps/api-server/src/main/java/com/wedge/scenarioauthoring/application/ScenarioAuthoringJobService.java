@@ -5,6 +5,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.wedge.common.error.BusinessException;
 import com.wedge.common.error.ErrorCode;
+import com.wedge.common.infrastructure.outbox.OutboxMessagePersistenceAdapter;
 import com.wedge.discovery.application.DiscoveryService;
 import com.wedge.discovery.domain.ScenarioRecommendation;
 import com.wedge.discovery.domain.SiteDiscovery;
@@ -20,12 +21,12 @@ import com.wedge.scenarioauthoring.domain.ScenarioAuthoringStatus;
 import com.wedge.scenarioauthoring.infrastructure.ScenarioAuthoringJobMapper;
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -45,8 +46,9 @@ public class ScenarioAuthoringJobService {
     private final ScenarioRecommendationMapper scenarioRecommendationMapper;
     private final ProjectAccessService projectAccessService;
     private final ObjectMapper objectMapper;
-    private final RuleBasedScenarioPlanProvider ruleBasedScenarioPlanProvider;
-    private final ScenarioPlanCandidateValidator scenarioPlanCandidateValidator;
+    private final ScenarioAuthoringExecuteRequestMessageFactory messageFactory;
+    private final OutboxMessagePersistenceAdapter outboxMessagePersistenceAdapter;
+    private final ApplicationEventPublisher applicationEventPublisher;
 
     @Transactional
     public ScenarioAuthoringJobResponse createJob(ScenarioAuthoringJobCreateRequest request, UUID userId, String idempotencyKey) {
@@ -65,7 +67,9 @@ public class ScenarioAuthoringJobService {
         }
 
         Map<String, Object> selectedRecommendation = selectPersistedRecommendation(request, discovery);
-        ScenarioAuthoringJob job = buildSucceededRuleBasedJob(request, discovery, selectedRecommendation, userId, normalizedIdempotencyKey);
+        Map<String, Object> input = buildInput(request, discovery, selectedRecommendation);
+        Map<String, Object> providerPolicy = buildProviderPolicy(request.providerPolicy());
+        ScenarioAuthoringJob job = buildQueuedRunnerAuthoringJob(request, discovery, input, providerPolicy, selectedRecommendation, userId, normalizedIdempotencyKey);
         try {
             scenarioAuthoringJobMapper.insert(job);
         } catch (DuplicateKeyException exception) {
@@ -76,6 +80,9 @@ public class ScenarioAuthoringJobService {
                     .map(this::toResponse)
                     .orElseThrow(() -> exception);
         }
+        ScenarioAuthoringExecuteRequestMessage message = messageFactory.create(job, request.requestedGoal(), input, providerPolicy);
+        UUID outboxMessageId = outboxMessagePersistenceAdapter.appendScenarioAuthoringExecuteMessage(message, job.getId());
+        applicationEventPublisher.publishEvent(new ScenarioAuthoringExecuteOutboxEnqueuedEvent(outboxMessageId));
         return toResponse(job);
     }
 
@@ -119,49 +126,31 @@ public class ScenarioAuthoringJobService {
         return new ScenarioAuthoringConfirmResponse(toResponse(job), candidate);
     }
 
-    private ScenarioAuthoringJob buildSucceededRuleBasedJob(
+    private ScenarioAuthoringJob buildQueuedRunnerAuthoringJob(
             ScenarioAuthoringJobCreateRequest request,
             SiteDiscovery discovery,
+            Map<String, Object> input,
+            Map<String, Object> providerPolicy,
             Map<String, Object> selectedRecommendation,
             UUID userId,
             String idempotencyKey
     ) {
         UUID jobId = UUID.randomUUID();
-        Map<String, Object> input = buildInput(request, discovery, selectedRecommendation);
-        Map<String, Object> providerPolicy = buildProviderPolicy(request.providerPolicy());
         OffsetDateTime now = OffsetDateTime.now();
-        List<Map<String, Object>> trace = List.of(Map.of(
-                "provider_type", "RULE_BASED",
-                "provider_name", "wedge-rule-based-authoring",
-                "status", "SUCCEEDED",
-                "started_at", now.toString(),
-                "finished_at", now.toString()
-        ));
-        List<Map<String, Object>> candidates = ruleBasedScenarioPlanProvider.createCandidates(
-                jobId,
-                discovery.getId(),
-                request.requestedGoal(),
-                input,
-                selectedRecommendation,
-                scenarioPlanCandidateValidator
-        );
-        Map<String, Object> validation = aggregateValidation(candidates);
         ScenarioAuthoringJob job = new ScenarioAuthoringJob();
         job.setId(jobId);
         job.setProjectId(request.projectId());
         job.setSourceDiscoveryId(discovery.getId());
         job.setCorrelationId(UUID.randomUUID().toString());
         job.setIdempotencyKey(idempotencyKey);
-        job.setStatus(hasValidCandidate(candidates) ? ScenarioAuthoringStatus.SUCCEEDED : ScenarioAuthoringStatus.FAILED);
+        job.setStatus(ScenarioAuthoringStatus.QUEUED);
         job.setInputJsonb(toJson(input));
         job.setProviderPolicyJsonb(toJson(providerPolicy));
-        job.setProviderTraceJsonb(toJson(trace));
-        job.setCandidatesJsonb(toJson(candidates));
-        job.setValidationJsonb(toJson(validation));
+        job.setProviderTraceJsonb("[]");
+        job.setCandidatesJsonb("[]");
+        job.setValidationJsonb(toJson(pendingValidation()));
         job.setProvenanceJsonb(toJson(provenance(discovery, request, selectedRecommendation)));
-        job.setFailureJsonb(job.getStatus() == ScenarioAuthoringStatus.FAILED
-                ? toJson(Map.of("failure_code", "candidate_validation_failed", "failure_message", "RULE_BASED candidate failed ScenarioPlan validation.", "provider_type", "RULE_BASED"))
-                : "null");
+        job.setFailureJsonb("null");
         job.setCreatedBy(userId);
         job.setCreatedAt(now);
         job.setUpdatedAt(now);
@@ -310,31 +299,14 @@ public class ScenarioAuthoringJobService {
         );
     }
 
-    private Map<String, Object> aggregateValidation(List<Map<String, Object>> candidates) {
-        if (candidates.isEmpty()) {
-            return Map.of("schema_valid", false, "safety_valid", false, "fit_requirements_valid", false, "errors", List.of(), "warnings", List.of(Map.of("code", "no_candidates", "message", "No ScenarioPlan candidates were produced.")));
-        }
-        List<Map<String, Object>> validations = candidates.stream()
-                .map(this::candidateValidation)
-                .toList();
-        List<Object> errors = new ArrayList<>();
-        List<Object> warnings = new ArrayList<>();
-        validations.forEach(validation -> {
-            errors.addAll(readObjectList(validation.get("errors")));
-            warnings.addAll(readObjectList(validation.get("warnings")));
-        });
-        boolean validCandidateExists = hasValidCandidate(candidates);
+    private Map<String, Object> pendingValidation() {
         return Map.of(
-                "schema_valid", validCandidateExists,
-                "safety_valid", validCandidateExists,
-                "fit_requirements_valid", validCandidateExists,
-                "errors", errors,
-                "warnings", warnings
+                "schema_valid", false,
+                "safety_valid", false,
+                "fit_requirements_valid", false,
+                "errors", List.of(),
+                "warnings", List.of(Map.of("code", "authoring_pending", "message", "ScenarioPlan candidate generation is queued on Runner."))
         );
-    }
-
-    private boolean hasValidCandidate(List<Map<String, Object>> candidates) {
-        return candidates.stream().anyMatch(this::candidateValidationPassed);
     }
 
     private void requireCandidateValidationPassed(Map<String, Object> candidate) {

@@ -20,6 +20,9 @@
     },
     {
       "$ref": "#/$defs/DiscoveryEvaluateMessage"
+    },
+    {
+      "$ref": "#/$defs/ScenarioAuthoringExecuteMessage"
     }
   ],
   "$defs": {
@@ -1096,6 +1099,86 @@
       },
       "required": [
         "action"
+      ]
+    },
+    "ScenarioAuthoringExecutePayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "authoringJobId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "projectId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "sourceDiscoveryId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "requestedGoal": {
+          "type": "string",
+          "minLength": 1
+        },
+        "input": {
+          "$ref": "../schemas/scenario-authoring.schema.json#/$defs/authoring_input"
+        },
+        "providerPolicy": {
+          "$ref": "../schemas/scenario-authoring.schema.json#/$defs/provider_policy"
+        }
+      },
+      "required": [
+        "authoringJobId",
+        "projectId",
+        "sourceDiscoveryId",
+        "requestedGoal",
+        "input",
+        "providerPolicy"
+      ]
+    },
+    "ScenarioAuthoringExecuteMessage": {
+      "title": "ScenarioAuthoringExecuteMessage",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "messageId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "messageType": {
+          "const": "scenario-authoring.execute.request"
+        },
+        "schemaVersion": {
+          "type": "string"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "producer": {
+          "type": "string",
+          "minLength": 1
+        },
+        "correlationId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "idempotencyKey": {
+          "type": "string",
+          "minLength": 1
+        },
+        "payload": {
+          "$ref": "#/$defs/ScenarioAuthoringExecutePayload"
+        }
+      },
+      "required": [
+        "messageId",
+        "messageType",
+        "schemaVersion",
+        "createdAt",
+        "producer",
+        "payload"
       ]
     }
   }

@@ -706,6 +706,52 @@ export interface ScenarioAuthoringJob {
   expires_at?: string | null;
 }
 
+export interface ScenarioAuthoringExecutePayload {
+  authoringJobId: string;
+  projectId: string;
+  sourceDiscoveryId: string;
+  requestedGoal: string;
+  input: ScenarioAuthoringInput;
+  providerPolicy: ScenarioAuthoringProviderPolicy;
+}
+
+export interface ScenarioAuthoringExecuteMessage {
+  messageId: string;
+  messageType: "scenario-authoring.execute.request";
+  schemaVersion: string;
+  createdAt: string;
+  producer: string;
+  correlationId?: string;
+  idempotencyKey?: string;
+  payload: ScenarioAuthoringExecutePayload;
+}
+
+export interface ScenarioAuthoringAcceptedPayload {
+  eventId: string;
+  workerId: string;
+  acceptedAt: string;
+}
+
+export interface ScenarioAuthoringFinishedPayload {
+  eventId: string;
+  workerId: string;
+  finishedAt: string;
+  providerTrace: ScenarioAuthoringProviderTraceEntry[];
+  candidates: ScenarioAuthoringCandidate[];
+  validation: ScenarioAuthoringValidation;
+  provenance: ScenarioAuthoringProvenance;
+}
+
+export interface ScenarioAuthoringFailedPayload {
+  eventId: string;
+  workerId: string;
+  failedAt: string;
+  failure: ScenarioAuthoringFailure;
+  providerTrace?: ScenarioAuthoringProviderTraceEntry[];
+  validation?: ScenarioAuthoringValidation;
+  provenance?: ScenarioAuthoringProvenance;
+}
+
 
 export interface DiscoverySummaryPayload {
   detectedFlowTypes: DiscoveryFlowType[];
