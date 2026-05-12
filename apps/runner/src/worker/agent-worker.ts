@@ -416,6 +416,9 @@ async function executeAgentMessage({
         failureMessage: errorMessage(error),
         failedStepKey: error instanceof ScenarioExecutionError ? error.failedStepKey : null,
         failedStepOrder: error instanceof ScenarioExecutionError ? error.failedStepOrder : null,
+        timeoutPhase: error instanceof ScenarioExecutionError ? error.timeoutPhase : undefined,
+        timeoutMs: error instanceof ScenarioExecutionError ? error.timeoutMs : undefined,
+        timeoutPolicy: error instanceof ScenarioExecutionError ? error.timeoutPolicy : undefined,
         summary: error instanceof ScenarioExecutionError ? error.summary : undefined
       },
       "error"

@@ -8,6 +8,7 @@ import {
 } from "../../observability/collectors.ts";
 import type { ArtifactStore } from "../../storage/index.ts";
 import type { ScenarioPlan, ScenarioStep } from "../../shared/contracts.ts";
+import { logOperationalEvent } from "../../shared/utils.ts";
 import { executeScenarioAction } from "../actions/index.ts";
 import { emitCheckpointArtifactsAndCallbacks } from "./checkpoint-emitter.ts";
 import { emitStepEventBestEffort } from "./step-events.ts";
@@ -71,6 +72,23 @@ export async function executeScenarioStep({
   }
 
   const settleResult = preparedSettle ? await preparedSettle.settle() : await session.settle(step.settle_strategy);
+  if (settleResult.status === "timeout") {
+    logOperationalEvent(
+      "scenario-executor",
+      "step_settle_timeout",
+      {
+        runId,
+        stepOrder,
+        stepKey: step.step_id,
+        stage: step.stage,
+        settleStrategy: step.settle_strategy.type,
+        timeoutMs: step.settle_strategy.timeout_ms,
+        timeoutPolicy: "continue_with_timeout_settle_status",
+        details: settleResult.details ?? {}
+      },
+      "warn"
+    );
+  }
   const pageSnapshot = session.snapshot();
   const capturedArtifacts = step.checkpoint
     ? await session.captureArtifacts(createBrowserCaptureOptions(plan))

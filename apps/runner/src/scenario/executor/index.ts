@@ -9,7 +9,12 @@ import {
 } from "../../observability/collectors.ts";
 import type { ArtifactStore } from "../../storage/index.ts";
 import type { ScenarioPlan } from "../../shared/contracts.ts";
-import { classifyRunnerFailure, errorMessage, logOperationalEvent, type RunnerFailureCode } from "../../shared/utils.ts";
+import {
+  classifyRunnerFailureDetails,
+  errorMessage,
+  logOperationalEvent,
+  type RunnerFailureCode
+} from "../../shared/utils.ts";
 import { emitFailureCheckpointArtifactsAndCallbacks } from "./checkpoint-emitter.ts";
 import { executeScenarioStep } from "./step-executor.ts";
 import { emitStepEventBestEffort } from "./step-events.ts";
@@ -33,6 +38,9 @@ export class ScenarioExecutionError extends Error {
   readonly failedStepOrder: number;
   readonly failureCode: RunnerFailureCode;
   readonly failureArtifactRefs: string[];
+  readonly timeoutPhase?: string;
+  readonly timeoutMs?: number | null;
+  readonly timeoutPolicy?: string;
   readonly cause: unknown;
 
   constructor(input: {
@@ -43,6 +51,9 @@ export class ScenarioExecutionError extends Error {
     failedStepOrder: number;
     failureCode: RunnerFailureCode;
     failureArtifactRefs?: string[];
+    timeoutPhase?: string;
+    timeoutMs?: number | null;
+    timeoutPolicy?: string;
   }) {
     super(errorMessage(input.cause));
     this.name = "ScenarioExecutionError";
@@ -52,6 +63,9 @@ export class ScenarioExecutionError extends Error {
     this.failedStepOrder = input.failedStepOrder;
     this.failureCode = input.failureCode;
     this.failureArtifactRefs = input.failureArtifactRefs ?? [];
+    this.timeoutPhase = input.timeoutPhase;
+    this.timeoutMs = input.timeoutMs;
+    this.timeoutPolicy = input.timeoutPolicy;
     this.cause = input.cause;
   }
 }
@@ -100,7 +114,8 @@ export async function executeScenario({
         journeyDepthContext
       });
     } catch (error) {
-      const failureCode = classifyRunnerFailure(error);
+      const failureDetails = classifyRunnerFailureDetails(error, { timeoutPhase: "action" });
+      const failureCode = failureDetails.failureCode;
       const failureMessage = errorMessage(error);
 
       logOperationalEvent(
@@ -113,7 +128,10 @@ export async function executeScenario({
           stage: step.stage,
           actionType: step.action.type,
           failureCode,
-          failureMessage
+          failureMessage,
+          timeoutPhase: failureCode === "RUNNER_TIMEOUT" ? failureDetails.timeoutPhase : undefined,
+          timeoutMs: failureCode === "RUNNER_TIMEOUT" ? failureDetails.timeoutMs ?? null : undefined,
+          timeoutPolicy: failureCode === "RUNNER_TIMEOUT" ? "fail_step_and_run" : undefined
         },
         "error"
       );
@@ -125,7 +143,10 @@ export async function executeScenario({
             stage: step.stage,
             actionType: step.action.type,
             failureCode,
-            failureMessage
+            failureMessage,
+            timeoutPhase: failureCode === "RUNNER_TIMEOUT" ? failureDetails.timeoutPhase : undefined,
+            timeoutMs: failureCode === "RUNNER_TIMEOUT" ? failureDetails.timeoutMs ?? null : undefined,
+            timeoutPolicy: failureCode === "RUNNER_TIMEOUT" ? "fail_step_and_run" : undefined
           })
         )
       );
@@ -158,7 +179,10 @@ export async function executeScenario({
         failedStepKey: step.step_id,
         failedStepOrder: stepOrder,
         failureCode,
-        failureArtifactRefs: failureEvidence.artifactRefs
+        failureArtifactRefs: failureEvidence.artifactRefs,
+        timeoutPhase: failureCode === "RUNNER_TIMEOUT" ? failureDetails.timeoutPhase : undefined,
+        timeoutMs: failureCode === "RUNNER_TIMEOUT" ? failureDetails.timeoutMs ?? null : undefined,
+        timeoutPolicy: failureCode === "RUNNER_TIMEOUT" ? "fail_step_and_run" : undefined
       });
     }
 

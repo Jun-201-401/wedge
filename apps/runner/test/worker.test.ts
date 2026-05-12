@@ -386,7 +386,10 @@ test("[Worker 관측성] step timeout 실패는 timeout code와 runId/stepKey �
       (event) =>
         event.eventType === "STEP_FAILED" &&
         event.stepKey === "step_001_timeout" &&
-        event.payload.failureCode === "RUNNER_TIMEOUT"
+        event.payload.failureCode === "RUNNER_TIMEOUT" &&
+        event.payload.timeoutPhase === "action" &&
+        event.payload.timeoutMs === 100 &&
+        event.payload.timeoutPolicy === "fail_step_and_run"
     )
   );
   assert.ok(
@@ -395,7 +398,101 @@ test("[Worker 관측성] step timeout 실패는 timeout code와 runId/stepKey �
         line.includes("\"event\":\"run_failed\"") &&
         line.includes(`"runId":"${message.payload.runId}"`) &&
         line.includes("\"failedStepKey\":\"step_001_timeout\"") &&
-        line.includes("\"failureCode\":\"RUNNER_TIMEOUT\"")
+        line.includes("\"failureCode\":\"RUNNER_TIMEOUT\"") &&
+        line.includes("\"timeoutPhase\":\"action\"") &&
+        line.includes("\"timeoutMs\":100") &&
+        line.includes("\"timeoutPolicy\":\"fail_step_and_run\"")
+    )
+  );
+});
+
+test("[Worker timeout policy] settle timeout은 step 실패로 승격하지 않고 timeout settle status로 계속 진행한다", async () => {
+  const message = await loadExampleMessage();
+  message.payload.scenarioPlan!.steps = [
+    {
+      step_id: "step_001_settle_timeout",
+      stage: "CTA",
+      description: "settle timeout",
+      action: {
+        type: "click",
+        target: {
+          selector: "#submit"
+        }
+      },
+      settle_strategy: {
+        type: "network_idle",
+        timeout_ms: 250
+      },
+      checkpoint: false
+    }
+  ];
+
+  const stepEvents: StepEvent[] = [];
+  const capturedLogs: string[] = [];
+  const originalLog = console.log;
+  console.log = (message?: unknown, ...optional: unknown[]) => {
+    capturedLogs.push(String(message));
+    if (optional.length > 0) {
+      capturedLogs.push(optional.map(String).join(" "));
+    }
+  };
+
+  try {
+    const worker = registerWorker({
+      config: createRunnerTestConfig(),
+      browserFactory: {
+        kind: "simulated-playwright",
+        createSession: async () =>
+          createSimulatedSession(message.payload.scenarioPlan!, {
+            settle: async (strategy) =>
+              createSettledResult({
+                strategy: strategy.type,
+                durationMs: 250,
+                status: "timeout",
+                details: {
+                  timeoutMs: strategy.timeout_ms
+                }
+              })
+          })
+      },
+      callbackClient: createStubCallbackClient({
+        sendStepEvents: async (_runId, payload) => {
+          stepEvents.push(...payload.events);
+        }
+      }),
+      capturePipeline: {
+        collectCheckpoint: async () => {
+          throw new Error("checkpoint collection should not be called");
+        }
+      },
+      artifactStore: {
+        persistArtifacts: async () => []
+      }
+    });
+
+    const result = await worker.handleMessage(message);
+
+    assert.equal(result.summary.completedStepCount, 1);
+    assert.equal(result.summary.failedStepCount, 0);
+  } finally {
+    console.log = originalLog;
+  }
+
+  assert.ok(
+    stepEvents.some(
+      (event) =>
+        event.eventType === "STEP_COMPLETED" &&
+        event.stepKey === "step_001_settle_timeout" &&
+        (event.payload.settle as { status?: string }).status === "timeout"
+    )
+  );
+  assert.ok(
+    capturedLogs.some(
+      (line) =>
+        line.includes("\"event\":\"step_settle_timeout\"") &&
+        line.includes("\"stepKey\":\"step_001_settle_timeout\"") &&
+        line.includes("\"timeoutMs\":250") &&
+        line.includes("\"timeoutPolicy\":\"continue_with_timeout_settle_status\"")
     )
   );
 });

@@ -412,9 +412,10 @@ signal을 남긴다. 단, 전체 layout tree/paint order 수준의 production la
 - Playwright page crash/browser disconnect/context close 신호는 `browser_health` state/observation으로 남기며, 실행 실패는 `RUNNER_BROWSER_CRASH`로 분류한다. Crash 이후 screenshot/DOM capture가 실패해도 원래 crash failure를 보존한다.
 - `run.execute.request`와 `discovery.execute.request`의 `idempotencyKey`가 있으면 runner-local terminal record를 `artifactsRoot/message-idempotency/{scope}`에 남기고, 같은 key의 재전달은 browser/session을 새로 열지 않고 이전 결과를 재사용한다.
 - callback partial failure impact는 코드의 `DELIVERY_FAILURE_IMPACT_BY_SCOPE`에 고정되어 있으며, `finished-callback`만 fatal delivery issue로 분류한다.
+- action timeout은 `RUNNER_TIMEOUT`으로 step/run 실패 처리하며 `STEP_FAILED` payload와 operational log에 `timeoutPhase=action`, `timeoutMs`, `timeoutPolicy=fail_step_and_run`을 남긴다.
+- settle timeout은 브라우저 실행 실패가 아니라 관측된 settle 상태로 취급한다. step은 계속 완료될 수 있고 `STEP_COMPLETED.payload.settle.status=timeout` 및 `step_settle_timeout` log의 `timeoutPolicy=continue_with_timeout_settle_status`로 남긴다.
 
 추후 정리할 항목:
-- per-step timeout policy
 - API/DB 기반 cross-runner idempotency lease
 
 # 5. Agent 구현 규칙
