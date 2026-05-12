@@ -229,6 +229,9 @@ EOF
         }
 
         stage('Deploy to EC2') {
+            options {
+                timeout(time: 30, unit: 'MINUTES')
+            }
             steps {
                 script {
                     env.FAILED_STAGE = 'Deploy to EC2'
@@ -261,15 +264,27 @@ git -c credential.helper= -c "http.extraHeader=Authorization: Basic ${GIT_AUTH_H
 unset GIT_AUTH_HEADER
 git reset --hard "origin/$GIT_BRANCH"
 CURRENT_HEAD="$(git rev-parse HEAD)"
+API_SERVER_IMAGE="wedge-api-server:${CURRENT_HEAD}"
+WEB_IMAGE="wedge-web:${CURRENT_HEAD}"
+RUNNER_IMAGE="wedge-runner:${CURRENT_HEAD}"
+ANALYZER_IMAGE="wedge-analyzer:${CURRENT_HEAD}"
 RABBITMQ_RECREATE_REQUIRED=false
 if [ -z "$PREVIOUS_HEAD" ] || git diff --name-only "$PREVIOUS_HEAD" "$CURRENT_HEAD" -- compose.prod.yaml infra/rabbitmq/rabbitmq-prod.conf infra/rabbitmq/rabbitmq-definitions-prod.json | grep -q .; then
     RABBITMQ_RECREATE_REQUIRED=true
 fi
 
-docker build -f apps/api-server/Dockerfile -t wedge-api-server:deploy-local apps/api-server
-docker build -f apps/web/Dockerfile -t wedge-web:deploy-local apps/web
-docker build -f apps/runner/Dockerfile -t wedge-runner:deploy-local .
-docker build -f apps/analyzer/Dockerfile -t wedge-analyzer:deploy-local .
+compose_prod() {
+    API_SERVER_IMAGE="$API_SERVER_IMAGE" \
+    WEB_IMAGE="$WEB_IMAGE" \
+    RUNNER_IMAGE="$RUNNER_IMAGE" \
+    ANALYZER_IMAGE="$ANALYZER_IMAGE" \
+    docker compose --env-file .env.prod -f compose.prod.yaml "$@"
+}
+
+docker build -f apps/api-server/Dockerfile -t "$API_SERVER_IMAGE" -t wedge-api-server:deploy-local apps/api-server
+docker build -f apps/web/Dockerfile -t "$WEB_IMAGE" -t wedge-web:deploy-local apps/web
+docker build -f apps/runner/Dockerfile -t "$RUNNER_IMAGE" -t wedge-runner:deploy-local .
+docker build -f apps/analyzer/Dockerfile -t "$ANALYZER_IMAGE" -t wedge-analyzer:deploy-local .
 
 wait_for_rabbitmq() {
     local attempts="${1:-60}"
@@ -277,8 +292,8 @@ wait_for_rabbitmq() {
     local attempt
 
     for attempt in $(seq 1 "$attempts"); do
-        if docker compose --env-file .env.prod -f compose.prod.yaml exec -T rabbitmq rabbitmqctl await_startup --timeout 5 > /dev/null 2>&1 \
-            && docker compose --env-file .env.prod -f compose.prod.yaml exec -T rabbitmq rabbitmq-diagnostics -q ping > /dev/null 2>&1; then
+        if compose_prod exec -T rabbitmq rabbitmqctl await_startup --timeout 5 > /dev/null 2>&1 \
+            && compose_prod exec -T rabbitmq rabbitmq-diagnostics -q ping > /dev/null 2>&1; then
             return 0
         fi
 
@@ -286,31 +301,55 @@ wait_for_rabbitmq() {
         sleep "$delay_seconds"
     done
 
-    docker compose --env-file .env.prod -f compose.prod.yaml logs --tail=100 rabbitmq
+    compose_prod logs --tail=100 rabbitmq
     return 1
 }
 
-if [ "$RABBITMQ_RECREATE_REQUIRED" = "true" ] && docker compose --env-file .env.prod -f compose.prod.yaml ps --status running --services rabbitmq | grep -qx rabbitmq; then
+verify_service_image() {
+    local service="$1"
+    local expected_image="$2"
+    local container_id
+    local actual_image
+
+    container_id="$(compose_prod ps -q "$service")"
+    if [ -z "$container_id" ]; then
+        echo "Container not found for service: ${service}"
+        return 1
+    fi
+
+    actual_image="$(docker inspect "$container_id" --format '{{.Config.Image}}')"
+    if [ "$actual_image" != "$expected_image" ]; then
+        echo "Unexpected image for ${service}: expected=${expected_image}, actual=${actual_image}"
+        return 1
+    fi
+}
+
+if [ "$RABBITMQ_RECREATE_REQUIRED" = "true" ] && compose_prod ps --status running --services rabbitmq | grep -qx rabbitmq; then
     mkdir -p backups/rabbitmq
     RABBITMQ_BACKUP_FILE="rabbitmq-definitions-$(date -u +%Y%m%dT%H%M%SZ).json"
-    docker compose --env-file .env.prod -f compose.prod.yaml exec -T rabbitmq rabbitmqctl export_definitions "/tmp/${RABBITMQ_BACKUP_FILE}"
-    docker compose --env-file .env.prod -f compose.prod.yaml cp "rabbitmq:/tmp/${RABBITMQ_BACKUP_FILE}" "backups/rabbitmq/${RABBITMQ_BACKUP_FILE}"
+    compose_prod exec -T rabbitmq rabbitmqctl export_definitions "/tmp/${RABBITMQ_BACKUP_FILE}"
+    compose_prod cp "rabbitmq:/tmp/${RABBITMQ_BACKUP_FILE}" "backups/rabbitmq/${RABBITMQ_BACKUP_FILE}"
 fi
 if [ "$RABBITMQ_RECREATE_REQUIRED" = "true" ]; then
-    docker compose --env-file .env.prod -f compose.prod.yaml up -d --force-recreate rabbitmq
+    compose_prod up -d --force-recreate rabbitmq
 else
-    docker compose --env-file .env.prod -f compose.prod.yaml up -d rabbitmq
+    compose_prod up -d rabbitmq
 fi
 wait_for_rabbitmq 90 2
 bash infra/rabbitmq/provision-prod-user.sh
-docker compose --env-file .env.prod -f compose.prod.yaml up -d api-server web runner analyzer-worker
-docker compose --env-file .env.prod -f compose.prod.yaml up -d --force-recreate nginx
+compose_prod up -d postgres redis
+compose_prod up -d --no-deps --force-recreate api-server web runner analyzer-worker
+compose_prod up -d --force-recreate nginx
+verify_service_image api-server "$API_SERVER_IMAGE"
+verify_service_image web "$WEB_IMAGE"
+verify_service_image runner "$RUNNER_IMAGE"
+verify_service_image analyzer-worker "$ANALYZER_IMAGE"
 
 for i in 1 2 3 4 5 6 7 8 9 10; do
     if curl -kfsS https://localhost/actuator/health > /dev/null 2>&1 \
         && curl -kfsS https://localhost/ > /dev/null 2>&1 \
-        && docker compose --env-file .env.prod -f compose.prod.yaml ps --status running --services runner | grep -qx runner \
-        && docker compose --env-file .env.prod -f compose.prod.yaml ps --status running --services analyzer-worker | grep -qx analyzer-worker; then
+        && compose_prod ps --status running --services runner | grep -qx runner \
+        && compose_prod ps --status running --services analyzer-worker | grep -qx analyzer-worker; then
         echo "Health check passed"
         exit 0
     fi
@@ -320,7 +359,7 @@ for i in 1 2 3 4 5 6 7 8 9 10; do
 done
 
 echo "Health check failed"
-docker compose --env-file .env.prod -f compose.prod.yaml logs --tail=100 rabbitmq api-server web runner analyzer-worker nginx
+compose_prod logs --tail=100 rabbitmq api-server web runner analyzer-worker nginx
 exit 1
 EOF
                         ''')
