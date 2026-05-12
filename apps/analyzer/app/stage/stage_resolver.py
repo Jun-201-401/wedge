@@ -16,7 +16,6 @@ OBSERVATION_STAGE_DEFAULTS: dict[str, DecisionStage] = {
     "cta_cluster": "CTA",
     "cta_text_specificity": "CTA",
     "visual_emphasis": "CTA",
-    "target_size_issue": "CTA",
     "pricing_entrypoint": "CTA",
     "checkout_entrypoint": "CTA",
     "signup_entrypoint": "CTA",
@@ -32,6 +31,7 @@ OBSERVATION_STAGE_DEFAULTS: dict[str, DecisionStage] = {
     "terms_privacy_signal": "COMMIT",
     "network_failure": "CTA",
     "console_error": "CTA",
+    "page_ready_timing": "CTA",
     "settle_response": "INPUT",
     "settle_item_count_change": "VALUE",
 }

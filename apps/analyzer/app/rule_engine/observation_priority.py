@@ -29,7 +29,6 @@ OBSERVATION_WEIGHTS: dict[str, ObservationWeight] = {
     "interactive_components": ObservationWeight(1.45, "interactive component evidence"),
     "cta_text_specificity": ObservationWeight(1.05, "CTA copy specificity evidence"),
     "visual_emphasis": ObservationWeight(1.0, "visual emphasis evidence"),
-    "target_size_issue": ObservationWeight(1.15, "CTA target usability evidence"),
     "pricing_entrypoint": ObservationWeight(1.2, "pricing entrypoint evidence"),
     "checkout_entrypoint": ObservationWeight(1.35, "checkout entrypoint evidence"),
     "signup_entrypoint": ObservationWeight(1.25, "signup entrypoint evidence"),
@@ -45,6 +44,7 @@ OBSERVATION_WEIGHTS: dict[str, ObservationWeight] = {
     "terms_privacy_signal": ObservationWeight(0.9, "commit support evidence"),
     "network_failure": ObservationWeight(1.6, "network failure evidence"),
     "console_error": ObservationWeight(1.45, "console error evidence"),
+    "page_ready_timing": ObservationWeight(1.35, "page ready timing evidence"),
     "settle_response": ObservationWeight(1.05, "action response evidence"),
     "settle_item_count_change": ObservationWeight(0.95, "value expansion evidence"),
 }

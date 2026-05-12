@@ -469,95 +469,6 @@ class RuleEngineTest(unittest.TestCase):
         self.assertEqual(overload[0]["evidence_refs"], ["cp_001.obs_many_choices"])
         self.assertIn("viewport_interactive_choice_count=15", overload[0]["signals"])
 
-    def test_target_size_emits_for_small_search_form_field(self) -> None:
-        packet = load_sample_packet()
-        packet["checkpoints"][0]["observations"].append(
-            {
-                "observation_id": "obs_small_search",
-                "type": "form_field",
-                "stage": "FIRST_VIEW",
-                "source": ["dom", "layout"],
-                "data": {
-                    "role": "searchbox",
-                    "input_type": "search",
-                    "placeholder": "Search",
-                    "selector": "header input[type='search']",
-                    "bounds": {"x": 24, "y": 16, "width": 96, "height": 30},
-                    "typed_in_scenario": True,
-                },
-                "confidence": 0.88,
-            }
-        )
-
-        result = analyze_evidence_packet(packet)
-
-        target_size = [issue for issue in result["issues"] if issue["criterion_id"] == "TARGET-SIZE-001"]
-        self.assertEqual(len(target_size), 1)
-        self.assertEqual(target_size[0]["stage"], "FIRST_VIEW")
-        self.assertEqual(target_size[0]["severity"], 3)
-        self.assertEqual(target_size[0]["confidence"], 0.88)
-        self.assertEqual(target_size[0]["evidence_refs"], ["cp_001.obs_small_search"])
-        self.assertIn("search_width=96", target_size[0]["signals"])
-        self.assertIn("search_height=30", target_size[0]["signals"])
-        self.assertIn("search_used_in_scenario=true", target_size[0]["signals"])
-        self.assertEqual(target_size[0]["evidence_locations"][0]["bounds"], {"x": 24, "y": 16, "width": 96, "height": 30})
-        self.assertEqual(target_size[0]["problem_components"][0]["selector"], "header input[type='search']")
-        self.assertEqual(target_size[0]["problem_components"][0]["bounding_box"], {"x": 24, "y": 16, "width": 96, "height": 30, "unit": "css_px"})
-        self.assertEqual(target_size[0]["problem_components"][0]["screenshot_artifact_id"], "screenshot_cp_001")
-
-    def test_target_size_uses_interactive_component_search_candidate(self) -> None:
-        packet = load_sample_packet()
-        packet["checkpoints"][0]["observations"].append(
-            {
-                "observation_id": "obs_search_components",
-                "type": "interactive_components",
-                "stage": "FIRST_VIEW",
-                "source": ["dom", "layout"],
-                "data": {
-                    "components": [
-                        {
-                            "role": "searchbox",
-                            "input_type": "search",
-                            "placeholder": "검색",
-                            "selector": "header .search-input",
-                            "bounds": {"x": 32, "y": 20, "width": 430, "height": 38},
-                        }
-                    ]
-                },
-                "confidence": 0.84,
-            }
-        )
-
-        result = analyze_evidence_packet(packet)
-
-        target_size = [issue for issue in result["issues"] if issue["criterion_id"] == "TARGET-SIZE-001"]
-        self.assertEqual(len(target_size), 1)
-        self.assertEqual(target_size[0]["severity"], 1)
-        self.assertIn("search_width=430", target_size[0]["signals"])
-        self.assertIn("width_ratio=0.74", target_size[0]["signals"])
-
-    def test_target_size_requires_search_bounds(self) -> None:
-        packet = load_sample_packet()
-        packet["checkpoints"][0]["observations"].append(
-            {
-                "observation_id": "obs_search_without_bounds",
-                "type": "form_field",
-                "stage": "FIRST_VIEW",
-                "source": ["dom"],
-                "data": {
-                    "role": "searchbox",
-                    "input_type": "search",
-                    "placeholder": "Search",
-                },
-                "confidence": 0.88,
-            }
-        )
-
-        result = analyze_evidence_packet(packet)
-
-        target_size = [issue for issue in result["issues"] if issue["criterion_id"] == "TARGET-SIZE-001"]
-        self.assertEqual(target_size, [])
-
     def test_missing_cta_evidence_is_not_user_facing_issue(self) -> None:
         packet = load_sample_packet()
         packet["aggregate_signals"]["primary_cta_count_by_stage"] = {"CTA": 0}
@@ -676,22 +587,31 @@ class RuleEngineTest(unittest.TestCase):
         self.assertEqual(reliability[0]["stage"], "INPUT")
         self.assertIn("cp_002.state.network_summary", reliability[0]["evidence_refs"])
 
-    def test_loading_stuck_emits_from_visible_loading_state(self) -> None:
+    def test_loading_stuck_emits_from_general_page_ready_timing(self) -> None:
         packet = load_sample_packet()
         packet["aggregate_signals"]["primary_cta_count_by_stage"] = {"CTA": 1}
         packet["checkpoints"][0]["observations"].append(
             {
-                "observation_id": "obs_loading_state",
-                "type": "loading_state",
+                "observation_id": "obs_page_ready_timing",
+                "type": "page_ready_timing",
                 "stage": "CTA",
-                "source": ["dom", "layout"],
+                "source": ["performance", "dom", "layout", "scenario_log"],
                 "data": {
-                    "loading_visible": True,
-                    "duration_ms": 9_500,
-                    "selector": ".spinner",
-                    "text": "Loading",
-                    "loading_role": "spinner",
-                    "bounds": {"x": 700, "y": 440, "width": 40, "height": 40},
+                    "trigger_type": "click",
+                    "action_kind": "link_click",
+                    "url_changed": True,
+                    "route_changed": True,
+                    "main_content_changed": True,
+                    "same_origin": True,
+                    "duration_ms": 6_200,
+                    "target_page_signals": {
+                        "has_permission_prompt": False,
+                        "has_streaming_response": False,
+                        "has_map": False,
+                        "has_payment_form": False,
+                        "has_auth_redirect": False,
+                        "has_webgl": False,
+                    },
                 },
                 "confidence": 0.88,
             }
@@ -703,30 +623,86 @@ class RuleEngineTest(unittest.TestCase):
         self.assertEqual(len(loading), 1)
         self.assertEqual(loading[0]["stage"], "CTA")
         self.assertEqual(loading[0]["severity"], 2)
-        self.assertEqual(loading[0]["evidence_refs"], ["cp_001.obs_loading_state"])
-        self.assertIn("loading_state.duration_ms=9500", loading[0]["signals"])
-        self.assertEqual(loading[0]["evidence_locations"][0]["type"], "loading_state")
-        self.assertEqual(loading[0]["problem_components"][0]["selector"], ".spinner")
-        self.assertEqual(loading[0]["problem_components"][0]["bounding_box"], {"x": 700, "y": 440, "width": 40, "height": 40, "unit": "css_px"})
+        self.assertEqual(loading[0]["evidence_refs"], ["cp_001.obs_page_ready_timing"])
+        self.assertIn("page_ready_threshold_ms=5000", loading[0]["signals"])
+        self.assertIn("page_ready_timing.duration_ms=6200", loading[0]["signals"])
 
-    def test_loading_stuck_uses_long_settle_timeout_as_fallback(self) -> None:
+    def test_loading_stuck_escalates_very_slow_general_navigation(self) -> None:
         packet = load_sample_packet()
         packet["aggregate_signals"]["primary_cta_count_by_stage"] = {"CTA": 1}
-        packet["checkpoints"][3]["settle"]["duration_ms"] = 9_000
+        packet["checkpoints"][0]["observations"].append(
+            {
+                "observation_id": "obs_page_ready_timing",
+                "type": "page_ready_timing",
+                "stage": "CTA",
+                "source": ["performance", "dom", "layout", "scenario_log"],
+                "data": {
+                    "trigger_type": "click",
+                    "action_kind": "navigation",
+                    "url_changed": True,
+                    "route_changed": True,
+                    "main_content_changed": True,
+                    "same_origin": True,
+                    "duration_ms": 8_500,
+                    "target_page_signals": {
+                        "has_permission_prompt": False,
+                        "has_streaming_response": False,
+                        "has_map": False,
+                        "has_payment_form": False,
+                        "has_auth_redirect": False,
+                        "has_webgl": False,
+                    },
+                },
+                "confidence": 0.88,
+            }
+        )
 
         result = analyze_evidence_packet(packet)
 
         loading = [issue for issue in result["issues"] if issue["criterion_id"] == "RELIABILITY-LOADING-STUCK-001"]
         self.assertEqual(len(loading), 1)
-        self.assertEqual(loading[0]["stage"], "INPUT")
-        self.assertEqual(loading[0]["severity"], 2)
-        self.assertEqual(loading[0]["confidence"], 0.7)
-        self.assertEqual(loading[0]["evidence_refs"], ["cp_004.obs_008"])
-        self.assertIn("settle_response.settle_status=timeout", loading[0]["signals"])
+        self.assertEqual(loading[0]["severity"], 3)
+        self.assertIn("page_ready_timing.duration_ms=8500", loading[0]["signals"])
 
-    def test_loading_stuck_ignores_short_settle_timeout_without_loading_state(self) -> None:
+    def test_loading_stuck_ignores_heavy_target_page_signal(self) -> None:
         packet = load_sample_packet()
         packet["aggregate_signals"]["primary_cta_count_by_stage"] = {"CTA": 1}
+        packet["checkpoints"][0]["observations"].append(
+            {
+                "observation_id": "obs_page_ready_timing",
+                "type": "page_ready_timing",
+                "stage": "CTA",
+                "source": ["performance", "dom", "layout", "scenario_log"],
+                "data": {
+                    "trigger_type": "click",
+                    "action_kind": "navigation",
+                    "url_changed": True,
+                    "route_changed": True,
+                    "main_content_changed": True,
+                    "same_origin": True,
+                    "duration_ms": 18_000,
+                    "target_page_signals": {
+                        "has_permission_prompt": False,
+                        "has_streaming_response": False,
+                        "has_map": True,
+                        "has_payment_form": False,
+                        "has_auth_redirect": False,
+                        "has_webgl": False,
+                    },
+                },
+                "confidence": 0.88,
+            }
+        )
+
+        result = analyze_evidence_packet(packet)
+
+        loading = [issue for issue in result["issues"] if issue["criterion_id"] == "RELIABILITY-LOADING-STUCK-001"]
+        self.assertEqual(loading, [])
+
+    def test_loading_stuck_ignores_timeout_without_general_navigation_signals(self) -> None:
+        packet = load_sample_packet()
+        packet["aggregate_signals"]["primary_cta_count_by_stage"] = {"CTA": 1}
+        packet["checkpoints"][3]["settle"]["duration_ms"] = 9_000
 
         result = analyze_evidence_packet(packet)
 
