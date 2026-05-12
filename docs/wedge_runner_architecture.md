@@ -414,6 +414,7 @@ signal을 남긴다. 단, 전체 layout tree/paint order 수준의 production la
 - callback partial failure impact는 코드의 `DELIVERY_FAILURE_IMPACT_BY_SCOPE`에 고정되어 있으며, `finished-callback`만 fatal delivery issue로 분류한다.
 - action timeout은 `RUNNER_TIMEOUT`으로 step/run 실패 처리하며 `STEP_FAILED` payload와 operational log에 `timeoutPhase=action`, `timeoutMs`, `timeoutPolicy=fail_step_and_run`을 남긴다.
 - settle timeout은 브라우저 실행 실패가 아니라 관측된 settle 상태로 취급한다. step은 계속 완료될 수 있고 `STEP_COMPLETED.payload.settle.status=timeout` 및 `step_settle_timeout` log의 `timeoutPolicy=continue_with_timeout_settle_status`로 남긴다.
+- 운영 smoke/E2E와 장애 대응 절차는 `docs/runner_operational_runbook.md`를 기준으로 한다.
 
 추후 정리할 항목:
 - API/DB 기반 cross-runner idempotency lease
