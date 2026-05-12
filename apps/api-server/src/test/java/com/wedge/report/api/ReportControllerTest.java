@@ -297,7 +297,7 @@ class ReportControllerTest {
         UUID artifactId = UUID.randomUUID();
         byte[] imageBytes = "fake-png".getBytes();
         when(reportShareService.getSharedArtifactContent("share-token", artifactId))
-                .thenReturn(new EvidenceService.ArtifactContent(new ByteArrayResource(imageBytes), "image/png"));
+                .thenReturn(new EvidenceService.ArtifactContent(new ByteArrayResource(imageBytes), "image/png", "artifact.png"));
 
         mockMvc.perform(get("/api/report-shares/{shareToken}/artifacts/{artifactId}/content", "share-token", artifactId))
                 .andExpect(status().isOk())

@@ -179,7 +179,8 @@ class ReportShareServiceTest {
         ReportShare share = share(reportId);
         EvidenceService.ArtifactContent content = new EvidenceService.ArtifactContent(
                 new ByteArrayResource("fake-png".getBytes()),
-                "image/png"
+                "image/png",
+                "artifact.png"
         );
         when(reportShareMapper.findActiveByToken(SHARE_TOKEN, NOW)).thenReturn(Optional.of(share));
         when(reportMapper.findById(reportId)).thenReturn(Optional.of(report(reportId, runId)));

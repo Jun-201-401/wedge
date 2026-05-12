@@ -203,7 +203,7 @@ public class EvidenceService {
         runService.getRun(runId);
         Artifact artifact = findRunArtifact(runId, artifactId);
         Resource resource = artifactContentStore.load(artifact);
-        return new ArtifactContent(resource, artifact.getMimeType());
+        return new ArtifactContent(resource, artifact.getMimeType(), artifactFilename(artifact));
     }
 
     @Transactional(readOnly = true)
