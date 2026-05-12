@@ -303,9 +303,11 @@ class RunnerCallbackServiceTest {
     @Test
     void finishedCallbackReturnsResultCompleteness() {
         UUID runId = UUID.randomUUID();
+        RunResponse running = sampleRun(runId, RunStatus.RUNNING, ResultCompleteness.NONE);
         RunResponse completed = sampleRun(runId, RunStatus.COMPLETED, ResultCompleteness.FINAL);
         when(processedMessagePersistenceAdapter.tryMarkProcessed("runner.finished", "evt_finished_001")).thenReturn(true);
-        when(runService.finishRun(runId, false)).thenReturn(completed);
+        when(runService.markRunningIfStarting(runId)).thenReturn(running);
+        when(runService.finishRun(running, false)).thenReturn(completed);
 
         RunnerCallbackAckResponse result = runnerCallbackService.handleFinished(
                 runId,
@@ -330,7 +332,7 @@ class RunnerCallbackServiceTest {
         RunResponse completed = sampleRun(runId, RunStatus.COMPLETED, ResultCompleteness.FINAL);
         when(processedMessagePersistenceAdapter.tryMarkProcessed("runner.finished", "evt_finished_002")).thenReturn(true);
         when(runService.markRunningIfStarting(runId)).thenReturn(running);
-        when(runService.finishRun(runId, false)).thenReturn(completed);
+        when(runService.finishRun(running, false)).thenReturn(completed);
 
         RunnerCallbackAckResponse result = runnerCallbackService.handleFinished(
                 runId,
@@ -347,7 +349,7 @@ class RunnerCallbackServiceTest {
         assertThat(result.status()).isEqualTo(RunStatus.COMPLETED);
         InOrder inOrder = org.mockito.Mockito.inOrder(runService);
         inOrder.verify(runService).markRunningIfStarting(runId);
-        inOrder.verify(runService).finishRun(runId, false);
+        inOrder.verify(runService).finishRun(running, false);
     }
 
     @Test
