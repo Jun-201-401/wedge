@@ -1578,9 +1578,17 @@ function normalizeTimingValue(value: number): number | null {
 }
 
 function appendVisitedUrl(visitedUrls: string[], url: string): void {
+  if (!isRecordableVisitedUrl(url)) {
+    return;
+  }
+
   if (visitedUrls[visitedUrls.length - 1] !== url) {
     visitedUrls.push(url);
   }
+}
+
+function isRecordableVisitedUrl(url: string): boolean {
+  return url.length > 0 && url !== "about:blank";
 }
 
 function throwUnresolvedTarget(actionType: ScenarioAction["type"], targetSummary: string | null): never {
