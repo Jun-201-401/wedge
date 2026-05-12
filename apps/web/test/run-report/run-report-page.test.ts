@@ -321,7 +321,8 @@ test('run monitor exposes a report CTA into /runs/:runId/report', () => {
   assert.match(source, /분석 결과 리포트/);
   assert.match(source, /handleSpaNavigationClick\(event, reportPath\)/);
   assert.match(source, /<a href=\{reportPath\} onClick=\{openReport\}>\{reportCtaActionLabel\}<\/a>/);
-  assert.match(source, /리포트 생성/);
+  assert.match(source, /리포트 준비 중/);
+  assert.doesNotMatch(source, /'리포트 생성'/);
   assert.match(source, /분석 시작/);
   assert.doesNotMatch(source, /모의 리포트 보기/);
   assert.match(css, /\.run-monitor-report-cta\s*\{[\s\S]*?background: rgba\(240, 249, 255, 0\.58\)/);

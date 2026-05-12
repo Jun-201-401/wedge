@@ -16,6 +16,7 @@ import {
   getApiCheckpoint,
   getApiProgressPercent,
   getCheckpointArtifacts,
+  getCurrentRunReportProjection,
   getEvidenceArtifactLabel,
   getEvidenceObservationSummary,
   getFailureCodeLabel,
@@ -91,6 +92,29 @@ test('run monitor report refreshes while backend analysis is active', () => {
   assert.equal(shouldRefreshRunReport({ ...baseReport, reportStatus: 'NOT_READY', analysisStatus: 'NOT_STARTED', reportId: null, status: null }), false);
   assert.equal(shouldRefreshRunReport({ ...baseReport, reportStatus: 'NOT_READY', analysisStatus: 'QUEUED', reportId: null, status: null }), true);
   assert.equal(shouldRefreshRunReport({ ...baseReport, reportStatus: 'NOT_READY', analysisStatus: 'RUNNING', reportId: null, status: null }), true);
+});
+
+test('run monitor report projection is scoped to the current run', () => {
+  const staleGeneratableReport: RunReportProjection = {
+    ...baseReport,
+    runId: '99999999-9999-4999-8999-999999999999',
+    reportStatus: 'GENERATABLE',
+    reportId: null,
+    status: null,
+  };
+
+  assert.equal(getCurrentRunReportProjection(staleGeneratableReport, baseRun.id), null);
+  assert.equal(getCurrentRunReportProjection(staleGeneratableReport, staleGeneratableReport.runId), staleGeneratableReport);
+  assert.equal(shouldRefreshRunReport(getCurrentRunReportProjection(staleGeneratableReport, baseRun.id)), false);
+  assert.equal(
+    resolveRunMonitorReportCtaState({
+      isMockRun: false,
+      report: getCurrentRunReportProjection(staleGeneratableReport, baseRun.id),
+      isLoading: true,
+      errorMessage: '',
+    }).kind,
+    'loading',
+  );
 });
 
 test('run monitor view model exposes lifecycle command availability by status', () => {
@@ -380,12 +404,14 @@ test('run monitor report CTA state follows backend report readiness', () => {
     errorMessage: '',
   }).kind, 'open');
 
-  assert.equal(resolveRunMonitorReportCtaState({
+  const generatableState = resolveRunMonitorReportCtaState({
     isMockRun: false,
     report: { ...baseReport, reportStatus: 'GENERATABLE', reportId: null, status: null },
     isLoading: false,
     errorMessage: '',
-  }).kind, 'generate');
+  });
+  assert.equal(generatableState.kind, 'generate');
+  assert.equal(generatableState.message, '분석 결과가 준비되었습니다. 리포트를 준비하는 중입니다. 완료되면 바로 확인할 수 있습니다.');
 
   assert.equal(resolveRunMonitorReportCtaState({
     isMockRun: false,
@@ -407,6 +433,13 @@ test('run monitor report CTA state follows backend report readiness', () => {
     isLoading: false,
     errorMessage: '',
   }).message, 'report failed');
+
+  assert.equal(resolveRunMonitorReportCtaState({
+    isMockRun: false,
+    report: { ...baseReport, reportStatus: 'FAILED', errorMessage: null },
+    isLoading: false,
+    errorMessage: '',
+  }).message, '리포트를 준비하지 못했습니다. 분석 상태를 확인해주세요.');
 
   assert.equal(resolveRunMonitorReportCtaState({
     isMockRun: false,

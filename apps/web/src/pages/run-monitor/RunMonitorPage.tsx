@@ -29,6 +29,7 @@ import {
   findEvidenceScreenshotArtifact,
   getApiCheckpoint,
   getApiProgressPercent,
+  getCurrentRunReportProjection,
   getDepthLabel,
   getDevicePresetLabel,
   getStatusTone,
@@ -57,11 +58,11 @@ type MonitorActionState = {
 
 const IDLE_MONITOR_ACTION_STATE: MonitorActionState = { kind: 'idle', message: '' };
 const REPORT_STATUS_LOAD_ERROR_MESSAGE = '리포트 상태를 불러오지 못했습니다. 잠시 후 다시 시도해주세요.';
-const GENERATE_REPORT_PENDING_MESSAGE = '리포트 생성 요청 중입니다.';
-const GENERATE_REPORT_SUCCESS_MESSAGE = '리포트 생성 요청이 완료됐습니다.';
-const GENERATE_REPORT_ERROR_MESSAGE = '리포트 생성 요청에 실패했습니다. 잠시 후 다시 시도해주세요.';
+const GENERATE_REPORT_PENDING_MESSAGE = '리포트 준비 중입니다.';
+const GENERATE_REPORT_SUCCESS_MESSAGE = '리포트 준비가 완료됐습니다.';
+const GENERATE_REPORT_ERROR_MESSAGE = '리포트를 준비하지 못했습니다. 잠시 후 다시 시도해주세요.';
 const REQUEST_ANALYSIS_PENDING_MESSAGE = '분석 요청 중입니다.';
-const REQUEST_ANALYSIS_SUCCESS_MESSAGE = '분석 요청이 접수됐습니다. 분석이 완료되면 리포트를 생성할 수 있습니다.';
+const REQUEST_ANALYSIS_SUCCESS_MESSAGE = '분석 요청이 접수됐습니다. 분석이 완료되면 리포트를 자동으로 준비합니다.';
 const REQUEST_ANALYSIS_ERROR_MESSAGE = '분석 요청에 실패했습니다. Run 상태 또는 접근 권한을 확인해주세요.';
 const RUN_MONITOR_PANEL_DEFAULT_WIDTH = 448;
 const RUN_MONITOR_PANEL_MIN_WIDTH = 336;
@@ -259,7 +260,6 @@ function RunMonitorLoadingShell({ runId, targetUrl }: { runId: string; targetUrl
                 <span aria-hidden="true" />
                 <RunMonitorSkeletonLine className="run-monitor-skeleton-line--checkpoint" />
               </div>
-              <span className="run-monitor-viewport-label">1440px 뷰포트</span>
             </div>
 
             <div className="run-monitor-browser" aria-hidden="true">
@@ -434,6 +434,7 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
   const [reportStatusError, setReportStatusError] = useState('');
   const [reportActionState, setReportActionState] = useState<MonitorActionState>(IDLE_MONITOR_ACTION_STATE);
   const activeRouteRunIdRef = useRef(runId);
+  const autoReportGenerationRunIdRef = useRef<string | null>(null);
   const isMonitorMountedRef = useRef(false);
   const cockpitRef = useRef<HTMLDivElement | null>(null);
   const [analysisPanelWidth, setAnalysisPanelWidth] = useState(RUN_MONITOR_PANEL_DEFAULT_WIDTH);
@@ -448,11 +449,38 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
 
   useEffect(() => {
     activeRouteRunIdRef.current = runId;
+    autoReportGenerationRunIdRef.current = null;
   }, [runId]);
 
   const canApplyReportResponse = useCallback((responseRunId: string) => {
     return isMonitorMountedRef.current && activeRouteRunIdRef.current === responseRunId;
   }, []);
+
+  const currentReportProjection = useMemo(
+    () => getCurrentRunReportProjection(reportProjection, run.id),
+    [reportProjection, run.id],
+  );
+
+  const generateReportForRun = useCallback((requestedRunId: string) => {
+    setReportActionState({ kind: 'pending', message: GENERATE_REPORT_PENDING_MESSAGE });
+    void generateRunReport(requestedRunId)
+      .then((response) => {
+        if (!canApplyReportResponse(requestedRunId)) {
+          return;
+        }
+
+        setReportProjection(response.data);
+        setReportStatusError('');
+        setReportActionState({ kind: 'success', message: GENERATE_REPORT_SUCCESS_MESSAGE });
+      })
+      .catch(() => {
+        if (!canApplyReportResponse(requestedRunId)) {
+          return;
+        }
+
+        setReportActionState({ kind: 'error', message: GENERATE_REPORT_ERROR_MESSAGE });
+      });
+  }, [canApplyReportResponse]);
 
   useEffect(() => {
     if (isMockRun || run.status !== 'COMPLETED' || run.id !== runId) {
@@ -501,7 +529,7 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
   }, [canApplyReportResponse, isMockRun, run.id, run.status, runId]);
 
   useEffect(() => {
-    if (isMockRun || run.status !== 'COMPLETED' || run.id !== runId || !shouldRefreshRunReport(reportProjection)) {
+    if (isMockRun || run.status !== 'COMPLETED' || run.id !== runId || !shouldRefreshRunReport(currentReportProjection)) {
       return;
     }
 
@@ -529,7 +557,23 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
       isActive = false;
       window.clearTimeout(refreshTimerId);
     };
-  }, [canApplyReportResponse, isMockRun, reportProjection, run.id, run.status, runId]);
+  }, [canApplyReportResponse, currentReportProjection, isMockRun, run.id, run.status, runId]);
+
+  useEffect(() => {
+    if (
+      isMockRun
+      || run.status !== 'COMPLETED'
+      || run.id !== runId
+      || currentReportProjection?.reportStatus !== 'GENERATABLE'
+      || reportActionState.kind === 'pending'
+      || autoReportGenerationRunIdRef.current === run.id
+    ) {
+      return;
+    }
+
+    autoReportGenerationRunIdRef.current = run.id;
+    generateReportForRun(run.id);
+  }, [currentReportProjection?.reportStatus, generateReportForRun, isMockRun, reportActionState.kind, run.id, run.status, runId]);
 
   const updateAnalysisPanelWidth = useCallback((nextWidth: number) => {
     const bounds = getResizablePanelBounds(cockpitRef.current);
@@ -605,7 +649,7 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
   const traceModeLabel = isApiFallback ? '모의 실행' : '실제 실행 상태';
   const reportCtaState = resolveRunMonitorReportCtaState({
     isMockRun,
-    report: reportProjection,
+    report: currentReportProjection,
     isLoading: isReportStatusLoading,
     errorMessage: reportStatusError,
   });
@@ -678,31 +722,13 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
       });
   };
 
-  const requestGenerateReport = () => {
+  const retryGenerateReport = () => {
     if (!canGenerateReport || isReportActionPending) {
       return;
     }
 
-    const requestedRunId = run.id;
-
-    setReportActionState({ kind: 'pending', message: GENERATE_REPORT_PENDING_MESSAGE });
-    void generateRunReport(requestedRunId)
-      .then((response) => {
-        if (!canApplyReportResponse(requestedRunId)) {
-          return;
-        }
-
-        setReportProjection(response.data);
-        setReportStatusError('');
-        setReportActionState({ kind: 'success', message: GENERATE_REPORT_SUCCESS_MESSAGE });
-      })
-      .catch(() => {
-        if (!canApplyReportResponse(requestedRunId)) {
-          return;
-        }
-
-        setReportActionState({ kind: 'error', message: GENERATE_REPORT_ERROR_MESSAGE });
-      });
+    autoReportGenerationRunIdRef.current = run.id;
+    generateReportForRun(run.id);
   };
 
   const requestAnalysisForReport = () => {
@@ -742,9 +768,11 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
   if (reportPath) {
     reportCtaStatusLabel = '준비됨';
   } else if (isReportActionPending) {
-    reportCtaStatusLabel = canRequestAnalysis ? '요청 중' : '생성 중';
+    reportCtaStatusLabel = canRequestAnalysis ? '요청 중' : '준비 중';
+  } else if (reportActionState.kind === 'error' && canGenerateReport) {
+    reportCtaStatusLabel = '확인 필요';
   } else if (canGenerateReport) {
-    reportCtaStatusLabel = '생성 가능';
+    reportCtaStatusLabel = '준비 중';
   } else if (canRequestAnalysis) {
     reportCtaStatusLabel = '분석 필요';
   } else if (reportCtaState.kind === 'waiting' || reportCtaState.kind === 'loading') {
@@ -757,15 +785,15 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
   if (reportPath) {
     reportCtaActionLabel = '리포트 보기';
   } else if (canGenerateReport) {
-    reportCtaActionLabel = isReportActionPending ? '생성 중' : '리포트 생성';
+    reportCtaActionLabel = reportActionState.kind === 'error' ? '다시 시도' : '리포트 준비 중';
   } else if (canRequestAnalysis) {
     reportCtaActionLabel = isReportActionPending ? '요청 중' : '분석 시작';
   }
 
   const reportCtaAction = reportPath ? (
     <a href={reportPath} onClick={openReport}>{reportCtaActionLabel}</a>
-  ) : canGenerateReport ? (
-    <button type="button" onClick={requestGenerateReport} disabled={isReportActionPending}>
+  ) : canGenerateReport && reportActionState.kind === 'error' ? (
+    <button type="button" onClick={retryGenerateReport} disabled={isReportActionPending}>
       {reportCtaActionLabel}
     </button>
   ) : canRequestAnalysis ? (
@@ -818,7 +846,6 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
                 <span aria-hidden="true" />
                 <p>{currentCheckpoint}</p>
               </div>
-              <span className="run-monitor-viewport-label">1440px 뷰포트</span>
             </div>
 
             {apiLoadError && (

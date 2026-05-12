@@ -450,6 +450,10 @@ export function canOpenRunReport(isMockRun: boolean, run?: Run, evidencePacket?:
   return run?.status === 'COMPLETED' && (evidencePacket?.checkpoints.length ?? 0) > 0;
 }
 
+export function getCurrentRunReportProjection(report: RunReportProjection | null, runId: string) {
+  return report?.runId === runId ? report : null;
+}
+
 export function resolveRunMonitorReportCtaState({
   isMockRun,
   report,
@@ -497,7 +501,7 @@ export function resolveRunMonitorReportCtaState({
       canOpenReport: false,
       titleLabel: '현재 체크포인트',
       eyebrow: '리포트 상태',
-      message: '분석 결과가 준비되었습니다. 리포트를 생성해 발견 신호와 개선안을 확인하세요.',
+      message: '분석 결과가 준비되었습니다. 리포트를 준비하는 중입니다. 완료되면 바로 확인할 수 있습니다.',
     };
   }
 
@@ -508,8 +512,8 @@ export function resolveRunMonitorReportCtaState({
       titleLabel: '현재 체크포인트',
       eyebrow: '리포트 상태',
       message: report.analysisStatus === 'NOT_STARTED'
-        ? '아직 분석이 시작되지 않았습니다. 분석 요청 후 리포트를 생성할 수 있습니다.'
-        : '분석 결과를 기다리는 중입니다. 완료되면 리포트 생성이 가능합니다.',
+        ? '아직 분석이 시작되지 않았습니다. 분석 요청 후 리포트를 자동으로 준비합니다.'
+        : '분석 결과를 기다리는 중입니다. 완료되면 리포트를 자동으로 준비합니다.',
     };
   }
 
@@ -519,7 +523,7 @@ export function resolveRunMonitorReportCtaState({
       canOpenReport: false,
       titleLabel: '현재 체크포인트',
       eyebrow: '리포트 상태',
-      message: report.errorMessage ?? '리포트 생성에 실패했습니다. 분석 상태를 확인해주세요.',
+      message: report.errorMessage ?? '리포트를 준비하지 못했습니다. 분석 상태를 확인해주세요.',
     };
   }
 

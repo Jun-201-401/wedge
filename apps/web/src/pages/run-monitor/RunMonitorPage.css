@@ -467,15 +467,6 @@
   white-space: nowrap;
 }
 
-.run-monitor-viewport-label {
-  flex: 0 0 auto;
-  color: #94a3b8;
-  font-size: 0.6rem;
-  font-weight: 900;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-}
-
 .run-monitor-api-warning {
   flex: 0 0 auto;
   margin: 0 0 1rem;
@@ -1660,7 +1651,6 @@
 
   .run-monitor-target-inline--optional,
   .run-monitor-topbar__divider,
-  .run-monitor-viewport-label,
   .run-monitor-section-title > span {
     display: none;
   }

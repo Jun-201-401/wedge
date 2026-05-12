@@ -15,6 +15,7 @@ export {
   getApiCheckpoint,
   getApiProgressPercent,
   getCheckpointArtifacts,
+  getCurrentRunReportProjection,
   getDepthLabel,
   getDevicePresetLabel,
   getEvidenceArtifactLabel,
