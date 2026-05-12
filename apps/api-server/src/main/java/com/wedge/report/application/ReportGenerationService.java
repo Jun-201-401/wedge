@@ -38,6 +38,8 @@ public class ReportGenerationService {
     private static final String GENERATABLE = "GENERATABLE";
     private static final String NOT_READY = "NOT_READY";
     private static final String FAILED = "FAILED";
+    private static final String SAFE_ANALYSIS_FAILURE_CODE = "ANALYSIS_FAILED";
+    private static final String SAFE_ANALYSIS_FAILURE_MESSAGE = "Analysis failed before report generation.";
 
     private final RunService runService;
     private final AnalysisJobMapper analysisJobMapper;
@@ -89,6 +91,9 @@ public class ReportGenerationService {
     }
 
     private RunReportResponse responseForLatestAnalysis(RunResponse run, AnalysisJob analysisJob, List<Report> reports) {
+        if (analysisJob.getStatus() == AnalysisJobStatus.FAILED) {
+            return failedAnalysisResponse(run, analysisJob);
+        }
         Report report = findReportForAnalysis(reports, analysisJob.getId());
         if (report != null) {
             return readyResponse(run.id(), report);
@@ -144,9 +149,13 @@ public class ReportGenerationService {
             return statusResponse(run.id(), GENERATABLE, analysisJob.getStatus().name(), analysisJob.getId(), null, null);
         }
         if (analysisJob.getStatus() == AnalysisJobStatus.FAILED) {
-            return statusResponse(run.id(), FAILED, analysisJob.getStatus().name(), analysisJob.getId(), analysisJob.getErrorCode(), analysisJob.getErrorMessage());
+            return failedAnalysisResponse(run, analysisJob);
         }
         return statusResponse(run.id(), NOT_READY, analysisJob.getStatus().name(), analysisJob.getId(), null, null);
+    }
+
+    private RunReportResponse failedAnalysisResponse(RunResponse run, AnalysisJob analysisJob) {
+        return statusResponse(run.id(), FAILED, analysisJob.getStatus().name(), analysisJob.getId(), SAFE_ANALYSIS_FAILURE_CODE, SAFE_ANALYSIS_FAILURE_MESSAGE);
     }
 
     private RunReportResponse emptyResponse(RunResponse run) {

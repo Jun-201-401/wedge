@@ -192,6 +192,22 @@ class ReportShareServiceTest {
         verify(evidenceService).getRunImageArtifactContent(runId, artifactId);
     }
 
+
+    @Test
+    void getSharedArtifactContentRejectsWhenActiveTokenPointsToDeletedReport() {
+        UUID reportId = UUID.randomUUID();
+        UUID artifactId = UUID.randomUUID();
+        when(reportShareMapper.findActiveByToken(SHARE_TOKEN, NOW)).thenReturn(Optional.of(share(reportId)));
+        when(reportMapper.findById(reportId)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> reportShareService.getSharedArtifactContent(SHARE_TOKEN, artifactId))
+                .isInstanceOfSatisfying(BusinessException.class, exception ->
+                        assertThat(exception.errorCode()).isEqualTo(ErrorCode.REPORT_NOT_FOUND)
+                );
+
+        verify(evidenceService, never()).getRunImageArtifactContent(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
+    }
+
     @Test
     void getSharedArtifactContentRejectsMissingExpiredOrRevokedToken() {
         UUID artifactId = UUID.randomUUID();
