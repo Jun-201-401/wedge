@@ -328,6 +328,13 @@ RUNNER_MQ_MAX_DELIVERY_ATTEMPTS=3
 - API callback은 `X-Event-Id` 기반 processed_message로 중복 callback을 duplicate ack 처리한다.
 - Runner HTTP callback client는 timeout/retry 후 callback outbox에 남기고 replay worker가 재전송한다.
 
+현재 partial failure policy:
+
+- `accepted` 이전 실패는 실행을 시작하지 않은 것으로 보고 failed callback의 `resultCompleteness=NONE`을 사용한다.
+- step events, artifact storage/callback, checkpoint callback, agent events/trace callback, failure evidence capture 실패는 실행 결과를 덮지 않고 `DELIVERY_PARTIAL` issue로 남긴다.
+- `finished` callback 실패는 terminal 완료 통지가 누락된 것이므로 실행 자체는 성공으로 보존하되 delivery status는 `DELIVERY_FAILED`로 승격한다.
+- `failed` callback까지 실패하면 원래 실행 실패와 failed callback 실패를 결합해 예외를 다시 던진다.
+
 ## 4.2.1 Agent decision client
 
 기본값은 rule-based heuristic decision client다.
@@ -404,9 +411,9 @@ signal을 남긴다. 단, 전체 layout tree/paint order 수준의 production la
 - HTTP callback mode에서는 step 사이에 `/internal/runner/runs/{runId}/control-state`를 조회해 `STOP_REQUESTED`를 소비하고, 다음 step 실행 전 stopped summary로 정상 종료한다.
 - Playwright page crash/browser disconnect/context close 신호는 `browser_health` state/observation으로 남기며, 실행 실패는 `RUNNER_BROWSER_CRASH`로 분류한다. Crash 이후 screenshot/DOM capture가 실패해도 원래 crash failure를 보존한다.
 - `run.execute.request`와 `discovery.execute.request`의 `idempotencyKey`가 있으면 runner-local terminal record를 `artifactsRoot/message-idempotency/{scope}`에 남기고, 같은 key의 재전달은 browser/session을 새로 열지 않고 이전 결과를 재사용한다.
+- callback partial failure impact는 코드의 `DELIVERY_FAILURE_IMPACT_BY_SCOPE`에 고정되어 있으며, `finished-callback`만 fatal delivery issue로 분류한다.
 
 추후 정리할 항목:
-- callback partial failure policy
 - per-step timeout policy
 - API/DB 기반 cross-runner idempotency lease
 

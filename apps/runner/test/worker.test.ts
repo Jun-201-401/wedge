@@ -471,6 +471,68 @@ test("[Worker recovery] browser crash는 전용 failure code로 실패하고 증
   assert.equal((failedPayload as RunnerFailedPayload).failureMessage, "Target page, context or browser has been closed");
 });
 
+test("[Worker lifecycle] checkpoint callback 실패는 partial delivery로 기록하고 finished는 계속 보낸다", async () => {
+  const message = await loadExampleMessage();
+  message.payload.scenarioPlan!.steps = [
+    {
+      step_id: "step_001_checkpoint",
+      stage: "FIRST_VIEW",
+      description: "checkpoint callback failure",
+      action: {
+        type: "checkpoint"
+      },
+      settle_strategy: {
+        type: "none",
+        timeout_ms: 0
+      },
+      checkpoint: true
+    }
+  ];
+  let finishedCount = 0;
+
+  const worker = registerWorker({
+    config: createRunnerTestConfig(),
+    browserFactory: {
+      kind: "simulated-playwright",
+      createSession: async () => createSimulatedSession(message.payload.scenarioPlan!)
+    },
+    callbackClient: createStubCallbackClient({
+      sendCheckpoints: async () => {
+        throw new Error("checkpoint callback unavailable");
+      },
+      sendFinished: async () => {
+        finishedCount += 1;
+      }
+    }),
+    capturePipeline: {
+      collectCheckpoint: async ({ step, settleResult }) => ({
+        checkpoint: {
+          checkpointId: "checkpoint-1",
+          stepKey: step.step_id,
+          stage: step.stage,
+          trigger: {},
+          settle: { ...settleResult },
+          state: {},
+          observations: [],
+          deltas: []
+        },
+        artifacts: []
+      })
+    },
+    artifactStore: {
+      persistArtifacts: async () => []
+    }
+  });
+
+  const result = await worker.handleMessage(message);
+
+  assert.equal(result.summary.completedStepCount, 1);
+  assert.equal(result.delivery.status, "DELIVERY_PARTIAL");
+  assert.deepEqual(result.delivery.issues.map((issue) => issue.scope), ["checkpoints-callback"]);
+  assert.deepEqual(result.delivery.issues.map((issue) => issue.impact), ["partial"]);
+  assert.equal(finishedCount, 1);
+});
+
 test("[Worker lifecycle] 실행 자체가 성공했다면 finished callback 실패만으로 실행 실패로 바꾸지 않는다", async () => {
   const message = await loadExampleMessage();
   message.payload.scenarioPlan!.steps = [

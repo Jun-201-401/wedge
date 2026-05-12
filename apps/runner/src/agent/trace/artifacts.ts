@@ -1,5 +1,5 @@
 import type { CallbackClient } from "../../callback/index.ts";
-import type { DeliveryIssue } from "../../delivery/index.ts";
+import { createDeliveryIssue, type DeliveryIssue } from "../../delivery/index.ts";
 import type { AgentTask, Artifact, ArtifactDraft } from "../../shared/contracts.ts";
 import { errorMessage } from "../../shared/utils.ts";
 import type { ArtifactStore } from "../../storage/index.ts";
@@ -90,11 +90,11 @@ async function persistAgentArtifact({
       artifacts: [createArtifact()]
     });
   } catch (error) {
-    deliveryIssues.push({
+    deliveryIssues.push(createDeliveryIssue({
       scope: "artifact-storage",
       stepKey,
       message: `${storageFailureMessage}: ${errorMessage(error)}`
-    });
+    }));
   }
 
   if (storedArtifacts.length > 0) {
@@ -103,11 +103,11 @@ async function persistAgentArtifact({
         artifacts: storedArtifacts
       });
     } catch (error) {
-      deliveryIssues.push({
+      deliveryIssues.push(createDeliveryIssue({
         scope: "artifacts-callback",
         stepKey,
         message: `${callbackFailureMessage}: ${errorMessage(error)}`
-      });
+      }));
     }
   }
 

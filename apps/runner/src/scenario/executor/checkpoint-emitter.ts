@@ -1,7 +1,7 @@
 import type { BrowserActionResult, BrowserCapturedArtifacts, BrowserSession } from "../../browser/playwright/index.ts";
 import type { CallbackClient } from "../../callback/index.ts";
 import type { CapturePipeline, JourneyDepthContext } from "../../capture/index.ts";
-import type { DeliveryIssue } from "../../delivery/index.ts";
+import { createDeliveryIssue, type DeliveryIssue } from "../../delivery/index.ts";
 import {
   createEmptyCollectorStatusSummary,
   summarizeArtifactManifest,
@@ -129,11 +129,11 @@ export async function emitFailureCheckpointArtifactsAndCallbacks({
   } catch (error) {
     return {
       deliveryIssues: [
-        {
+        createDeliveryIssue({
           scope: "failure-capture",
           stepKey: step.step_id,
           message: `failure evidence capture failed: ${errorMessage(error)}`
-        }
+        })
       ],
       artifactRefs: [],
       artifactManifest: summarizeArtifactManifest({
@@ -173,33 +173,33 @@ async function emitCheckpointCollection({
       artifacts: collection.artifacts
     });
   } catch (error) {
-    deliveryIssues.push({
+    deliveryIssues.push(createDeliveryIssue({
       scope: "artifact-storage",
       stepKey: step.step_id,
       message: `artifact storage failed: ${errorMessage(error)}`
-    });
+    }));
   }
 
   if (storedArtifacts.length > 0) {
     try {
       await callbackClient.sendArtifacts(runId, createArtifactBatch(storedArtifacts));
     } catch (error) {
-      deliveryIssues.push({
+      deliveryIssues.push(createDeliveryIssue({
         scope: "artifacts-callback",
         stepKey: step.step_id,
         message: `artifact callback failed: ${errorMessage(error)}`
-      });
+      }));
     }
   }
 
   try {
     await callbackClient.sendCheckpoints(runId, createCheckpointRequest(collection.checkpoint, storedArtifacts));
   } catch (error) {
-    deliveryIssues.push({
+    deliveryIssues.push(createDeliveryIssue({
       scope: "checkpoints-callback",
       stepKey: step.step_id,
       message: `checkpoint callback failed: ${errorMessage(error)}`
-    });
+    }));
   }
 
   const artifactManifest = summarizeArtifactManifest({

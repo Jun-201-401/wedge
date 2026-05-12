@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { CallbackClient } from "../../callback/index.ts";
-import type { DeliveryIssue } from "../../delivery/index.ts";
+import { createDeliveryIssue, type DeliveryIssue } from "../../delivery/index.ts";
 import type { StepEvent, StepEventBatch } from "../../shared/contracts.ts";
 import { errorMessage, toIsoTimestamp } from "../../shared/utils.ts";
 
@@ -48,11 +48,11 @@ export async function emitStepEventBestEffort(
     return [];
   } catch (error) {
     return [
-      {
+      createDeliveryIssue({
         scope: "step-events",
         stepKey,
         message: `step event ${eventType} delivery failed: ${errorMessage(error)}`
-      }
+      })
     ];
   }
 }

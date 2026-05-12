@@ -1,18 +1,19 @@
 export type DeliveryStatus = "DELIVERY_COMPLETE" | "DELIVERY_PARTIAL" | "DELIVERY_FAILED";
+export type DeliveryFailureImpact = "partial" | "fatal";
+export type DeliveryIssueScope =
+  | "step-events"
+  | "artifact-storage"
+  | "artifacts-callback"
+  | "agent-events-callback"
+  | "agent-trace-callback"
+  | "checkpoints-callback"
+  | "failure-capture"
+  | "finished-callback";
 
 export interface DeliveryIssue {
-  scope:
-    | "step-events"
-    | "artifact-storage"
-    | "artifacts-callback"
-    | "agent-events-callback"
-    | "agent-trace-callback"
-    | "checkpoints-callback"
-    | "failure-capture"
-    | "finished-callback"
-    | "agent-events-callback"
-    | "agent-trace-callback";
+  scope: DeliveryIssueScope;
   stepKey?: string;
+  impact?: DeliveryFailureImpact;
   message: string;
 }
 
@@ -21,7 +22,23 @@ export interface DeliverySummary {
   issues: DeliveryIssue[];
 }
 
-const FATAL_DELIVERY_SCOPES = new Set<DeliveryIssue["scope"]>(["finished-callback"]);
+export const DELIVERY_FAILURE_IMPACT_BY_SCOPE: Record<DeliveryIssueScope, DeliveryFailureImpact> = {
+  "step-events": "partial",
+  "artifact-storage": "partial",
+  "artifacts-callback": "partial",
+  "agent-events-callback": "partial",
+  "agent-trace-callback": "partial",
+  "checkpoints-callback": "partial",
+  "failure-capture": "partial",
+  "finished-callback": "fatal"
+};
+
+export function createDeliveryIssue(input: DeliveryIssue): DeliveryIssue {
+  return {
+    ...input,
+    impact: input.impact ?? resolveDeliveryIssueImpact(input)
+  };
+}
 
 export function createDeliverySummary(issues: DeliveryIssue[] = []): DeliverySummary {
   return {
@@ -51,5 +68,9 @@ function hasDeliveryIssues(issues: DeliveryIssue[]): boolean {
 }
 
 function hasFatalDeliveryIssue(issues: DeliveryIssue[]): boolean {
-  return issues.some((issue) => FATAL_DELIVERY_SCOPES.has(issue.scope));
+  return issues.some((issue) => resolveDeliveryIssueImpact(issue) === "fatal");
+}
+
+export function resolveDeliveryIssueImpact(issue: DeliveryIssue): DeliveryFailureImpact {
+  return issue.impact ?? DELIVERY_FAILURE_IMPACT_BY_SCOPE[issue.scope];
 }

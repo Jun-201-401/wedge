@@ -1,5 +1,5 @@
 import type { CallbackClient } from "../callback/index.ts";
-import type { DeliveryIssue } from "../delivery/index.ts";
+import { createDeliveryIssue, type DeliveryIssue } from "../delivery/index.ts";
 import type { ScenarioExecutionSummary } from "../scenario/executor/index.ts";
 import { classifyRunnerFailure, errorMessage, toIsoTimestamp, type RunnerFailureCode } from "../shared/utils.ts";
 
@@ -57,10 +57,10 @@ export async function emitFinishedCallback({
     return [];
   } catch (error) {
     return [
-      {
+      createDeliveryIssue({
         scope: "finished-callback",
         message: `finished callback failed: ${errorMessage(error)}`
-      }
+      })
     ];
   }
 }

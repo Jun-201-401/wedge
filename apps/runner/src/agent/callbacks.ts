@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { CallbackClient } from "../callback/index.ts";
-import type { DeliveryIssue } from "../delivery/index.ts";
+import { createDeliveryIssue, type DeliveryIssue } from "../delivery/index.ts";
 import type { AgentCallbackEventType, AgentEventBatch, AgentTask, AgentTraceCallbackPayload, Artifact } from "../shared/contracts.ts";
 import { errorMessage, toIsoTimestamp } from "../shared/utils.ts";
 import { redactAgentTrace, redactSensitiveValue } from "./redaction.ts";
@@ -40,11 +40,11 @@ export async function emitAgentEventBestEffort(
     return [];
   } catch (error) {
     return [
-      {
+      createDeliveryIssue({
         scope: "agent-events-callback",
         stepKey: turn ? `agent_turn_${String(turn).padStart(3, "0")}` : "agent",
         message: `agent event ${eventType} delivery failed: ${errorMessage(error)}`
-      }
+      })
     ];
   }
 }
@@ -75,11 +75,11 @@ export async function emitAgentTraceBestEffort(
     return [];
   } catch (error) {
     return [
-      {
+      createDeliveryIssue({
         scope: "agent-trace-callback",
         stepKey: "agent_trace",
         message: `agent trace callback failed: ${errorMessage(error)}`
-      }
+      })
     ];
   }
 }
