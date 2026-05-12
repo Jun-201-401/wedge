@@ -1,9 +1,13 @@
 package com.wedge.report.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.wedge.common.error.BusinessException;
+import com.wedge.common.error.ErrorCode;
 import com.wedge.analysis.domain.AnalysisFinding;
 import com.wedge.analysis.domain.Nudge;
 import com.wedge.analysis.infrastructure.AnalysisFindingMapper;
@@ -106,6 +110,21 @@ class ReportDetailQueryServiceTest {
         assertThat(response.findings().get(0).previewImage().source()).isEqualTo("HIGHLIGHT_SCREENSHOT");
         assertThat(response.findings().get(0).previewImage().artifact().id()).isEqualTo(highlightArtifactId);
         assertThat(response.findings().get(0).highlight().screenshotArtifactId()).isEqualTo(highlightArtifactId.toString());
+    }
+
+
+    @Test
+    void getReportDetailRejectsMissingOrDeletedReportBeforeRunLookup() {
+        UUID reportId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        when(reportMapper.findById(reportId)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> reportDetailQueryService.getReportDetail(reportId, userId))
+                .isInstanceOfSatisfying(BusinessException.class, exception ->
+                        assertThat(exception.errorCode()).isEqualTo(ErrorCode.REPORT_NOT_FOUND)
+                );
+
+        verifyNoInteractions(runService, projectAccessService, analysisFindingMapper, nudgeMapper, artifactMapper);
     }
 
     private Report report(UUID runId, UUID analysisJobId) {
