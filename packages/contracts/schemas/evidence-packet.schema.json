@@ -280,6 +280,14 @@
             "console_error",
             "settle_response",
             "settle_item_count_change",
+            "journey_action_raw",
+            "product_card",
+            "product_detail_signal",
+            "goal_action_candidate",
+            "goal_action_result",
+            "category_filter_signal",
+            "depth_from_discovery",
+            "text_block_metrics",
             "performance_metric",
             "scroll_delta",
             "flow_candidate",
@@ -365,6 +373,11 @@
         },
         "uri": {
           "type": "string"
+        },
+        "signed_url": {
+          "type": "string",
+          "format": "uri",
+          "description": "Optional time-limited HTTP(S) URL for image-capable consumers such as Analyzer GMS screenshot checks."
         },
         "mime_type": {
           "type": "string"

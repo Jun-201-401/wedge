@@ -49,6 +49,18 @@ export function targetFromComponent(component: InteractiveComponentObservationIt
     target.text = component.text;
   }
 
+  if (component.label_text) {
+    target.label = component.label_text;
+  }
+
+  if (component.placeholder) {
+    target.placeholder = component.placeholder;
+  }
+
+  if (component.name) {
+    target.name = component.name;
+  }
+
   if (component.href) {
     target.url = component.href;
   }
@@ -64,6 +76,10 @@ export function candidateText(component: InteractiveComponentObservationItem): s
   return [
     component.text,
     component.role ?? "",
+    component.label_text ?? "",
+    component.placeholder ?? "",
+    component.name ?? "",
+    component.input_type ?? "",
     component.href ?? "",
     component.selector ?? "",
     component.tag
@@ -82,6 +98,13 @@ export function candidateFingerprint(component: InteractiveComponentObservationI
     selector: normalizeText(component.selector),
     role: normalizeText(component.role),
     text: normalizeText(component.text),
+    input_type: normalizeText(component.input_type),
+    label_text: normalizeText(component.label_text),
+    placeholder: normalizeText(component.placeholder),
+    name: normalizeText(component.name),
+    required: component.required === true,
+    disabled: component.disabled === true,
+    is_form_control: component.is_form_control === true,
     href: normalizeUrl(component.href),
     tag: normalizeText(component.tag),
     frame_id: normalizeText(component.frame_id),

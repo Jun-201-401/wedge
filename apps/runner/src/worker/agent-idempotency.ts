@@ -24,6 +24,14 @@ export interface AgentIdempotencyStore {
     idempotencyKey: string,
     input: AgentIdempotencyClaimInput
   ): Promise<AgentIdempotencyClaimResult>;
+  renew?(
+    idempotencyKey: string,
+    input: AgentIdempotencyClaimInput
+  ): Promise<AgentIdempotencyClaimResult>;
+  release?(
+    idempotencyKey: string,
+    input: AgentIdempotencyClaimInput
+  ): Promise<void>;
 }
 
 export interface AgentIdempotencyClaimInput {
@@ -77,6 +85,8 @@ export function createApiAgentIdempotencyStore(
 
   return {
     claim: (idempotencyKey, input) => claimApiAgentIdempotencyResult(config, idempotencyKey, input),
+    renew: (idempotencyKey, input) => renewApiAgentIdempotencyResult(config, idempotencyKey, input),
+    release: (idempotencyKey, input) => releaseApiAgentIdempotencyResult(config, idempotencyKey, input),
     read: (idempotencyKey) => readApiAgentIdempotencyResult(config, idempotencyKey),
     persist: (idempotencyKey, result) => persistApiAgentIdempotencyResult(config, idempotencyKey, result)
   };
@@ -213,6 +223,56 @@ async function claimApiAgentIdempotencyResult(
     throw new Error("agent idempotency claim API returned an empty record");
   }
 
+  return apiAgentIdempotencyRecordToClaimResult(record, config.workerId);
+}
+
+async function renewApiAgentIdempotencyResult(
+  config: Pick<RunnerConfig, "workerId" | "callbackBaseUrl" | "callbackTimeoutMs" | "callbackAuthToken" | "callbackSignatureSecret" | "agentIdempotencyLeaseTtlMs">,
+  idempotencyKey: string,
+  input: AgentIdempotencyClaimInput
+): Promise<AgentIdempotencyClaimResult> {
+  const idempotencyKeyHash = agentIdempotencyKeyHash(idempotencyKey);
+  const body = JSON.stringify({
+    runId: input.runId,
+    taskId: input.taskId,
+    attemptId: input.attemptId,
+    attemptIndex: input.attemptIndex,
+    leaseTtlMs: config.agentIdempotencyLeaseTtlMs
+  });
+  const response = await requestApiAgentIdempotencyRecord(config, idempotencyKeyHash, "POST", body, "/renew");
+  const envelope = await response.json() as { data?: ApiAgentIdempotencyRecord };
+  const record = envelope.data;
+
+  if (!record?.found) {
+    return {
+      status: "IN_PROGRESS",
+      claimedBy: null,
+      leaseExpiresAt: null
+    };
+  }
+
+  return apiAgentIdempotencyRecordToClaimResult(record, config.workerId);
+}
+
+async function releaseApiAgentIdempotencyResult(
+  config: Pick<RunnerConfig, "workerId" | "callbackBaseUrl" | "callbackTimeoutMs" | "callbackAuthToken" | "callbackSignatureSecret">,
+  idempotencyKey: string,
+  input: AgentIdempotencyClaimInput
+): Promise<void> {
+  const idempotencyKeyHash = agentIdempotencyKeyHash(idempotencyKey);
+  const body = JSON.stringify({
+    runId: input.runId,
+    taskId: input.taskId,
+    attemptId: input.attemptId,
+    attemptIndex: input.attemptIndex
+  });
+  await requestApiAgentIdempotencyRecord(config, idempotencyKeyHash, "POST", body, "/release");
+}
+
+function apiAgentIdempotencyRecordToClaimResult(
+  record: ApiAgentIdempotencyRecord,
+  workerId: string
+): AgentIdempotencyClaimResult {
   if (record.status === "COMPLETED" && record.result) {
     return {
       status: "COMPLETED",
@@ -220,7 +280,7 @@ async function claimApiAgentIdempotencyResult(
     };
   }
 
-  if (record.status === "CLAIMED" && record.claimedBy === config.workerId) {
+  if (record.status === "CLAIMED" && record.claimedBy === workerId) {
     return { status: "CLAIMED" };
   }
 

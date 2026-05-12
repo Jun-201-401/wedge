@@ -5,7 +5,7 @@ export type RunnerBrowserMode = "simulated" | "playwright";
 export type RunnerBrowserName = "chromium" | "firefox" | "webkit";
 export type RunnerCallbackMode = "file" | "http";
 export type RunnerArtifactStoreMode = "filesystem" | "s3";
-export type RunnerAgentDecisionMode = "heuristic" | "llm";
+export type RunnerAgentDecisionMode = "heuristic" | "llm" | "mcp";
 export type RunnerAgentIdempotencyStoreMode = "local" | "api";
 
 const DEFAULT_RETRY_DELAYS_MS = [200, 1000, 3000] as const;
@@ -19,6 +19,7 @@ const DEFAULT_BROWSER_TIMEOUT_MS = 30_000;
 const DEFAULT_SIMULATED_DELAY_CAP_MS = 25;
 const DEFAULT_MQ_MAX_DELIVERY_ATTEMPTS = 3;
 const DEFAULT_AGENT_LLM_TIMEOUT_MS = 10_000;
+const DEFAULT_AGENT_MCP_GATEWAY_TIMEOUT_MS = 10_000;
 const DEFAULT_AGENT_IDEMPOTENCY_LEASE_TTL_MS = 300_000;
 export const RUNNER_MQ_CALLBACK_OUTBOX_WORKER_ENABLED_ENV = "RUNNER_MQ_CALLBACK_OUTBOX_WORKER_ENABLED";
 export const RUNNER_MQ_ARTIFACT_OUTBOX_WORKER_ENABLED_ENV = "RUNNER_MQ_ARTIFACT_OUTBOX_WORKER_ENABLED";
@@ -66,6 +67,7 @@ export interface RunnerConfig {
   agentIdempotencyStoreEnabled: boolean;
   agentIdempotencyStoreMode: RunnerAgentIdempotencyStoreMode;
   agentIdempotencyLeaseTtlMs: number;
+  agentIdempotencyRenewIntervalMs: number;
   mqRequeueOnFailure: boolean;
   mqMaxDeliveryAttempts: number;
   mqCallbackOutboxWorkerEnabled: boolean;
@@ -83,6 +85,9 @@ export interface RunnerConfig {
   agentLlmApiKey?: string;
   agentLlmModel: string;
   agentLlmTimeoutMs: number;
+  agentMcpGatewayUrl?: string;
+  agentMcpServiceToken?: string;
+  agentMcpGatewayTimeoutMs: number;
 }
 
 export function loadRunnerConfig(overrides: Partial<RunnerConfig> = {}): RunnerConfig {
@@ -185,6 +190,11 @@ export function loadRunnerConfig(overrides: Partial<RunnerConfig> = {}): RunnerC
     process.env.RUNNER_AGENT_IDEMPOTENCY_LEASE_TTL_MS,
     DEFAULT_AGENT_IDEMPOTENCY_LEASE_TTL_MS
   );
+  const agentIdempotencyRenewIntervalMs = parsePositiveInteger(
+    overrides.agentIdempotencyRenewIntervalMs,
+    process.env.RUNNER_AGENT_IDEMPOTENCY_RENEW_INTERVAL_MS,
+    Math.max(1_000, Math.floor(agentIdempotencyLeaseTtlMs / 2))
+  );
   const mqRequeueOnFailure = parseBoolean(
     overrides.mqRequeueOnFailure,
     process.env.RUNNER_MQ_REQUEUE_ON_FAILURE,
@@ -228,6 +238,11 @@ export function loadRunnerConfig(overrides: Partial<RunnerConfig> = {}): RunnerC
     overrides.agentLlmTimeoutMs,
     process.env.RUNNER_AGENT_LLM_TIMEOUT_MS,
     DEFAULT_AGENT_LLM_TIMEOUT_MS
+  );
+  const agentMcpGatewayTimeoutMs = parsePositiveInteger(
+    overrides.agentMcpGatewayTimeoutMs,
+    process.env.RUNNER_AGENT_MCP_GATEWAY_TIMEOUT_MS,
+    DEFAULT_AGENT_MCP_GATEWAY_TIMEOUT_MS
   );
 
   return {
@@ -287,6 +302,7 @@ export function loadRunnerConfig(overrides: Partial<RunnerConfig> = {}): RunnerC
     agentIdempotencyStoreEnabled,
     agentIdempotencyStoreMode,
     agentIdempotencyLeaseTtlMs,
+    agentIdempotencyRenewIntervalMs,
     mqRequeueOnFailure,
     mqMaxDeliveryAttempts,
     mqCallbackOutboxWorkerEnabled,
@@ -307,7 +323,10 @@ export function loadRunnerConfig(overrides: Partial<RunnerConfig> = {}): RunnerC
     agentLlmEndpoint: overrides.agentLlmEndpoint ?? process.env.RUNNER_AGENT_LLM_ENDPOINT ?? undefined,
     agentLlmApiKey: overrides.agentLlmApiKey ?? process.env.RUNNER_AGENT_LLM_API_KEY ?? undefined,
     agentLlmModel: overrides.agentLlmModel ?? process.env.RUNNER_AGENT_LLM_MODEL ?? "agent-decision",
-    agentLlmTimeoutMs
+    agentLlmTimeoutMs,
+    agentMcpGatewayUrl: overrides.agentMcpGatewayUrl ?? process.env.RUNNER_AGENT_MCP_GATEWAY_URL ?? undefined,
+    agentMcpServiceToken: overrides.agentMcpServiceToken ?? process.env.RUNNER_AGENT_MCP_SERVICE_TOKEN ?? undefined,
+    agentMcpGatewayTimeoutMs
   };
 }
 
@@ -355,7 +374,7 @@ function parseBrowserName(value: RunnerConfig["browserName"] | string | undefine
 }
 
 function resolveAgentDecisionMode(value: RunnerAgentDecisionMode | string | undefined): RunnerAgentDecisionMode {
-  return value === "llm" ? "llm" : "heuristic";
+  return value === "llm" || value === "mcp" ? value : "heuristic";
 }
 
 function resolveAgentIdempotencyStoreMode(value: RunnerAgentIdempotencyStoreMode | string | undefined): RunnerAgentIdempotencyStoreMode {

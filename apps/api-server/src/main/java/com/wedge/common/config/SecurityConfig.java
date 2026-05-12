@@ -62,7 +62,11 @@ public class SecurityConfig {
                                 "/swagger-ui.html",
                                 "/v3/api-docs/**"
                         ).permitAll()
-                        .requestMatchers(HttpMethod.GET, "/api/report-shares/**").permitAll()
+                        .requestMatchers(
+                                HttpMethod.GET,
+                                "/api/report-shares/*",
+                                "/api/report-shares/*/artifacts/*/content"
+                        ).permitAll()
                         .requestMatchers(
                                 "/api/auth/logout",
                                 "/api/auth/me",
@@ -75,7 +79,7 @@ public class SecurityConfig {
                                 "/api/scenario-authoring-jobs",
                                 "/api/scenario-authoring-jobs/**"
                         ).authenticated()
-                        .requestMatchers("/internal/runner/**", "/internal/analysis/**").hasRole("INTERNAL_RUNNER")
+                        .requestMatchers("/internal/runner/**", "/internal/analysis/**", "/internal/agent/**").hasRole("INTERNAL_RUNNER")
                         // InternalServiceTokenFilter validates the MCP bearer token before Streamable HTTP async dispatch.
                         .requestMatchers("/mcp", "/mcp/**").permitAll()
                         .requestMatchers("/api/**", "/internal/**").denyAll()

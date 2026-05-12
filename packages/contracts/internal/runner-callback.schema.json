@@ -251,6 +251,13 @@
         },
         "summary": {
           "$ref": "#/$defs/Finished/properties/summary"
+        },
+        "failureArtifactRefs": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
         }
       },
       "required": [
@@ -259,6 +266,44 @@
         "failureCode",
         "failureMessage",
         "resultCompleteness"
+      ]
+    },
+    "ControlState": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "runId": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "CREATED",
+            "QUEUED",
+            "STARTING",
+            "RUNNING",
+            "STOP_REQUESTED",
+            "STOPPED",
+            "COMPLETED",
+            "FAILED"
+          ]
+        },
+        "stopRequested": {
+          "type": "boolean"
+        },
+        "resultCompleteness": {
+          "type": "string",
+          "enum": [
+            "NONE",
+            "PARTIAL",
+            "FINAL"
+          ]
+        }
+      },
+      "required": [
+        "runId",
+        "status",
+        "stopRequested"
       ]
     },
     "Checkpoint": {
@@ -338,6 +383,37 @@
                 "current_count": 3,
                 "expected_count": 3,
                 "count_delta": 2
+              },
+              {
+                "observation_id": "step_002_checkpoint.obs_journey_action_raw",
+                "type": "journey_action_raw",
+                "stage": "CTA",
+                "source": [
+                  "scenario_log",
+                  "dom",
+                  "browser",
+                  "network"
+                ],
+                "confidence": 0.8,
+                "step_order": 2,
+                "step_key": "step_002_checkpoint",
+                "action_type": "click",
+                "clicked_text": "무료로 시작하기",
+                "clicked_selector": "a.hero-start",
+                "url_before": "https://example.com",
+                "url_after": "https://example.com/signup",
+                "title_before": "Landing",
+                "title_after": "Sign up",
+                "dom_changed": true,
+                "settle_status": "settled",
+                "screenshot_artifact_id": "artifact-item-count-screenshot",
+                "bbox": {
+                  "x": 520,
+                  "y": 360,
+                  "width": 220,
+                  "height": 56,
+                  "unit": "css_px"
+                }
               },
               {
                 "observation_id": "step_002_checkpoint.obs_interactive_components",
@@ -990,6 +1066,34 @@
         "CTA",
         "INPUT",
         "COMMIT"
+      ]
+    },
+    "AgentEventBatch": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "events": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "../schemas/agent-event.schema.json"
+          }
+        }
+      },
+      "required": [
+        "events"
+      ]
+    },
+    "AgentTraceRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "trace": {
+          "$ref": "../schemas/agent-trace.schema.json"
+        }
+      },
+      "required": [
+        "trace"
       ]
     }
   }

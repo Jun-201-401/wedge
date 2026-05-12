@@ -8,6 +8,7 @@ import type {
   DiscoveryFinishedPayload,
   RunnerAcceptedPayload,
   RunnerCheckpointsRequest,
+  RunnerControlStatePayload,
   RunnerFailedPayload,
   RunnerFinishedPayload,
   StepEventBatch
@@ -43,6 +44,7 @@ export interface CallbackClient {
   sendDiscoveryCheckpoints?: (discoveryId: string, payload: DiscoveryCheckpointRequest) => Promise<void>;
   sendDiscoveryFinished?: (discoveryId: string, payload: DiscoveryFinishedPayload) => Promise<void>;
   sendDiscoveryFailed?: (discoveryId: string, payload: DiscoveryFailedPayload) => Promise<void>;
+  readRunControlState?: (runId: string) => Promise<RunnerControlStatePayload>;
 }
 
 const CALLBACK_METHOD_NAMES = {

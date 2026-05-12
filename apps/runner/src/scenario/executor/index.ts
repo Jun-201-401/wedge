@@ -1,10 +1,11 @@
 import type { BrowserSession } from "../../browser/playwright/index.ts";
 import type { CallbackClient } from "../../callback/index.ts";
-import type { CapturePipeline } from "../../capture/index.ts";
+import type { CapturePipeline, JourneyDepthContext } from "../../capture/index.ts";
 import { createDeliverySummary, mergeDeliveryIssues, type DeliveryIssue, type DeliverySummary } from "../../delivery/index.ts";
 import type { ArtifactStore } from "../../storage/index.ts";
 import type { ScenarioPlan } from "../../shared/contracts.ts";
 import { classifyRunnerFailure, errorMessage, logOperationalEvent, type RunnerFailureCode } from "../../shared/utils.ts";
+import { emitFailureCheckpointArtifactsAndCallbacks } from "./checkpoint-emitter.ts";
 import { executeScenarioStep } from "./step-executor.ts";
 import { emitStepEventBestEffort } from "./step-events.ts";
 
@@ -25,6 +26,7 @@ export class ScenarioExecutionError extends Error {
   readonly failedStepKey: string;
   readonly failedStepOrder: number;
   readonly failureCode: RunnerFailureCode;
+  readonly failureArtifactRefs: string[];
   readonly cause: unknown;
 
   constructor(input: {
@@ -34,6 +36,7 @@ export class ScenarioExecutionError extends Error {
     failedStepKey: string;
     failedStepOrder: number;
     failureCode: RunnerFailureCode;
+    failureArtifactRefs?: string[];
   }) {
     super(errorMessage(input.cause));
     this.name = "ScenarioExecutionError";
@@ -42,6 +45,7 @@ export class ScenarioExecutionError extends Error {
     this.failedStepKey = input.failedStepKey;
     this.failedStepOrder = input.failedStepOrder;
     this.failureCode = input.failureCode;
+    this.failureArtifactRefs = input.failureArtifactRefs ?? [];
     this.cause = input.cause;
   }
 }
@@ -66,9 +70,15 @@ export async function executeScenario({
   let completedStepCount = 0;
   let stopped = false;
   const deliveryIssues: DeliveryIssue[] = [];
+  const journeyDepthContext: JourneyDepthContext = {};
 
   for (const [index, step] of plan.steps.entries()) {
     const stepOrder = index + 1;
+    if (await shouldStopForControlSignal(callbackClient, runId, stepOrder, step.step_id)) {
+      stopped = true;
+      break;
+    }
+
     let stepResult;
     try {
       stepResult = await executeScenarioStep({
@@ -79,7 +89,8 @@ export async function executeScenario({
         session,
         callbackClient,
         capturePipeline,
-        artifactStore
+        artifactStore,
+        journeyDepthContext
       });
     } catch (error) {
       const failureCode = classifyRunnerFailure(error);
@@ -112,6 +123,20 @@ export async function executeScenario({
         )
       );
 
+      const failureEvidence = await emitFailureCheckpointArtifactsAndCallbacks({
+        runId,
+        stepOrder,
+        step,
+        plan,
+        failureCode,
+        failureMessage,
+        session,
+        callbackClient,
+        capturePipeline,
+        artifactStore
+      });
+      deliveryIssues.push(...failureEvidence.deliveryIssues);
+
       const summary = {
         completedStepCount,
         failedStepCount: 1,
@@ -123,7 +148,8 @@ export async function executeScenario({
         delivery: createDeliverySummary(mergeDeliveryIssues(deliveryIssues)),
         failedStepKey: step.step_id,
         failedStepOrder: stepOrder,
-        failureCode
+        failureCode,
+        failureArtifactRefs: failureEvidence.artifactRefs
       });
     }
 
@@ -144,4 +170,48 @@ export async function executeScenario({
     },
     delivery: createDeliverySummary(mergeDeliveryIssues(deliveryIssues))
   };
+}
+
+async function shouldStopForControlSignal(
+  callbackClient: CallbackClient,
+  runId: string,
+  nextStepOrder: number,
+  nextStepKey: string
+): Promise<boolean> {
+  if (!callbackClient.readRunControlState) {
+    return false;
+  }
+
+  try {
+    const controlState = await callbackClient.readRunControlState(runId);
+    const stopRequested = controlState.stopRequested === true || controlState.status === "STOP_REQUESTED";
+    if (stopRequested) {
+      logOperationalEvent(
+        "scenario-executor",
+        "stop_requested",
+        {
+          runId,
+          nextStepOrder,
+          nextStepKey,
+          status: controlState.status,
+          resultCompleteness: controlState.resultCompleteness ?? null
+        },
+        "warn"
+      );
+    }
+    return stopRequested;
+  } catch (error) {
+    logOperationalEvent(
+      "scenario-executor",
+      "control_state_read_failed",
+      {
+        runId,
+        nextStepOrder,
+        nextStepKey,
+        errorMessage: errorMessage(error)
+      },
+      "warn"
+    );
+    return false;
+  }
 }

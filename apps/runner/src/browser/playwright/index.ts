@@ -8,23 +8,33 @@ import {
   type Frame,
   type Locator,
   type BrowserType,
-  type Page
+  type Page,
+  type Request
 } from "playwright";
 import { createCdpSession, type CdpSessionMetadata } from "../cdp/index.ts";
 import type { RunnerBrowserName, RunnerConfig } from "../../config/index.ts";
 import type {
+  AxTreeSummary,
+  BrowserPerformanceSummary,
+  InteractiveComponentBounds,
+  InteractiveComponentLayout,
+  InteractiveComponentVisibility,
   ScenarioAction,
   ScenarioPlan,
   ScenarioStep,
   SettleStrategy,
   TargetDescriptor,
-  InteractiveComponentObservationItem
+  InteractiveComponentObservationItem,
+  VisibleTextBlockObservationItem,
+  DomVisibilitySummary,
+  LayoutVisibilitySummary
 } from "../../shared/contracts.ts";
 import {
   assertScenarioActionAllowed,
   assertVisitedUrlAllowed
 } from "../../scenario/policy.ts";
 import { describeTarget, sleep, toIsoTimestamp } from "../../shared/utils.ts";
+import { preparePageForScreenshot } from "./screenshot.ts";
 
 export interface BrowserActionResult {
   actionType: ScenarioAction["type"];
@@ -39,6 +49,41 @@ export interface BrowserSettleResult {
   status: "settled" | "timeout" | "failed";
   targetSummary?: string | null;
   details?: Record<string, unknown>;
+}
+
+export interface BrowserProductImageSignal {
+  src: string | null;
+  alt: string | null;
+  bounds: InteractiveComponentBounds;
+}
+
+export interface BrowserProductCardSignal {
+  element_text: string;
+  clicked_selector: string | null;
+  visible_price: string | null;
+  visible_product_image: boolean;
+  bbox: InteractiveComponentBounds;
+}
+
+export interface BrowserFilterSignal {
+  key: string;
+  value: string;
+  selector: string | null;
+}
+
+export interface BrowserNetworkEventSignal {
+  method: string;
+  url: string;
+  status?: number;
+  failed?: boolean;
+  errorText?: string;
+  occurredAt?: string;
+  resourceType?: string;
+  requestStartMs?: number | null;
+  responseEndMs?: number | null;
+  durationMs?: number | null;
+  transferSizeBytes?: number | null;
+  encodedBodySizeBytes?: number | null;
 }
 
 export interface BrowserPageSnapshot {
@@ -56,11 +101,38 @@ export interface BrowserPageSnapshot {
     type: ScenarioAction["type"];
     target: string | null;
     at: string;
+    clickedText?: string | null;
+    clickedSelector?: string | null;
+    elementRole?: string | null;
+    elementText?: string | null;
+    ariaLabel?: string | null;
+    bbox?: InteractiveComponentBounds | null;
   } | null;
   interactiveComponents: InteractiveComponentObservationItem[];
+  visibleTextBlocks: VisibleTextBlockObservationItem[];
+  domSummary: DomVisibilitySummary;
+  layoutSummary: LayoutVisibilitySummary;
   consoleErrors: string[];
   networkErrors: string[];
+  networkEvents: BrowserNetworkEventSignal[];
+  performanceSummary: BrowserPerformanceSummary | null;
+  breadcrumb: string[];
+  toastTexts: string[];
+  cartCount: number | null;
+  visiblePrices: string[];
+  productImages: BrowserProductImageSignal[];
+  productCards: BrowserProductCardSignal[];
+  selectedFilters: BrowserFilterSignal[];
+  searchQuery: string | null;
+  domSignature: string | null;
+  browserHealth: BrowserHealthState;
   cdpSession: CdpSessionMetadata;
+}
+
+export interface BrowserHealthState {
+  status: "ok" | "crashed" | "closed";
+  reason: string | null;
+  observedAt: string | null;
 }
 
 export interface BrowserCapturedArtifacts {
@@ -76,6 +148,19 @@ export interface BrowserCapturedArtifacts {
     mimeType: "text/html";
     fileExtension: "html";
   };
+  axTree?: {
+    content: string;
+    mimeType: "application/json";
+    fileExtension: "json";
+    summary: AxTreeSummary;
+  };
+}
+
+export interface BrowserCaptureOptions {
+  captureAxTree?: boolean;
+  captureHar?: boolean;
+  captureTrace?: boolean;
+  capturePerformance?: boolean;
 }
 
 export interface PreparedBrowserSettle {
@@ -90,7 +175,7 @@ export interface BrowserSession {
   prepareSettle?: (strategy: SettleStrategy) => Promise<PreparedBrowserSettle | null>;
   settle: (strategy: SettleStrategy) => Promise<BrowserSettleResult>;
   snapshot: () => BrowserPageSnapshot;
-  captureArtifacts: () => Promise<BrowserCapturedArtifacts>;
+  captureArtifacts: (options?: BrowserCaptureOptions) => Promise<BrowserCapturedArtifacts>;
   close: () => Promise<void>;
 }
 
@@ -100,6 +185,7 @@ export interface BrowserSessionFactory {
 }
 
 const DEFAULT_LOCATOR_TIMEOUT_MS = 1_500;
+const DEFAULT_LOCATOR_METADATA_TIMEOUT_MS = 100;
 const DEFAULT_WAIT_FOR_TIMEOUT_MS = 1_500;
 const ITEM_COUNT_POLL_INTERVAL_MS = 50;
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
@@ -109,6 +195,16 @@ type SettleTimeoutDetails = Record<string, unknown> | ((error: unknown) => Recor
 interface SettleAttempt {
   attempt: () => Promise<Record<string, unknown>>;
   timeoutDetails: SettleTimeoutDetails;
+}
+
+interface RawAxTreeNode {
+  role?: { value?: unknown };
+  name?: { value?: unknown };
+  ignored?: boolean;
+  properties?: Array<{
+    name?: string;
+    value?: { value?: unknown };
+  }>;
 }
 
 type ReplayHintLocatorRecipeEntry =
@@ -159,8 +255,21 @@ interface MutableBrowserState {
   scrollY: number;
   lastAction: BrowserPageSnapshot["lastAction"];
   interactiveComponents: InteractiveComponentObservationItem[];
+  visibleTextBlocks: VisibleTextBlockObservationItem[];
   consoleErrors: string[];
   networkErrors: string[];
+  networkEvents: BrowserNetworkEventSignal[];
+  performanceSummary: BrowserPerformanceSummary | null;
+  breadcrumb: string[];
+  toastTexts: string[];
+  cartCount: number | null;
+  visiblePrices: string[];
+  productImages: BrowserProductImageSignal[];
+  productCards: BrowserProductCardSignal[];
+  selectedFilters: BrowserFilterSignal[];
+  searchQuery: string | null;
+  domSignature: string | null;
+  browserHealth: BrowserHealthState;
 }
 
 function readPngDimensions(buffer: Buffer) {
@@ -172,6 +281,110 @@ function readPngDimensions(buffer: Buffer) {
     width: buffer.readUInt32BE(16),
     height: buffer.readUInt32BE(20)
   };
+}
+
+function createEmptyAxTreeSummary(): AxTreeSummary {
+  return {
+    node_count: 0,
+    ignored_node_count: 0,
+    named_node_count: 0,
+    interactive_role_count: 0,
+    form_control_role_count: 0,
+    heading_count: 0,
+    landmark_count: 0,
+    button_count: 0,
+    link_count: 0,
+    focusable_count: 0,
+    role_counts: {},
+    root_role: null,
+    truncated: false
+  };
+}
+
+function summarizeAxTree(nodes: RawAxTreeNode[], truncated: boolean): AxTreeSummary {
+  const summary = createEmptyAxTreeSummary();
+  const interactiveRoles = new Set([
+    "button",
+    "link",
+    "textbox",
+    "searchbox",
+    "checkbox",
+    "radio",
+    "combobox",
+    "listbox",
+    "menuitem",
+    "option",
+    "slider",
+    "spinbutton",
+    "switch",
+    "tab"
+  ]);
+  const formControlRoles = new Set([
+    "textbox",
+    "searchbox",
+    "checkbox",
+    "radio",
+    "combobox",
+    "listbox",
+    "option",
+    "slider",
+    "spinbutton",
+    "switch"
+  ]);
+  const landmarkRoles = new Set(["banner", "main", "navigation", "contentinfo", "complementary", "region", "search", "form"]);
+
+  summary.node_count = nodes.length;
+  summary.root_role = axStringValue(nodes[0]?.role?.value);
+  summary.truncated = truncated;
+
+  for (const node of nodes) {
+    const role = axStringValue(node.role?.value) ?? "unknown";
+    summary.role_counts[role] = (summary.role_counts[role] ?? 0) + 1;
+
+    if (node.ignored === true) {
+      summary.ignored_node_count += 1;
+    }
+    if (axStringValue(node.name?.value)) {
+      summary.named_node_count += 1;
+    }
+    if (interactiveRoles.has(role)) {
+      summary.interactive_role_count += 1;
+    }
+    if (formControlRoles.has(role)) {
+      summary.form_control_role_count += 1;
+    }
+    if (role === "heading") {
+      summary.heading_count += 1;
+    }
+    if (landmarkRoles.has(role)) {
+      summary.landmark_count += 1;
+    }
+    if (role === "button") {
+      summary.button_count += 1;
+    }
+    if (role === "link") {
+      summary.link_count += 1;
+    }
+    if (hasAxBooleanProperty(node, "focusable")) {
+      summary.focusable_count += 1;
+    }
+  }
+
+  summary.role_counts = Object.fromEntries(
+    Object.entries(summary.role_counts)
+      .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
+      .slice(0, 30)
+  );
+
+  return summary;
+}
+
+function axStringValue(value: unknown): string | null {
+  return typeof value === "string" && value.length > 0 ? value : null;
+}
+
+function hasAxBooleanProperty(node: RawAxTreeNode, propertyName: string): boolean {
+  return node.properties?.some((property) => property.name === propertyName && property.value?.value === true) ?? false;
 }
 
 class SimulatedPlaywrightSession implements BrowserSession {
@@ -274,8 +487,25 @@ class SimulatedPlaywrightSession implements BrowserSession {
     return createBrowserPageSnapshot(this.plan, this.state, this.cdpSession);
   }
 
-  async captureArtifacts(): Promise<BrowserCapturedArtifacts> {
-    return {};
+  async captureArtifacts(options: BrowserCaptureOptions = {}): Promise<BrowserCapturedArtifacts> {
+    if (!options.captureAxTree) {
+      return {};
+    }
+
+    const summary = createEmptyAxTreeSummary();
+    return {
+      axTree: {
+        content: JSON.stringify({
+          source: "simulated",
+          truncated: false,
+          nodes: [],
+          summary
+        }, null, 2),
+        mimeType: "application/json",
+        fileExtension: "json",
+        summary
+      }
+    };
   }
 
   async close(): Promise<void> {
@@ -309,6 +539,7 @@ class RealPlaywrightSession implements BrowserSession {
   readonly page: Page;
   readonly cdpSession: CdpSessionMetadata;
   readonly state: MutableBrowserState;
+  private closing = false;
 
   private constructor(plan: ScenarioPlan, browser: Browser, context: BrowserContext, page: Page) {
     this.id = randomUUID();
@@ -344,6 +575,7 @@ class RealPlaywrightSession implements BrowserSession {
   }
 
   async execute(action: ScenarioAction, step: ScenarioStep): Promise<BrowserActionResult> {
+    assertBrowserHealthy(this.state);
     const targetSummary = describeTarget(action.target);
     recordLastAction(this.state, action, targetSummary);
 
@@ -359,8 +591,8 @@ class RealPlaywrightSession implements BrowserSession {
       }
       case "click": {
         assertScenarioActionAllowed(this.plan, this.state.currentUrl, action);
-        const clicked = await this.tryClickTarget(action);
-        if (!clicked) {
+        const clickDetails = await this.tryClickTarget(action);
+        if (!clickDetails.clicked) {
           const nextUrl = inferNavigationUrl(this.state.currentUrl, action.target);
           assertScenarioActionAllowed(this.plan, this.state.currentUrl, action, nextUrl);
           if (!nextUrl) {
@@ -444,12 +676,14 @@ class RealPlaywrightSession implements BrowserSession {
         currentUrl: this.state.currentUrl,
         finalUrl: this.state.finalUrl,
         title: this.state.title,
+        ...(action.type === "click" ? readLastClickedDetails(this.state) : {}),
         executionMode: "playwright"
       }
     };
   }
 
   async prepareSettle(strategy: SettleStrategy): Promise<PreparedBrowserSettle | null> {
+    assertBrowserHealthy(this.state);
     if (strategy.type === "response") {
       return this.createPreparedSettle(strategy, this.createResponseSettleAttempt(strategy));
     }
@@ -467,6 +701,7 @@ class RealPlaywrightSession implements BrowserSession {
   }
 
   async settle(strategy: SettleStrategy): Promise<BrowserSettleResult> {
+    assertBrowserHealthy(this.state);
     const startedAt = Date.now();
     const targetSummary = describeTarget(strategy.target);
 
@@ -567,13 +802,17 @@ class RealPlaywrightSession implements BrowserSession {
     return createBrowserPageSnapshot(this.plan, this.state, this.cdpSession);
   }
 
-  async captureArtifacts(): Promise<BrowserCapturedArtifacts> {
+  async captureArtifacts(options: BrowserCaptureOptions = {}): Promise<BrowserCapturedArtifacts> {
+    assertBrowserHealthy(this.state);
+    await preparePageForScreenshot(this.page);
+
     const screenshotBuffer = await this.page.screenshot({
       type: "png",
       fullPage: true
     });
     const screenshotDimensions = readPngDimensions(screenshotBuffer) ?? this.plan.environment.viewport;
     const domSnapshot = await this.page.content();
+    const axTree = options.captureAxTree ? await this.captureAxTree() : undefined;
 
     return {
       screenshot: {
@@ -587,13 +826,15 @@ class RealPlaywrightSession implements BrowserSession {
         content: domSnapshot,
         mimeType: "text/html",
         fileExtension: "html"
-      }
+      },
+      ...(axTree ? { axTree } : {})
     };
   }
 
   async close(): Promise<void> {
-    await this.context.close();
-    await this.browser.close();
+    this.closing = true;
+    await this.context.close().catch(() => {});
+    await this.browser.close().catch(() => {});
   }
 
   private async initializeContext(plan: ScenarioPlan): Promise<void> {
@@ -602,7 +843,59 @@ class RealPlaywrightSession implements BrowserSession {
     }
   }
 
+  private async captureAxTree(): Promise<NonNullable<BrowserCapturedArtifacts["axTree"]> | undefined> {
+    try {
+      const client = await this.context.newCDPSession(this.page);
+      try {
+        const result = await client.send("Accessibility.getFullAXTree");
+        const nodes = Array.isArray((result as { nodes?: unknown }).nodes)
+          ? ((result as { nodes: RawAxTreeNode[] }).nodes)
+          : [];
+        const truncated = nodes.length > 500;
+        const summary = summarizeAxTree(nodes, truncated);
+        return {
+          content: JSON.stringify({
+            source: "cdp.Accessibility.getFullAXTree",
+            truncated,
+            node_count: nodes.length,
+            nodes: nodes.slice(0, 500),
+            summary
+          }, null, 2),
+          mimeType: "application/json",
+          fileExtension: "json",
+          summary
+        };
+      } finally {
+        await client.detach().catch(() => {});
+      }
+    } catch {
+      return undefined;
+    }
+  }
+
   private attachPageObservers(): void {
+    this.browser.on("disconnected", () => {
+      if (!this.closing) {
+        markBrowserUnhealthy(this.state, "closed", "browser_disconnected");
+      }
+    });
+
+    this.context.on("close", () => {
+      if (!this.closing) {
+        markBrowserUnhealthy(this.state, "closed", "context_closed");
+      }
+    });
+
+    this.page.on("crash", () => {
+      markBrowserUnhealthy(this.state, "crashed", "page_crash");
+    });
+
+    this.page.on("close", () => {
+      if (!this.closing) {
+        markBrowserUnhealthy(this.state, "closed", "page_closed");
+      }
+    });
+
     this.page.on("console", (message) => {
       if (message.type() === "error") {
         this.state.consoleErrors.push(message.text());
@@ -616,6 +909,28 @@ class RealPlaywrightSession implements BrowserSession {
     this.page.on("requestfailed", (request) => {
       const failureText = request.failure()?.errorText ?? "request failed";
       this.state.networkErrors.push(`${request.method()} ${request.url()} ${failureText}`);
+      appendNetworkEvent(this.state, {
+        method: request.method(),
+        url: request.url(),
+        failed: true,
+        errorText: failureText,
+        occurredAt: toIsoTimestamp(),
+        resourceType: request.resourceType(),
+        ...networkTimingDetails(request)
+      });
+    });
+
+    this.page.on("response", (response) => {
+      const request = response.request();
+      appendNetworkEvent(this.state, {
+        method: request.method(),
+        url: response.url(),
+        status: response.status(),
+        failed: false,
+        occurredAt: toIsoTimestamp(),
+        resourceType: request.resourceType(),
+        ...networkTimingDetails(request)
+      });
     });
 
     this.page.on("framenavigated", (frame) => {
@@ -625,18 +940,23 @@ class RealPlaywrightSession implements BrowserSession {
     });
   }
 
-  private async tryClickTarget(action: ScenarioAction): Promise<boolean> {
+  private async tryClickTarget(action: ScenarioAction): Promise<{ clicked: boolean }> {
+    let clickedDetails: Record<string, unknown> = {};
     const clicked = await tryCandidateLocators(this.page, action.target, action.options, async (locator) => {
-      await locator.click({
+      const candidateLocator = locator.first();
+      const nextClickedDetails = await safeLocatorElementDetails(candidateLocator);
+      await candidateLocator.click({
         timeout: DEFAULT_LOCATOR_TIMEOUT_MS
       });
+      clickedDetails = nextClickedDetails;
     });
 
     if (clicked) {
+      mergeLastActionDetails(this.state, clickedDetails);
       await this.refreshPageState();
     }
 
-    return clicked;
+    return { clicked };
   }
 
   private async tryFillTarget(target: TargetDescriptor | undefined, value: unknown, fallbackKey: string): Promise<boolean> {
@@ -880,6 +1200,17 @@ class RealPlaywrightSession implements BrowserSession {
     this.state.title = await safePageTitle(this.page, currentUrl);
     this.state.scrollY = await safeScrollY(this.page, this.state.scrollY);
     this.state.interactiveComponents = await safeInteractiveComponents(this.page, this.state.lastAction, this.state.interactiveComponents);
+    this.state.visibleTextBlocks = await safeVisibleTextBlocks(this.page, this.state.visibleTextBlocks);
+    this.state.breadcrumb = await safeBreadcrumb(this.page, this.state.breadcrumb);
+    this.state.toastTexts = await safeToastTexts(this.page, this.state.toastTexts);
+    this.state.cartCount = await safeCartCount(this.page, this.state.cartCount);
+    this.state.visiblePrices = await safeVisiblePrices(this.page, this.state.visiblePrices);
+    this.state.productImages = await safeProductImages(this.page, this.state.productImages);
+    this.state.productCards = await safeProductCards(this.page, this.state.productCards);
+    this.state.selectedFilters = await safeSelectedFilters(this.page, this.state.selectedFilters);
+    this.state.searchQuery = await safeSearchQuery(this.page, this.state.searchQuery);
+    this.state.domSignature = await safeDomSignature(this.page, this.state.domSignature);
+    this.state.performanceSummary = await safePerformanceSummary(this.page, this.state.performanceSummary);
     appendVisitedUrl(this.state.visitedUrls, currentUrl);
   }
 
@@ -1004,8 +1335,25 @@ function createInitialBrowserState(plan: ScenarioPlan): MutableBrowserState {
     scrollY: 0,
     lastAction: null,
     interactiveComponents: [],
+    visibleTextBlocks: [],
     consoleErrors: [],
-    networkErrors: []
+    networkErrors: [],
+    networkEvents: [],
+    performanceSummary: null,
+    breadcrumb: [],
+    toastTexts: [],
+    cartCount: null,
+    visiblePrices: [],
+    productImages: [],
+    productCards: [],
+    selectedFilters: [],
+    searchQuery: null,
+    domSignature: null,
+    browserHealth: {
+      status: "ok",
+      reason: null,
+      observedAt: null
+    }
   };
 }
 
@@ -1028,12 +1376,108 @@ function createBrowserPageSnapshot(
     lastAction: state.lastAction ? { ...state.lastAction } : null,
     interactiveComponents: state.interactiveComponents.map((component) => ({
       ...component,
-      bounds: { ...component.bounds }
+      bounds: { ...component.bounds },
+      visibility: component.visibility ? { ...component.visibility } : undefined,
+      layout: component.layout ? { ...component.layout } : undefined
     })),
+    visibleTextBlocks: state.visibleTextBlocks.map((block) => ({
+      ...block,
+      bounds: { ...block.bounds },
+      visibility: { ...block.visibility }
+    })),
+    domSummary: createDomVisibilitySummary(state),
+    layoutSummary: createLayoutVisibilitySummary(plan, state),
     consoleErrors: [...state.consoleErrors],
     networkErrors: [...state.networkErrors],
+    networkEvents: state.networkEvents.map((event) => ({ ...event })),
+    performanceSummary: state.performanceSummary ? { ...state.performanceSummary } : null,
+    breadcrumb: [...state.breadcrumb],
+    toastTexts: [...state.toastTexts],
+    cartCount: state.cartCount,
+    visiblePrices: [...state.visiblePrices],
+    productImages: state.productImages.map((image) => ({
+      ...image,
+      bounds: { ...image.bounds }
+    })),
+    productCards: state.productCards.map((card) => ({
+      ...card,
+      bbox: { ...card.bbox }
+    })),
+    selectedFilters: state.selectedFilters.map((filter) => ({ ...filter })),
+    searchQuery: state.searchQuery,
+    domSignature: state.domSignature,
+    browserHealth: { ...state.browserHealth },
     cdpSession
   };
+}
+
+function markBrowserUnhealthy(
+  state: MutableBrowserState,
+  status: Exclude<BrowserHealthState["status"], "ok">,
+  reason: string
+): void {
+  if (state.browserHealth.status !== "ok") {
+    return;
+  }
+
+  state.browserHealth = {
+    status,
+    reason,
+    observedAt: toIsoTimestamp()
+  };
+  state.consoleErrors.push(`browser ${status}: ${reason}`);
+}
+
+function assertBrowserHealthy(state: MutableBrowserState): void {
+  if (state.browserHealth.status === "ok") {
+    return;
+  }
+
+  const error = new Error(`browser ${state.browserHealth.status}: ${state.browserHealth.reason ?? "unknown"}`);
+  error.name = "BrowserCrashError";
+  throw error;
+}
+
+function createDomVisibilitySummary(state: MutableBrowserState): DomVisibilitySummary {
+  return {
+    visible_text_block_count: state.visibleTextBlocks.length,
+    heading_count: state.visibleTextBlocks.filter((block) => block.is_heading).length,
+    link_count: state.interactiveComponents.filter((component) => component.tag === "a" || component.role === "link").length,
+    button_count: state.interactiveComponents.filter((component) => component.tag === "button" || component.role === "button").length,
+    form_control_count: state.interactiveComponents.filter((component) => component.is_form_control === true).length,
+    required_field_count: state.interactiveComponents.filter((component) => component.required === true).length,
+    disabled_control_count: state.interactiveComponents.filter((component) => component.disabled === true).length,
+    cta_candidate_count: state.interactiveComponents.filter((component) => component.is_cta_candidate).length
+  };
+}
+
+function createLayoutVisibilitySummary(
+  plan: ScenarioPlan,
+  state: MutableBrowserState
+): LayoutVisibilitySummary {
+  const zIndexes = state.interactiveComponents
+    .map((component) => parseZIndex(component.layout?.z_index))
+    .filter((value): value is number => value !== null);
+
+  return {
+    viewport_width: plan.environment.viewport.width,
+    viewport_height: plan.environment.viewport.height,
+    scroll_y: state.scrollY,
+    interactive_component_count: state.interactiveComponents.length,
+    above_fold_interactive_count: state.interactiveComponents.filter((component) => component.visibility?.above_fold === true).length,
+    primary_like_component_count: state.interactiveComponents.filter((component) => component.is_primary_like).length,
+    fixed_or_sticky_count: state.interactiveComponents.filter((component) => component.layout?.is_fixed === true || component.layout?.is_sticky === true).length,
+    overlay_candidate_count: state.interactiveComponents.filter((component) => component.layout?.overlay_candidate === true).length,
+    max_z_index: zIndexes.length > 0 ? Math.max(...zIndexes) : null
+  };
+}
+
+function parseZIndex(value: string | null | undefined): number | null {
+  if (!value || value === "auto") {
+    return null;
+  }
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 function recordLastAction(state: MutableBrowserState, action: ScenarioAction, targetSummary: string | null): void {
@@ -1042,6 +1486,95 @@ function recordLastAction(state: MutableBrowserState, action: ScenarioAction, ta
     target: targetSummary,
     at: toIsoTimestamp()
   };
+}
+
+function mergeLastActionDetails(state: MutableBrowserState, details: Record<string, unknown>): void {
+  if (!state.lastAction) {
+    return;
+  }
+
+  state.lastAction = {
+    ...state.lastAction,
+    clickedText: readNullableString(details.clickedText),
+    clickedSelector: readNullableString(details.clickedSelector),
+    elementRole: readNullableString(details.elementRole),
+    elementText: readNullableString(details.elementText),
+    ariaLabel: readNullableString(details.ariaLabel),
+    bbox: isBounds(details.bbox) ? details.bbox : null
+  };
+}
+
+function readLastClickedDetails(state: MutableBrowserState): Record<string, unknown> {
+  if (!state.lastAction || state.lastAction.type !== "click") {
+    return {};
+  }
+
+  return {
+    clickedText: state.lastAction.clickedText ?? null,
+    clickedSelector: state.lastAction.clickedSelector ?? null,
+    elementRole: state.lastAction.elementRole ?? null,
+    elementText: state.lastAction.elementText ?? null,
+    ariaLabel: state.lastAction.ariaLabel ?? null,
+    bbox: state.lastAction.bbox ?? null
+  };
+}
+
+function readNullableString(value: unknown): string | null {
+  return typeof value === "string" && value.length > 0 ? value : null;
+}
+
+function isBounds(value: unknown): value is InteractiveComponentBounds {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+
+  const candidate = value as Partial<InteractiveComponentBounds>;
+  return typeof candidate.x === "number" &&
+    typeof candidate.y === "number" &&
+    typeof candidate.width === "number" &&
+    typeof candidate.height === "number" &&
+    typeof candidate.unit === "string";
+}
+
+function appendNetworkEvent(state: MutableBrowserState, event: BrowserNetworkEventSignal): void {
+  state.networkEvents.push(event);
+  if (state.networkEvents.length > 50) {
+    state.networkEvents.shift();
+  }
+}
+
+function networkTimingDetails(request: Request): Pick<
+  BrowserNetworkEventSignal,
+  "requestStartMs" | "responseEndMs" | "durationMs" | "transferSizeBytes" | "encodedBodySizeBytes"
+> {
+  try {
+    const timing = request.timing();
+    const requestStartMs = normalizeTimingValue(timing.startTime);
+    const responseEndMs = normalizeTimingValue(timing.responseEnd);
+    const durationMs = requestStartMs !== null && responseEndMs !== null && responseEndMs >= requestStartMs
+      ? Math.round((responseEndMs - requestStartMs) * 100) / 100
+      : null;
+
+    return {
+      requestStartMs,
+      responseEndMs,
+      durationMs,
+      transferSizeBytes: null,
+      encodedBodySizeBytes: null
+    };
+  } catch {
+    return {
+      requestStartMs: null,
+      responseEndMs: null,
+      durationMs: null,
+      transferSizeBytes: null,
+      encodedBodySizeBytes: null
+    };
+  }
+}
+
+function normalizeTimingValue(value: number): number | null {
+  return Number.isFinite(value) && value >= 0 ? Math.round(value * 100) / 100 : null;
 }
 
 function appendVisitedUrl(visitedUrls: string[], url: string): void {
@@ -1157,14 +1690,16 @@ function buildCandidateLocators(
   target: TargetDescriptor | undefined,
   options?: Record<string, unknown>
 ): Locator[] {
+  const replayHintLocators = buildReplayHintLocators(page, options);
+
   if (!target) {
-    return buildReplayHintLocators(page, options);
+    return replayHintLocators;
   }
 
   if (typeof target === "string") {
     return [
+      ...replayHintLocators,
       page.getByText(target),
-      ...buildReplayHintLocators(page, options)
     ];
   }
 
@@ -1249,8 +1784,8 @@ function buildCandidateLocators(
   }
 
   return [
-    ...candidates,
-    ...buildReplayHintLocators(page, options)
+    ...replayHintLocators,
+    ...candidates
   ];
 }
 
@@ -1344,6 +1879,67 @@ function hrefLocators(scope: Page | Frame, href: string): Locator[] {
 
 function escapeCssString(value: string): string {
   return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+}
+
+async function safeLocatorElementDetails(locator: Locator): Promise<Record<string, unknown>> {
+  try {
+    return await locator.evaluate((element) => {
+      function selectorFor(target: Element): string | null {
+        const id = target.getAttribute("id");
+        if (id) {
+          return `#${id.replace(/[^a-zA-Z0-9_-]/g, "\\$&")}`;
+        }
+        const className = Array.from(target.classList).find((entry) => entry.length > 0);
+        if (className) {
+          return `${target.tagName.toLowerCase()}.${className.replace(/[^a-zA-Z0-9_-]/g, "\\$&")}`;
+        }
+        const href = target.getAttribute("href");
+        if (target.tagName.toLowerCase() === "a" && href) {
+          return `a[href="${href.replace(/"/g, '\\"')}"]`;
+        }
+        return target.tagName.toLowerCase();
+      }
+
+      function textFor(target: Element): string {
+        const inputValue = target instanceof HTMLInputElement ? target.value : "";
+        return [
+          target.textContent,
+          target.getAttribute("aria-label"),
+          target.getAttribute("title"),
+          inputValue
+        ]
+          .find((value) => typeof value === "string" && value.trim().length > 0)
+          ?.trim()
+          .replaceAll(/\s+/g, " ")
+          .slice(0, 160) ?? "";
+      }
+
+      const rect = element.getBoundingClientRect();
+      const tag = element.tagName.toLowerCase();
+      const role = element.getAttribute("role") ?? (tag === "button" ? "button" : tag === "a" ? "link" : null);
+      const text = textFor(element);
+      const ariaLabel = element.getAttribute("aria-label");
+
+      return {
+        clickedText: text,
+        clickedSelector: selectorFor(element),
+        elementRole: role,
+        elementText: text,
+        ariaLabel,
+        bbox: {
+          x: Math.round(rect.x),
+          y: Math.round(rect.y),
+          width: Math.round(rect.width),
+          height: Math.round(rect.height),
+          unit: "css_px" as const
+        }
+      };
+    }, {
+      timeout: DEFAULT_LOCATOR_METADATA_TIMEOUT_MS
+    });
+  } catch {
+    return {};
+  }
 }
 
 async function tryCandidateLocators(
@@ -1605,6 +2201,477 @@ async function safeScrollY(page: Page, fallbackValue: number): Promise<number> {
   }
 }
 
+async function safeBreadcrumb(page: Page, fallbackValue: string[]): Promise<string[]> {
+  try {
+    return await page.evaluate(() => {
+      function normalizeText(value: string | null | undefined): string {
+        return (value ?? "").trim().replaceAll(/\s+/g, " ");
+      }
+
+      function visibleText(element: Element): string {
+        const rect = element.getBoundingClientRect();
+        if (rect.width <= 0 || rect.height <= 0) {
+          return "";
+        }
+        return normalizeText(element.textContent);
+      }
+
+      function splitBreadcrumbText(value: string): string[] {
+        return normalizeText(value)
+          .split(/\s*(?:>|›|\/|→|»|⟩)\s*/)
+          .map((entry) => normalizeText(entry))
+          .filter((entry) => entry.length > 0)
+          .slice(0, 10);
+      }
+
+      const structuredItems = Array.from(document.querySelectorAll("[itemtype*='BreadcrumbList' i] [itemprop='itemListElement'], [typeof*='BreadcrumbList' i] [property='itemListElement']"))
+        .map((element) => visibleText(element))
+        .filter((text) => text.length > 0)
+        .slice(0, 10);
+      if (structuredItems.length > 0) {
+        return structuredItems;
+      }
+
+      const selectors = [
+        "[aria-label*='breadcrumb' i]",
+        "[aria-label*='경로' i]",
+        "[aria-label*='탐색' i]",
+        "nav.breadcrumb",
+        ".breadcrumb",
+        "[class*='breadcrumb' i]",
+        "[data-testid*='breadcrumb' i]",
+        "[data-test*='breadcrumb' i]",
+        "ol.breadcrumb",
+        "ul.breadcrumb"
+      ];
+      const element = selectors
+        .flatMap((selector) => Array.from(document.querySelectorAll(selector)))
+        .find((candidate) => visibleText(candidate).length > 0);
+
+      if (element) {
+        const listItems = Array.from(element.querySelectorAll("li, [role='listitem'], a, span"))
+          .map((candidate) => visibleText(candidate))
+          .filter((text) => text.length > 0 && !/^(>|›|\/|→|»|⟩)$/.test(text));
+        const uniqueItems = Array.from(new Set(listItems));
+        if (uniqueItems.length > 1) {
+          return uniqueItems.slice(0, 10);
+        }
+        return splitBreadcrumbText(visibleText(element));
+      }
+
+      const currentPage = document.querySelector("[aria-current='page'], [aria-current='step']");
+      if (currentPage) {
+        const container = currentPage.closest("nav, ol, ul, [class*='breadcrumb' i], [data-testid*='breadcrumb' i]");
+        if (container) {
+          return splitBreadcrumbText(visibleText(container));
+        }
+      }
+
+      return [];
+    });
+  } catch {
+    return fallbackValue;
+  }
+}
+
+async function safeToastTexts(page: Page, fallbackValue: string[]): Promise<string[]> {
+  try {
+    return await page.evaluate(() => {
+      function normalizeText(value: string | null | undefined): string {
+        return (value ?? "").trim().replaceAll(/\s+/g, " ");
+      }
+
+      function isVisible(element: Element): boolean {
+        const rect = element.getBoundingClientRect();
+        const style = globalThis.getComputedStyle(element);
+        return rect.width > 0 &&
+          rect.height > 0 &&
+          style.visibility !== "hidden" &&
+          style.display !== "none" &&
+          Number(style.opacity || "1") > 0;
+      }
+
+      const selectors = [
+        "[role='alert']",
+        "[role='status']",
+        "[aria-live]",
+        ".toast",
+        "[class*='toast' i]",
+        "[class*='snackbar' i]",
+        "[class*='notification' i]",
+        "[class*='notice' i]",
+        "[class*='flash' i]",
+        "[class*='message' i]",
+        "[data-testid*='toast' i]",
+        "[data-testid*='snackbar' i]",
+        "[data-testid*='notification' i]",
+        "[data-test*='toast' i]",
+        "[data-test*='alert' i]"
+      ];
+      return Array.from(new Set(selectors
+        .flatMap((selector) => Array.from(document.querySelectorAll(selector)))
+        .filter((element) => isVisible(element))
+        .map((element) => normalizeText(element.textContent))
+        .filter((text) => text.length > 0 && text.length <= 240)))
+        .slice(0, 10);
+    });
+  } catch {
+    return fallbackValue;
+  }
+}
+
+async function safeCartCount(page: Page, fallbackValue: number | null): Promise<number | null> {
+  try {
+    return await page.evaluate(() => {
+      function normalizeText(value: string | null | undefined): string {
+        return (value ?? "").trim().replaceAll(/\s+/g, " ");
+      }
+
+      function isVisible(element: Element): boolean {
+        const rect = element.getBoundingClientRect();
+        const style = globalThis.getComputedStyle(element);
+        return rect.width > 0 &&
+          rect.height > 0 &&
+          style.visibility !== "hidden" &&
+          style.display !== "none";
+      }
+
+      function readCount(value: string): number | null {
+        const normalized = normalizeText(value);
+        if (normalized.length === 0) {
+          return null;
+        }
+
+        const explicitMatch = normalized.match(/(?:cart|basket|bag|장바구니|카트|바구니|쇼핑백)[^\d]{0,16}(\d{1,3})|(\d{1,3})[^\d]{0,8}(?:items?|개|건)/i);
+        const fallbackMatch = normalized.match(/^\s*(\d{1,3})\s*$/);
+        const valueText = explicitMatch?.[1] ?? explicitMatch?.[2] ?? fallbackMatch?.[1];
+        if (!valueText) {
+          return null;
+        }
+
+        const count = Number(valueText);
+        return Number.isInteger(count) && count >= 0 && count <= 999 ? count : null;
+      }
+
+      const explicitAttributeSelectors = [
+        "[data-cart-count]",
+        "[data-basket-count]",
+        "[data-bag-count]",
+        "[data-count][class*='cart' i]",
+        "[data-count][id*='cart' i]"
+      ];
+      for (const element of explicitAttributeSelectors.flatMap((selector) => Array.from(document.querySelectorAll(selector)))) {
+        const count = readCount(
+          element.getAttribute("data-cart-count") ??
+          element.getAttribute("data-basket-count") ??
+          element.getAttribute("data-bag-count") ??
+          element.getAttribute("data-count") ??
+          ""
+        );
+        if (count !== null) {
+          return count;
+        }
+      }
+
+      const cartSelectors = [
+        "[class*='cart' i]",
+        "[id*='cart' i]",
+        "[aria-label*='cart' i]",
+        "[class*='basket' i]",
+        "[id*='basket' i]",
+        "[aria-label*='basket' i]",
+        "[class*='bag' i]",
+        "[id*='bag' i]",
+        "[aria-label*='bag' i]",
+        "[aria-label*='장바구니' i]",
+        "[aria-label*='카트' i]",
+        "[title*='cart' i]",
+        "[title*='basket' i]",
+        "[title*='장바구니' i]",
+        "[data-testid*='cart' i]",
+        "[data-testid*='basket' i]"
+      ];
+      const cartElements = Array.from(new Set(cartSelectors.flatMap((selector) => Array.from(document.querySelectorAll(selector)))))
+        .filter((element) => isVisible(element));
+
+      for (const element of cartElements) {
+        const badge = element.querySelector("[class*='badge' i], [class*='count' i], [data-count], [aria-label]");
+        const count = readCount([
+          badge?.textContent,
+          badge?.getAttribute("data-count"),
+          badge?.getAttribute("aria-label"),
+          element.getAttribute("aria-label"),
+          element.getAttribute("title"),
+          element.textContent
+        ].filter(Boolean).join(" "));
+        if (count !== null) {
+          return count;
+        }
+      }
+
+      return null;
+    });
+  } catch {
+    return fallbackValue;
+  }
+}
+
+async function safeVisiblePrices(page: Page, fallbackValue: string[]): Promise<string[]> {
+  try {
+    return await page.evaluate(() => {
+      const text = document.body?.innerText ?? "";
+      const matches = text.match(/(?:[$€£₩]\\s?\\d[\\d,.]*|\\d[\\d,.]*\\s?(?:원|달러|USD|KRW|만원|천원))/gi) ?? [];
+      return Array.from(new Set(matches.map((match) => match.trim()))).slice(0, 20);
+    });
+  } catch {
+    return fallbackValue;
+  }
+}
+
+async function safeProductImages(page: Page, fallbackValue: BrowserProductImageSignal[]): Promise<BrowserProductImageSignal[]> {
+  try {
+    return await page.evaluate(() => {
+      const viewportWidth = globalThis.innerWidth || 0;
+      const viewportHeight = globalThis.innerHeight || 0;
+      return Array.from(document.images)
+        .map((image) => {
+          const rect = image.getBoundingClientRect();
+          return {
+            src: image.currentSrc || image.src || null,
+            alt: image.alt || null,
+            bounds: {
+              x: Math.round(rect.x),
+              y: Math.round(rect.y),
+              width: Math.round(rect.width),
+              height: Math.round(rect.height),
+              unit: "css_px" as const
+            },
+            visible: rect.width > 24 && rect.height > 24 && rect.bottom >= 0 && rect.right >= 0 && rect.top <= viewportHeight && rect.left <= viewportWidth
+          };
+        })
+        .filter((image) => image.visible)
+        .slice(0, 20)
+        .map(({ visible, ...image }) => image);
+    });
+  } catch {
+    return fallbackValue;
+  }
+}
+
+async function safeProductCards(page: Page, fallbackValue: BrowserProductCardSignal[]): Promise<BrowserProductCardSignal[]> {
+  try {
+    return await page.evaluate(() => {
+      const pricePattern = /(?:[$€£₩]\s?\d[\d,.]*|\d[\d,.]*\s?(?:원|달러|USD|KRW|만원|천원))/i;
+      const candidates = Array.from(document.querySelectorAll("article, li, [class*='card' i], [class*='product' i], [class*='item' i], [data-product], [data-testid*='product' i]"));
+      const viewportWidth = globalThis.innerWidth || 0;
+      const viewportHeight = globalThis.innerHeight || 0;
+
+      function selectorFor(element: Element): string | null {
+        const link = element.matches("a[href]") ? element : element.querySelector("a[href]");
+        const target = link ?? element;
+        const id = target.getAttribute("id");
+        if (id) {
+          return `#${id.replace(/[^a-zA-Z0-9_-]/g, "\\$&")}`;
+        }
+        const href = target.getAttribute("href");
+        if (href) {
+          return `a[href="${href.replace(/"/g, '\\"')}"]`;
+        }
+        const className = Array.from(target.classList).find((entry) => entry.length > 0);
+        return className ? `${target.tagName.toLowerCase()}.${className.replace(/[^a-zA-Z0-9_-]/g, "\\$&")}` : target.tagName.toLowerCase();
+      }
+
+      return candidates
+        .map((element) => {
+          const rect = element.getBoundingClientRect();
+          const text = (element.textContent ?? "").trim().replaceAll(/\s+/g, " ").slice(0, 240);
+          const price = text.match(pricePattern)?.[0] ?? null;
+          const visibleImage = Array.from(element.querySelectorAll("img")).some((image) => {
+            const imageRect = image.getBoundingClientRect();
+            return imageRect.width > 24 && imageRect.height > 24;
+          });
+          return {
+            element_text: text,
+            clicked_selector: selectorFor(element),
+            visible_price: price,
+            visible_product_image: visibleImage,
+            bbox: {
+              x: Math.round(rect.x),
+              y: Math.round(rect.y),
+              width: Math.round(rect.width),
+              height: Math.round(rect.height),
+              unit: "css_px" as const
+            },
+            visible: rect.width > 40 && rect.height > 40 && rect.bottom >= 0 && rect.right >= 0 && rect.top <= viewportHeight && rect.left <= viewportWidth,
+            likely: Boolean(price || visibleImage)
+          };
+        })
+        .filter((card) => card.visible && card.likely && card.element_text.length > 0)
+        .slice(0, 20)
+        .map(({ visible, likely, ...card }) => card);
+    });
+  } catch {
+    return fallbackValue;
+  }
+}
+
+async function safeSelectedFilters(page: Page, fallbackValue: BrowserFilterSignal[]): Promise<BrowserFilterSignal[]> {
+  try {
+    return await page.evaluate(() => {
+      function normalizeText(value: string | null | undefined): string {
+        return (value ?? "").trim().replaceAll(/\s+/g, " ");
+      }
+
+      function selectorFor(element: Element): string | null {
+        const id = element.getAttribute("id");
+        if (id) {
+          return `#${id.replace(/[^a-zA-Z0-9_-]/g, "\\$&")}`;
+        }
+        const name = element.getAttribute("name");
+        if (name) {
+          return `${element.tagName.toLowerCase()}[name="${name.replace(/"/g, '\\"')}"]`;
+        }
+        const className = Array.from(element.classList).find((entry) => entry.length > 0);
+        return className ? `${element.tagName.toLowerCase()}.${className.replace(/[^a-zA-Z0-9_-]/g, "\\$&")}` : element.tagName.toLowerCase();
+      }
+
+      function labelForInput(input: HTMLInputElement | HTMLOptionElement): string {
+        if (input instanceof HTMLOptionElement) {
+          return normalizeText(input.label || input.textContent || input.value);
+        }
+        const id = input.getAttribute("id");
+        const explicitLabel = id ? document.querySelector(`label[for="${id.replace(/"/g, '\\"')}"]`) : null;
+        const wrappingLabel = input.closest("label");
+        return normalizeText(
+          explicitLabel?.textContent ||
+          wrappingLabel?.textContent ||
+          input.getAttribute("aria-label") ||
+          input.value ||
+          input.name
+        );
+      }
+
+      const checkedInputs = Array.from(document.querySelectorAll("input[type='checkbox']:checked, input[type='radio']:checked"))
+        .map((input) => {
+          const typedInput = input as HTMLInputElement;
+          return {
+            key: normalizeText(typedInput.name || typedInput.getAttribute("data-filter") || "filter"),
+            value: labelForInput(typedInput),
+            selector: selectorFor(typedInput)
+          };
+        });
+
+      const selectedOptions = Array.from(document.querySelectorAll("select"))
+        .flatMap((select) => Array.from((select as HTMLSelectElement).selectedOptions)
+          .filter((option) => option.value.length > 0)
+          .map((option) => ({
+            key: normalizeText((select as HTMLSelectElement).name || select.getAttribute("aria-label") || "select"),
+            value: labelForInput(option),
+            selector: selectorFor(select)
+          })));
+
+      const pressedOrSelected = Array.from(document.querySelectorAll("[aria-pressed='true'], [aria-selected='true'], [data-state='checked'], [data-selected='true'], .active, .selected, [class*='filter'][class*='active']"))
+        .map((element) => ({
+          key: normalizeText(element.getAttribute("data-filter") || element.getAttribute("role") || "ui_state"),
+          value: normalizeText(element.textContent || element.getAttribute("aria-label") || element.getAttribute("title")),
+          selector: selectorFor(element)
+        }));
+
+      const seen = new Set<string>();
+      return [...checkedInputs, ...selectedOptions, ...pressedOrSelected]
+        .filter((filter) => filter.value.length > 0)
+        .filter((filter) => {
+          const key = `${filter.key}:${filter.value}:${filter.selector ?? ""}`;
+          if (seen.has(key)) {
+            return false;
+          }
+          seen.add(key);
+          return true;
+        })
+        .slice(0, 30);
+    });
+  } catch {
+    return fallbackValue;
+  }
+}
+
+async function safeSearchQuery(page: Page, fallbackValue: string | null): Promise<string | null> {
+  try {
+    return await page.evaluate(() => {
+      const candidates = Array.from(document.querySelectorAll([
+        "input[type='search']",
+        "form[role='search'] input",
+        "input[name*='search' i]",
+        "input[name='q']",
+        "input[name*='query' i]",
+        "input[name*='keyword' i]",
+        "input[placeholder*='검색']",
+        "input[placeholder*='search' i]"
+      ].join(", "))) as HTMLInputElement[];
+
+      const query = candidates
+        .map((input) => input.value.trim())
+        .find((value) => value.length > 0);
+
+      return query ?? null;
+    });
+  } catch {
+    return fallbackValue;
+  }
+}
+
+async function safeDomSignature(page: Page, fallbackValue: string | null): Promise<string | null> {
+  try {
+    return await page.evaluate(() => {
+      const bodyText = (document.body?.innerText ?? "").replaceAll(/\s+/g, " ").slice(0, 4_000);
+      return [
+        document.location.href,
+        document.title,
+        document.querySelectorAll("*").length,
+        document.querySelectorAll("a,button,input,select,textarea,[role='button'],[role='link']").length,
+        bodyText
+      ].join("|");
+    });
+  } catch {
+    return fallbackValue;
+  }
+}
+
+async function safePerformanceSummary(page: Page, fallbackValue: BrowserPerformanceSummary | null): Promise<BrowserPerformanceSummary | null> {
+  try {
+    return await page.evaluate(() => {
+      const navigation = performance.getEntriesByType("navigation")[0] as PerformanceNavigationTiming | undefined;
+      const paintEntries = performance.getEntriesByType("paint");
+      const resources = performance.getEntriesByType("resource") as PerformanceResourceTiming[];
+      const firstContentfulPaint = paintEntries.find((entry) => entry.name === "first-contentful-paint");
+      const sum = (values: number[]) => values.reduce((total, value) => total + (Number.isFinite(value) ? value : 0), 0);
+
+      return {
+        navigation_type: navigation?.type ?? null,
+        time_origin: Number.isFinite(performance.timeOrigin) ? performance.timeOrigin : null,
+        dom_content_loaded_ms: navigation ? durationFromStart(navigation.domContentLoadedEventEnd, navigation.startTime) : null,
+        load_event_ms: navigation ? durationFromStart(navigation.loadEventEnd, navigation.startTime) : null,
+        first_contentful_paint_ms: firstContentfulPaint ? roundMetric(firstContentfulPaint.startTime) : null,
+        resource_count: resources.length,
+        transfer_size_bytes: sum(resources.map((resource) => resource.transferSize)),
+        encoded_body_size_bytes: sum(resources.map((resource) => resource.encodedBodySize)),
+        decoded_body_size_bytes: sum(resources.map((resource) => resource.decodedBodySize))
+      };
+
+      function durationFromStart(value: number, startTime: number): number | null {
+        const duration = value - startTime;
+        return Number.isFinite(duration) && duration >= 0 ? roundMetric(duration) : null;
+      }
+
+      function roundMetric(value: number): number {
+        return Math.round(value * 100) / 100;
+      }
+    });
+  } catch {
+    return fallbackValue;
+  }
+}
+
 async function safeInteractiveComponents(
   page: Page,
   lastAction: BrowserPageSnapshot["lastAction"],
@@ -1637,6 +2704,88 @@ async function safeInteractiveComponents(
   }
 }
 
+async function safeVisibleTextBlocks(
+  page: Page,
+  fallbackValue: VisibleTextBlockObservationItem[]
+): Promise<VisibleTextBlockObservationItem[]> {
+  try {
+    return await page.evaluate(() => {
+      const TEXT_BLOCK_SELECTOR = "main h1, main h2, main h3, main p, main li, main label, h1, h2, h3, p, li, label, legend, [role='heading'], [role='alert'], [role='status']";
+      const viewportWidth = globalThis.innerWidth || 0;
+      const viewportHeight = globalThis.innerHeight || 0;
+      const seen = new Set<string>();
+
+      function normalizeText(value: string | null | undefined): string {
+        return (value ?? "").replace(/\s+/g, " ").trim();
+      }
+
+      function implicitRole(element: Element, tag: string): string | null {
+        if (/^h[1-6]$/.test(tag)) {
+          return "heading";
+        }
+        if (tag === "a") {
+          return "link";
+        }
+        if (tag === "button") {
+          return "button";
+        }
+        return null;
+      }
+
+      function visibilityFor(rect: DOMRect): InteractiveComponentVisibility {
+        const area = Math.max(0, rect.width) * Math.max(0, rect.height);
+        const intersectionWidth = Math.max(0, Math.min(rect.right, viewportWidth) - Math.max(rect.left, 0));
+        const intersectionHeight = Math.max(0, Math.min(rect.bottom, viewportHeight) - Math.max(rect.top, 0));
+        const intersectionArea = intersectionWidth * intersectionHeight;
+        return {
+          visible: area > 0,
+          in_viewport: intersectionArea > 0,
+          above_fold: rect.top < viewportHeight && rect.bottom > 0,
+          area_px: Math.round(area),
+          viewport_coverage_ratio: area > 0 ? Math.round((intersectionArea / area) * 1000) / 1000 : 0
+        };
+      }
+
+      return Array.from(document.querySelectorAll(TEXT_BLOCK_SELECTOR))
+        .map((element) => {
+          const rect = element.getBoundingClientRect();
+          const text = normalizeText(element.textContent);
+          const tag = element.tagName.toLowerCase();
+          const visibility = visibilityFor(rect);
+          return {
+            text,
+            tag,
+            role: element.getAttribute("role") ?? implicitRole(element, tag),
+            is_heading: /^h[1-6]$/.test(tag) || element.getAttribute("role") === "heading",
+            bounds: {
+              x: Math.round(rect.x),
+              y: Math.round(rect.y),
+              width: Math.round(rect.width),
+              height: Math.round(rect.height),
+              unit: "css_px" as const
+            },
+            visibility,
+            score: (visibility.above_fold ? 1_000_000 : 0) + visibility.area_px + Math.min(text.length, 240)
+          };
+        })
+        .filter((block) => block.text.length > 0 && block.visibility.in_viewport && block.bounds.width > 0 && block.bounds.height > 0)
+        .filter((block) => {
+          const key = `${block.tag}:${block.text.toLowerCase()}`;
+          if (seen.has(key)) {
+            return false;
+          }
+          seen.add(key);
+          return true;
+        })
+        .sort((left, right) => right.score - left.score)
+        .slice(0, 30)
+        .map(({ score, ...block }) => block);
+    });
+  } catch {
+    return fallbackValue;
+  }
+}
+
 async function extractInteractiveComponentsFromFrame(
   frame: Frame,
   clickedTarget: string | null,
@@ -1661,25 +2810,114 @@ async function extractInteractiveComponentsFromFrame(
         if (tag === "button") {
           return "button";
         }
+        if (tag === "select") {
+          return "combobox";
+        }
+        if (tag === "textarea") {
+          return "textbox";
+        }
         if (tag === "input") {
           const type = (element.getAttribute("type") ?? "").toLowerCase();
-          return ["button", "submit", "reset"].includes(type) ? "button" : null;
+          if (["button", "submit", "reset"].includes(type)) {
+            return "button";
+          }
+          if (type === "search") {
+            return "searchbox";
+          }
+          if (type === "checkbox") {
+            return "checkbox";
+          }
+          if (type === "radio") {
+            return "radio";
+          }
+          return "textbox";
         }
         return null;
       }
 
       function textFor(element: Element): string {
-        const inputValue = element instanceof HTMLInputElement ? element.value : "";
+        const inputValue = element instanceof HTMLInputElement && ["button", "submit", "reset"].includes(element.type.toLowerCase())
+          ? element.value
+          : "";
         return [
           element.textContent,
           element.getAttribute("aria-label"),
           element.getAttribute("title"),
-          inputValue
+          labelTextFor(element),
+          placeholderFor(element),
+          inputValue,
+          nameFor(element)
         ]
           .find((value) => typeof value === "string" && value.trim().length > 0)
           ?.trim()
           .replaceAll(/\\s+/g, " ")
           .slice(0, 120) ?? "";
+      }
+
+      function labelTextFor(element: Element): string | null {
+        const explicitAria = element.getAttribute("aria-label");
+        if (explicitAria?.trim()) {
+          return explicitAria.trim();
+        }
+
+        const id = element.getAttribute("id");
+        if (id) {
+          const explicitLabel = document.querySelector(`label[for="${escapeSelector(id)}"]`);
+          const explicitLabelText = explicitLabel?.textContent?.trim();
+          if (explicitLabelText) {
+            return explicitLabelText.replaceAll(/\\s+/g, " ");
+          }
+        }
+
+        const wrappingLabelText = element.closest("label")?.textContent?.trim();
+        if (wrappingLabelText) {
+          return wrappingLabelText.replaceAll(/\\s+/g, " ");
+        }
+
+        return null;
+      }
+
+      function placeholderFor(element: Element): string | null {
+        return element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement
+          ? element.getAttribute("placeholder")
+          : null;
+      }
+
+      function nameFor(element: Element): string | null {
+        const name = element.getAttribute("name");
+        return name && name.trim().length > 0 ? name.trim() : null;
+      }
+
+      function inputTypeFor(element: Element, tag: string): string | null {
+        if (element instanceof HTMLInputElement) {
+          return element.type || "text";
+        }
+        if (tag === "select") {
+          return "select";
+        }
+        if (tag === "textarea") {
+          return "textarea";
+        }
+        return null;
+      }
+
+      function isFormControl(element: Element, tag: string): boolean {
+        if (element instanceof HTMLInputElement && ["button", "submit", "reset", "image"].includes(element.type.toLowerCase())) {
+          return false;
+        }
+        return tag === "input" || tag === "select" || tag === "textarea" || element.getAttribute("role") === "textbox" || element.getAttribute("role") === "searchbox";
+      }
+
+      function isDisabled(element: Element): boolean {
+        return (
+          element.hasAttribute("disabled") ||
+          element.getAttribute("aria-disabled") === "true" ||
+          Boolean((element as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement).disabled)
+        );
+      }
+
+      function isRequired(element: Element): boolean {
+        return element.hasAttribute("required") || element.getAttribute("aria-required") === "true";
       }
 
       function selectorFor(element: Element, tag: string): string | null {
@@ -1741,7 +2979,57 @@ async function extractInteractiveComponentsFromFrame(
         );
       }
 
-      const INTERACTIVE_SELECTOR = "a[href], button, input[type='button'], input[type='submit'], [role='button'], [role='link'], [onclick], [tabindex='0']";
+      function visibilityFor(rect: DOMRect): InteractiveComponentVisibility {
+        const area = Math.max(0, rect.width) * Math.max(0, rect.height);
+        const intersectionWidth = Math.max(0, Math.min(rect.right, viewportWidth) - Math.max(rect.left, 0));
+        const intersectionHeight = Math.max(0, Math.min(rect.bottom, viewportHeight) - Math.max(rect.top, 0));
+        const intersectionArea = intersectionWidth * intersectionHeight;
+        return {
+          visible: area > 0,
+          in_viewport: intersectionArea > 0,
+          above_fold: rect.top < viewportHeight && rect.bottom > 0,
+          area_px: Math.round(area),
+          viewport_coverage_ratio: area > 0 ? Math.round((intersectionArea / area) * 1000) / 1000 : 0
+        };
+      }
+
+      function viewportPosition(rect: DOMRect, visibility: InteractiveComponentVisibility): InteractiveComponentLayout["viewport_position"] {
+        if (visibility.viewport_coverage_ratio >= 1) {
+          return "inside";
+        }
+        if (visibility.in_viewport) {
+          return "partially_inside";
+        }
+        if (rect.bottom < 0) {
+          return "above";
+        }
+        if (rect.top > viewportHeight) {
+          return "below";
+        }
+        if (rect.right < 0) {
+          return "left";
+        }
+        return "right";
+      }
+
+      function layoutFor(element: Element, rect: DOMRect, visibility: InteractiveComponentVisibility): InteractiveComponentLayout {
+        const style = globalThis.getComputedStyle(element);
+        const viewportArea = Math.max(1, viewportWidth * viewportHeight);
+        const position = style.position || null;
+        const zIndex = style.zIndex && style.zIndex !== "auto" ? style.zIndex : null;
+        return {
+          center_x: Math.round(rect.x + rect.width / 2),
+          center_y: Math.round(rect.y + rect.height / 2),
+          viewport_position: viewportPosition(rect, visibility),
+          css_position: position,
+          z_index: zIndex,
+          is_fixed: position === "fixed",
+          is_sticky: position === "sticky",
+          overlay_candidate: (position === "fixed" || position === "sticky") && visibility.in_viewport && visibility.area_px / viewportArea >= 0.2
+        };
+      }
+
+      const INTERACTIVE_SELECTOR = "a[href], button, input:not([type='hidden']), select, textarea, [role='button'], [role='link'], [role='textbox'], [role='searchbox'], [onclick], [tabindex='0']";
 
       function collectInteractiveElements(root: Document | ShadowRoot, shadowRoot: boolean): Array<{ element: Element; shadowRoot: boolean }> {
         const direct = Array.from(root.querySelectorAll(INTERACTIVE_SELECTOR)).map((element) => ({
@@ -1766,19 +3054,34 @@ async function extractInteractiveComponentsFromFrame(
           const text = textFor(element);
           const selector = selectorFor(element, tag);
           const href = hrefFor(element, tag);
+          const inputType = inputTypeFor(element, tag);
+          const labelText = labelTextFor(element);
+          const placeholder = placeholderFor(element);
+          const name = nameFor(element);
+          const formControl = isFormControl(element, tag);
+          const disabled = isDisabled(element);
           const clickable = isClickable(element, tag, role);
-          const visible = rect.width > 0 && rect.height > 0 && rect.bottom >= 0 && rect.right >= 0 && rect.top <= viewportHeight && rect.left <= viewportWidth;
-          const isCtaCandidate = clickable && Boolean(text.match(CTA_TEXT_PATTERN) || role === "button" || tag === "button");
+          const visibility = visibilityFor(rect);
+          const layout = layoutFor(element, rect, visibility);
+          const visible = visibility.visible && visibility.in_viewport;
+          const isCtaCandidate = clickable && !formControl && !disabled && Boolean(text.match(CTA_TEXT_PATTERN) || role === "button" || tag === "button");
 
           return {
             text,
             selector,
             role,
             href,
+            input_type: inputType,
+            label_text: labelText,
+            placeholder,
+            name,
+            required: isRequired(element),
+            disabled,
+            is_form_control: formControl,
             frame_id: frameId,
             shadow_root: shadowRoot,
             tag,
-            clickable,
+            clickable: clickable && !formControl && !disabled,
             clicked_in_scenario: isClickedInScenario({ text, selector, role }),
             is_cta_candidate: isCtaCandidate,
             is_primary_like: false,
@@ -1789,11 +3092,13 @@ async function extractInteractiveComponentsFromFrame(
               height: Math.round(rect.height),
               unit: "css_px" as const
             },
+            visibility,
+            layout,
             visible,
-            score: (isCtaCandidate ? 1000 : 0) + rect.width * rect.height + (text.match(CTA_TEXT_PATTERN) ? 500 : 0)
+            score: (isCtaCandidate ? 1000 : 0) + (formControl ? 100 : 0) + rect.width * rect.height + (text.match(CTA_TEXT_PATTERN) ? 500 : 0)
           };
         })
-        .filter((component) => component.visible && component.clickable && component.bounds.width > 0 && component.bounds.height > 0)
+        .filter((component) => component.visible && (component.clickable || component.is_form_control) && component.bounds.width > 0 && component.bounds.height > 0)
         .sort((left, right) => right.score - left.score)
         .slice(0, 20);
 
@@ -1802,6 +3107,13 @@ async function extractInteractiveComponentsFromFrame(
         selector: component.selector,
         role: component.role,
         href: component.href,
+        input_type: component.input_type,
+        label_text: component.label_text,
+        placeholder: component.placeholder,
+        name: component.name,
+        required: component.required,
+        disabled: component.disabled,
+        is_form_control: component.is_form_control,
         frame_id: component.frame_id,
         shadow_root: component.shadow_root,
         tag: component.tag,
@@ -1809,7 +3121,9 @@ async function extractInteractiveComponentsFromFrame(
         clicked_in_scenario: component.clicked_in_scenario,
         is_cta_candidate: component.is_cta_candidate,
         is_primary_like: false,
-        bounds: component.bounds
+        bounds: component.bounds,
+        visibility: component.visibility,
+        layout: component.layout
       }));
     }, { clickedTarget, frameId });
 }

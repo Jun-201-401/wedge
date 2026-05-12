@@ -10,8 +10,8 @@ import com.wedge.evidence.application.command.SaveRunCheckpointCommand;
 import com.wedge.evidence.application.command.SaveRunCheckpointsCommand;
 import com.wedge.evidence.domain.ArtifactType;
 import com.wedge.run.api.dto.RunResponse;
+import com.wedge.run.api.internal.runner.dto.RunnerControlStateResponse;
 import com.wedge.run.application.command.RunnerAcceptedCommand;
-import com.wedge.run.application.command.RunnerAgentEventCommand;
 import com.wedge.run.application.command.RunnerAgentEventsCommand;
 import com.wedge.run.application.command.RunnerAgentTraceCommand;
 import com.wedge.run.application.command.RunnerArtifactCommand;
@@ -39,15 +39,16 @@ import org.springframework.transaction.annotation.Transactional;
 public class RunnerCallbackService {
     private static final String ACCEPTED_CONSUMER = "runner.accepted";
     private static final String STEP_EVENTS_CONSUMER = "runner.step-events";
-    private static final String AGENT_EVENTS_CONSUMER = "runner.agent-events";
-    private static final String AGENT_TRACES_CONSUMER = "runner.agent-traces";
     private static final String CHECKPOINTS_CONSUMER = "runner.checkpoints";
     private static final String ARTIFACTS_CONSUMER = "runner.artifacts";
     private static final String FINISHED_CONSUMER = "runner.finished";
     private static final String FAILED_CONSUMER = "runner.failed";
+    private static final String AGENT_EVENTS_CONSUMER = "runner.agent-events";
+    private static final String AGENT_TRACES_CONSUMER = "runner.agent-traces";
     private static final Set<String> RUN_SCOPED_AGENT_ARTIFACT_KEYS = Set.of(
             "agent_trace",
-            "agent_scenario_plan_export"
+            "agent_scenario_plan_export",
+            "agent_replay_plan"
     );
 
     private final RunService runService;
@@ -84,44 +85,6 @@ public class RunnerCallbackService {
             command.events().forEach(event -> applyStepEvent(runId, event));
         }
         return RunnerCallbackAckResponse.stepEvents(run, command.events().size());
-    }
-
-
-    @Transactional
-    public RunnerCallbackAckResponse handleAgentEvents(UUID runId, RunnerAgentEventsCommand command, InternalCallbackContext context) {
-        context.validateRequired();
-
-        RunnerCallbackAckResponse duplicateResponse = duplicateStatusResponse(AGENT_EVENTS_CONSUMER, context.eventId(), runId);
-        if (duplicateResponse != null) {
-            return duplicateResponse.withEventCount(command.events().size());
-        }
-
-        RunResponse run = runService.markRunningIfStarting(runId);
-        if (!isTerminalStatus(run.status())) {
-            command.events().forEach(event -> appendAgentRunEvent(runId, event));
-        }
-        return RunnerCallbackAckResponse.stepEvents(run, command.events().size());
-    }
-
-    @Transactional
-    public RunnerCallbackAckResponse handleAgentTrace(UUID runId, RunnerAgentTraceCommand command, InternalCallbackContext context) {
-        context.validateRequired();
-
-        RunnerCallbackAckResponse duplicateResponse = duplicateStatusResponse(AGENT_TRACES_CONSUMER, context.eventId(), runId);
-        if (duplicateResponse != null) {
-            return duplicateResponse.withEventCount(1);
-        }
-
-        RunResponse run = runService.markRunningIfStarting(runId);
-        if (!isTerminalStatus(run.status())) {
-            Map<String, Object> payload = new LinkedHashMap<>();
-            payload.put("taskId", command.taskId());
-            payload.put("attemptId", command.attemptId());
-            payload.put("traceArtifactId", command.traceArtifactId());
-            payload.put("trace", command.trace());
-            runPersistenceAdapter.appendRunEvent(runId, null, "AGENT_TRACE_PERSISTED", payload, command.occurredAt());
-        }
-        return RunnerCallbackAckResponse.stepEvents(run, 1);
     }
 
     @Transactional
@@ -190,14 +153,42 @@ public class RunnerCallbackService {
         return RunnerCallbackAckResponse.terminal(run);
     }
 
+    @Transactional
+    public RunnerCallbackAckResponse handleAgentEvents(UUID runId, RunnerAgentEventsCommand command, InternalCallbackContext context) {
+        context.validateRequired();
 
-    private void appendAgentRunEvent(UUID runId, RunnerAgentEventCommand event) {
-        Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("taskId", event.taskId());
-        payload.put("attemptId", event.attemptId());
-        payload.put("turn", event.turn());
-        payload.put("payload", event.payload());
-        runPersistenceAdapter.appendRunEvent(runId, null, "AGENT_" + event.eventType(), payload, event.occurredAt());
+        if (isDuplicate(AGENT_EVENTS_CONSUMER, context.eventId())) {
+            RunResponse run = runService.getRun(runId);
+            return RunnerCallbackAckResponse.stepEvents(run, command.events().size()).withEventCount(command.events().size());
+        }
+
+        RunResponse run = runService.getRun(runId);
+        runPersistenceAdapter.saveAgentEvents(runId, command.events());
+        return RunnerCallbackAckResponse.stepEvents(run, command.events().size());
+    }
+
+    @Transactional
+    public RunnerCallbackAckResponse handleAgentTrace(UUID runId, RunnerAgentTraceCommand command, InternalCallbackContext context) {
+        context.validateRequired();
+
+        if (isDuplicate(AGENT_TRACES_CONSUMER, context.eventId())) {
+            return RunnerCallbackAckResponse.duplicateStatus(runService.getRun(runId));
+        }
+
+        RunResponse run = runService.getRun(runId);
+        runPersistenceAdapter.saveAgentTrace(runId, command);
+        return RunnerCallbackAckResponse.accepted(run);
+    }
+
+    @Transactional(readOnly = true)
+    public RunnerControlStateResponse getControlState(UUID runId) {
+        RunResponse run = runService.getRun(runId);
+        return new RunnerControlStateResponse(
+                run.id(),
+                run.status(),
+                run.status() == RunStatus.STOP_REQUESTED,
+                run.resultCompleteness()
+        );
     }
 
     private void applyStepEvent(UUID runId, RunnerStepEventCommand event) {
@@ -287,6 +278,7 @@ public class RunnerCallbackService {
         }
         return stepIdsByKey;
     }
+
 
     private boolean isRunScopedAgentArtifact(SaveRunArtifactCommand artifact) {
         return RUN_SCOPED_AGENT_ARTIFACT_KEYS.contains(artifact.stepKey());

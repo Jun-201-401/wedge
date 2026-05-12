@@ -1,6 +1,6 @@
 import type { ScenarioAction, ScenarioPlan, SettleStrategy } from "../shared/contracts.ts";
 import type { AgentDecision } from "./planner.ts";
-import type { AgentTrace } from "./trace.ts";
+import type { AgentTrace } from "./trace/index.ts";
 
 const EMAIL_PATTERN = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi;
 const CARD_PATTERN = /\b(?:\d[ -]*?){13,19}\b/g;

@@ -1,6 +1,6 @@
-import type { BrowserSession } from "../../browser/playwright/index.ts";
+import type { BrowserCaptureOptions, BrowserSession } from "../../browser/playwright/index.ts";
 import type { CallbackClient } from "../../callback/index.ts";
-import type { CapturePipeline } from "../../capture/index.ts";
+import type { CapturePipeline, JourneyDepthContext } from "../../capture/index.ts";
 import type { DeliveryIssue } from "../../delivery/index.ts";
 import type { ArtifactStore } from "../../storage/index.ts";
 import type { ScenarioPlan, ScenarioStep } from "../../shared/contracts.ts";
@@ -18,6 +18,7 @@ export interface ScenarioStepExecutorInput {
   capturePipeline: CapturePipeline;
   artifactStore: ArtifactStore;
   emitStepEvents?: boolean;
+  journeyDepthContext?: JourneyDepthContext;
 }
 
 export interface ScenarioStepExecutionResult {
@@ -34,7 +35,8 @@ export async function executeScenarioStep({
   callbackClient,
   capturePipeline,
   artifactStore,
-  emitStepEvents = true
+  emitStepEvents = true,
+  journeyDepthContext
 }: ScenarioStepExecutorInput): Promise<ScenarioStepExecutionResult> {
   const deliveryIssues: DeliveryIssue[] = [];
   const preparedSettle = await session.prepareSettle?.(step.settle_strategy);
@@ -46,6 +48,7 @@ export async function executeScenarioStep({
     })));
   }
 
+  const beforeSnapshot = step.checkpoint ? session.snapshot() : undefined;
   let actionResult;
   try {
     actionResult = await executeScenarioAction(session, step);
@@ -64,7 +67,9 @@ export async function executeScenarioStep({
 
   const settleResult = preparedSettle ? await preparedSettle.settle() : await session.settle(step.settle_strategy);
   const pageSnapshot = session.snapshot();
-  const capturedArtifacts = step.checkpoint ? await session.captureArtifacts() : undefined;
+  const capturedArtifacts = step.checkpoint
+    ? await session.captureArtifacts(createBrowserCaptureOptions(plan))
+    : undefined;
 
   if (step.checkpoint) {
     deliveryIssues.push(...(await emitCheckpointArtifactsAndCallbacks({
@@ -72,9 +77,12 @@ export async function executeScenarioStep({
       stepOrder,
       step,
       plan,
+      beforeSnapshot,
       pageSnapshot,
+      actionResult,
       settleResult,
       capturedArtifacts,
+      journeyDepthContext,
       callbackClient,
       capturePipeline,
       artifactStore
@@ -92,4 +100,21 @@ export async function executeScenarioStep({
     stopRequested: actionResult.stopRequested,
     deliveryIssues
   };
+}
+
+function createBrowserCaptureOptions(plan: ScenarioPlan): BrowserCaptureOptions {
+  const options: BrowserCaptureOptions = {};
+  if (plan.artifact_policy?.capture_ax_tree === true) {
+    options.captureAxTree = true;
+  }
+  if (plan.artifact_policy?.capture_har === true) {
+    options.captureHar = true;
+  }
+  if (plan.artifact_policy?.capture_performance === true) {
+    options.capturePerformance = true;
+  }
+  if (plan.artifact_policy?.capture_trace === true) {
+    options.captureTrace = true;
+  }
+  return options;
 }

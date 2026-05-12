@@ -5,6 +5,7 @@ from typing import Any
 
 from app.clients import SpringCallbackClient, SpringCallbackError, SpringCallbackResponse
 from app.providers import GMSSemanticProvider
+from app.providers.label_integrity import GMSLabelIntegrityProvider
 from app.providers.label_role import GMSLabelRoleProvider
 from app.rule_engine import analyze_evidence_packet, load_default_registry
 from app.services.llm_analysis import GMSReportExplainer
@@ -23,6 +24,7 @@ def analyze_packet(evidence_packet: dict[str, Any]) -> dict[str, Any]:
     judge_result = analyze_evidence_packet(
         evidence_packet,
         semantic_provider=GMSSemanticProvider.from_env(),
+        label_integrity_provider=GMSLabelIntegrityProvider.from_env(),
         label_role_provider=GMSLabelRoleProvider.from_env(),
     )
     return GMSReportExplainer.from_env().explain(judge_result)

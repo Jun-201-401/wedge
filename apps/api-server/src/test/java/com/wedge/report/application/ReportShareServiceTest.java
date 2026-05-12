@@ -9,6 +9,7 @@ import static org.mockito.Mockito.when;
 
 import com.wedge.common.error.BusinessException;
 import com.wedge.common.error.ErrorCode;
+import com.wedge.evidence.application.EvidenceService;
 import com.wedge.report.api.dto.ReportDetailResponse;
 import com.wedge.report.api.dto.ReportShareResponse;
 import com.wedge.report.domain.Report;
@@ -39,6 +40,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.core.io.ByteArrayResource;
 
 @ExtendWith(MockitoExtension.class)
 class ReportShareServiceTest {
@@ -57,6 +59,8 @@ class ReportShareServiceTest {
     @Mock
     private ReportDetailQueryService reportDetailQueryService;
     @Mock
+    private EvidenceService evidenceService;
+    @Mock
     private ReportShareTokenGenerator tokenGenerator;
 
     private ReportProperties reportProperties;
@@ -73,6 +77,7 @@ class ReportShareServiceTest {
                 runService,
                 reportAccessGuard,
                 reportDetailQueryService,
+                evidenceService,
                 reportProperties,
                 tokenGenerator,
                 Clock.fixed(FIXED_INSTANT, ZoneOffset.UTC)
@@ -164,6 +169,39 @@ class ReportShareServiceTest {
                 .isInstanceOfSatisfying(BusinessException.class, exception ->
                         assertThat(exception.errorCode()).isEqualTo(ErrorCode.REPORT_NOT_FOUND)
                 );
+    }
+
+    @Test
+    void getSharedArtifactContentReturnsRunArtifactForActiveToken() {
+        UUID reportId = UUID.randomUUID();
+        UUID runId = UUID.randomUUID();
+        UUID artifactId = UUID.randomUUID();
+        ReportShare share = share(reportId);
+        EvidenceService.ArtifactContent content = new EvidenceService.ArtifactContent(
+                new ByteArrayResource("fake-png".getBytes()),
+                "image/png"
+        );
+        when(reportShareMapper.findActiveByToken(SHARE_TOKEN, NOW)).thenReturn(Optional.of(share));
+        when(reportMapper.findById(reportId)).thenReturn(Optional.of(report(reportId, runId)));
+        when(evidenceService.getRunImageArtifactContent(runId, artifactId)).thenReturn(content);
+
+        EvidenceService.ArtifactContent response = reportShareService.getSharedArtifactContent(SHARE_TOKEN, artifactId);
+
+        assertThat(response).isSameAs(content);
+        verify(evidenceService).getRunImageArtifactContent(runId, artifactId);
+    }
+
+    @Test
+    void getSharedArtifactContentRejectsMissingExpiredOrRevokedToken() {
+        UUID artifactId = UUID.randomUUID();
+        when(reportShareMapper.findActiveByToken(SHARE_TOKEN, NOW)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> reportShareService.getSharedArtifactContent(SHARE_TOKEN, artifactId))
+                .isInstanceOfSatisfying(BusinessException.class, exception ->
+                        assertThat(exception.errorCode()).isEqualTo(ErrorCode.REPORT_NOT_FOUND)
+                );
+
+        verify(evidenceService, never()).getRunImageArtifactContent(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
     }
 
     @Test

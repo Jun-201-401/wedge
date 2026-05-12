@@ -11,8 +11,8 @@ import { executeScenario } from "../src/scenario/executor/index.ts";
 import { executeScenarioStep } from "../src/scenario/executor/step-executor.ts";
 import { createArtifactStore } from "../src/storage/index.ts";
 import { registerAgentWorker } from "../src/worker/agent-worker.ts";
-import { exportAgentTraceToScenarioPlan } from "../src/agent/trace-export.ts";
-import type { AgentTrace } from "../src/agent/trace.ts";
+import { exportAgentTraceToScenarioPlan } from "../src/agent/trace/export.ts";
+import type { AgentTrace } from "../src/agent/trace/index.ts";
 import type {
   AgentEvent,
   AgentTask,
@@ -94,6 +94,28 @@ test("[Playwright 실제 실행] goto/fill/select를 수행하고 실제 screens
     assert.equal(snapshot.fields.Email, "test@example.com");
     assert.equal(snapshot.selectedOptions.Plan, "pro");
     assert.deepEqual(snapshot.visitedUrls, [formUrl]);
+
+    const emailCandidate = snapshot.interactiveComponents.find((component) => component.selector === "#email");
+    const planCandidate = snapshot.interactiveComponents.find((component) => component.selector === "#plan");
+    const messageCandidate = snapshot.interactiveComponents.find((component) => component.selector === "#message");
+
+    assert.equal(emailCandidate?.is_form_control, true);
+    assert.equal(emailCandidate?.role, "textbox");
+    assert.equal(emailCandidate?.input_type, "email");
+    assert.equal(emailCandidate?.label_text, "Email");
+    assert.equal(emailCandidate?.placeholder, "Work email");
+    assert.equal(emailCandidate?.name, "email");
+    assert.equal(emailCandidate?.required, true);
+    assert.equal(emailCandidate?.disabled, false);
+    assert.equal(emailCandidate?.clickable, false);
+    assert.equal(planCandidate?.is_form_control, true);
+    assert.equal(planCandidate?.role, "combobox");
+    assert.equal(planCandidate?.input_type, "select");
+    assert.equal(planCandidate?.label_text, "Plan");
+    assert.equal(messageCandidate?.is_form_control, true);
+    assert.equal(messageCandidate?.input_type, "textarea");
+    assert.equal(messageCandidate?.placeholder, "Tell us about your team");
+
     assert.equal(capturedArtifacts.screenshot?.mimeType, "image/png");
     assert.equal(capturedArtifacts.screenshot?.fileExtension, "png");
     assert.ok((capturedArtifacts.screenshot?.contentBase64.length ?? 0) > 0);
@@ -113,6 +135,65 @@ test("[Playwright 실제 실행] goto/fill/select를 수행하고 실제 screens
   } finally {
     await session?.close();
     await rm(fixtureRoot, { recursive: true, force: true });
+    await rm(artifactsRoot, { recursive: true, force: true });
+  }
+});
+
+test("[Playwright AX collector] capture_ax_tree 요청 시 CDP accessibility tree와 summary를 캡처한다", async () => {
+  const fixtureRoot = await mkdtemp(join(tmpdir(), "wedge-runner-playwright-site-"));
+  const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-playwright-artifacts-"));
+  let session: Awaited<ReturnType<ReturnType<typeof createPlaywrightSessionFactory>["createSession"]>> | undefined;
+
+  try {
+    const { formUrl } = await createFixtureSite(fixtureRoot);
+    const browserFactory = createPlaywrightBrowserFactory(artifactsRoot);
+
+    session = await browserFactory.createSession({
+      runId: "run-playwright-ax-tree",
+      plan: createPlaywrightPlan(formUrl)
+    });
+
+    await executeGotoStep(session, formUrl, "step_goto_ax_tree");
+
+    const capturedArtifacts = await session.captureArtifacts({ captureAxTree: true });
+
+    assert.equal(capturedArtifacts.axTree?.mimeType, "application/json");
+    assert.equal(capturedArtifacts.axTree?.fileExtension, "json");
+    assert.ok((capturedArtifacts.axTree?.summary.node_count ?? 0) > 0);
+    assert.ok((capturedArtifacts.axTree?.summary.named_node_count ?? 0) > 0);
+    assert.ok((capturedArtifacts.axTree?.summary.form_control_role_count ?? 0) > 0);
+    assert.match(capturedArtifacts.axTree?.content ?? "", /Accessibility\.getFullAXTree/);
+  } finally {
+    await session?.close();
+    await rm(fixtureRoot, { recursive: true, force: true });
+    await rm(artifactsRoot, { recursive: true, force: true });
+  }
+});
+
+test("[Playwright 실제 실행] screenshot 캡처 전에 lazy image를 스크롤 로딩한다", async () => {
+  const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-playwright-artifacts-"));
+  const fixtureServer = await createLazyImageFixtureServer();
+  let session: Awaited<ReturnType<ReturnType<typeof createPlaywrightSessionFactory>["createSession"]>> | undefined;
+
+  try {
+    const browserFactory = createPlaywrightBrowserFactory(artifactsRoot);
+
+    session = await browserFactory.createSession({
+      runId: "run-playwright-lazy-image",
+      plan: createPlaywrightPlan(fixtureServer.url)
+    });
+
+    await executeGotoStep(session, fixtureServer.url, "step_goto_lazy_image");
+
+    assert.equal(fixtureServer.imageRequestCount(), 0);
+
+    const capturedArtifacts = await session.captureArtifacts();
+
+    assert.equal(capturedArtifacts.screenshot?.mimeType, "image/png");
+    assert.ok(fixtureServer.imageRequestCount() > 0);
+  } finally {
+    await session?.close();
+    await fixtureServer.close();
     await rm(artifactsRoot, { recursive: true, force: true });
   }
 });
@@ -200,6 +281,63 @@ test("[Playwright 실제 실행] scroll 액션 후 snapshot에 scroll position�
 
     assert.equal(snapshot.lastAction?.type, "scroll");
     assert.ok(snapshot.scrollY >= 600);
+  } finally {
+    await session?.close();
+    await rm(fixtureRoot, { recursive: true, force: true });
+    await rm(artifactsRoot, { recursive: true, force: true });
+  }
+});
+
+test("[Playwright signal] breadcrumb/toast/cart count를 다양한 DOM 패턴에서 추출한다", async () => {
+  const fixtureRoot = await mkdtemp(join(tmpdir(), "wedge-runner-playwright-signals-"));
+  const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-playwright-artifacts-"));
+  let session: Awaited<ReturnType<ReturnType<typeof createPlaywrightSessionFactory>["createSession"]>> | undefined;
+
+  try {
+    const signalFile = join(fixtureRoot, "signals.html");
+    await writeFile(
+      signalFile,
+      `<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <title>Runner Signal Fixture</title>
+  </head>
+  <body>
+    <nav aria-label="Breadcrumb">
+      <ol>
+        <li><a href="/">Home</a></li>
+        <li><a href="/shop">Shop</a></li>
+        <li aria-current="page">Runner Shoes</li>
+      </ol>
+    </nav>
+    <a id="cart-link" aria-label="장바구니 3개" href="/cart">
+      Cart <span class="cart-badge">3</span>
+    </a>
+    <div role="status" class="flash-message">장바구니에 담았습니다</div>
+    <main>
+      <h1>Runner Shoes</h1>
+    </main>
+  </body>
+</html>`,
+      "utf8"
+    );
+
+    const signalUrl = pathToFileURL(signalFile).toString();
+    const plan = createPlaywrightPlan(signalUrl);
+    const browserFactory = createPlaywrightBrowserFactory(artifactsRoot);
+
+    session = await browserFactory.createSession({
+      runId: "run-playwright-signals",
+      plan
+    });
+
+    await executeGotoStep(session, signalUrl, "step_open_signals");
+    const snapshot = session.snapshot();
+
+    assert.deepEqual(snapshot.breadcrumb, ["Home", "Shop", "Runner Shoes"]);
+    assert.deepEqual(snapshot.toastTexts, ["장바구니에 담았습니다"]);
+    assert.equal(snapshot.cartCount, 3);
   } finally {
     await session?.close();
     await rm(fixtureRoot, { recursive: true, force: true });
@@ -472,9 +610,12 @@ test("[MVP 랜딩 CTA] 첫 화면 checkpoint 후 CTA 클릭과 도착 화면 che
 
     const firstViewCheckpoint = findCheckpoint(result.checkpoints, "landing_002_first_view_checkpoint");
     const interactiveComponents = findObservation(firstViewCheckpoint, "interactive_components");
+    const visibleTextBlocks = findObservation(firstViewCheckpoint, "visible_text_blocks");
     const components = readRecordArray(interactiveComponents, "components");
+    const textBlocks = readRecordArray(visibleTextBlocks, "blocks");
     const primaryComponents = components.filter((component) => component.is_primary_like === true);
     const startFreeComponent = components.find((component) => component.text === "Start free");
+    const headlineBlock = textBlocks.find((block) => block.text === "MVP Runner Fixture");
 
     assert.equal(interactiveComponents.stage, "CTA");
     assert.equal(interactiveComponents.primary_like_component_count, primaryComponents.length);
@@ -486,6 +627,15 @@ test("[MVP 랜딩 CTA] 첫 화면 checkpoint 후 CTA 클릭과 도착 화면 che
     assert.equal(readString(startFreeComponent?.bounds, "unit"), "css_px");
     assert.ok(readPositiveNumber(startFreeComponent?.bounds, "width") > 0);
     assert.ok(readPositiveNumber(startFreeComponent?.bounds, "height") > 0);
+    assert.equal(readString(startFreeComponent?.layout, "viewport_position"), "inside");
+    assert.equal(readBoolean(startFreeComponent?.visibility, "in_viewport"), true);
+    assert.equal(visibleTextBlocks.stage, "FIRST_VIEW");
+    assert.ok(textBlocks.length >= 2);
+    assert.equal(headlineBlock?.is_heading, true);
+    assert.equal(readString(headlineBlock?.bounds, "unit"), "css_px");
+    assert.equal(readBoolean(headlineBlock?.visibility, "above_fold"), true);
+    assert.equal(readNumber(firstViewCheckpoint.state.dom_summary, "cta_candidate_count"), components.filter((component) => component.is_cta_candidate === true).length);
+    assert.equal(readNumber(firstViewCheckpoint.state.layout_summary, "above_fold_interactive_count"), components.filter((component) => readBoolean(component.visibility, "above_fold") === true).length);
   } finally {
     await rm(fixtureRoot, { recursive: true, force: true });
     await rm(artifactsRoot, { recursive: true, force: true });
@@ -1801,6 +1951,14 @@ function readPositiveNumber(source: unknown, key: string): number {
   return value as number;
 }
 
+function readNumber(source: unknown, key: string): number {
+  assert.ok(typeof source === "object" && source !== null && !Array.isArray(source), `Expected source for ${key} to be an object`);
+  const value = (source as Record<string, unknown>)[key];
+  assert.equal(typeof value, "number", `Expected ${key} to be numeric`);
+  assert.ok(Number.isFinite(value), `Expected ${key} to be finite`);
+  return value as number;
+}
+
 function readString(source: unknown, key: string): string | undefined {
   if (typeof source !== "object" || source === null || Array.isArray(source)) {
     return undefined;
@@ -1810,8 +1968,82 @@ function readString(source: unknown, key: string): string | undefined {
   return typeof value === "string" ? value : undefined;
 }
 
+function readBoolean(source: unknown, key: string): boolean | undefined {
+  if (typeof source !== "object" || source === null || Array.isArray(source)) {
+    return undefined;
+  }
+
+  const value = (source as Record<string, unknown>)[key];
+  return typeof value === "boolean" ? value : undefined;
+}
+
 function createPlaywrightBrowserFactory(artifactsRoot: string) {
   return createPlaywrightSessionFactory(createPlaywrightConfig(artifactsRoot));
+}
+
+async function createLazyImageFixtureServer(): Promise<{
+  url: string;
+  imageRequestCount: () => number;
+  close: () => Promise<void>;
+}> {
+  let imageRequests = 0;
+  const lazyImagePng = Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=",
+    "base64"
+  );
+  const server = createServer((request: IncomingMessage, response: ServerResponse) => {
+    const requestUrl = new URL(request.url ?? "/", "http://127.0.0.1");
+
+    if (requestUrl.pathname === "/lazy.png") {
+      imageRequests += 1;
+      response.writeHead(200, {
+        "content-type": "image/png",
+        "cache-control": "no-store"
+      });
+      response.end(lazyImagePng);
+      return;
+    }
+
+    response.writeHead(200, {
+      "content-type": "text/html; charset=utf-8",
+      "cache-control": "no-store"
+    });
+    response.end(`<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Lazy Image Fixture</title>
+  </head>
+  <body style="margin:0;">
+    <main>
+      <h1>Lazy Image Fixture</h1>
+      <div style="height:2600px;"></div>
+      <img id="lazy-image" data-src="/lazy.png" width="80" height="80" alt="Lazy product" />
+    </main>
+    <script>
+      const image = document.getElementById("lazy-image");
+      const observer = new IntersectionObserver((entries) => {
+        if (entries.some((entry) => entry.isIntersecting) && image && !image.getAttribute("src")) {
+          image.setAttribute("src", image.dataset.src);
+          observer.disconnect();
+        }
+      });
+      observer.observe(image);
+    </script>
+  </body>
+</html>`);
+  });
+
+  await new Promise<void>((resolve, reject) => {
+    server.listen(0, "127.0.0.1", () => resolve());
+    server.once("error", reject);
+  });
+
+  return {
+    url: `${serverOrigin(server)}/`,
+    imageRequestCount: () => imageRequests,
+    close: () => closeServer(server)
+  };
 }
 
 async function createFixtureSite(root: string): Promise<{ formUrl: string; doneUrl: string }> {
@@ -1831,7 +2063,7 @@ async function createFixtureSite(root: string): Promise<{ formUrl: string; doneU
       <h1>Runner Playwright Form</h1>
       <form>
         <label for="email">Email</label>
-        <input id="email" name="email" type="email" />
+        <input id="email" name="email" type="email" placeholder="Work email" required />
 
         <label for="plan">Plan</label>
         <select id="plan" name="plan">
@@ -1839,6 +2071,9 @@ async function createFixtureSite(root: string): Promise<{ formUrl: string; doneU
           <option value="starter">Starter</option>
           <option value="pro">Pro</option>
         </select>
+
+        <label for="message">Message</label>
+        <textarea id="message" name="message" placeholder="Tell us about your team"></textarea>
       </form>
 
       <a href="./done.html">Continue</a>
@@ -2749,7 +2984,7 @@ function createAgentIframeReplayPlan(startUrl: string): ScenarioPlan {
     }),
     createStep({
       step_id: "agent_frame_replay_002_click",
-      stage: "NAVIGATION",
+      stage: "CTA",
       description: "replay_hint frame_id 후보 클릭",
       action: {
         type: "click",
@@ -2784,7 +3019,7 @@ function createAgentIframeReplayPlan(startUrl: string): ScenarioPlan {
     }),
     createStep({
       step_id: "agent_frame_replay_003_checkpoint",
-      stage: "ASSERT",
+      stage: "COMMIT",
       description: "frame replay checkpoint",
       action: {
         type: "checkpoint"

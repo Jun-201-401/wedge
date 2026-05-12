@@ -1,9 +1,20 @@
 import { randomUUID } from "node:crypto";
-import type { BrowserCapturedArtifacts, BrowserPageSnapshot, BrowserSettleResult } from "../browser/playwright/index.ts";
+import type { BrowserActionResult, BrowserCapturedArtifacts, BrowserPageSnapshot, BrowserSettleResult } from "../browser/playwright/index.ts";
 import type {
   ArtifactDraft,
+  AxTreeObservation,
+  LayoutCollectorObservation,
+  NetworkTimelineObservation,
+  PerformanceMetricObservation,
+  CategoryFilterSignalObservation,
   Checkpoint,
+  DepthFromDiscoveryObservation,
+  GoalActionCandidateObservation,
+  GoalActionResultObservation,
   InteractiveComponentsObservation,
+  JourneyActionRawObservation,
+  ProductCardObservation,
+  ProductDetailSignalObservation,
   ScenarioPlan,
   ScenarioStep
 } from "../shared/contracts.ts";
@@ -13,20 +24,41 @@ export interface CheckpointCollection {
   artifacts: ArtifactDraft[];
 }
 
+export interface JourneyDepthContext {
+  discoveryStepOrder?: number;
+  discoveryStepKey?: string;
+  discoveryStage?: ScenarioStep["stage"];
+  discoveryUrl?: string;
+  productCardCountAtDiscovery?: number;
+}
+
 export interface CapturePipeline {
   collectCheckpoint: (input: {
     step: ScenarioStep;
     stepOrder: number;
     plan: ScenarioPlan;
+    beforeSnapshot?: BrowserPageSnapshot;
     pageSnapshot: BrowserPageSnapshot;
+    actionResult?: BrowserActionResult;
     settleResult: BrowserSettleResult;
     capturedArtifacts?: BrowserCapturedArtifacts;
+    journeyDepthContext?: JourneyDepthContext;
   }) => Promise<CheckpointCollection>;
 }
 
 export function createCapturePipeline(): CapturePipeline {
   return {
-    async collectCheckpoint({ step, stepOrder, plan, pageSnapshot, settleResult, capturedArtifacts }) {
+    async collectCheckpoint({
+      step,
+      stepOrder,
+      plan,
+      beforeSnapshot,
+      pageSnapshot,
+      actionResult,
+      settleResult,
+      capturedArtifacts,
+      journeyDepthContext
+    }) {
       const screenshotArtifact = createScreenshotArtifact({
         artifactId: randomUUID(),
         pageSnapshot,
@@ -43,6 +75,16 @@ export function createCapturePipeline(): CapturePipeline {
         capturedArtifacts
       });
       const consoleLogArtifact = createConsoleLogArtifact(step.step_id, pageSnapshot.consoleErrors);
+      const axTreeArtifact = createAxTreeArtifact(step.step_id, capturedArtifacts);
+      const harArtifact = createHarArtifact(step.step_id, pageSnapshot, plan);
+      const runtimeTraceArtifact = createRuntimeTraceArtifact({
+        step,
+        stepOrder,
+        pageSnapshot,
+        actionResult,
+        settleResult,
+        plan
+      });
 
       return {
         checkpoint: {
@@ -59,11 +101,24 @@ export function createCapturePipeline(): CapturePipeline {
             durationMs: settleResult.durationMs,
             status: settleResult.status
           },
-          state: createCheckpointState(pageSnapshot),
-          observations: createCheckpointObservations(step, pageSnapshot, settleResult),
+          state: createCheckpointState(pageSnapshot, capturedArtifacts),
+          observations: createCheckpointObservations({
+            step,
+            stepOrder,
+            beforeSnapshot,
+            pageSnapshot,
+            actionResult,
+            settleResult,
+            screenshotArtifactId: screenshotArtifact.artifactId,
+            axTreeArtifactId: axTreeArtifact?.artifactId,
+            harArtifactId: harArtifact?.artifactId,
+            capturePerformance: plan.artifact_policy?.capture_performance === true,
+            capturedArtifacts,
+            journeyDepthContext
+          }),
           deltas: createCheckpointDeltas(pageSnapshot)
         },
-        artifacts: buildCheckpointArtifacts(screenshotArtifact, domArtifact, consoleLogArtifact)
+        artifacts: buildCheckpointArtifacts(screenshotArtifact, domArtifact, consoleLogArtifact, axTreeArtifact, harArtifact, runtimeTraceArtifact)
       };
     }
   };
@@ -72,11 +127,19 @@ export function createCapturePipeline(): CapturePipeline {
 function buildCheckpointArtifacts(
   screenshotArtifact: ArtifactDraft,
   domArtifact: ArtifactDraft,
-  consoleLogArtifact: ArtifactDraft | null
+  consoleLogArtifact: ArtifactDraft | null,
+  axTreeArtifact: ArtifactDraft | null,
+  harArtifact: ArtifactDraft | null,
+  runtimeTraceArtifact: ArtifactDraft | null
 ): ArtifactDraft[] {
-  return consoleLogArtifact
-    ? [screenshotArtifact, domArtifact, consoleLogArtifact]
-    : [screenshotArtifact, domArtifact];
+  return [
+    screenshotArtifact,
+    domArtifact,
+    ...(consoleLogArtifact ? [consoleLogArtifact] : []),
+    ...(axTreeArtifact ? [axTreeArtifact] : []),
+    ...(harArtifact ? [harArtifact] : []),
+    ...(runtimeTraceArtifact ? [runtimeTraceArtifact] : [])
+  ];
 }
 
 function createConsoleLogArtifact(stepKey: string, consoleErrors: string[]): ArtifactDraft | null {
@@ -100,7 +163,169 @@ function createConsoleLogArtifact(stepKey: string, consoleErrors: string[]): Art
   };
 }
 
-function createCheckpointState(pageSnapshot: BrowserPageSnapshot): Checkpoint["state"] {
+function createAxTreeArtifact(
+  stepKey: string,
+  capturedArtifacts?: BrowserCapturedArtifacts
+): ArtifactDraft | null {
+  if (!capturedArtifacts?.axTree) {
+    return null;
+  }
+
+  return {
+    artifactId: randomUUID(),
+    artifactType: "AX_TREE",
+    stepKey,
+    mimeType: capturedArtifacts.axTree.mimeType,
+    fileExtension: capturedArtifacts.axTree.fileExtension,
+    content: capturedArtifacts.axTree.content
+  };
+}
+
+function createHarArtifact(
+  stepKey: string,
+  pageSnapshot: BrowserPageSnapshot,
+  plan: ScenarioPlan
+): ArtifactDraft | null {
+  if (plan.artifact_policy?.capture_har !== true || pageSnapshot.networkEvents.length === 0) {
+    return null;
+  }
+
+  return {
+    artifactId: randomUUID(),
+    artifactType: "HAR",
+    stepKey,
+    mimeType: "application/json",
+    fileExtension: "har.json",
+    content: JSON.stringify(createHarPayload(pageSnapshot), null, 2)
+  };
+}
+
+function createRuntimeTraceArtifact({
+  step,
+  stepOrder,
+  pageSnapshot,
+  actionResult,
+  settleResult,
+  plan
+}: {
+  step: ScenarioStep;
+  stepOrder: number;
+  pageSnapshot: BrowserPageSnapshot;
+  actionResult?: BrowserActionResult;
+  settleResult: BrowserSettleResult;
+  plan: ScenarioPlan;
+}): ArtifactDraft | null {
+  if (plan.artifact_policy?.capture_trace !== true) {
+    return null;
+  }
+
+  return {
+    artifactId: randomUUID(),
+    artifactType: "TRACE",
+    stepKey: step.step_id,
+    mimeType: "application/json",
+    fileExtension: "json",
+    content: JSON.stringify({
+      schema_version: "0.1",
+      trace_type: "runner_checkpoint_runtime_trace",
+      step_order: stepOrder,
+      step_key: step.step_id,
+      stage: step.stage,
+      action: {
+        type: step.action.type,
+        target: actionResult?.targetSummary ?? null
+      },
+      settle: settleResult,
+      url: pageSnapshot.finalUrl,
+      title: pageSnapshot.title,
+      dom_summary: pageSnapshot.domSummary,
+      layout_summary: pageSnapshot.layoutSummary,
+      performance_summary: pageSnapshot.performanceSummary,
+      network_event_count: pageSnapshot.networkEvents.length,
+      failed_network_event_count: pageSnapshot.networkEvents.filter((event) => event.failed === true).length,
+      cdp_session: pageSnapshot.cdpSession
+    }, null, 2)
+  };
+}
+
+function createHarPayload(pageSnapshot: BrowserPageSnapshot): Record<string, unknown> {
+  return {
+    log: {
+      version: "1.2",
+      creator: {
+        name: "wedge-runner",
+        version: "0.1"
+      },
+      pages: [
+        {
+          startedDateTime: pageSnapshot.networkEvents[0]?.occurredAt ?? new Date().toISOString(),
+          id: "page_1",
+          title: pageSnapshot.title,
+          pageTimings: {
+            onContentLoad: pageSnapshot.performanceSummary?.dom_content_loaded_ms ?? -1,
+            onLoad: pageSnapshot.performanceSummary?.load_event_ms ?? -1
+          }
+        }
+      ],
+      entries: pageSnapshot.networkEvents.map((event) => ({
+        startedDateTime: event.occurredAt ?? new Date().toISOString(),
+        time: event.durationMs ?? 0,
+        request: {
+          method: event.method,
+          url: event.url,
+          httpVersion: "HTTP/1.1",
+          headers: [],
+          queryString: [],
+          cookies: [],
+          headersSize: -1,
+          bodySize: -1
+        },
+        response: {
+          status: event.status ?? 0,
+          statusText: event.failed ? event.errorText ?? "request failed" : "",
+          httpVersion: "HTTP/1.1",
+          headers: [],
+          cookies: [],
+          content: {
+            size: event.encodedBodySizeBytes ?? -1,
+            mimeType: "application/octet-stream"
+          },
+          redirectURL: "",
+          headersSize: -1,
+          bodySize: event.transferSizeBytes ?? -1
+        },
+        cache: {},
+        timings: {
+          blocked: -1,
+          dns: -1,
+          connect: -1,
+          send: 0,
+          wait: event.durationMs ?? 0,
+          receive: 0,
+          ssl: -1
+        },
+        _resourceType: event.resourceType ?? null,
+        _failed: event.failed === true
+      }))
+    }
+  };
+}
+
+function statusCodeCounts(events: BrowserPageSnapshot["networkEvents"]): Record<string, number> {
+  const counts: Record<string, number> = {};
+  for (const event of events) {
+    const key = event.status === undefined
+      ? event.failed === true ? "failed" : "unknown"
+      : String(event.status);
+    counts[key] = (counts[key] ?? 0) + 1;
+  }
+  return counts;
+}
+
+function createCheckpointState(
+  pageSnapshot: BrowserPageSnapshot,
+  capturedArtifacts?: BrowserCapturedArtifacts
+): Checkpoint["state"] {
   return {
     url: pageSnapshot.finalUrl,
     title: pageSnapshot.title,
@@ -111,19 +336,114 @@ function createCheckpointState(pageSnapshot: BrowserPageSnapshot): Checkpoint["s
     visitedUrls: pageSnapshot.visitedUrls,
     fields: pageSnapshot.fields,
     selectedOptions: pageSnapshot.selectedOptions,
+    breadcrumb: pageSnapshot.breadcrumb,
+    toastTexts: pageSnapshot.toastTexts,
+    cartCount: pageSnapshot.cartCount,
+    visiblePrices: pageSnapshot.visiblePrices,
+    dom_summary: pageSnapshot.domSummary,
+    layout_summary: pageSnapshot.layoutSummary,
+    selectedFilters: pageSnapshot.selectedFilters,
+    searchQuery: pageSnapshot.searchQuery,
+    network_summary: {
+      event_count: pageSnapshot.networkEvents.length,
+      failed_request_count: pageSnapshot.networkEvents.filter((event) => event.failed).length
+    },
+    layout_collector_summary: pageSnapshot.layoutSummary,
+    performance_summary: pageSnapshot.performanceSummary,
+    browser_health: pageSnapshot.browserHealth,
+    ...(capturedArtifacts?.axTree ? { ax_tree_summary: capturedArtifacts.axTree.summary } : {}),
     cdpSession: pageSnapshot.cdpSession
   };
 }
 
-function createCheckpointObservations(
-  step: ScenarioStep,
-  pageSnapshot: BrowserPageSnapshot,
-  settleResult: BrowserSettleResult
-): Record<string, unknown>[] {
+function createCheckpointObservations({
+  step,
+  stepOrder,
+  beforeSnapshot,
+  pageSnapshot,
+  actionResult,
+  settleResult,
+  screenshotArtifactId,
+  axTreeArtifactId,
+  harArtifactId,
+  capturePerformance,
+  capturedArtifacts,
+  journeyDepthContext
+}: {
+  step: ScenarioStep;
+  stepOrder: number;
+  beforeSnapshot?: BrowserPageSnapshot;
+  pageSnapshot: BrowserPageSnapshot;
+  actionResult?: BrowserActionResult;
+  settleResult: BrowserSettleResult;
+  screenshotArtifactId: string;
+  axTreeArtifactId?: string;
+  harArtifactId?: string;
+  capturePerformance: boolean;
+  capturedArtifacts?: BrowserCapturedArtifacts;
+  journeyDepthContext?: JourneyDepthContext;
+}): Record<string, unknown>[] {
+  const journeyActionObservation = createJourneyActionRawObservation({
+    step,
+    stepOrder,
+    beforeSnapshot,
+    pageSnapshot,
+    actionResult,
+    settleResult,
+    screenshotArtifactId
+  });
+  const categoryFilterObservation = createCategoryFilterSignalObservation({
+    step,
+    stepOrder,
+    beforeSnapshot,
+    pageSnapshot,
+    actionResult
+  });
+  const productDetailSignalObservation = createProductDetailSignalObservation({
+    step,
+    stepOrder,
+    beforeSnapshot,
+    pageSnapshot,
+    actionResult,
+    screenshotArtifactId,
+    matchedProductCard: journeyActionObservation?.matched_product_card ?? null
+  });
+  const goalActionResultObservation = createGoalActionResultObservation({
+    step,
+    stepOrder,
+    beforeSnapshot,
+    pageSnapshot,
+    actionResult,
+    settleResult,
+    matchedProductCard: journeyActionObservation?.matched_product_card ?? null
+  });
+  const depthFromDiscoveryObservation = createDepthFromDiscoveryObservation({
+    step,
+    stepOrder,
+    beforeSnapshot,
+    pageSnapshot,
+    actionResult,
+    settleResult,
+    categoryFilterObservation,
+    journeyDepthContext
+  });
+
   return [
+    ...(journeyActionObservation ? [{ ...journeyActionObservation }] : []),
+    ...(categoryFilterObservation ? [{ ...categoryFilterObservation }] : []),
+    ...(productDetailSignalObservation ? [{ ...productDetailSignalObservation }] : []),
+    ...(goalActionResultObservation ? [{ ...goalActionResultObservation }] : []),
+    ...(depthFromDiscoveryObservation ? [{ ...depthFromDiscoveryObservation }] : []),
+    ...createAxTreeObservations(step, capturedArtifacts, axTreeArtifactId).map((observation) => ({ ...observation })),
+    ...createLayoutCollectorObservations(step, pageSnapshot).map((observation) => ({ ...observation })),
+    ...createNetworkTimelineObservations(step, pageSnapshot, harArtifactId).map((observation) => ({ ...observation })),
+    ...(capturePerformance ? createPerformanceMetricObservations(step, pageSnapshot).map((observation) => ({ ...observation })) : []),
+    ...createVisibleTextBlockObservations(step, pageSnapshot),
     ...createInteractiveComponentsObservations(step, pageSnapshot).map((observation) => ({ ...observation })),
     ...createFormFieldObservations(pageSnapshot.fields),
     ...createCtaCandidateObservations(step, pageSnapshot),
+    ...createProductCardObservations(step, pageSnapshot, screenshotArtifactId).map((observation) => ({ ...observation })),
+    ...createGoalActionCandidateObservations(step, pageSnapshot).map((observation) => ({ ...observation })),
     ...pageSnapshot.consoleErrors.map((message) => ({
       type: "console_error",
       message
@@ -132,7 +452,479 @@ function createCheckpointObservations(
       type: "network_failure",
       message
     })),
+    ...(pageSnapshot.browserHealth.status === "ok"
+      ? []
+      : [{
+          type: "browser_health",
+          status: pageSnapshot.browserHealth.status,
+          reason: pageSnapshot.browserHealth.reason,
+          observed_at: pageSnapshot.browserHealth.observedAt
+        }]),
     ...createSettleObservations(settleResult)
+  ];
+}
+
+function createJourneyActionRawObservation({
+  step,
+  stepOrder,
+  beforeSnapshot,
+  pageSnapshot,
+  actionResult,
+  settleResult,
+  screenshotArtifactId
+}: {
+  step: ScenarioStep;
+  stepOrder: number;
+  beforeSnapshot?: BrowserPageSnapshot;
+  pageSnapshot: BrowserPageSnapshot;
+  actionResult?: BrowserActionResult;
+  settleResult: BrowserSettleResult;
+  screenshotArtifactId: string;
+}): JourneyActionRawObservation | null {
+  if (!beforeSnapshot && !actionResult) {
+    return null;
+  }
+
+  const baselineSnapshot = beforeSnapshot ?? pageSnapshot;
+  const actionDetails = actionResult?.details ?? {};
+  const clickedText = readOptionalString(actionDetails, "clickedText") ?? clickedComponent(pageSnapshot)?.text ?? null;
+  const clickedSelector = readOptionalString(actionDetails, "clickedSelector") ?? clickedComponent(pageSnapshot)?.selector ?? null;
+  const elementRole = readOptionalString(actionDetails, "elementRole") ?? clickedComponent(pageSnapshot)?.role ?? null;
+  const bbox = readBounds(actionDetails.bbox) ?? clickedComponent(pageSnapshot)?.bounds ?? null;
+  const networkResult = createNetworkResult(pageSnapshot, settleResult);
+  const matchedProductCard = matchProductCardAcrossSnapshots({
+    snapshots: [beforeSnapshot, pageSnapshot],
+    clickedText,
+    clickedSelector,
+    bbox
+  });
+
+  return {
+    observation_id: `${step.step_id}.obs_journey_action_raw`,
+    type: "journey_action_raw",
+    stage: step.stage,
+    source: ["scenario_log", "dom", "browser", "network"],
+    confidence: actionResult ? 0.82 : 0.72,
+    step_order: stepOrder,
+    step_key: step.step_id,
+    action_type: step.action.type,
+    clicked_text: clickedText,
+    clicked_selector: clickedSelector,
+    element_role: elementRole,
+    element_text: readOptionalString(actionDetails, "elementText") ?? clickedText,
+    aria_label: readOptionalString(actionDetails, "ariaLabel"),
+    url_before: baselineSnapshot.finalUrl,
+    url_after: pageSnapshot.finalUrl,
+    title_before: baselineSnapshot.title,
+    title_after: pageSnapshot.title,
+    breadcrumb_before: baselineSnapshot.breadcrumb,
+    breadcrumb_after: pageSnapshot.breadcrumb,
+    cart_count_before: baselineSnapshot.cartCount,
+    cart_count_after: pageSnapshot.cartCount,
+    toast_text: pageSnapshot.toastTexts,
+    visible_price: pageSnapshot.visiblePrices,
+    visible_product_image: pageSnapshot.productImages.map((image) => ({ ...image })),
+    add_to_cart_like_button: isAddToCartLike(clickedText),
+    dom_changed: domChangedBetween(baselineSnapshot, pageSnapshot),
+    network_result: networkResult,
+    settle_status: settleResult.status,
+    screenshot_artifact_id: screenshotArtifactId,
+    bbox,
+    matched_product_card: matchedProductCard
+  };
+}
+
+function createCategoryFilterSignalObservation({
+  step,
+  stepOrder,
+  beforeSnapshot,
+  pageSnapshot,
+  actionResult
+}: {
+  step: ScenarioStep;
+  stepOrder: number;
+  beforeSnapshot?: BrowserPageSnapshot;
+  pageSnapshot: BrowserPageSnapshot;
+  actionResult?: BrowserActionResult;
+}): CategoryFilterSignalObservation | null {
+  if (!beforeSnapshot) {
+    return null;
+  }
+
+  const actionDetails = actionResult?.details ?? {};
+  const clickedText = readOptionalString(actionDetails, "clickedText") ?? clickedComponent(pageSnapshot)?.text ?? null;
+  const clickedSelector = readOptionalString(actionDetails, "clickedSelector") ?? clickedComponent(pageSnapshot)?.selector ?? null;
+  const filterChanged = !sameJsonArray(beforeSnapshot.selectedFilters, pageSnapshot.selectedFilters);
+  const searchSubmitted = normalizeSearchQuery(beforeSnapshot.searchQuery) !== normalizeSearchQuery(pageSnapshot.searchQuery);
+  const categoryUrlChanged = categoryUrlSignalChanged(beforeSnapshot.finalUrl, pageSnapshot.finalUrl);
+  const breadcrumbChanged = !sameStringArray(beforeSnapshot.breadcrumb, pageSnapshot.breadcrumb);
+  const actionLooksCategoryLike = isCategoryFilterSearchText(clickedText ?? step.description ?? "");
+
+  if (!filterChanged && !searchSubmitted && !categoryUrlChanged && !(breadcrumbChanged && actionLooksCategoryLike)) {
+    return null;
+  }
+
+  return {
+    observation_id: `${step.step_id}.obs_category_filter_signal`,
+    type: "category_filter_signal",
+    stage: step.stage,
+    source: ["scenario_log", "dom", "browser"],
+    confidence: filterChanged || searchSubmitted ? 0.82 : 0.68,
+    step_order: stepOrder,
+    step_key: step.step_id,
+    action_type: step.action.type,
+    clicked_text: clickedText,
+    clicked_selector: clickedSelector,
+    url_before: beforeSnapshot.finalUrl,
+    url_after: pageSnapshot.finalUrl,
+    breadcrumb_before: beforeSnapshot.breadcrumb,
+    breadcrumb_after: pageSnapshot.breadcrumb,
+    selected_filter_before: beforeSnapshot.selectedFilters.map((filter) => ({ ...filter })),
+    selected_filter_after: pageSnapshot.selectedFilters.map((filter) => ({ ...filter })),
+    search_query_before: beforeSnapshot.searchQuery,
+    search_query_after: pageSnapshot.searchQuery,
+    filter_changed: filterChanged,
+    search_submitted: searchSubmitted,
+    category_url_changed: categoryUrlChanged
+  };
+}
+
+function createDepthFromDiscoveryObservation({
+  step,
+  stepOrder,
+  beforeSnapshot,
+  pageSnapshot,
+  actionResult,
+  settleResult,
+  categoryFilterObservation,
+  journeyDepthContext
+}: {
+  step: ScenarioStep;
+  stepOrder: number;
+  beforeSnapshot?: BrowserPageSnapshot;
+  pageSnapshot: BrowserPageSnapshot;
+  actionResult?: BrowserActionResult;
+  settleResult: BrowserSettleResult;
+  categoryFilterObservation: CategoryFilterSignalObservation | null;
+  journeyDepthContext?: JourneyDepthContext;
+}): DepthFromDiscoveryObservation | null {
+  if (!journeyDepthContext) {
+    return null;
+  }
+
+  if (!journeyDepthContext.discoveryStepOrder && pageSnapshot.productCards.length > 0) {
+    journeyDepthContext.discoveryStepOrder = stepOrder;
+    journeyDepthContext.discoveryStepKey = step.step_id;
+    journeyDepthContext.discoveryStage = step.stage;
+    journeyDepthContext.discoveryUrl = pageSnapshot.finalUrl;
+    journeyDepthContext.productCardCountAtDiscovery = pageSnapshot.productCards.length;
+  }
+
+  if (!journeyDepthContext.discoveryStepOrder) {
+    return null;
+  }
+
+  const categoryChanged = categoryFilterObservation?.category_url_changed ?? false;
+  const filterChanged = categoryFilterObservation?.filter_changed ?? false;
+  const searchSubmitted = categoryFilterObservation?.search_submitted ?? false;
+  const goalActionResult = createGoalActionResultSignal({
+    step,
+    beforeSnapshot,
+    pageSnapshot,
+    actionResult,
+    settleResult
+  });
+  const intentCandidate = inferJourneyIntentCandidate({
+    stepOrder,
+    discoveryStepOrder: journeyDepthContext.discoveryStepOrder,
+    pageSnapshot,
+    categoryChanged,
+    filterChanged,
+    searchSubmitted,
+    goalActionResult
+  });
+
+  return {
+    observation_id: `${step.step_id}.obs_depth_from_discovery`,
+    type: "depth_from_discovery",
+    stage: step.stage,
+    source: ["scenario_log", "dom", "browser", "network"],
+    confidence: intentCandidate === "goal_action" || filterChanged || searchSubmitted || categoryChanged ? 0.78 : 0.66,
+    step_order: stepOrder,
+    step_key: step.step_id,
+    action_type: step.action.type,
+    discovery_step_order: journeyDepthContext.discoveryStepOrder,
+    discovery_step_key: journeyDepthContext.discoveryStepKey ?? step.step_id,
+    discovery_stage: journeyDepthContext.discoveryStage ?? step.stage,
+    discovery_url: journeyDepthContext.discoveryUrl ?? pageSnapshot.finalUrl,
+    depth_from_discovery: Math.max(0, stepOrder - journeyDepthContext.discoveryStepOrder),
+    intent_candidate: intentCandidate,
+    is_detour_candidate: isDetourCandidate({
+      intentCandidate,
+      categoryChanged,
+      filterChanged,
+      searchSubmitted,
+      goalActionResult,
+      beforeSnapshot,
+      pageSnapshot
+    }),
+    category_changed: categoryChanged,
+    filter_changed: filterChanged,
+    search_submitted: searchSubmitted,
+    goal_action_result: goalActionResult,
+    current_url: pageSnapshot.finalUrl,
+    current_product_card_count: pageSnapshot.productCards.length,
+    product_card_count_at_discovery: journeyDepthContext.productCardCountAtDiscovery ?? pageSnapshot.productCards.length
+  };
+}
+
+function createProductDetailSignalObservation({
+  step,
+  stepOrder,
+  beforeSnapshot,
+  pageSnapshot,
+  actionResult,
+  screenshotArtifactId,
+  matchedProductCard
+}: {
+  step: ScenarioStep;
+  stepOrder: number;
+  beforeSnapshot?: BrowserPageSnapshot;
+  pageSnapshot: BrowserPageSnapshot;
+  actionResult?: BrowserActionResult;
+  screenshotArtifactId: string;
+  matchedProductCard: JourneyActionRawObservation["matched_product_card"];
+}): ProductDetailSignalObservation | null {
+  if (!beforeSnapshot || step.action.type === "checkpoint" || !actionResult || !matchedProductCard) {
+    return null;
+  }
+
+  const actionDetails = actionResult.details ?? {};
+  const clickedText = readOptionalString(actionDetails, "clickedText") ?? clickedComponent(pageSnapshot)?.text ?? null;
+  const clickedSelector = readOptionalString(actionDetails, "clickedSelector") ?? clickedComponent(pageSnapshot)?.selector ?? null;
+  const goalActionCandidateCount = pageSnapshot.interactiveComponents.filter((component) => component.is_cta_candidate).length;
+  const addToCartLikeButtonCount = pageSnapshot.interactiveComponents.filter((component) => isAddToCartLike(component.text)).length;
+  const domChanged = domChangedBetween(beforeSnapshot, pageSnapshot);
+  const evidence = collectProductDetailEvidence({
+    beforeSnapshot,
+    pageSnapshot,
+    goalActionCandidateCount,
+    addToCartLikeButtonCount,
+    domChanged
+  });
+
+  if (!isLikelyProductDetailTransition(evidence)) {
+    return null;
+  }
+
+  return {
+    observation_id: `${step.step_id}.obs_product_detail_signal`,
+    type: "product_detail_signal",
+    stage: step.stage,
+    source: ["scenario_log", "dom", "browser", "screenshot"],
+    confidence: productDetailConfidence(evidence),
+    step_order: stepOrder,
+    step_key: step.step_id,
+    action_type: step.action.type,
+    clicked_text: clickedText,
+    clicked_selector: clickedSelector,
+    matched_product_card: matchedProductCard,
+    url_before: beforeSnapshot.finalUrl,
+    url_after: pageSnapshot.finalUrl,
+    title_before: beforeSnapshot.title,
+    title_after: pageSnapshot.title,
+    breadcrumb_before: beforeSnapshot.breadcrumb,
+    breadcrumb_after: pageSnapshot.breadcrumb,
+    visible_price: pageSnapshot.visiblePrices,
+    visible_product_image: pageSnapshot.productImages.map((image) => ({ ...image })),
+    goal_action_candidate_count: goalActionCandidateCount,
+    add_to_cart_like_button_count: addToCartLikeButtonCount,
+    dom_changed: domChanged,
+    screenshot_artifact_id: screenshotArtifactId,
+    evidence
+  };
+}
+
+function createGoalActionResultObservation({
+  step,
+  stepOrder,
+  beforeSnapshot,
+  pageSnapshot,
+  actionResult,
+  settleResult,
+  matchedProductCard
+}: {
+  step: ScenarioStep;
+  stepOrder: number;
+  beforeSnapshot?: BrowserPageSnapshot;
+  pageSnapshot: BrowserPageSnapshot;
+  actionResult?: BrowserActionResult;
+  settleResult: BrowserSettleResult;
+  matchedProductCard: JourneyActionRawObservation["matched_product_card"];
+}): GoalActionResultObservation | null {
+  if (step.action.type === "checkpoint" || !actionResult) {
+    return null;
+  }
+
+  const baselineSnapshot = beforeSnapshot ?? pageSnapshot;
+  const actionDetails = actionResult.details ?? {};
+  const clickedText = readOptionalString(actionDetails, "clickedText") ?? clickedComponent(pageSnapshot)?.text ?? null;
+  const clickedSelector = readOptionalString(actionDetails, "clickedSelector") ?? clickedComponent(pageSnapshot)?.selector ?? null;
+  const result = createGoalActionResultSignal({
+    step,
+    beforeSnapshot,
+    pageSnapshot,
+    actionResult,
+    settleResult
+  });
+  const successEvidence = collectGoalActionSuccessEvidence(result);
+  const goalActionLike = result.add_to_cart_like_button || isAddToCartLike(step.description);
+  const strongResultEvidence = (result.cart_count_delta ?? 0) > 0 ||
+    result.toast_present ||
+    (step.stage === "COMMIT" && (result.network_success || result.url_changed));
+
+  if (!goalActionLike && !strongResultEvidence) {
+    return null;
+  }
+
+  return {
+    observation_id: `${step.step_id}.obs_goal_action_result`,
+    type: "goal_action_result",
+    stage: step.stage,
+    source: ["scenario_log", "dom", "browser", "network"],
+    confidence: goalActionLike && successEvidence.length > 0 ? 0.84 : 0.7,
+    step_order: stepOrder,
+    step_key: step.step_id,
+    action_type: step.action.type,
+    clicked_text: clickedText,
+    clicked_selector: clickedSelector,
+    url_before: baselineSnapshot.finalUrl,
+    url_after: pageSnapshot.finalUrl,
+    goal_action_like: goalActionLike,
+    success_evidence: successEvidence,
+    result,
+    matched_product_card: matchedProductCard
+  };
+}
+
+function createAxTreeObservations(
+  step: ScenarioStep,
+  capturedArtifacts?: BrowserCapturedArtifacts,
+  axTreeArtifactId?: string
+): AxTreeObservation[] {
+  if (!capturedArtifacts?.axTree || !axTreeArtifactId) {
+    return [];
+  }
+
+  return [
+    {
+      observation_id: `${step.step_id}.obs_ax_tree`,
+      type: "ax_tree",
+      stage: step.stage,
+      source: ["accessibility"],
+      confidence: 0.72,
+      ax_artifact_id: axTreeArtifactId,
+      summary: capturedArtifacts.axTree.summary
+    }
+  ];
+}
+
+function createLayoutCollectorObservations(
+  step: ScenarioStep,
+  pageSnapshot: BrowserPageSnapshot
+): LayoutCollectorObservation[] {
+  if (pageSnapshot.interactiveComponents.length === 0 && pageSnapshot.visibleTextBlocks.length === 0) {
+    return [];
+  }
+
+  return [
+    {
+      observation_id: `${step.step_id}.obs_layout_collector`,
+      type: "layout_collector",
+      stage: step.stage,
+      source: ["layout", "dom"],
+      confidence: 0.7,
+      summary: pageSnapshot.layoutSummary,
+      top_interactive_components: pageSnapshot.interactiveComponents
+        .slice()
+        .sort((left, right) => (right.visibility?.area_px ?? right.bounds.width * right.bounds.height) - (left.visibility?.area_px ?? left.bounds.width * left.bounds.height))
+        .slice(0, 10)
+        .map((component) => ({
+          text: component.text,
+          role: component.role,
+          selector: component.selector,
+          bounds: component.bounds,
+          visibility: component.visibility,
+          layout: component.layout
+        }))
+    }
+  ];
+}
+
+function createNetworkTimelineObservations(
+  step: ScenarioStep,
+  pageSnapshot: BrowserPageSnapshot,
+  harArtifactId?: string
+): NetworkTimelineObservation[] {
+  if (pageSnapshot.networkEvents.length === 0) {
+    return [];
+  }
+
+  return [
+    {
+      observation_id: `${step.step_id}.obs_network_timeline`,
+      type: "network_timeline",
+      stage: step.stage,
+      source: ["network"],
+      confidence: pageSnapshot.networkEvents.some((event) => event.status !== undefined || event.failed === true) ? 0.78 : 0.62,
+      har_artifact_id: harArtifactId ?? null,
+      event_count: pageSnapshot.networkEvents.length,
+      failed_request_count: pageSnapshot.networkEvents.filter((event) => event.failed === true).length,
+      status_code_counts: statusCodeCounts(pageSnapshot.networkEvents),
+      events: pageSnapshot.networkEvents.slice(-20).map((event) => ({ ...event }))
+    }
+  ];
+}
+
+function createPerformanceMetricObservations(
+  step: ScenarioStep,
+  pageSnapshot: BrowserPageSnapshot
+): PerformanceMetricObservation[] {
+  if (!pageSnapshot.performanceSummary) {
+    return [];
+  }
+
+  return [
+    {
+      observation_id: `${step.step_id}.obs_performance_metric`,
+      type: "performance_metric",
+      stage: step.stage,
+      source: ["performance"],
+      confidence: 0.72,
+      summary: pageSnapshot.performanceSummary
+    }
+  ];
+}
+
+function createVisibleTextBlockObservations(
+  step: ScenarioStep,
+  pageSnapshot: BrowserPageSnapshot
+): Record<string, unknown>[] {
+  if (pageSnapshot.visibleTextBlocks.length === 0) {
+    return [];
+  }
+
+  return [
+    {
+      observation_id: `${step.step_id}.obs_visible_text_blocks`,
+      type: "visible_text_blocks",
+      stage: step.stage,
+      source: ["dom", "layout"],
+      confidence: 0.68,
+      dom_summary: pageSnapshot.domSummary,
+      layout_summary: pageSnapshot.layoutSummary,
+      blocks: pageSnapshot.visibleTextBlocks.slice(0, 20)
+    }
   ];
 }
 
@@ -154,6 +946,61 @@ function createInteractiveComponentsObservations(
       confidence: primaryLikeComponentCount > 0 ? 0.82 : 0.65,
       primary_like_component_count: primaryLikeComponentCount,
       components: pageSnapshot.interactiveComponents
+    }
+  ];
+}
+
+function createProductCardObservations(
+  step: ScenarioStep,
+  pageSnapshot: BrowserPageSnapshot,
+  screenshotArtifactId: string
+): ProductCardObservation[] {
+  if (pageSnapshot.productCards.length === 0) {
+    return [];
+  }
+
+  return [
+    {
+      observation_id: `${step.step_id}.obs_product_cards`,
+      type: "product_card",
+      stage: "VALUE",
+      source: ["dom", "layout", "screenshot"],
+      confidence: 0.66,
+      cards: pageSnapshot.productCards.map((card) => ({
+        ...card,
+        screenshot_artifact_id: screenshotArtifactId
+      }))
+    }
+  ];
+}
+
+function createGoalActionCandidateObservations(
+  step: ScenarioStep,
+  pageSnapshot: BrowserPageSnapshot
+): GoalActionCandidateObservation[] {
+  const candidates = pageSnapshot.interactiveComponents
+    .filter((component) => component.is_cta_candidate)
+    .slice(0, 10)
+    .map((component) => ({
+      element_text: component.text,
+      element_role: component.role,
+      clicked_selector: component.selector,
+      add_to_cart_like_button: isAddToCartLike(component.text),
+      bbox: component.bounds
+    }));
+
+  if (candidates.length === 0) {
+    return [];
+  }
+
+  return [
+    {
+      observation_id: `${step.step_id}.obs_goal_action_candidates`,
+      type: "goal_action_candidate",
+      stage: "CTA",
+      source: ["dom", "layout"],
+      confidence: 0.7,
+      candidates
     }
   ];
 }
@@ -250,6 +1097,450 @@ function createItemCountSettleObservation(settleResult: BrowserSettleResult): Re
     max_count: readNumberDetail(details, "maxCount"),
     count_delta: readNumberDetail(details, "countDelta")
   };
+}
+
+function clickedComponent(pageSnapshot: BrowserPageSnapshot): BrowserPageSnapshot["interactiveComponents"][number] | null {
+  return pageSnapshot.interactiveComponents.find((component) => component.clicked_in_scenario) ?? null;
+}
+
+function readOptionalString(source: Record<string, unknown>, key: string): string | null {
+  const value = source[key];
+  return typeof value === "string" && value.length > 0 ? value : null;
+}
+
+function readBounds(value: unknown): BrowserPageSnapshot["interactiveComponents"][number]["bounds"] | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+
+  const candidate = value as Partial<BrowserPageSnapshot["interactiveComponents"][number]["bounds"]>;
+  return typeof candidate.x === "number" &&
+    typeof candidate.y === "number" &&
+    typeof candidate.width === "number" &&
+    typeof candidate.height === "number" &&
+    typeof candidate.unit === "string"
+    ? {
+        x: candidate.x,
+        y: candidate.y,
+        width: candidate.width,
+        height: candidate.height,
+        unit: candidate.unit
+      }
+    : null;
+}
+
+function isAddToCartLike(text: string | null | undefined): boolean {
+  return /add to cart|add to basket|장바구니|카트|담기|신청|예약|문의|결제|무료 체험|다운로드|가입/i.test(text ?? "");
+}
+
+function sameJsonArray(left: unknown[], right: unknown[]): boolean {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
+function sameStringArray(left: string[], right: string[]): boolean {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
+}
+
+function normalizeSearchQuery(value: string | null | undefined): string {
+  return (value ?? "").trim().replaceAll(/\s+/g, " ").toLowerCase();
+}
+
+function categoryUrlSignalChanged(beforeUrl: string, afterUrl: string): boolean {
+  const before = parseCategoryUrlSignal(beforeUrl);
+  const after = parseCategoryUrlSignal(afterUrl);
+  return Boolean(before || after) && before !== after;
+}
+
+function parseCategoryUrlSignal(urlString: string): string | null {
+  try {
+    const url = new URL(urlString);
+    const categoryParams = [
+      "category",
+      "cat",
+      "filter",
+      "facet",
+      "sort",
+      "q",
+      "query",
+      "keyword",
+      "search"
+    ];
+    const matchedParams = categoryParams
+      .flatMap((key) => url.searchParams.getAll(key).map((value) => `${key}=${value}`))
+      .join("&");
+    const categoryPath = url.pathname.match(/(?:category|categories|collections|products|shop|search|filter)\/?[^?]*/i)?.[0] ?? "";
+    const signal = `${categoryPath}?${matchedParams}`;
+    return signal === "?" ? null : signal;
+  } catch {
+    return null;
+  }
+}
+
+function isCategoryFilterSearchText(text: string): boolean {
+  return /category|categories|collection|filter|sort|search|카테고리|분류|필터|정렬|검색|상품|제품/i.test(text);
+}
+
+function domChangedBetween(beforeSnapshot: BrowserPageSnapshot, pageSnapshot: BrowserPageSnapshot): boolean {
+  return Boolean(beforeSnapshot.domSignature && pageSnapshot.domSignature)
+    ? beforeSnapshot.domSignature !== pageSnapshot.domSignature
+    : beforeSnapshot.finalUrl !== pageSnapshot.finalUrl || beforeSnapshot.title !== pageSnapshot.title;
+}
+
+function collectProductDetailEvidence({
+  beforeSnapshot,
+  pageSnapshot,
+  goalActionCandidateCount,
+  addToCartLikeButtonCount,
+  domChanged
+}: {
+  beforeSnapshot: BrowserPageSnapshot;
+  pageSnapshot: BrowserPageSnapshot;
+  goalActionCandidateCount: number;
+  addToCartLikeButtonCount: number;
+  domChanged: boolean;
+}): ProductDetailSignalObservation["evidence"] {
+  return [
+    "matched_product_card",
+    ...(beforeSnapshot.finalUrl !== pageSnapshot.finalUrl ? ["url_changed" as const] : []),
+    ...(beforeSnapshot.title !== pageSnapshot.title ? ["title_changed" as const] : []),
+    ...(!sameStringArray(beforeSnapshot.breadcrumb, pageSnapshot.breadcrumb) ? ["breadcrumb_changed" as const] : []),
+    ...(pageSnapshot.visiblePrices.length > 0 ? ["price_visible" as const] : []),
+    ...(pageSnapshot.productImages.length > 0 ? ["product_image_visible" as const] : []),
+    ...(goalActionCandidateCount > 0 || addToCartLikeButtonCount > 0 ? ["goal_action_candidate_visible" as const] : []),
+    ...(domChanged ? ["dom_changed" as const] : [])
+  ];
+}
+
+function isLikelyProductDetailTransition(evidence: ProductDetailSignalObservation["evidence"]): boolean {
+  const transitionEvidenceCount = [
+    "url_changed",
+    "title_changed",
+    "breadcrumb_changed",
+    "dom_changed"
+  ].filter((candidate) => evidence.includes(candidate as ProductDetailSignalObservation["evidence"][number])).length;
+  const detailEvidenceCount = [
+    "price_visible",
+    "product_image_visible",
+    "goal_action_candidate_visible"
+  ].filter((candidate) => evidence.includes(candidate as ProductDetailSignalObservation["evidence"][number])).length;
+
+  return transitionEvidenceCount > 0 && detailEvidenceCount > 0;
+}
+
+function productDetailConfidence(evidence: ProductDetailSignalObservation["evidence"]): number {
+  const evidenceCount = evidence.length;
+  if (evidenceCount >= 6) {
+    return 0.84;
+  }
+  if (evidenceCount >= 4) {
+    return 0.76;
+  }
+  return 0.68;
+}
+
+function matchProductCardAcrossSnapshots({
+  snapshots,
+  clickedText,
+  clickedSelector,
+  bbox
+}: {
+  snapshots: Array<BrowserPageSnapshot | undefined>;
+  clickedText: string | null;
+  clickedSelector: string | null;
+  bbox: BrowserPageSnapshot["interactiveComponents"][number]["bounds"] | null;
+}): JourneyActionRawObservation["matched_product_card"] {
+  for (const snapshot of snapshots) {
+    if (!snapshot || snapshot.productCards.length === 0) {
+      continue;
+    }
+
+    const match = matchProductCard({
+      pageSnapshot: snapshot,
+      clickedText,
+      clickedSelector,
+      bbox
+    });
+    if (match) {
+      return match;
+    }
+  }
+
+  return null;
+}
+
+function matchProductCard({
+  pageSnapshot,
+  clickedText,
+  clickedSelector,
+  bbox
+}: {
+  pageSnapshot: BrowserPageSnapshot;
+  clickedText: string | null;
+  clickedSelector: string | null;
+  bbox: BrowserPageSnapshot["interactiveComponents"][number]["bounds"] | null;
+}): JourneyActionRawObservation["matched_product_card"] {
+  const matches = pageSnapshot.productCards
+    .map((card) => {
+      const selectorScore = matchSelectorScore(clickedSelector, card.clicked_selector);
+      const textScore = matchTextScore(clickedText, card.element_text);
+      const bboxScore = bbox ? boundsOverlapRatio(bbox, card.bbox) : 0;
+      const bestScore = Math.max(selectorScore, textScore, bboxScore);
+      return {
+        card,
+        bestScore,
+        matchReason: matchReason({ selectorScore, textScore, bboxScore })
+      };
+    })
+    .filter((candidate) => candidate.bestScore >= 0.48)
+    .sort((left, right) => right.bestScore - left.bestScore);
+
+  const bestMatch = matches[0];
+  if (!bestMatch) {
+    return null;
+  }
+
+  return {
+    ...bestMatch.card,
+    match_reason: bestMatch.matchReason,
+    match_confidence: Number(bestMatch.bestScore.toFixed(2))
+  };
+}
+
+function matchSelectorScore(clickedSelector: string | null, cardSelector: string | null): number {
+  if (!clickedSelector || !cardSelector) {
+    return 0;
+  }
+
+  if (clickedSelector === cardSelector) {
+    return 0.94;
+  }
+
+  return clickedSelector.includes(cardSelector) || cardSelector.includes(clickedSelector) ? 0.72 : 0;
+}
+
+function matchTextScore(clickedText: string | null, cardText: string): number {
+  const clickedTokens = meaningfulTokens(clickedText ?? "");
+  const cardTokens = meaningfulTokens(cardText);
+  if (clickedTokens.length === 0 || cardTokens.length === 0) {
+    return 0;
+  }
+
+  const matchingTokenCount = clickedTokens.filter((token) => cardTokens.includes(token)).length;
+  const overlapRatio = matchingTokenCount / clickedTokens.length;
+  return overlapRatio >= 0.5 ? Math.min(0.86, 0.42 + overlapRatio * 0.44) : 0;
+}
+
+function meaningfulTokens(value: string): string[] {
+  return normalizeTextForMatch(value)
+    .split(" ")
+    .filter((token) => token.length >= 2 && !/^(add|to|the|for|보기|상세|선택|담기)$/.test(token));
+}
+
+function boundsOverlapRatio(
+  left: BrowserPageSnapshot["interactiveComponents"][number]["bounds"],
+  right: BrowserPageSnapshot["interactiveComponents"][number]["bounds"]
+): number {
+  const overlapLeft = Math.max(left.x, right.x);
+  const overlapTop = Math.max(left.y, right.y);
+  const overlapRight = Math.min(left.x + left.width, right.x + right.width);
+  const overlapBottom = Math.min(left.y + left.height, right.y + right.height);
+  const overlapWidth = Math.max(0, overlapRight - overlapLeft);
+  const overlapHeight = Math.max(0, overlapBottom - overlapTop);
+  const overlapArea = overlapWidth * overlapHeight;
+  const leftArea = left.width * left.height;
+
+  if (leftArea <= 0) {
+    return 0;
+  }
+
+  const ratio = overlapArea / leftArea;
+  return ratio >= 0.5 ? Math.min(0.84, 0.36 + ratio * 0.48) : 0;
+}
+
+function matchReason({
+  selectorScore,
+  textScore,
+  bboxScore
+}: {
+  selectorScore: number;
+  textScore: number;
+  bboxScore: number;
+}): NonNullable<JourneyActionRawObservation["matched_product_card"]>["match_reason"] {
+  const bestScore = Math.max(selectorScore, textScore, bboxScore);
+  if (bestScore === selectorScore && selectorScore >= 0.9) {
+    return "selector_exact";
+  }
+  if (bestScore === selectorScore) {
+    return "selector_related";
+  }
+  if (bestScore === textScore) {
+    return "text_overlap";
+  }
+  return "bbox_overlap";
+}
+
+function normalizeTextForMatch(value: string): string {
+  return value
+    .toLowerCase()
+    .replaceAll(/[^\p{Letter}\p{Number}]+/gu, " ")
+    .trim()
+    .replaceAll(/\s+/g, " ");
+}
+
+function createGoalActionResultSignal({
+  step,
+  beforeSnapshot,
+  pageSnapshot,
+  actionResult,
+  settleResult
+}: {
+  step: ScenarioStep;
+  beforeSnapshot?: BrowserPageSnapshot;
+  pageSnapshot: BrowserPageSnapshot;
+  actionResult?: BrowserActionResult;
+  settleResult: BrowserSettleResult;
+}): DepthFromDiscoveryObservation["goal_action_result"] {
+  const baselineSnapshot = beforeSnapshot ?? pageSnapshot;
+  const actionDetails = actionResult?.details ?? {};
+  const clickedText = readOptionalString(actionDetails, "clickedText") ?? clickedComponent(pageSnapshot)?.text ?? step.description;
+  const cartCountDelta = typeof baselineSnapshot.cartCount === "number" && typeof pageSnapshot.cartCount === "number"
+    ? pageSnapshot.cartCount - baselineSnapshot.cartCount
+    : null;
+  const domChanged = domChangedBetween(baselineSnapshot, pageSnapshot);
+
+  return {
+    action_attempted: step.action.type !== "checkpoint",
+    add_to_cart_like_button: isAddToCartLike(clickedText),
+    cart_count_delta: cartCountDelta,
+    toast_present: pageSnapshot.toastTexts.length > 0,
+    url_changed: baselineSnapshot.finalUrl !== pageSnapshot.finalUrl,
+    dom_changed: domChanged,
+    network_success: hasSuccessfulNetworkSignal(pageSnapshot, settleResult),
+    settle_status: settleResult.status
+  };
+}
+
+function collectGoalActionSuccessEvidence(
+  result: DepthFromDiscoveryObservation["goal_action_result"]
+): GoalActionResultObservation["success_evidence"] {
+  return [
+    ...((result.cart_count_delta ?? 0) > 0 ? ["cart_count_increased" as const] : []),
+    ...(result.toast_present ? ["toast_present" as const] : []),
+    ...(result.network_success ? ["network_success" as const] : []),
+    ...(result.url_changed ? ["url_changed" as const] : []),
+    ...(result.dom_changed ? ["dom_changed" as const] : [])
+  ];
+}
+
+function inferJourneyIntentCandidate({
+  stepOrder,
+  discoveryStepOrder,
+  pageSnapshot,
+  categoryChanged,
+  filterChanged,
+  searchSubmitted,
+  goalActionResult
+}: {
+  stepOrder: number;
+  discoveryStepOrder: number;
+  pageSnapshot: BrowserPageSnapshot;
+  categoryChanged: boolean;
+  filterChanged: boolean;
+  searchSubmitted: boolean;
+  goalActionResult: DepthFromDiscoveryObservation["goal_action_result"];
+}): DepthFromDiscoveryObservation["intent_candidate"] {
+  if (stepOrder === discoveryStepOrder && pageSnapshot.productCards.length > 0) {
+    return "product_discovery";
+  }
+  if (searchSubmitted) {
+    return "search_submitted";
+  }
+  if (filterChanged) {
+    return "filter_changed";
+  }
+  if (categoryChanged) {
+    return "category_changed";
+  }
+  if (
+    goalActionResult.add_to_cart_like_button ||
+    (goalActionResult.cart_count_delta ?? 0) > 0 ||
+    goalActionResult.toast_present
+  ) {
+    return "goal_action";
+  }
+  if (goalActionResult.url_changed) {
+    return "navigation";
+  }
+  return "other";
+}
+
+function isDetourCandidate({
+  intentCandidate,
+  categoryChanged,
+  filterChanged,
+  searchSubmitted,
+  goalActionResult,
+  beforeSnapshot,
+  pageSnapshot
+}: {
+  intentCandidate: DepthFromDiscoveryObservation["intent_candidate"];
+  categoryChanged: boolean;
+  filterChanged: boolean;
+  searchSubmitted: boolean;
+  goalActionResult: DepthFromDiscoveryObservation["goal_action_result"];
+  beforeSnapshot?: BrowserPageSnapshot;
+  pageSnapshot: BrowserPageSnapshot;
+}): boolean {
+  if (
+    intentCandidate === "product_discovery" ||
+    intentCandidate === "goal_action" ||
+    categoryChanged ||
+    filterChanged ||
+    searchSubmitted
+  ) {
+    return false;
+  }
+
+  const baselineSnapshot = beforeSnapshot ?? pageSnapshot;
+  const changedAfterDiscovery = goalActionResult.url_changed ||
+    goalActionResult.dom_changed ||
+    !sameStringArray(baselineSnapshot.breadcrumb, pageSnapshot.breadcrumb);
+
+  return changedAfterDiscovery;
+}
+
+function hasSuccessfulNetworkSignal(pageSnapshot: BrowserPageSnapshot, settleResult: BrowserSettleResult): boolean {
+  const settledStatus = readNumberDetail(settleResult.details ?? {}, "status");
+  if (typeof settledStatus === "number" && settledStatus >= 200 && settledStatus < 400) {
+    return true;
+  }
+
+  return pageSnapshot.networkEvents.some((event) =>
+    event.failed !== true && typeof event.status === "number" && event.status >= 200 && event.status < 400
+  );
+}
+
+function createNetworkResult(
+  pageSnapshot: BrowserPageSnapshot,
+  settleResult: BrowserSettleResult
+): Record<string, unknown>[] {
+  const networkEvents = pageSnapshot.networkEvents.map((event) => ({ ...event }));
+  if (settleResult.strategy !== "response" || !settleResult.details) {
+    return networkEvents;
+  }
+
+  return [
+    ...networkEvents,
+    {
+      type: "settle_response",
+      settle_status: settleResult.status,
+      target: settleResult.targetSummary ?? null,
+      matched_url: readStringDetail(settleResult.details, "matchedUrl"),
+      method: readStringDetail(settleResult.details, "method"),
+      status_code: readNumberDetail(settleResult.details, "status"),
+      url_includes: readStringDetail(settleResult.details, "urlIncludes")
+    }
+  ];
 }
 
 function createScreenshotArtifact({

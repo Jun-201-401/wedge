@@ -107,6 +107,7 @@ export interface ScenarioPlan {
     minimum_confidence?: number;
     required_evidence_refs?: string[];
   } | null;
+  artifact_policy?: AgentArtifactPolicy;
   steps: ScenarioStep[];
 }
 
@@ -171,6 +172,194 @@ export interface AgentArtifactPolicy {
   capture_dom_snapshots?: boolean;
   capture_ax_tree?: boolean;
   capture_trace?: boolean;
+  capture_har?: boolean;
+  capture_performance?: boolean;
+}
+
+export interface AgentReplayHintStep {
+  step_id?: string;
+  stage?: ScenarioStage;
+  description?: string;
+  action: ScenarioAction;
+  settle_strategy?: SettleStrategy;
+  target_key?: string | null;
+  confidence?: number;
+}
+
+export interface AgentReplayHints {
+  source_trace_id?: string | null;
+  source_plan_id?: string | null;
+  steps: AgentReplayHintStep[];
+}
+
+export type AgentEventType =
+  | "PRE_DECISION_VERIFIED"
+  | "DECISION_MADE"
+  | "POLICY_CHECKED"
+  | "ACTION_COMPLETED"
+  | "ACTION_FAILED"
+  | "GOAL_VERIFIED"
+  | "TRACE_PERSISTED";
+
+export type AgentOutcomeStatus = "RUNNING" | "SUCCESS" | "POLICY_BLOCKED" | "BLOCKED" | "FAILED" | "EXHAUSTED";
+export type AgentFinalOutcome = AgentOutcomeStatus;
+export type AgentOutcomeCategory = AgentOutcomeStatus;
+
+export type AgentRiskClass =
+  | "LOW"
+  | "EXTERNAL_NAVIGATION"
+  | "CHECKOUT_NAVIGATION"
+  | "CART_MUTATION"
+  | "SHIPPING_FORM_ENTRY"
+  | "PAYMENT_INFO_ENTRY"
+  | "PAYMENT_COMMIT"
+  | "DESTRUCTIVE_ACTION"
+  | "EXTERNAL_MESSAGE_SEND";
+
+export type AgentPolicyDecision = "ALLOW" | "BLOCK";
+
+export interface AgentPolicyResult {
+  allowed: boolean;
+  reason: string;
+  riskClass: AgentRiskClass;
+}
+
+export interface AgentOutcome {
+  status: AgentOutcomeStatus;
+  reason: string;
+}
+
+export type AgentVerificationOutcome =
+  | "CONTINUE"
+  | "SUCCESS"
+  | "BLOCKED_LOGIN"
+  | "BLOCKED_CAPTCHA"
+  | "POLICY_BLOCKED"
+  | "EXHAUSTED";
+
+export interface AgentVerificationResult {
+  satisfied: boolean;
+  terminal: boolean;
+  outcome: AgentVerificationOutcome;
+  reason: string;
+  confidence: number;
+  phase: "pre_decision" | "post_action";
+}
+
+export type AgentDecisionKind = "act" | "checkpoint" | "finish";
+
+export interface AgentReplayHintLocatorRecipe {
+  strategy: string;
+  selector?: string;
+  role?: string;
+  text?: string;
+  frame_id?: string;
+  confidence: number;
+}
+
+export interface AgentDecisionReplayHint {
+  candidate_fingerprint?: string | null;
+  locator_recipe?: AgentReplayHintLocatorRecipe[];
+}
+
+export interface AgentDecision {
+  kind: AgentDecisionKind;
+  description: string;
+  reason: string;
+  confidence: number;
+  action: ScenarioAction;
+  settleStrategy: SettleStrategy;
+  stage: ScenarioStage;
+  targetKey?: string | null;
+  replayHint?: AgentDecisionReplayHint;
+  metadata?: Record<string, unknown>;
+}
+
+export type AgentDecisionSource = "heuristic" | "llm" | "replay_hint";
+
+export interface AgentObservationCandidateSummary {
+  candidateId: string;
+  candidateFingerprint: string;
+  role: string | null;
+  tag: string;
+  text: string;
+  inputType?: string | null;
+  labelText?: string | null;
+  placeholder?: string | null;
+  name?: string | null;
+  required?: boolean;
+  disabled?: boolean;
+  isFormControl?: boolean;
+  clickable: boolean;
+  isCtaCandidate: boolean;
+  isPrimaryLike: boolean;
+  frameId: string | null;
+  shadowRoot: boolean;
+  hrefOrigin?: string | null;
+  hrefPathHint?: string | null;
+  riskHint: string | null;
+  bounds: InteractiveComponentBounds;
+  visibility?: InteractiveComponentVisibility;
+  layout?: InteractiveComponentLayout;
+}
+
+export interface AgentObservationFormControlSummary {
+  controlKey: string;
+  controlType: "field" | "select";
+  hasValue: boolean;
+}
+
+export interface AgentObservationPageSignals {
+  visitedUrlCount: number;
+  consoleErrorCount: number;
+  networkErrorCount: number;
+  breadcrumbCount: number;
+  toastCount: number;
+  visiblePriceCount: number;
+  productCardCount: number;
+  cartCount: number | null;
+  hasLoginWallSignal: boolean;
+  hasCaptchaSignal: boolean;
+  hasPaymentOrCommitSignal: boolean;
+}
+
+export interface AgentObservation {
+  finalUrl: string;
+  title: string;
+  candidateCount: number;
+  visibleTextSample?: string[];
+  candidates?: AgentObservationCandidateSummary[];
+  formControls?: AgentObservationFormControlSummary[];
+  pageSignals?: AgentObservationPageSignals;
+  artifactRefs?: string[];
+}
+
+export interface AgentTurnTrace {
+  turn: number;
+  observation: AgentObservation;
+  preDecisionVerification: AgentVerificationResult;
+  decision?: AgentDecision;
+  policy?: AgentPolicyResult;
+  actionResult?: {
+    actionType: ScenarioAction["type"];
+    finalUrl: string;
+    completed: boolean;
+  };
+  postActionVerification?: AgentVerificationResult;
+}
+
+export interface AgentTrace {
+  schema_version: "0.1";
+  task_id: string;
+  attempt_id: string;
+  attempt_index: number;
+  run_id: string;
+  turns: AgentTurnTrace[];
+  outcome: AgentOutcome;
+}
+
+export interface AgentTraceRequest {
+  trace: AgentTrace;
 }
 
 export interface AgentTask {
@@ -192,6 +381,7 @@ export interface AgentTask {
   risk_policy: AgentRiskPolicy;
   test_data?: AgentTestData;
   artifact_policy?: AgentArtifactPolicy;
+  replay_hints?: AgentReplayHints;
 }
 
 export interface AgentExecuteMessage {
@@ -205,6 +395,17 @@ export interface AgentExecuteMessage {
   payload: {
     agentTask: AgentTask;
   };
+}
+
+export interface RunArtifactPolicy extends AgentArtifactPolicy {
+  captureScreenshot?: boolean;
+  captureScreenshots?: boolean;
+  captureDomSnapshot?: boolean;
+  captureDomSnapshots?: boolean;
+  captureAxTree?: boolean;
+  captureTrace?: boolean;
+  captureHar?: boolean;
+  capturePerformance?: boolean;
 }
 
 export interface RunExecuteMessage {
@@ -225,7 +426,7 @@ export interface RunExecuteMessage {
     scenarioTemplateVersionId: string;
     scenarioOverrides?: Record<string, unknown>;
     scenarioPlan: ScenarioPlan;
-    artifactPolicy?: Record<string, unknown>;
+    artifactPolicy?: RunArtifactPolicy;
   };
 }
 
@@ -667,11 +868,37 @@ export interface InteractiveComponentBounds {
   unit: "css_px" | "screenshot_px" | "viewport_ratio";
 }
 
+export interface InteractiveComponentVisibility {
+  visible: boolean;
+  in_viewport: boolean;
+  above_fold: boolean;
+  area_px: number;
+  viewport_coverage_ratio: number;
+}
+
+export interface InteractiveComponentLayout {
+  center_x: number;
+  center_y: number;
+  viewport_position: "inside" | "partially_inside" | "above" | "below" | "left" | "right";
+  css_position?: string | null;
+  z_index?: string | null;
+  is_fixed?: boolean;
+  is_sticky?: boolean;
+  overlay_candidate?: boolean;
+}
+
 export interface InteractiveComponentObservationItem {
   text: string;
   selector: string | null;
   role: string | null;
   href?: string | null;
+  input_type?: string | null;
+  label_text?: string | null;
+  placeholder?: string | null;
+  name?: string | null;
+  required?: boolean;
+  disabled?: boolean;
+  is_form_control?: boolean;
   frame_id?: string | null;
   shadow_root?: boolean;
   tag: string;
@@ -680,6 +907,132 @@ export interface InteractiveComponentObservationItem {
   is_cta_candidate: boolean;
   is_primary_like: boolean;
   bounds: InteractiveComponentBounds;
+  visibility?: InteractiveComponentVisibility;
+  layout?: InteractiveComponentLayout;
+}
+
+export interface VisibleTextBlockObservationItem {
+  text: string;
+  tag: string;
+  role?: string | null;
+  is_heading: boolean;
+  bounds: InteractiveComponentBounds;
+  visibility: InteractiveComponentVisibility;
+}
+
+export interface DomVisibilitySummary {
+  visible_text_block_count: number;
+  heading_count: number;
+  link_count: number;
+  button_count: number;
+  form_control_count: number;
+  required_field_count: number;
+  disabled_control_count: number;
+  cta_candidate_count: number;
+}
+
+export interface LayoutVisibilitySummary {
+  viewport_width: number;
+  viewport_height: number;
+  scroll_y: number;
+  interactive_component_count: number;
+  above_fold_interactive_count: number;
+  primary_like_component_count: number;
+  fixed_or_sticky_count: number;
+  overlay_candidate_count: number;
+  max_z_index: number | null;
+}
+
+export interface AxTreeSummary {
+  node_count: number;
+  ignored_node_count: number;
+  named_node_count: number;
+  interactive_role_count: number;
+  form_control_role_count: number;
+  heading_count: number;
+  landmark_count: number;
+  button_count: number;
+  link_count: number;
+  focusable_count: number;
+  role_counts: Record<string, number>;
+  root_role?: string | null;
+  truncated?: boolean;
+}
+
+export interface BrowserPerformanceSummary {
+  navigation_type: string | null;
+  time_origin: number | null;
+  dom_content_loaded_ms: number | null;
+  load_event_ms: number | null;
+  first_contentful_paint_ms: number | null;
+  resource_count: number;
+  transfer_size_bytes: number;
+  encoded_body_size_bytes: number;
+  decoded_body_size_bytes: number;
+}
+
+export interface NetworkTimelineEvent {
+  method: string;
+  url: string;
+  status?: number;
+  failed?: boolean;
+  errorText?: string;
+  occurredAt?: string;
+  resourceType?: string;
+  requestStartMs?: number | null;
+  responseEndMs?: number | null;
+  durationMs?: number | null;
+  transferSizeBytes?: number | null;
+  encodedBodySizeBytes?: number | null;
+}
+
+export interface AxTreeObservation {
+  observation_id: string;
+  type: "ax_tree";
+  stage: ScenarioStage;
+  source: ["accessibility"];
+  confidence: number;
+  ax_artifact_id: string;
+  summary: AxTreeSummary;
+}
+
+export interface LayoutCollectorObservation {
+  observation_id: string;
+  type: "layout_collector";
+  stage: ScenarioStage;
+  source: ["layout", "dom"];
+  confidence: number;
+  summary: LayoutVisibilitySummary;
+  top_interactive_components: Array<{
+    text: string;
+    role?: string | null;
+    selector?: string | null;
+    bounds: InteractiveComponentBounds;
+    visibility?: InteractiveComponentVisibility;
+    layout?: InteractiveComponentLayout;
+  }>;
+}
+
+export interface NetworkTimelineObservation {
+  observation_id: string;
+  type: "network_timeline";
+  stage: ScenarioStage;
+  source: ["network"];
+  confidence: number;
+  har_artifact_id?: string | null;
+  event_count: number;
+  failed_request_count: number;
+  status_code_counts: Record<string, number>;
+  events: NetworkTimelineEvent[];
+}
+
+export interface PerformanceMetricObservation {
+  observation_id: string;
+  type: "performance_metric";
+  stage: ScenarioStage;
+  source: ["performance"];
+  confidence: number;
+  summary: BrowserPerformanceSummary;
 }
 
 export interface InteractiveComponentsObservation {
@@ -690,6 +1043,200 @@ export interface InteractiveComponentsObservation {
   confidence: number;
   primary_like_component_count: number;
   components: InteractiveComponentObservationItem[];
+}
+
+export interface JourneyActionRawObservation {
+  observation_id: string;
+  type: "journey_action_raw";
+  stage: ScenarioStage;
+  source: ("scenario_log" | "dom" | "browser" | "network" | "screenshot")[];
+  confidence: number;
+  step_order: number;
+  step_key: string;
+  action_type: ScenarioActionType;
+  clicked_text?: string | null;
+  clicked_selector?: string | null;
+  element_role?: string | null;
+  element_text?: string | null;
+  aria_label?: string | null;
+  url_before: string;
+  url_after: string;
+  title_before: string;
+  title_after: string;
+  breadcrumb_before?: string[];
+  breadcrumb_after?: string[];
+  cart_count_before?: number | null;
+  cart_count_after?: number | null;
+  toast_text?: string[];
+  visible_price?: string[];
+  visible_product_image?: Record<string, unknown>[];
+  add_to_cart_like_button?: boolean;
+  dom_changed: boolean;
+  network_result?: Record<string, unknown>[];
+  settle_status: "settled" | "timeout" | "failed";
+  screenshot_artifact_id?: string | null;
+  bbox?: InteractiveComponentBounds | null;
+  matched_product_card?: MatchedProductCardSignal | null;
+}
+
+export interface MatchedProductCardSignal {
+  element_text: string;
+  clicked_selector: string | null;
+  visible_price: string | null;
+  visible_product_image: boolean;
+  bbox: InteractiveComponentBounds;
+  match_reason: "selector_exact" | "selector_related" | "text_overlap" | "bbox_overlap";
+  match_confidence: number;
+}
+
+export interface ProductCardObservation {
+  observation_id: string;
+  type: "product_card";
+  stage: "VALUE";
+  source: ("dom" | "layout" | "screenshot")[];
+  confidence: number;
+  cards: Record<string, unknown>[];
+}
+
+export type ProductDetailEvidence =
+  | "matched_product_card"
+  | "url_changed"
+  | "title_changed"
+  | "breadcrumb_changed"
+  | "price_visible"
+  | "product_image_visible"
+  | "goal_action_candidate_visible"
+  | "dom_changed";
+
+export interface ProductDetailSignalObservation {
+  observation_id: string;
+  type: "product_detail_signal";
+  stage: ScenarioStage;
+  source: ("scenario_log" | "dom" | "browser" | "screenshot")[];
+  confidence: number;
+  step_order: number;
+  step_key: string;
+  action_type: ScenarioActionType;
+  clicked_text?: string | null;
+  clicked_selector?: string | null;
+  matched_product_card: MatchedProductCardSignal;
+  url_before: string;
+  url_after: string;
+  title_before: string;
+  title_after: string;
+  breadcrumb_before: string[];
+  breadcrumb_after: string[];
+  visible_price: string[];
+  visible_product_image: Record<string, unknown>[];
+  goal_action_candidate_count: number;
+  add_to_cart_like_button_count: number;
+  dom_changed: boolean;
+  screenshot_artifact_id?: string | null;
+  evidence: ProductDetailEvidence[];
+}
+
+export interface GoalActionCandidateObservation {
+  observation_id: string;
+  type: "goal_action_candidate";
+  stage: "CTA";
+  source: ("dom" | "layout")[];
+  confidence: number;
+  candidates: Record<string, unknown>[];
+}
+
+export type GoalActionSuccessEvidence =
+  | "cart_count_increased"
+  | "toast_present"
+  | "network_success"
+  | "url_changed"
+  | "dom_changed";
+
+export interface GoalActionResultObservation {
+  observation_id: string;
+  type: "goal_action_result";
+  stage: ScenarioStage;
+  source: ("scenario_log" | "dom" | "browser" | "network")[];
+  confidence: number;
+  step_order: number;
+  step_key: string;
+  action_type: ScenarioActionType;
+  clicked_text?: string | null;
+  clicked_selector?: string | null;
+  url_before: string;
+  url_after: string;
+  goal_action_like: boolean;
+  success_evidence: GoalActionSuccessEvidence[];
+  result: JourneyGoalActionResultSignal;
+  matched_product_card?: MatchedProductCardSignal | null;
+}
+
+export interface CategoryFilterSignalObservation {
+  observation_id: string;
+  type: "category_filter_signal";
+  stage: ScenarioStage;
+  source: ("scenario_log" | "dom" | "browser")[];
+  confidence: number;
+  step_order: number;
+  step_key: string;
+  action_type: ScenarioActionType;
+  clicked_text?: string | null;
+  clicked_selector?: string | null;
+  url_before: string;
+  url_after: string;
+  breadcrumb_before: string[];
+  breadcrumb_after: string[];
+  selected_filter_before: Record<string, unknown>[];
+  selected_filter_after: Record<string, unknown>[];
+  search_query_before: string | null;
+  search_query_after: string | null;
+  filter_changed: boolean;
+  search_submitted: boolean;
+  category_url_changed: boolean;
+}
+
+export type JourneyIntentCandidate =
+  | "product_discovery"
+  | "category_changed"
+  | "filter_changed"
+  | "search_submitted"
+  | "goal_action"
+  | "navigation"
+  | "other";
+
+export interface JourneyGoalActionResultSignal {
+  action_attempted: boolean;
+  add_to_cart_like_button: boolean;
+  cart_count_delta: number | null;
+  toast_present: boolean;
+  url_changed: boolean;
+  dom_changed: boolean;
+  network_success: boolean;
+  settle_status: "settled" | "timeout" | "failed";
+}
+
+export interface DepthFromDiscoveryObservation {
+  observation_id: string;
+  type: "depth_from_discovery";
+  stage: ScenarioStage;
+  source: ("scenario_log" | "dom" | "browser" | "network")[];
+  confidence: number;
+  step_order: number;
+  step_key: string;
+  action_type: ScenarioActionType;
+  discovery_step_order: number;
+  discovery_step_key: string;
+  discovery_stage: ScenarioStage;
+  discovery_url: string;
+  depth_from_discovery: number;
+  intent_candidate: JourneyIntentCandidate;
+  is_detour_candidate: boolean;
+  category_changed: boolean;
+  filter_changed: boolean;
+  search_submitted: boolean;
+  goal_action_result: JourneyGoalActionResultSignal;
+  current_url: string;
+  current_product_card_count: number;
+  product_card_count_at_discovery: number;
 }
 
 export interface RunnerCheckpointsRequest {
@@ -722,4 +1269,20 @@ export interface RunnerFailedPayload {
     failedStepCount: number;
     stopped: boolean;
   };
+  failureArtifactRefs?: string[];
+}
+
+export interface RunnerControlStatePayload {
+  runId: string;
+  status:
+    | "CREATED"
+    | "QUEUED"
+    | "STARTING"
+    | "RUNNING"
+    | "STOP_REQUESTED"
+    | "STOPPED"
+    | "COMPLETED"
+    | "FAILED";
+  stopRequested: boolean;
+  resultCompleteness?: "NONE" | "PARTIAL" | "FINAL";
 }

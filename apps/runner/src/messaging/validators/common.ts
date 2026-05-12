@@ -32,6 +32,7 @@ export function assertScenarioPlan(value: unknown): asserts value is ScenarioPla
   assertNonEmptyString(value.start_url, "scenarioPlan.start_url");
   assertScenarioEnvironment(value.environment);
   assertScenarioSafety(value.safety);
+  assertScenarioArtifactPolicy(value.artifact_policy);
 
   if (!Array.isArray(value.steps) || value.steps.length === 0) {
     throw new RunnerMessageValidationError("scenarioPlan.steps must contain at least one step");
@@ -40,6 +41,29 @@ export function assertScenarioPlan(value: unknown): asserts value is ScenarioPla
   for (const step of value.steps) {
     assertScenarioStep(step);
   }
+}
+
+function assertScenarioArtifactPolicy(value: unknown): void {
+  if (value === undefined) {
+    return;
+  }
+  if (!isRecord(value)) {
+    throw new RunnerMessageValidationError("scenarioPlan.artifact_policy must be an object");
+  }
+  assertAllowedObjectKeys(value, "scenarioPlan.artifact_policy", [
+    "capture_screenshots",
+    "capture_dom_snapshots",
+    "capture_ax_tree",
+    "capture_trace",
+    "capture_har",
+    "capture_performance"
+  ]);
+  assertOptionalBoolean(value.capture_screenshots, "scenarioPlan.artifact_policy.capture_screenshots");
+  assertOptionalBoolean(value.capture_dom_snapshots, "scenarioPlan.artifact_policy.capture_dom_snapshots");
+  assertOptionalBoolean(value.capture_ax_tree, "scenarioPlan.artifact_policy.capture_ax_tree");
+  assertOptionalBoolean(value.capture_trace, "scenarioPlan.artifact_policy.capture_trace");
+  assertOptionalBoolean(value.capture_har, "scenarioPlan.artifact_policy.capture_har");
+  assertOptionalBoolean(value.capture_performance, "scenarioPlan.artifact_policy.capture_performance");
 }
 
 export function assertScenarioStep(value: unknown): asserts value is ScenarioStep {

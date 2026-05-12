@@ -26,6 +26,8 @@ const MQ_RUNTIME_ENV_KEYS = [
   "RUNNER_AGENT_CONCURRENCY",
   "RUNNER_AGENT_IDEMPOTENCY_STORE_ENABLED",
   "RUNNER_AGENT_IDEMPOTENCY_STORE_MODE",
+  "RUNNER_AGENT_IDEMPOTENCY_LEASE_TTL_MS",
+  "RUNNER_AGENT_IDEMPOTENCY_RENEW_INTERVAL_MS",
   "RUNNER_MQ_MAX_DELIVERY_ATTEMPTS"
 ] as const;
 
@@ -34,7 +36,10 @@ const AGENT_LLM_ENV_KEYS = [
   "RUNNER_AGENT_LLM_ENDPOINT",
   "RUNNER_AGENT_LLM_API_KEY",
   "RUNNER_AGENT_LLM_MODEL",
-  "RUNNER_AGENT_LLM_TIMEOUT_MS"
+  "RUNNER_AGENT_LLM_TIMEOUT_MS",
+  "RUNNER_AGENT_MCP_GATEWAY_URL",
+  "RUNNER_AGENT_MCP_SERVICE_TOKEN",
+  "RUNNER_AGENT_MCP_GATEWAY_TIMEOUT_MS"
 ] as const;
 
 type ArtifactEnvKey = typeof ARTIFACT_ENV_KEYS[number];
@@ -189,13 +194,15 @@ test("[설정] Agent idempotency store mode는 API 저장소 모드를 읽는다
   withMqRuntimeEnv(
     {
       RUNNER_AGENT_IDEMPOTENCY_STORE_MODE: "api",
-      RUNNER_AGENT_IDEMPOTENCY_LEASE_TTL_MS: "120000"
+      RUNNER_AGENT_IDEMPOTENCY_LEASE_TTL_MS: "120000",
+      RUNNER_AGENT_IDEMPOTENCY_RENEW_INTERVAL_MS: "30000"
     },
     () => {
       const config = loadRunnerConfig({ serviceName: "runner-test" });
 
       assert.equal(config.agentIdempotencyStoreMode, "api");
       assert.equal(config.agentIdempotencyLeaseTtlMs, 120_000);
+      assert.equal(config.agentIdempotencyRenewIntervalMs, 30_000);
     }
   );
 });
@@ -250,6 +257,25 @@ test("[설정] Agent decision client는 기본 heuristic이고 env로만 LLM mod
       assert.equal(config.agentLlmApiKey, "secret");
       assert.equal(config.agentLlmModel, "agent-model");
       assert.equal(config.agentLlmTimeoutMs, 5_000);
+    }
+  );
+});
+
+test("[설정] Agent decision client는 env로만 MCP mode와 gateway 값을 활성화한다", () => {
+  withAgentLlmEnv(
+    {
+      RUNNER_AGENT_DECISION_MODE: "mcp",
+      RUNNER_AGENT_MCP_GATEWAY_URL: "http://api-server:8080/internal/agent/mcp/decision",
+      RUNNER_AGENT_MCP_SERVICE_TOKEN: "mcp-gateway-token",
+      RUNNER_AGENT_MCP_GATEWAY_TIMEOUT_MS: "7000"
+    },
+    () => {
+      const config = loadRunnerConfig({ serviceName: "runner-test" });
+
+      assert.equal(config.agentDecisionMode, "mcp");
+      assert.equal(config.agentMcpGatewayUrl, "http://api-server:8080/internal/agent/mcp/decision");
+      assert.equal(config.agentMcpServiceToken, "mcp-gateway-token");
+      assert.equal(config.agentMcpGatewayTimeoutMs, 7_000);
     }
   );
 });

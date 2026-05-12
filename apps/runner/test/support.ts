@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -18,6 +19,7 @@ import type {
   RunExecuteMessage,
   RunnerAcceptedPayload,
   RunnerCheckpointsRequest,
+  RunnerControlStatePayload,
   RunnerFailedPayload,
   RunnerFinishedPayload,
   ScenarioPlan,
@@ -75,7 +77,7 @@ export function createMinimalPlan(): ScenarioPlan {
 }
 
 export function createRunnerTestConfig(overrides: Partial<RunnerConfig> = {}): RunnerConfig {
-  const artifactsRoot = overrides.artifactsRoot ?? join(tmpdir(), "runner-test-artifacts");
+  const artifactsRoot = overrides.artifactsRoot ?? join(tmpdir(), `runner-test-artifacts-${process.pid}-${randomUUID()}`);
 
   return {
     serviceName: "runner",
@@ -120,6 +122,7 @@ export function createRunnerTestConfig(overrides: Partial<RunnerConfig> = {}): R
     agentIdempotencyStoreEnabled: false,
     agentIdempotencyStoreMode: "local",
     agentIdempotencyLeaseTtlMs: 300_000,
+    agentIdempotencyRenewIntervalMs: 150_000,
     mqRequeueOnFailure: false,
     mqCallbackOutboxWorkerEnabled: true,
     mqArtifactOutboxWorkerEnabled: true,
@@ -136,6 +139,9 @@ export function createRunnerTestConfig(overrides: Partial<RunnerConfig> = {}): R
     agentLlmApiKey: undefined,
     agentLlmModel: "agent-decision",
     agentLlmTimeoutMs: 10_000,
+    agentMcpGatewayUrl: undefined,
+    agentMcpServiceToken: undefined,
+    agentMcpGatewayTimeoutMs: 10_000,
     ...overrides,
     mqMaxDeliveryAttempts: overrides.mqMaxDeliveryAttempts ?? 3
   };
@@ -158,8 +164,46 @@ export function createSimulatedPageSnapshot(
     scrollY: 0,
     lastAction: null,
     interactiveComponents: [],
+    visibleTextBlocks: [],
+    domSummary: {
+      visible_text_block_count: 0,
+      heading_count: 0,
+      link_count: 0,
+      button_count: 0,
+      form_control_count: 0,
+      required_field_count: 0,
+      disabled_control_count: 0,
+      cta_candidate_count: 0
+    },
+    layoutSummary: {
+      viewport_width: plan.environment.viewport.width,
+      viewport_height: plan.environment.viewport.height,
+      scroll_y: 0,
+      interactive_component_count: 0,
+      above_fold_interactive_count: 0,
+      primary_like_component_count: 0,
+      fixed_or_sticky_count: 0,
+      overlay_candidate_count: 0,
+      max_z_index: null
+    },
     consoleErrors: [],
     networkErrors: [],
+    networkEvents: [],
+    performanceSummary: null,
+    breadcrumb: [],
+    toastTexts: [],
+    cartCount: null,
+    visiblePrices: [],
+    productImages: [],
+    productCards: [],
+    selectedFilters: [],
+    searchQuery: null,
+    domSignature: null,
+    browserHealth: {
+      status: "ok",
+      reason: null,
+      observedAt: null
+    },
     cdpSession: {
       protocol: "cdp",
       transport: "simulated",
@@ -226,4 +270,5 @@ export interface StubCallbackClient {
   sendFailed: (runId: string, payload: RunnerFailedPayload) => Promise<void>;
   sendAgentEvents: (runId: string, payload: AgentEventBatch) => Promise<void>;
   sendAgentTrace: (runId: string, payload: AgentTraceCallbackPayload) => Promise<void>;
+  readRunControlState?: (runId: string) => Promise<RunnerControlStatePayload>;
 }

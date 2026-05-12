@@ -10,6 +10,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.wedge.common.error.BusinessException;
 import com.wedge.run.api.internal.runner.dto.RunnerAgentIdempotencyClaimRequest;
 import com.wedge.run.api.internal.runner.dto.RunnerAgentIdempotencyRecordRequest;
+import com.wedge.run.api.internal.runner.dto.RunnerAgentIdempotencyReleaseRequest;
+import com.wedge.run.api.internal.runner.dto.RunnerAgentIdempotencyRenewRequest;
 import com.wedge.run.infrastructure.AgentIdempotencyMapper;
 import com.wedge.run.infrastructure.AgentIdempotencyRecord;
 import java.time.OffsetDateTime;
@@ -118,6 +120,60 @@ class RunnerAgentIdempotencyServiceTest {
         assertThat(response.status()).isEqualTo("CLAIMED");
         assertThat(response.claimedBy()).isEqualTo("runner-1");
         assertThat(response.result()).isNull();
+    }
+
+    @Test
+    void renewRecordExtendsOwnedLeaseAndReturnsStoredClaim() {
+        UUID runId = UUID.randomUUID();
+        RunnerAgentIdempotencyRenewRequest request = new RunnerAgentIdempotencyRenewRequest(
+                runId,
+                "task-1",
+                "attempt-1",
+                2,
+                180_000L
+        );
+        AgentIdempotencyRecord stored = storedClaim(runId);
+        when(agentIdempotencyMapper.findByKeyHash(KEY_HASH)).thenReturn(Optional.of(stored));
+
+        var response = service().renewRecord(KEY_HASH, request, "runner-1");
+
+        verify(agentIdempotencyMapper).renewClaimed(recordCaptor.capture());
+        AgentIdempotencyRecord renewal = recordCaptor.getValue();
+        assertThat(renewal.getIdempotencyKeyHash()).isEqualTo(KEY_HASH);
+        assertThat(renewal.getRunId()).isEqualTo(runId);
+        assertThat(renewal.getTaskId()).isEqualTo("task-1");
+        assertThat(renewal.getAttemptId()).isEqualTo("attempt-1");
+        assertThat(renewal.getAttemptIndex()).isEqualTo(2);
+        assertThat(renewal.getClaimedBy()).isEqualTo("runner-1");
+        assertThat(renewal.getLeaseExpiresAt()).isNotNull();
+
+        assertThat(response.found()).isTrue();
+        assertThat(response.status()).isEqualTo("CLAIMED");
+    }
+
+    @Test
+    void releaseRecordDeletesOnlyOwnedClaimAndReturnsLookupResult() {
+        UUID runId = UUID.randomUUID();
+        RunnerAgentIdempotencyReleaseRequest request = new RunnerAgentIdempotencyReleaseRequest(
+                runId,
+                "task-1",
+                "attempt-1",
+                2
+        );
+        when(agentIdempotencyMapper.findByKeyHash(KEY_HASH)).thenReturn(Optional.empty());
+
+        var response = service().releaseRecord(KEY_HASH, request, "runner-1");
+
+        verify(agentIdempotencyMapper).releaseClaimed(recordCaptor.capture());
+        AgentIdempotencyRecord release = recordCaptor.getValue();
+        assertThat(release.getIdempotencyKeyHash()).isEqualTo(KEY_HASH);
+        assertThat(release.getRunId()).isEqualTo(runId);
+        assertThat(release.getTaskId()).isEqualTo("task-1");
+        assertThat(release.getAttemptId()).isEqualTo("attempt-1");
+        assertThat(release.getAttemptIndex()).isEqualTo(2);
+        assertThat(release.getClaimedBy()).isEqualTo("runner-1");
+
+        assertThat(response.found()).isFalse();
     }
 
     @Test

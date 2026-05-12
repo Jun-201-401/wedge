@@ -20,6 +20,17 @@ class RunnerMqConfigTest {
     }
 
     @Test
+    void agentExecuteQueueKeepsDeadLetterArgumentsAlignedWithDevTopology() {
+        Queue queue = config.agentExecuteQueue("agent.execute.request", "wedge.dlq", "agent.execute.dlq");
+
+        assertThat(queue.getName()).isEqualTo("agent.execute.request");
+        assertThat(queue.isDurable()).isTrue();
+        assertThat(queue.getArguments())
+                .containsEntry("x-dead-letter-exchange", "wedge.dlq")
+                .containsEntry("x-dead-letter-routing-key", "agent.execute.dlq");
+    }
+
+    @Test
     void runExecuteDeadLetterQueueIsDurable() {
         Queue queue = config.runExecuteDeadLetterQueue("run.execute.dlq");
 

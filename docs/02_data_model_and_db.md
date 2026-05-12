@@ -64,6 +64,8 @@ status=COMPLETED, result_completeness=PARTIAL, analysis_status=COMPLETED, scenar
 | `test_run` | 테스트 실행 1회; `source_discovery_id`와 scenario fit 결과를 저장 |
 | `test_run_step` | 실행 step 상태 |
 | `test_run_event` | UI/운영용 run event log |
+| `runner_agent_event` | Runner Agent Runtime event callback log |
+| `runner_agent_trace` | Runner Agent Runtime terminal AgentTrace snapshot |
 | `artifact` | S3 artifact metadata |
 | `checkpoint` | meaningful state capture |
 | `observation` | normalized fact |

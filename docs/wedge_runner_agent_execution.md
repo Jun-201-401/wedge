@@ -704,11 +704,11 @@ Runner Agent 전환이 최소 성공했다고 볼 수 있는 기준:
 - `run.execute.request`는 `ScenarioPlan` 필수 scripted/replay 경로로 유지
 - agent event/trace callback, TRACE artifact, successful trace의 ScenarioPlan export MVP 추가
 - LLM decision client를 config-gated optional path로 추가하고 heuristic fallback 유지
+- `AgentTask.replay_hints`를 Agent decision loop에 연결해 이전 성공 경로를 먼저 시도하고, stale action failure 시 heuristic/LLM fallback으로 복구
 
 아직 수행하지 않은 작업:
 
 - AgentObservation/Decision/Trace schema를 richer candidate/locator/iframe evidence 구조로 확장
-- replay-hint planner 구현
 - broader fixture suite와 heuristic-vs-LLM 비교 강화
 
 구현을 시작할 때는 이 문서를 기준으로 contract-first 순서를 따른다.

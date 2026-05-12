@@ -409,6 +409,123 @@ test("[증거 payload] checkpoint callback payload는 artifact 원본 metadata�
   });
 });
 
+test("[증거 전달] scenario 실행 중 발견 depth context를 checkpoint 간 유지한다", async () => {
+  const plan = createMinimalPlan();
+  plan.steps = [
+    {
+      step_id: "step_discover_products",
+      stage: "VALUE",
+      description: "상품 목록 확인",
+      action: {
+        type: "checkpoint"
+      },
+      settle_strategy: {
+        type: "none",
+        timeout_ms: 0
+      },
+      checkpoint: true
+    },
+    {
+      step_id: "step_filter_products",
+      stage: "VALUE",
+      description: "필터 적용",
+      action: {
+        type: "click",
+        target: {
+          selector: "button.filter"
+        }
+      },
+      settle_strategy: {
+        type: "url_change",
+        timeout_ms: 500
+      },
+      checkpoint: true
+    }
+  ];
+
+  const productCards = [
+    {
+      element_text: "Runner Shoes ₩12,000",
+      clicked_selector: "a.product-card",
+      visible_price: "₩12,000",
+      visible_product_image: true,
+      bbox: {
+        x: 80,
+        y: 180,
+        width: 260,
+        height: 320,
+        unit: "css_px" as const
+      }
+    }
+  ];
+  const snapshots = [
+    createSimulatedPageSnapshot(plan),
+    createSimulatedPageSnapshot(plan, {
+      finalUrl: "https://example.com/products",
+      productCards
+    }),
+    createSimulatedPageSnapshot(plan, {
+      finalUrl: "https://example.com/products",
+      productCards
+    }),
+    createSimulatedPageSnapshot(plan, {
+      finalUrl: "https://example.com/products?filter=runner",
+      selectedFilters: [
+        {
+          key: "tag",
+          value: "runner",
+          selector: "button.filter"
+        }
+      ],
+      productCards
+    })
+  ];
+  let snapshotIndex = 0;
+  const checkpointPayloads: Array<{ checkpoints: Array<{ observations: Record<string, unknown>[] }> }> = [];
+
+  await executeScenario({
+    runId: "run-depth-1",
+    plan,
+    session: createSimulatedSession(plan, {
+      execute: async (action) => ({
+        actionType: action.type,
+        targetSummary: action.type === "click" ? "selector=button.filter" : null,
+        stopRequested: false,
+        details: action.type === "click"
+          ? {
+              clickedText: "필터",
+              clickedSelector: "button.filter"
+            }
+          : {}
+      }),
+      settle: async (strategy) => createSettledResult({ strategy: strategy.type, status: "settled" }),
+      snapshot: () => snapshots[Math.min(snapshotIndex++, snapshots.length - 1)],
+      captureArtifacts: async () => ({})
+    }),
+    callbackClient: createStubCallbackClient({
+      sendCheckpoints: async (_runId, payload) => {
+        checkpointPayloads.push(payload);
+      }
+    }),
+    capturePipeline: createCapturePipeline(),
+    artifactStore: {
+      persistArtifacts: async () => []
+    }
+  });
+
+  const depthObservations = checkpointPayloads.flatMap((payload) =>
+    payload.checkpoints.flatMap((checkpoint) =>
+      checkpoint.observations.filter((observation) => observation.type === "depth_from_discovery")
+    )
+  );
+
+  assert.equal(depthObservations.length, 2);
+  assert.equal(depthObservations[0]?.depth_from_discovery, 0);
+  assert.equal(depthObservations[1]?.discovery_step_key, "step_discover_products");
+  assert.equal(depthObservations[1]?.depth_from_discovery, 1);
+  assert.equal(depthObservations[1]?.intent_candidate, "filter_changed");
+});
+
 test("[수집 pipeline] response/item_count settle 결과를 observation으로 구조화한다", async () => {
   const capturePipeline = createCapturePipeline();
   const plan = createMinimalPlan();
@@ -756,6 +873,822 @@ test("[수집 pipeline] CTA 분석용 interactive_components observation을 chec
       }
     ]
   });
+});
+
+test("[수집 pipeline] DOM visibility/layout summary와 visible text blocks를 checkpoint에 포함한다", async () => {
+  const capturePipeline = createCapturePipeline();
+  const plan = createMinimalPlan();
+  const domSummary = {
+    visible_text_block_count: 2,
+    heading_count: 1,
+    link_count: 1,
+    button_count: 1,
+    form_control_count: 0,
+    required_field_count: 0,
+    disabled_control_count: 0,
+    cta_candidate_count: 1
+  };
+  const layoutSummary = {
+    viewport_width: plan.environment.viewport.width,
+    viewport_height: plan.environment.viewport.height,
+    scroll_y: 120,
+    interactive_component_count: 1,
+    above_fold_interactive_count: 1,
+    primary_like_component_count: 1,
+    fixed_or_sticky_count: 1,
+    overlay_candidate_count: 0,
+    max_z_index: 10
+  };
+  const pageSnapshot: BrowserPageSnapshot = createSimulatedPageSnapshot(plan, {
+    domSummary,
+    layoutSummary,
+    visibleTextBlocks: [
+      {
+        text: "Start selling faster",
+        tag: "h1",
+        role: "heading",
+        is_heading: true,
+        bounds: {
+          x: 64,
+          y: 96,
+          width: 520,
+          height: 64,
+          unit: "css_px"
+        },
+        visibility: {
+          visible: true,
+          in_viewport: true,
+          above_fold: true,
+          area_px: 33280,
+          viewport_coverage_ratio: 1
+        }
+      },
+      {
+        text: "Try Wedge with no setup.",
+        tag: "p",
+        role: null,
+        is_heading: false,
+        bounds: {
+          x: 64,
+          y: 176,
+          width: 420,
+          height: 28,
+          unit: "css_px"
+        },
+        visibility: {
+          visible: true,
+          in_viewport: true,
+          above_fold: true,
+          area_px: 11760,
+          viewport_coverage_ratio: 1
+        }
+      }
+    ]
+  });
+
+  const collection = await capturePipeline.collectCheckpoint({
+    step: {
+      step_id: "step_capture_visible_text",
+      stage: "CTA",
+      description: "capture visible DOM text and layout summary",
+      action: {
+        type: "checkpoint"
+      },
+      settle_strategy: {
+        type: "none",
+        timeout_ms: 0
+      },
+      checkpoint: true
+    },
+    stepOrder: 5,
+    plan,
+    pageSnapshot,
+    settleResult: createSettledResult()
+  });
+
+  assert.deepEqual(collection.checkpoint.state.dom_summary, domSummary);
+  assert.deepEqual(collection.checkpoint.state.layout_summary, layoutSummary);
+
+  const observation = collection.checkpoint.observations.find(
+    (candidate) => candidate.type === "visible_text_blocks"
+  );
+
+  assert.deepEqual(observation, {
+    observation_id: "step_capture_visible_text.obs_visible_text_blocks",
+    type: "visible_text_blocks",
+    stage: "CTA",
+    source: ["dom", "layout"],
+    confidence: 0.68,
+    dom_summary: domSummary,
+    layout_summary: layoutSummary,
+    blocks: pageSnapshot.visibleTextBlocks
+  });
+});
+
+test("[수집 pipeline] AX tree artifact와 bounded summary observation을 checkpoint에 포함한다", async () => {
+  const capturePipeline = createCapturePipeline();
+  const plan = createMinimalPlan();
+  const axSummary = {
+    node_count: 8,
+    ignored_node_count: 1,
+    named_node_count: 4,
+    interactive_role_count: 2,
+    form_control_role_count: 1,
+    heading_count: 1,
+    landmark_count: 1,
+    button_count: 1,
+    link_count: 1,
+    focusable_count: 2,
+    role_counts: {
+      RootWebArea: 1,
+      heading: 1,
+      button: 1,
+      link: 1,
+      textbox: 1
+    },
+    root_role: "RootWebArea",
+    truncated: false
+  };
+  const pageSnapshot: BrowserPageSnapshot = createSimulatedPageSnapshot(plan);
+
+  const collection = await capturePipeline.collectCheckpoint({
+    step: {
+      step_id: "step_capture_ax_tree",
+      stage: "FIRST_VIEW",
+      description: "capture accessibility tree",
+      action: {
+        type: "checkpoint"
+      },
+      settle_strategy: {
+        type: "none",
+        timeout_ms: 0
+      },
+      checkpoint: true
+    },
+    stepOrder: 6,
+    plan,
+    pageSnapshot,
+    settleResult: createSettledResult(),
+    capturedArtifacts: {
+      axTree: {
+        content: JSON.stringify({ nodes: [{ role: { value: "RootWebArea" } }], summary: axSummary }),
+        mimeType: "application/json",
+        fileExtension: "json",
+        summary: axSummary
+      }
+    }
+  });
+
+  const axArtifact = collection.artifacts.find((artifact) => artifact.artifactType === "AX_TREE");
+  const observation = collection.checkpoint.observations.find((candidate) => candidate.type === "ax_tree");
+
+  assert.equal(axArtifact?.mimeType, "application/json");
+  assert.equal(axArtifact?.fileExtension, "json");
+  assert.match(axArtifact?.content ?? "", /RootWebArea/);
+  assert.deepEqual(collection.checkpoint.state.ax_tree_summary, axSummary);
+  assert.deepEqual(observation, {
+    observation_id: "step_capture_ax_tree.obs_ax_tree",
+    type: "ax_tree",
+    stage: "FIRST_VIEW",
+    source: ["accessibility"],
+    confidence: 0.72,
+    ax_artifact_id: axArtifact?.artifactId,
+    summary: axSummary
+  });
+});
+
+test("[수집 pipeline] expanded collector는 layout/network/HAR/trace/performance 근거를 남긴다", async () => {
+  const capturePipeline = createCapturePipeline();
+  const plan = {
+    ...createMinimalPlan(),
+    artifact_policy: {
+      capture_har: true,
+      capture_trace: true,
+      capture_performance: true
+    }
+  };
+  const performanceSummary = {
+    navigation_type: "navigate",
+    time_origin: 1710000000000,
+    dom_content_loaded_ms: 42,
+    load_event_ms: 88,
+    first_contentful_paint_ms: 55,
+    resource_count: 2,
+    transfer_size_bytes: 1234,
+    encoded_body_size_bytes: 1000,
+    decoded_body_size_bytes: 2000
+  };
+  const pageSnapshot: BrowserPageSnapshot = createSimulatedPageSnapshot(plan, {
+    networkEvents: [
+      {
+        method: "GET",
+        url: "https://example.com/api/cart",
+        status: 200,
+        failed: false,
+        occurredAt: "2026-05-11T07:00:00.000Z",
+        resourceType: "fetch",
+        durationMs: 12
+      },
+      {
+        method: "POST",
+        url: "https://example.com/api/checkout",
+        failed: true,
+        errorText: "net::ERR_FAILED",
+        occurredAt: "2026-05-11T07:00:01.000Z",
+        resourceType: "xhr"
+      }
+    ],
+    performanceSummary,
+    interactiveComponents: [
+      {
+        text: "Checkout",
+        selector: "#checkout",
+        role: "button",
+        tag: "button",
+        clickable: true,
+        clicked_in_scenario: false,
+        is_cta_candidate: true,
+        is_primary_like: true,
+        bounds: {
+          x: 10,
+          y: 20,
+          width: 160,
+          height: 48,
+          unit: "css_px"
+        },
+        visibility: {
+          visible: true,
+          in_viewport: true,
+          above_fold: true,
+          area_px: 7680,
+          viewport_coverage_ratio: 1
+        },
+        layout: {
+          center_x: 90,
+          center_y: 44,
+          viewport_position: "inside",
+          css_position: "fixed",
+          z_index: "10",
+          is_fixed: true,
+          overlay_candidate: false
+        }
+      }
+    ]
+  });
+
+  const collection = await capturePipeline.collectCheckpoint({
+    step: {
+      step_id: "step_expanded_collectors",
+      stage: "CTA",
+      description: "capture expanded collectors",
+      action: {
+        type: "checkpoint"
+      },
+      settle_strategy: {
+        type: "none",
+        timeout_ms: 0
+      },
+      checkpoint: true
+    },
+    stepOrder: 7,
+    plan,
+    pageSnapshot,
+    settleResult: createSettledResult()
+  });
+
+  const harArtifact = collection.artifacts.find((artifact) => artifact.artifactType === "HAR");
+  const traceArtifact = collection.artifacts.find((artifact) => artifact.artifactType === "TRACE");
+  const networkObservation = collection.checkpoint.observations.find((observation) => observation.type === "network_timeline") as Record<string, any> | undefined;
+  const performanceObservation = collection.checkpoint.observations.find((observation) => observation.type === "performance_metric") as Record<string, any> | undefined;
+  const layoutObservation = collection.checkpoint.observations.find((observation) => observation.type === "layout_collector") as Record<string, any> | undefined;
+
+  assert.equal(harArtifact?.mimeType, "application/json");
+  assert.match(harArtifact?.content ?? "", /api\/checkout/);
+  assert.equal(traceArtifact?.artifactType, "TRACE");
+  assert.match(traceArtifact?.content ?? "", /runner_checkpoint_runtime_trace/);
+  assert.deepEqual(collection.checkpoint.state.performance_summary, performanceSummary);
+  assert.equal(networkObservation?.har_artifact_id, harArtifact?.artifactId);
+  assert.equal(networkObservation?.event_count, 2);
+  assert.deepEqual(networkObservation?.status_code_counts, {
+    "200": 1,
+    failed: 1
+  });
+  assert.deepEqual(performanceObservation?.summary, performanceSummary);
+  assert.equal(layoutObservation?.summary.interactive_component_count, pageSnapshot.layoutSummary.interactive_component_count);
+});
+
+test("[수집 pipeline] Journey raw signal은 click 전후 상태와 artifact/bbox 근거를 observation으로 남긴다", async () => {
+  const capturePipeline = createCapturePipeline();
+  const plan = createMinimalPlan();
+  const beforeSnapshot = createSimulatedPageSnapshot(plan, {
+    title: "Landing",
+    finalUrl: "https://example.com",
+    breadcrumb: ["Home"],
+    cartCount: 0,
+    domSignature: "before-dom"
+  });
+  const afterSnapshot = createSimulatedPageSnapshot(plan, {
+    title: "Product",
+    finalUrl: "https://example.com/products/sku-1",
+    breadcrumb: ["Home", "Products", "SKU 1"],
+    cartCount: 1,
+    toastTexts: ["장바구니에 담았습니다"],
+    visiblePrices: ["₩12,000"],
+    productImages: [
+      {
+        src: "https://example.com/sku-1.png",
+        alt: "SKU 1",
+        bounds: {
+          x: 100,
+          y: 140,
+          width: 320,
+          height: 240,
+          unit: "css_px"
+        }
+      }
+    ],
+    productCards: [
+      {
+        element_text: "SKU 1 ₩12,000 장바구니 담기",
+        clicked_selector: "button.add-cart",
+        visible_price: "₩12,000",
+        visible_product_image: true,
+        bbox: {
+          x: 480,
+          y: 600,
+          width: 260,
+          height: 180,
+          unit: "css_px"
+        }
+      }
+    ],
+    networkEvents: [
+      {
+        method: "POST",
+        url: "https://example.com/api/cart",
+        status: 200,
+        failed: false
+      }
+    ],
+    domSignature: "after-dom"
+  });
+
+  const collection = await capturePipeline.collectCheckpoint({
+    step: {
+      step_id: "step_click_cart",
+      stage: "CTA",
+      description: "add item to cart",
+      action: {
+        type: "click",
+        target: {
+          selector: "button.add-cart"
+        }
+      },
+      settle_strategy: {
+        type: "response",
+        timeout_ms: 500,
+        url_includes: "/api/cart"
+      },
+      checkpoint: true
+    },
+    stepOrder: 2,
+    plan,
+    beforeSnapshot,
+    pageSnapshot: afterSnapshot,
+    actionResult: {
+      actionType: "click",
+      targetSummary: "selector=button.add-cart",
+      stopRequested: false,
+      details: {
+        clickedText: "장바구니 담기",
+        clickedSelector: "button.add-cart",
+        elementRole: "button",
+        ariaLabel: "장바구니 담기",
+        bbox: {
+          x: 520,
+          y: 640,
+          width: 180,
+          height: 48,
+          unit: "css_px"
+        }
+      }
+    },
+    settleResult: createSettledResult({
+      strategy: "response",
+      status: "settled",
+      durationMs: 180,
+      targetSummary: "url=/api/cart",
+      details: {
+        matchedUrl: "https://example.com/api/cart",
+        method: "POST",
+        status: 200,
+        urlIncludes: "/api/cart"
+      }
+    })
+  });
+
+  const observation = collection.checkpoint.observations.find(
+    (candidate) => candidate.type === "journey_action_raw"
+  );
+  const goalActionResult = collection.checkpoint.observations.find(
+    (candidate) => candidate.type === "goal_action_result"
+  );
+
+  assert.ok(observation);
+  assert.equal(observation.clicked_text, "장바구니 담기");
+  assert.equal(observation.clicked_selector, "button.add-cart");
+  assert.equal(observation.url_before, "https://example.com");
+  assert.equal(observation.url_after, "https://example.com/products/sku-1");
+  assert.equal(observation.title_before, "Landing");
+  assert.equal(observation.title_after, "Product");
+  assert.equal(observation.cart_count_before, 0);
+  assert.equal(observation.cart_count_after, 1);
+  assert.equal(observation.dom_changed, true);
+  assert.equal(observation.settle_status, "settled");
+  assert.equal(observation.add_to_cart_like_button, true);
+  assert.equal(typeof observation.screenshot_artifact_id, "string");
+  assert.deepEqual(observation.matched_product_card, {
+    element_text: "SKU 1 ₩12,000 장바구니 담기",
+    clicked_selector: "button.add-cart",
+    visible_price: "₩12,000",
+    visible_product_image: true,
+    bbox: {
+      x: 480,
+      y: 600,
+      width: 260,
+      height: 180,
+      unit: "css_px"
+    },
+    match_reason: "selector_exact",
+    match_confidence: 0.94
+  });
+  assert.deepEqual(observation.bbox, {
+    x: 520,
+    y: 640,
+    width: 180,
+    height: 48,
+    unit: "css_px"
+  });
+  assert.ok(Array.isArray(observation.network_result));
+
+  assert.ok(goalActionResult);
+  assert.equal(goalActionResult.clicked_text, "장바구니 담기");
+  assert.equal(goalActionResult.goal_action_like, true);
+  assert.deepEqual(goalActionResult.success_evidence, [
+    "cart_count_increased",
+    "toast_present",
+    "network_success",
+    "url_changed",
+    "dom_changed"
+  ]);
+  assert.deepEqual(goalActionResult.result, {
+    action_attempted: true,
+    add_to_cart_like_button: true,
+    cart_count_delta: 1,
+    toast_present: true,
+    url_changed: true,
+    dom_changed: true,
+    network_success: true,
+    settle_status: "settled"
+  });
+  assert.ok(goalActionResult.matched_product_card && typeof goalActionResult.matched_product_card === "object");
+  assert.equal(
+    (goalActionResult.matched_product_card as { match_reason?: unknown }).match_reason,
+    "selector_exact"
+  );
+});
+
+test("[수집 pipeline] 상품 카드 클릭 후 상세 진입 근거를 product_detail_signal로 남긴다", async () => {
+  const capturePipeline = createCapturePipeline();
+  const plan = createMinimalPlan();
+  const productCard = {
+    element_text: "Runner Shoes ₩12,000",
+    clicked_selector: "a.product-card[href='/products/runner-shoes']",
+    visible_price: "₩12,000",
+    visible_product_image: true,
+    bbox: {
+      x: 80,
+      y: 180,
+      width: 260,
+      height: 320,
+      unit: "css_px" as const
+    }
+  };
+  const beforeSnapshot = createSimulatedPageSnapshot(plan, {
+    finalUrl: "https://example.com/products",
+    title: "Products",
+    breadcrumb: ["Home", "Products"],
+    productCards: [productCard],
+    domSignature: "list-dom"
+  });
+  const afterSnapshot = createSimulatedPageSnapshot(plan, {
+    finalUrl: "https://example.com/products/runner-shoes",
+    title: "Runner Shoes",
+    breadcrumb: ["Home", "Products", "Runner Shoes"],
+    visiblePrices: ["₩12,000"],
+    productImages: [
+      {
+        src: "https://example.com/runner-shoes.png",
+        alt: "Runner Shoes",
+        bounds: {
+          x: 120,
+          y: 180,
+          width: 420,
+          height: 360,
+          unit: "css_px"
+        }
+      }
+    ],
+    interactiveComponents: [
+      {
+        text: "장바구니 담기",
+        selector: "button.add-cart",
+        role: "button",
+        tag: "button",
+        clickable: true,
+        clicked_in_scenario: false,
+        is_cta_candidate: true,
+        is_primary_like: true,
+        bounds: {
+          x: 620,
+          y: 540,
+          width: 180,
+          height: 48,
+          unit: "css_px"
+        }
+      }
+    ],
+    domSignature: "detail-dom"
+  });
+
+  const collection = await capturePipeline.collectCheckpoint({
+    step: {
+      step_id: "step_open_product_detail",
+      stage: "VALUE",
+      description: "상품 상세 보기",
+      action: {
+        type: "click",
+        target: {
+          selector: "a.product-card[href='/products/runner-shoes']"
+        }
+      },
+      settle_strategy: {
+        type: "url_change",
+        timeout_ms: 500
+      },
+      checkpoint: true
+    },
+    stepOrder: 2,
+    plan,
+    beforeSnapshot,
+    pageSnapshot: afterSnapshot,
+    actionResult: {
+      actionType: "click",
+      targetSummary: "selector=a.product-card[href='/products/runner-shoes']",
+      stopRequested: false,
+      details: {
+        clickedText: "Runner Shoes",
+        clickedSelector: "a.product-card[href='/products/runner-shoes']",
+        bbox: productCard.bbox
+      }
+    },
+    settleResult: createSettledResult({
+      strategy: "url_change",
+      status: "settled",
+      durationMs: 120
+    })
+  });
+
+  const observation = collection.checkpoint.observations.find(
+    (candidate) => candidate.type === "product_detail_signal"
+  );
+
+  assert.ok(observation);
+  assert.equal(observation.url_before, "https://example.com/products");
+  assert.equal(observation.url_after, "https://example.com/products/runner-shoes");
+  assert.equal(observation.goal_action_candidate_count, 1);
+  assert.equal(observation.add_to_cart_like_button_count, 1);
+  assert.deepEqual(observation.evidence, [
+    "matched_product_card",
+    "url_changed",
+    "title_changed",
+    "breadcrumb_changed",
+    "price_visible",
+    "product_image_visible",
+    "goal_action_candidate_visible",
+    "dom_changed"
+  ]);
+  assert.deepEqual(observation.matched_product_card, {
+    ...productCard,
+    match_reason: "selector_exact",
+    match_confidence: 0.94
+  });
+});
+
+test("[수집 pipeline] 카테고리/필터/검색 변화는 category_filter_signal observation으로 남긴다", async () => {
+  const capturePipeline = createCapturePipeline();
+  const plan = createMinimalPlan();
+  const beforeSnapshot = createSimulatedPageSnapshot(plan, {
+    finalUrl: "https://example.com/products",
+    breadcrumb: ["Home", "Products"],
+    selectedFilters: [],
+    searchQuery: null
+  });
+  const afterSnapshot = createSimulatedPageSnapshot(plan, {
+    finalUrl: "https://example.com/products?category=shoes&q=runner",
+    breadcrumb: ["Home", "Products", "Shoes"],
+    selectedFilters: [
+      {
+        key: "category",
+        value: "Shoes",
+        selector: "input[name=\"category\"]"
+      }
+    ],
+    searchQuery: "runner"
+  });
+
+  const collection = await capturePipeline.collectCheckpoint({
+    step: {
+      step_id: "step_filter_search",
+      stage: "VALUE",
+      description: "카테고리와 검색어 적용",
+      action: {
+        type: "click",
+        target: {
+          selector: "button.apply-filter"
+        }
+      },
+      settle_strategy: {
+        type: "url_change",
+        timeout_ms: 500
+      },
+      checkpoint: true
+    },
+    stepOrder: 3,
+    plan,
+    beforeSnapshot,
+    pageSnapshot: afterSnapshot,
+    actionResult: {
+      actionType: "click",
+      targetSummary: "selector=button.apply-filter",
+      stopRequested: false,
+      details: {
+        clickedText: "필터 적용",
+        clickedSelector: "button.apply-filter"
+      }
+    },
+    settleResult: createSettledResult({
+      strategy: "url_change",
+      status: "settled",
+      durationMs: 120
+    })
+  });
+
+  const observation = collection.checkpoint.observations.find(
+    (candidate) => candidate.type === "category_filter_signal"
+  );
+
+  assert.ok(observation);
+  assert.equal(observation.clicked_text, "필터 적용");
+  assert.equal(observation.url_before, "https://example.com/products");
+  assert.equal(observation.url_after, "https://example.com/products?category=shoes&q=runner");
+  assert.deepEqual(observation.breadcrumb_before, ["Home", "Products"]);
+  assert.deepEqual(observation.breadcrumb_after, ["Home", "Products", "Shoes"]);
+  assert.deepEqual(observation.selected_filter_before, []);
+  assert.deepEqual(observation.selected_filter_after, [
+    {
+      key: "category",
+      value: "Shoes",
+      selector: "input[name=\"category\"]"
+    }
+  ]);
+  assert.equal(observation.search_query_before, null);
+  assert.equal(observation.search_query_after, "runner");
+  assert.equal(observation.filter_changed, true);
+  assert.equal(observation.search_submitted, true);
+  assert.equal(observation.category_url_changed, true);
+});
+
+test("[수집 pipeline] 상품 발견 이후 depth_from_discovery를 누적 관찰값으로 남긴다", async () => {
+  const capturePipeline = createCapturePipeline();
+  const journeyDepthContext = {};
+  const plan = createMinimalPlan();
+  const productListSnapshot = createSimulatedPageSnapshot(plan, {
+    finalUrl: "https://example.com/products",
+    title: "Products",
+    productCards: [
+      {
+        element_text: "Runner Shoes ₩12,000",
+        clicked_selector: "a.product-card[href='/products/runner-shoes']",
+        visible_price: "₩12,000",
+        visible_product_image: true,
+        bbox: {
+          x: 80,
+          y: 180,
+          width: 260,
+          height: 320,
+          unit: "css_px"
+        }
+      }
+    ]
+  });
+
+  const discoveryCollection = await capturePipeline.collectCheckpoint({
+    step: {
+      step_id: "step_discover_products",
+      stage: "VALUE",
+      description: "상품 목록 확인",
+      action: {
+        type: "checkpoint"
+      },
+      settle_strategy: {
+        type: "none",
+        timeout_ms: 0
+      },
+      checkpoint: true
+    },
+    stepOrder: 1,
+    plan,
+    pageSnapshot: productListSnapshot,
+    settleResult: createSettledResult(),
+    journeyDepthContext
+  });
+
+  const discoveryObservation = discoveryCollection.checkpoint.observations.find(
+    (candidate) => candidate.type === "depth_from_discovery"
+  );
+  assert.ok(discoveryObservation);
+  assert.equal(discoveryObservation.discovery_step_order, 1);
+  assert.equal(discoveryObservation.depth_from_discovery, 0);
+  assert.equal(discoveryObservation.intent_candidate, "product_discovery");
+  assert.equal(discoveryObservation.is_detour_candidate, false);
+  assert.equal(discoveryObservation.current_product_card_count, 1);
+
+  const beforeFilterSnapshot = createSimulatedPageSnapshot(plan, {
+    finalUrl: "https://example.com/products",
+    breadcrumb: ["Home", "Products"],
+    productCards: productListSnapshot.productCards
+  });
+  const afterFilterSnapshot = createSimulatedPageSnapshot(plan, {
+    finalUrl: "https://example.com/products?filter=size-270",
+    breadcrumb: ["Home", "Products"],
+    selectedFilters: [
+      {
+        key: "size",
+        value: "270",
+        selector: "input[name='size'][value='270']"
+      }
+    ],
+    productCards: productListSnapshot.productCards
+  });
+
+  const filterCollection = await capturePipeline.collectCheckpoint({
+    step: {
+      step_id: "step_filter_products",
+      stage: "VALUE",
+      description: "사이즈 필터 적용",
+      action: {
+        type: "click",
+        target: {
+          selector: "input[name='size'][value='270']"
+        }
+      },
+      settle_strategy: {
+        type: "url_change",
+        timeout_ms: 500
+      },
+      checkpoint: true
+    },
+    stepOrder: 2,
+    plan,
+    beforeSnapshot: beforeFilterSnapshot,
+    pageSnapshot: afterFilterSnapshot,
+    actionResult: {
+      actionType: "click",
+      targetSummary: "selector=input[name='size'][value='270']",
+      stopRequested: false,
+      details: {
+        clickedText: "270",
+        clickedSelector: "input[name='size'][value='270']"
+      }
+    },
+    settleResult: createSettledResult({
+      strategy: "url_change",
+      status: "settled",
+      durationMs: 100
+    }),
+    journeyDepthContext
+  });
+
+  const filterDepthObservation = filterCollection.checkpoint.observations.find(
+    (candidate) => candidate.type === "depth_from_discovery"
+  );
+  assert.ok(filterDepthObservation);
+  assert.equal(filterDepthObservation.discovery_step_key, "step_discover_products");
+  assert.equal(filterDepthObservation.depth_from_discovery, 1);
+  assert.equal(filterDepthObservation.intent_candidate, "filter_changed");
+  assert.equal(filterDepthObservation.filter_changed, true);
+  assert.equal(filterDepthObservation.is_detour_candidate, false);
 });
 
 test("[전달 정책] optional delivery 이슈를 병합하고 finished callback 실패는 fatal로 분류한다", () => {

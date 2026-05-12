@@ -191,6 +191,30 @@
       },
       "additionalProperties": false
     },
+    "artifact_policy": {
+      "type": "object",
+      "properties": {
+        "capture_screenshots": {
+          "type": "boolean"
+        },
+        "capture_dom_snapshots": {
+          "type": "boolean"
+        },
+        "capture_ax_tree": {
+          "type": "boolean"
+        },
+        "capture_trace": {
+          "type": "boolean"
+        },
+        "capture_har": {
+          "type": "boolean"
+        },
+        "capture_performance": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
     "steps": {
       "type": "array",
       "minItems": 1,

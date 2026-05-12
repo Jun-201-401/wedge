@@ -1,4 +1,4 @@
-import { createAgentDecisionClient, createAgentRuntimePlan, executeAgentRun, type AgentTraceScenarioPlanExport } from "../agent/index.ts";
+import { createAgentDecisionClient, createAgentRuntimePlan, executeAgentRun, type AgentTrace, type AgentTraceScenarioPlanExport } from "../agent/index.ts";
 import type { BrowserSessionFactory } from "../browser/playwright/index.ts";
 import type { CallbackClient } from "../callback/index.ts";
 import type { CapturePipeline } from "../capture/index.ts";
@@ -8,12 +8,12 @@ import { ScenarioExecutionError, type ScenarioExecutionSummary } from "../scenar
 import type { AgentExecuteMessage, Artifact } from "../shared/contracts.ts";
 import { classifyRunnerFailure, errorMessage, logOperationalEvent } from "../shared/utils.ts";
 import type { ArtifactStore } from "../storage/index.ts";
-import type { AgentTrace } from "../agent/trace.ts";
 import {
   AgentIdempotencyInProgressError,
   createApiAgentIdempotencyStore,
   createLocalAgentIdempotencyStore,
   resolveAgentIdempotencyKey,
+  type AgentIdempotencyClaimInput,
   type AgentIdempotencyStore
 } from "./agent-idempotency.ts";
 import { emitAcceptedCallback, emitFailedCallback, emitFinishedCallback } from "./callback-policy.ts";
@@ -44,6 +44,10 @@ export interface AgentRunnerWorker {
   handleMessage: (message: AgentExecuteMessage) => Promise<AgentRunnerExecutionResult>;
 }
 
+interface AgentLeaseRenewal {
+  stop: () => Promise<void>;
+}
+
 export function registerAgentWorker({
   config,
   browserFactory,
@@ -65,6 +69,14 @@ export function registerAgentWorker({
         taskIdempotencyKey: message.payload.agentTask.idempotency_key
       });
       if (idempotencyKey) {
+        const claimInput = {
+          runId: message.payload.agentTask.run_id,
+          taskId: message.payload.agentTask.task_id,
+          attemptId: message.payload.agentTask.attempt_id,
+          attemptIndex: message.payload.agentTask.attempt_index
+        };
+        let ownsClaim = false;
+        let leaseRenewal: AgentLeaseRenewal | null = null;
         const existingExecution = idempotentExecutions.get(idempotencyKey);
         if (existingExecution) {
           logOperationalEvent(
@@ -81,12 +93,7 @@ export function registerAgentWorker({
         }
 
         if (terminalIdempotencyStore?.claim) {
-          const claim = await terminalIdempotencyStore.claim(idempotencyKey, {
-            runId: message.payload.agentTask.run_id,
-            taskId: message.payload.agentTask.task_id,
-            attemptId: message.payload.agentTask.attempt_id,
-            attemptIndex: message.payload.agentTask.attempt_index
-          });
+          const claim = await terminalIdempotencyStore.claim(idempotencyKey, claimInput);
 
           if (claim.status === "COMPLETED") {
             logOperationalEvent(
@@ -118,6 +125,14 @@ export function registerAgentWorker({
             );
             throw new AgentIdempotencyInProgressError(idempotencyKey, claim.claimedBy, claim.leaseExpiresAt);
           }
+
+          ownsClaim = true;
+          leaseRenewal = startAgentIdempotencyLeaseRenewal({
+            config,
+            store: terminalIdempotencyStore,
+            idempotencyKey,
+            claimInput
+          });
         } else if (terminalIdempotencyStore) {
           const persistedResult = await terminalIdempotencyStore.read(idempotencyKey);
           if (persistedResult) {
@@ -145,12 +160,30 @@ export function registerAgentWorker({
           artifactStore
         })
           .then(async (result) => {
+            await leaseRenewal?.stop();
             if (terminalIdempotencyStore) {
               await terminalIdempotencyStore.persist(idempotencyKey, result);
             }
+            if (ownsClaim && terminalIdempotencyStore?.release && shouldReleaseUnstoredAgentResult(result)) {
+              await releaseAgentIdempotencyClaimBestEffort({
+                store: terminalIdempotencyStore,
+                idempotencyKey,
+                claimInput,
+                taskId: message.payload.agentTask.task_id
+              });
+            }
             return result;
           })
-          .catch((error) => {
+          .catch(async (error) => {
+            await leaseRenewal?.stop();
+            if (ownsClaim && terminalIdempotencyStore?.release) {
+              await releaseAgentIdempotencyClaimBestEffort({
+                store: terminalIdempotencyStore,
+                idempotencyKey,
+                claimInput,
+                taskId: message.payload.agentTask.task_id
+              });
+            }
             idempotentExecutions.delete(idempotencyKey);
             throw error;
           });
@@ -168,6 +201,109 @@ export function registerAgentWorker({
       });
     }
   };
+}
+
+function startAgentIdempotencyLeaseRenewal({
+  config,
+  store,
+  idempotencyKey,
+  claimInput
+}: {
+  config: RunnerConfig;
+  store: AgentIdempotencyStore;
+  idempotencyKey: string;
+  claimInput: AgentIdempotencyClaimInput;
+}): AgentLeaseRenewal | null {
+  if (!store.renew) {
+    return null;
+  }
+
+  let stopped = false;
+  let inFlight: Promise<void> | null = null;
+  const renew = async () => {
+    try {
+      const result = await store.renew?.(idempotencyKey, claimInput);
+      if (result?.status !== "CLAIMED") {
+        logOperationalEvent(
+          "agent-worker",
+          "idempotency_lease_renew_not_owned",
+          {
+            runId: claimInput.runId,
+            taskId: claimInput.taskId,
+            idempotencyKey,
+            renewStatus: result?.status,
+            claimedBy: result && "claimedBy" in result ? result.claimedBy : null,
+            leaseExpiresAt: result && "leaseExpiresAt" in result ? result.leaseExpiresAt : null
+          },
+          "warn"
+        );
+      }
+    } catch (error) {
+      logOperationalEvent(
+        "agent-worker",
+        "idempotency_lease_renew_failed",
+        {
+          runId: claimInput.runId,
+          taskId: claimInput.taskId,
+          idempotencyKey,
+          errorMessage: errorMessage(error)
+        },
+        "warn"
+      );
+    }
+  };
+  const interval = setInterval(() => {
+    if (stopped || inFlight) {
+      return;
+    }
+    const current = renew();
+    inFlight = current.finally(() => {
+      if (inFlight === current) {
+        inFlight = null;
+      }
+    });
+  }, config.agentIdempotencyRenewIntervalMs);
+  interval.unref?.();
+
+  return {
+    async stop() {
+      stopped = true;
+      clearInterval(interval);
+      await inFlight;
+    }
+  };
+}
+
+async function releaseAgentIdempotencyClaimBestEffort({
+  store,
+  idempotencyKey,
+  claimInput,
+  taskId
+}: {
+  store: AgentIdempotencyStore;
+  idempotencyKey: string;
+  claimInput: AgentIdempotencyClaimInput;
+  taskId: string;
+}): Promise<void> {
+  try {
+    await store.release?.(idempotencyKey, claimInput);
+  } catch (error) {
+    logOperationalEvent(
+      "agent-worker",
+      "idempotency_lease_release_failed",
+      {
+        runId: claimInput.runId,
+        taskId,
+        idempotencyKey,
+        errorMessage: errorMessage(error)
+      },
+      "warn"
+    );
+  }
+}
+
+function shouldReleaseUnstoredAgentResult(result: AgentRunnerExecutionResult): boolean {
+  return result.trace.outcome.status === "RUNNING" || result.trace.outcome.status === "FAILED";
 }
 
 function createConfiguredAgentIdempotencyStore(config: RunnerConfig): AgentIdempotencyStore {

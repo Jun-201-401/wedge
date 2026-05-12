@@ -923,6 +923,39 @@ paths:
           $ref: '#/components/responses/Conflict'
         '422':
           $ref: '#/components/responses/ValidationError'
+  /api/runs/{runId}/agent/start:
+    post:
+      tags:
+      - Runs
+      operationId: startAgentRun
+      summary: Agent 실행 시작
+      description: CREATED 상태의 Run을 QUEUED로 전환하고 AgentTask 기반 Runner Agent 실행 요청 outbox를 발행한다. 이전 성공 AgentTrace가 있으면 replay_hints로 주입한다.
+      security:
+      - HumanBearer: []
+      parameters:
+      - $ref: '#/components/parameters/RunId'
+      - name: Idempotency-Key
+        in: header
+        required: false
+        schema:
+          type: string
+      responses:
+        '202':
+          description: Agent run start accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AckResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
   /api/runs/{runId}/stop:
     post:
       tags:
@@ -1589,6 +1622,40 @@ paths:
           $ref: '#/components/responses/Conflict'
         '422':
           $ref: '#/components/responses/ValidationError'
+  /internal/runner/runs/{runId}/control-state:
+    get:
+      tags:
+      - InternalRunner
+      operationId: runnerControlState
+      summary: Runner 실행 제어 상태 조회
+      description: Runner가 step 사이에서 STOP_REQUESTED 상태를 소비할 수 있도록 현재 Run 제어 상태를 조회한다.
+      security:
+      - InternalBearer: []
+      parameters:
+      - $ref: '#/components/parameters/RunId'
+      - name: X-Worker-Id
+        in: header
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Current control state
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/ApiResponse'
+                - type: object
+                  properties:
+                    data:
+                      $ref: '#/components/schemas/RunnerControlStateResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
   /internal/runner/runs/{runId}/agent-events:
     post:
       tags:
@@ -1826,6 +1893,102 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '422':
           $ref: '#/components/responses/ValidationError'
+  /internal/runner/agent-idempotency/{idempotencyKeyHash}/renew:
+    post:
+      tags:
+      - InternalRunner
+      operationId: renewRunnerAgentIdempotencyRecord
+      summary: Agent idempotency lease renew
+      description: 현재 CLAIMED lease를 보유한 Runner replica가 긴 agent.execute 실행 중 lease 만료 시각을 연장한다. worker/run/task/attempt가 일치하지 않으면 record를 변경하지 않고 현재 record를 반환한다.
+      security:
+      - InternalBearer: []
+      parameters:
+      - name: idempotencyKeyHash
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: ^[0-9a-f]{64}$
+      - name: X-Worker-Id
+        in: header
+        required: true
+        schema:
+          type: string
+      - name: X-Event-Id
+        in: header
+        required: true
+        schema:
+          type: string
+      - name: X-Signature
+        in: header
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RunnerAgentIdempotencyRenewRequest'
+      responses:
+        '200':
+          description: Renewed or current Agent idempotency record
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RunnerAgentIdempotencyRecordEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /internal/runner/agent-idempotency/{idempotencyKeyHash}/release:
+    post:
+      tags:
+      - InternalRunner
+      operationId: releaseRunnerAgentIdempotencyRecord
+      summary: Agent idempotency lease release
+      description: terminal record를 저장하지 못한 실패/예외 attempt가 현재 CLAIMED lease를 명시적으로 해제한다. worker/run/task/attempt가 일치하지 않거나 이미 COMPLETED이면 record를 변경하지 않고 현재 record를 반환한다.
+      security:
+      - InternalBearer: []
+      parameters:
+      - name: idempotencyKeyHash
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: ^[0-9a-f]{64}$
+      - name: X-Worker-Id
+        in: header
+        required: true
+        schema:
+          type: string
+      - name: X-Event-Id
+        in: header
+        required: true
+        schema:
+          type: string
+      - name: X-Signature
+        in: header
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RunnerAgentIdempotencyReleaseRequest'
+      responses:
+        '200':
+          description: Released or current Agent idempotency record
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RunnerAgentIdempotencyRecordEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
   /internal/runner/runs/{runId}/artifacts:
     post:
       tags:
@@ -1959,6 +2122,106 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/RunnerFailedRequest'
+      responses:
+        '200':
+          description: Accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AckResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /internal/runner/runs/{runId}/agent-events:
+    post:
+      tags:
+      - InternalRunner
+      operationId: runnerAgentEvents
+      summary: Runner Agent 이벤트 callback
+      description: Runner Agent Runtime이 관찰/결정/정책/검증 이벤트 batch를 API 서버에 알리는 내부 callback이다.
+      security:
+      - InternalBearer: []
+      parameters:
+      - $ref: '#/components/parameters/RunId'
+      - name: X-Worker-Id
+        in: header
+        required: true
+        schema:
+          type: string
+      - name: X-Event-Id
+        in: header
+        required: true
+        schema:
+          type: string
+      - name: X-Signature
+        in: header
+        description: HMAC-SHA256 digest of the raw JSON request body using the shared runner callback signature secret. The preferred format is `hmac-sha256=<hex>`; raw hex is accepted for compatibility.
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RunnerAgentEventsRequest'
+      responses:
+        '200':
+          description: Accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AckResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /internal/runner/runs/{runId}/agent-traces:
+    post:
+      tags:
+      - InternalRunner
+      operationId: runnerAgentTrace
+      summary: Runner Agent trace callback
+      description: Runner Agent Runtime이 최종 AgentTrace를 API 서버에 알리는 내부 callback이다. TRACE artifact와 같은 trace 계약을 사용한다.
+      security:
+      - InternalBearer: []
+      parameters:
+      - $ref: '#/components/parameters/RunId'
+      - name: X-Worker-Id
+        in: header
+        required: true
+        schema:
+          type: string
+      - name: X-Event-Id
+        in: header
+        required: true
+        schema:
+          type: string
+      - name: X-Signature
+        in: header
+        description: HMAC-SHA256 digest of the raw JSON request body using the shared runner callback signature secret. The preferred format is `hmac-sha256=<hex>`; raw hex is accepted for compatibility.
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RunnerAgentTraceRequest'
       responses:
         '200':
           description: Accepted
@@ -2395,6 +2658,39 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/SingleReportResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/report-shares/{shareToken}/artifacts/{artifactId}/content:
+    get:
+      tags:
+      - Reports
+      operationId: getSharedReportArtifactContent
+      summary: 공유 token 리포트 이미지 artifact content 조회
+      description: 인증 헤더 없이 공유 token만으로 공유 리포트에 연결된 run의 이미지 artifact content를 조회한다. share token이 만료/폐기되었거나 artifact가 공유 리포트의 run에 속하지 않거나 이미지 artifact가 아니면 조회할 수 없다.
+      security: []
+      parameters:
+      - name: shareToken
+        in: path
+        required: true
+        schema:
+          type: string
+      - $ref: '#/components/parameters/ArtifactId'
+      responses:
+        '200':
+          description: Shared report artifact content
+          content:
+            image/png:
+              schema:
+                type: string
+                format: binary
+            image/jpeg:
+              schema:
+                type: string
+                format: binary
+            image/webp:
+              schema:
+                type: string
+                format: binary
         '404':
           $ref: '#/components/responses/NotFound'
   /internal/runner/runs/{runId}/checkpoints:
@@ -4890,6 +5186,48 @@ components:
       - taskId
       - attemptId
       - attemptIndex
+    RunnerAgentIdempotencyRenewRequest:
+      type: object
+      properties:
+        runId:
+          type: string
+          format: uuid
+        taskId:
+          type: string
+        attemptId:
+          type: string
+        attemptIndex:
+          type: integer
+          minimum: 1
+        leaseTtlMs:
+          type: integer
+          minimum: 1000
+          maximum: 86400000
+          nullable: true
+          default: 300000
+      required:
+      - runId
+      - taskId
+      - attemptId
+      - attemptIndex
+    RunnerAgentIdempotencyReleaseRequest:
+      type: object
+      properties:
+        runId:
+          type: string
+          format: uuid
+        taskId:
+          type: string
+        attemptId:
+          type: string
+        attemptIndex:
+          type: integer
+          minimum: 1
+      required:
+      - runId
+      - taskId
+      - attemptId
+      - attemptIndex
     RunnerAgentIdempotencyRecordRequest:
       type: object
       properties:
@@ -5046,6 +5384,27 @@ components:
             - createdAt
       required:
       - artifacts
+    AgentEvent:
+      $ref: ../schemas/agent-event.schema.json
+    AgentTrace:
+      $ref: ../schemas/agent-trace.schema.json
+    RunnerAgentEventsRequest:
+      type: object
+      properties:
+        events:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/AgentEvent'
+      required:
+      - events
+    RunnerAgentTraceRequest:
+      type: object
+      properties:
+        trace:
+          $ref: '#/components/schemas/AgentTrace'
+      required:
+      - trace
     RunnerFinishedRequest:
       type: object
       properties:
@@ -5107,12 +5466,46 @@ components:
           - completedStepCount
           - failedStepCount
           - stopped
+        failureArtifactRefs:
+          type: array
+          items:
+            type: string
       required:
       - workerId
       - failedAt
       - failureCode
       - failureMessage
       - resultCompleteness
+    RunnerControlStateResponse:
+      type: object
+      properties:
+        runId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum:
+          - CREATED
+          - QUEUED
+          - STARTING
+          - RUNNING
+          - STOP_REQUESTED
+          - STOPPED
+          - COMPLETED
+          - FAILED
+        stopRequested:
+          type: boolean
+        resultCompleteness:
+          type: string
+          enum:
+          - NONE
+          - PARTIAL
+          - FINAL
+          nullable: true
+      required:
+      - runId
+      - status
+      - stopRequested
     JudgeResult:
       $ref: ../schemas/judge-result.schema.json
     AnalyzerStartedRequest:
@@ -5545,6 +5938,10 @@ components:
           - other
         uri:
           type: string
+        signed_url:
+          type: string
+          format: uri
+          description: Optional time-limited HTTP(S) URL for image-capable consumers such as Analyzer GMS screenshot checks.
         mime_type:
           type: string
         size_bytes:

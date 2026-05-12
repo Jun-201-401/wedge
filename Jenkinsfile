@@ -84,6 +84,14 @@ pipeline {
         disableConcurrentBuilds()
     }
 
+    parameters {
+        booleanParam(
+            name: 'RUN_DB_MIGRATION',
+            defaultValue: true,
+            description: 'Run Flyway info and migrate when infra/db/migrations changes. Set false only to intentionally block DB migration.'
+        )
+    }
+
     triggers {
         GenericTrigger(
             genericVariables: [
@@ -117,6 +125,7 @@ pipeline {
                 script {
                     env.FAILED_STAGE = 'Init'
                     env.COMMIT_MSG = ''
+                    env.MIGRATION_FILES_CHANGED = 'false'
                 }
                 writeFile file: env.LOG_FILE, text: ''
             }
@@ -132,6 +141,14 @@ pipeline {
                     url: "${GIT_URL}"
                 script {
                     env.COMMIT_MSG = sh(script: 'git log -1 --pretty=%s', returnStdout: true).trim()
+                    env.MIGRATION_FILES_CHANGED = sh(script: '''
+if git rev-parse --verify HEAD^ >/dev/null 2>&1 \
+    && git diff --name-only HEAD^ HEAD -- infra/db/migrations | grep -q .; then
+    echo true
+else
+    echo false
+fi
+''', returnStdout: true).trim()
                 }
             }
         }
@@ -155,6 +172,58 @@ docker build -f apps/web/Dockerfile -t "${WEB_IMAGE_NAME}:ci-${BUILD_NUMBER}" ap
 docker build -f apps/runner/Dockerfile -t "${RUNNER_IMAGE_NAME}:ci-${BUILD_NUMBER}" .
 docker build -f apps/analyzer/Dockerfile -t "${ANALYZER_IMAGE_NAME}:ci-${BUILD_NUMBER}" .
                     ''')
+                }
+            }
+        }
+
+        stage('Database Migration') {
+            when {
+                expression {
+                    return env.MIGRATION_FILES_CHANGED == 'true'
+                }
+            }
+            steps {
+                script {
+                    env.FAILED_STAGE = 'Database Migration'
+                    if (params.RUN_DB_MIGRATION != true) {
+                        error('Migration files changed but RUN_DB_MIGRATION=false. Enable migration or review the deployment.')
+                    }
+                }
+                withCredentials([sshUserPrivateKey(
+                    credentialsId: 'ec2-ssh',
+                    keyFileVariable: 'EC2_KEY',
+                    usernameVariable: 'EC2_USER'
+                ), usernamePassword(
+                    credentialsId: 'gitlab-ec2-readonly',
+                    usernameVariable: 'GITLAB_RO_USER',
+                    passwordVariable: 'GITLAB_RO_TOKEN'
+                )]) {
+                    script {
+                        runLogged('''
+set -e
+
+GIT_AUTH_HEADER="$(printf '%s:%s' "$GITLAB_RO_USER" "$GITLAB_RO_TOKEN" | base64 | tr -d '\n')"
+
+ssh -i "$EC2_KEY" $SSH_OPTS "$EC2_USER@$DEPLOY_HOST" "GIT_AUTH_HEADER='$GIT_AUTH_HEADER' GIT_URL='$GIT_URL' GIT_BRANCH='$GIT_BRANCH' bash -s" << 'EOF'
+set -e
+
+cd /srv/wedge
+
+PREVIOUS_HEAD="$(git rev-parse HEAD 2>/dev/null || true)"
+printf '%s\n' "$PREVIOUS_HEAD" > .jenkins-previous-head
+
+git remote set-url origin "$GIT_URL"
+git remote set-url --push origin "$GIT_URL"
+git -c credential.helper= -c "http.extraHeader=Authorization: Basic ${GIT_AUTH_HEADER}" fetch --prune origin "$GIT_BRANCH"
+unset GIT_AUTH_HEADER
+git reset --hard "origin/$GIT_BRANCH"
+
+docker compose --env-file .env.prod -f compose.prod.yaml up -d postgres
+docker compose --env-file .env.prod -f compose.prod.yaml --profile migration run --rm flyway info
+docker compose --env-file .env.prod -f compose.prod.yaml --profile migration run --rm flyway migrate
+EOF
+                        ''')
+                    }
                 }
             }
         }
@@ -184,7 +253,8 @@ set -e
 
 cd /srv/wedge
 
-PREVIOUS_HEAD="$(git rev-parse HEAD 2>/dev/null || true)"
+PREVIOUS_HEAD="$(cat .jenkins-previous-head 2>/dev/null || git rev-parse HEAD 2>/dev/null || true)"
+rm -f .jenkins-previous-head
 git remote set-url origin "$GIT_URL"
 git remote set-url --push origin "$GIT_URL"
 git -c credential.helper= -c "http.extraHeader=Authorization: Basic ${GIT_AUTH_HEADER}" fetch --prune origin "$GIT_BRANCH"

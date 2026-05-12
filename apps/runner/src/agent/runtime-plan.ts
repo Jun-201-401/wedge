@@ -35,6 +35,7 @@ export function createAgentRuntimePlan(task: AgentTask): ScenarioPlan {
       use_synthetic_inputs: true,
       stop_before_real_payment: !task.risk_policy.allow_final_payment_submit
     },
+    artifact_policy: task.artifact_policy,
     steps: [
       {
         step_id: "agent_bootstrap_goto",

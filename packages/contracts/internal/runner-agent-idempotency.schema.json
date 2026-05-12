@@ -41,6 +41,58 @@
       },
       "required": ["runId", "taskId", "attemptId", "attemptIndex"]
     },
+    "RenewRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "runId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "taskId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "attemptId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "attemptIndex": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "leaseTtlMs": {
+          "type": ["integer", "null"],
+          "minimum": 1000,
+          "maximum": 86400000,
+          "default": 300000
+        }
+      },
+      "required": ["runId", "taskId", "attemptId", "attemptIndex"]
+    },
+    "ReleaseRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "runId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "taskId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "attemptId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "attemptIndex": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "required": ["runId", "taskId", "attemptId", "attemptIndex"]
+    },
     "RecordRequest": {
       "type": "object",
       "additionalProperties": false,

@@ -7,16 +7,17 @@ import { executeScenarioStep } from "../scenario/executor/step-executor.ts";
 import type { ArtifactStore } from "../storage/index.ts";
 import type { AgentTask, Artifact, ScenarioPlan, ScenarioStep } from "../shared/contracts.ts";
 import { classifyRunnerFailure, errorMessage, logOperationalEvent } from "../shared/utils.ts";
-import { persistAgentScenarioPlanExportArtifact, persistAgentTraceArtifact } from "./artifacts.ts";
+import { persistAgentScenarioPlanExportArtifact, persistAgentTraceArtifact } from "./trace/artifacts.ts";
 import { emitAgentEventBestEffort, emitAgentTraceBestEffort } from "./callbacks.ts";
 import { AgentBudgetExceededError, assertAgentDeadline, createAgentDeadline, remainingAgentBudgetMs, runSideEffectWithDeadlineCleanup, runWithinAgentDeadline } from "./deadline.ts";
 import { ensureAgentDecisionMetadata, HeuristicDecisionClient, type AgentDecision, type AgentDecisionClient } from "./planner.ts";
 import { observePage } from "./observation.ts";
 import { evaluateAgentPolicy } from "./policy.ts";
+import { decideFromReplayHints } from "./replay-hint-planner.ts";
 import { createInitialAgentState } from "./state.ts";
 import { shouldReportStopped, traceStatusFromVerification } from "./outcome.ts";
-import { exportAgentTraceToScenarioPlan, type AgentTraceScenarioPlanExport } from "./trace-export.ts";
-import { createAgentTrace, summarizeObservation, type AgentTrace, type AgentTurnTrace } from "./trace.ts";
+import { exportAgentTraceToScenarioPlan, type AgentTraceScenarioPlanExport } from "./trace/export.ts";
+import { createAgentTrace, summarizeObservation, type AgentTrace, type AgentTurnTrace } from "./trace/index.ts";
 import { verifyGoal } from "./verifier.ts";
 
 export interface AgentExecutionResult {
@@ -70,7 +71,7 @@ export async function executeAgentRun(input: AgentExecutorInput): Promise<AgentE
     });
     const turnTrace: AgentTurnTrace = {
       turn,
-      observation: summarizeObservation(observation.snapshot),
+      observation: summarizeObservation(observation.snapshot, input.task.observation_budget),
       preDecisionVerification
     };
     trace.turns.push(turnTrace);
@@ -93,14 +94,19 @@ export async function executeAgentRun(input: AgentExecutorInput): Promise<AgentE
 
     let decision: AgentDecision;
     try {
-      decision = ensureAgentDecisionMetadata(await runWithinAgentDeadline(deadline, "decision", () => decisionClient.decide({
+      const decisionInput = {
+        runId: input.runId,
         goal: resolveTaskGoal(input.task),
         startUrl: input.task.start_url,
         state,
         observation,
         maxScrolls: config.maxScrolls,
         remainingTimeMs: remainingAgentBudgetMs(deadline)
-      })));
+      };
+      decision = decideFromReplayHints({
+        ...decisionInput,
+        replayHints: input.task.replay_hints
+      }) ?? ensureAgentDecisionMetadata(await runWithinAgentDeadline(deadline, "decision", () => decisionClient.decide(decisionInput)));
     } catch (error) {
       if (markBudgetExceeded(trace, error)) {
         break;
@@ -179,6 +185,7 @@ export async function executeAgentRun(input: AgentExecutorInput): Promise<AgentE
 
         const failureCode = classifyRunnerFailure(error);
         const failureMessage = errorMessage(error);
+        const recoverableReplayHintFailure = isReplayHintDecision(decision);
 
         logOperationalEvent(
           "agent-executor",
@@ -191,7 +198,7 @@ export async function executeAgentRun(input: AgentExecutorInput): Promise<AgentE
             failureCode,
             failureMessage
           },
-          "error"
+          recoverableReplayHintFailure ? "warn" : "error"
         );
 
         deliveryIssues.push(...(await emitAgentEventBestEffort(input.callbackClient, input.runId, input.task, "ACTION_FAILED", {
@@ -201,6 +208,24 @@ export async function executeAgentRun(input: AgentExecutorInput): Promise<AgentE
           failureCode,
           failureMessage
         }, turn)));
+
+        if (recoverableReplayHintFailure) {
+          state.replayHintsDisabled = true;
+          postActionSnapshot = input.session.snapshot();
+          turnTrace.actionResult = {
+            actionType: decision.action.type,
+            finalUrl: postActionSnapshot.finalUrl,
+            completed: false
+          };
+          state.turns.push({
+            turn,
+            actionType: decision.action.type,
+            targetKey: decision.targetKey,
+            finalUrl: postActionSnapshot.finalUrl,
+            goalSatisfied: false
+          });
+          continue;
+        }
 
         throw new ScenarioExecutionError({
           cause: error,
@@ -313,6 +338,10 @@ export async function executeAgentRun(input: AgentExecutorInput): Promise<AgentE
     scenarioPlanExport,
     scenarioPlanExportArtifact: scenarioPlanExportDelivery.artifact
   };
+}
+
+function isReplayHintDecision(decision: AgentDecision): boolean {
+  return decision.metadata?.decisionSource === "replay_hint";
 }
 
 function resolveAgentBudget(task: AgentTask): {

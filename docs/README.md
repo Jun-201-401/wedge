@@ -23,6 +23,8 @@
 - `wedge_frontend_architecture.md` — `apps/web` 프론트엔드 스택과 경계
 - `wedge_runner_architecture.md` — `apps/runner` 실행 구조와 경계
 - `mcp_server_design.md` — `apps/api-server` 내부 MCP adapter V1 범위와 구현 기준
+- `mcp_pending_decision_e2e_verification.md` — MCP pending decision 로컬 E2E 검증 절차와 성공/실패 판정 기준
+- `flyway_prod_migration_runbook.md` — 기존 운영 DB에 Flyway를 도입할 때의 baseline/migrate 절차
 - `wedge_runner_agent_execution.md` — Runner를 goal 기반 UX Agent로 전환하기 위한 target design
 - `wedge_api_spec.md` — 최종 human-readable API 명세서
 - `runner_agent_runtime_implementation_plan.md` — Runner Agent Runtime 후속 구현 계획과 contract-first 작업 순서

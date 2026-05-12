@@ -6,6 +6,7 @@ import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -31,6 +32,7 @@ import com.wedge.report.application.ReportShareCreationResult;
 import com.wedge.report.application.ReportShareService;
 import com.wedge.report.application.ReportSummaryQueryService;
 import com.wedge.report.domain.ReportFormat;
+import com.wedge.evidence.application.EvidenceService;
 import com.wedge.run.domain.ReportStatus;
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
@@ -38,7 +40,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import org.springframework.core.io.ByteArrayResource;
 import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter;
+import org.springframework.http.converter.ResourceHttpMessageConverter;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
@@ -76,7 +80,7 @@ class ReportControllerTest {
                     )
             )
             .setControllerAdvice(new GlobalExceptionHandler())
-            .setMessageConverters(JSON_CONVERTER)
+            .setMessageConverters(JSON_CONVERTER, new ResourceHttpMessageConverter())
             .addFilters(new RequestIdFilter())
             .build();
 
@@ -286,6 +290,21 @@ class ReportControllerTest {
                 .andExpect(jsonPath("$.data.id").value(reportId.toString()))
                 .andExpect(jsonPath("$.data.findings[0].title").value(FINDING_TITLE))
                 .andExpect(jsonPath("$.meta.requestId").value("req_shared_report"));
+    }
+
+    @Test
+    void getSharedReportArtifactContentReturnsImageWithoutPrincipal() throws Exception {
+        UUID artifactId = UUID.randomUUID();
+        byte[] imageBytes = "fake-png".getBytes();
+        when(reportShareService.getSharedArtifactContent("share-token", artifactId))
+                .thenReturn(new EvidenceService.ArtifactContent(new ByteArrayResource(imageBytes), "image/png"));
+
+        mockMvc.perform(get("/api/report-shares/{shareToken}/artifacts/{artifactId}/content", "share-token", artifactId))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType("image/png"))
+                .andExpect(content().bytes(imageBytes));
+
+        verify(reportShareService).getSharedArtifactContent("share-token", artifactId);
     }
 
     private ReportSummaryResponse summary(UUID reportId, UUID runId) {

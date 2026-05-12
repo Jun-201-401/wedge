@@ -11,8 +11,14 @@ import { randomUUID } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import type { CallbackClient } from "../callback/index.ts";
+import { preparePageForScreenshot } from "../browser/playwright/screenshot.ts";
 import type { RunnerBrowserName, RunnerConfig } from "../config/index.ts";
 import { createArtifactStore, type ArtifactStore } from "../storage/index.ts";
+import {
+  normalizeMessageIdempotencyKey,
+  persistMessageIdempotencyResult,
+  readMessageIdempotencyResult
+} from "../runtime/message-idempotency.ts";
 import type {
   Artifact,
   ArtifactDraft,
@@ -110,6 +116,7 @@ interface DiscoveryCollectionResult {
 }
 
 type DiscoveryCandidateSignal = Omit<DiscoveryEvidenceSignal, "signal_id" | "evidence_ref">;
+const discoveryIdempotentExecutions = new Map<string, Promise<DiscoveryExecutionResult>>();
 
 export async function executeDiscovery(input: ExecuteDiscoveryInput): Promise<SiteDiscoveryResult> {
   return (await executeDiscoveryForPersistence(input)).result;
@@ -241,6 +248,36 @@ async function executeDiscoveryForPersistence({
 }
 
 export async function executeDiscoveryAndPersist(input: ExecuteDiscoveryInput): Promise<DiscoveryExecutionResult> {
+  const idempotencyKey = normalizeMessageIdempotencyKey(input.message.idempotencyKey);
+  if (idempotencyKey) {
+    const existingExecution = discoveryIdempotentExecutions.get(idempotencyKey);
+    if (existingExecution) {
+      return existingExecution;
+    }
+
+    const persistedResult = await readMessageIdempotencyResult<DiscoveryExecutionResult>(input.config, "discovery", idempotencyKey);
+    if (persistedResult) {
+      return persistedResult;
+    }
+
+    const execution = executeDiscoveryAndPersistOnce(input)
+      .then(async (result) => {
+        await persistMessageIdempotencyResult(input.config, "discovery", idempotencyKey, result);
+        discoveryIdempotentExecutions.delete(idempotencyKey);
+        return result;
+      })
+      .catch((error) => {
+        discoveryIdempotentExecutions.delete(idempotencyKey);
+        throw error;
+      });
+    discoveryIdempotentExecutions.set(idempotencyKey, execution);
+    return execution;
+  }
+
+  return executeDiscoveryAndPersistOnce(input);
+}
+
+async function executeDiscoveryAndPersistOnce(input: ExecuteDiscoveryInput): Promise<DiscoveryExecutionResult> {
   const browserSessionId = randomUUID();
 
   try {
@@ -399,6 +436,8 @@ async function createDiscoveryArtifactDrafts(
   stepKey: string,
   viewport: { width: number; height: number }
 ): Promise<ArtifactDraft[]> {
+  await preparePageForScreenshot(page);
+
   const [screenshotBuffer, domSnapshot] = await Promise.all([
     page.screenshot({ type: "png" }),
     page.content()
@@ -513,7 +552,7 @@ async function collectCandidatesFromPage(page: Page): Promise<DiscoveryCandidate
       const targetElement = originalTagName === "img" && linkedElement ? linkedElement : element;
       const role = targetElement.getAttribute("role");
       const tagName = targetElement.tagName.toLowerCase();
-      const inputType = readString(targetElement.type);
+      const inputType = normalizeFieldType(targetElement, tagName);
       const href = readString(targetElement.href) || targetElement.getAttribute("href") || readString(linkedElement?.href) || linkedElement?.getAttribute("href") || null;
       const text = readSafeRenderedText(element);
       const ariaLabel = normalizeNullableText(element.getAttribute("aria-label"));
@@ -669,10 +708,11 @@ async function collectCandidatesFromPage(page: Page): Promise<DiscoveryCandidate
       const fields = [...(form.querySelectorAll?.("input, textarea, select") ?? [])]
         .filter((field) => readString(field.type) !== "hidden")
         .map((field) => [
-          readString(field.type),
+          normalizeFieldType(field, field.tagName.toLowerCase()),
           readString(field.name) || field.getAttribute("name"),
           readString(field.placeholder) || field.getAttribute("placeholder"),
-          readAssociatedLabelText(field)
+          readAssociatedLabelText(field),
+          readSelectOptionText(field)
         ].filter(Boolean).join(" "))
         .filter(Boolean)
         .join(" ");
@@ -680,6 +720,30 @@ async function collectCandidatesFromPage(page: Page): Promise<DiscoveryCandidate
       const text = normalizeNullableText(fields);
       formFieldTextByForm.set(form, text);
       return text;
+    }
+
+    function normalizeFieldType(element: BrowserElement, tagName: string): string | null {
+      if (tagName === "select") {
+        return "select";
+      }
+      if (tagName === "textarea") {
+        return "textarea";
+      }
+      return readString(element.type);
+    }
+
+    function readSelectOptionText(element: BrowserElement): string | null {
+      if (element.tagName.toLowerCase() !== "select") {
+        return null;
+      }
+
+      const options = [...(element.querySelectorAll?.("option") ?? [])]
+        .map((option) => normalizeBrowserText(option.textContent || option.getAttribute("label") || option.getAttribute("value") || ""))
+        .filter(Boolean)
+        .slice(0, 5)
+        .join(" ");
+
+      return normalizeNullableText(options);
     }
 
     function readSubmitText(form: BrowserElement): string | null {
@@ -1211,7 +1275,11 @@ function matchedSignalsFor(flowType: DiscoveryFlowType, raw: RawDiscoveryElement
     signals.push(signal("selector", signalTypeFor(flowType, "selector"), raw.selector, 0.1));
   }
 
-  if (flowType === "SIGNUP_LEAD_FORM" && (raw.inputType === "email" || hasAny(searchable, ["email", "이메일", "company", "회사"]))) {
+  if (flowType === "SIGNUP_LEAD_FORM" && (
+    raw.inputType === "email" ||
+    raw.editable ||
+    hasAny(searchable, signupFormFieldKeywords())
+  )) {
     signals.push(signal("form_field", "lead_form_field", raw.formFieldText || raw.placeholder || raw.name || raw.inputType || "form field", 0.25));
   }
 
@@ -1227,7 +1295,7 @@ function keywordsFor(flowType: DiscoveryFlowType): string[] {
     case "LANDING_CTA":
       return ["get started", "sign up", "signup", "register", "free", "trial", "start", "시작", "회원가입", "가입", "무료", "체험"];
     case "SIGNUP_LEAD_FORM":
-      return ["signup", "sign up", "register", "lead", "email", "work email", "company", "organization", "회원가입", "가입", "이메일", "회사"];
+      return signupFormKeywords();
     case "CONTACT":
       return ["contact", "contact us", "contact sales", "talk to sales", "book a demo", "request demo", "schedule demo", "demo", "sales", "문의", "상담", "데모", "영업"];
     case "PRICING":
@@ -1444,7 +1512,12 @@ function createCandidate(
       aria_labelled_by_text: raw.ariaLabelledByText,
       label_text: raw.labelText,
       alt: raw.alt,
-      title: raw.title
+      title: raw.title,
+      field_type: raw.inputType,
+      form_field_text: raw.formFieldText,
+      submit_text: raw.submitText,
+      editable: raw.editable,
+      disabled: raw.disabled
     }
   };
 }
@@ -1622,6 +1695,14 @@ function signupFormConfidence(raw: RawDiscoveryElement, searchable: string): num
     return 0.88;
   }
 
+  if (raw.tagName === "select" && hasAny(searchable, ["email", "work email", "company", "organization", "team", "plan", "이메일", "회사", "팀", "플랜"])) {
+    return 0.78;
+  }
+
+  if (raw.tagName === "textarea" && hasAny(searchable, ["message", "team", "inquiry", "contact", "company", "문의", "상담", "메시지", "회사"])) {
+    return 0.76;
+  }
+
   if (searchable.includes("email") || searchable.includes("이메일")) {
     return raw.tagName === "form" ? 0.82 : 0.84;
   }
@@ -1644,14 +1725,65 @@ function isLandingCta(raw: RawDiscoveryElement, searchable: string): boolean {
 
 function isSignupForm(raw: RawDiscoveryElement, searchable: string): boolean {
   if (raw.tagName === "form") {
-    return hasAny(searchable, ["signup", "sign up", "register", "lead", "email", "company", "organization", "phone", "contact", "회원가입", "가입", "이메일", "회사", "연락처"]);
+    return hasAny(searchable, signupFormKeywords());
   }
 
-  if (raw.tagName === "input" || raw.tagName === "textarea") {
-    return raw.inputType === "email" || hasAny(searchable, ["email", "work email", "company", "organization", "phone", "이메일", "회사", "연락처"]);
+  if (raw.tagName === "input" || raw.tagName === "textarea" || raw.tagName === "select") {
+    return raw.inputType === "email" || hasAny(searchable, signupFormFieldKeywords());
   }
 
   return false;
+}
+
+function signupFormKeywords(): string[] {
+  return [
+    "signup",
+    "sign up",
+    "register",
+    "lead",
+    "trial",
+    "request",
+    "email",
+    "work email",
+    "company",
+    "organization",
+    "team",
+    "team size",
+    "phone",
+    "contact",
+    "message",
+    "회원가입",
+    "가입",
+    "이메일",
+    "회사",
+    "팀",
+    "연락처",
+    "문의",
+    "상담",
+    "메시지"
+  ];
+}
+
+function signupFormFieldKeywords(): string[] {
+  return [
+    "email",
+    "work email",
+    "company",
+    "organization",
+    "team",
+    "team size",
+    "phone",
+    "contact",
+    "message",
+    "role",
+    "이메일",
+    "회사",
+    "팀",
+    "연락처",
+    "문의",
+    "상담",
+    "메시지"
+  ];
 }
 
 function isContactCandidate(raw: RawDiscoveryElement, searchable: string): boolean {

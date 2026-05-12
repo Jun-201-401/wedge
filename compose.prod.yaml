@@ -40,6 +40,26 @@ services:
       timeout: 5s
       retries: 5
 
+  flyway:
+    image: ${FLYWAY_IMAGE:-redgate/flyway:12.6.0}
+    profiles:
+      - migration
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: ["info"]
+    environment:
+      FLYWAY_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB}
+      FLYWAY_USER: ${POSTGRES_USER}
+      FLYWAY_PASSWORD: ${POSTGRES_PASSWORD}
+      FLYWAY_LOCATIONS: filesystem:/flyway/sql
+      FLYWAY_CONNECT_RETRIES: "10"
+      FLYWAY_CLEAN_DISABLED: "true"
+      FLYWAY_VALIDATE_MIGRATION_NAMING: "true"
+      FLYWAY_BASELINE_ON_MIGRATE: "false"
+    volumes:
+      - ./infra/db/migrations:/flyway/sql:ro
+
   redis:
     image: redis:8.6.2
     restart: unless-stopped
@@ -101,6 +121,9 @@ services:
       JWT_SECRET: ${JWT_SECRET}
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN}
       INTERNAL_RUNNER_CALLBACK_SIGNATURE_SECRET: ${INTERNAL_RUNNER_CALLBACK_SIGNATURE_SECRET}
+      WEDGE_MCP_SERVER_ENABLED: ${WEDGE_MCP_SERVER_ENABLED:-false}
+      WEDGE_MCP_SERVICE_TOKEN: ${WEDGE_MCP_SERVICE_TOKEN:-}
+      WEDGE_MCP_PENDING_DECISION_TTL: ${WEDGE_MCP_PENDING_DECISION_TTL:-PT2M}
 
   runner:
     image: ${RUNNER_IMAGE:-wedge-runner:deploy-local}
@@ -134,6 +157,9 @@ services:
       RUNNER_AGENT_LLM_API_KEY: ${RUNNER_AGENT_LLM_API_KEY:-}
       RUNNER_AGENT_LLM_MODEL: ${RUNNER_AGENT_LLM_MODEL:-agent-decision}
       RUNNER_AGENT_LLM_TIMEOUT_MS: ${RUNNER_AGENT_LLM_TIMEOUT_MS:-10000}
+      RUNNER_AGENT_MCP_GATEWAY_URL: ${RUNNER_AGENT_MCP_GATEWAY_URL:-}
+      RUNNER_AGENT_MCP_SERVICE_TOKEN: ${RUNNER_AGENT_MCP_SERVICE_TOKEN:-}
+      RUNNER_AGENT_MCP_GATEWAY_TIMEOUT_MS: ${RUNNER_AGENT_MCP_GATEWAY_TIMEOUT_MS:-10000}
       AWS_REGION: ${AWS_REGION}
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}

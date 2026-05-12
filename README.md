@@ -140,6 +140,16 @@ node infra/scripts/real-run-e2e-smoke.mjs
 
 성공 기준은 Run `COMPLETED`, EvidencePacket checkpoint/artifact 생성, 필요 시 `/api/runs/{runId}/analysis` 이후 `analysisStatus=COMPLETED`, `/api/runs/{runId}/report`의 `status=READY`다.
 
+6. Runner Agent 경로까지 확인하려면 Agent smoke를 실행한다.
+
+```bash
+node infra/scripts/real-agent-run-e2e-smoke.mjs
+```
+
+이 스크립트는 별도 target URL이 없으면 로컬 fixture site를 띄우고 `http://host.docker.internal:{port}/`를 Agent 시작 URL로 사용한다. Docker Desktop이 아닌 환경에서는 `WEDGE_AGENT_SMOKE_TARGET_URL` 또는 `WEDGE_AGENT_SMOKE_FIXTURE_PUBLIC_HOST`를 Runner 컨테이너에서 접근 가능한 주소로 지정한다.
+
+성공 기준은 Agent run `STOPPED`, `AgentTrace.final_outcome=SUCCESS_CHECKOUT_ENTRY_REACHED`, TRACE artifact 저장, 그리고 기본값 기준 두 번째 run에서 `planner_source=replay_hint` decision이 1개 이상 확인되는 것이다. replay 검증만 끄려면 `WEDGE_AGENT_SMOKE_VERIFY_REPLAY=false`를 사용한다.
+
 ## 핵심 용어
 
 - **Site Discovery**: URL을 가볍게 탐색해 가능한 시나리오를 추천하는 사전 단계입니다.

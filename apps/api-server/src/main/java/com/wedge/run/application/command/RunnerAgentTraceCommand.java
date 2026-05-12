@@ -5,10 +5,9 @@ import java.util.Map;
 import java.util.UUID;
 
 public record RunnerAgentTraceCommand(
-        String taskId,
-        String attemptId,
+        UUID taskId,
+        UUID attemptId,
         OffsetDateTime occurredAt,
-        Map<String, Object> trace,
-        UUID traceArtifactId
+        Map<String, Object> trace
 ) {
 }

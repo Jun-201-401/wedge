@@ -17,7 +17,7 @@ import {
 import { plannerSemantics } from "./semantics.ts";
 
 export type AgentDecisionKind = "act" | "checkpoint" | "finish";
-export type AgentDecisionSource = "heuristic" | "llm";
+export type AgentDecisionSource = "heuristic" | "llm" | "replay_hint";
 
 export interface AgentDecisionPromptMetadata {
   payloadShapeVersion: string;
@@ -49,6 +49,7 @@ export interface AgentDecision {
 }
 
 export interface AgentDecisionInput {
+  runId: string;
   goal: string;
   startUrl: string;
   state: AgentExecutionState;

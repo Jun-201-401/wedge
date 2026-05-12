@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://wedge.example.com/contracts/schemas/agent-observation.schema.json",
   "title": "Runner Agent Observation",
-  "description": "MVP-compatible observation summary emitted inside AgentTrace turns. Rich candidate/locator fields may be added under additional properties as the observer matures.",
+  "description": "Bounded, redacted observation summary emitted inside AgentTrace turns. Full DOM/AX/screenshot payloads remain artifacts; trace observations keep only explainable page and candidate metadata.",
   "type": "object",
   "additionalProperties": true,
   "properties": {
@@ -17,6 +17,28 @@
       "type": "integer",
       "minimum": 0
     },
+    "visibleTextSample": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "maxLength": 200
+      }
+    },
+    "candidates": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/AgentObservationCandidate"
+      }
+    },
+    "formControls": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/AgentObservationFormControl"
+      }
+    },
+    "pageSignals": {
+      "$ref": "#/$defs/AgentObservationPageSignals"
+    },
     "artifactRefs": {
       "type": "array",
       "items": {
@@ -25,5 +47,256 @@
       }
     }
   },
-  "required": ["finalUrl", "title", "candidateCount"]
+  "required": ["finalUrl", "title", "candidateCount"],
+  "$defs": {
+    "Bounds": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "x": {
+          "type": "number"
+        },
+        "y": {
+          "type": "number"
+        },
+        "width": {
+          "type": "number",
+          "minimum": 0
+        },
+        "height": {
+          "type": "number",
+          "minimum": 0
+        },
+        "unit": {
+          "enum": ["css_px", "screenshot_px", "viewport_ratio"]
+        }
+      },
+      "required": ["x", "y", "width", "height", "unit"]
+    },
+    "Visibility": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "visible": {
+          "type": "boolean"
+        },
+        "in_viewport": {
+          "type": "boolean"
+        },
+        "above_fold": {
+          "type": "boolean"
+        },
+        "area_px": {
+          "type": "number",
+          "minimum": 0
+        },
+        "viewport_coverage_ratio": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        }
+      },
+      "required": ["visible", "in_viewport", "above_fold", "area_px", "viewport_coverage_ratio"]
+    },
+    "Layout": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "center_x": {
+          "type": "number"
+        },
+        "center_y": {
+          "type": "number"
+        },
+        "viewport_position": {
+          "enum": ["inside", "partially_inside", "above", "below", "left", "right"]
+        },
+        "css_position": {
+          "type": ["string", "null"]
+        },
+        "z_index": {
+          "type": ["string", "null"]
+        },
+        "is_fixed": {
+          "type": "boolean"
+        },
+        "is_sticky": {
+          "type": "boolean"
+        },
+        "overlay_candidate": {
+          "type": "boolean"
+        }
+      },
+      "required": ["center_x", "center_y", "viewport_position"]
+    },
+    "AgentObservationCandidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "candidateId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "candidateFingerprint": {
+          "type": "string",
+          "minLength": 1
+        },
+        "role": {
+          "type": ["string", "null"]
+        },
+        "tag": {
+          "type": "string",
+          "minLength": 1
+        },
+        "text": {
+          "type": "string"
+        },
+        "inputType": {
+          "type": ["string", "null"]
+        },
+        "labelText": {
+          "type": ["string", "null"]
+        },
+        "placeholder": {
+          "type": ["string", "null"]
+        },
+        "name": {
+          "type": ["string", "null"]
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "disabled": {
+          "type": "boolean"
+        },
+        "isFormControl": {
+          "type": "boolean"
+        },
+        "clickable": {
+          "type": "boolean"
+        },
+        "isCtaCandidate": {
+          "type": "boolean"
+        },
+        "isPrimaryLike": {
+          "type": "boolean"
+        },
+        "frameId": {
+          "type": ["string", "null"]
+        },
+        "shadowRoot": {
+          "type": "boolean"
+        },
+        "hrefOrigin": {
+          "type": ["string", "null"]
+        },
+        "hrefPathHint": {
+          "type": ["string", "null"]
+        },
+        "riskHint": {
+          "type": ["string", "null"]
+        },
+        "bounds": {
+          "$ref": "#/$defs/Bounds"
+        },
+        "visibility": {
+          "$ref": "#/$defs/Visibility"
+        },
+        "layout": {
+          "$ref": "#/$defs/Layout"
+        }
+      },
+      "required": [
+        "candidateId",
+        "candidateFingerprint",
+        "role",
+        "tag",
+        "text",
+        "clickable",
+        "isCtaCandidate",
+        "isPrimaryLike",
+        "frameId",
+        "shadowRoot",
+        "riskHint",
+        "bounds"
+      ]
+    },
+    "AgentObservationFormControl": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "controlKey": {
+          "type": "string",
+          "minLength": 1
+        },
+        "controlType": {
+          "enum": ["field", "select"]
+        },
+        "hasValue": {
+          "type": "boolean"
+        }
+      },
+      "required": ["controlKey", "controlType", "hasValue"]
+    },
+    "AgentObservationPageSignals": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "visitedUrlCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "consoleErrorCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "networkErrorCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "breadcrumbCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "toastCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "visiblePriceCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "productCardCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "cartCount": {
+          "type": ["integer", "null"],
+          "minimum": 0
+        },
+        "hasLoginWallSignal": {
+          "type": "boolean"
+        },
+        "hasCaptchaSignal": {
+          "type": "boolean"
+        },
+        "hasPaymentOrCommitSignal": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "visitedUrlCount",
+        "consoleErrorCount",
+        "networkErrorCount",
+        "breadcrumbCount",
+        "toastCount",
+        "visiblePriceCount",
+        "productCardCount",
+        "cartCount",
+        "hasLoginWallSignal",
+        "hasCaptchaSignal",
+        "hasPaymentOrCommitSignal"
+      ]
+    }
+  }
 }

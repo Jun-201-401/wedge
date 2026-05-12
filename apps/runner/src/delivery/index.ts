@@ -5,7 +5,10 @@ export interface DeliveryIssue {
     | "step-events"
     | "artifact-storage"
     | "artifacts-callback"
+    | "agent-events-callback"
+    | "agent-trace-callback"
     | "checkpoints-callback"
+    | "failure-capture"
     | "finished-callback"
     | "agent-events-callback"
     | "agent-trace-callback";

@@ -17,6 +17,8 @@ import com.wedge.common.web.RequestIdFilter;
 import com.wedge.run.api.internal.runner.dto.RunnerAgentIdempotencyClaimRequest;
 import com.wedge.run.api.internal.runner.dto.RunnerAgentIdempotencyRecordRequest;
 import com.wedge.run.api.internal.runner.dto.RunnerAgentIdempotencyRecordResponse;
+import com.wedge.run.api.internal.runner.dto.RunnerAgentIdempotencyReleaseRequest;
+import com.wedge.run.api.internal.runner.dto.RunnerAgentIdempotencyRenewRequest;
 import com.wedge.run.application.RunnerAgentIdempotencyService;
 import java.time.OffsetDateTime;
 import java.util.Map;
@@ -105,6 +107,56 @@ class RunnerAgentIdempotencyControllerTest {
                 ArgumentCaptor.forClass(RunnerAgentIdempotencyClaimRequest.class);
         verify(runnerAgentIdempotencyService).claimRecord(eq(KEY_HASH), requestCaptor.capture(), eq("runner-1"));
         assertThat(requestCaptor.getValue().normalizedLeaseTtlMs()).isEqualTo(120_000);
+    }
+
+    @Test
+    void renewRecordMapsLeaseRequestToService() throws Exception {
+        UUID runId = UUID.randomUUID();
+        when(runnerAgentIdempotencyService.renewRecord(eq(KEY_HASH), any(), eq("runner-1")))
+                .thenReturn(claimResponse(runId));
+
+        mockMvc.perform(post("/internal/runner/agent-idempotency/{keyHash}/renew", KEY_HASH)
+                        .header("X-Worker-Id", "runner-1")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "runId", runId.toString(),
+                                "taskId", "task-1",
+                                "attemptId", "attempt-1",
+                                "attemptIndex", 3,
+                                "leaseTtlMs", 180_000
+                        ))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.found").value(true))
+                .andExpect(jsonPath("$.data.status").value("CLAIMED"));
+
+        ArgumentCaptor<RunnerAgentIdempotencyRenewRequest> requestCaptor =
+                ArgumentCaptor.forClass(RunnerAgentIdempotencyRenewRequest.class);
+        verify(runnerAgentIdempotencyService).renewRecord(eq(KEY_HASH), requestCaptor.capture(), eq("runner-1"));
+        assertThat(requestCaptor.getValue().normalizedLeaseTtlMs()).isEqualTo(180_000);
+    }
+
+    @Test
+    void releaseRecordMapsRequestToService() throws Exception {
+        UUID runId = UUID.randomUUID();
+        when(runnerAgentIdempotencyService.releaseRecord(eq(KEY_HASH), any(), eq("runner-1")))
+                .thenReturn(RunnerAgentIdempotencyRecordResponse.empty(KEY_HASH));
+
+        mockMvc.perform(post("/internal/runner/agent-idempotency/{keyHash}/release", KEY_HASH)
+                        .header("X-Worker-Id", "runner-1")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "runId", runId.toString(),
+                                "taskId", "task-1",
+                                "attemptId", "attempt-1",
+                                "attemptIndex", 3
+                        ))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.found").value(false));
+
+        ArgumentCaptor<RunnerAgentIdempotencyReleaseRequest> requestCaptor =
+                ArgumentCaptor.forClass(RunnerAgentIdempotencyReleaseRequest.class);
+        verify(runnerAgentIdempotencyService).releaseRecord(eq(KEY_HASH), requestCaptor.capture(), eq("runner-1"));
+        assertThat(requestCaptor.getValue().attemptIndex()).isEqualTo(3);
     }
 
     private RunnerAgentIdempotencyRecordResponse response(UUID runId) {

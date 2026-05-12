@@ -5,10 +5,10 @@ import java.util.Map;
 import java.util.UUID;
 
 public record RunnerAgentEventCommand(
-        UUID eventId,
-        String taskId,
-        String attemptId,
-        Integer turn,
+        String eventId,
+        UUID taskId,
+        UUID attemptId,
+        int stepIndex,
         String eventType,
         OffsetDateTime occurredAt,
         Map<String, Object> payload

@@ -24,7 +24,49 @@
         "fields": {
           "Email": "test+wedge@example.com"
         },
-        "selectedOptions": {}
+        "selectedOptions": {},
+        "dom_summary": {
+          "visible_text_block_count": 2,
+          "heading_count": 1,
+          "link_count": 1,
+          "button_count": 0,
+          "form_control_count": 1,
+          "required_field_count": 0,
+          "disabled_control_count": 0,
+          "cta_candidate_count": 1
+        },
+        "layout_summary": {
+          "viewport_width": 1440,
+          "viewport_height": 900,
+          "scroll_y": 0,
+          "interactive_component_count": 2,
+          "above_fold_interactive_count": 2,
+          "primary_like_component_count": 1,
+          "fixed_or_sticky_count": 0,
+          "overlay_candidate_count": 0,
+          "max_z_index": null
+        },
+        "ax_tree_summary": {
+          "node_count": 8,
+          "ignored_node_count": 1,
+          "named_node_count": 4,
+          "interactive_role_count": 2,
+          "form_control_role_count": 1,
+          "heading_count": 1,
+          "landmark_count": 1,
+          "button_count": 1,
+          "link_count": 1,
+          "focusable_count": 2,
+          "role_counts": {
+            "RootWebArea": 1,
+            "main": 1,
+            "heading": 1,
+            "link": 1,
+            "textbox": 1
+          },
+          "root_role": "RootWebArea",
+          "truncated": false
+        }
       },
       "observations": [
         {
@@ -40,6 +82,90 @@
           "method": "POST",
           "status_code": 200,
           "url_includes": "/api/signup/validate-email"
+        },
+        {
+          "observation_id": "step_003_fill_email.obs_visible_text_blocks",
+          "type": "visible_text_blocks",
+          "stage": "INPUT",
+          "source": [
+            "dom",
+            "layout"
+          ],
+          "confidence": 0.68,
+          "dom_summary": {
+            "visible_text_block_count": 2,
+            "heading_count": 1,
+            "link_count": 1,
+            "button_count": 0,
+            "form_control_count": 1,
+            "required_field_count": 0,
+            "disabled_control_count": 0,
+            "cta_candidate_count": 1
+          },
+          "layout_summary": {
+            "viewport_width": 1440,
+            "viewport_height": 900,
+            "scroll_y": 0,
+            "interactive_component_count": 2,
+            "above_fold_interactive_count": 2,
+            "primary_like_component_count": 1,
+            "fixed_or_sticky_count": 0,
+            "overlay_candidate_count": 0,
+            "max_z_index": null
+          },
+          "blocks": [
+            {
+              "text": "Sign up",
+              "tag": "h1",
+              "role": "heading",
+              "is_heading": true,
+              "bounds": {
+                "x": 64,
+                "y": 96,
+                "width": 320,
+                "height": 56,
+                "unit": "css_px"
+              },
+              "visibility": {
+                "visible": true,
+                "in_viewport": true,
+                "above_fold": true,
+                "area_px": 17920,
+                "viewport_coverage_ratio": 1
+              }
+            }
+          ]
+        },
+        {
+          "observation_id": "step_003_fill_email.obs_ax_tree",
+          "type": "ax_tree",
+          "stage": "INPUT",
+          "source": [
+            "accessibility"
+          ],
+          "confidence": 0.72,
+          "ax_artifact_id": "artifact-response-ax-tree",
+          "summary": {
+            "node_count": 8,
+            "ignored_node_count": 1,
+            "named_node_count": 4,
+            "interactive_role_count": 2,
+            "form_control_role_count": 1,
+            "heading_count": 1,
+            "landmark_count": 1,
+            "button_count": 1,
+            "link_count": 1,
+            "focusable_count": 2,
+            "role_counts": {
+              "RootWebArea": 1,
+              "main": 1,
+              "heading": 1,
+              "link": 1,
+              "textbox": 1
+            },
+            "root_role": "RootWebArea",
+            "truncated": false
+          }
         }
       ],
       "deltas": [
@@ -51,7 +177,8 @@
       ],
       "artifactRefs": [
         "artifact-response-screenshot",
-        "artifact-response-dom"
+        "artifact-response-dom",
+        "artifact-response-ax-tree"
       ]
     },
     {
@@ -80,6 +207,252 @@
         {
           "type": "cta_candidate",
           "target": "role=button, text_any=혜택 보기|See benefits"
+        },
+        {
+          "observation_id": "step_004_expand_benefits.obs_journey_action_raw",
+          "type": "journey_action_raw",
+          "stage": "VALUE",
+          "source": [
+            "scenario_log",
+            "dom",
+            "browser",
+            "network"
+          ],
+          "confidence": 0.82,
+          "step_order": 4,
+          "step_key": "step_004_expand_benefits",
+          "action_type": "click",
+          "clicked_text": "혜택 보기",
+          "clicked_selector": "#signup-benefits-toggle",
+          "element_role": "button",
+          "element_text": "혜택 보기",
+          "aria_label": null,
+          "url_before": "https://example.com/signup",
+          "url_after": "https://example.com/signup",
+          "title_before": "Sign up",
+          "title_after": "Sign up",
+          "breadcrumb_before": [],
+          "breadcrumb_after": [],
+          "cart_count_before": null,
+          "cart_count_after": null,
+          "toast_text": [],
+          "visible_price": [],
+          "visible_product_image": [],
+          "add_to_cart_like_button": false,
+          "dom_changed": true,
+          "network_result": [],
+          "settle_status": "settled",
+          "screenshot_artifact_id": "artifact-item-count-screenshot",
+          "bbox": {
+            "x": 520,
+            "y": 360,
+            "width": 220,
+            "height": 56,
+            "unit": "css_px"
+          },
+          "matched_product_card": {
+            "element_text": "혜택 플랜 무료 체험",
+            "clicked_selector": "#signup-benefits-toggle",
+            "visible_price": null,
+            "visible_product_image": false,
+            "bbox": {
+              "x": 500,
+              "y": 320,
+              "width": 260,
+              "height": 140,
+              "unit": "css_px"
+            },
+            "match_reason": "selector_exact",
+            "match_confidence": 0.94
+          }
+        },
+        {
+          "observation_id": "step_004_expand_benefits.obs_category_filter_signal",
+          "type": "category_filter_signal",
+          "stage": "VALUE",
+          "source": [
+            "scenario_log",
+            "dom",
+            "browser"
+          ],
+          "confidence": 0.68,
+          "step_order": 4,
+          "step_key": "step_004_expand_benefits",
+          "action_type": "click",
+          "clicked_text": "혜택 보기",
+          "clicked_selector": "#signup-benefits-toggle",
+          "url_before": "https://example.com/signup",
+          "url_after": "https://example.com/signup?category=benefits",
+          "breadcrumb_before": [
+            "Home",
+            "Sign up"
+          ],
+          "breadcrumb_after": [
+            "Home",
+            "Sign up",
+            "Benefits"
+          ],
+          "selected_filter_before": [],
+          "selected_filter_after": [
+            {
+              "key": "category",
+              "value": "Benefits",
+              "selector": "button.benefits"
+            }
+          ],
+          "search_query_before": null,
+          "search_query_after": null,
+          "filter_changed": true,
+          "search_submitted": false,
+          "category_url_changed": true
+        },
+        {
+          "observation_id": "step_004_expand_benefits.obs_product_detail_signal",
+          "type": "product_detail_signal",
+          "stage": "VALUE",
+          "source": [
+            "scenario_log",
+            "dom",
+            "browser",
+            "screenshot"
+          ],
+          "confidence": 0.84,
+          "step_order": 4,
+          "step_key": "step_004_expand_benefits",
+          "action_type": "click",
+          "clicked_text": "혜택 보기",
+          "clicked_selector": "#signup-benefits-toggle",
+          "matched_product_card": {
+            "element_text": "혜택 플랜 무료 체험",
+            "clicked_selector": "#signup-benefits-toggle",
+            "visible_price": null,
+            "visible_product_image": false,
+            "bbox": {
+              "x": 500,
+              "y": 320,
+              "width": 260,
+              "height": 140,
+              "unit": "css_px"
+            },
+            "match_reason": "selector_exact",
+            "match_confidence": 0.94
+          },
+          "url_before": "https://example.com/signup",
+          "url_after": "https://example.com/signup?category=benefits",
+          "title_before": "Sign up",
+          "title_after": "Sign up - Benefits",
+          "breadcrumb_before": [
+            "Home",
+            "Sign up"
+          ],
+          "breadcrumb_after": [
+            "Home",
+            "Sign up",
+            "Benefits"
+          ],
+          "visible_price": [
+            "무료 체험"
+          ],
+          "visible_product_image": [],
+          "goal_action_candidate_count": 1,
+          "add_to_cart_like_button_count": 1,
+          "dom_changed": true,
+          "screenshot_artifact_id": "artifact-item-count-screenshot",
+          "evidence": [
+            "matched_product_card",
+            "url_changed",
+            "title_changed",
+            "breadcrumb_changed",
+            "price_visible",
+            "goal_action_candidate_visible",
+            "dom_changed"
+          ]
+        },
+        {
+          "observation_id": "step_004_expand_benefits.obs_goal_action_result",
+          "type": "goal_action_result",
+          "stage": "VALUE",
+          "source": [
+            "scenario_log",
+            "dom",
+            "browser",
+            "network"
+          ],
+          "confidence": 0.7,
+          "step_order": 4,
+          "step_key": "step_004_expand_benefits",
+          "action_type": "click",
+          "clicked_text": "혜택 보기",
+          "clicked_selector": "#signup-benefits-toggle",
+          "url_before": "https://example.com/signup",
+          "url_after": "https://example.com/signup",
+          "goal_action_like": true,
+          "success_evidence": [
+            "dom_changed"
+          ],
+          "result": {
+            "action_attempted": true,
+            "add_to_cart_like_button": false,
+            "cart_count_delta": null,
+            "toast_present": false,
+            "url_changed": false,
+            "dom_changed": true,
+            "network_success": false,
+            "settle_status": "settled"
+          },
+          "matched_product_card": {
+            "element_text": "혜택 플랜 무료 체험",
+            "clicked_selector": "#signup-benefits-toggle",
+            "visible_price": null,
+            "visible_product_image": false,
+            "bbox": {
+              "x": 500,
+              "y": 320,
+              "width": 260,
+              "height": 140,
+              "unit": "css_px"
+            },
+            "match_reason": "selector_exact",
+            "match_confidence": 0.94
+          }
+        },
+        {
+          "observation_id": "step_004_expand_benefits.obs_depth_from_discovery",
+          "type": "depth_from_discovery",
+          "stage": "VALUE",
+          "source": [
+            "scenario_log",
+            "dom",
+            "browser",
+            "network"
+          ],
+          "confidence": 0.78,
+          "step_order": 4,
+          "step_key": "step_004_expand_benefits",
+          "action_type": "click",
+          "discovery_step_order": 2,
+          "discovery_step_key": "step_002_product_list",
+          "discovery_stage": "VALUE",
+          "discovery_url": "https://example.com/signup",
+          "depth_from_discovery": 2,
+          "intent_candidate": "filter_changed",
+          "is_detour_candidate": false,
+          "category_changed": true,
+          "filter_changed": true,
+          "search_submitted": false,
+          "goal_action_result": {
+            "action_attempted": true,
+            "add_to_cart_like_button": false,
+            "cart_count_delta": null,
+            "toast_present": false,
+            "url_changed": true,
+            "dom_changed": true,
+            "network_success": false,
+            "settle_status": "settled"
+          },
+          "current_url": "https://example.com/signup?category=benefits",
+          "current_product_card_count": 1,
+          "product_card_count_at_discovery": 1
         },
         {
           "type": "settle_item_count_change",

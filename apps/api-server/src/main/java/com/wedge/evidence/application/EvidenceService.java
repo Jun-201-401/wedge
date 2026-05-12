@@ -52,6 +52,7 @@ public class EvidenceService {
     private final ObservationMapper observationMapper;
     private final EvidencePacketMapper evidencePacketMapper;
     private final EvidencePacketAssembler evidencePacketAssembler;
+    private final EvidencePacketSignedUrlDecorator evidencePacketSignedUrlDecorator;
     private final ArtifactContentStore artifactContentStore;
     private final ArtifactPresignedUrlGenerator artifactPresignedUrlGenerator;
     private final ObjectMapper objectMapper;
@@ -67,6 +68,7 @@ public class EvidenceService {
             ObservationMapper observationMapper,
             EvidencePacketMapper evidencePacketMapper,
             EvidencePacketAssembler evidencePacketAssembler,
+            EvidencePacketSignedUrlDecorator evidencePacketSignedUrlDecorator,
             ArtifactContentStore artifactContentStore,
             ArtifactPresignedUrlGenerator artifactPresignedUrlGenerator,
             ObjectMapper objectMapper,
@@ -80,6 +82,7 @@ public class EvidenceService {
                 observationMapper,
                 evidencePacketMapper,
                 evidencePacketAssembler,
+                evidencePacketSignedUrlDecorator,
                 artifactContentStore,
                 artifactPresignedUrlGenerator,
                 objectMapper,
@@ -96,6 +99,7 @@ public class EvidenceService {
             ObservationMapper observationMapper,
             EvidencePacketMapper evidencePacketMapper,
             EvidencePacketAssembler evidencePacketAssembler,
+            EvidencePacketSignedUrlDecorator evidencePacketSignedUrlDecorator,
             ArtifactContentStore artifactContentStore,
             ArtifactPresignedUrlGenerator artifactPresignedUrlGenerator,
             ObjectMapper objectMapper,
@@ -109,6 +113,7 @@ public class EvidenceService {
         this.observationMapper = observationMapper;
         this.evidencePacketMapper = evidencePacketMapper;
         this.evidencePacketAssembler = evidencePacketAssembler;
+        this.evidencePacketSignedUrlDecorator = evidencePacketSignedUrlDecorator;
         this.artifactContentStore = artifactContentStore;
         this.artifactPresignedUrlGenerator = artifactPresignedUrlGenerator;
         this.objectMapper = objectMapper;
@@ -152,12 +157,14 @@ public class EvidenceService {
     @Transactional(readOnly = true)
     public Map<String, Object> getRunEvidencePacket(UUID runId) {
         RunResponse run = runService.getRun(runId);
-        return evidencePacketAssembler.assemble(
+        List<Artifact> artifacts = artifactMapper.findByRunId(runId);
+        Map<String, Object> packet = evidencePacketAssembler.assemble(
                 run,
-                artifactMapper.findByRunId(runId),
+                artifacts,
                 checkpointMapper.findByRunId(runId),
                 observationMapper.findByRunId(runId)
         );
+        return evidencePacketSignedUrlDecorator.decorateRunPacket(packet, artifacts);
     }
 
     @Transactional
@@ -184,14 +191,28 @@ public class EvidenceService {
     public Map<String, Object> getEvidencePacketSnapshot(UUID evidencePacketId) {
         EvidencePacketSnapshot snapshot = evidencePacketMapper.findById(evidencePacketId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.RUN_NOT_FOUND, "EvidencePacket snapshot was not found."));
-        return readJsonMap(snapshot.getPacketJsonb());
+        Map<String, Object> packet = readJsonMap(snapshot.getPacketJsonb());
+        if (!"RUN".equals(snapshot.getExecutionType()) || snapshot.getRunId() == null) {
+            return packet;
+        }
+        return evidencePacketSignedUrlDecorator.decorateRunPacket(packet, artifactMapper.findByRunId(snapshot.getRunId()));
     }
 
     @Transactional(readOnly = true)
     public ArtifactContent getRunArtifactContent(UUID runId, UUID artifactId) {
         runService.getRun(runId);
-        Artifact artifact = artifactMapper.findByRunIdAndId(runId, artifactId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.RUN_NOT_FOUND, "Artifact was not found."));
+        Artifact artifact = findRunArtifact(runId, artifactId);
+        Resource resource = artifactContentStore.load(artifact);
+        return new ArtifactContent(resource, artifact.getMimeType());
+    }
+
+    @Transactional(readOnly = true)
+    public ArtifactContent getRunImageArtifactContent(UUID runId, UUID artifactId) {
+        runService.getRun(runId);
+        Artifact artifact = findRunArtifact(runId, artifactId);
+        if (!isPresignableImage(artifact)) {
+            throw new BusinessException(ErrorCode.RUN_NOT_FOUND, "Image artifact was not found for the run.");
+        }
         Resource resource = artifactContentStore.load(artifact);
         return new ArtifactContent(resource, artifact.getMimeType(), artifactFilename(artifact));
     }
@@ -253,6 +274,11 @@ public class EvidenceService {
     private boolean isPresignableImage(Artifact artifact) {
         String mimeType = artifact.getMimeType();
         return mimeType != null && PRESIGNABLE_IMAGE_MIME_TYPES.contains(mimeType.toLowerCase());
+    }
+
+    private Artifact findRunArtifact(UUID runId, UUID artifactId) {
+        return artifactMapper.findByRunIdAndId(runId, artifactId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.RUN_NOT_FOUND, "Artifact was not found."));
     }
 
     private Artifact findLatestFrameArtifact(List<Artifact> artifacts) {
