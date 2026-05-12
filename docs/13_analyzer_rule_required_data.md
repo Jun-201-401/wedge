@@ -18,8 +18,7 @@ Runner/Discovery는 최종 UX 판단값이 아니라 DOM, layout, click, URL, ne
 | --- | --- | --- | --- | --- |
 | PATH-CHOICE-OVERLOAD-001 | Path | FIRST_VIEW, VALUE, CTA | 한 viewport 안에 동시에 보이는 interactive 선택지가 과도하게 많은지 판단한다. | `components[].decision_area_id`, `components[].decision_area_role`, `components[].container_bounds` |
 | FRICTION-FORM-001 | Friction | INPUT | 입력 필드에 목적을 알 수 있는 라벨이나 설명이 있는지 판단한다. | `form_field.data.label_association`, `label_text`, `accessible_name`, `placeholder`, `visible`, `bounds` |
-| RELIABILITY-LOADING-STUCK-001 | Reliability | CTA, INPUT, COMMIT | 사용자 행동 이후 로딩 상태가 오래 지속되고 결과가 확인되지 않는지 판단한다. | `loading_state.data.loading_visible`, `duration_ms`, `selector`, `text`, `bounds` |
-| TARGET-SIZE-001 | Friction | FIRST_VIEW, VALUE, CTA, INPUT | Google 검색창 기준 대비 검색 입력 영역이 충분한지 판단한다. | `bounds.width`, `bounds.height`, `role/input_type`, `placeholder/label_text/accessible_name`, viewport width |
+| RELIABILITY-LOADING-STUCK-001 | Reliability | CTA, INPUT, COMMIT | 일반 페이지 전환 이후 다음 화면이 사용 가능한 상태로 렌더링되기까지 오래 걸리는지 판단한다. | `page_ready_timing.data.duration_ms`, `action_kind`, `url_changed/route_changed/main_content_changed`, `target_page_signals` |
 
 ## PATH-CHOICE-OVERLOAD-001
 
@@ -494,574 +493,154 @@ label_text/accessibile_name 없음 + placeholder 없음
 
 | Rule ID | Axis | Stages | 설명 |
 | --- | --- | --- | --- |
-| RELIABILITY-LOADING-STUCK-001 | Reliability | CTA, INPUT, COMMIT | 사용자 행동 이후 로딩 상태가 오래 지속되고 결과가 확인되지 않는지 판단한다. |
+| RELIABILITY-LOADING-STUCK-001 | Reliability | CTA, INPUT, COMMIT | 일반 페이지 전환 이후 다음 화면이 사용 가능한 상태로 렌더링되기까지 오래 걸리는지 판단한다. |
 
 ### 현재 구현 상태
 
 이 룰은 현재 Rule Engine registry와 handler map에 연결되어 있다.
 
-우선 판단 근거는 `loading_state` observation이다. `loading_state`가 없을 때만 `settle_response.data.settle_status = timeout` 또는 `stuck` 같은 값을 약한 fallback 근거로 사용한다.
+판단의 우선 근거는 `page_ready_timing` observation이다. `loading_state`나 `settle_response`도 fallback으로 사용할 수 있지만, 이 경우에도 일반 페이지 전환인지 판단할 수 있는 action/result/exception 필드가 같이 있어야 한다.
 
-클릭 후 timeout 전용 룰은 별도로 두지 않고, loading UI가 오래 유지되는 문제는 이 룰에서만 다룬다.
+명시적인 network failure 또는 console error가 있으면 이 룰은 issue를 만들지 않고 `RELIABILITY-TECH-001`이 우선 설명한다.
 
 ### 판단하려는 문제
 
-이 룰은 사용자가 클릭, 제출, 입력 완료 같은 행동을 한 뒤 다음 상태가 명확히 확인되지 않고, loading spinner, skeleton, progress UI가 오래 유지되는 상황을 찾는다.
+이 룰은 일반적인 링크, 메뉴, 탭, route change 이후 다음 페이지나 결과 화면이 사용 가능한 상태로 렌더링되기까지 오래 걸리는 상황을 찾는다.
 
 예시는 다음과 같다.
 
-- 버튼 클릭 후 spinner가 8초 이상 계속 보인다.
-- form submit 후 skeleton UI만 유지되고 성공/실패 메시지가 없다.
-- checkout/commit action 후 progress indicator가 사라지지 않는다.
-- `settle_status`가 `timeout` 또는 `stuck`이고 화면 결과도 확인되지 않는다.
+- 내부 링크 클릭 후 다음 화면의 main content가 5초 이상 늦게 준비된다.
+- 메뉴 이동이나 SPA route change 이후 새 화면이 8초 이상 사용 가능하지 않다.
+- 일반 탭 전환인데 새 tab panel이 오래 빈 상태로 남아 있다.
 
-### 기존 데이터로 가능한 판단
+반대로 다음은 예외로 제외한다.
 
-현재 기존 데이터로 가능한 것은 timeout 기반의 약한 fallback 판단이다.
-
-이미 받을 수 있는 값은 다음과 같다.
-
-| 기존 데이터 | 설명 |
-| --- | --- |
-| `settle_response.data.settle_status` | action 이후 settle 결과. `timeout`, `failed`, `settled` 등 |
-| `checkpoints[].settle.status` | checkpoint 단위 settle 상태 |
-| `checkpoints[].settle.duration_ms` | settle 소요 시간 |
-| `settle_item_count_change` | 기대한 상태 변화가 있었는지 확인하는 보조 근거 |
-
-이 값으로는 "행동 이후 결과가 timeout 됐다"는 판단은 가능하다.
-
-하지만 다음은 판단하기 어렵다.
-
-- 실제 spinner/skeleton/progress가 화면에 보였는가?
-- 로딩 UI가 얼마나 오래 유지됐는가?
-- 어떤 로딩 요소가 문제였는가?
-- 로딩 상태가 결과 피드백 없이 남아 있었는가?
-
-따라서 정확한 룰 판단에는 `loading_state` observation이 필요하다.
+- 시뮬레이션, AI 생성, long-running job처럼 본질적으로 오래 걸릴 수 있는 흐름
+- 파일 업로드/다운로드
+- 결제, 인증, SSO, 외부 redirect
+- 권한 요청, streaming, 지도, 결제, 인증 redirect, WebGL
+- streaming response
+- canvas/WebGL/map처럼 무거운 초기화가 필요한 화면
 
 ### 추가로 필요한 observation
 
-`loading_state` observation을 추가로 보존해야 한다.
-
-권장 형태는 다음과 같다.
+권장 observation은 `page_ready_timing`이다.
 
 ```json
 {
-  "observation_id": "cp_003.obs_loading_state",
-  "type": "loading_state",
+  "observation_id": "cp_003.obs_page_ready_timing",
+  "type": "page_ready_timing",
   "stage": "CTA",
-  "source": ["dom", "layout"],
+  "source": ["performance", "dom", "layout", "scenario_log"],
+  "confidence": 0.86,
   "data": {
-    "loading_visible": true,
-    "duration_ms": 9000,
-    "selector": ".loading-spinner",
-    "text": "Loading...",
-    "loading_role": "spinner",
-    "bounds": {
-      "x": 640,
-      "y": 360,
-      "width": 80,
-      "height": 80,
-      "unit": "css_px"
+    "trigger_type": "click",
+    "action_kind": "link_click",
+    "url_changed": true,
+    "route_changed": true,
+    "main_content_changed": true,
+    "tab_panel_changed": false,
+    "history_changed": true,
+    "same_origin": true,
+    "http_method": "GET",
+    "duration_ms": 6200,
+    "target_page_signals": {
+      "has_permission_prompt": false,
+      "has_streaming_response": false,
+      "has_map": false,
+      "has_payment_form": false,
+      "has_auth_redirect": false,
+      "has_webgl": false
     }
   }
 }
 ```
+
+`loading_state` 또는 `settle_response`로 fallback할 때도 같은 일반 전환 판별 필드를 `data`에 포함해야 한다.
 
 ### 필요한 필드
 
 | 필드 | 타입 | 필수도 | 설명 |
 | --- | --- | --- | --- |
-| `loading_visible` | boolean | P0 | 로딩 UI가 현재 화면에 보이는지 |
-| `duration_ms` | number | P0 | 로딩 UI가 관찰된 지속 시간 |
-| `selector` | string | P1 | 로딩 요소 DOM selector |
-| `text` | string | P1 | 로딩 요소 또는 주변 안내 문구 |
-| `loading_role` | string | P1 | `spinner`, `skeleton`, `progressbar`, `busy_region`, `unknown` 등 |
-| `bounds` | object | P1 | 로딩 요소의 viewport 기준 위치와 크기 |
-| `aria_busy` | boolean | P2 | `aria-busy=true` 여부 |
-| `role` | string | P2 | DOM/ARIA role. 예: `progressbar`, `status` |
+| `data.duration_ms` | number | P0 | 사용자 action 이후 다음 화면이 ready 되기까지 걸린 시간 |
+| `data.trigger_type` | string | P0 | 보통 `click`이어야 일반 전환 후보로 본다. |
+| `data.action_kind` | string | P0 | `navigation`, `route_change`, `link_click`, `menu_click`, `tab_change` 중 하나면 일반 전환 후보 |
+| `data.url_changed` | boolean | P0 | URL 변경 여부 |
+| `data.route_changed` | boolean | P0 | SPA route 변경 여부 |
+| `data.main_content_changed` | boolean | P0 | main content 변경 여부 |
+| `data.tab_panel_changed` | boolean | P1 | tab panel 변경 여부 |
+| `data.history_changed` | boolean | P1 | browser history push/replace 여부 |
+| `data.same_origin` | boolean | P1 | false이면 외부 이동으로 제외 |
+| `data.http_method` | string | P1 | `POST` 등 GET이 아니면 일반 전환에서 제외 |
+| `data.form_submit` | boolean | P1 | true이면 일반 전환에서 제외 |
+| `data.download_triggered` | boolean | P1 | true이면 일반 전환에서 제외 |
+| `data.external_redirect` | boolean | P1 | true이면 일반 전환에서 제외 |
+| `data.modal_opened` | boolean | P1 | true이면 페이지 전환이 아니라 모달 흐름으로 제외 |
+| `data.target_blank` | boolean | P1 | 새 탭/새 창 이동이면 제외 |
+| `data.anchor_scroll` | boolean | P2 | 같은 페이지 anchor scroll만 있으면 제외 |
+| `data.target_page_signals` | object | P0 | 일반 페이지 이동 속도 판단에서 제외할 target page raw signals |
 
-### 필드 설명
+### 일반 페이지 전환 판별
 
-#### `loading_visible`
-
-로딩 상태를 나타내는 UI가 현재 viewport에 보이는지 나타낸다.
-
-DOM 기반으로 다음 후보를 찾을 수 있다.
-
-- spinner class 또는 progress class
-- `[role=progressbar]`
-- `[aria-busy=true]`
-- skeleton placeholder class
-- loading text
-- disabled submit button과 함께 나타나는 progress indicator
-
-이 값은 최종 UX 판단이 아니라, DOM/layout에서 관찰 가능한 raw signal이다.
-
-#### `duration_ms`
-
-로딩 UI가 관찰된 지속 시간이다.
-
-Runner는 action 직후부터 settle 종료 또는 timeout까지 loading indicator가 유지된 시간을 측정해 넣는다.
-
-예:
-
-```json
-{
-  "loading_visible": true,
-  "duration_ms": 9000
-}
-```
-
-Analyzer는 이 값을 threshold와 비교한다.
-
-권장 초기 기준은 다음과 같다.
+Analyzer는 다음 조건을 모두 만족할 때만 일반 전환으로 본다.
 
 ```text
-duration_ms >= 8000 => issue 후보
-duration_ms >= 15000 => 강한 issue 후보
+trigger_type == "click"
+action_kind in ["navigation", "route_change", "link_click", "menu_click", "tab_change"]
+url_changed 또는 route_changed 또는 main_content_changed 또는 tab_panel_changed 또는 history_changed
+same_origin != false
+http_method 없음 또는 GET
+form_submit/download_triggered/external_redirect/modal_opened/target_blank가 아님
+target_page_signals의 예외 신호가 모두 false
 ```
 
-#### `selector`
-
-로딩 요소를 다시 식별하기 위한 DOM selector다.
-
-예:
-
-```json
-{
-  "selector": ".checkout-submit .spinner"
-}
-```
-
-#### `text`
-
-로딩 UI에 표시된 텍스트나 주변 안내 문구다.
-
-예:
+예외 신호는 다음 6개만 사용한다.
 
 ```text
-Loading...
-처리 중...
-잠시만 기다려 주세요
-```
-
-이 값은 리포트 설명과 evidence 확인에 도움이 된다.
-
-#### `loading_role`
-
-로딩 UI의 유형이다.
-
-권장 값은 다음과 같다.
-
-| 값 | 의미 |
-| --- | --- |
-| `spinner` | 회전 로딩 아이콘 |
-| `skeleton` | skeleton placeholder |
-| `progressbar` | progress bar 또는 role=progressbar |
-| `busy_region` | aria-busy 기반 busy 영역 |
-| `button_pending` | 클릭한 버튼 내부 pending 상태 |
-| `unknown` | 유형을 안정적으로 분류하지 못함 |
-
-#### `bounds`
-
-로딩 UI의 viewport 기준 위치와 크기다.
-
-```json
-{
-  "bounds": {
-    "x": 640,
-    "y": 360,
-    "width": 80,
-    "height": 80,
-    "unit": "css_px"
-  }
-}
-```
-
-이 값은 report highlight와 로딩 요소 위치 확인에 사용한다.
-
-### DOM 기반 수집 기준
-
-Runner는 사용자 action 이후 일정 시간 동안 다음을 관찰한다.
-
-1. action 직후 DOM snapshot을 본다.
-2. loading indicator 후보를 찾는다.
-3. 후보가 viewport 안에 보이는지 확인한다.
-4. 후보가 사라지는 시점 또는 settle timeout 시점까지 지속 시간을 측정한다.
-5. loading indicator가 계속 보이면 `loading_state` observation을 남긴다.
-
-후보 selector 기준은 다음과 같이 시작할 수 있다.
-
-```text
-[role=progressbar]
-[role=status]
-[aria-busy=true]
-.spinner
-.loading
-.loader
-.progress
-.skeleton
-[class*=spinner]
-[class*=loading]
-[class*=loader]
-[class*=skeleton]
+has_permission_prompt
+has_streaming_response
+has_map
+has_payment_form
+has_auth_redirect
+has_webgl
 ```
 
 ### Analyzer 판단 방식
 
-권장 판단 흐름은 다음과 같다.
-
 ```text
-loading_state.loading_visible=true
-그리고 duration_ms >= 8000
-=> severity 2 후보
+technical failure 있음
+=> RELIABILITY-TECH-001 우선, 이 룰은 suppress
 
-loading_state.loading_visible=true
-그리고 duration_ms >= 15000
-=> severity 3 후보
+일반 페이지 전환 아님
+=> issue 없음
 
-COMMIT stage에서 timeout/stuck 또는 오래 지속된 loading
-=> severity 3 후보
-```
+target_page_signals 중 하나라도 true
+=> issue 없음
 
-보조 fallback으로 다음도 볼 수 있다.
+일반 페이지 전환이고 duration_ms >= 8000
+=> severity 3
 
-```text
-loading_state 없음
-그리고 settle_response.data.settle_status in ["timeout", "stuck"]
-=> weak loading/result-stuck 후보
-```
-
-다음 결과 확인 신호가 있으면 loading stuck issue를 만들지 않는다.
-
-```text
-settle_response.data.settle_status in ["settled", "success", "succeeded", "complete", "completed"]
-settle_item_count_change.data.current_count >= expected_count
-명시적 success toast 또는 completion message observation
-```
-
-명시적인 network failure 또는 console error가 있으면 `RELIABILITY-TECH-001`을 우선한다.
-
-### Spring/Runner에 요청할 추가 데이터
-
-우선순위는 다음과 같다.
-
-| 우선순위 | 요청 데이터 | 이유 |
-| --- | --- | --- |
-| P0 | `loading_state.data.loading_visible` | 실제 로딩 UI가 보였는지 판단 |
-| P0 | `loading_state.data.duration_ms` | 오래 지속됐는지 threshold 비교 |
-| P1 | `loading_state.data.selector` | DOM evidence 추적 |
-| P1 | `loading_state.data.text` | 리포트 설명과 화면 문구 확인 |
-| P1 | `loading_state.data.loading_role` | spinner/skeleton/progress 유형 구분 |
-| P1 | `loading_state.data.bounds` | report highlight와 viewport 내 위치 확인 |
-| P2 | `loading_state.data.aria_busy` | aria-busy 기반 loading 상태 확인 |
-| P2 | `loading_state.data.role` | progress/status role 보조 확인 |
-
-### 결론
-
-기존 `settle_response`와 checkpoint settle 정보만으로 timeout 기반 약한 판단은 가능하다.
-
-하지만 `RELIABILITY-LOADING-STUCK-001`의 핵심인 "로딩 UI가 오래 유지됨"을 정확히 판단하려면 `loading_state` observation을 추가로 받아야 한다.
-
-## TARGET-SIZE-001
-
-### 룰 정의
-
-| Rule ID | Axis | Stages | 설명 |
-| --- | --- | --- | --- |
-| TARGET-SIZE-001 | Friction | FIRST_VIEW, VALUE, CTA, INPUT | Google 검색창 기준 대비 검색 입력 영역이 충분한지 판단한다. |
-
-### 현재 구현 상태
-
-현재 `apps/analyzer/app/rule_engine/handlers/target_size.py`에 handler 구현은 존재한다.
-
-하지만 현재 Rule Engine registry와 handler map에는 연결되어 있지 않다. 따라서 지금 analyzer 기본 실행에서는 이 룰이 평가되지 않는다.
-
-### 판단하려는 문제
-
-이 룰은 검색 입력창의 실제 입력 영역이 지나치게 작아서 사용자가 검색창을 찾거나 클릭하거나 검색어를 입력하기 어려운 상황을 찾는다.
-
-예시는 다음과 같다.
-
-- 검색창이 있지만 높이가 너무 낮아 클릭하기 어렵다.
-- 검색 입력 영역의 폭이 Google 검색창 기준 대비 지나치게 좁다.
-- 모바일이나 좁은 viewport에서 검색창이 거의 아이콘 수준으로 줄어든다.
-- 실제 검색 흐름에서 사용한 검색창의 hit area가 작다.
-
-### 기존 데이터로 가능한 판단
-
-현재 기존 데이터만으로는 안정적인 판단이 불가능하다.
-
-이미 받을 수 있는 값은 일부 checkpoint, observation, form field 정보지만, 이 룰에 필요한 핵심 데이터가 보장되지 않는다.
-
-| 기존 데이터 | 현재 한계 |
-| --- | --- |
-| `form_field` | `field_key`, `value_length` 중심이면 검색창 크기 판단 불가 |
-| `interactive_components` | 클릭 요소 목록은 있어도 검색 입력창의 `bounds`와 search 식별 필드가 보장되지 않음 |
-| checkpoint viewport fallback | 일부 packet에는 `layout_summary.first_view.width`가 있지만 검색창 기준 폭 계산에 필요한 viewport width가 항상 안정적이지 않음 |
-
-따라서 기존 데이터만으로는 다음을 판단하기 어렵다.
-
-- 어떤 요소가 검색 입력창인지
-- 검색 입력창의 실제 `width`, `height`가 얼마인지
-- 그 크기가 viewport 기준으로 충분한지
-- 실제 사용자가 검색 흐름에서 사용한 입력창인지
-
-### 추가로 필요한 observation
-
-우선 기존 observation type을 재사용할 수 있다.
-
-- `form_field`
-- `interactive_components`
-- `cta_candidate`
-- `final_submit_candidate`
-
-다만 위 observation의 `data` 또는 `components[]` 안에 검색 입력창 식별 필드와 크기 필드를 보존해야 한다.
-
-권장 형태는 다음과 같다.
-
-```json
-{
-  "observation_id": "cp_001.obs_search_field",
-  "type": "form_field",
-  "stage": "FIRST_VIEW",
-  "source": ["dom", "layout"],
-  "data": {
-    "field_key": "search",
-    "role": "searchbox",
-    "input_type": "search",
-    "placeholder": "검색어를 입력하세요",
-    "label_text": "검색",
-    "accessible_name": "검색",
-    "selector": "input[type='search']",
-    "bounds": {
-      "x": 320,
-      "y": 120,
-      "width": 180,
-      "height": 28,
-      "unit": "css_px"
-    },
-    "clicked_in_scenario": true,
-    "typed_in_scenario": true
-  }
-}
-```
-
-`interactive_components` 안에 들어오는 경우는 다음처럼 `components[]`에 같은 필드를 넣는다.
-
-```json
-{
-  "observation_id": "cp_001.obs_interactive_components",
-  "type": "interactive_components",
-  "stage": "FIRST_VIEW",
-  "source": ["dom", "layout"],
-  "data": {
-    "components": [
-      {
-        "text": "",
-        "role": "searchbox",
-        "input_type": "search",
-        "placeholder": "Search",
-        "selector": "header input.search",
-        "bounds": {
-          "x": 24,
-          "y": 16,
-          "width": 96,
-          "height": 30,
-          "unit": "css_px"
-        },
-        "typed_in_scenario": true
-      }
-    ]
-  }
-}
-```
-
-### 필요한 필드
-
-| 필드 | 타입 | 필수도 | 설명 |
-| --- | --- | --- | --- |
-| `data.bounds.width` | number | P0 | 검색 입력 영역의 실제 폭 |
-| `data.bounds.height` | number | P0 | 검색 입력 영역의 실제 높이 |
-| `data.hit_area_bounds.width` | number | P1 | 실제 클릭 가능한 hit area 폭. 있으면 `bounds`보다 우선 사용 가능 |
-| `data.hit_area_bounds.height` | number | P1 | 실제 클릭 가능한 hit area 높이 |
-| `data.role` | string | P0 | `searchbox`이면 검색창 후보로 식별 |
-| `data.input_type` 또는 `data.type` | string | P0 | `search`, `search_input`, `searchbox`이면 검색창 후보로 식별 |
-| `data.placeholder` | string | P1 | 검색창 식별 보조 근거 |
-| `data.label_text` | string | P1 | 검색창 식별 보조 근거 |
-| `data.accessible_name` | string | P1 | 검색창 식별 보조 근거 |
-| `data.selector` | string | P1 | DOM evidence 추적과 검색창 식별 보조 근거 |
-| `data.id`, `data.class`, `data.name` | string | P2 | `search`, `검색` 키워드 기반 식별 보조 근거 |
-| `data.clicked_in_scenario` | boolean | P2 | 실제 사용 흐름에서 클릭한 검색창인지 확인 |
-| `data.typed_in_scenario` | boolean | P1 | 실제 검색어 입력 대상인지 확인 |
-| `checkpoints[].state.viewport.width` | number | P0 | Google 기준 폭과 viewport 기반 reference width 계산 |
-| `checkpoints[].state.layout_summary.first_view.width` | number | P1 | viewport width가 없을 때 fallback |
-
-### 필드 설명
-
-#### `bounds`
-
-검색 입력창의 viewport 기준 위치와 크기다.
-
-이 룰은 크기 판단 룰이기 때문에 `bounds.width`, `bounds.height`가 없으면 판단할 수 없다.
-
-```json
-{
-  "bounds": {
-    "x": 24,
-    "y": 16,
-    "width": 96,
-    "height": 30,
-    "unit": "css_px"
-  }
-}
-```
-
-#### `hit_area_bounds`
-
-실제 클릭 가능한 영역이 시각적 bounds와 다를 때 사용한다.
-
-있으면 Analyzer는 `hit_area_bounds`를 우선 사용할 수 있다.
-
-```json
-{
-  "hit_area_bounds": {
-    "x": 20,
-    "y": 12,
-    "width": 120,
-    "height": 36,
-    "unit": "css_px"
-  }
-}
-```
-
-#### search 식별 필드
-
-검색창인지 판단하기 위한 DOM 기반 raw signal이다.
-
-우선순위는 다음과 같다.
-
-```text
-role == "searchbox"
-또는 input_type/type/component_type in ["search", "search_input", "searchbox"]
-또는 placeholder/label_text/accessible_name/selector/id/class/name에 "search" 또는 "검색" 포함
-```
-
-#### viewport width
-
-Google 기준 검색창 폭은 584px을 기준으로 삼되, viewport가 더 좁으면 viewport width에서 margin을 뺀 값을 기준 폭으로 사용한다.
-
-따라서 checkpoint에 다음 중 하나가 필요하다.
-
-```json
-{
-  "state": {
-    "viewport": {
-      "width": 1440,
-      "height": 900
-    }
-  }
-}
-```
-
-또는 fallback:
-
-```json
-{
-  "state": {
-    "layout_summary": {
-      "first_view": {
-        "width": 1440,
-        "height": 900
-      }
-    }
-  }
-}
-```
-
-### DOM 기반 수집 기준
-
-Runner는 DOM에서 다음 후보를 검색 입력창 후보로 수집할 수 있다.
-
-```text
-input[type=search]
-[role=searchbox]
-form[role=search] input
-[aria-label*=search]
-[aria-label*=검색]
-[placeholder*=search]
-[placeholder*=검색]
-[name*=search]
-[id*=search]
-[class*=search]
-```
-
-후보마다 다음을 함께 저장한다.
-
-1. DOM selector
-2. role
-3. input type
-4. placeholder, label, accessible name
-5. bounds 또는 hit area bounds
-6. viewport 안에 보이는지 여부
-7. 실제 scenario에서 클릭/입력했는지 여부
-
-### Analyzer 판단 방식
-
-권장 판단 흐름은 다음과 같다.
-
-```text
-검색창 후보 식별
-그리고 bounds.width / bounds.height 존재
-그리고 viewport width 존재 또는 fallback 가능
-=> Google 기준 대비 크기 계산 가능
-```
-
-현재 handler 기준 threshold는 다음과 같다.
-
-```text
-height < 32
-또는 width_ratio < 0.55
-또는 width < 100
+일반 페이지 전환이고 duration_ms >= 5000
 => severity 2
 
-height < 40
-또는 width_ratio < 0.75
-또는 width < 120
-=> severity 1
-
-실제 scenario에서 사용한 검색창이고
-height < 32 또는 width_ratio < 0.45 또는 width < 100
-=> severity 3
-```
-
-`width_ratio`는 다음처럼 계산한다.
-
-```text
-reference_width = min(584, viewport_width - 32)
-width_ratio = search_width / reference_width
+그 외
+=> issue 없음
 ```
 
 ### Spring/Runner에 요청할 추가 데이터
 
-우선순위는 다음과 같다.
-
 | 우선순위 | 요청 데이터 | 이유 |
 | --- | --- | --- |
-| P0 | `form_field.data.bounds.width` / `height` | 검색 입력창 크기 판단의 핵심 |
-| P0 | `interactive_components.data.components[].bounds.width` / `height` | 검색창이 components 안에 들어올 때 크기 판단 |
-| P0 | `role` 또는 `input_type/type` | 검색창 후보 식별 |
-| P0 | `checkpoints[].state.viewport.width` | Google 기준 대비 폭 계산 |
-| P1 | `placeholder`, `label_text`, `accessible_name` | 검색창 후보 식별 보강 |
-| P1 | `selector` | evidence 추적과 재현성 |
-| P1 | `hit_area_bounds` | 실제 클릭 가능 영역이 시각적 bounds와 다를 때 정확도 향상 |
-| P1 | `typed_in_scenario` | 실제 검색 흐름과 관련된 입력창인지 판단 |
-| P2 | `id`, `class`, `name` | 검색 키워드 기반 식별 보조 |
-| P2 | `clicked_in_scenario` | 사용 흐름 관련도 보조 판단 |
+| P0 | `page_ready_timing.data.duration_ms` | 렌더링/ready 지연 판단의 핵심 |
+| P0 | `trigger_type`, `action_kind` | 일반 페이지 전환 후보 판별 |
+| P0 | `url_changed`, `route_changed`, `main_content_changed` | 실제 전환 결과 확인 |
+| P0 | `target_page_signals` | 권한 요청/스트리밍/지도/결제/인증/WebGL 예외 제외 |
+| P1 | `same_origin`, `http_method`, `form_submit`, `download_triggered`, `external_redirect` | 일반 전환 오탐 방지 |
+| P1 | `tab_panel_changed`, `history_changed` | URL 없는 SPA/tab 전환 보강 |
+| P2 | `anchor_scroll`, `modal_opened`, `target_blank` | 페이지 전환이 아닌 인터랙션 제외 |
 
 ### 결론
 
-현재 기존 데이터만으로는 `TARGET-SIZE-001`을 판단하기 어렵다.
+이 룰은 더 이상 단순히 spinner가 오래 보이는지만 판단하지 않는다.
 
-검색창 후보 식별 필드와 `bounds.width`, `bounds.height`, viewport width가 추가로 들어와야 DOM 기반으로 안정적인 판단이 가능하다.
+일반적인 페이지/라우트/메뉴/탭 전환이 맞는지 먼저 판별하고, 시뮬레이션이나 AI 생성처럼 무거운 흐름은 예외로 제외한 뒤, 다음 화면이 사용 가능한 상태로 준비되기까지 걸린 시간을 기준으로 issue를 만든다.

@@ -121,26 +121,6 @@
       "source_refs": ["docs/12_analyzer_rule_catalog.md#copy-label-integrity-001"]
     },
     {
-      "criterion_id": "TARGET-SIZE-001",
-      "axis": "Friction",
-      "applicableStages": ["FIRST_VIEW", "VALUE", "CTA", "INPUT"],
-      "evidence_level": "Operational",
-      "definition": "Search input fields should provide a sufficiently large input area compared with the Google search box reference.",
-      "required_observations": ["form_field", "interactive_components", "cta_candidate", "final_submit_candidate"],
-      "measurement_sources": ["dom", "layout", "scenario_log"],
-      "signal_rule": "A search input candidate has bounds or hit_area_bounds smaller than the reference width or height thresholds.",
-      "severity_rules": [
-        {"severity": 0, "condition": "search input size is near the reference threshold"},
-        {"severity": 1, "condition": "search input height is under 40px, width ratio is under 0.75, or width is under 120px"},
-        {"severity": 2, "condition": "search input height is under 32px, width ratio is under 0.55, or width is under 100px"},
-        {"severity": 3, "condition": "a search input used in the scenario is critically small"}
-      ],
-      "confidence_rule": "Use observation confidence when DOM/layout bounds and viewport width are available; cap confidence when viewport width is missing.",
-      "fix_leverage_default": 1.0,
-      "output_template": "The search input area is small compared with the Google search box reference.",
-      "source_refs": ["docs/12_analyzer_rule_catalog.md#target-size-001", "docs/13_analyzer_rule_required_data.md#target-size-001"]
-    },
-    {
       "criterion_id": "RELIABILITY-TECH-001",
       "axis": "Reliability",
       "applicableStages": ["CTA", "INPUT", "COMMIT"],
@@ -163,22 +143,23 @@
       "axis": "Reliability",
       "applicableStages": ["CTA", "INPUT", "COMMIT"],
       "evidence_level": "Operational",
-      "definition": "A user action should not leave the interface in a long-running loading state without a confirmed result.",
-      "required_observations": ["loading_state", "settle_response"],
-      "measurement_sources": ["dom", "layout", "network", "scenario_log"],
-      "signal_rule": "loading_state.loading_visible=true with duration_ms >= 8000, or a long settle_response timeout/stuck fallback when no loading_state exists.",
+      "definition": "A normal navigation action should render the next page or result view into a usable state within the expected ready threshold.",
+      "required_observations": ["page_ready_timing", "loading_state", "settle_response"],
+      "measurement_sources": ["performance", "dom", "layout", "scenario_log"],
+      "signal_rule": "A general navigation action has duration_ms >= 5000 when all configured target_page_signals are false.",
       "severity_rules": [
-        {"severity": 0, "condition": "loading clears and a success, failure, or state-change result is confirmed"},
-        {"severity": 2, "condition": "loading remains visible for 8000ms or more, or a long settle result is timeout/stuck"},
-        {"severity": 3, "condition": "loading remains visible for 15000ms or more, or a commit-stage action is stuck"}
+        {"severity": 0, "condition": "normal navigation becomes usable under 5000ms, or one configured target_page_signals flag is true"},
+        {"severity": 2, "condition": "normal navigation page ready duration is 5000ms or more"},
+        {"severity": 3, "condition": "normal navigation page ready duration is 8000ms or more, or a commit-stage navigation is delayed"}
       ],
       "exceptions": [
-        "Suppress when the same checkpoint has a settled/success/complete result or the expected count is reached.",
+        "Suppress when the action is not a normal navigation/link/menu/tab transition.",
+        "Suppress when target_page_signals has has_permission_prompt, has_streaming_response, has_map, has_payment_form, has_auth_redirect, or has_webgl set to true.",
         "Suppress when network or console failures are present, because RELIABILITY-TECH-001 should explain the primary technical failure."
       ],
-      "confidence_rule": "High when direct loading_state DOM/layout evidence exists; lower when using settle_response fallback only.",
+      "confidence_rule": "High when direct page_ready_timing evidence exists; cap confidence when using loading_state or settle_response fallback only.",
       "fix_leverage_default": 1.0,
-      "output_template": "The action appears to stay in a loading state without a clear result.",
+      "output_template": "The next page or result view takes too long to become ready after a normal navigation action.",
       "source_refs": ["docs/12_analyzer_rule_catalog.md#reliability-loading-stuck-001", "docs/13_analyzer_rule_required_data.md#reliability-loading-stuck-001"]
     },
     {
