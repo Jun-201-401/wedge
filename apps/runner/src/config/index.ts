@@ -7,6 +7,7 @@ export type RunnerCallbackMode = "file" | "http";
 export type RunnerArtifactStoreMode = "filesystem" | "s3";
 export type RunnerAgentDecisionMode = "heuristic" | "llm" | "mcp";
 export type RunnerAgentIdempotencyStoreMode = "local" | "api";
+export type RunnerMessageIdempotencyStoreMode = "local" | "api";
 
 const DEFAULT_RETRY_DELAYS_MS = [200, 1000, 3000] as const;
 const DEFAULT_OUTBOX_LOCK_STALE_MS = 30_000;
@@ -66,6 +67,7 @@ export interface RunnerConfig {
   agentConcurrency: number;
   agentIdempotencyStoreEnabled: boolean;
   agentIdempotencyStoreMode: RunnerAgentIdempotencyStoreMode;
+  messageIdempotencyStoreMode: RunnerMessageIdempotencyStoreMode;
   agentIdempotencyLeaseTtlMs: number;
   agentIdempotencyRenewIntervalMs: number;
   mqRequeueOnFailure: boolean;
@@ -195,6 +197,9 @@ export function loadRunnerConfig(overrides: Partial<RunnerConfig> = {}): RunnerC
     process.env.RUNNER_AGENT_IDEMPOTENCY_RENEW_INTERVAL_MS,
     Math.max(1_000, Math.floor(agentIdempotencyLeaseTtlMs / 2))
   );
+  const messageIdempotencyStoreMode = resolveMessageIdempotencyStoreMode(
+    overrides.messageIdempotencyStoreMode ?? process.env.RUNNER_MESSAGE_IDEMPOTENCY_STORE_MODE
+  );
   const mqRequeueOnFailure = parseBoolean(
     overrides.mqRequeueOnFailure,
     process.env.RUNNER_MQ_REQUEUE_ON_FAILURE,
@@ -301,6 +306,7 @@ export function loadRunnerConfig(overrides: Partial<RunnerConfig> = {}): RunnerC
     agentConcurrency,
     agentIdempotencyStoreEnabled,
     agentIdempotencyStoreMode,
+    messageIdempotencyStoreMode,
     agentIdempotencyLeaseTtlMs,
     agentIdempotencyRenewIntervalMs,
     mqRequeueOnFailure,
@@ -378,6 +384,10 @@ function resolveAgentDecisionMode(value: RunnerAgentDecisionMode | string | unde
 }
 
 function resolveAgentIdempotencyStoreMode(value: RunnerAgentIdempotencyStoreMode | string | undefined): RunnerAgentIdempotencyStoreMode {
+  return value === "api" ? "api" : "local";
+}
+
+function resolveMessageIdempotencyStoreMode(value: RunnerMessageIdempotencyStoreMode | string | undefined): RunnerMessageIdempotencyStoreMode {
   return value === "api" ? "api" : "local";
 }
 

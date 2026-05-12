@@ -534,6 +534,17 @@ CREATE TABLE processed_message (
     PRIMARY KEY (consumer_name, message_id)
 );
 
+CREATE TABLE runner_message_idempotency_record (
+    scope                VARCHAR(32) NOT NULL CHECK (scope IN ('run','discovery')),
+    idempotency_key_hash VARCHAR(64) NOT NULL,
+    run_id               UUID NOT NULL,
+    result_jsonb         JSONB NOT NULL,
+    completed_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    created_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (scope, idempotency_key_hash)
+);
+
 CREATE TABLE agent_idempotency_record (
     idempotency_key_hash VARCHAR(64) PRIMARY KEY,
     run_id              UUID NOT NULL REFERENCES test_run(id) ON DELETE CASCADE,
@@ -603,6 +614,7 @@ CREATE UNIQUE INDEX ux_report_active_analysis_job ON report(analysis_job_id) WHE
 
 CREATE INDEX idx_mcp_invocation_started ON mcp_invocation_log(started_at DESC);
 CREATE INDEX idx_outbox_pending ON outbox_message(status, next_attempt_at);
+CREATE INDEX idx_runner_message_idempotency_run ON runner_message_idempotency_record(scope, run_id, completed_at DESC);
 CREATE INDEX idx_agent_idempotency_run ON agent_idempotency_record(run_id, completed_at DESC);
 CREATE INDEX idx_agent_idempotency_lease ON agent_idempotency_record(status, lease_expires_at);
 CREATE INDEX idx_worker_heartbeat ON worker_instance(worker_type, last_heartbeat_at);

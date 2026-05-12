@@ -121,6 +121,7 @@ export function createRunnerTestConfig(overrides: Partial<RunnerConfig> = {}): R
     agentConcurrency: 1,
     agentIdempotencyStoreEnabled: false,
     agentIdempotencyStoreMode: "local",
+    messageIdempotencyStoreMode: overrides.messageIdempotencyStoreMode ?? "local",
     agentIdempotencyLeaseTtlMs: 300_000,
     agentIdempotencyRenewIntervalMs: 150_000,
     mqRequeueOnFailure: false,

@@ -1756,6 +1756,111 @@ paths:
           $ref: '#/components/responses/Conflict'
         '422':
           $ref: '#/components/responses/ValidationError'
+  /internal/runner/message-idempotency/{scope}/{idempotencyKeyHash}:
+    get:
+      tags:
+      - InternalRunner
+      operationId: getRunnerMessageIdempotencyRecord
+      summary: Runner message terminal idempotency record 조회
+      description: Runner replica가 run.execute/discovery.execute 중복 실행 전 DB-backed terminal result를 조회한다. idempotencyKey 원문 대신 SHA-256 hex digest를 사용한다.
+      security:
+      - InternalBearer: []
+      parameters:
+      - name: scope
+        in: path
+        required: true
+        schema:
+          type: string
+          enum:
+          - run
+          - discovery
+      - name: idempotencyKeyHash
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: ^[0-9a-f]{64}$
+      - name: X-Worker-Id
+        in: header
+        required: true
+        schema:
+          type: string
+      - name: X-Event-Id
+        in: header
+        required: true
+        schema:
+          type: string
+      - name: X-Signature
+        in: header
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Message idempotency lookup result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RunnerMessageIdempotencyRecordEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+    put:
+      tags:
+      - InternalRunner
+      operationId: putRunnerMessageIdempotencyRecord
+      summary: Runner message terminal idempotency record 저장
+      description: Runner가 terminal run.execute/discovery.execute 결과를 first-writer-wins 방식으로 저장한다. 이미 같은 scope/key hash가 있으면 기존 record를 반환한다.
+      security:
+      - InternalBearer: []
+      parameters:
+      - name: scope
+        in: path
+        required: true
+        schema:
+          type: string
+          enum:
+          - run
+          - discovery
+      - name: idempotencyKeyHash
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: ^[0-9a-f]{64}$
+      - name: X-Worker-Id
+        in: header
+        required: true
+        schema:
+          type: string
+      - name: X-Event-Id
+        in: header
+        required: true
+        schema:
+          type: string
+      - name: X-Signature
+        in: header
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RunnerMessageIdempotencyRecordRequest'
+      responses:
+        '200':
+          description: Stored or pre-existing message idempotency record
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RunnerMessageIdempotencyRecordEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
   /internal/runner/agent-idempotency/{idempotencyKeyHash}:
     get:
       tags:
@@ -5228,6 +5333,61 @@ components:
       - taskId
       - attemptId
       - attemptIndex
+    RunnerMessageIdempotencyRecordRequest:
+      type: object
+      properties:
+        runId:
+          type: string
+          format: uuid
+          description: Run or discovery UUID associated with the terminal result.
+        result:
+          type: object
+          additionalProperties: true
+      required:
+      - runId
+      - result
+    RunnerMessageIdempotencyRecord:
+      type: object
+      properties:
+        scope:
+          type: string
+          enum:
+          - run
+          - discovery
+        idempotencyKeyHash:
+          type: string
+          pattern: ^[0-9a-f]{64}$
+        found:
+          type: boolean
+        runId:
+          type: string
+          format: uuid
+          nullable: true
+        result:
+          type: object
+          additionalProperties: true
+          nullable: true
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+      required:
+      - scope
+      - idempotencyKeyHash
+      - found
+      - runId
+      - result
+      - completedAt
+    RunnerMessageIdempotencyRecordEnvelope:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/RunnerMessageIdempotencyRecord'
+        meta:
+          $ref: '#/components/schemas/ApiMeta'
+      required:
+      - data
+      - meta
     RunnerAgentIdempotencyRecordRequest:
       type: object
       properties:

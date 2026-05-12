@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wedge.example.com/contracts/internal/runner-message-idempotency.schema.json",
+  "title": "Runner Message Idempotency Internal API",
+  "description": "Internal API payloads for DB-backed run.execute/discovery.execute terminal idempotency shared by Runner replicas.",
+  "$defs": {
+    "Scope": {
+      "type": "string",
+      "enum": ["run", "discovery"]
+    },
+    "KeyHash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "RecordRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "runId": {
+          "type": "string",
+          "format": "uuid",
+          "description": "Run or discovery UUID associated with the terminal result."
+        },
+        "result": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "required": ["runId", "result"]
+    },
+    "RecordResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "scope": {
+          "$ref": "#/$defs/Scope"
+        },
+        "idempotencyKeyHash": {
+          "$ref": "#/$defs/KeyHash"
+        },
+        "found": {
+          "type": "boolean"
+        },
+        "runId": {
+          "type": ["string", "null"],
+          "format": "uuid"
+        },
+        "result": {
+          "type": ["object", "null"],
+          "additionalProperties": true
+        },
+        "completedAt": {
+          "type": ["string", "null"],
+          "format": "date-time"
+        }
+      },
+      "required": ["scope", "idempotencyKeyHash", "found", "runId", "result", "completedAt"]
+    }
+  }
+}

@@ -62,6 +62,7 @@ Canonical machine-readable contracts belong here. Human-readable design rational
 - `mq/report.export.request.schema.json`: thin `$ref` entrypoint to `messages.schema.json#/$defs/ReportExportRequestPayload`
 - `websocket/events.schema.json`: live event envelope and event variants
 - `internal/runner-callback.schema.json`: runner callback payload definitions, including `agent-events` and `agent-traces` callback payloads
+- `internal/runner-message-idempotency.schema.json`: DB-backed `run.execute`/`discovery.execute` terminal idempotency API payloads for Runner replicas
 - `internal/analyzer-callback.schema.json`: analyzer callback payload definitions
 - `mcp/tools.schema.json`: MCP tool metadata contract, including asynchronous ScenarioAuthoring job/result tools
 - `enums/run-status.json`: shared lifecycle enums

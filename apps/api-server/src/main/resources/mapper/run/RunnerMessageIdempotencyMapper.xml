@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.wedge.run.infrastructure.RunnerMessageIdempotencyMapper">
+    <resultMap id="RunnerMessageIdempotencyRecordResultMap" type="com.wedge.run.infrastructure.RunnerMessageIdempotencyRecord">
+        <id property="scope" column="scope"/>
+        <id property="idempotencyKeyHash" column="idempotency_key_hash"/>
+        <result property="runId" column="run_id"/>
+        <result property="resultJson" column="result_jsonb"/>
+        <result property="completedAt" column="completed_at"/>
+    </resultMap>
+
+    <select id="findByScopeAndKeyHash" resultMap="RunnerMessageIdempotencyRecordResultMap">
+        SELECT
+            scope,
+            idempotency_key_hash,
+            run_id,
+            CAST(result_jsonb AS TEXT) AS result_jsonb,
+            completed_at
+        FROM runner_message_idempotency_record
+        WHERE scope = #{scope}
+          AND idempotency_key_hash = #{idempotencyKeyHash}
+    </select>
+
+    <insert id="insertCompletedIgnoreDuplicate" parameterType="com.wedge.run.infrastructure.RunnerMessageIdempotencyRecord">
+        INSERT INTO runner_message_idempotency_record (
+            scope,
+            idempotency_key_hash,
+            run_id,
+            result_jsonb,
+            completed_at
+        ) VALUES (
+            #{scope},
+            #{idempotencyKeyHash},
+            #{runId},
+            CAST(#{resultJson} AS jsonb),
+            NOW()
+        )
+        ON CONFLICT (scope, idempotency_key_hash) DO NOTHING
+    </insert>
+</mapper>
