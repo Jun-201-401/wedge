@@ -12,7 +12,7 @@ import { classifyRunnerFailure, errorMessage, logOperationalEvent } from "../sha
 import { persistAgentScenarioPlanExportArtifact, persistAgentTraceArtifact } from "./trace/artifacts.ts";
 import { emitAgentEventBestEffort, emitAgentTraceBestEffort } from "./callbacks.ts";
 import { AgentBudgetExceededError, assertAgentDeadline, createAgentDeadline, remainingAgentBudgetMs, runSideEffectWithDeadlineCleanup, runWithinAgentDeadline } from "./deadline.ts";
-import { ensureAgentDecisionMetadata, HeuristicDecisionClient, type AgentDecision, type AgentDecisionClient } from "./planner.ts";
+import { decideNextAction, ensureAgentDecisionMetadata, HeuristicDecisionClient, type AgentDecision, type AgentDecisionClient } from "./planner.ts";
 import { observePage } from "./observation.ts";
 import { evaluateAgentPolicy } from "./policy.ts";
 import { decideFromReplayHints } from "./replay-hint-planner.ts";
@@ -106,10 +106,12 @@ export async function executeAgentRun(input: AgentExecutorInput): Promise<AgentE
         maxScrolls: config.maxScrolls,
         remainingTimeMs: remainingAgentBudgetMs(deadline)
       };
-      decision = decideFromReplayHints({
-        ...decisionInput,
-        replayHints: input.task.replay_hints
-      }) ?? ensureAgentDecisionMetadata(await runWithinAgentDeadline(deadline, "decision", () => decisionClient.decide(decisionInput)));
+      decision = shouldBootstrapStartUrl(state.started, observation.snapshot.finalUrl, input.task.start_url)
+        ? decideNextAction(decisionInput)
+        : decideFromReplayHints({
+          ...decisionInput,
+          replayHints: input.task.replay_hints
+        }) ?? ensureAgentDecisionMetadata(await runWithinAgentDeadline(deadline, "decision", () => decisionClient.decide(decisionInput)));
     } catch (error) {
       if (markBudgetExceeded(trace, error)) {
         break;
@@ -382,6 +384,27 @@ function resolveAgentBudget(task: AgentTask): {
 
 function resolveTaskGoal(task: AgentTask): string {
   return task.goal ?? task.goal_type;
+}
+
+function shouldBootstrapStartUrl(started: boolean, finalUrl: string, startUrl: string): boolean {
+  if (started) {
+    return false;
+  }
+
+  const currentOrigin = resolveHttpOrigin(finalUrl);
+  const startOrigin = resolveHttpOrigin(startUrl);
+  return currentOrigin === null || startOrigin === null || currentOrigin !== startOrigin;
+}
+
+function resolveHttpOrigin(candidateUrl: string): string | null {
+  try {
+    const parsedUrl = new URL(candidateUrl);
+    return parsedUrl.protocol === "http:" || parsedUrl.protocol === "https:"
+      ? parsedUrl.origin
+      : null;
+  } catch {
+    return null;
+  }
 }
 
 function markBudgetExceeded(trace: AgentTrace, error: unknown): boolean {

@@ -438,6 +438,68 @@ test("[Agent Worker] checkpoint decision은 browser action으로 실행하지 �
   assert.equal(agentEvents.some((event) => event.eventType === "GOAL_VERIFIED"), true);
 });
 
+test("[Agent Worker] 빈 초기 탭에서는 LLM checkpoint보다 start_url bootstrap을 먼저 실행한다", async () => {
+  const message = await loadAgentExampleMessage();
+  const task = message.payload.agentTask;
+  task.goal = "첫 화면을 보고 CTA를 찾는다";
+  task.budget.max_steps = 1;
+  task.artifact_policy = {
+    capture_screenshots: false,
+    capture_dom_snapshots: false,
+    capture_ax_tree: false,
+    capture_trace: false
+  };
+
+  const runtimePlan = createAgentRuntimePlan(task);
+  const executedActions: string[] = [];
+  let currentUrl = "about:blank";
+  const decisionClient: AgentDecisionClient = {
+    decide: () => {
+      throw new Error("LLM decision should not run before loading start_url");
+    }
+  };
+
+  const result = await executeAgentRun({
+    runId: task.run_id,
+    task,
+    runtimePlan,
+    session: createSimulatedSession(runtimePlan, {
+      execute: async (action) => {
+        executedActions.push(action.type);
+        if (action.type === "goto") {
+          currentUrl = task.start_url;
+        }
+        return {
+          actionType: action.type,
+          targetSummary: null,
+          stopRequested: false,
+          details: {}
+        };
+      },
+      settle: async () => createSettledResult(),
+      snapshot: () => createSimulatedPageSnapshot(runtimePlan, {
+        currentUrl,
+        finalUrl: currentUrl
+      })
+    }),
+    callbackClient: createStubCallbackClient(),
+    capturePipeline: {
+      collectCheckpoint: async () => {
+        throw new Error("bootstrap without capture policy should not collect checkpoint artifacts");
+      }
+    },
+    artifactStore: {
+      persistArtifacts: async () => []
+    },
+    decisionClient
+  });
+
+  assert.deepEqual(executedActions, ["goto"]);
+  assert.equal(result.summary.completedStepCount, 1);
+  assert.equal(result.trace.turns[0].decision?.action.type, "goto");
+  assert.equal(result.trace.turns[0].actionResult?.finalUrl, task.start_url);
+});
+
 test("[Agent Worker] checkpoint decision도 캡처 정책이 켜져 있으면 checkpoint artifact를 저장한다", async () => {
   const message = await loadAgentExampleMessage();
   const task = message.payload.agentTask;

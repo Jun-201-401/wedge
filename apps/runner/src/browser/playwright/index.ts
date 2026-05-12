@@ -572,6 +572,7 @@ class RealPlaywrightSession implements BrowserSession {
     const session = new RealPlaywrightSession(plan, browser, context, page);
     await session.initializeContext(plan);
     session.attachPageObservers();
+    await session.refreshPageState();
 
     return session;
   }
