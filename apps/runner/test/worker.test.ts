@@ -188,11 +188,10 @@ test("[Worker cancellation] STOP_REQUESTED control state면 다음 step 실행 �
   const result = await worker.handleMessage(message);
 
   assert.equal(executed, false);
-  assert.deepEqual(result.summary, {
-    completedStepCount: 0,
-    failedStepCount: 0,
-    stopped: true
-  });
+  assert.equal(result.summary.completedStepCount, 0);
+  assert.equal(result.summary.failedStepCount, 0);
+  assert.equal(result.summary.stopped, true);
+  assert.equal(result.summary.collectorStatus?.screenshot.status, "skipped");
   assert.deepEqual(finishedSummary, result.summary);
 });
 
@@ -375,11 +374,10 @@ test("[Worker 관측성] step timeout 실패는 timeout code와 runId/stepKey �
   const capturedFailedPayload = failedPayload as RunnerFailedPayload;
   assert.equal(capturedFailedPayload.failureCode, "RUNNER_TIMEOUT");
   assert.deepEqual(capturedFailedPayload.failureArtifactRefs, ["failure-screenshot"]);
-  assert.deepEqual(capturedFailedPayload.summary, {
-    completedStepCount: 0,
-    failedStepCount: 1,
-    stopped: false
-  });
+  assert.equal(capturedFailedPayload.summary?.completedStepCount, 0);
+  assert.equal(capturedFailedPayload.summary?.failedStepCount, 1);
+  assert.equal(capturedFailedPayload.summary?.stopped, false);
+  assert.equal(capturedFailedPayload.summary?.collectorStatus?.screenshot.status, "success");
   assert.deepEqual(persistedArtifactIds, ["failure-screenshot"]);
   assert.deepEqual(sentArtifactIds, ["failure-screenshot"]);
   assert.deepEqual(checkpointStatuses, ["failed"]);

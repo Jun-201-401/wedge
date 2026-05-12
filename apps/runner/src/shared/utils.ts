@@ -50,6 +50,7 @@ export function errorMessage(error: unknown): string {
 }
 
 export type RunnerFailureCode = "RUNNER_EXECUTION_FAILED" | "RUNNER_TIMEOUT" | "RUNNER_BROWSER_CRASH";
+export type RunnerTerminalOutcome = "COMPLETED" | "STOPPED" | "FAILED_TIMEOUT" | "FAILED_BROWSER_CRASH" | "FAILED_ERROR";
 
 export function classifyRunnerFailure(error: unknown): RunnerFailureCode {
   const name = error instanceof Error ? error.name.toLowerCase() : "";
@@ -77,6 +78,16 @@ export function classifyRunnerFailure(error: unknown): RunnerFailureCode {
   }
 
   return "RUNNER_EXECUTION_FAILED";
+}
+
+export function runnerFailureOutcome(failureCode: RunnerFailureCode): RunnerTerminalOutcome {
+  if (failureCode === "RUNNER_TIMEOUT") {
+    return "FAILED_TIMEOUT";
+  }
+  if (failureCode === "RUNNER_BROWSER_CRASH") {
+    return "FAILED_BROWSER_CRASH";
+  }
+  return "FAILED_ERROR";
 }
 
 export type OperationalLogLevel = "info" | "warn" | "error";

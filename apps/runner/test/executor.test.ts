@@ -351,11 +351,10 @@ test("[실패 요약] step 실행 실패 시 STEP_FAILED 이벤트와 부분 요
     assert.fail("executeScenario should throw on a failed scenario step");
   } catch (error) {
     assert.ok(error instanceof ScenarioExecutionError);
-    assert.deepEqual(error.summary, {
-      completedStepCount: 1,
-      failedStepCount: 1,
-      stopped: false
-    });
+    assert.equal(error.summary.completedStepCount, 1);
+    assert.equal(error.summary.failedStepCount, 1);
+    assert.equal(error.summary.stopped, false);
+    assert.equal(error.summary.collectorStatus?.screenshot.status, "skipped");
     assert.equal(error.failedStepKey, "step_002_fail");
     assert.equal(error.failedStepOrder, 2);
   }

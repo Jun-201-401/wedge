@@ -2,6 +2,11 @@ import type { BrowserSession } from "../../browser/playwright/index.ts";
 import type { CallbackClient } from "../../callback/index.ts";
 import type { CapturePipeline, JourneyDepthContext } from "../../capture/index.ts";
 import { createDeliverySummary, mergeDeliveryIssues, type DeliveryIssue, type DeliverySummary } from "../../delivery/index.ts";
+import {
+  createEmptyCollectorStatusSummary,
+  mergeCollectorStatusSummaries,
+  type CollectorStatusSummary
+} from "../../observability/collectors.ts";
 import type { ArtifactStore } from "../../storage/index.ts";
 import type { ScenarioPlan } from "../../shared/contracts.ts";
 import { classifyRunnerFailure, errorMessage, logOperationalEvent, type RunnerFailureCode } from "../../shared/utils.ts";
@@ -13,6 +18,7 @@ export interface ScenarioExecutionSummary {
   completedStepCount: number;
   failedStepCount: number;
   stopped: boolean;
+  collectorStatus?: CollectorStatusSummary;
 }
 
 export interface ScenarioExecutionResult {
@@ -71,6 +77,7 @@ export async function executeScenario({
   let stopped = false;
   const deliveryIssues: DeliveryIssue[] = [];
   const journeyDepthContext: JourneyDepthContext = {};
+  let collectorStatus = createEmptyCollectorStatusSummary(plan);
 
   for (const [index, step] of plan.steps.entries()) {
     const stepOrder = index + 1;
@@ -136,11 +143,13 @@ export async function executeScenario({
         artifactStore
       });
       deliveryIssues.push(...failureEvidence.deliveryIssues);
+      collectorStatus = mergeCollectorStatusSummaries(collectorStatus, failureEvidence.collectorStatus);
 
       const summary = {
         completedStepCount,
         failedStepCount: 1,
-        stopped: false
+        stopped: false,
+        collectorStatus
       };
       throw new ScenarioExecutionError({
         cause: error,
@@ -155,6 +164,7 @@ export async function executeScenario({
 
     completedStepCount += 1;
     deliveryIssues.push(...stepResult.deliveryIssues);
+    collectorStatus = mergeCollectorStatusSummaries(collectorStatus, stepResult.collectorStatus);
 
     if (stepResult.stopRequested) {
       stopped = true;
@@ -166,7 +176,8 @@ export async function executeScenario({
     summary: {
       completedStepCount,
       failedStepCount: 0,
-      stopped
+      stopped,
+      collectorStatus
     },
     delivery: createDeliverySummary(mergeDeliveryIssues(deliveryIssues))
   };

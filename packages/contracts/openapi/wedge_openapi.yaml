@@ -5405,6 +5405,57 @@ components:
           $ref: '#/components/schemas/AgentTrace'
       required:
       - trace
+    RunnerCollectorStatusEntry:
+      type: object
+      properties:
+        status:
+          type: string
+          enum:
+          - success
+          - failed
+          - skipped
+        requested:
+          type: boolean
+        count:
+          type: integer
+          minimum: 0
+        reason:
+          type: string
+      required:
+      - status
+      - requested
+      - count
+    RunnerCollectorStatusSummary:
+      type: object
+      properties:
+        screenshot:
+          $ref: '#/components/schemas/RunnerCollectorStatusEntry'
+        dom_snapshot:
+          $ref: '#/components/schemas/RunnerCollectorStatusEntry'
+        ax_tree:
+          $ref: '#/components/schemas/RunnerCollectorStatusEntry'
+        har:
+          $ref: '#/components/schemas/RunnerCollectorStatusEntry'
+        trace:
+          $ref: '#/components/schemas/RunnerCollectorStatusEntry'
+        performance:
+          $ref: '#/components/schemas/RunnerCollectorStatusEntry'
+        layout:
+          $ref: '#/components/schemas/RunnerCollectorStatusEntry'
+        network_timeline:
+          $ref: '#/components/schemas/RunnerCollectorStatusEntry'
+        visibility:
+          $ref: '#/components/schemas/RunnerCollectorStatusEntry'
+      required:
+      - screenshot
+      - dom_snapshot
+      - ax_tree
+      - har
+      - trace
+      - performance
+      - layout
+      - network_timeline
+      - visibility
     RunnerFinishedRequest:
       type: object
       properties:
@@ -5425,6 +5476,8 @@ components:
             stopped:
               type: boolean
               description: True when runner execution stopped at a planned safety stop condition or after an explicit stop request. Planned scenario stops still complete the run; only a prior STOP_REQUESTED run becomes STOPPED.
+            collectorStatus:
+              $ref: '#/components/schemas/RunnerCollectorStatusSummary'
           required:
           - completedStepCount
           - failedStepCount
@@ -5462,6 +5515,8 @@ components:
               minimum: 0
             stopped:
               type: boolean
+            collectorStatus:
+              $ref: '#/components/schemas/RunnerCollectorStatusSummary'
           required:
           - completedStepCount
           - failedStepCount

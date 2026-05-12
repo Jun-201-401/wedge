@@ -206,6 +206,9 @@
             "stopped": {
               "type": "boolean",
               "description": "True when runner execution stopped at a planned safety stop condition or after an explicit stop request. API status remains COMPLETED for planned scenario stops and becomes STOPPED only when the run was already STOP_REQUESTED."
+            },
+            "collectorStatus": {
+              "$ref": "#/$defs/CollectorStatusSummary"
             }
           },
           "required": [
@@ -959,7 +962,6 @@
         "failureMessage"
       ]
     },
-
     "AgentEventBatch": {
       "type": "object",
       "additionalProperties": false,
@@ -968,7 +970,7 @@
           "type": "array",
           "minItems": 1,
           "items": {
-            "$ref": "#/$defs/AgentEvent"
+            "$ref": "../schemas/agent-event.schema.json"
           }
         }
       },
@@ -1068,22 +1070,6 @@
         "COMMIT"
       ]
     },
-    "AgentEventBatch": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "events": {
-          "type": "array",
-          "minItems": 1,
-          "items": {
-            "$ref": "../schemas/agent-event.schema.json"
-          }
-        }
-      },
-      "required": [
-        "events"
-      ]
-    },
     "AgentTraceRequest": {
       "type": "object",
       "additionalProperties": false,
@@ -1094,6 +1080,80 @@
       },
       "required": [
         "trace"
+      ]
+    },
+    "CollectorStatusEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "success",
+            "failed",
+            "skipped"
+          ]
+        },
+        "requested": {
+          "type": "boolean"
+        },
+        "count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "status",
+        "requested",
+        "count"
+      ]
+    },
+    "CollectorStatusSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "screenshot": {
+          "$ref": "#/$defs/CollectorStatusEntry"
+        },
+        "dom_snapshot": {
+          "$ref": "#/$defs/CollectorStatusEntry"
+        },
+        "ax_tree": {
+          "$ref": "#/$defs/CollectorStatusEntry"
+        },
+        "har": {
+          "$ref": "#/$defs/CollectorStatusEntry"
+        },
+        "trace": {
+          "$ref": "#/$defs/CollectorStatusEntry"
+        },
+        "performance": {
+          "$ref": "#/$defs/CollectorStatusEntry"
+        },
+        "layout": {
+          "$ref": "#/$defs/CollectorStatusEntry"
+        },
+        "network_timeline": {
+          "$ref": "#/$defs/CollectorStatusEntry"
+        },
+        "visibility": {
+          "$ref": "#/$defs/CollectorStatusEntry"
+        }
+      },
+      "required": [
+        "screenshot",
+        "dom_snapshot",
+        "ax_tree",
+        "har",
+        "trace",
+        "performance",
+        "layout",
+        "network_timeline",
+        "visibility"
       ]
     }
   }

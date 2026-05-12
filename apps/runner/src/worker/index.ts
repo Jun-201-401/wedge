@@ -11,7 +11,7 @@ import {
 } from "../runtime/message-idempotency.ts";
 import type { ArtifactStore } from "../storage/index.ts";
 import type { AgentArtifactPolicy, RunExecuteMessage, ScenarioPlan } from "../shared/contracts.ts";
-import { classifyRunnerFailure, errorMessage, logOperationalEvent } from "../shared/utils.ts";
+import { classifyRunnerFailure, errorMessage, logOperationalEvent, runnerFailureOutcome } from "../shared/utils.ts";
 import { emitAcceptedCallback, emitFailedCallback, emitFinishedCallback } from "./callback-policy.ts";
 
 export interface RunnerExecutionResult {
@@ -156,15 +156,33 @@ async function executeRunMessage({
       workerId: config.workerId,
       summary: executionResult.summary
     });
+    const delivery = createDeliverySummary(
+      mergeDeliveryIssues(executionResult.delivery.issues, finishedDeliveryIssues)
+    );
+
+    logOperationalEvent(
+      "worker",
+      "run_finished",
+      {
+        runId: message.payload.runId,
+        workerId: config.workerId,
+        browserSessionId: session.id,
+        terminalOutcome: executionResult.summary.stopped ? "STOPPED" : "COMPLETED",
+        resultCompleteness: "FINAL",
+        summary: executionResult.summary,
+        deliveryStatus: delivery.status,
+        deliveryIssueCount: delivery.issues.length,
+        deliveryIssueScopes: delivery.issues.map((issue) => issue.scope)
+      },
+      delivery.status === "DELIVERY_COMPLETE" ? "info" : "warn"
+    );
 
     return {
       runId: message.payload.runId,
       workerId: config.workerId,
       browserSessionId: session.id,
       summary: executionResult.summary,
-      delivery: createDeliverySummary(
-        mergeDeliveryIssues(executionResult.delivery.issues, finishedDeliveryIssues)
-      )
+      delivery
     };
   } catch (error) {
     const failureCode = error instanceof ScenarioExecutionError
@@ -181,6 +199,7 @@ async function executeRunMessage({
         accepted,
         hasSession: session !== undefined,
         resultCompleteness,
+        terminalOutcome: runnerFailureOutcome(failureCode),
         failureCode,
         failureMessage: errorMessage(error),
         failedStepKey: error instanceof ScenarioExecutionError ? error.failedStepKey : null,

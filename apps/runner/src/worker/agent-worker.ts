@@ -6,7 +6,7 @@ import type { RunnerConfig } from "../config/index.ts";
 import { createDeliverySummary, mergeDeliveryIssues, type DeliverySummary } from "../delivery/index.ts";
 import { ScenarioExecutionError, type ScenarioExecutionSummary } from "../scenario/executor/index.ts";
 import type { AgentExecuteMessage, Artifact } from "../shared/contracts.ts";
-import { classifyRunnerFailure, errorMessage, logOperationalEvent } from "../shared/utils.ts";
+import { classifyRunnerFailure, errorMessage, logOperationalEvent, runnerFailureOutcome } from "../shared/utils.ts";
 import type { ArtifactStore } from "../storage/index.ts";
 import {
   AgentIdempotencyInProgressError,
@@ -360,6 +360,29 @@ async function executeAgentMessage({
       workerId: config.workerId,
       summary: executionResult.summary
     });
+    const delivery = createDeliverySummary(
+      mergeDeliveryIssues(executionResult.delivery.issues, finishedDeliveryIssues)
+    );
+
+    logOperationalEvent(
+      "agent-worker",
+      "run_finished",
+      {
+        runId: task.run_id,
+        taskId: task.task_id,
+        workerId: config.workerId,
+        browserSessionId: session.id,
+        terminalOutcome: executionResult.summary.stopped ? "STOPPED" : "COMPLETED",
+        resultCompleteness: "FINAL",
+        agentOutcome: executionResult.trace.outcome.status,
+        agentOutcomeReason: executionResult.trace.outcome.reason,
+        summary: executionResult.summary,
+        deliveryStatus: delivery.status,
+        deliveryIssueCount: delivery.issues.length,
+        deliveryIssueScopes: delivery.issues.map((issue) => issue.scope)
+      },
+      delivery.status === "DELIVERY_COMPLETE" ? "info" : "warn"
+    );
 
     return {
       runId: task.run_id,
@@ -370,9 +393,7 @@ async function executeAgentMessage({
       traceArtifact: executionResult.traceArtifact,
       scenarioPlanExport: executionResult.scenarioPlanExport,
       scenarioPlanExportArtifact: executionResult.scenarioPlanExportArtifact,
-      delivery: createDeliverySummary(
-        mergeDeliveryIssues(executionResult.delivery.issues, finishedDeliveryIssues)
-      )
+      delivery
     };
   } catch (error) {
     const failureCode = error instanceof ScenarioExecutionError
@@ -390,6 +411,7 @@ async function executeAgentMessage({
         accepted,
         hasSession: session !== undefined,
         resultCompleteness,
+        terminalOutcome: runnerFailureOutcome(failureCode),
         failureCode,
         failureMessage: errorMessage(error),
         failedStepKey: error instanceof ScenarioExecutionError ? error.failedStepKey : null,

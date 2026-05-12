@@ -2,14 +2,23 @@ import type { BrowserActionResult, BrowserCapturedArtifacts, BrowserSession } fr
 import type { CallbackClient } from "../../callback/index.ts";
 import type { CapturePipeline, JourneyDepthContext } from "../../capture/index.ts";
 import type { DeliveryIssue } from "../../delivery/index.ts";
+import {
+  createEmptyCollectorStatusSummary,
+  summarizeArtifactManifest,
+  summarizeCheckpointCollectors,
+  type ArtifactManifestSummary,
+  type CollectorStatusSummary
+} from "../../observability/collectors.ts";
 import type { ArtifactStore } from "../../storage/index.ts";
 import type { ScenarioPlan, ScenarioStep } from "../../shared/contracts.ts";
-import { errorMessage } from "../../shared/utils.ts";
+import { errorMessage, logOperationalEvent } from "../../shared/utils.ts";
 import { createArtifactBatch, createCheckpointRequest } from "./checkpoint-payloads.ts";
 
 export interface CheckpointEmissionResult {
   deliveryIssues: DeliveryIssue[];
   artifactRefs: string[];
+  artifactManifest: ArtifactManifestSummary;
+  collectorStatus: CollectorStatusSummary;
 }
 
 export interface CheckpointEmissionInput {
@@ -42,9 +51,11 @@ export async function emitCheckpointArtifactsAndCallbacks({
   callbackClient,
   capturePipeline,
   artifactStore
-}: CheckpointEmissionInput): Promise<DeliveryIssue[]> {
-  const result = await emitCheckpointCollection({
+}: CheckpointEmissionInput): Promise<CheckpointEmissionResult> {
+  return emitCheckpointCollection({
     runId,
+    stepOrder,
+    plan,
     step,
     collection: await capturePipeline.collectCheckpoint({
       step,
@@ -60,8 +71,6 @@ export async function emitCheckpointArtifactsAndCallbacks({
     callbackClient,
     artifactStore
   });
-
-  return result.deliveryIssues;
 }
 
 export async function emitFailureCheckpointArtifactsAndCallbacks({
@@ -110,6 +119,8 @@ export async function emitFailureCheckpointArtifactsAndCallbacks({
 
     return await emitCheckpointCollection({
       runId,
+      stepOrder,
+      plan,
       step,
       collection,
       callbackClient,
@@ -124,25 +135,35 @@ export async function emitFailureCheckpointArtifactsAndCallbacks({
           message: `failure evidence capture failed: ${errorMessage(error)}`
         }
       ],
-      artifactRefs: []
+      artifactRefs: [],
+      artifactManifest: summarizeArtifactManifest({
+        requestedArtifacts: [],
+        storedArtifacts: []
+      }),
+      collectorStatus: createEmptyCollectorStatusSummary(plan)
     };
   }
 }
 
 async function emitCheckpointCollection({
   runId,
+  stepOrder,
+  plan,
   step,
   collection,
   callbackClient,
   artifactStore
 }: {
   runId: string;
+  stepOrder: number;
+  plan: ScenarioPlan;
   step: ScenarioStep;
   collection: Awaited<ReturnType<CapturePipeline["collectCheckpoint"]>>;
   callbackClient: CallbackClient;
   artifactStore: ArtifactStore;
 }): Promise<CheckpointEmissionResult> {
   const deliveryIssues: DeliveryIssue[] = [];
+  const collectorStatus = summarizeCheckpointCollectors(plan, collection);
 
   let storedArtifacts = [] as Awaited<ReturnType<ArtifactStore["persistArtifacts"]>>;
 
@@ -181,10 +202,42 @@ async function emitCheckpointCollection({
     });
   }
 
+  const artifactManifest = summarizeArtifactManifest({
+    requestedArtifacts: collection.artifacts,
+    storedArtifacts
+  });
+  logOperationalEvent(
+    "scenario-executor",
+    "artifact_manifest",
+    {
+      runId,
+      stepOrder,
+      stepKey: step.step_id,
+      requestedCount: artifactManifest.requestedCount,
+      storedCount: artifactManifest.storedCount,
+      requestedTypes: artifactManifest.requestedTypes,
+      storedTypes: artifactManifest.storedTypes,
+      totalStoredBytes: artifactManifest.totalStoredBytes,
+      artifactIds: artifactManifest.artifactIds,
+      storedKeys: artifactManifest.storedKeys,
+      deliveryIssueScopes: deliveryIssues.map((issue) => issue.scope),
+      collectorStatus
+    },
+    deliveryIssues.length > 0 || artifactManifest.storedCount < artifactManifest.requestedCount || hasFailedCollectorStatus(collectorStatus)
+      ? "warn"
+      : "info"
+  );
+
   return {
     deliveryIssues,
-    artifactRefs: storedArtifacts.map((artifact) => artifact.artifactId)
+    artifactRefs: storedArtifacts.map((artifact) => artifact.artifactId),
+    artifactManifest,
+    collectorStatus
   };
+}
+
+function hasFailedCollectorStatus(collectorStatus: CollectorStatusSummary): boolean {
+  return Object.values(collectorStatus).some((status) => status.status === "failed");
 }
 
 function createFailureBrowserCaptureOptions(plan: ScenarioPlan) {

@@ -2,6 +2,10 @@ import type { BrowserCaptureOptions, BrowserSession } from "../../browser/playwr
 import type { CallbackClient } from "../../callback/index.ts";
 import type { CapturePipeline, JourneyDepthContext } from "../../capture/index.ts";
 import type { DeliveryIssue } from "../../delivery/index.ts";
+import {
+  createEmptyCollectorStatusSummary,
+  type CollectorStatusSummary
+} from "../../observability/collectors.ts";
 import type { ArtifactStore } from "../../storage/index.ts";
 import type { ScenarioPlan, ScenarioStep } from "../../shared/contracts.ts";
 import { executeScenarioAction } from "../actions/index.ts";
@@ -24,6 +28,7 @@ export interface ScenarioStepExecutorInput {
 export interface ScenarioStepExecutionResult {
   stopRequested: boolean;
   deliveryIssues: DeliveryIssue[];
+  collectorStatus: CollectorStatusSummary;
 }
 
 export async function executeScenarioStep({
@@ -72,7 +77,7 @@ export async function executeScenarioStep({
     : undefined;
 
   if (step.checkpoint) {
-    deliveryIssues.push(...(await emitCheckpointArtifactsAndCallbacks({
+    const checkpointResult = await emitCheckpointArtifactsAndCallbacks({
       runId,
       stepOrder,
       step,
@@ -86,20 +91,70 @@ export async function executeScenarioStep({
       callbackClient,
       capturePipeline,
       artifactStore
-    })));
-  }
-
-  if (emitStepEvents) {
-    deliveryIssues.push(...(await emitStepEventBestEffort(callbackClient, runId, stepOrder, step.step_id, "STEP_COMPLETED", {
-      settle: settleResult,
-      finalUrl: pageSnapshot.finalUrl
-    })));
+    });
+    deliveryIssues.push(...checkpointResult.deliveryIssues);
+    return {
+      stopRequested: actionResult.stopRequested,
+      deliveryIssues: await appendStepCompletedEvent({
+        deliveryIssues,
+        emitStepEvents,
+        callbackClient,
+        runId,
+        stepOrder,
+        step,
+        settleResult,
+        pageSnapshot
+      }),
+      collectorStatus: checkpointResult.collectorStatus
+    };
   }
 
   return {
     stopRequested: actionResult.stopRequested,
-    deliveryIssues
+    deliveryIssues: await appendStepCompletedEvent({
+      deliveryIssues,
+      emitStepEvents,
+      callbackClient,
+      runId,
+      stepOrder,
+      step,
+      settleResult,
+      pageSnapshot
+    }),
+    collectorStatus: createEmptyCollectorStatusSummary()
   };
+}
+
+async function appendStepCompletedEvent({
+  deliveryIssues,
+  emitStepEvents,
+  callbackClient,
+  runId,
+  stepOrder,
+  step,
+  settleResult,
+  pageSnapshot
+}: {
+  deliveryIssues: DeliveryIssue[];
+  emitStepEvents: boolean;
+  callbackClient: CallbackClient;
+  runId: string;
+  stepOrder: number;
+  step: ScenarioStep;
+  settleResult: Awaited<ReturnType<BrowserSession["settle"]>>;
+  pageSnapshot: ReturnType<BrowserSession["snapshot"]>;
+}): Promise<DeliveryIssue[]> {
+  if (!emitStepEvents) {
+    return deliveryIssues;
+  }
+
+  return [
+    ...deliveryIssues,
+    ...(await emitStepEventBestEffort(callbackClient, runId, stepOrder, step.step_id, "STEP_COMPLETED", {
+      settle: settleResult,
+      finalUrl: pageSnapshot.finalUrl
+    }))
+  ];
 }
 
 function createBrowserCaptureOptions(plan: ScenarioPlan): BrowserCaptureOptions {

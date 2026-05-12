@@ -2,6 +2,7 @@ import type { BrowserSession } from "../browser/playwright/index.ts";
 import type { CallbackClient } from "../callback/index.ts";
 import type { CapturePipeline } from "../capture/index.ts";
 import { createDeliverySummary, mergeDeliveryIssues, type DeliveryIssue, type DeliverySummary } from "../delivery/index.ts";
+import { createEmptyCollectorStatusSummary, mergeCollectorStatusSummaries } from "../observability/collectors.ts";
 import { ScenarioExecutionError, type ScenarioExecutionSummary } from "../scenario/executor/index.ts";
 import { executeScenarioStep } from "../scenario/executor/step-executor.ts";
 import type { ArtifactStore } from "../storage/index.ts";
@@ -48,6 +49,7 @@ export async function executeAgentRun(input: AgentExecutorInput): Promise<AgentE
   const trace = createAgentTrace(input.task);
   const deliveryIssues: DeliveryIssue[] = [];
   let completedStepCount = 0;
+  let collectorStatus = createEmptyCollectorStatusSummary(input.runtimePlan);
 
   for (let turn = 1; turn <= config.maxTurns; turn += 1) {
     let observation: Awaited<ReturnType<typeof observePage>>;
@@ -165,6 +167,7 @@ export async function executeAgentRun(input: AgentExecutorInput): Promise<AgentE
           emitStepEvents: false
         }));
         deliveryIssues.push(...stepResult.deliveryIssues);
+        collectorStatus = mergeCollectorStatusSummaries(collectorStatus, stepResult.collectorStatus);
         postActionSnapshot = input.session.snapshot();
         turnTrace.actionResult = {
           actionType: decision.action.type,
@@ -232,7 +235,8 @@ export async function executeAgentRun(input: AgentExecutorInput): Promise<AgentE
           summary: {
             completedStepCount,
             failedStepCount: 1,
-            stopped: false
+            stopped: false,
+            collectorStatus
           },
           delivery: createDeliverySummary(mergeDeliveryIssues(deliveryIssues)),
           failedStepKey: step.step_id,
@@ -330,7 +334,8 @@ export async function executeAgentRun(input: AgentExecutorInput): Promise<AgentE
     summary: {
       completedStepCount,
       failedStepCount: 0,
-      stopped: shouldReportStopped(trace)
+      stopped: shouldReportStopped(trace),
+      collectorStatus
     },
     delivery: createDeliverySummary(mergeDeliveryIssues(deliveryIssues)),
     trace,

@@ -1243,19 +1243,47 @@ export interface RunnerCheckpointsRequest {
   checkpoints: Checkpoint[];
 }
 
+export type RunnerCollectorStatus = "success" | "failed" | "skipped";
+
+export interface RunnerCollectorStatusEntry {
+  status: RunnerCollectorStatus;
+  requested: boolean;
+  count: number;
+  reason?: string;
+}
+
+export interface RunnerCollectorStatusSummary {
+  screenshot: RunnerCollectorStatusEntry;
+  dom_snapshot: RunnerCollectorStatusEntry;
+  ax_tree: RunnerCollectorStatusEntry;
+  har: RunnerCollectorStatusEntry;
+  trace: RunnerCollectorStatusEntry;
+  performance: RunnerCollectorStatusEntry;
+  layout: RunnerCollectorStatusEntry;
+  network_timeline: RunnerCollectorStatusEntry;
+  visibility: RunnerCollectorStatusEntry;
+}
+
+export interface RunnerExecutionSummary {
+  completedStepCount: number;
+  failedStepCount: number;
+  /**
+   * True when runner execution stopped at a planned safety stop condition or
+   * after an explicit stop request. Planned scenario stops still complete the
+   * run; only a prior STOP_REQUESTED run becomes STOPPED.
+   */
+  stopped: boolean;
+  /**
+   * Per collector aggregate status across checkpoint and failure evidence capture.
+   * Optional for backward compatibility with older runner payloads.
+   */
+  collectorStatus?: RunnerCollectorStatusSummary;
+}
+
 export interface RunnerFinishedPayload {
   workerId: string;
   executionFinishedAt: string;
-  summary: {
-    completedStepCount: number;
-    failedStepCount: number;
-    /**
-     * True when runner execution stopped at a planned safety stop condition or
-     * after an explicit stop request. Planned scenario stops still complete the
-     * run; only a prior STOP_REQUESTED run becomes STOPPED.
-     */
-    stopped: boolean;
-  };
+  summary: RunnerExecutionSummary;
 }
 
 export interface RunnerFailedPayload {
@@ -1264,11 +1292,7 @@ export interface RunnerFailedPayload {
   failureCode: string;
   failureMessage: string;
   resultCompleteness: "NONE" | "PARTIAL" | "FINAL";
-  summary?: {
-    completedStepCount: number;
-    failedStepCount: number;
-    stopped: boolean;
-  };
+  summary?: RunnerExecutionSummary;
   failureArtifactRefs?: string[];
 }
 

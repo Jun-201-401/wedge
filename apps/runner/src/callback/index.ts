@@ -77,15 +77,17 @@ export async function sendWithRetry(
         logOperationalEvent(
           "callback",
           "retry_sequence_recovered",
-          {
+          createCallbackRetryLogDetails({
             callbackType,
             runId,
             failedAttempts: failureCount,
             recoveredOnAttempt: attempt,
             maxAttempts,
             firstErrorMessage,
-            lastErrorMessage: errorMessage(lastError)
-          },
+            lastErrorMessage: errorMessage(lastError),
+            appendOutboxOnFailure,
+            terminalAction: "recovered"
+          }),
           "warn"
         );
       }
@@ -108,14 +110,16 @@ export async function sendWithRetry(
   logOperationalEvent(
     "callback",
     "retry_sequence_exhausted",
-    {
+    createCallbackRetryLogDetails({
       callbackType,
       runId,
       failedAttempts: failureCount,
       maxAttempts,
       firstErrorMessage,
-      lastErrorMessage
-    },
+      lastErrorMessage,
+      appendOutboxOnFailure,
+      terminalAction: appendOutboxOnFailure ? "append_outbox_then_throw" : "throw"
+    }),
     "error"
   );
 
@@ -135,7 +139,9 @@ export async function sendWithRetry(
           callbackType,
           runId,
           attempts: maxAttempts,
-          errorMessage: lastErrorMessage
+          errorMessage: lastErrorMessage,
+          outboxAction: "appended",
+          httpStatus: parseHttpStatus(lastErrorMessage)
         },
         "error"
       );
@@ -147,4 +153,37 @@ export async function sendWithRetry(
   }
 
   throw new Error(`runner callback ${callbackType} failed after ${maxAttempts} attempts: ${lastErrorMessage}`);
+}
+
+function createCallbackRetryLogDetails(input: {
+  callbackType: CallbackType;
+  runId: string;
+  failedAttempts: number;
+  recoveredOnAttempt?: number;
+  maxAttempts: number;
+  firstErrorMessage: string | null;
+  lastErrorMessage: string;
+  appendOutboxOnFailure: boolean;
+  terminalAction: "recovered" | "append_outbox_then_throw" | "throw";
+}): Record<string, unknown> {
+  return {
+    callbackType: input.callbackType,
+    runId: input.runId,
+    failedAttempts: input.failedAttempts,
+    recoveredOnAttempt: input.recoveredOnAttempt,
+    maxAttempts: input.maxAttempts,
+    firstErrorMessage: input.firstErrorMessage,
+    lastErrorMessage: input.lastErrorMessage,
+    httpStatus: parseHttpStatus(input.lastErrorMessage),
+    outboxEnabled: input.appendOutboxOnFailure,
+    terminalAction: input.terminalAction
+  };
+}
+
+function parseHttpStatus(message: string): number | null {
+  const match = /status\s+(\d{3})\b/i.exec(message);
+  if (!match) {
+    return null;
+  }
+  return Number.parseInt(match[1], 10);
 }

@@ -473,11 +473,10 @@ test("[안전 정책] synthetic input이 금지되면 fill 액션을 실패 처�
 
   assert.match(callbackLog, /"callbackType":"accepted"/);
   assert.match(callbackLog, /"callbackType":"failed"/);
-  assert.deepEqual(failedCallback?.payload.summary, {
-    completedStepCount: 0,
-    failedStepCount: 1,
-    stopped: false
-  });
+  assert.equal(failedCallback?.payload.summary.completedStepCount, 0);
+  assert.equal(failedCallback?.payload.summary.failedStepCount, 1);
+  assert.equal(failedCallback?.payload.summary.stopped, false);
+  assert.equal(failedCallback?.payload.summary.collectorStatus.screenshot.status, "success");
   assert.equal(hasStepFailedEvent, true);
   assert.doesNotMatch(callbackLog, /"callbackType":"finished"/);
 });
