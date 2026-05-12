@@ -18,8 +18,8 @@ from app.rule_engine.scoring import friction_score, overall_risk, stage_scores_f
 from app.stage.stage_context_builder import StageContext, StageContextBuilder
 
 RELIABILITY_ACTION_CONTEXT_CRITERION_IDS = {"RELIABILITY-TECH-001", "RELIABILITY-LOADING-STUCK-001"}
-RELIABILITY_LOCATION_TYPES = {"network_failure", "console_error", "loading_state"}
-TOP_LEVEL_BOUNDS_COMPONENT_CRITERION_IDS = {"TARGET-SIZE-001", "COPY-LABEL-INTEGRITY-001"}
+RELIABILITY_LOCATION_TYPES = {"network_failure", "console_error", "loading_state", "page_ready_timing", "settle_response"}
+TOP_LEVEL_BOUNDS_COMPONENT_CRITERION_IDS = {"COPY-LABEL-INTEGRITY-001"}
 
 
 def analyze_evidence_packet(

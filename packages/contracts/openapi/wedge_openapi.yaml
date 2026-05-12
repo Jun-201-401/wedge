@@ -4229,9 +4229,19 @@ components:
         errorCode:
           type: string
           nullable: true
+          description: >-
+            Public error code for non-ready report states. When reportStatus is FAILED
+            because the latest AnalysisJob failed, this is ANALYSIS_FAILED. Internal
+            analyzer error codes are not exposed here.
+          example: ANALYSIS_FAILED
         errorMessage:
           type: string
           nullable: true
+          description: >-
+            Public-safe failure message. Failed AnalysisJob diagnostics are kept
+            internal and are projected as a generic report-generation failure
+            message.
+          example: Analysis failed before report generation.
       required:
       - id
       - runId
@@ -4600,9 +4610,19 @@ components:
         errorCode:
           type: string
           nullable: true
+          description: >-
+            Public error code for non-ready report states. When reportStatus is FAILED
+            because the latest AnalysisJob failed, this is ANALYSIS_FAILED. Internal
+            analyzer error codes are not exposed here.
+          example: ANALYSIS_FAILED
         errorMessage:
           type: string
           nullable: true
+          description: >-
+            Public-safe failure message. Failed AnalysisJob diagnostics are kept
+            internal and are projected as a generic report-generation failure
+            message.
+          example: Analysis failed before report generation.
         createdAt:
           type: string
           format: date-time

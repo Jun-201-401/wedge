@@ -29,11 +29,10 @@
 | PATH-CHOICE-OVERLOAD-001 | Path | FIRST_VIEW, VALUE, CTA | 한 viewport 안에 동시에 보이는 interactive 선택지가 과도하게 많은지 판단한다. |
 | FRICTION-FORM-001 | Friction | INPUT | 입력 필드에 목적을 알 수 있는 라벨이나 설명이 있는지 판단한다. |
 | RELIABILITY-TECH-001 | Reliability | CTA, INPUT, COMMIT | 사용자 행동 직후 네트워크 실패나 콘솔 오류가 있는지 판단한다. |
-| RELIABILITY-LOADING-STUCK-001 | Reliability | CTA, INPUT, COMMIT | 사용자 행동 이후 로딩 상태가 오래 지속되고 결과가 확인되지 않는지 판단한다. |
+| RELIABILITY-LOADING-STUCK-001 | Reliability | CTA, INPUT, COMMIT | 일반 페이지 전환 이후 다음 화면이 사용 가능한 상태로 렌더링되기까지 오래 걸리는지 판단한다. |
 | JOURNEY-GOAL-CTA-MISMATCH-001 | Path | VALUE, CTA, COMMIT | 실제 선택된 버튼이 시나리오 목표와 의미적으로 맞는지 판단한다. |
 | COPY-FLOW-QUALITY-001 | Clarity | FIRST_VIEW, VALUE, CTA, INPUT, COMMIT | 라벨이 요소의 역할과 주변 맥락을 제대로 설명하는지 판단한다. |
 | COPY-LABEL-INTEGRITY-001 | Clarity | FIRST_VIEW, VALUE, CTA, INPUT, COMMIT | 라벨이나 짧은 문구가 깨지거나 잘리거나 겹치지 않고 읽히는지 판단한다. |
-| TARGET-SIZE-001 | Friction | FIRST_VIEW, VALUE, CTA, INPUT | Google 검색창 기준 대비 검색 입력 영역이 충분한지 판단한다. |
 
 ## Spring/Runner Evidence 필수 데이터
 
@@ -53,7 +52,7 @@ Analyzer는 URL을 직접 방문해 화면을 수집하지 않는다. Spring이 
 | `checkpoints[].trigger.type` | 권장 | `click`, `input`, `goto` 같은 행동 구분. 클릭 이후 reliability, CTA mismatch 등 행동 관련 Rule에서 stage attribution에 사용한다. |
 | `checkpoints[].settle.status`, `checkpoints[].settle.duration_ms` | 권장 | loading stuck 판단의 보조 근거다. |
 | `checkpoints[].state.page.title`, `state.page.url`, `state.page.ready_state` | 권장 | 리포트 문맥과 디버깅에 사용한다. |
-| `checkpoints[].state.viewport.width`, `state.viewport.height` | 필수에 가까움 | viewport 기반 Rule, target size, problem component projection에 필요하다. 없으면 일부 Rule confidence가 낮아진다. |
+| `checkpoints[].state.viewport.width`, `state.viewport.height` | 필수에 가까움 | viewport 기반 Rule과 problem component projection에 필요하다. 없으면 일부 Rule confidence가 낮아진다. |
 | `checkpoints[].state.layout_summary.first_view.width`, `height` | 권장 | `state.viewport`가 없을 때 viewport fallback으로 사용한다. |
 | `checkpoints[].artifact_refs[]` | 권장 | screenshot artifact와 observation을 연결한다. |
 | `artifacts[]` | 권장 | screenshot, DOM snapshot 등 evidence artifact 목록이다. |
@@ -82,11 +81,10 @@ Analyzer는 URL을 직접 방문해 화면을 수집하지 않는다. Spring이 
 | `PATH-CHOICE-OVERLOAD-001` | `interactive_components` | `data.components[]` | `components[].clickable`, `role`, `visible`, `hidden`, `disabled`, `aria-hidden`, `aria-disabled`, `bounds`, checkpoint viewport | viewport 안 선택지 수를 세지 못하거나 DOM 전체 개수로 오탐/누락이 생긴다. |
 | `FRICTION-FORM-001` | `form_field` 또는 `missing_label` | `data.label_association`와 `source`에 `dom` 또는 `ax` 포함 | `label_text`, `accessible_name`, `placeholder`, `visible`, `bounds` | label association 근거가 없으면 의도적으로 `NOT_EVALUABLE` 처리한다. |
 | `RELIABILITY-TECH-001` | `network_failure`, `console_error` 또는 checkpoint state summary | `state.network_summary.failed_request_count` 또는 `state.console_summary.error_count` | observation 직접 제공 시 `type=network_failure/console_error`, `stage`, `source=["network"|"console"]` | run-level aggregate만 있으면 stage issue로 내지 않는다. checkpoint stage attribution이 필요하다. |
-| `RELIABILITY-LOADING-STUCK-001` | `loading_state`, 보조로 `settle_response` | `loading_visible=true`, `duration_ms` 또는 `settle_status` | `text`, `selector`, `bounds`, `source=["dom","layout","screenshot"]` | 로딩 지속과 결과 미확인을 구분하지 못한다. |
+| `RELIABILITY-LOADING-STUCK-001` | `page_ready_timing`, 보조로 `loading_state`/`settle_response` | 일반 전환 식별 필드와 `duration_ms` | `action_kind`, `url_changed`, `route_changed`, `main_content_changed`, `target_page_signals` | 일반 전환과 권한 요청/스트리밍/지도/결제/인증/WebGL 같은 예외 흐름을 구분하지 못한다. |
 | `JOURNEY-GOAL-CTA-MISMATCH-001` | `cta_candidate` | click checkpoint 안의 clicked CTA observation | `visible_text`, `accessible_name`, `target`, `clicked_in_scenario`, `scenario.goal`, semantic classification result | clicked CTA와 목표 불일치를 판단할 근거가 부족하다. |
 | `COPY-FLOW-QUALITY-001` | `cta_candidate`, `interactive_components`, `form_field`, `form_error`, `required_field`, `missing_label`, `error_recovery`, `final_submit_candidate`, `other` | 명시 신호 `label_role_alignment.status="mismatch"` 또는 `issue_type`/`label_issue_type` | `expected_meaning`, `visual_prominence`, `clicked_in_scenario`, `is_primary_like`, `bounds`, screenshot URL for GMS | 라벨-역할 불일치 issue를 만들지 못한다. GMS 이미지 보조도 screenshot URL 없이는 동작하지 않는다. |
 | `COPY-LABEL-INTEGRITY-001` | `first_view_message`, `value_proposition`, `feature_summary`, `cta_candidate`, `interactive_components`, `form_field`, `form_error`, `required_field`, `missing_label`, `final_submit_candidate` | 명시 신호 `label_integrity.status="issue"` 또는 `issue_type`/`integrity_issue_type` | `text`/`visible_text`, `visual_prominence`, `clicked_in_scenario`, `is_primary_like`, `bounds`, screenshot URL for GMS | 깨짐/잘림/겹침/가독성 issue를 만들지 못한다. 단, replacement character 등 일부는 deterministic resolver가 보강할 수 있다. |
-| `TARGET-SIZE-001` | `form_field`, `interactive_components`, `cta_candidate`, `final_submit_candidate` | search 후보 식별 필드와 `bounds.width`, `bounds.height` | `role="searchbox"`, `input_type="search"`, `placeholder`/`label_text`/`accessible_name`/`selector`에 `검색` 또는 `search`, checkpoint viewport width | 검색창 크기 기준을 계산하지 못하거나 width ratio confidence가 낮아진다. |
 
 ### 최소 evidence packet 예시
 
@@ -261,76 +259,91 @@ GMS 결과는 Rule을 단독으로 발생시키지 않고, severity 조정이나
 
 ### 목적
 
-`RELIABILITY-LOADING-STUCK-001`은 사용자 행동 이후 로딩 상태가 오래 지속되고, 성공/실패/상태 변화 같은 결과가 확인되지 않아 진행이 멈춘 것처럼 보이는지 판단한다.
+`RELIABILITY-LOADING-STUCK-001`은 사용자 행동 이후 일반 페이지 전환이나 라우트 전환이 발생했지만 다음 페이지 또는 결과 화면이 사용 가능한 상태로 렌더링되기까지 오래 걸리는지 판단한다.
 
-이 Rule은 `RELIABILITY-TECH-001`과 다르다. `RELIABILITY-TECH-001`은 네트워크 실패나 콘솔 오류처럼 명시적인 기술 오류를 다룬다. `RELIABILITY-LOADING-STUCK-001`은 오류가 관찰되지 않더라도 로딩이 끝나지 않거나 결과 피드백이 없는 상태를 다룬다.
+이 Rule은 `RELIABILITY-TECH-001`과 다르다. `RELIABILITY-TECH-001`은 네트워크 실패나 콘솔 오류처럼 명시적인 기술 오류를 다룬다. `RELIABILITY-LOADING-STUCK-001`은 기술 오류가 없더라도 일반적인 화면 전환이 느려 사용자가 멈춘 것처럼 느낄 수 있는 상황을 다룬다.
 
 ### 문제로 보는 경우
 
-- 클릭, 제출, 입력 완료 같은 사용자 행동 이후 loading spinner, skeleton, progress UI가 오래 유지된다.
-- `settle_status`가 `timeout` 또는 `stuck`으로 끝났고 성공/실패/상태 변화가 확인되지 않는다.
-- 로딩이 8초 이상 지속되지만 사용자가 다음 상태를 알 수 없다.
-- COMMIT 단계에서 결제, 제출, 예약, 삭제 같은 중요한 행동 이후 로딩이 끝나지 않는다.
+- 클릭 이후 내부 링크, 메뉴, 탭, route change 같은 일반 전환이 발생했다.
+- 다음 화면의 main content 또는 route가 바뀌었지만 page ready 시간이 5초 이상이다.
+- 시뮬레이션, AI 생성, 업로드, 결제, 인증, 외부 이동 같은 heavy/exception 신호가 없다.
+- 명시적 네트워크 실패나 콘솔 오류가 없다.
 
 ### 문제로 보지 않는 경우
 
-- 로딩이 짧게 나타난 뒤 정상적으로 결과가 확인된다.
-- 같은 stage에 `settle_response.settle_status = settled` 같은 확정 결과가 있다.
-- `settle_item_count_change`에서 기대한 상태 변화가 확인된다.
-- 3초 미만의 `pending` 로딩처럼 정상 처리 중으로 볼 수 있는 짧은 대기다.
-- 명시적 네트워크 실패나 콘솔 오류가 주된 원인인 경우는 `RELIABILITY-TECH-001`에서 우선 다룬다.
+- 일반 전환이 아니라 submit, download, modal, 새 탭, 같은 페이지 anchor scroll이다.
+- `target_page_signals`에서 권한 요청, 스트리밍, 지도, 결제, 인증 redirect, WebGL 신호가 확인된다.
+- 같은 stage에 네트워크 실패나 콘솔 오류가 있어 `RELIABILITY-TECH-001`에서 다루는 상황이다.
+- page ready 시간이 5초 미만이다.
 
 ### 입력 신호
 
-우선 입력은 `loading_state` observation이다.
+우선 입력은 `page_ready_timing` observation이다.
 
 ```json
 {
-  "observation_id": "obs_loading_state",
-  "type": "loading_state",
+  "observation_id": "obs_page_ready_timing",
+  "type": "page_ready_timing",
   "stage": "CTA",
-  "source": ["dom", "layout", "screenshot"],
+  "source": ["performance", "dom", "layout", "scenario_log"],
   "confidence": 0.86,
   "data": {
-    "loading_visible": true,
-    "duration_ms": 9000,
-    "settle_status": "timeout",
-    "text": "로딩 중...",
-    "selector": ".spinner",
-    "bounds": {
-      "x": 680,
-      "y": 420,
-      "width": 80,
-      "height": 80
+    "trigger_type": "click",
+    "action_kind": "link_click",
+    "url_changed": true,
+    "route_changed": true,
+    "main_content_changed": true,
+    "same_origin": true,
+    "duration_ms": 6200,
+    "target_page_signals": {
+      "has_permission_prompt": false,
+      "has_streaming_response": false,
+      "has_map": false,
+      "has_webgl": false,
+      "has_payment_form": false,
+      "has_auth_redirect": false
     }
   }
 }
 ```
 
-보조 입력으로 `settle_response`를 사용할 수 있다. `loading_state`가 없더라도 `settle_response.data.settle_status`가 `timeout`, `stuck`, 또는 오래 지속된 `pending`이면 후보가 될 수 있다.
+보조 입력으로 `loading_state`나 `settle_response`를 사용할 수 있다. 다만 이 경우에도 `action_kind`, `url_changed`/`route_changed`/`main_content_changed`, `target_page_signals` 같은 일반 전환 판별 필드가 있어야 한다.
+
+### 일반 전환 판별
+
+일반 전환으로 보려면 다음 조건을 만족해야 한다.
+
+```text
+trigger_type == "click"
+action_kind in ["navigation", "route_change", "link_click", "menu_click", "tab_change"]
+url_changed 또는 route_changed 또는 main_content_changed 또는 tab_panel_changed 또는 history_changed
+same_origin != false
+http_method 없음 또는 GET
+form_submit/download_triggered/external_redirect/modal_opened/target_blank가 아님
+target_page_signals의 예외 신호가 모두 false
+```
+
+예외 신호는 다음 6개만 사용한다.
+
+```text
+has_permission_prompt, has_streaming_response, has_map,
+has_payment_form, has_auth_redirect, has_webgl
+```
 
 ### 판정
 
 | severity | 조건 |
 | --- | --- |
-| 0 | 로딩이 해소되고 결과가 확인된다. |
-| 1 | 로딩이 `3000-7999ms` 지속되고 결과가 확인되지 않는다. |
-| 2 | 로딩이 `8000ms` 이상 지속되거나 `settle_status`가 `timeout` 또는 `stuck`이다. |
-| 3 | COMMIT 단계에서 `timeout`/`stuck`이 발생하거나 로딩이 `15000ms` 이상 지속된다. |
-
-### 결과 확인 예외
-
-다음 신호가 같은 stage에 있으면 loading issue를 만들지 않는다.
-
-- `settle_response.data.settle_status`가 `settled`, `success`, `succeeded`, `complete`, `completed` 중 하나다.
-- `settle_item_count_change.data.current_count >= expected_count`로 기대한 변화가 확인된다.
-- 향후 success toast, URL 변화, 완료 메시지 observation이 추가되면 같은 예외 그룹으로 다룬다.
+| 0 | 일반 전환이 아니거나, 일반 전환이 5초 미만에 준비된다. |
+| 2 | 일반 전환의 `duration_ms`가 `5000ms` 이상이다. |
+| 3 | 일반 전환의 `duration_ms`가 `8000ms` 이상이거나 COMMIT stage 전환이 지연된다. |
 
 ### 출력 영향
 
-- `evidence_refs`는 문제가 된 `loading_state` 또는 `settle_response` observation을 가리킨다.
-- signal에는 `loading_duration_ms`, threshold, `settle_status`를 포함한다.
-- summary는 “로딩이 길다”보다 “결과가 확인되지 않아 진행이 멈춘 것처럼 보인다”는 사용자 영향으로 설명한다.
+- `evidence_refs`는 문제가 된 `page_ready_timing`, `loading_state`, 또는 `settle_response` observation을 가리킨다.
+- signal에는 `page_ready_threshold_ms`, `duration_ms`, 일반 전환 판별 결과를 포함한다.
+- summary는 “로딩이 길다”보다 “일반 전환 후 다음 화면이 사용 가능한 상태가 되기까지 오래 걸린다”는 사용자 영향으로 설명한다.
 
 ## COPY-FLOW-QUALITY-001
 
@@ -491,43 +504,3 @@ Analyzer는 LLM 응답을 그대로 신뢰하지 않고, candidate_id, issue_typ
 - `1.0`: 일반적인 읽기 무결성 문제다.
 - `1.15`: 주요 버튼, 입력, 실제 클릭 경로 주변 문구라 개선 효과가 크다.
 - `1.3`: 핵심 행동, 입력, 완료 단계의 문구가 읽히지 않아 큰 마찰을 만들 수 있다.
-
-## TARGET-SIZE-001
-
-### 목적
-
-`TARGET-SIZE-001`은 MVP에서 검색창만 대상으로 한다. 검색 입력창의 실제 입력 영역이 Google 검색창 기준보다 지나치게 작아 사용자가 검색창을 선택하거나 검색어를 입력하기 어려운지 판단한다.
-
-이 Rule부터는 `fix_leverage`를 산출하거나 issue payload에 포함하지 않는다. `priority_score`는 기본 가중치 1.0으로 계산한다.
-
-### 기준
-
-Google 검색창을 기준 모델로 두되, 모든 화면에 584px을 강제하지 않는다.
-
-- 기준 높이: `44px`
-- 기준 폭: `min(584px, viewport_width - 32px)`
-- 폭 비율: `search_width / 기준 폭`
-
-### 판정
-
-| severity | 조건 |
-| --- | --- |
-| 0 | 높이 `40px` 이상이고 폭 비율 `0.75` 이상 |
-| 1 | 높이 `32-39px` 또는 폭 비율 `0.55-0.75` |
-| 2 | 높이 `32px` 미만, 폭 `100px` 미만, 또는 폭 비율 `0.55` 미만 |
-| 3 | 실제 시나리오에서 검색창을 사용했고 높이 `32px` 미만, 폭 `100px` 미만, 또는 폭 비율 `0.45` 미만 |
-
-### 검색창 식별
-
-다음 중 하나에 해당하면 검색창 후보로 본다.
-
-- `role = searchbox`
-- `input_type`, `type`, `component_type`이 `search`
-- `placeholder`, `accessible_name`, `label_text`, `selector` 등에 `검색` 또는 `search`가 포함됨
-
-### 문제로 보지 않는 경우
-
-- 검색 기능이 아닌 일반 입력창이다.
-- 검색창의 `bounds`가 없다.
-- Google 기준 대비 충분한 높이와 폭을 가진다.
-- 단순히 디자인상 작아 보이지만 수치 기준을 충족한다.

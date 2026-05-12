@@ -136,8 +136,8 @@ public class RunnerCallbackService {
             return duplicateResponse;
         }
 
-        runService.markRunningIfStarting(runId);
-        RunResponse run = runService.finishRun(runId, command.stopped());
+        RunResponse running = runService.markRunningIfStarting(runId);
+        RunResponse run = runService.finishRun(running, command.stopped());
         return RunnerCallbackAckResponse.terminal(run);
     }
 
