@@ -468,11 +468,11 @@ def _warning_summary(stage: DecisionStage, issues: list[dict[str, Any]]) -> str:
 
 def _stage_pass_summary(stage: DecisionStage) -> str:
     return {
-        "FIRST_VIEW": "첫 화면에서 판단에 필요한 evidence가 관찰되었고 P0 issue는 감지되지 않았습니다.",
-        "VALUE": "가치 이해 단계 evidence가 관찰되었고 P0 issue는 감지되지 않았습니다.",
-        "CTA": "행동 선택 단계 evidence가 관찰되었고 P0 issue는 감지되지 않았습니다.",
-        "INPUT": "입력 진행 단계 evidence가 관찰되었고 P0 issue는 감지되지 않았습니다.",
-        "COMMIT": "최종 확정 단계 evidence가 관찰되었고 P0 issue는 감지되지 않았습니다.",
+        "FIRST_VIEW": "첫 화면에서 판단에 필요한 화면 정보가 확인되었고 큰 문제는 발견되지 않았습니다.",
+        "VALUE": "가치 이해 단계에서 판단에 필요한 화면 정보가 확인되었고 큰 문제는 발견되지 않았습니다.",
+        "CTA": "행동 선택 단계에서 판단에 필요한 화면 정보가 확인되었고 큰 문제는 발견되지 않았습니다.",
+        "INPUT": "입력 진행 단계에서 판단에 필요한 화면 정보가 확인되었고 큰 문제는 발견되지 않았습니다.",
+        "COMMIT": "최종 확정 단계에서 판단에 필요한 화면 정보가 확인되었고 큰 문제는 발견되지 않았습니다.",
     }[stage]
 
 
@@ -489,29 +489,101 @@ def _scenario_mismatch_report(packet: dict[str, Any]) -> dict[str, Any] | None:
     return {
         "scenario_type": scenario_fit.get("scenario_type") or "CONTENT_ONLY",
         "scenario_fit_status": scenario_fit.get("scenario_fit_status") or "UNKNOWN",
-        "block_reason": scenario_fit.get("reason") or "Selected scenario does not fit the observed page.",
+        "block_reason": scenario_fit.get("reason") or "선택한 점검 시나리오가 현재 페이지에서 확인된 흐름과 맞지 않습니다.",
         "evidence_refs": list(scenario_fit.get("evidence_refs") or []),
         "recommended_alternatives": list(scenario_fit.get("recommended_alternatives") or []),
-        "user_message": "선택한 시나리오가 현재 페이지와 맞지 않아 UX issue와 분리해 보고합니다.",
+        "user_message": "선택한 시나리오가 현재 페이지와 맞지 않아 일반 개선 항목과 분리해 보고합니다.",
     }
+
+
+REPORT_COPY_REPLACEMENTS = (
+    ("핵심 CTA를 decision area 안에 하나의 primary 스타일로 노출하기", "가장 중요한 행동 버튼을 결정 영역 안에서 하나만 명확하게 강조하기"),
+    ("핵심 CTA를 1개로 정하고 보조 CTA는 secondary 스타일로 낮추기", "핵심 행동 버튼은 하나만 강조하고 보조 행동은 덜 눈에 띄는 스타일로 정리하기"),
+    ("여러 primary급 CTA가 경쟁해", "강조된 행동 버튼이 여러 개 경쟁해"),
+    ("primary-like CTA", "강조된 행동 버튼"),
+    ("primary급 CTA가", "강조된 행동 버튼이"),
+    ("primary급 CTA", "강조된 행동 버튼"),
+    ("primary CTA가", "핵심 행동 버튼이"),
+    ("primary CTA를", "핵심 행동 버튼을"),
+    ("primary CTA", "핵심 행동 버튼"),
+    ("primary 스타일", "강조 스타일"),
+    ("CTA cluster evidence", "행동 버튼 묶음"),
+    ("CTA를", "행동 버튼을"),
+    ("CTA는", "행동 버튼은"),
+    ("CTA가", "행동 버튼이"),
+    ("CTA", "행동 버튼"),
+    ("secondary", "보조"),
+    ("decision area", "결정 영역"),
+    ("decision stage", "결정 순간"),
+)
+
+
+def _plain_report_text(text: str) -> str:
+    normalized = text
+    for source, replacement in REPORT_COPY_REPLACEMENTS:
+        normalized = normalized.replace(source, replacement)
+    return normalized
+
+
+def _text_items(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [_plain_report_text(str(item).strip()) for item in value if str(item).strip()]
+
+
+def _first_text(*values: Any) -> str | None:
+    for value in values:
+        if isinstance(value, str) and value.strip():
+            return _plain_report_text(value.strip())
+    return None
+
+
+def _nudge_rationale(issue: dict[str, Any]) -> str:
+    summary = _first_text(issue.get("summary"))
+    impact = _first_text(issue.get("impact_hypothesis"))
+    observations = _text_items(issue.get("observations"))
+    if summary and impact and impact != summary:
+        return f"{summary} {impact}"
+    if summary:
+        return summary
+    if impact:
+        return impact
+    if observations:
+        return f"{observations[0]} 이 신호는 사용자가 다음 행동을 판단하는 데 방해가 될 수 있습니다."
+    return "분석 중 사용자가 다음 행동을 판단하기 어렵게 만들 수 있는 신호가 관찰되었습니다."
+
+
+def _nudge_expected_effect(issue: dict[str, Any]) -> str:
+    stage = str(issue.get("stage") or "")
+    if stage == "FIRST_VIEW":
+        return "첫 화면에서 사용자가 핵심 내용을 더 빠르게 이해할 수 있습니다."
+    if stage == "VALUE":
+        return "사용자가 서비스의 가치와 다음 행동 이유를 더 쉽게 판단할 수 있습니다."
+    if stage == "CTA":
+        return "사용자가 중요한 행동을 더 명확하게 선택할 수 있습니다."
+    if stage == "INPUT":
+        return "입력 과정에서 망설임과 오류 가능성을 줄일 수 있습니다."
+    if stage == "COMMIT":
+        return "최종 확인 단계에서 이탈 가능성을 줄이고 진행 신뢰도를 높일 수 있습니다."
+    return "사용자가 다음 행동을 더 명확하게 판단할 수 있습니다."
 
 
 def _nudges_from_issues(issues: list[dict[str, Any]]) -> list[dict[str, Any]]:
     nudges: list[dict[str, Any]] = []
     for index, issue in enumerate(issues, start=1):
-        recommendations = issue.get("recommendations") or []
-        recommendation = str(recommendations[0]) if recommendations else "관찰된 evidence를 기준으로 UI 흐름을 단순화합니다."
-        questions = issue.get("validation_questions") or []
+        recommendations = _text_items(issue.get("recommendations"))
+        recommendation = recommendations[0] if recommendations else "가장 중요한 행동과 보조 정보를 구분해 사용자가 다음 단계를 쉽게 선택할 수 있도록 정리하기"
+        questions = _text_items(issue.get("validation_questions"))
         nudges.append(
             {
                 "nudge_id": f"nudge_{index:03d}",
                 "issue_id": issue["issue_id"],
-                "title": str(issue.get("summary", "개선 제안"))[:80],
-                "rationale": f"{issue['criterion_id']} rule hit와 evidence_refs에 근거합니다.",
+                "title": (_first_text(issue.get("summary")) or "개선 제안")[:80],
+                "rationale": _nudge_rationale(issue),
                 "recommendation": recommendation,
                 "difficulty": "LOW" if int(issue.get("severity", 1)) <= 1 else "MEDIUM",
-                "expected_effect": "사용자 결정 단계의 마찰을 낮출 수 있습니다.",
-                "validation_question": str(questions[0]) if questions else "수정 후 같은 evidence 수집에서 issue가 재현되지 않는가?",
+                "expected_effect": _nudge_expected_effect(issue),
+                "validation_question": questions[0] if questions else "수정 후 사용자가 같은 화면에서 다음 행동을 더 명확하게 이해할 수 있는가?",
             }
         )
     return nudges

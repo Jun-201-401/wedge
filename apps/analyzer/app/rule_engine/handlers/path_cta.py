@@ -78,12 +78,12 @@ def evaluate_path_cta_presence(rule: dict[str, Any], context: StageContext) -> R
             severity=severity,
             confidence=count_confidence,
             evidence_refs=count_refs,
-            observations=["CTA cluster evidence에서 primary-like CTA가 0개로 확인됨"],
+            observations=["사용자가 바로 알아볼 만큼 강조된 핵심 행동 버튼이 확인되지 않음"],
             signals=["primary_like_cta_count=0"],
-            summary="핵심 행동을 시작할 primary CTA가 충분히 드러나지 않아 다음 행동 선택이 어려울 수 있습니다.",
+            summary="핵심 행동 버튼이 충분히 드러나지 않아 사용자가 다음 행동을 바로 선택하기 어려울 수 있습니다.",
             impact_hypothesis="사용자는 다음에 눌러야 할 핵심 행동을 바로 식별하지 못해 전환 시작이 지연될 수 있습니다.",
-            recommendations=["핵심 CTA를 decision area 안에 하나의 primary 스타일로 노출하기"],
-            validation_questions=["사용자는 첫 화면 또는 CTA 영역에서 3초 안에 핵심 CTA를 식별하는가?"],
+            recommendations=["가장 중요한 행동 버튼을 결정 영역 안에서 하나만 명확하게 강조하기"],
+            validation_questions=["사용자는 첫 화면 또는 행동 버튼 영역에서 3초 안에 가장 중요한 버튼을 식별하는가?"],
         )
 
     # Missing or weak CTA-specific evidence is NOT_EVALUABLE internally in
@@ -102,13 +102,13 @@ def evaluate_path_cta_competition(rule: dict[str, Any], context: StageContext) -
         severity=2,
         confidence=confidence,
         evidence_refs=refs,
-        observations=[f"같은 decision stage에서 primary급 CTA {count}개가 동시에 노출됨"],
+        observations=[f"같은 결정 순간에서 강조된 행동 버튼 {count}개가 동시에 노출됨"],
         signals=["primary_like_cta_count>=3", "행동 경로 분산"],
-        summary="같은 결정 순간에서 여러 primary급 CTA가 경쟁해 사용자가 첫 행동을 고르기 어려울 수 있습니다.",
+        summary="같은 결정 순간에서 강조된 행동 버튼이 여러 개 경쟁해 사용자가 첫 행동을 고르기 어려울 수 있습니다.",
         impact_hypothesis="무료 시작 또는 문의 같은 핵심 전환 행동의 시작률이 낮아질 수 있습니다.",
         recommendations=[
-            "핵심 CTA를 1개로 정하고 보조 CTA는 secondary 스타일로 낮추기",
-            "CTA 주변 카피에서 각 행동의 차이를 명확히 설명하기",
+            "핵심 행동 버튼은 하나만 강조하고 보조 행동은 덜 눈에 띄는 스타일로 정리하기",
+            "버튼 주변 문구에서 각 행동의 차이를 명확히 설명하기",
         ],
         validation_questions=["사용자는 첫 화면에서 어떤 버튼을 눌러야 하는지 바로 이해했는가?"],
     )

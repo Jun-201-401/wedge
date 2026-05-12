@@ -26,11 +26,11 @@ def evaluate_form_labels(rule: dict[str, Any], context: StageContext) -> RuleHit
             severity=2,
             confidence=max(float(record.observation.get("confidence", 0.75)) for record in explicit_missing),
             evidence_refs=refs,
-            observations=["입력 필드 label 또는 accessible name 누락이 관찰됨"],
+            observations=["입력칸의 목적을 알려주는 이름이나 안내 문구가 확인되지 않음"],
             signals=["missing_label"],
-            summary="입력 필드의 목적을 알려주는 label 또는 instruction이 부족해 입력 진행이 어려울 수 있습니다.",
+            summary="입력칸의 목적을 알려주는 이름이나 안내 문구가 부족해 사용자가 무엇을 입력해야 하는지 헷갈릴 수 있습니다.",
             impact_hypothesis="사용자가 무엇을 입력해야 하는지 확신하지 못해 입력 오류나 이탈이 늘 수 있습니다.",
-            recommendations=["각 입력 필드에 visible label 또는 accessible name을 연결하기"],
+            recommendations=["각 입력칸의 목적을 화면에 보이게 표시하거나 보조기술이 읽을 수 있도록 연결하기"],
             validation_questions=["스크린리더와 시각 사용자 모두 필드 목적을 즉시 이해하는가?"],
         )
 
@@ -53,11 +53,11 @@ def evaluate_form_labels(rule: dict[str, Any], context: StageContext) -> RuleHit
             severity=severity,
             confidence=min(confidence, 0.78),
             evidence_refs=[record.ref],
-            observations=["visible form field에 명확한 label/accessibile name이 확인되지 않음"],
+            observations=["화면에 보이는 입력칸에서 명확한 이름이나 안내 문구가 확인되지 않음"],
             signals=["placeholder_only" if placeholder else "missing_label"],
-            summary="입력 필드의 목적을 알려주는 label 또는 instruction이 부족해 입력 진행이 어려울 수 있습니다.",
+            summary="입력칸의 목적을 알려주는 이름이나 안내 문구가 부족해 사용자가 무엇을 입력해야 하는지 헷갈릴 수 있습니다.",
             impact_hypothesis="사용자가 무엇을 입력해야 하는지 확신하지 못해 입력 오류나 이탈이 늘 수 있습니다.",
-            recommendations=["placeholder에만 의존하지 말고 visible label 또는 aria-labelledby를 제공하기"],
-            validation_questions=["placeholder가 사라진 뒤에도 사용자는 필드 목적을 알 수 있는가?"],
+            recommendations=["입력 예시 문구에만 의존하지 말고 입력칸의 이름을 화면에 계속 보이게 표시하기"],
+            validation_questions=["입력 예시 문구가 사라진 뒤에도 사용자는 입력칸의 목적을 알 수 있는가?"],
         )
     return None
