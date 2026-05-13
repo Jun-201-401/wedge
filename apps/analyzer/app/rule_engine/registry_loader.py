@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 from app.contracts.stages import is_decision_stage
 from app.rule_engine.contract_schema import schema_enum, schema_properties, schema_required
@@ -15,6 +16,7 @@ REQUIRED_RULE_FIELDS = schema_required(("$defs", "rule"))
 AXES = schema_enum("axis")
 EVIDENCE_LEVELS = schema_enum("evidence_level")
 MEASUREMENT_SOURCES = schema_enum("source")
+REFERENCE_FIELDS = {"label", "publisher", "title", "basisSummary", "url"}
 
 
 class RuleRegistryError(ValueError):
@@ -68,6 +70,28 @@ def _require_string_list(rule: dict[str, Any], field: str, criterion_id: str) ->
     return value
 
 
+def _validate_references(rule: dict[str, Any], criterion_id: str) -> None:
+    references = rule.get("references")
+    if references is None:
+        return
+    if not isinstance(references, list):
+        raise RuleRegistryError(f"Rule {criterion_id} references must be a list")
+    for index, reference in enumerate(references):
+        if not isinstance(reference, dict):
+            raise RuleRegistryError(f"Rule {criterion_id} references[{index}] must be an object")
+        fields = set(reference)
+        if fields != REFERENCE_FIELDS:
+            raise RuleRegistryError(
+                f"Rule {criterion_id} references[{index}] must contain exactly {sorted(REFERENCE_FIELDS)}"
+            )
+        for field in REFERENCE_FIELDS:
+            if not isinstance(reference[field], str) or not reference[field]:
+                raise RuleRegistryError(f"Rule {criterion_id} references[{index}].{field} must be a non-empty string")
+        parsed_url = urlparse(reference["url"])
+        if parsed_url.scheme not in {"http", "https"} or not parsed_url.netloc:
+            raise RuleRegistryError(f"Rule {criterion_id} references[{index}].url must be an absolute http(s) URL")
+
+
 def _validate_rule(rule: Any, index: int) -> None:
     if not isinstance(rule, dict):
         raise RuleRegistryError(f"Rule at index {index} must be an object")
@@ -89,6 +113,7 @@ def _validate_rule(rule: Any, index: int) -> None:
     _require_string_list(rule, "required_observations", criterion_id)
     if "source_refs" in rule:
         _require_string_list(rule, "source_refs", criterion_id)
+    _validate_references(rule, criterion_id)
     if "exceptions" in rule:
         _require_string_list(rule, "exceptions", criterion_id)
     if "fix_leverage_default" in rule:

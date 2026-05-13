@@ -18,6 +18,7 @@ class RuleHit:
     priority_score: float
     evidence_level: str
     evidence_refs: list[str]
+    references: list[dict[str, Any]] = field(default_factory=list)
     observations: list[str] = field(default_factory=list)
     signals: list[str] = field(default_factory=list)
     fix_leverage: float = 1.0
@@ -38,6 +39,7 @@ class RuleHit:
             "priority_score": self.priority_score,
             "evidence_level": self.evidence_level,
             "evidence_refs": list(self.evidence_refs),
+            "references": [dict(reference) for reference in self.references],
             "observations": list(self.observations),
             "signals": list(self.signals),
             "fix_leverage": self.fix_leverage,

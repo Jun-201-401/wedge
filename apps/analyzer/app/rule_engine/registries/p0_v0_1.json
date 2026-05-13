@@ -39,7 +39,16 @@
       "confidence_rule": "Use cluster observation confidence when present; otherwise use aggregate-signal medium confidence.",
       "fix_leverage_default": 1.0,
       "output_template": "같은 결정 순간에서 여러 primary급 CTA가 경쟁해 사용자가 첫 행동을 고르기 어려울 수 있습니다.",
-      "source_refs": ["docs/05_judge_scoring_validation.md#11-나머지-p0-rule-최소-정책"]
+      "source_refs": ["docs/05_judge_scoring_validation.md#11-나머지-p0-rule-최소-정책"],
+      "references": [
+        {
+          "label": "GOV.UK Buttons",
+          "publisher": "GOV.UK",
+          "title": "Button component",
+          "basisSummary": "Buttons should communicate the action users can take, so competing primary-looking actions should be kept clear and intentional.",
+          "url": "https://design-system.service.gov.uk/components/button/"
+        }
+      ]
     },
     {
       "criterion_id": "PATH-CHOICE-OVERLOAD-001",
@@ -78,7 +87,16 @@
       "confidence_rule": "Cap confidence if AX or label relation evidence is absent.",
       "fix_leverage_default": 1.0,
       "output_template": "입력 필드의 목적을 알려주는 label 또는 instruction이 부족해 입력 진행이 어려울 수 있습니다.",
-      "source_refs": ["docs/05_judge_scoring_validation.md#10-friction-form-001-상세"]
+      "source_refs": ["docs/05_judge_scoring_validation.md#10-friction-form-001-상세"],
+      "references": [
+        {
+          "label": "WCAG 3.3.2",
+          "publisher": "W3C",
+          "title": "Labels or Instructions",
+          "basisSummary": "When a screen requires user input, labels or instructions should be provided so users know what to enter.",
+          "url": "https://www.w3.org/WAI/WCAG22/Understanding/labels-or-instructions.html"
+        }
+      ]
     },
     {
       "criterion_id": "COPY-FLOW-QUALITY-001",

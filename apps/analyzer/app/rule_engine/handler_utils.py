@@ -27,6 +27,7 @@ def base_hit(
     fix_leverage: float | None = None,
 ) -> RuleHit:
     hit_fix_leverage = float(fix_leverage if fix_leverage is not None else rule.get("fix_leverage_default", 1.0))
+    references = rule.get("references", [])
     return RuleHit(
         criterion_id=str(rule["criterion_id"]),
         stage=context.stage,
@@ -41,6 +42,7 @@ def base_hit(
         ),
         evidence_level=str(rule["evidence_level"]),
         evidence_refs=evidence_refs,
+        references=[dict(reference) for reference in references],
         observations=observations,
         signals=signals,
         fix_leverage=hit_fix_leverage,
