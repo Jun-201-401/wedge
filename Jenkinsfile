@@ -172,7 +172,7 @@ set -e
 
 GIT_AUTH_HEADER="$(printf '%s:%s' "$GITLAB_RO_USER" "$GITLAB_RO_TOKEN" | base64 | tr -d '\n')"
 
-ssh -i "$EC2_KEY" $SSH_OPTS "$EC2_USER@$DEPLOY_HOST" "GIT_AUTH_HEADER='$GIT_AUTH_HEADER' GIT_URL='$GIT_URL' GIT_BRANCH='$GIT_BRANCH' MIGRATION_FILES_CHANGED='${MIGRATION_FILES_CHANGED:-false}' RUN_DB_MIGRATION='${RUN_DB_MIGRATION:-false}' bash -lc 'deploy_script=\$(mktemp /tmp/wedge-jenkins-deploy.XXXXXX.sh); cat > \"\$deploy_script\"; bash \"\$deploy_script\"; status=\$?; rm -f \"\$deploy_script\"; exit \$status'" << 'EOF'
+ssh -i "$EC2_KEY" $SSH_OPTS "$EC2_USER@$DEPLOY_HOST" "GIT_AUTH_HEADER='$GIT_AUTH_HEADER' GIT_URL='$GIT_URL' GIT_BRANCH='$GIT_BRANCH' MIGRATION_FILES_CHANGED='${MIGRATION_FILES_CHANGED:-false}' RUN_DB_MIGRATION='${RUN_DB_MIGRATION:-false}' bash -lc 'cat > /tmp/wedge-jenkins-deploy-${BUILD_NUMBER}.sh && trap \"rm -f /tmp/wedge-jenkins-deploy-${BUILD_NUMBER}.sh\" EXIT && bash /tmp/wedge-jenkins-deploy-${BUILD_NUMBER}.sh'" << 'EOF'
 set -e
 
 cd /srv/wedge
