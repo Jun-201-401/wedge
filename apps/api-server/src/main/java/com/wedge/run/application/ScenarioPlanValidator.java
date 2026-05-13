@@ -20,7 +20,7 @@ public class ScenarioPlanValidator {
     private static final Set<String> ACTION_TYPES = Set.of("goto", "click", "fill", "select", "scroll", "hover", "wait_for", "checkpoint", "stop_when");
     private static final Set<String> ACTION_KEYS = Set.of("type", "target", "value", "options");
     private static final Set<String> SETTLE_TYPES = Set.of("network_idle", "locator_visible", "response", "url_change", "spinner_hidden", "item_count_change", "fixed_short", "none");
-    private static final Set<String> SAFETY_KEYS = Set.of("allow_external_navigation", "allow_payment_commit", "allow_destructive_action", "use_synthetic_inputs", "stop_before_real_payment");
+    private static final Set<String> SAFETY_KEYS = Set.of("allow_external_navigation", "allowed_external_origins", "allow_payment_commit", "allow_destructive_action", "use_synthetic_inputs", "stop_before_real_payment");
     private static final Set<String> FIT_REQUIREMENT_KEYS = Set.of("required_flow_type", "required_entrypoint_types", "fallback_allowed", "minimum_confidence", "required_evidence_refs");
     private static final Set<String> STEP_KEYS = Set.of("step_id", "stage", "description", "action", "settle_strategy", "checkpoint", "stop_condition");
 

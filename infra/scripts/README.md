@@ -28,6 +28,12 @@ Agent product/checkout runtime:
 node infra/scripts/real-agent-product-checkout-smoke.mjs
 ```
 
+Agent trace export replay runtime:
+
+```bash
+node infra/scripts/real-agent-trace-export-replay-smoke.mjs
+```
+
 Discovery → Scenario Authoring → Run chain:
 
 ```bash
