@@ -22,4 +22,10 @@ Agent runtime:
 node infra/scripts/real-agent-run-e2e-smoke.mjs
 ```
 
+Discovery → Scenario Authoring → Run chain:
+
+```bash
+node infra/scripts/real-discovery-authoring-run-e2e-smoke.mjs
+```
+
 필수/주요 환경변수는 `docs/runner_operational_runbook.md`를 따른다. 실제 smoke는 API server, RabbitMQ consumer Runner, DB migration, callback base URL이 준비된 환경에서만 실행한다.
