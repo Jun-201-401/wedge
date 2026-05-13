@@ -467,7 +467,92 @@ class RuleEngineTest(unittest.TestCase):
         self.assertEqual(overload[0]["severity"], 2)
         self.assertEqual(overload[0]["confidence"], 0.86)
         self.assertEqual(overload[0]["evidence_refs"], ["cp_001.obs_many_choices"])
-        self.assertIn("viewport_interactive_choice_count=15", overload[0]["signals"])
+        self.assertIn("main_decision_choice_count=15", overload[0]["signals"])
+        self.assertIn("raw_interactive_choice_count=15", overload[0]["signals"])
+
+    def test_path_choice_overload_excludes_header_utility_and_footer_legal_links(self) -> None:
+        packet = load_sample_packet()
+        packet["aggregate_signals"]["primary_cta_count_by_stage"] = {}
+        packet["checkpoints"][0]["observations"] = [
+            observation
+            for observation in packet["checkpoints"][0]["observations"]
+            if observation["type"] not in {"cta_cluster", "interactive_components"}
+        ]
+        packet["checkpoints"][0]["observations"].append(
+            {
+                "observation_id": "obs_chrome_heavy_choices",
+                "type": "interactive_components",
+                "stage": "FIRST_VIEW",
+                "source": ["dom", "layout"],
+                "confidence": 0.86,
+                "data": {
+                    "components": [
+                        {
+                            "text": "로그인",
+                            "selector": "a.login",
+                            "role": "link",
+                            "clickable": True,
+                            "visible": True,
+                            "bounds": {"x": 1110, "y": 28, "width": 60, "height": 32},
+                        },
+                        {
+                            "text": "계정",
+                            "selector": "button.account",
+                            "role": "button",
+                            "clickable": True,
+                            "visible": True,
+                            "bounds": {"x": 1180, "y": 24, "width": 44, "height": 44},
+                        },
+                        {
+                            "text": "언어",
+                            "selector": "button.language",
+                            "role": "button",
+                            "clickable": True,
+                            "visible": True,
+                            "bounds": {"x": 1232, "y": 24, "width": 44, "height": 44},
+                        },
+                        {
+                            "text": "메뉴",
+                            "selector": "button.menu",
+                            "role": "button",
+                            "clickable": True,
+                            "visible": True,
+                            "bounds": {"x": 1284, "y": 24, "width": 44, "height": 44},
+                        },
+                        *[
+                            {
+                                "text": f"Action {index}",
+                                "selector": f"button.action-{index}",
+                                "role": "button",
+                                "clickable": True,
+                                "visible": True,
+                                "is_primary_like": index == 0,
+                                "bounds": {"x": 520 + (index * 140), "y": 360, "width": 120, "height": 44},
+                            }
+                            for index in range(3)
+                        ],
+                        *[
+                            {
+                                "text": text,
+                                "selector": f"a.footer-{index}",
+                                "role": "link",
+                                "clickable": True,
+                                "visible": True,
+                                "bounds": {"x": 40 + (index * 150), "y": 820, "width": 120, "height": 32},
+                            }
+                            for index, text in enumerate(
+                                ["광고", "비즈니스", "회사소개", "개인정보", "약관", "정책", "설정", "도움말"]
+                            )
+                        ],
+                    ]
+                },
+            }
+        )
+
+        result = analyze_evidence_packet(packet)
+
+        criteria = [issue["criterion_id"] for issue in result["issues"]]
+        self.assertNotIn("PATH-CHOICE-OVERLOAD-001", criteria)
 
     def test_missing_cta_evidence_is_not_user_facing_issue(self) -> None:
         packet = load_sample_packet()

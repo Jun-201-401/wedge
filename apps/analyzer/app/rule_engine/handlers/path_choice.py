@@ -9,6 +9,39 @@ from app.stage.stage_context_builder import ObservationRecord, StageContext
 WARNING_CHOICE_COUNT = 11
 OVERLOAD_CHOICE_COUNT = 15
 CRITICAL_CHOICE_COUNT = 20
+HEADER_ZONE_RATIO = 0.18
+FOOTER_ZONE_RATIO = 0.75
+SMALL_ICON_MAX_SIZE = 48
+
+HEADER_UTILITY_TEXT_TOKENS = {
+    "account",
+    "app launcher",
+    "apps",
+    "help",
+    "language",
+    "locale",
+    "login",
+    "profile",
+    "region",
+    "settings",
+    "sign in",
+    "계정",
+    "도움말",
+    "로그인",
+    "설정",
+    "언어",
+    "앱",
+    "지역",
+    "프로필",
+}
+SMALL_HEADER_UTILITY_TEXT_TOKENS = {
+    "menu",
+    "more",
+    "open menu",
+    "전체 메뉴",
+    "더보기",
+    "메뉴",
+}
 
 
 def evaluate_path_choice_overload(rule: dict[str, Any], context: StageContext) -> RuleHit | None:
@@ -29,9 +62,12 @@ def evaluate_path_choice_overload(rule: dict[str, Any], context: StageContext) -
         severity=candidate["severity"],
         confidence=candidate["confidence"],
         evidence_refs=[candidate["record"].ref],
-        observations=[f"한 화면 영역 안에 클릭 가능한 선택지 {count}개가 동시에 노출됨"],
+        observations=[f"한 viewport 안에 클릭 가능한 선택지 {count}개가 동시에 노출됨"],
         signals=[
-            f"viewport_interactive_choice_count={count}",
+            f"main_decision_choice_count={count}",
+            f"raw_interactive_choice_count={candidate['raw_count']}",
+            f"excluded_header_utility_count={candidate['header_utility_count']}",
+            f"excluded_footer_legal_count={candidate['footer_legal_count']}",
             f"warning_threshold={WARNING_CHOICE_COUNT}",
             f"overload_threshold={OVERLOAD_CHOICE_COUNT}",
         ],
@@ -57,7 +93,8 @@ def _choice_count_candidates(record: ObservationRecord, context: StageContext) -
         for component in components
         if _is_countable_choice(component, viewport=viewport)
     ]
-    choice_count = len(countable_components)
+    decision_groups = _decision_groups(countable_components, viewport=viewport)
+    choice_count = len(decision_groups["main_decision"])
     severity = _severity(choice_count=choice_count, stage=context.stage)
     if severity == 0:
         return []
@@ -66,6 +103,9 @@ def _choice_count_candidates(record: ObservationRecord, context: StageContext) -
         {
             "record": record,
             "choice_count": choice_count,
+            "raw_count": len(countable_components),
+            "header_utility_count": len(decision_groups["header_utility"]),
+            "footer_legal_count": len(decision_groups["footer_legal"]),
             "severity": severity,
             "confidence": _confidence(record, viewport=viewport),
         }
@@ -80,6 +120,76 @@ def _severity(*, choice_count: int, stage: str) -> int:
     if choice_count >= WARNING_CHOICE_COUNT:
         return 1
     return 0
+
+
+def _decision_groups(components: list[Any], *, viewport: dict[str, float] | None) -> dict[str, list[dict[str, Any]]]:
+    groups: dict[str, list[dict[str, Any]]] = {
+        "header_utility": [],
+        "footer_legal": [],
+        "main_decision": [],
+    }
+    for component in components:
+        if not isinstance(component, dict):
+            continue
+        zone = _component_zone(component, viewport=viewport)
+        if zone == "header" and _is_header_utility(component):
+            groups["header_utility"].append(component)
+            continue
+        if zone == "footer" and _is_footer_legal(component):
+            groups["footer_legal"].append(component)
+            continue
+        groups["main_decision"].append(component)
+    return groups
+
+
+def _component_zone(component: dict[str, Any], *, viewport: dict[str, float] | None) -> str:
+    bounds = component.get("bounds")
+    if not isinstance(bounds, dict) or viewport is None:
+        return "main"
+    y = _number(bounds.get("y"))
+    height = _number(bounds.get("height"))
+    if y is None or height is None:
+        return "main"
+
+    center_y = y + (height / 2)
+    viewport_height = viewport["height"]
+    if center_y <= viewport_height * HEADER_ZONE_RATIO:
+        return "header"
+    if center_y >= viewport_height * FOOTER_ZONE_RATIO:
+        return "footer"
+    return "main"
+
+
+def _is_header_utility(component: dict[str, Any]) -> bool:
+    if component.get("is_primary_like") is True:
+        return False
+
+    text = _component_text(component)
+    if _matches_any_token(text, HEADER_UTILITY_TEXT_TOKENS):
+        return True
+    if _is_small_icon_like(component) and (
+        not text or _matches_any_token(text, SMALL_HEADER_UTILITY_TEXT_TOKENS)
+    ):
+        return True
+    return False
+
+
+def _is_footer_legal(component: dict[str, Any]) -> bool:
+    if component.get("is_primary_like") is True:
+        return False
+    role = str(component.get("role") or "").lower()
+    return role == "link"
+
+
+def _is_small_icon_like(component: dict[str, Any]) -> bool:
+    bounds = component.get("bounds")
+    if not isinstance(bounds, dict):
+        return False
+    width = _number(bounds.get("width"))
+    height = _number(bounds.get("height"))
+    if width is None or height is None:
+        return False
+    return width <= SMALL_ICON_MAX_SIZE and height <= SMALL_ICON_MAX_SIZE
 
 
 def _is_countable_choice(component: Any, *, viewport: dict[str, float] | None) -> bool:
@@ -174,6 +284,34 @@ def _number(value: Any) -> float | None:
     except (TypeError, ValueError):
         return None
     return number
+
+
+def _component_text(component: dict[str, Any]) -> str:
+    parts: list[str] = []
+    for key in (
+        "text",
+        "label",
+        "label_text",
+        "aria_label",
+        "aria-label",
+        "accessible_name",
+        "name",
+        "placeholder",
+        "title",
+    ):
+        value = component.get(key)
+        if isinstance(value, str):
+            stripped = value.strip()
+            if stripped:
+                parts.append(stripped)
+    return " ".join(parts).strip().lower()
+
+
+def _matches_any_token(text: str, tokens: set[str]) -> bool:
+    if not text:
+        return False
+    normalized = f" {text.lower()} "
+    return any(f" {token} " in normalized or token in text for token in tokens)
 
 
 def _truthy(value: Any) -> bool:
