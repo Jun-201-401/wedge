@@ -40,6 +40,7 @@ NUDGE_TEXT_FIELDS = {
 }
 
 VALID_DIFFICULTIES = {"LOW", "MEDIUM", "HIGH"}
+GMS_REPORT_EXPLAINER_MAX_ATTEMPTS = 2
 
 
 class GMSReportExplainer:
@@ -71,21 +72,33 @@ class GMSReportExplainer:
         )
 
     def explain(self, judge_result: dict[str, Any]) -> dict[str, Any]:
-        result = copy.deepcopy(judge_result)
+        fallback_result = copy.deepcopy(judge_result)
         if not self._enabled:
-            return result
+            return fallback_result
         if self._client is None:
-            return _append_llm_note(result, "GMS report explanation was enabled but no client was configured.")
+            return _append_llm_note(fallback_result, "GMS report explanation was enabled but no client was configured.")
 
-        try:
-            response_text = self._client.generate_text(prompt=_build_prompt(result))
-            explanation = _parse_json_object(response_text)
-            _apply_explanation(result, explanation)
-            result["llm_provider"] = "gms"
-            result["llm_model"] = self._model
-            return _append_llm_note(result, "GMS generated post-judgment report copy; Rule Engine fields were preserved.")
-        except (GMSClientError, ValueError, TypeError, KeyError) as exc:
-            return _append_llm_note(result, f"GMS explanation fallback used deterministic text: {type(exc).__name__}")
+        last_error: Exception | None = None
+        for attempt in range(1, GMS_REPORT_EXPLAINER_MAX_ATTEMPTS + 1):
+            result = copy.deepcopy(judge_result)
+            try:
+                response_text = self._client.generate_text(prompt=_build_prompt(result))
+                explanation = _parse_json_object(response_text)
+                _apply_explanation(result, explanation)
+                result["llm_provider"] = "gms"
+                result["llm_model"] = self._model
+                note = "GMS generated post-judgment report copy; Rule Engine fields were preserved."
+                if attempt > 1:
+                    note = f"{note} Succeeded after retry attempt {attempt}."
+                return _append_llm_note(result, note)
+            except (GMSClientError, ValueError, TypeError, KeyError) as exc:
+                last_error = exc
+
+        error_name = type(last_error).__name__ if last_error is not None else "UnknownError"
+        return _append_llm_note(
+            fallback_result,
+            f"GMS explanation fallback used deterministic text after {GMS_REPORT_EXPLAINER_MAX_ATTEMPTS} attempts: {error_name}",
+        )
 
 
 def _build_prompt(judge_result: dict[str, Any]) -> str:

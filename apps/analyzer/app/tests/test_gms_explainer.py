@@ -5,21 +5,22 @@ import json
 import unittest
 from typing import Any
 
-from app.providers.gms import extract_openai_response_text, extract_openai_response_text_from_body
+from app.providers.gms import GMSClientError, extract_openai_response_text, extract_openai_response_text_from_body
 from app.services.analysis_service import build_completed_callback_payload
 from app.services.llm_analysis import GMSReportExplainer
 
 
 class FakeGMSClient:
-    def __init__(self, response_text: str | Exception) -> None:
-        self.response_text = response_text
+    def __init__(self, response_text: str | Exception | list[str | Exception]) -> None:
+        self.responses = response_text if isinstance(response_text, list) else [response_text]
         self.prompts: list[str] = []
 
     def generate_text(self, *, prompt: str) -> str:
         self.prompts.append(prompt)
-        if isinstance(self.response_text, Exception):
-            raise self.response_text
-        return self.response_text
+        response = self.responses[min(len(self.prompts) - 1, len(self.responses) - 1)]
+        if isinstance(response, Exception):
+            raise response
+        return response
 
 
 def sample_judge_result() -> dict[str, Any]:
@@ -154,6 +155,53 @@ class GMSReportExplainerTest(unittest.TestCase):
 
         self.assertEqual(result["issues"], original["issues"])
         self.assertIn("GMS explanation fallback used deterministic text", result["llm_notes"][-1])
+        self.assertIn("after 2 attempts", result["llm_notes"][-1])
+
+    def test_gms_explainer_retries_once_before_fallback(self) -> None:
+        original = sample_judge_result()
+        response = {
+            "overall_summary": "재시도 후 문장 정리에 성공했습니다.",
+            "issue_explanations": [
+                {
+                    "issue_id": "issue_001",
+                    "title": "주요 버튼이 서로 경쟁합니다",
+                    "summary": "여러 버튼이 비슷하게 강조되어 첫 행동 선택이 어려울 수 있습니다.",
+                }
+            ],
+        }
+        client = FakeGMSClient([
+            GMSClientError("temporary failure"),
+            json.dumps(response, ensure_ascii=False),
+        ])
+
+        result = GMSReportExplainer(
+            client=client,
+            enabled=True,
+            model="gpt-4.1-nano",
+        ).explain(original)
+
+        self.assertEqual(len(client.prompts), 2)
+        self.assertEqual(result["issues"][0]["title"], "주요 버튼이 서로 경쟁합니다")
+        self.assertEqual(result["summary"]["llm_overall_summary"], "재시도 후 문장 정리에 성공했습니다.")
+        self.assertEqual(result["llm_provider"], "gms")
+        self.assertIn("Succeeded after retry attempt 2", result["llm_notes"][-1])
+
+    def test_gms_explainer_falls_back_after_retry_is_exhausted(self) -> None:
+        original = sample_judge_result()
+        client = FakeGMSClient([
+            GMSClientError("temporary failure"),
+            GMSClientError("still failing"),
+        ])
+
+        result = GMSReportExplainer(
+            client=client,
+            enabled=True,
+        ).explain(original)
+
+        self.assertEqual(len(client.prompts), 2)
+        self.assertEqual(result["issues"], original["issues"])
+        self.assertNotIn("llm_provider", result)
+        self.assertIn("after 2 attempts", result["llm_notes"][-1])
 
     def test_callback_model_info_reflects_gms_model_when_used(self) -> None:
         result = sample_judge_result()
