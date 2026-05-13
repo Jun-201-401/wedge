@@ -1,6 +1,12 @@
 import type { RunnerConfig } from "../config/index.ts";
 import { errorMessage, logOperationalEvent } from "../shared/utils.ts";
-import { createCallbackTransportClient, sendWithRetry } from "./index.ts";
+import {
+  createCallbackTransportClient,
+  isNonRetryableCallbackError,
+  readCallbackHttpResponseBody,
+  readCallbackHttpStatus,
+  sendWithRetry
+} from "./index.ts";
 import {
   acquireCallbackOutboxLock,
   createRetainedOutboxRecord,
@@ -13,6 +19,7 @@ export interface CallbackOutboxReplaySummary {
   processedCount: number;
   deliveredCount: number;
   failedCount: number;
+  discardedCount: number;
   remainingCount: number;
   skipped: boolean;
 }
@@ -56,6 +63,7 @@ export async function replayCallbackOutbox(
       processedCount: 0,
       deliveredCount: 0,
       failedCount: 0,
+      discardedCount: 0,
       remainingCount: 0,
       skipped: true
     };
@@ -71,6 +79,7 @@ export async function replayCallbackOutbox(
     const transportClient = createCallbackTransportClient(config);
     const remainingRecords: CallbackOutboxRecord[] = [];
     let deliveredCount = 0;
+    let discardedCount = 0;
 
     for (const record of records) {
       try {
@@ -79,6 +88,26 @@ export async function replayCallbackOutbox(
         });
         deliveredCount += 1;
       } catch (error) {
+        if (isNonRetryableCallbackError(error)) {
+          discardedCount += 1;
+          logOperationalEvent(
+            "callback-outbox",
+            "non_retryable_record_discarded",
+            {
+              workerId: config.workerId,
+              outboxFile: config.callbackOutboxFile,
+              callbackType: record.callbackType,
+              runId: record.runId,
+              attempts: record.attempts + 1,
+              errorMessage: errorMessage(error),
+              httpStatus: readCallbackHttpStatus(error),
+              responseBodySummary: readCallbackHttpResponseBody(error)
+            },
+            "error"
+          );
+          continue;
+        }
+
         remainingRecords.push(
           createRetainedOutboxRecord(record, config, config.callbackRetryDelaysMs.length + 1, errorMessage(error))
         );
@@ -91,6 +120,7 @@ export async function replayCallbackOutbox(
       processedCount: records.length,
       deliveredCount,
       failedCount: remainingRecords.length,
+      discardedCount,
       remainingCount: remainingRecords.length,
       skipped: false
     };

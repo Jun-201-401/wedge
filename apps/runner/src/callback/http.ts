@@ -7,6 +7,21 @@ import {
   type CallbackType
 } from "./client.ts";
 
+const CALLBACK_ERROR_BODY_LIMIT = 500;
+
+export class RunnerCallbackHttpError extends Error {
+  readonly status: number;
+  readonly responseBody: string;
+
+  constructor(callbackType: CallbackType | "control-state", status: number, responseBody: string) {
+    const suffix = responseBody.length > 0 ? `: ${truncateCallbackErrorBody(responseBody)}` : "";
+    super(`runner callback ${callbackType} failed with status ${status}${suffix}`);
+    this.name = "RunnerCallbackHttpError";
+    this.status = status;
+    this.responseBody = responseBody;
+  }
+}
+
 export function createHttpCallbackClient(
   config: Pick<
     RunnerConfig,
@@ -49,7 +64,7 @@ async function postRunnerCallback(
     });
 
     if (!response.ok) {
-      throw new Error(`runner callback ${callbackType} failed with status ${response.status}`);
+      throw new RunnerCallbackHttpError(callbackType, response.status, await readResponseBody(response));
     }
   } catch (error) {
     if (error instanceof DOMException && error.name === "AbortError") {
@@ -60,6 +75,23 @@ async function postRunnerCallback(
   } finally {
     clearTimeout(timeoutHandle);
   }
+}
+
+async function readResponseBody(response: Response): Promise<string> {
+  try {
+    return await response.text();
+  } catch {
+    return "";
+  }
+}
+
+function truncateCallbackErrorBody(body: string): string {
+  const normalized = body.replaceAll(/\s+/g, " ").trim();
+  if (normalized.length <= CALLBACK_ERROR_BODY_LIMIT) {
+    return normalized;
+  }
+
+  return `${normalized.slice(0, CALLBACK_ERROR_BODY_LIMIT)}…`;
 }
 
 function createRunnerCallbackHeaders(
@@ -132,7 +164,7 @@ async function getRunnerControlState(
     });
 
     if (!response.ok) {
-      throw new Error(`runner control-state failed with status ${response.status}`);
+      throw new RunnerCallbackHttpError("control-state", response.status, await readResponseBody(response));
     }
 
     const envelope = await response.json() as { data?: unknown };
