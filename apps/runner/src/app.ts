@@ -17,8 +17,10 @@ import {
   readAgentExecuteMessage,
   readDiscoveryExecuteMessage,
   readScenarioAuthoringExecuteMessage,
-  readRunExecuteMessage
+  readRunExecuteMessage,
+  RunnerMessageValidationError
 } from "./messaging/index.ts";
+import { notifyRunMessageValidationFailure } from "./messaging/validation-failure.ts";
 import { executeScenarioAuthoring, type ScenarioAuthoringExecutionResult } from "./authoring/index.ts";
 import { executeDiscoveryAndPersist, type DiscoveryExecutionResult } from "./discovery/index.ts";
 import { startRunnerQueueConsumers, type RunnerQueueConsumer } from "./messaging/rabbitmq/index.ts";
@@ -99,14 +101,25 @@ export function createRunnerApp(overrides: Partial<RunnerConfig> = {}): RunnerAp
     capturePipeline,
     artifactStore
   });
+  const processRawRunMessage = async (rawMessage: string) =>
+    executeWithRunValidationFailureNotification(rawMessage, () => worker.handleMessage(parseRunExecuteMessage(rawMessage)), {
+      callbackClient,
+      workerId: config.workerId
+    });
+  const processRawAgentMessage = async (rawMessage: string) =>
+    executeWithRunValidationFailureNotification(rawMessage, () => agentWorker.handleMessage(parseAgentExecuteMessage(rawMessage)), {
+      callbackClient,
+      workerId: config.workerId
+    });
+
   const startMqConsumer = async () =>
     startRunnerQueueConsumers({
       config,
       processRawRunMessage: async (rawMessage) => {
-        await worker.handleMessage(parseRunExecuteMessage(rawMessage));
+        await processRawRunMessage(rawMessage);
       },
       processRawAgentMessage: async (rawMessage) => {
-        await agentWorker.handleMessage(parseAgentExecuteMessage(rawMessage));
+        await processRawAgentMessage(rawMessage);
       },
       processRawDiscoveryMessage: async (rawMessage) => {
         await executeDiscoveryAndPersist({
@@ -129,7 +142,7 @@ export function createRunnerApp(overrides: Partial<RunnerConfig> = {}): RunnerAp
     service: config.serviceName,
     config,
     processMessage: (message) => worker.handleMessage(message),
-    processRawMessage: (rawMessage) => worker.handleMessage(parseRunExecuteMessage(rawMessage)),
+    processRawMessage: processRawRunMessage,
     processMessageFile: async (messageFile) => worker.handleMessage(await readRunExecuteMessage(messageFile)),
     processAgentMessage: (message) => agentWorker.handleMessage(message),
     processAgentMessageFile: async (messageFile) => agentWorker.handleMessage(await readAgentExecuteMessage(messageFile)),
@@ -153,7 +166,7 @@ export function createRunnerApp(overrides: Partial<RunnerConfig> = {}): RunnerAp
       if (messageType === "agent.execute.request") {
         return {
           kind: "agent",
-          execution: await agentWorker.handleMessage(parseAgentExecuteMessage(rawMessage))
+          execution: await processRawAgentMessage(rawMessage)
         };
       }
 
@@ -182,7 +195,7 @@ export function createRunnerApp(overrides: Partial<RunnerConfig> = {}): RunnerAp
 
       return {
         kind: "run",
-        execution: await worker.handleMessage(parseRunExecuteMessage(rawMessage))
+        execution: await processRawRunMessage(rawMessage)
       };
     },
     processInputMessageFile: async (messageFile) => {
@@ -207,6 +220,29 @@ export function createRunnerApp(overrides: Partial<RunnerConfig> = {}): RunnerAp
         startArtifactOutboxReplayWorker: async () => startArtifactOutboxReplayWorker(config)
       })
   };
+}
+
+async function executeWithRunValidationFailureNotification<T>(
+  rawMessage: string,
+  execute: () => Promise<T>,
+  input: {
+    callbackClient: ReturnType<typeof createCallbackClient>;
+    workerId: string;
+  }
+): Promise<T> {
+  try {
+    return await execute();
+  } catch (error) {
+    if (error instanceof RunnerMessageValidationError) {
+      await notifyRunMessageValidationFailure({
+        rawMessage,
+        error,
+        callbackClient: input.callbackClient,
+        workerId: input.workerId
+      });
+    }
+    throw error;
+  }
 }
 
 function readInputMessageType(rawMessage: string): string | undefined {

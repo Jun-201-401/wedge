@@ -255,6 +255,61 @@ test("createRunnerApp sends prototype evidence callbacks to API when callback ba
   }
 });
 
+
+test("[MQ 검증 실패] runId를 가진 invalid run.execute 메시지는 failed callback을 남긴다", async () => {
+  const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-validation-failed-"));
+  const callbackServer = await createCallbackCaptureServer();
+
+  try {
+    const app = createRunnerApp({
+      workerId: "runner-test-worker",
+      artifactsRoot,
+      callbackBaseUrl: callbackServer.baseUrl,
+      callbackRetryDelaysMs: []
+    });
+
+    const invalidRawMessage = JSON.stringify({
+      messageId: "validation-failure-message",
+      messageType: "run.execute.request",
+      schemaVersion: "0.5",
+      createdAt: "2026-05-13T00:00:00.000Z",
+      producer: "api-server",
+      payload: {
+        runId: "dd5f9c57-84e2-4ea6-b0c3-27b7f8a5b3e2",
+        projectId: "8f06dca8-9c4d-4f20-b1a8-1d5ee40a9923",
+        startUrl: "https://example.com",
+        goal: "landing CTA check",
+        devicePreset: "desktop",
+        scenarioTemplateVersionId: "4a2a8b8f-1b43-4922-ac57-2866f4a6e941"
+      }
+    });
+
+    await assert.rejects(() => app.processRawMessage(invalidRawMessage), /scenarioPlan must be an object/);
+
+    const failedCallback = findCallback(callbackServer.received, "failed");
+    assert.ok(failedCallback);
+    assert.equal(failedCallback.method, "POST");
+    assert.equal(failedCallback.url, "/internal/runner/runs/dd5f9c57-84e2-4ea6-b0c3-27b7f8a5b3e2/failed");
+
+    const body = JSON.parse(failedCallback.body) as {
+      workerId?: string;
+      failureCode?: string;
+      failureMessage?: string;
+      resultCompleteness?: string;
+    };
+    assert.equal(body.workerId, "runner-test-worker");
+    assert.equal(body.failureCode, "RUNNER_MESSAGE_VALIDATION_FAILED");
+    assert.match(body.failureMessage ?? "", /scenarioPlan must be an object/);
+    assert.equal(body.resultCompleteness, "NONE");
+  } finally {
+    await callbackServer.close();
+    await rm(artifactsRoot, {
+      recursive: true,
+      force: true
+    });
+  }
+});
+
 async function createCallbackCaptureServer(): Promise<{
   baseUrl: string;
   received: ReceivedCallbackRequest[];
