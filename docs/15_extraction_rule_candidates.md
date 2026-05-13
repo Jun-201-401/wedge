@@ -76,6 +76,8 @@
 | `FEEDBACK-ACTION-RESULT-001` | `goal_action_result`, `journey_action_raw.dom_changed`, `url_before`, `url_after`, `toast_text`, `network_result`, `settle_status`, cart/count delta | 클릭 후 URL 변화, DOM 변화, toast, count 변화, 실패/timeout 여부를 근거로 "행동 결과가 확인되는지" 판단한다. | 모든 클릭에 적용하면 오탐이 생긴다. 목표 행동 후보나 clicked_in_scenario에 우선 적용한다. |
 | `TECH-TARGET-SIZE-001` | `interactive_components.components[].bounds`, viewport, `clickable`, `visibility` | 클릭 대상의 width/height가 기준보다 작은지 판단하는 MVP는 가능하다. | "대상 간 간격이 너무 가까움"까지 보려면 `nearest_target_spacing_px`가 필요하다. |
 
+> Runner 구현 메모 (2026-05-13): P0 component-level 값인 `visible_text`, `accessible_name`, `container_role`, `container_bounds`, `container_heading`, `nearby_text`, `nearest_target_spacing_px`는 `interactive_components.components[]`와 AgentTrace candidate summary에 추가됐다. `accessible_name`은 CDP AX tree의 exact computed name이 아니라 DOM/ARIA 기반 근사값이며, `nearest_target_spacing_px`는 현재 수집된 visible interactive target 집합 기준이다.
+
 ## 5. 기존 Rule에 흡수하는 것이 좋은 후보
 
 아래 후보는 독립 criterion_id로 만들면 12번 운영 Rule과 중복될 가능성이 높다. 새 Rule보다는 기존 Rule의 signal, severity, GMS prompt, report wording을 고도화하는 방향이 낫다.

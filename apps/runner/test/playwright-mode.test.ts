@@ -659,11 +659,23 @@ test("[MVP 랜딩 CTA] 첫 화면 checkpoint 후 CTA 클릭과 도착 화면 che
     assert.equal(primaryComponents.length, 1);
     assert.equal(startFreeComponent?.selector, "#hero-cta");
     assert.equal(startFreeComponent?.role, "link");
+    assert.equal(startFreeComponent?.visible_text, "Start free");
+    assert.equal(startFreeComponent?.accessible_name, "Start free");
     assert.equal(startFreeComponent?.is_cta_candidate, true);
     assert.equal(startFreeComponent?.is_primary_like, true);
     assert.equal(readString(startFreeComponent?.bounds, "unit"), "css_px");
     assert.ok(readPositiveNumber(startFreeComponent?.bounds, "width") > 0);
     assert.ok(readPositiveNumber(startFreeComponent?.bounds, "height") > 0);
+    assert.equal(startFreeComponent?.container_role, "section");
+    assert.equal(startFreeComponent?.container_heading, "MVP Runner Fixture");
+    assert.equal(readString(startFreeComponent?.container_bounds, "unit"), "css_px");
+    assert.ok(readPositiveNumber(startFreeComponent?.container_bounds, "width") > 0);
+    assert.ok(Array.isArray(startFreeComponent?.nearby_text));
+    assert.ok((startFreeComponent?.nearby_text as string[]).includes("MVP Runner Fixture"));
+    assert.ok(
+      typeof startFreeComponent?.nearest_target_spacing_px === "number" ||
+      startFreeComponent?.nearest_target_spacing_px === null
+    );
     assert.equal(readString(startFreeComponent?.layout, "viewport_position"), "inside");
     assert.equal(readBoolean(startFreeComponent?.visibility, "in_viewport"), true);
     assert.equal(visibleTextBlocks.stage, "FIRST_VIEW");

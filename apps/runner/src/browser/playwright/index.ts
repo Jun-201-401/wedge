@@ -1377,6 +1377,7 @@ function createBrowserPageSnapshot(
     interactiveComponents: state.interactiveComponents.map((component) => ({
       ...component,
       bounds: { ...component.bounds },
+      container_bounds: component.container_bounds ? { ...component.container_bounds } : component.container_bounds,
       visibility: component.visibility ? { ...component.visibility } : undefined,
       layout: component.layout ? { ...component.layout } : undefined
     })),
@@ -2843,23 +2844,85 @@ async function extractInteractiveComponentsFromFrame(
         return null;
       }
 
-      function textFor(element: Element): string {
+      function normalizeText(value: string | null | undefined): string {
+        return (value ?? "").replace(/\s+/g, " ").trim();
+      }
+
+      function firstText(values: Array<string | null | undefined>): string | null {
+        for (const value of values) {
+          const normalized = normalizeText(value);
+          if (normalized.length > 0) {
+            return normalized;
+          }
+        }
+        return null;
+      }
+
+      function visibleTextFor(element: Element): string | null {
         const inputValue = element instanceof HTMLInputElement && ["button", "submit", "reset"].includes(element.type.toLowerCase())
           ? element.value
           : "";
-        return [
-          element.textContent,
-          element.getAttribute("aria-label"),
-          element.getAttribute("title"),
-          labelTextFor(element),
-          placeholderFor(element),
+        const elementWithInnerText = element as HTMLElement & { innerText?: string };
+        return firstText([
           inputValue,
+          elementWithInnerText.innerText,
+          element.textContent
+        ])?.slice(0, 120) ?? null;
+      }
+
+      function ariaLabelledByTextFor(element: Element): string | null {
+        const labelledBy = element.getAttribute("aria-labelledby");
+        if (!labelledBy) {
+          return null;
+        }
+
+        return firstText(labelledBy
+          .split(/\s+/)
+          .map((id) => document.getElementById(id)?.textContent ?? null));
+      }
+
+      function associatedLabelTextFor(element: Element): string | null {
+        const id = element.getAttribute("id");
+        if (id) {
+          const explicitLabel = document.querySelector(`label[for="${escapeSelector(id)}"]`);
+          const explicitLabelText = explicitLabel?.textContent;
+          if (normalizeText(explicitLabelText).length > 0) {
+            return normalizeText(explicitLabelText);
+          }
+        }
+
+        const wrappingLabelText = element.closest("label")?.textContent;
+        if (normalizeText(wrappingLabelText).length > 0) {
+          return normalizeText(wrappingLabelText);
+        }
+
+        return null;
+      }
+
+      function accessibleNameFor(element: Element, visibleText: string | null): string | null {
+        const altText = element instanceof HTMLImageElement || element instanceof HTMLInputElement
+          ? element.getAttribute("alt")
+          : null;
+        return firstText([
+          element.getAttribute("aria-label"),
+          ariaLabelledByTextFor(element),
+          associatedLabelTextFor(element),
+          altText,
+          visibleText,
+          element.getAttribute("title"),
+          placeholderFor(element),
           nameFor(element)
-        ]
-          .find((value) => typeof value === "string" && value.trim().length > 0)
-          ?.trim()
-          .replaceAll(/\\s+/g, " ")
-          .slice(0, 120) ?? "";
+        ])?.slice(0, 120) ?? null;
+      }
+
+      function textFor(element: Element, visibleText: string | null, accessibleName: string | null): string {
+        return firstText([
+          visibleText,
+          accessibleName,
+          element.getAttribute("title"),
+          placeholderFor(element),
+          nameFor(element)
+        ])?.slice(0, 120) ?? "";
       }
 
       function labelTextFor(element: Element): string | null {
@@ -2868,21 +2931,7 @@ async function extractInteractiveComponentsFromFrame(
           return explicitAria.trim();
         }
 
-        const id = element.getAttribute("id");
-        if (id) {
-          const explicitLabel = document.querySelector(`label[for="${escapeSelector(id)}"]`);
-          const explicitLabelText = explicitLabel?.textContent?.trim();
-          if (explicitLabelText) {
-            return explicitLabelText.replaceAll(/\\s+/g, " ");
-          }
-        }
-
-        const wrappingLabelText = element.closest("label")?.textContent?.trim();
-        if (wrappingLabelText) {
-          return wrappingLabelText.replaceAll(/\\s+/g, " ");
-        }
-
-        return null;
+        return associatedLabelTextFor(element);
       }
 
       function placeholderFor(element: Element): string | null {
@@ -3037,6 +3086,153 @@ async function extractInteractiveComponentsFromFrame(
         };
       }
 
+      function boundsFor(rect: DOMRect): InteractiveComponentBounds {
+        return {
+          x: Math.round(rect.x),
+          y: Math.round(rect.y),
+          width: Math.round(rect.width),
+          height: Math.round(rect.height),
+          unit: "css_px" as const
+        };
+      }
+
+      function containerRoleFor(element: Element): string | null {
+        const explicitRole = element.getAttribute("role");
+        if (explicitRole) {
+          return explicitRole;
+        }
+
+        const tag = element.tagName.toLowerCase();
+        if (tag === "header") {
+          return "header";
+        }
+        if (tag === "footer") {
+          return "footer";
+        }
+        if (tag === "main") {
+          return "main";
+        }
+        if (tag === "nav") {
+          return "nav";
+        }
+        if (tag === "form") {
+          return "form";
+        }
+        if (tag === "section") {
+          return "section";
+        }
+        if (tag === "article") {
+          return "card";
+        }
+        if (tag === "aside") {
+          return "aside";
+        }
+        if (tag === "dialog") {
+          return "modal";
+        }
+        if (tag === "ul" || tag === "ol") {
+          return "list";
+        }
+
+        const className = typeof (element as HTMLElement).className === "string"
+          ? (element as HTMLElement).className.toLowerCase()
+          : "";
+        const testId = `${element.getAttribute("data-testid") ?? ""} ${element.getAttribute("data-test") ?? ""}`.toLowerCase();
+        if (className.includes("card") || testId.includes("card")) {
+          return "card";
+        }
+        if (className.includes("modal") || testId.includes("modal")) {
+          return "modal";
+        }
+        if (className.includes("accordion") || testId.includes("accordion")) {
+          return "accordion";
+        }
+
+        return null;
+      }
+
+      function textSnippetsFor(container: Element, componentText: string | null): string[] {
+        const componentNormalized = normalizeText(componentText).toLowerCase();
+        const candidates = Array.from(container.querySelectorAll("h1, h2, h3, h4, h5, h6, [role='heading'], p, li, label, legend"))
+          .map((candidate) => normalizeText(candidate.textContent).slice(0, 180))
+          .filter((text) => text.length > 0)
+          .filter((text) => text.toLowerCase() !== componentNormalized);
+        return Array.from(new Set(candidates)).slice(0, 5);
+      }
+
+      function headingFor(container: Element): string | null {
+        const heading = container.querySelector("h1, h2, h3, h4, h5, h6, [role='heading']");
+        return normalizeText(heading?.textContent).slice(0, 120) || null;
+      }
+
+      function containerInfoFor(element: Element, componentText: string | null): {
+        container_role: string | null;
+        container_bounds: InteractiveComponentBounds | null;
+        container_heading: string | null;
+        nearby_text: string[];
+      } {
+        const selector = [
+          "header",
+          "footer",
+          "main",
+          "nav",
+          "form",
+          "section",
+          "article",
+          "aside",
+          "dialog",
+          "ul",
+          "ol",
+          "[role='banner']",
+          "[role='contentinfo']",
+          "[role='main']",
+          "[role='navigation']",
+          "[role='form']",
+          "[role='region']",
+          "[role='dialog']",
+          "[role='list']",
+          "[class*='card' i]",
+          "[class*='modal' i]",
+          "[class*='accordion' i]",
+          "[data-testid*='card' i]",
+          "[data-testid*='modal' i]",
+          "[data-testid*='accordion' i]"
+        ].join(",");
+        const container = element.closest(selector);
+        if (!container) {
+          return {
+            container_role: null,
+            container_bounds: null,
+            container_heading: null,
+            nearby_text: []
+          };
+        }
+
+        const rect = container.getBoundingClientRect();
+        return {
+          container_role: containerRoleFor(container),
+          container_bounds: boundsFor(rect),
+          container_heading: headingFor(container),
+          nearby_text: textSnippetsFor(container, componentText)
+        };
+      }
+
+      function targetSpacingPx(
+        component: { bounds: InteractiveComponentBounds },
+        components: Array<{ bounds: InteractiveComponentBounds }>
+      ): number | null {
+        const distances = components
+          .filter((candidate) => candidate !== component)
+          .map((candidate) => {
+            const left = component.bounds;
+            const right = candidate.bounds;
+            const dx = Math.max(0, Math.max(left.x, right.x) - Math.min(left.x + left.width, right.x + right.width));
+            const dy = Math.max(0, Math.max(left.y, right.y) - Math.min(left.y + left.height, right.y + right.height));
+            return Math.round(Math.sqrt(dx * dx + dy * dy));
+          });
+        return distances.length > 0 ? Math.min(...distances) : null;
+      }
+
       const INTERACTIVE_SELECTOR = "a[href], button, input:not([type='hidden']), select, textarea, [role='button'], [role='link'], [role='textbox'], [role='searchbox'], [onclick], [tabindex='0']";
 
       function collectInteractiveElements(root: Document | ShadowRoot, shadowRoot: boolean): Array<{ element: Element; shadowRoot: boolean }> {
@@ -3059,7 +3255,9 @@ async function extractInteractiveComponentsFromFrame(
           const rect = element.getBoundingClientRect();
           const tag = element.tagName.toLowerCase();
           const role = element.getAttribute("role") ?? implicitRole(element, tag);
-          const text = textFor(element);
+          const visibleText = visibleTextFor(element);
+          const accessibleName = accessibleNameFor(element, visibleText);
+          const text = textFor(element, visibleText, accessibleName);
           const selector = selectorFor(element, tag);
           const href = hrefFor(element, tag);
           const inputType = inputTypeFor(element, tag);
@@ -3073,9 +3271,12 @@ async function extractInteractiveComponentsFromFrame(
           const layout = layoutFor(element, rect, visibility);
           const visible = visibility.visible && visibility.in_viewport;
           const isCtaCandidate = clickable && !formControl && !disabled && Boolean(text.match(CTA_TEXT_PATTERN) || role === "button" || tag === "button");
+          const containerInfo = containerInfoFor(element, visibleText ?? text);
 
           return {
             text,
+            visible_text: visibleText,
+            accessible_name: accessibleName,
             selector,
             role,
             href,
@@ -3093,25 +3294,26 @@ async function extractInteractiveComponentsFromFrame(
             clicked_in_scenario: isClickedInScenario({ text, selector, role }),
             is_cta_candidate: isCtaCandidate,
             is_primary_like: false,
-            bounds: {
-              x: Math.round(rect.x),
-              y: Math.round(rect.y),
-              width: Math.round(rect.width),
-              height: Math.round(rect.height),
-              unit: "css_px" as const
-            },
+            bounds: boundsFor(rect),
             visibility,
             layout,
+            ...containerInfo,
             visible,
             score: (isCtaCandidate ? 1000 : 0) + (formControl ? 100 : 0) + rect.width * rect.height + (text.match(CTA_TEXT_PATTERN) ? 500 : 0)
           };
         })
         .filter((component) => component.visible && (component.clickable || component.is_form_control) && component.bounds.width > 0 && component.bounds.height > 0)
+        .map((component, index, allComponents) => ({
+          ...component,
+          nearest_target_spacing_px: targetSpacingPx(component, allComponents)
+        }))
         .sort((left, right) => right.score - left.score)
         .slice(0, 20);
 
       return components.map((component) => ({
         text: component.text,
+        visible_text: component.visible_text,
+        accessible_name: component.accessible_name,
         selector: component.selector,
         role: component.role,
         href: component.href,
@@ -3131,7 +3333,12 @@ async function extractInteractiveComponentsFromFrame(
         is_primary_like: false,
         bounds: component.bounds,
         visibility: component.visibility,
-        layout: component.layout
+        layout: component.layout,
+        container_role: component.container_role,
+        container_bounds: component.container_bounds,
+        container_heading: component.container_heading,
+        nearby_text: component.nearby_text,
+        nearest_target_spacing_px: component.nearest_target_spacing_px
       }));
     }, { clickedTarget, frameId });
 }

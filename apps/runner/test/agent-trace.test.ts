@@ -36,8 +36,21 @@ test("[Agent Trace] observation summary는 후보/텍스트/위험 신호를 bou
     interactiveComponents: [
       component({
         text: "결제하기",
+        visible_text: "결제하기",
+        accessible_name: "최종 결제하기",
         selector: "#pay-now",
         href: "https://example.com/checkout?token=secret-token",
+        container_role: "form",
+        container_bounds: {
+          x: 0,
+          y: 0,
+          width: 320,
+          height: 240,
+          unit: "css_px"
+        },
+        container_heading: "결제 정보",
+        nearby_text: ["결제 정보", "user@example.com 주문 요약"],
+        nearest_target_spacing_px: 8,
         visibility: {
           visible: true,
           in_viewport: true,
@@ -66,7 +79,8 @@ test("[Agent Trace] observation summary는 후보/텍스트/위험 신호를 bou
 
   const summary = summarizeObservation(snapshot, {
     max_candidates: 1,
-    max_visible_text_chars: 120
+    max_visible_text_chars: 120,
+    max_nearby_text_chars_per_candidate: 24
   });
 
   assert.equal(summary.finalUrl, "https://example.com/cart?email=%5BREDACTED_EMAIL%5D");
@@ -77,6 +91,19 @@ test("[Agent Trace] observation summary는 후보/텍스트/위험 신호를 bou
   assert.equal(summary.candidates?.[0]?.candidateId, "candidate_001");
   assert.equal(summary.candidates?.[0]?.riskHint, "PAYMENT_COMMIT");
   assert.equal(summary.candidates?.[0]?.hrefOrigin, "https://example.com");
+  assert.equal(summary.candidates?.[0]?.visibleText, "결제하기");
+  assert.equal(summary.candidates?.[0]?.accessibleName, "최종 결제하기");
+  assert.equal(summary.candidates?.[0]?.containerRole, "form");
+  assert.equal(summary.candidates?.[0]?.containerHeading, "결제 정보");
+  assert.deepEqual(summary.candidates?.[0]?.containerBounds, {
+    x: 0,
+    y: 0,
+    width: 320,
+    height: 240,
+    unit: "css_px"
+  });
+  assert.equal(summary.candidates?.[0]?.nearestTargetSpacingPx, 8);
+  assert.deepEqual(summary.candidates?.[0]?.nearbyText, ["결제 정보", "[REDACTED_EMAIL] 주문"]);
   assert.equal(summary.candidates?.[0]?.visibility?.above_fold, true);
   assert.equal(summary.candidates?.[0]?.layout?.viewport_position, "inside");
   assert.equal(summary.formControls?.length, 2);

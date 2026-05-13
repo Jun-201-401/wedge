@@ -80,6 +80,8 @@ export function summarizeObservation(
         role: component.role,
         tag: component.tag,
         text: redactSensitiveString(component.text),
+        visibleText: component.visible_text ? redactSensitiveString(component.visible_text) : null,
+        accessibleName: component.accessible_name ? redactSensitiveString(component.accessible_name) : null,
         inputType: component.input_type ?? null,
         labelText: component.label_text ? redactSensitiveString(component.label_text) : null,
         placeholder: component.placeholder ? redactSensitiveString(component.placeholder) : null,
@@ -96,11 +98,35 @@ export function summarizeObservation(
         riskHint: riskHintForCandidate(component),
         bounds: component.bounds,
         visibility: component.visibility,
-        layout: component.layout
+        layout: component.layout,
+        containerRole: component.container_role ?? null,
+        containerBounds: component.container_bounds ?? null,
+        containerHeading: component.container_heading ? redactSensitiveString(component.container_heading) : null,
+        nearbyText: nearbyTextSample(component.nearby_text, budget.max_nearby_text_chars_per_candidate ?? 300),
+        nearestTargetSpacingPx: component.nearest_target_spacing_px ?? null
       })),
     formControls: formControls(snapshot),
     pageSignals: pageSignals(snapshot)
   };
+}
+
+function nearbyTextSample(values: string[] | undefined, maxChars: number): string[] {
+  const result: string[] = [];
+  let remaining = Math.max(0, maxChars);
+
+  for (const value of values ?? []) {
+    if (remaining <= 0) {
+      break;
+    }
+    const redacted = redactSensitiveString(value).slice(0, Math.min(160, remaining));
+    if (redacted.length === 0) {
+      continue;
+    }
+    result.push(redacted);
+    remaining -= redacted.length;
+  }
+
+  return result;
 }
 
 export function createAgentTraceArtifact(trace: AgentTrace): ArtifactDraft {

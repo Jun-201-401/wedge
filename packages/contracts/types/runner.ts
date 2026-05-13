@@ -304,6 +304,8 @@ export interface AgentObservationCandidateSummary {
   role: string | null;
   tag: string;
   text: string;
+  visibleText?: string | null;
+  accessibleName?: string | null;
   inputType?: string | null;
   labelText?: string | null;
   placeholder?: string | null;
@@ -322,6 +324,11 @@ export interface AgentObservationCandidateSummary {
   bounds: InteractiveComponentBounds;
   visibility?: InteractiveComponentVisibility;
   layout?: InteractiveComponentLayout;
+  containerRole?: string | null;
+  containerBounds?: InteractiveComponentBounds | null;
+  containerHeading?: string | null;
+  nearbyText?: string[];
+  nearestTargetSpacingPx?: number | null;
 }
 
 export interface AgentObservationFormControlSummary {
@@ -957,6 +964,8 @@ export interface InteractiveComponentLayout {
 
 export interface InteractiveComponentObservationItem {
   text: string;
+  visible_text?: string | null;
+  accessible_name?: string | null;
   selector: string | null;
   role: string | null;
   href?: string | null;
@@ -977,6 +986,11 @@ export interface InteractiveComponentObservationItem {
   bounds: InteractiveComponentBounds;
   visibility?: InteractiveComponentVisibility;
   layout?: InteractiveComponentLayout;
+  container_role?: string | null;
+  container_bounds?: InteractiveComponentBounds | null;
+  container_heading?: string | null;
+  nearby_text?: string[];
+  nearest_target_spacing_px?: number | null;
 }
 
 export interface VisibleTextBlockObservationItem {
