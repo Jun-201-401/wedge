@@ -101,10 +101,6 @@ function recommendationReason(recommendation: ReportRecommendation, finding: Rep
   return recommendation.rationale ?? finding?.summary ?? recommendation.expectedImpact;
 }
 
-function recommendationProblem(recommendation: ReportRecommendation, finding: ReportFinding | null) {
-  return recommendation.rationale ?? finding?.summary ?? '사용자가 다음 행동을 판단하는 데 필요한 정보가 부족합니다.';
-}
-
 function recommendationMeta(recommendation: ReportRecommendation, finding: ReportFinding | null) {
   const stage = finding ? reportFlowStageLabel(finding.stage) : '분석 결과';
   let signal = '판단 보강';
@@ -116,10 +112,6 @@ function recommendationMeta(recommendation: ReportRecommendation, finding: Repor
   }
 
   return `${stage} · ${signal}`;
-}
-
-function recommendationLocationLabel(finding: ReportFinding | null) {
-  return finding?.evidenceLabel ?? finding?.title ?? '화면 근거 확인';
 }
 
 export function RunReportBrand() {
@@ -409,7 +401,7 @@ export function RunReportViewer({
               </div>
               <p>
                 {recommendations.length > 0
-                  ? '개선 후보를 선택하면 진단과 화면 위치가 함께 바뀝니다.'
+                  ? '개선 후보를 선택하면 진단과 관련 근거가 함께 바뀝니다.'
                   : '사용자가 지나간 단계에서 큰 전환 마찰이 발견되지 않았습니다.'}
               </p>
             </header>
@@ -532,31 +524,19 @@ export function RunReportViewer({
                   </div>
 
                   <div className="run-report-selected-action__body" key={selectedRecommendation.id}>
-                    <h2 id="run-report-selected-action-title">{selectedRecommendation.title}</h2>
-                    <div className="run-report-selected-action__reason">
-                      <strong>전환이 끊기는 지점입니다</strong>
-                      <p>{recommendationReason(selectedRecommendation, selectedRecommendationFinding)}</p>
+                    <div className="run-report-selected-action__summary">
+                      <span>문제 요약</span>
+                      <h2 id="run-report-selected-action-title">{selectedRecommendation.title}</h2>
                     </div>
 
-                    <span className="run-report-selected-action__location">
-                      화면 위치 <strong>{recommendationLocationLabel(selectedRecommendationFinding)}</strong>
-                    </span>
-
-                    <div className="run-report-selected-action__steps">
-                      <article>
-                        <span>1</span>
-                        <strong>문제</strong>
-                        <p>{recommendationProblem(selectedRecommendation, selectedRecommendationFinding)}</p>
-                      </article>
-                      <article>
-                        <span>2</span>
-                        <strong>바꿀 것</strong>
+                    <div className="run-report-selected-action__details">
+                      <article className="run-report-selected-action__detail-card run-report-selected-action__detail-card--primary">
+                        <span>개선 방향</span>
                         <p>{selectedRecommendation.detail}</p>
                       </article>
-                      <article>
-                        <span>3</span>
-                        <strong>확인할 신호</strong>
-                        <p>{selectedRecommendation.validationQuestion ?? selectedRecommendation.expectedImpact}</p>
+                      <article className="run-report-selected-action__detail-card">
+                        <span>판단 근거</span>
+                        <p>{recommendationReason(selectedRecommendation, selectedRecommendationFinding)}</p>
                       </article>
                     </div>
                   </div>
