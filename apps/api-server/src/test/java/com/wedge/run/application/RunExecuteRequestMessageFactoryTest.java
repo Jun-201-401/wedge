@@ -15,38 +15,7 @@ class RunExecuteRequestMessageFactoryTest {
     void createUsesMaterializedScenarioPlanFromSource() {
         UUID runId = UUID.randomUUID();
         UUID scenarioTemplateVersionId = UUID.randomUUID();
-        Map<String, Object> scenarioPlan = Map.of(
-                "schema_version", "0.5",
-                "plan_id", "plan_" + runId,
-                "scenario_type", "custom_compiled",
-                "goal", "무료 체험 CTA까지의 흐름 점검",
-                "start_url", "https://example.com",
-                "environment", Map.of(
-                        "device", "desktop",
-                        "viewport", Map.of("width", 1440, "height", 900),
-                        "locale", "ko-KR",
-                        "timezone", "Asia/Seoul",
-                        "permissions", List.of(),
-                        "auth_state", "anonymous"
-                ),
-                "safety", Map.of(
-                        "allow_external_navigation", false,
-                        "allow_payment_commit", false,
-                        "allow_destructive_action", false,
-                        "use_synthetic_inputs", true,
-                        "stop_before_real_payment", true
-                ),
-                "steps", List.of(
-                        Map.of(
-                                "step_id", "step_001_goto",
-                                "stage", "FIRST_VIEW",
-                                "description", "랜딩 첫 화면 로드",
-                                "action", Map.of("type", "goto", "target", Map.of("url", "https://example.com")),
-                                "settle_strategy", Map.of("type", "network_idle", "timeout_ms", 10000),
-                                "checkpoint", true
-                        )
-                )
-        );
+        Map<String, Object> scenarioPlan = sampleScenarioPlan(runId, "무료 체험 CTA까지의 흐름 점검");
 
         RunExecuteRequestMessage message = factory.create(new RunExecutionRequestSource(
                 runId,
@@ -119,6 +88,30 @@ class RunExecuteRequestMessageFactoryTest {
     }
 
     @Test
+    void createUsesScenarioPlanGoalAsRunExecutePayloadGoal() {
+        UUID runId = UUID.randomUUID();
+        UUID scenarioTemplateVersionId = UUID.randomUUID();
+        String displayGoal = "문의 / 상담 신청 흐름 점검";
+        String executionGoal = "문의 / 상담 신청 흐름 점검 · 첫 화면만 보기";
+        Map<String, Object> scenarioPlan = sampleScenarioPlan(runId, executionGoal);
+
+        RunExecuteRequestMessage message = factory.create(new RunExecutionRequestSource(
+                runId,
+                UUID.randomUUID(),
+                "WEB",
+                URI.create("https://example.com"),
+                displayGoal,
+                "desktop",
+                scenarioTemplateVersionId,
+                scenarioPlan
+        ));
+
+        assertThat(message.messageType()).isEqualTo("run.execute.request");
+        assertThat(message.payload()).containsEntry("goal", executionGoal);
+        assertThat(message.payload()).containsEntry("scenarioPlan", scenarioPlan);
+    }
+
+    @Test
     void createUsesAgentExecuteRequestWhenScenarioPlanIsMissing() {
         UUID runId = UUID.randomUUID();
         UUID projectId = UUID.randomUUID();
@@ -149,5 +142,40 @@ class RunExecuteRequestMessageFactoryTest {
                 .containsEntry("start_url", "https://example.com/product/sample");
         assertThat(agentTask).containsKey("allowed_navigation");
         assertThat(agentTask).doesNotContainKey("scenarioPlan");
+    }
+
+    private Map<String, Object> sampleScenarioPlan(UUID runId, String goal) {
+        return Map.of(
+                "schema_version", "0.5",
+                "plan_id", "plan_" + runId,
+                "scenario_type", "custom_compiled",
+                "goal", goal,
+                "start_url", "https://example.com",
+                "environment", Map.of(
+                        "device", "desktop",
+                        "viewport", Map.of("width", 1440, "height", 900),
+                        "locale", "ko-KR",
+                        "timezone", "Asia/Seoul",
+                        "permissions", List.of(),
+                        "auth_state", "anonymous"
+                ),
+                "safety", Map.of(
+                        "allow_external_navigation", false,
+                        "allow_payment_commit", false,
+                        "allow_destructive_action", false,
+                        "use_synthetic_inputs", true,
+                        "stop_before_real_payment", true
+                ),
+                "steps", List.of(
+                        Map.of(
+                                "step_id", "step_001_goto",
+                                "stage", "FIRST_VIEW",
+                                "description", "랜딩 첫 화면 로드",
+                                "action", Map.of("type", "goto", "target", Map.of("url", "https://example.com")),
+                                "settle_strategy", Map.of("type", "network_idle", "timeout_ms", 10000),
+                                "checkpoint", true
+                        )
+                )
+        );
     }
 }

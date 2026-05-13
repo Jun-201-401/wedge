@@ -2,6 +2,7 @@ package com.wedge.run.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -15,6 +16,7 @@ import com.wedge.common.infrastructure.outbox.OutboxMessagePersistenceAdapter;
 import com.wedge.run.infrastructure.RunPersistenceAdapter;
 import java.net.URI;
 import java.time.OffsetDateTime;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -278,6 +280,36 @@ class RunServiceTest {
     }
 
     @Test
+    void createRunStoresScenarioPlanGoalWhenRequestGoalDiffers() {
+        String displayGoal = "문의 / 상담 신청 흐름 점검";
+        String executionGoal = "문의 / 상담 신청 흐름 점검 · 첫 화면만 보기";
+        Map<String, Object> scenarioPlan = validScenarioPlan("https://example.com", "desktop");
+        scenarioPlan = new LinkedHashMap<>(scenarioPlan);
+        scenarioPlan.put("goal", executionGoal);
+        RunCreateRequest request = new RunCreateRequest(
+                UUID.randomUUID(),
+                "문의 / 상담 신청 흐름 점검",
+                URI.create("https://example.com"),
+                displayGoal,
+                "desktop",
+                UUID.randomUUID(),
+                null,
+                scenarioPlan
+        );
+        RunResponse created = sampleRunWithGoal(executionGoal, RunStatus.CREATED, ResultCompleteness.NONE);
+        ArgumentCaptor<RunCreateRequest> requestCaptor = ArgumentCaptor.forClass(RunCreateRequest.class);
+
+        when(runPersistenceAdapter.createRun(any(RunCreateRequest.class))).thenReturn(created);
+
+        RunResponse response = runService.createRun(request);
+
+        verify(runPersistenceAdapter).createRun(requestCaptor.capture());
+        assertThat(requestCaptor.getValue().goal()).isEqualTo(executionGoal);
+        assertThat(requestCaptor.getValue().scenarioPlan()).containsEntry("goal", executionGoal);
+        assertThat(response.goal()).isEqualTo(executionGoal);
+    }
+
+    @Test
     void createRunRejectsScenarioPlanWithMismatchedStartUrl() {
         RunCreateRequest request = new RunCreateRequest(
                 UUID.randomUUID(),
@@ -406,6 +438,14 @@ class RunServiceTest {
     }
 
     private RunResponse sampleRun(UUID id, RunStatus status, ResultCompleteness resultCompleteness) {
+        return sampleRunWithGoal(id, "무료 체험 CTA까지의 흐름 점검", status, resultCompleteness);
+    }
+
+    private RunResponse sampleRunWithGoal(String goal, RunStatus status, ResultCompleteness resultCompleteness) {
+        return sampleRunWithGoal(UUID.randomUUID(), goal, status, resultCompleteness);
+    }
+
+    private RunResponse sampleRunWithGoal(UUID id, String goal, RunStatus status, ResultCompleteness resultCompleteness) {
         return new RunResponse(
                 id,
                 "run",
@@ -413,7 +453,7 @@ class RunServiceTest {
                 "Landing CTA audit",
                 "WEB",
                 URI.create("https://example.com"),
-                "무료 체험 CTA까지의 흐름 점검",
+                goal,
                 "desktop",
                 UUID.randomUUID(),
                 status,
