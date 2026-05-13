@@ -27,6 +27,7 @@ wedge:
       run-execute-queue: ${WEDGE_RUN_EXECUTE_QUEUE}
       agent-execute-queue: ${WEDGE_AGENT_EXECUTE_QUEUE:agent.execute.request}
       discovery-execute-queue: ${WEDGE_DISCOVERY_EXECUTE_QUEUE:discovery.execute.request}
+      scenario-authoring-execute-queue: ${WEDGE_SCENARIO_AUTHORING_EXECUTE_QUEUE:scenario-authoring.execute.request}
   internal:
     service-token: ${INTERNAL_SERVICE_TOKEN}
     runner-callback-signature-secret: ${INTERNAL_RUNNER_CALLBACK_SIGNATURE_SECRET:${RUNNER_CALLBACK_SIGNATURE_SECRET:}}

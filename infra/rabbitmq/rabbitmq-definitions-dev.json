@@ -73,6 +73,16 @@
       }
     },
     {
+      "name": "scenario-authoring.execute.request",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-dead-letter-exchange": "wedge.dlq",
+        "x-dead-letter-routing-key": "scenario-authoring.execute.dlq"
+      }
+    },
+    {
       "name": "discovery.evaluate.request",
       "vhost": "/",
       "durable": true,
@@ -131,6 +141,13 @@
       "arguments": {}
     },
     {
+      "name": "scenario-authoring.execute.dlq",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {}
+    },
+    {
       "name": "analysis.dlq",
       "vhost": "/",
       "durable": true,
@@ -168,6 +185,14 @@
       "destination": "discovery.execute.request",
       "destination_type": "queue",
       "routing_key": "discovery.execute.request",
+      "arguments": {}
+    },
+    {
+      "source": "wedge.direct",
+      "vhost": "/",
+      "destination": "scenario-authoring.execute.request",
+      "destination_type": "queue",
+      "routing_key": "scenario-authoring.execute.request",
       "arguments": {}
     },
     {
@@ -224,6 +249,14 @@
       "destination": "agent.execute.dlq",
       "destination_type": "queue",
       "routing_key": "agent.execute.dlq",
+      "arguments": {}
+    },
+    {
+      "source": "wedge.dlq",
+      "vhost": "/",
+      "destination": "scenario-authoring.execute.dlq",
+      "destination_type": "queue",
+      "routing_key": "scenario-authoring.execute.dlq",
       "arguments": {}
     },
     {
