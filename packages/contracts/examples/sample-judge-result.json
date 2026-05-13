@@ -39,6 +39,15 @@
       "evidence_refs": [
         "cp_001.obs_002"
       ],
+      "references": [
+        {
+          "label": "GOV.UK Buttons",
+          "publisher": "GOV.UK",
+          "title": "Button component",
+          "basisSummary": "Buttons should communicate the action users can take, so competing primary-looking actions should be kept clear and intentional.",
+          "url": "https://design-system.service.gov.uk/components/button/"
+        }
+      ],
       "observations": [
         "같은 first-view decision stage에서 primary급 CTA 3개가 동시에 노출됨"
       ],

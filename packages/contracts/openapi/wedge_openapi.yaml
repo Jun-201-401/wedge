@@ -4603,8 +4603,7 @@ components:
         findings:
           type: array
           items:
-            type: object
-            additionalProperties: true
+            $ref: '#/components/schemas/RunReportFinding'
         nudges:
           type: array
           items:
@@ -4642,6 +4641,56 @@ components:
       - decisionMap
       - findings
       - nudges
+    RunReportFinding:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        rankOrder:
+          type: integer
+          nullable: true
+        title:
+          type: string
+        summary:
+          type: string
+        category:
+          type: string
+          nullable: true
+        stage:
+          type: string
+          nullable: true
+        axis:
+          type: string
+          nullable: true
+        severity:
+          type: integer
+          nullable: true
+        confidence:
+          type: number
+          nullable: true
+        priorityScore:
+          type: number
+          nullable: true
+        impactHypothesis:
+          type: string
+          nullable: true
+        evidenceRefs:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        references:
+          type: array
+          description: External basis metadata for finding-level reference badges.
+          items:
+            $ref: '#/components/schemas/ReportReference'
+      required:
+      - id
+      - title
+      - summary
+      - evidenceRefs
+      - references
     Report:
       type: object
       properties:
@@ -4903,6 +4952,11 @@ components:
           items:
             type: object
             additionalProperties: true
+        references:
+          type: array
+          description: External basis metadata for finding-level reference badges.
+          items:
+            $ref: '#/components/schemas/ReportReference'
         previewImage:
           type: object
           allOf:
@@ -4924,7 +4978,29 @@ components:
       - summary
       - stage
       - evidenceRefs
+      - references
       - nudges
+    ReportReference:
+      type: object
+      properties:
+        label:
+          type: string
+        publisher:
+          type: string
+        title:
+          type: string
+        basisSummary:
+          type: string
+          description: Short report-facing paraphrase of the cited basis.
+        url:
+          type: string
+          format: uri
+      required:
+      - label
+      - publisher
+      - title
+      - basisSummary
+      - url
     ReportFindingHighlight:
       type: object
       description: Screen coordinate metadata for drawing a finding marker over the preview image.

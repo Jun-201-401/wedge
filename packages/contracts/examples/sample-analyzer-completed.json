@@ -114,6 +114,15 @@
         "evidence_refs": [
           "cp_002.obs_004"
         ],
+        "references": [
+          {
+            "label": "WCAG 3.3.2",
+            "publisher": "W3C",
+            "title": "Labels or Instructions",
+            "basisSummary": "When a screen requires user input, labels or instructions should be provided so users know what to enter.",
+            "url": "https://www.w3.org/WAI/WCAG22/Understanding/labels-or-instructions.html"
+          }
+        ],
         "observations": [
           "이메일 입력 직후 validation response가 발생해 비동기 검증 의존성이 확인됨"
         ],

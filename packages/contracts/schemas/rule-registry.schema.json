@@ -127,8 +127,17 @@
         },
         "source_refs": {
           "type": "array",
+          "deprecated": true,
+          "description": "Legacy internal doc references. Use structured references for user-facing report badges.",
           "items": {
             "type": "string"
+          }
+        },
+        "references": {
+          "type": "array",
+          "description": "Structured external basis metadata that can be copied to JudgeResult issues for report reference badges.",
+          "items": {
+            "$ref": "#/$defs/reference"
           }
         },
         "applicableStages": {
@@ -152,6 +161,36 @@
       },
       "additionalProperties": false,
       "description": "A code-executable Judge rule. It evaluates only the StageContext entries listed in applicableStages and must output stage, axis, criterion, and evidenceRefs through Rule Engine results."
+    },
+    "reference": {
+      "type": "object",
+      "required": [
+        "label",
+        "publisher",
+        "title",
+        "basisSummary",
+        "url"
+      ],
+      "properties": {
+        "label": {
+          "type": "string"
+        },
+        "publisher": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "basisSummary": {
+          "type": "string",
+          "description": "Short report-facing paraphrase of the cited basis. Do not store long copied excerpts here."
+        },
+        "url": {
+          "type": "string",
+          "format": "uri"
+        }
+      },
+      "additionalProperties": false
     },
     "severity_rule": {
       "type": "object",
