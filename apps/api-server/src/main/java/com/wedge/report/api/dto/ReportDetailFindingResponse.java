@@ -17,6 +17,7 @@ public record ReportDetailFindingResponse(
         BigDecimal priorityScore,
         String impactHypothesis,
         List<Object> evidenceRefs,
+        List<Object> references,
         ReportPreviewImageResponse previewImage,
         ReportFindingHighlightResponse highlight,
         List<ReportDetailNudgeResponse> nudges

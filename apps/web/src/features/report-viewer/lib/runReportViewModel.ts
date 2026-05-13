@@ -23,6 +23,13 @@ export interface ReportFinding {
   confidence: number;
   priorityScore: number;
   evidenceRefs: string[];
+  references?: Array<{
+    label: string;
+    publisher: string;
+    title: string;
+    basisSummary: string;
+    url: string;
+  }>;
   previewImageUrl?: string | null;
   recommendation: string;
   highlight: {

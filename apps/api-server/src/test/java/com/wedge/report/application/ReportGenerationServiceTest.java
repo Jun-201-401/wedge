@@ -7,6 +7,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.wedge.analysis.domain.AnalysisFinding;
 import com.wedge.analysis.domain.AnalysisJob;
 import com.wedge.analysis.infrastructure.AnalysisFindingMapper;
 import com.wedge.analysis.infrastructure.AnalysisJobMapper;
@@ -94,7 +95,7 @@ class ReportGenerationServiceTest {
         when(analysisJobMapper.findLatestByRunId(runId)).thenReturn(Optional.of(analysisJob));
         when(reportMapper.findByRunId(runId)).thenReturn(List.of());
         when(reportMapper.insert(any(Report.class))).thenReturn(1);
-        when(analysisFindingMapper.findByAnalysisJobId(analysisJobId)).thenReturn(List.of());
+        when(analysisFindingMapper.findByAnalysisJobId(analysisJobId)).thenReturn(List.of(finding(runId, analysisJobId)));
         when(nudgeMapper.findByAnalysisJobId(analysisJobId)).thenReturn(List.of());
 
         RunReportResponse response = reportGenerationService.generateRunReport(runId, userId);
@@ -106,6 +107,10 @@ class ReportGenerationServiceTest {
         assertThat(response.analysisJobId()).isEqualTo(analysisJobId);
         assertThat(response.summary().get("friction_score").asDouble()).isEqualTo(61.0);
         assertThat(response.decisionMap()).hasSize(1);
+        assertThat(response.findings()).singleElement()
+                .satisfies(finding -> assertThat(finding.references().get(0))
+                        .isInstanceOfSatisfying(Map.class, reference ->
+                                assertThat(reference.get("label")).isEqualTo("WCAG 3.3.2")));
 
         verify(reportMapper).insert(reportCaptor.capture());
         Report report = reportCaptor.getValue();
@@ -355,5 +360,27 @@ class ReportGenerationServiceTest {
         report.setSummaryJsonb("{\"friction_score\":61.0}");
         report.setDecisionMapJsonb("[]");
         return report;
+    }
+
+    private AnalysisFinding finding(UUID runId, UUID analysisJobId) {
+        AnalysisFinding finding = new AnalysisFinding();
+        finding.setId(UUID.randomUUID());
+        finding.setAnalysisJobId(analysisJobId);
+        finding.setRunId(runId);
+        finding.setRankOrder(1);
+        finding.setTitle("Form label issue");
+        finding.setSummary("Input label is missing.");
+        finding.setCategory("FRICTION-FORM-001");
+        finding.setStage("INPUT");
+        finding.setAxis("Friction");
+        finding.setSeverity(2);
+        finding.setConfidence(new BigDecimal("0.87"));
+        finding.setPriorityScore(new BigDecimal("3.12"));
+        finding.setEvidenceRefsJsonb("[\"cp_001.obs_001\"]");
+        finding.setReferencesJsonb("""
+                [{"label":"WCAG 3.3.2","publisher":"W3C","title":"Labels or Instructions",
+                "basisSummary":"Inputs need labels or instructions.","url":"https://www.w3.org/WAI/WCAG22/Understanding/labels-or-instructions.html"}]
+                """);
+        return finding;
     }
 }

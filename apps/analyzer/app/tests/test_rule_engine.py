@@ -133,6 +133,22 @@ class RegistryLoaderTest(unittest.TestCase):
             validate_registry(broken)
 
         broken = copy.deepcopy(registry)
+        broken["rules"][0]["references"] = [{"label": "WCAG"}]
+        with self.assertRaises(RuleRegistryError):
+            validate_registry(broken)
+
+        broken = copy.deepcopy(registry)
+        broken["rules"][0]["references"] = [{
+            "label": "WCAG",
+            "publisher": "W3C",
+            "title": "Labels or Instructions",
+            "basisSummary": "Inputs need labels or instructions.",
+            "url": "not a url",
+        }]
+        with self.assertRaises(RuleRegistryError):
+            validate_registry(broken)
+
+        broken = copy.deepcopy(registry)
         broken["rules"][0]["stages"] = ["BAD_STAGE"]
         with self.assertRaises(RuleRegistryError):
             validate_registry(broken)
@@ -585,6 +601,7 @@ class RuleEngineTest(unittest.TestCase):
         reliability = [issue for issue in result["issues"] if issue["criterion_id"] == "RELIABILITY-TECH-001"]
         self.assertEqual(len(reliability), 1)
         self.assertEqual(reliability[0]["stage"], "INPUT")
+        self.assertEqual(reliability[0]["references"], [])
         self.assertIn("cp_002.state.network_summary", reliability[0]["evidence_refs"])
 
     def test_loading_stuck_emits_from_general_page_ready_timing(self) -> None:
@@ -1128,6 +1145,9 @@ class ContractShapeTest(unittest.TestCase):
             ):
                 self.assertIn(field, issue)
             self.assertTrue(issue["evidence_refs"])
+            self.assertIn("references", issue)
+        referenced_issue = next(issue for issue in result["issues"] if issue["criterion_id"] == "PATH-CTA-002")
+        self.assertEqual(referenced_issue["references"][0]["label"], "GOV.UK Buttons")
         for item in result["decision_map"]:
             for field in ("stage", "displayName", "status", "issueIds", "summary", "evidenceRefs"):
                 self.assertIn(field, item)

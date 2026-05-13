@@ -271,6 +271,7 @@ class JudgeResultPersistenceServiceTest {
                     assertThat(ref.get("ref")).isEqualTo("cp_002.obs_004");
                     assertThat(ref.get("problemComponent")).isInstanceOf(Map.class);
                 });
+        assertThat(finding.getReferencesJsonb()).contains("WCAG 3.3.2");
     }
 
     private void verifyNudgeProjection(UUID analysisJobId) {
@@ -324,6 +325,13 @@ class JudgeResultPersistenceServiceTest {
         issue.put("confidence", 0.72);
         issue.put("priority_score", 1.44);
         issue.put("evidence_refs", List.of("cp_002.obs_004"));
+        issue.put("references", List.of(Map.of(
+                "label", "WCAG 3.3.2",
+                "publisher", "W3C",
+                "title", "Labels or Instructions",
+                "basisSummary", "Inputs need labels or instructions.",
+                "url", "https://www.w3.org/WAI/WCAG22/Understanding/labels-or-instructions.html"
+        )));
         issue.put("problem_components", List.of(Map.of(
                 "component_id", "component_001",
                 "evidence_ref", "cp_002.obs_004",

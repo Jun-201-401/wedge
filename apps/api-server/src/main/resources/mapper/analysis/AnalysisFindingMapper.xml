@@ -16,13 +16,15 @@
         <result property="priorityScore" column="priority_score"/>
         <result property="impactHypothesis" column="impact_hypothesis"/>
         <result property="evidenceRefsJsonb" column="evidence_refs_jsonb"/>
+        <result property="referencesJsonb" column="references_jsonb"/>
         <result property="createdAt" column="created_at"/>
     </resultMap>
 
     <sql id="AnalysisFindingColumns">
         id, analysis_job_id, run_id, rank_order, title, summary, category, stage, axis,
         severity, confidence, priority_score, impact_hypothesis,
-        CAST(evidence_refs_jsonb AS TEXT) AS evidence_refs_jsonb, created_at
+        CAST(evidence_refs_jsonb AS TEXT) AS evidence_refs_jsonb,
+        CAST(references_jsonb AS TEXT) AS references_jsonb, created_at
     </sql>
 
     <select id="findByAnalysisJobId" resultMap="AnalysisFindingResultMap">
@@ -51,11 +53,12 @@
     <insert id="insert" parameterType="com.wedge.analysis.domain.AnalysisFinding">
         INSERT INTO analysis_finding (
             id, analysis_job_id, run_id, rank_order, title, summary, category, stage, axis,
-            severity, confidence, priority_score, impact_hypothesis, evidence_refs_jsonb
+            severity, confidence, priority_score, impact_hypothesis, evidence_refs_jsonb, references_jsonb
         )
         VALUES (
             #{id}, #{analysisJobId}, #{runId}, #{rankOrder}, #{title}, #{summary}, #{category}, #{stage}, #{axis},
-            #{severity}, #{confidence}, #{priorityScore}, #{impactHypothesis}, CAST(#{evidenceRefsJsonb} AS jsonb)
+            #{severity}, #{confidence}, #{priorityScore}, #{impactHypothesis}, CAST(#{evidenceRefsJsonb} AS jsonb),
+            CAST(#{referencesJsonb} AS jsonb)
         )
     </insert>
 

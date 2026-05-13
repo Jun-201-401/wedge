@@ -246,6 +246,13 @@
             "type": "string"
           }
         },
+        "references": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/reference"
+          },
+          "description": "Optional external basis metadata for report reference badges. Evidence locations remain in evidence_refs and problem_components."
+        },
         "problem_components": {
           "type": "array",
           "items": {
@@ -291,6 +298,36 @@
         }
       },
       "description": "Judge issue produced by Rule Engine. issue.stage is assigned from StageContext; LLM cannot create a new stage or move the issue to another stage."
+    },
+    "reference": {
+      "type": "object",
+      "required": [
+        "label",
+        "publisher",
+        "title",
+        "basisSummary",
+        "url"
+      ],
+      "properties": {
+        "label": {
+          "type": "string"
+        },
+        "publisher": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "basisSummary": {
+          "type": "string",
+          "description": "Short report-facing paraphrase of the cited basis. Do not store long copied excerpts here."
+        },
+        "url": {
+          "type": "string",
+          "format": "uri"
+        }
+      },
+      "additionalProperties": false
     },
     "problem_component": {
       "type": "object",

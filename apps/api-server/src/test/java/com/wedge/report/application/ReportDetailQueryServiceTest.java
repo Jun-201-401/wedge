@@ -76,6 +76,7 @@ class ReportDetailQueryServiceTest {
         AnalysisFinding firstFinding = finding(2, "INPUT", new BigDecimal("9.2"), highlightArtifactId);
         AnalysisFinding secondFinding = finding(1, "CTA", new BigDecimal("5.1"));
         AnalysisFinding legacyFinding = finding(3, null, new BigDecimal("1.0"));
+        legacyFinding.setReferencesJsonb(null);
         when(reportMapper.findById(report.getId())).thenReturn(Optional.of(report));
         when(runService.getRun(runId)).thenReturn(runResponse(runId, UUID.randomUUID()));
         when(analysisFindingMapper.findByAnalysisJobIdOrderByPriority(analysisJobId))
@@ -102,7 +103,10 @@ class ReportDetailQueryServiceTest {
         assertThat(response.findings().get(1).nudges()).singleElement()
                 .satisfies(item -> assertThat(item.title()).isEqualTo("Make CTA clearer"));
         assertThat(response.findings().get(2).stage()).isNull();
+        assertThat(response.findings().get(2).references()).isEmpty();
         assertThat(response.findings().get(0).evidenceRefs()).isInstanceOf(List.class);
+        assertThat(response.findings().get(0).references()).singleElement()
+                .satisfies(reference -> assertThat(reference).isInstanceOf(java.util.Map.class));
         assertThat(response.findings().get(0).highlight()).isNotNull();
         assertThat(response.findings().get(0).highlight().label()).isEqualTo("Start free");
         assertThat(response.findings().get(0).highlight().coordinateSpace()).isEqualTo("viewport");
@@ -171,6 +175,10 @@ class ReportDetailQueryServiceTest {
                     "screenshot_artifact_id":"artifact:%s"
                     }}]
                     """.formatted(screenshotArtifactId));
+        finding.setReferencesJsonb("""
+                [{"label":"WCAG 3.3.2","publisher":"W3C","title":"Labels or Instructions",
+                "basisSummary":"Inputs need labels or instructions.","url":"https://www.w3.org/WAI/WCAG22/Understanding/labels-or-instructions.html"}]
+                """);
         return finding;
     }
 

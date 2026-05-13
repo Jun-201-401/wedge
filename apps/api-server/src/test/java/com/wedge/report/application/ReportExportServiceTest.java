@@ -251,6 +251,7 @@ class ReportExportServiceTest {
                 BigDecimal.valueOf(0.82),
                 "사용자가 CTA 클릭 전에 기대 결과를 이해하지 못할 수 있습니다.",
                 List.of(),
+                List.of(),
                 null,
                 null,
                 List.of(nudge)
