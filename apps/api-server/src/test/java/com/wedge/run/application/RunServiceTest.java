@@ -3,6 +3,7 @@ package com.wedge.run.application;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -220,6 +221,66 @@ class RunServiceTest {
 
         assertThat(result.status()).isEqualTo(RunStatus.QUEUED);
         verify(runPersistenceAdapter).findRun(queued.id());
+    }
+
+    @Test
+    void markStartFailedIfAwaitingRunnerFailsQueuedRunWithoutRunnerCallback() {
+        RunResponse queued = sampleRun(RunStatus.QUEUED, ResultCompleteness.NONE);
+        RunResponse failed = queued.withFailure(RunFailureCodes.RUN_START_FAILED, "요청을 시작하지 못했습니다.", ResultCompleteness.NONE);
+
+        when(runPersistenceAdapter.findRun(queued.id())).thenReturn(Optional.of(queued));
+        when(runPersistenceAdapter.updateFailureState(
+                queued,
+                RunFailureCodes.RUN_START_FAILED,
+                "요청을 시작하지 못했습니다.",
+                ResultCompleteness.NONE
+        )).thenReturn(failed);
+
+        Optional<RunResponse> result = runService.markStartFailedIfAwaitingRunner(
+                queued.id(),
+                RunFailureCodes.RUN_START_FAILED,
+                "요청을 시작하지 못했습니다."
+        );
+
+        assertThat(result).contains(failed);
+        assertThat(result.get().status()).isEqualTo(RunStatus.FAILED);
+        assertThat(result.get().failureCode()).isEqualTo(RunFailureCodes.RUN_START_FAILED);
+    }
+
+    @Test
+    void markStartFailedIfAwaitingRunnerDoesNotOverrideRunningOrTerminalRun() {
+        RunResponse running = sampleRun(RunStatus.RUNNING, ResultCompleteness.NONE);
+        RunResponse completed = sampleRun(UUID.randomUUID(), RunStatus.COMPLETED, ResultCompleteness.FINAL);
+
+        when(runPersistenceAdapter.findRun(running.id())).thenReturn(Optional.of(running));
+        when(runPersistenceAdapter.findRun(completed.id())).thenReturn(Optional.of(completed));
+
+        assertThat(runService.markStartFailedIfAwaitingRunner(
+                running.id(),
+                RunFailureCodes.RUN_START_FAILED,
+                "요청을 시작하지 못했습니다."
+        )).isEmpty();
+        assertThat(runService.markStartFailedIfAwaitingRunner(
+                completed.id(),
+                RunFailureCodes.RUN_START_FAILED,
+                "요청을 시작하지 못했습니다."
+        )).isEmpty();
+
+        verify(runPersistenceAdapter, never()).updateFailureState(any(), any(), any(), any());
+    }
+
+    @Test
+    void markStartFailedIfAwaitingRunnerIgnoresMissingRun() {
+        UUID missingRunId = UUID.randomUUID();
+        when(runPersistenceAdapter.findRun(missingRunId)).thenReturn(Optional.empty());
+
+        assertThat(runService.markStartFailedIfAwaitingRunner(
+                missingRunId,
+                RunFailureCodes.RUN_START_FAILED,
+                "요청을 시작하지 못했습니다."
+        )).isEmpty();
+
+        verify(runPersistenceAdapter, never()).updateFailureState(any(), any(), any(), any());
     }
 
     @Test

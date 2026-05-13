@@ -10,7 +10,10 @@ import com.wedge.run.domain.ResultCompleteness;
 import com.wedge.run.domain.RunStatus;
 import com.wedge.common.infrastructure.outbox.OutboxMessagePersistenceAdapter;
 import com.wedge.run.infrastructure.RunPersistenceAdapter;
+import java.util.EnumSet;
 import java.util.List;
+import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
@@ -22,6 +25,11 @@ import org.springframework.transaction.annotation.Transactional;
 public class RunService {
     private static final int DEFAULT_EVENT_LIMIT = 20;
     private static final int MAX_EVENT_LIMIT = 100;
+    private static final Set<RunStatus> START_FAILURE_STATUSES = EnumSet.of(
+            RunStatus.CREATED,
+            RunStatus.QUEUED,
+            RunStatus.STARTING
+    );
 
     private final RunPersistenceAdapter runPersistenceAdapter;
     private final RunExecuteRequestMessageFactory runExecuteRequestMessageFactory;
@@ -200,6 +208,22 @@ public class RunService {
         RunResponse current = getRun(runId);
         RunStatusTransitionPolicy.validateTransition(current.status(), RunStatus.FAILED);
         return runPersistenceAdapter.updateFailureState(current, failureCode, failureMessage, resultCompleteness);
+    }
+
+    @Transactional
+    public Optional<RunResponse> markStartFailedIfAwaitingRunner(UUID runId, String failureCode, String failureMessage) {
+        Optional<RunResponse> current = runPersistenceAdapter.findRun(runId);
+        if (current.isEmpty() || !START_FAILURE_STATUSES.contains(current.get().status())) {
+            return Optional.empty();
+        }
+
+        RunResponse failed = runPersistenceAdapter.updateFailureState(
+                current.get(),
+                failureCode,
+                failureMessage,
+                ResultCompleteness.NONE
+        );
+        return Optional.of(failed);
     }
 
     private RunResponse transition(UUID runId, RunStatus nextStatus, ResultCompleteness resultCompleteness) {
