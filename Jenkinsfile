@@ -171,8 +171,9 @@ fi
 set -e
 
 GIT_AUTH_HEADER="$(printf '%s:%s' "$GITLAB_RO_USER" "$GITLAB_RO_TOKEN" | base64 | tr -d '\n')"
+DEPLOY_SCRIPT="/tmp/wedge-jenkins-deploy-${BUILD_NUMBER}.sh"
 
-ssh -i "$EC2_KEY" $SSH_OPTS "$EC2_USER@$DEPLOY_HOST" "GIT_AUTH_HEADER='$GIT_AUTH_HEADER' GIT_URL='$GIT_URL' GIT_BRANCH='$GIT_BRANCH' MIGRATION_FILES_CHANGED='${MIGRATION_FILES_CHANGED:-false}' RUN_DB_MIGRATION='${RUN_DB_MIGRATION:-false}' bash -lc 'cat > /tmp/wedge-jenkins-deploy-${BUILD_NUMBER}.sh && trap \"rm -f /tmp/wedge-jenkins-deploy-${BUILD_NUMBER}.sh\" EXIT && bash /tmp/wedge-jenkins-deploy-${BUILD_NUMBER}.sh'" << 'EOF'
+ssh -i "$EC2_KEY" $SSH_OPTS "$EC2_USER@$DEPLOY_HOST" "cat > '$DEPLOY_SCRIPT'" << 'EOF'
 set -e
 
 cd /srv/wedge
@@ -405,6 +406,8 @@ echo "Health check failed"
 compose_prod logs --tail=100 rabbitmq api-server web runner analyzer-worker nginx
 exit 1
 EOF
+
+ssh -n -i "$EC2_KEY" $SSH_OPTS "$EC2_USER@$DEPLOY_HOST" "GIT_AUTH_HEADER='$GIT_AUTH_HEADER' GIT_URL='$GIT_URL' GIT_BRANCH='$GIT_BRANCH' MIGRATION_FILES_CHANGED='${MIGRATION_FILES_CHANGED:-false}' RUN_DB_MIGRATION='${RUN_DB_MIGRATION:-false}' bash '$DEPLOY_SCRIPT'; status=\$?; rm -f '$DEPLOY_SCRIPT'; exit \$status"
                         ''')
                     }
                 }
