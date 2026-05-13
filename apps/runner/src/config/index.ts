@@ -22,6 +22,8 @@ const DEFAULT_MQ_MAX_DELIVERY_ATTEMPTS = 3;
 const DEFAULT_AGENT_LLM_TIMEOUT_MS = 10_000;
 const DEFAULT_AGENT_MCP_GATEWAY_TIMEOUT_MS = 10_000;
 const DEFAULT_AGENT_IDEMPOTENCY_LEASE_TTL_MS = 300_000;
+const DEFAULT_AGENT_IDEMPOTENCY_RENEW_INTERVAL_MS = 60_000;
+const MIN_AGENT_IDEMPOTENCY_RENEW_INTERVAL_MS = 1_000;
 export const RUNNER_MQ_CALLBACK_OUTBOX_WORKER_ENABLED_ENV = "RUNNER_MQ_CALLBACK_OUTBOX_WORKER_ENABLED";
 export const RUNNER_MQ_ARTIFACT_OUTBOX_WORKER_ENABLED_ENV = "RUNNER_MQ_ARTIFACT_OUTBOX_WORKER_ENABLED";
 
@@ -197,10 +199,10 @@ export function loadRunnerConfig(overrides: Partial<RunnerConfig> = {}): RunnerC
     process.env.RUNNER_AGENT_IDEMPOTENCY_LEASE_TTL_MS,
     DEFAULT_AGENT_IDEMPOTENCY_LEASE_TTL_MS
   );
-  const agentIdempotencyRenewIntervalMs = parsePositiveInteger(
+  const agentIdempotencyRenewIntervalMs = resolveAgentIdempotencyRenewIntervalMs(
     overrides.agentIdempotencyRenewIntervalMs,
     process.env.RUNNER_AGENT_IDEMPOTENCY_RENEW_INTERVAL_MS,
-    Math.max(1_000, Math.floor(agentIdempotencyLeaseTtlMs / 2))
+    agentIdempotencyLeaseTtlMs
   );
   const messageIdempotencyStoreMode = resolveMessageIdempotencyStoreMode(
     overrides.messageIdempotencyStoreMode ?? process.env.RUNNER_MESSAGE_IDEMPOTENCY_STORE_MODE
@@ -395,6 +397,31 @@ function resolveAgentIdempotencyStoreMode(value: RunnerAgentIdempotencyStoreMode
 
 function resolveMessageIdempotencyStoreMode(value: RunnerMessageIdempotencyStoreMode | string | undefined): RunnerMessageIdempotencyStoreMode {
   return value === "api" ? "api" : "local";
+}
+
+function resolveAgentIdempotencyRenewIntervalMs(
+  overrideValue: number | undefined,
+  envValue: string | undefined,
+  leaseTtlMs: number
+): number {
+  const maxRenewIntervalMs = Math.max(
+    MIN_AGENT_IDEMPOTENCY_RENEW_INTERVAL_MS,
+    Math.floor(leaseTtlMs / 3)
+  );
+  const defaultRenewIntervalMs = Math.min(
+    DEFAULT_AGENT_IDEMPOTENCY_RENEW_INTERVAL_MS,
+    maxRenewIntervalMs
+  );
+  const requestedRenewIntervalMs = parsePositiveInteger(
+    overrideValue,
+    envValue,
+    defaultRenewIntervalMs
+  );
+
+  return Math.max(
+    MIN_AGENT_IDEMPOTENCY_RENEW_INTERVAL_MS,
+    Math.min(requestedRenewIntervalMs, maxRenewIntervalMs)
+  );
 }
 
 function parseBoolean(

@@ -178,6 +178,7 @@ test("[설정] Agent idempotency store는 기본 활성화되고 환경변수로
     assert.equal(config.agentIdempotencyStoreEnabled, true);
     assert.equal(config.agentIdempotencyStoreMode, "local");
     assert.equal(config.agentIdempotencyLeaseTtlMs, 300_000);
+    assert.equal(config.agentIdempotencyRenewIntervalMs, 60_000);
   });
 
   withMqRuntimeEnv(
@@ -205,6 +206,46 @@ test("[설정] Agent idempotency store mode는 API 저장소 모드를 읽는다
       assert.equal(config.agentIdempotencyStoreMode, "api");
       assert.equal(config.agentIdempotencyLeaseTtlMs, 120_000);
       assert.equal(config.agentIdempotencyRenewIntervalMs, 30_000);
+    }
+  );
+});
+
+test("[설정] Agent idempotency renewal은 lease TTL의 1/3 이내로 조정한다", () => {
+  withMqRuntimeEnv(
+    {
+      RUNNER_AGENT_IDEMPOTENCY_LEASE_TTL_MS: "90000"
+    },
+    () => {
+      const config = loadRunnerConfig({ serviceName: "runner-test" });
+
+      assert.equal(config.agentIdempotencyLeaseTtlMs, 90_000);
+      assert.equal(config.agentIdempotencyRenewIntervalMs, 30_000);
+    }
+  );
+
+  withMqRuntimeEnv(
+    {
+      RUNNER_AGENT_IDEMPOTENCY_LEASE_TTL_MS: "120000",
+      RUNNER_AGENT_IDEMPOTENCY_RENEW_INTERVAL_MS: "90000"
+    },
+    () => {
+      const config = loadRunnerConfig({ serviceName: "runner-test" });
+
+      assert.equal(config.agentIdempotencyLeaseTtlMs, 120_000);
+      assert.equal(config.agentIdempotencyRenewIntervalMs, 40_000);
+    }
+  );
+
+  withMqRuntimeEnv(
+    {
+      RUNNER_AGENT_IDEMPOTENCY_LEASE_TTL_MS: "300000",
+      RUNNER_AGENT_IDEMPOTENCY_RENEW_INTERVAL_MS: "5"
+    },
+    () => {
+      const config = loadRunnerConfig({ serviceName: "runner-test" });
+
+      assert.equal(config.agentIdempotencyLeaseTtlMs, 300_000);
+      assert.equal(config.agentIdempotencyRenewIntervalMs, 1_000);
     }
   );
 });

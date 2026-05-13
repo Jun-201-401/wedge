@@ -41,14 +41,14 @@ RUNNER_MQ_PREFETCH=4
 RUNNER_AGENT_CONCURRENCY=1
 RUNNER_AGENT_IDEMPOTENCY_STORE_ENABLED=true
 RUNNER_AGENT_IDEMPOTENCY_LEASE_TTL_MS=300000
-RUNNER_AGENT_IDEMPOTENCY_RENEW_INTERVAL_MS=150000
+RUNNER_AGENT_IDEMPOTENCY_RENEW_INTERVAL_MS=60000
 RUNNER_MQ_REQUEUE_ON_FAILURE=false
 RUNNER_MQ_MAX_DELIVERY_ATTEMPTS=3
 ```
 
 Keep `RUNNER_AGENT_CONCURRENCY` lower than static `RUNNER_MQ_PREFETCH` because agent jobs can loop through multiple browser observations. `RUNNER_AGENT_IDEMPOTENCY_STORE_ENABLED=true` keeps terminal agent results under the artifact root so duplicate delivery after runner restart does not re-run the browser flow. If `RUNNER_MQ_REQUEUE_ON_FAILURE=true`, `RUNNER_MQ_MAX_DELIVERY_ATTEMPTS` bounds poison message requeues before the consumer rejects without requeue.
 
-When `RUNNER_AGENT_IDEMPOTENCY_STORE_MODE=api`, the runner claims a DB-backed lease before browser execution, renews it on `RUNNER_AGENT_IDEMPOTENCY_RENEW_INTERVAL_MS`, stores terminal non-`FAILED` results, and explicitly releases the claim when execution fails before a terminal idempotency record is stored.
+When `RUNNER_AGENT_IDEMPOTENCY_STORE_MODE=api`, the runner claims a DB-backed lease before browser execution, renews it on `RUNNER_AGENT_IDEMPOTENCY_RENEW_INTERVAL_MS`, stores terminal non-`FAILED` results, and explicitly releases the claim when execution fails before a terminal idempotency record is stored. Keep renewal at or below one third of `RUNNER_AGENT_IDEMPOTENCY_LEASE_TTL_MS`; the runner clamps larger values so two missed renewal windows do not immediately free a live Agent execution for another replica.
 
 Agent decisions use the heuristic client by default. LLM decisions are config-gated and still pass through the same pre-decision verifier, risk policy, and fixed browser tool runtime:
 

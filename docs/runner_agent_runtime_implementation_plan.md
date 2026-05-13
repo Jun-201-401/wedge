@@ -1772,7 +1772,7 @@ Completed:
 - API-backed Agent idempotency renews owned leases during long execution and releases owned claims when execution fails before a terminal idempotency record is stored.
 
 Remaining:
-- Load-test and tune production lease TTL / renewal interval defaults for expected Agent execution duration.
+- Continue collecting staging load evidence for lease TTL / renewal interval defaults as Agent execution duration changes.
 ```
 
 ## Phase 7: LLM Decision Client
