@@ -29,16 +29,16 @@ def evaluate_path_choice_overload(rule: dict[str, Any], context: StageContext) -
         severity=candidate["severity"],
         confidence=candidate["confidence"],
         evidence_refs=[candidate["record"].ref],
-        observations=[f"한 viewport 안에 클릭 가능한 선택지 {count}개가 동시에 노출됨"],
+        observations=[f"한 화면 영역 안에 클릭 가능한 선택지 {count}개가 동시에 노출됨"],
         signals=[
             f"viewport_interactive_choice_count={count}",
             f"warning_threshold={WARNING_CHOICE_COUNT}",
             f"overload_threshold={OVERLOAD_CHOICE_COUNT}",
         ],
         summary="한 화면에 선택지가 과도하게 많아 사용자가 다음 이동이나 행동을 고르기 어려울 수 있습니다.",
-        impact_hypothesis="비슷한 위계의 클릭 대상이 한 viewport에 많이 노출되면 사용자가 목표 행동을 고르기 전에 비교와 탐색에 더 많은 주의를 쓰게 될 수 있습니다.",
+        impact_hypothesis="비슷한 위계의 클릭 대상이 한 화면 영역에 많이 노출되면 사용자가 목표 행동을 고르기 전에 비교와 탐색에 더 많은 주의를 쓰게 될 수 있습니다.",
         recommendations=["한 화면의 바로가기나 행동 선택지를 우선순위에 따라 줄이고, 관련 항목은 그룹으로 묶어 시각적 위계를 분명히 하기"],
-        validation_questions=["사용자는 현재 viewport에서 가장 중요한 다음 행동을 빠르게 고를 수 있는가?"],
+        validation_questions=["사용자는 현재 화면 영역에서 가장 중요한 다음 행동을 빠르게 고를 수 있는가?"],
     )
 
 

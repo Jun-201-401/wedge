@@ -62,11 +62,11 @@ def evaluate_reliability(rule: dict[str, Any], context: StageContext) -> RuleHit
         severity=2,
         confidence=0.86 if any(not ref.startswith("aggregate.") for ref in refs) else 0.72,
         evidence_refs=refs,
-        observations=[f"failed request {failed_count}건, console error {console_count}건이 관찰됨"],
+        observations=[f"사용자 행동 직후 요청 실패 {failed_count}건, 화면 스크립트 오류 {console_count}건이 관찰됨"],
         signals=["failed_request_count>0" if failed_count else "console_error_count>0"],
         summary="사용자 행동 직후 기술 오류가 관찰되어 진행 신뢰성이 낮아질 수 있습니다.",
         impact_hypothesis="오류가 행동 결과 피드백을 방해해 사용자가 흐름을 재시도하거나 중단할 수 있습니다.",
-        recommendations=["행동 직후 실패 요청과 콘솔 오류를 우선 재현하고 사용자-facing fallback을 제공하기"],
+        recommendations=["행동 직후 발생한 기술 오류를 우선 재현하고, 실패 상황에서도 사용자가 볼 수 있는 안내와 재시도 방법을 제공하기"],
         validation_questions=["오류 상황에서도 사용자는 다음 행동 또는 재시도 방법을 이해하는가?"],
     )
 
@@ -91,12 +91,12 @@ def evaluate_loading_stuck(rule: dict[str, Any], context: StageContext) -> RuleH
         severity=severity,
         confidence=confidence,
         evidence_refs=[record.ref for record in records],
-        observations=["A general page transition took longer than the expected ready threshold without heavy-flow exception signals."],
+        observations=["일반적인 페이지 전환이 기준 시간보다 오래 걸리는 신호가 관찰됨"],
         signals=_loading_signals(context, records),
-        summary="The next page or result view takes too long to become ready after a normal navigation action.",
-        impact_hypothesis="Users may perceive the transition as unresponsive and abandon the flow before the next page is usable.",
-        recommendations=["Improve the normal page transition path or show faster meaningful content while the next view becomes ready."],
-        validation_questions=["After a normal navigation action, is the next page usable within the expected threshold?"],
+        summary="다음 화면이나 결과 화면이 준비되는 시간이 길어 사용자가 진행 상태를 불안하게 느낄 수 있습니다.",
+        impact_hypothesis="전환 후 의미 있는 내용이 늦게 보이면 사용자가 화면이 멈췄다고 판단하고 흐름을 이탈할 수 있습니다.",
+        recommendations=["다음 화면이 준비되는 동안 핵심 콘텐츠를 더 빨리 보여주거나 진행 상태를 명확히 안내하기"],
+        validation_questions=["일반적인 이동 행동 후 사용자는 다음 화면이 준비되고 있다는 점을 바로 이해할 수 있는가?"],
     )
 
 

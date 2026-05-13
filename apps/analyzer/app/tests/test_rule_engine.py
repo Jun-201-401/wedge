@@ -1132,6 +1132,46 @@ class ContractShapeTest(unittest.TestCase):
             for field in ("stage", "displayName", "status", "issueIds", "summary", "evidenceRefs"):
                 self.assertIn(field, item)
 
+    def test_fallback_report_copy_does_not_expose_internal_fields(self) -> None:
+        result = analyze_evidence_packet(load_sample_packet())
+        forbidden_markers = (
+            "rule hit",
+            "evidence_refs",
+            "criterion_id",
+            "severity",
+            "confidence",
+            "overall_risk",
+            "llm_overall_summary",
+            "JudgeResult",
+            "Source format",
+            "CTA",
+            "primary",
+            "secondary",
+            "P0 issue",
+            "user-facing",
+            "console error",
+            "failed request",
+            "accessible name",
+            "aria-labelledby",
+            "viewport",
+        )
+        self.assertTrue(result["nudges"])
+        report_texts: list[str] = []
+        for issue in result["issues"]:
+            report_texts.extend(
+                str(issue.get(field) or "")
+                for field in ("summary", "impact_hypothesis")
+            )
+            for field in ("observations", "recommendations", "validation_questions"):
+                report_texts.extend(str(item) for item in issue.get(field) or [])
+        for nudge in result["nudges"]:
+            for field in ("title", "rationale", "recommendation", "expected_effect", "validation_question"):
+                report_texts.append(str(nudge.get(field) or ""))
+        report_texts.extend(str(item.get("summary") or "") for item in result["decision_map"])
+        for value in report_texts:
+            for marker in forbidden_markers:
+                self.assertNotIn(marker, value)
+
 
 class ScoringAndProviderTest(unittest.TestCase):
     def test_priority_score_matches_documented_formula(self) -> None:

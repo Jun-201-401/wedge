@@ -27,12 +27,12 @@ def evaluate_journey_goal_cta_mismatch(rule: dict[str, Any], context: StageConte
             severity=severity,
             confidence=signal.provider_confidence,
             evidence_refs=[signal.observation_ref],
-            observations=[f"CTA semantic label is {signal.scenario_relevance_label}."],
+            observations=["선택된 행동이 사용자가 고른 점검 목표와 직접 연결되지 않는 신호가 관찰됨"],
             signals=[f"cta_text={signal.visible_text}", "scenario_relevance_low"],
-            summary="The selected CTA appears weakly related to the scenario goal.",
-            impact_hypothesis="Users may follow an action path that does not advance the intended goal.",
-            recommendations=["Align the primary CTA copy and destination with the scenario goal."],
-            validation_questions=["Does this CTA directly move users toward the selected goal?"],
+            summary="선택된 버튼이 사용자가 의도한 목표와 직접 연결되지 않아 다음 행동 흐름이 약해질 수 있습니다.",
+            impact_hypothesis="사용자가 버튼을 눌러도 원하는 목표로 이어지지 않으면 흐름을 다시 찾거나 중단할 수 있습니다.",
+            recommendations=["가장 중요한 버튼의 문구와 이동 대상을 사용자가 선택한 목표에 맞게 정리하기"],
+            validation_questions=["사용자는 이 버튼을 눌렀을 때 목표한 행동으로 이동한다고 바로 이해할 수 있는가?"],
         )
     return None
 
