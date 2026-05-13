@@ -407,7 +407,12 @@ compose_prod logs --tail=100 rabbitmq api-server web runner analyzer-worker ngin
 exit 1
 EOF
 
-ssh -n -i "$EC2_KEY" $SSH_OPTS "$EC2_USER@$DEPLOY_HOST" "GIT_AUTH_HEADER='$GIT_AUTH_HEADER' GIT_URL='$GIT_URL' GIT_BRANCH='$GIT_BRANCH' MIGRATION_FILES_CHANGED='${MIGRATION_FILES_CHANGED:-false}' RUN_DB_MIGRATION='${RUN_DB_MIGRATION:-false}' bash '$DEPLOY_SCRIPT'; status=\$?; rm -f '$DEPLOY_SCRIPT'; exit \$status"
+set +e
+ssh -n -i "$EC2_KEY" $SSH_OPTS "$EC2_USER@$DEPLOY_HOST" "GIT_AUTH_HEADER='$GIT_AUTH_HEADER' GIT_URL='$GIT_URL' GIT_BRANCH='$GIT_BRANCH' MIGRATION_FILES_CHANGED='${MIGRATION_FILES_CHANGED:-false}' RUN_DB_MIGRATION='${RUN_DB_MIGRATION:-false}' bash '$DEPLOY_SCRIPT'"
+DEPLOY_STATUS="$?"
+ssh -n -i "$EC2_KEY" $SSH_OPTS "$EC2_USER@$DEPLOY_HOST" "rm -f -- '$DEPLOY_SCRIPT'" || true
+set -e
+exit "$DEPLOY_STATUS"
                         ''')
                     }
                 }
