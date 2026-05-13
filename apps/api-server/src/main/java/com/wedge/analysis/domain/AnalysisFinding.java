@@ -25,5 +25,6 @@ public class AnalysisFinding {
     private BigDecimal priorityScore;
     private String impactHypothesis;
     private String evidenceRefsJsonb;
+    private String referencesJsonb;
     private OffsetDateTime createdAt;
 }

@@ -235,6 +235,7 @@ public class JudgeResultPersistenceService {
         finding.setPriorityScore(readDecimal(issue, "priority_score", null));
         finding.setImpactHypothesis(readString(issue, "impact_hypothesis", null));
         finding.setEvidenceRefsJsonb(toJson(enrichedEvidenceRefs(issue)));
+        finding.setReferencesJsonb(toJson(readListValue(issue, "references")));
         return finding;
     }
 
