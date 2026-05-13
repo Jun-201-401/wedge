@@ -16,6 +16,7 @@ test("[Agent Trace Export] 성공한 checkout trace를 payment 직전 stop이 �
     run_id: task.run_id,
     outcome: {
       status: "SUCCESS",
+      reason_code: "GOAL_REACHED",
       reason: "Checkout entry reached before payment commit."
     },
     turns: [
@@ -184,6 +185,7 @@ test("[Agent Trace Export] login/CAPTCHA 등 BLOCKED trace는 ScenarioPlan 후�
     run_id: task.run_id,
     outcome: {
       status: "BLOCKED",
+      reason_code: "LOGIN_REQUIRED",
       reason: "The current page appears to require login before the agent can continue."
     },
     turns: [

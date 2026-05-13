@@ -2656,6 +2656,7 @@ function createReplayHintOnlyCheckoutTrace(task: AgentTask, productUrl: string):
     run_id: task.run_id,
     outcome: {
       status: "SUCCESS",
+      reason_code: "GOAL_REACHED",
       reason: "Checkout entry reached before payment commit."
     },
     turns: [
