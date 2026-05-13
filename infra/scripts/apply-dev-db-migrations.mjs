@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { basename, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 
@@ -22,8 +22,87 @@ export function listMigrationFiles(migrationsDir = DEFAULT_MIGRATIONS_DIR) {
   const absoluteDir = resolve(process.cwd(), migrationsDir);
   return readdirSync(absoluteDir)
     .filter((file) => file.endsWith('.sql'))
-    .sort()
+    .sort(compareMigrationFileNames)
     .map((file) => resolve(absoluteDir, file));
+}
+
+export function compareMigrationFileNames(left, right) {
+  const leftName = basename(left);
+  const rightName = basename(right);
+  const leftMigration = parseMigrationFileName(leftName);
+  const rightMigration = parseMigrationFileName(rightName);
+
+  if (!leftMigration || !rightMigration) {
+    return leftName.localeCompare(rightName);
+  }
+
+  const versionDelta = compareVersionSegments(leftMigration.versionSegments, rightMigration.versionSegments);
+  if (versionDelta !== 0) {
+    return versionDelta;
+  }
+
+  return leftMigration.description.localeCompare(rightMigration.description);
+}
+
+function parseMigrationFileName(fileName) {
+  const match = /^V(.+)__(.+)\.sql$/u.exec(fileName);
+  if (!match) {
+    return null;
+  }
+
+  return {
+    versionSegments: match[1].split(/[._-]/u).map(parseVersionSegment),
+    description: match[2],
+  };
+}
+
+function parseVersionSegment(segment) {
+  return /^\d+$/u.test(segment)
+    ? { type: 'number', value: BigInt(segment) }
+    : { type: 'text', value: segment };
+}
+
+function compareVersionSegments(left, right) {
+  const maxLength = Math.max(left.length, right.length);
+  for (let index = 0; index < maxLength; index += 1) {
+    const leftSegment = left[index];
+    const rightSegment = right[index];
+
+    if (!leftSegment) {
+      return -1;
+    }
+
+    if (!rightSegment) {
+      return 1;
+    }
+
+    const segmentDelta = compareVersionSegment(leftSegment, rightSegment);
+    if (segmentDelta !== 0) {
+      return segmentDelta;
+    }
+  }
+
+  return 0;
+}
+
+function compareVersionSegment(left, right) {
+  if (left.type === 'number' && right.type === 'number') {
+    if (left.value < right.value) {
+      return -1;
+    }
+
+    if (left.value > right.value) {
+      return 1;
+    }
+
+    return 0;
+  }
+
+  if (left.type !== right.type) {
+    return left.type === 'number' ? -1 : 1;
+  }
+
+  return left.value.localeCompare(right.value);
 }
 
 export function buildPsqlArgs(config) {
@@ -98,7 +177,7 @@ function main() {
   console.log(JSON.stringify({ step: 'complete', migrationCount: files.length }));
 }
 
-if (import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   try {
     main();
   } catch (error) {
