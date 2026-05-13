@@ -110,10 +110,6 @@ pipeline {
     environment {
         GIT_URL = 'https://lab.ssafy.com/s14-final/S14P31C104.git'
         GIT_BRANCH = 'develop'
-        IMAGE_NAME = 'wedge-api-server'
-        WEB_IMAGE_NAME = 'wedge-web'
-        RUNNER_IMAGE_NAME = 'wedge-runner'
-        ANALYZER_IMAGE_NAME = 'wedge-analyzer'
         DEPLOY_HOST = 'k14c104.p.ssafy.io'
         SSH_OPTS = '-o StrictHostKeyChecking=yes -o UserKnownHostsFile=/var/jenkins_home/.ssh/known_hosts -o UpdateHostKeys=no'
         LOG_FILE = 'jenkins-console.log'
@@ -153,81 +149,6 @@ fi
             }
         }
 
-        stage('Docker Info') {
-            steps {
-                script {
-                    env.FAILED_STAGE = 'Docker Info'
-                    runLogged('docker version')
-                }
-            }
-        }
-
-        stage('Build Images') {
-            steps {
-                script {
-                    env.FAILED_STAGE = 'Build Images'
-                    runLogged('''
-docker build -f apps/api-server/Dockerfile -t "${IMAGE_NAME}:ci-${BUILD_NUMBER}" apps/api-server
-docker build -f apps/web/Dockerfile -t "${WEB_IMAGE_NAME}:ci-${BUILD_NUMBER}" apps/web
-docker build -f apps/runner/Dockerfile -t "${RUNNER_IMAGE_NAME}:ci-${BUILD_NUMBER}" .
-docker build -f apps/analyzer/Dockerfile -t "${ANALYZER_IMAGE_NAME}:ci-${BUILD_NUMBER}" .
-                    ''')
-                }
-            }
-        }
-
-        stage('Database Migration') {
-            when {
-                expression {
-                    return env.MIGRATION_FILES_CHANGED == 'true'
-                }
-            }
-            steps {
-                script {
-                    env.FAILED_STAGE = 'Database Migration'
-                    if (params.RUN_DB_MIGRATION != true) {
-                        error('Migration files changed but RUN_DB_MIGRATION=false. Enable migration or review the deployment.')
-                    }
-                }
-                withCredentials([sshUserPrivateKey(
-                    credentialsId: 'ec2-ssh',
-                    keyFileVariable: 'EC2_KEY',
-                    usernameVariable: 'EC2_USER'
-                ), usernamePassword(
-                    credentialsId: 'gitlab-ec2-readonly',
-                    usernameVariable: 'GITLAB_RO_USER',
-                    passwordVariable: 'GITLAB_RO_TOKEN'
-                )]) {
-                    script {
-                        runLogged('''
-set -e
-
-GIT_AUTH_HEADER="$(printf '%s:%s' "$GITLAB_RO_USER" "$GITLAB_RO_TOKEN" | base64 | tr -d '\n')"
-
-ssh -i "$EC2_KEY" $SSH_OPTS "$EC2_USER@$DEPLOY_HOST" "GIT_AUTH_HEADER='$GIT_AUTH_HEADER' GIT_URL='$GIT_URL' GIT_BRANCH='$GIT_BRANCH' bash -s" << 'EOF'
-set -e
-
-cd /srv/wedge
-
-PREVIOUS_HEAD="$(git rev-parse HEAD 2>/dev/null || true)"
-printf '%s\n' "$PREVIOUS_HEAD" > .jenkins-previous-head
-
-git remote set-url origin "$GIT_URL"
-git remote set-url --push origin "$GIT_URL"
-git -c credential.helper= -c "http.extraHeader=Authorization: Basic ${GIT_AUTH_HEADER}" fetch --prune origin "$GIT_BRANCH"
-unset GIT_AUTH_HEADER
-git reset --hard "origin/$GIT_BRANCH"
-
-docker compose --env-file .env.prod -f compose.prod.yaml up -d postgres
-docker compose --env-file .env.prod -f compose.prod.yaml --profile migration run --rm flyway info
-docker compose --env-file .env.prod -f compose.prod.yaml --profile migration run --rm flyway migrate
-EOF
-                        ''')
-                    }
-                }
-            }
-        }
-
         stage('Deploy to EC2') {
             options {
                 timeout(time: 30, unit: 'MINUTES')
@@ -250,14 +171,14 @@ EOF
 set -e
 
 GIT_AUTH_HEADER="$(printf '%s:%s' "$GITLAB_RO_USER" "$GITLAB_RO_TOKEN" | base64 | tr -d '\n')"
+DEPLOY_SCRIPT="/tmp/wedge-jenkins-deploy-${BUILD_NUMBER}.sh"
 
-ssh -i "$EC2_KEY" $SSH_OPTS "$EC2_USER@$DEPLOY_HOST" "GIT_AUTH_HEADER='$GIT_AUTH_HEADER' GIT_URL='$GIT_URL' GIT_BRANCH='$GIT_BRANCH' bash -s" << 'EOF'
+ssh -i "$EC2_KEY" $SSH_OPTS "$EC2_USER@$DEPLOY_HOST" "cat > '$DEPLOY_SCRIPT'" << 'EOF'
 set -e
 
 cd /srv/wedge
 
-PREVIOUS_HEAD="$(cat .jenkins-previous-head 2>/dev/null || git rev-parse HEAD 2>/dev/null || true)"
-rm -f .jenkins-previous-head
+PREVIOUS_HEAD="$(git rev-parse HEAD 2>/dev/null || true)"
 git remote set-url origin "$GIT_URL"
 git remote set-url --push origin "$GIT_URL"
 git -c credential.helper= -c "http.extraHeader=Authorization: Basic ${GIT_AUTH_HEADER}" fetch --prune origin "$GIT_BRANCH"
@@ -273,18 +194,31 @@ if [ -z "$PREVIOUS_HEAD" ] || git diff --name-only "$PREVIOUS_HEAD" "$CURRENT_HE
     RABBITMQ_RECREATE_REQUIRED=true
 fi
 
+mkdir -p .deploy
+CANDIDATE_RELEASE_ENV=".deploy/candidate-${CURRENT_HEAD}.env"
+CURRENT_RELEASE_ENV=".deploy/current.env"
+
+cat > "$CANDIDATE_RELEASE_ENV" << RELEASE_ENV
+WEDGE_RELEASE_GIT_SHA=${CURRENT_HEAD}
+API_SERVER_IMAGE=${API_SERVER_IMAGE}
+WEB_IMAGE=${WEB_IMAGE}
+RUNNER_IMAGE=${RUNNER_IMAGE}
+ANALYZER_IMAGE=${ANALYZER_IMAGE}
+RELEASE_ENV
+
 compose_prod() {
-    API_SERVER_IMAGE="$API_SERVER_IMAGE" \
-    WEB_IMAGE="$WEB_IMAGE" \
-    RUNNER_IMAGE="$RUNNER_IMAGE" \
-    ANALYZER_IMAGE="$ANALYZER_IMAGE" \
-    docker compose --env-file .env.prod -f compose.prod.yaml "$@"
+    bash infra/scripts/prod-compose.sh --release-env "$CANDIDATE_RELEASE_ENV" "$@"
 }
 
-docker build -f apps/api-server/Dockerfile -t "$API_SERVER_IMAGE" -t wedge-api-server:deploy-local apps/api-server
-docker build -f apps/web/Dockerfile -t "$WEB_IMAGE" -t wedge-web:deploy-local apps/web
-docker build -f apps/runner/Dockerfile -t "$RUNNER_IMAGE" -t wedge-runner:deploy-local .
-docker build -f apps/analyzer/Dockerfile -t "$ANALYZER_IMAGE" -t wedge-analyzer:deploy-local .
+if [ "${MIGRATION_FILES_CHANGED:-false}" = "true" ] && [ "${RUN_DB_MIGRATION:-false}" != "true" ]; then
+    echo "Migration files changed but RUN_DB_MIGRATION=false. Enable migration or review the deployment."
+    exit 1
+fi
+
+docker build -f apps/api-server/Dockerfile -t "$API_SERVER_IMAGE" apps/api-server
+docker build -f apps/web/Dockerfile -t "$WEB_IMAGE" apps/web
+docker build -f apps/runner/Dockerfile -t "$RUNNER_IMAGE" .
+docker build -f apps/analyzer/Dockerfile -t "$ANALYZER_IMAGE" .
 
 wait_for_rabbitmq() {
     local attempts="${1:-60}"
@@ -325,7 +259,7 @@ start_rabbitmq() {
     fi
 
     wait_for_rabbitmq 90 2
-    bash infra/rabbitmq/provision-prod-user.sh
+    RELEASE_ENV_FILE="$CANDIDATE_RELEASE_ENV" bash infra/rabbitmq/provision-prod-user.sh
 }
 
 verify_rabbitmq_topology() {
@@ -441,6 +375,11 @@ if ! verify_rabbitmq_topology; then
 fi
 
 compose_prod up -d postgres redis
+if [ "${MIGRATION_FILES_CHANGED:-false}" = "true" ]; then
+    compose_prod --profile migration run --rm flyway info
+    compose_prod --profile migration run --rm flyway migrate
+fi
+
 compose_prod up -d --no-deps --force-recreate api-server web runner analyzer-worker
 compose_prod up -d --force-recreate nginx
 verify_service_image api-server "$API_SERVER_IMAGE"
@@ -453,6 +392,8 @@ for i in 1 2 3 4 5 6 7 8 9 10; do
         && curl -kfsS https://localhost/ > /dev/null 2>&1 \
         && compose_prod ps --status running --services runner | grep -qx runner \
         && compose_prod ps --status running --services analyzer-worker | grep -qx analyzer-worker; then
+        mv "$CANDIDATE_RELEASE_ENV" "$CURRENT_RELEASE_ENV"
+        printf '%s\n' "$CURRENT_HEAD" > .deploy/current.sha
         echo "Health check passed"
         exit 0
     fi
@@ -465,6 +406,13 @@ echo "Health check failed"
 compose_prod logs --tail=100 rabbitmq api-server web runner analyzer-worker nginx
 exit 1
 EOF
+
+set +e
+ssh -n -i "$EC2_KEY" $SSH_OPTS "$EC2_USER@$DEPLOY_HOST" "GIT_AUTH_HEADER='$GIT_AUTH_HEADER' GIT_URL='$GIT_URL' GIT_BRANCH='$GIT_BRANCH' MIGRATION_FILES_CHANGED='${MIGRATION_FILES_CHANGED:-false}' RUN_DB_MIGRATION='${RUN_DB_MIGRATION:-false}' bash '$DEPLOY_SCRIPT'"
+DEPLOY_STATUS="$?"
+ssh -n -i "$EC2_KEY" $SSH_OPTS "$EC2_USER@$DEPLOY_HOST" "rm -f -- '$DEPLOY_SCRIPT'" || true
+set -e
+exit "$DEPLOY_STATUS"
                         ''')
                     }
                 }

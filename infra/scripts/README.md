@@ -2,6 +2,15 @@
 
 Runner 운영 smoke 고정 스크립트 모음이다.
 
+## Production compose wrapper
+
+```bash
+bash infra/scripts/prod-compose.sh ps
+```
+
+`prod-compose.sh`는 `.env.prod`와 Jenkins가 검증 후 승격한 `.deploy/current.env`를 함께 사용한다.
+운영에서 수동으로 app 서비스를 재기동할 때도 이 wrapper를 사용해야 Jenkins가 검증한 이미지 태그가 유지된다.
+
 ## Unit-level script checks
 
 ```bash
