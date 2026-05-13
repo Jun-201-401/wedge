@@ -86,7 +86,10 @@ test('run monitor page exposes Sprint 2 live cockpit essentials with Korean-faci
   assert.match(source, /run-monitor-agent-pointer/);
   assert.match(source, /run-monitor-scan-line/);
   assert.match(source, /run-monitor-detection-box/);
+  assert.match(source, /run-monitor-browser__header/);
   assert.doesNotMatch(source, /run-monitor-browser__address/);
+  assert.doesNotMatch(source, /run-monitor-browser__bar/);
+  assert.doesNotMatch(source, /run-monitor-browser__dots/);
   assert.match(source, /run-monitor-mock-cta/);
   assert.doesNotMatch(source, /모의 프리뷰/);
   assert.doesNotMatch(source, /페이지 캡처/);
@@ -117,7 +120,7 @@ test('run monitor page exposes Sprint 2 live cockpit essentials with Korean-faci
   assert.match(source, /generateReportForRun\(run\.id\)/);
   assert.match(source, /reportCtaState\.kind === 'generate'/);
   assert.match(source, /reportCtaState\.kind === 'request-analysis'/);
-  assert.match(source, /reportCtaStatusLabel/);
+  assert.doesNotMatch(source, /reportCtaStatusLabel/);
   assert.match(source, /reportCtaCardClassName/);
   assert.match(source, /run-monitor-report-cta--clickable/);
   assert.match(source, /<a[\s\S]*?href=\{reportPath\}[\s\S]*?onClick=\{openReport\}[\s\S]*?>/);
@@ -140,6 +143,7 @@ test('run monitor page exposes Sprint 2 live cockpit essentials with Korean-faci
 });
 
 test('run monitor css follows the live cockpit visual language', () => {
+  const source = fs.readFileSync(new URL('../../src/pages/run-monitor/RunMonitorPage.tsx', import.meta.url), 'utf8');
   const css = fs.readFileSync(new URL('../../src/pages/run-monitor/RunMonitorPage.css', import.meta.url), 'utf8');
 
   assert.match(css, /\.run-monitor-page\s*\{[\s\S]*?background: #fff/);
@@ -159,15 +163,23 @@ test('run monitor css follows the live cockpit visual language', () => {
   assert.match(cssRule(css, '.run-monitor-panel-scroll'), /height: 0/);
   assert.match(cssRule(css, '.run-monitor-panel-scroll'), /flex: 1 1 0/);
   assert.match(cssRule(css, '.run-monitor-panel-scroll'), /overflow-y: auto/);
-  assert.match(css, /\.run-monitor-browser\s*\{[\s\S]*?box-shadow: 0 20px 54px/);
+  assert.match(css, /\.run-monitor-browser\s*\{[\s\S]*?border: 0/);
+  assert.match(css, /\.run-monitor-browser\s*\{[\s\S]*?box-shadow: inset 0 0 0 1px #e5e7eb/);
+  assert.match(css, /\.run-monitor-browser__header\s*\{[\s\S]*?height: 2\.15rem/);
+  assert.match(css, /\.run-monitor-browser__header span:first-child\s*\{[\s\S]*?width: 5\.8rem/);
   assert.doesNotMatch(css, /\.run-monitor-browser__address/);
   assert.doesNotMatch(css, /\.run-monitor-browser__mode-pill/);
+  assert.doesNotMatch(css, /\.run-monitor-browser__bar/);
+  assert.doesNotMatch(css, /\.run-monitor-browser__dots/);
   assert.match(css, /\.run-monitor-target-inline span\s*\{[\s\S]*?color: #64748b/);
   assert.match(css, /\.run-monitor-topbar__link--secondary\s*\{[\s\S]*?color: #475569/);
   assert.match(css, /\.run-monitor-topbar__link--primary\s*\{[\s\S]*?background: #334155/);
   assert.match(css, /\.run-monitor-target-inline strong\s*\{[\s\S]*?display: block/);
   assert.match(css, /\.run-monitor-target-inline strong\s*\{[\s\S]*?font-weight: 800/);
   assert.match(css, /\.run-monitor-section-title h1,[\s\S]*?\.run-monitor-log h2\s*\{[\s\S]*?color: #475569/);
+  assert.doesNotMatch(source, /run-monitor-live-insight__label">\s*<span/);
+  assert.doesNotMatch(css, /\.run-monitor-live-insight__label h2\s*\{[\s\S]*?color: #0369a1/);
+  assert.doesNotMatch(css, /\.run-monitor-live-insight__label span/);
   assert.match(css, /\.run-monitor-step\s*\{[\s\S]*?border-radius: 0\.72rem/);
   assert.match(css, /\.run-monitor-step__head h3\s*\{[\s\S]*?text-overflow: ellipsis/);
   assert.match(css, /\.run-monitor-step__status\s*\{[\s\S]*?border-radius: 999px/);
@@ -190,8 +202,8 @@ test('run monitor css follows the live cockpit visual language', () => {
   assert.match(css, /\.run-monitor-report-cta--clickable\s*\{[\s\S]*?cursor: pointer/);
   assert.match(css, /\.run-monitor-report-cta--clickable:hover\s*\{[\s\S]*?background: rgba\(224, 242, 254, 0\.72\)/);
   assert.match(css, /\.run-monitor-report-cta--clickable:focus-visible\s*\{[\s\S]*?outline: 2px solid rgba\(14, 165, 233, 0\.42\)/);
-  assert.match(css, /\.run-monitor-report-cta__state\s*\{[\s\S]*?justify-content: space-between/);
-  assert.match(css, /\.run-monitor-report-cta__state b\s*\{[\s\S]*?color: #94a3b8/);
+  assert.match(css, /\.run-monitor-report-cta__state\s*\{[\s\S]*?justify-content: flex-start/);
+  assert.doesNotMatch(css, /\.run-monitor-report-cta__state b/);
   assert.match(css, /\.run-monitor-report-cta > p\s*\{[\s\S]*?min-height: 0/);
   assert.match(css, /\.run-monitor-report-cta__footer\s*\{[\s\S]*?display: grid/);
   assert.match(css, /\.run-monitor-report-cta__footer\s*\{[\s\S]*?border-top: 0/);

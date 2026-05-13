@@ -328,9 +328,9 @@ export function RunReportViewer({
         <header className="run-report-hero">
           <div className="run-report-hero__copy">
             <div className="run-report-hero__meta">
-              <span className="run-report-tag">분석 완료</span>
+              <span className="run-report-tag">완료된 리포트</span>
             </div>
-            <h1 id="run-report-title">CTA 전환 마찰 분석</h1>
+            <h1 id="run-report-title">전환 흐름 리포트</h1>
             <dl className="run-report-hero-context" aria-label="리포트 대상 정보">
               <div>
                 <dt>분석 대상</dt>
@@ -364,14 +364,10 @@ export function RunReportViewer({
           <section className="run-report-visual-panel" aria-label="분석 화면 미리보기">
             <article className="run-report-evidence-card">
               <div className="run-report-browser" aria-label="최근 화면 캡처">
-                <div className="run-report-browser__bar">
-                  <div className="run-report-browser__dots" aria-hidden="true">
-                    <span />
-                    <span />
-                    <span />
-                  </div>
+                <div className="run-report-browser__header" aria-hidden="true">
+                  <span />
+                  <span />
                 </div>
-
                 <div
                   ref={evidencePreviewRef}
                   className={`run-report-evidence-preview${evidencePreviewUrl ? ' run-report-evidence-preview--image' : ''}${isEvidencePreviewResolving ? ' run-report-evidence-preview--resolving' : ''}`}
@@ -408,18 +404,19 @@ export function RunReportViewer({
 
           <aside className="run-report-insight-panel" aria-label="먼저 고칠 항목">
             <header className="run-report-insight-summary">
-              <span>먼저 고칠 항목</span>
-              <h2>{recommendations.length > 0 ? '개선 후보를 선택해 화면 근거를 확인하세요' : '이번 실행에서 바로 고칠 항목은 없습니다'}</h2>
+              <div className="run-report-insight-summary__label">
+                <h2>먼저 고칠 항목</h2>
+              </div>
               <p>
                 {recommendations.length > 0
-                  ? '상단 후보를 선택하면 오른쪽 진단과 왼쪽 화면 위치가 함께 바뀝니다.'
+                  ? '개선 후보를 선택하면 진단과 화면 위치가 함께 바뀝니다.'
                   : '사용자가 지나간 단계에서 큰 전환 마찰이 발견되지 않았습니다.'}
               </p>
             </header>
 
             <section className="run-report-section run-report-section--priority" aria-labelledby="run-report-actions-title">
               <div className="run-report-section-heading">
-                <h2 id="run-report-actions-title">개선 후보 선택</h2>
+                <h3 id="run-report-actions-title">개선 후보</h3>
               </div>
 
               {recommendations.length === 0 ? (
@@ -510,7 +507,9 @@ export function RunReportViewer({
               <section className="run-report-section run-report-section--selected-recommendation" aria-labelledby="run-report-selected-action-title">
                 <div className="run-report-selected-action" onMouseLeave={() => setHoveredFindingId(null)}>
                   <div className="run-report-stage-group">
-                    <span className="run-report-stage-group__title">전환 흐름</span>
+                    <div className="run-report-section-heading run-report-section-heading--compact">
+                      <h3>전환 흐름</h3>
+                    </div>
                     <div className="run-report-stage-chips" aria-label="전환 단계">
                       <ol>
                         {flowNodes.map((node) => {

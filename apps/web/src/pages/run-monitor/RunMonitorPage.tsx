@@ -267,14 +267,10 @@ function RunMonitorLoadingShell({ runId, targetUrl }: { runId: string; targetUrl
             </div>
 
             <div className="run-monitor-browser" aria-hidden="true">
-              <div className="run-monitor-browser__bar">
-                <div className="run-monitor-browser__dots">
-                  <span />
-                  <span />
-                  <span />
-                </div>
+              <div className="run-monitor-browser__header">
+                <span />
+                <span />
               </div>
-
               <div className="run-monitor-browser__stage run-monitor-browser__stage--skeleton" />
             </div>
           </section>
@@ -292,7 +288,6 @@ function RunMonitorLoadingShell({ runId, targetUrl }: { runId: string; targetUrl
 
             <section className="run-monitor-live-insight">
               <div className="run-monitor-live-insight__label">
-                <span />
                 <h2>분석 상태</h2>
               </div>
               <div className="run-monitor-live-insight__card run-monitor-live-insight__card--skeleton">
@@ -803,25 +798,6 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
       {reportActionState.message}
     </p>
   ) : null;
-  let reportCtaStatusLabel = '준비 중';
-  if (reportPath) {
-    reportCtaStatusLabel = '준비됨';
-  } else if (isReportActionPending) {
-    reportCtaStatusLabel = canRequestAnalysis ? '요청 중' : '준비 중';
-  } else if (reportActionState.kind === 'error' && canRequestAnalysis) {
-    reportCtaStatusLabel = '확인 필요';
-  } else if (reportActionState.kind === 'error' && canGenerateReport) {
-    reportCtaStatusLabel = '확인 필요';
-  } else if (canGenerateReport) {
-    reportCtaStatusLabel = '준비 중';
-  } else if (canRequestAnalysis) {
-    reportCtaStatusLabel = '요청 중';
-  } else if (reportCtaState.kind === 'waiting' || reportCtaState.kind === 'loading') {
-    reportCtaStatusLabel = '대기 중';
-  } else if (reportCtaState.kind === 'failed' || reportCtaState.kind === 'error') {
-    reportCtaStatusLabel = '확인 필요';
-  }
-
   let reportCtaActionLabel = '대기 중';
   if (reportPath) {
     reportCtaActionLabel = '리포트 열기';
@@ -849,7 +825,6 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
     <>
       <div className="run-monitor-report-cta__state">
         <span>{reportCtaState.eyebrow}</span>
-        <b>{reportCtaStatusLabel}</b>
       </div>
       <strong>분석 결과 리포트</strong>
       <p>{reportCtaState.message}</p>
@@ -918,14 +893,10 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
             )}
 
             <div className="run-monitor-browser" aria-label="최근 화면 캡처">
-              <div className="run-monitor-browser__bar">
-                <div className="run-monitor-browser__dots" aria-hidden="true">
-                  <span />
-                  <span />
-                  <span />
-                </div>
+              <div className="run-monitor-browser__header" aria-hidden="true">
+                <span />
+                <span />
               </div>
-
               <div className={authenticatedSnapshotUrl ? 'run-monitor-browser__stage run-monitor-browser__stage--snapshot' : 'run-monitor-browser__stage'}>
                 {authenticatedSnapshotUrl ? (
                   <img className="run-monitor-browser__image" src={authenticatedSnapshotUrl} alt="최근 캡처된 분석 화면" />
@@ -1016,7 +987,6 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
 
           <section className="run-monitor-live-insight" aria-labelledby="live-insight-title">
             <div className="run-monitor-live-insight__label">
-              <span aria-hidden="true" />
               <h2 id="live-insight-title">{reportCtaState.titleLabel}</h2>
             </div>
             {reportCtaState.kind !== 'hidden' ? (
