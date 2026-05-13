@@ -23,11 +23,6 @@ scrape_configs:
       - targets:
           - host.docker.internal:9101
 
-  - job_name: analyzer-api
-    static_configs:
-      - targets:
-          - host.docker.internal:8000
-
   - job_name: analyzer-worker
     static_configs:
       - targets:

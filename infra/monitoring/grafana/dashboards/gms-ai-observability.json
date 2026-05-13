@@ -98,7 +98,7 @@
             "uid": "wedge-prometheus"
           },
           "editorMode": "code",
-          "expr": "up{job=~\"runner|analyzer-api|analyzer-worker\"}",
+          "expr": "up{job=~\"runner|analyzer-worker\"}",
           "legendFormat": "{{job}}",
           "range": true,
           "refId": "A"
