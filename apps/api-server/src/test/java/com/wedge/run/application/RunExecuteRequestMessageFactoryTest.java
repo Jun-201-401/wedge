@@ -64,6 +64,58 @@ class RunExecuteRequestMessageFactoryTest {
         assertThat(message.idempotencyKey()).isEqualTo("run:" + runId);
         assertThat(message.payload()).containsEntry("scenarioTemplateVersionId", scenarioTemplateVersionId.toString());
         assertThat(message.payload()).containsEntry("scenarioPlan", scenarioPlan);
+        assertThat(message.payload()).containsEntry("goal", "무료 체험 CTA까지의 흐름 점검");
+    }
+
+    @Test
+    void createAlignsRunExecutePayloadGoalWithScenarioPlanGoal() {
+        UUID runId = UUID.randomUUID();
+        String scenarioGoal = "랜딩 전환 CTA 점검 · 첫 화면만 보기";
+        Map<String, Object> scenarioPlan = Map.of(
+                "schema_version", "0.5",
+                "plan_id", "plan_" + runId,
+                "scenario_type", "custom_compiled",
+                "goal", scenarioGoal,
+                "start_url", "https://www.mgdj.co.kr/",
+                "environment", Map.of(
+                        "device", "desktop",
+                        "viewport", Map.of("width", 1440, "height", 900),
+                        "locale", "ko-KR",
+                        "timezone", "Asia/Seoul",
+                        "auth_state", "anonymous"
+                ),
+                "safety", Map.of(
+                        "allow_external_navigation", false,
+                        "allow_payment_commit", false,
+                        "allow_destructive_action", false,
+                        "use_synthetic_inputs", true
+                ),
+                "steps", List.of(
+                        Map.of(
+                                "step_id", "step_001_goto",
+                                "stage", "FIRST_VIEW",
+                                "description", "Discovery 추천 URL에 진입한다.",
+                                "action", Map.of("type", "goto", "target", "https://www.mgdj.co.kr/"),
+                                "settle_strategy", Map.of("type", "network_idle", "timeout_ms", 3000),
+                                "checkpoint", true
+                        )
+                )
+        );
+
+        RunExecuteRequestMessage message = factory.create(new RunExecutionRequestSource(
+                runId,
+                UUID.randomUUID(),
+                "WEB",
+                URI.create("https://www.mgdj.co.kr/"),
+                "랜딩 전환 CTA 점검",
+                "desktop",
+                UUID.randomUUID(),
+                scenarioPlan
+        ));
+
+        assertThat(message.messageType()).isEqualTo("run.execute.request");
+        assertThat(message.payload()).containsEntry("goal", scenarioGoal);
+        assertThat(message.payload()).containsEntry("scenarioPlan", scenarioPlan);
     }
 
     @Test

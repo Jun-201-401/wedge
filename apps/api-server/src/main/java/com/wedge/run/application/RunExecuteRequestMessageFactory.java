@@ -39,7 +39,7 @@ public class RunExecuteRequestMessageFactory {
                 "projectId", projectId,
                 "triggerSource", run.triggerSource(),
                 "startUrl", run.startUrl().toString(),
-                "goal", resolveGoal(run),
+                "goal", resolveRunExecuteGoal(run, scenarioPlan),
                 "devicePreset", run.devicePreset(),
                 "scenarioTemplateVersionId", run.scenarioTemplateVersionId().toString(),
                 "scenarioPlan", scenarioPlan,
@@ -179,5 +179,13 @@ public class RunExecuteRequestMessageFactory {
 
     private String resolveGoal(RunExecutionRequestSource run) {
         return (run.goal() == null || run.goal().isBlank()) ? "기본 실행 흐름 점검" : run.goal();
+    }
+
+    private String resolveRunExecuteGoal(RunExecutionRequestSource run, Map<String, Object> scenarioPlan) {
+        Object scenarioGoal = scenarioPlan.get("goal");
+        if (scenarioGoal instanceof String text && !text.isBlank()) {
+            return text;
+        }
+        return resolveGoal(run);
     }
 }
