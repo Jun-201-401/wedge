@@ -22,6 +22,12 @@ Agent runtime:
 node infra/scripts/real-agent-run-e2e-smoke.mjs
 ```
 
+Agent product/checkout runtime:
+
+```bash
+node infra/scripts/real-agent-product-checkout-smoke.mjs
+```
+
 Discovery → Scenario Authoring → Run chain:
 
 ```bash
