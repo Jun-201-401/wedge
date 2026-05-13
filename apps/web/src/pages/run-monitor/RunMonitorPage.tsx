@@ -1037,7 +1037,7 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
               <dl>
                 <div>
                   <dt>선택한 흐름</dt>
-                  <dd>{run.goal ?? run.name}</dd>
+                  <dd>{run.name ?? run.goal}</dd>
                 </div>
                 <div>
                   <dt>확인 범위</dt>
