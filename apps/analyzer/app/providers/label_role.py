@@ -75,7 +75,7 @@ class GMSLabelRoleProvider:
         enabled: bool = True,
         min_confidence: float = MIN_LABEL_ROLE_CONFIDENCE,
     ) -> None:
-        self._client = client or GMSClient()
+        self._client = client or GMSClient(feature="label_role")
         self._enabled = enabled
         self._min_confidence = min_confidence
 

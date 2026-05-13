@@ -214,6 +214,7 @@ services:
       ANALYZER_GMS_BASE_URL: ${ANALYZER_GMS_BASE_URL:-https://gms.ssafy.io/gmsapi}
       ANALYZER_GMS_OPENAI_RESPONSES_PATH: ${ANALYZER_GMS_OPENAI_RESPONSES_PATH:-api.openai.com/v1/responses}
       ANALYZER_GMS_TIMEOUT_SECONDS: ${ANALYZER_GMS_TIMEOUT_SECONDS:-20}
+      ANALYZER_METRICS_ENABLED: ${ANALYZER_METRICS_ENABLED:-true}
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3).read()"]
       interval: 10s
@@ -250,6 +251,11 @@ services:
       ANALYZER_GMS_BASE_URL: ${ANALYZER_GMS_BASE_URL:-https://gms.ssafy.io/gmsapi}
       ANALYZER_GMS_OPENAI_RESPONSES_PATH: ${ANALYZER_GMS_OPENAI_RESPONSES_PATH:-api.openai.com/v1/responses}
       ANALYZER_GMS_TIMEOUT_SECONDS: ${ANALYZER_GMS_TIMEOUT_SECONDS:-20}
+      ANALYZER_METRICS_ENABLED: ${ANALYZER_METRICS_ENABLED:-true}
+      ANALYZER_METRICS_HOST: 0.0.0.0
+      ANALYZER_METRICS_PORT: 9102
+    ports:
+      - "127.0.0.1:9102:9102"
     init: true
     restart: unless-stopped
 

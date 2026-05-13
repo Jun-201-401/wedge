@@ -66,7 +66,7 @@ class GMSReportExplainer:
     def from_env(cls) -> "GMSReportExplainer":
         config = GMSConfig.from_env()
         return cls(
-            client=GMSClient(config),
+            client=GMSClient(config, feature="report_explainer"),
             enabled=config.enabled,
             model=config.model,
         )
