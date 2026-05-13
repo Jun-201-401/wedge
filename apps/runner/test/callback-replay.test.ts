@@ -116,15 +116,19 @@ test("[콜백 재전송] 재전송 실패 record는 보존하고 attempts를 증
       errorMessage: "old failure"
     });
 
+    const initialRecord = JSON.parse(await readFile(callbackOutboxFile, "utf8")) as { failedAt: string };
+    await sleep(5);
     const summary = await replayCallbackOutbox(config);
     const retained = await readFile(callbackOutboxFile, "utf8");
+    const retainedRecord = JSON.parse(retained) as { attempts: number; failedAt: string };
 
     assert.equal(summary.processedCount, 1);
     assert.equal(summary.deliveredCount, 0);
     assert.equal(summary.remainingCount, 1);
     assert.equal(summary.skipped, false);
     assert.match(retained, /"callbackType":"finished"/);
-    assert.match(retained, /"attempts":6/);
+    assert.equal(retainedRecord.attempts, 6);
+    assert.equal(retainedRecord.failedAt, initialRecord.failedAt);
   } finally {
     await new Promise<void>((resolve, reject) => {
       server.close((error) => {

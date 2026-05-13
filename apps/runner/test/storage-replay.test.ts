@@ -157,6 +157,8 @@ test("[아티팩트 재전송] 저장 실패 record는 보존하고 attempts를 
       /artifact storage failed/
     );
 
+    const initialRecord = JSON.parse(await readFile(artifactOutboxFile, "utf8")) as { failedAt: string };
+    await sleep(5);
     const summary = await replayArtifactOutbox(
       createRunnerTestConfig({
         artifactsRoot,
@@ -175,7 +177,9 @@ test("[아티팩트 재전송] 저장 실패 record는 보존하고 attempts를 
     assert.equal(summary.remainingCount, 1);
     assert.equal(summary.skipped, false);
     const retained = await readFile(artifactOutboxFile, "utf8");
-    assert.match(retained, /"attempts":6/);
+    const retainedRecord = JSON.parse(retained) as { attempts: number; failedAt: string };
+    assert.equal(retainedRecord.attempts, 6);
+    assert.equal(retainedRecord.failedAt, initialRecord.failedAt);
   } finally {
     await rm(artifactsRoot, { recursive: true, force: true });
   }
