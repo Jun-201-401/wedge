@@ -8,6 +8,7 @@ import { confirmScenarioAuthoringCandidate, createScenarioAuthoringJob, getScena
 import type { ScenarioAuthoringCandidate } from '../../entities/scenario-authoring';
 import { FIRST_WORD_DELAY_MS, WORD_ROTATION_INTERVAL_MS } from '../../features/landing-vision';
 import { LOGIN_PATH, RUNS_PATH } from '../../shared/lib/appPaths';
+import { formatDisplayUrl } from '../../shared/lib/displayUrl';
 import { pushAppPath } from '../../shared/lib/navigation';
 import { buildRunMonitorPath } from '../run-monitor/lib/runMonitorRoute';
 import {
@@ -387,6 +388,7 @@ function PreflightAgent({ submittedUrl, discoveryState, onRetry, onEditUrl }: Pr
   const steps = discoveryState.kind === 'polling' ? discoveryState.progressSteps : PREFLIGHT_DISCOVERY_STEPS;
   const progressPercent = getDiscoveryProgressPercent(steps);
   const isFailed = discoveryState.kind === 'failed';
+  const submittedUrlLabel = formatDisplayUrl(submittedUrl);
 
   return (
     <section className="create-analysis-panel create-analysis-panel--preflight" aria-labelledby="discovery-progress-title">
@@ -405,7 +407,7 @@ function PreflightAgent({ submittedUrl, discoveryState, onRetry, onEditUrl }: Pr
           </div>
         </div>
 
-        <p className="preflight-agent__url">{submittedUrl}</p>
+        <p className="preflight-agent__url" title={submittedUrl}>{submittedUrlLabel}</p>
         <div className="preflight-agent__divider" aria-hidden="true" />
 
         <ol className="preflight-agent__timeline" aria-label="Discovery 진행 상태">
@@ -465,6 +467,7 @@ function RecommendationAgent({ submittedUrl, scenarios, emptyMessage, onChooseSc
   const visibleScenarios = scenarios.filter((scenario) => scenario.isRunnable);
   const detectedScenarioCount = visibleScenarios.length;
   const hasManualScenarios = toManualScenarioRecommendationViewModels(visibleScenarios.map((scenario) => scenario.id)).length > 0;
+  const submittedUrlLabel = formatDisplayUrl(submittedUrl);
 
   return (
     <section className="create-analysis-panel create-analysis-panel--recommendations" aria-labelledby="recommendations-title">
@@ -483,7 +486,7 @@ function RecommendationAgent({ submittedUrl, scenarios, emptyMessage, onChooseSc
           </div>
         </div>
 
-        <p className="recommendation-agent__url">{submittedUrl}</p>
+        <p className="recommendation-agent__url" title={submittedUrl}>{submittedUrlLabel}</p>
         <p className="recommendation-agent__limitation">
           사이트 화면에서 확인한 버튼, 링크, 폼 신호를 기준으로 추천했어요. 이미지 텍스트, 숨겨진 메뉴, 로그인 뒤 화면은 제외될 수 있어요.
         </p>
@@ -509,7 +512,7 @@ function RecommendationAgent({ submittedUrl, scenarios, emptyMessage, onChooseSc
                   {scenario.targetLabel || scenario.suggestedStartUrl ? (
                     <div className="scenario-card__context-row">
                       <span>추천 진입점</span>
-                      <strong>{scenario.targetLabel ?? scenario.suggestedStartUrl}</strong>
+                      <strong>{scenario.targetLabel ?? formatDisplayUrl(scenario.suggestedStartUrl ?? '', 46)}</strong>
                     </div>
                   ) : null}
                   <ol className="scenario-card__preview-steps">
@@ -552,6 +555,8 @@ function RecommendationAgent({ submittedUrl, scenarios, emptyMessage, onChooseSc
 }
 
 function ManualChoiceAgent({ submittedUrl, scenarios, onChooseScenario, onBackToRecommendations }: ManualChoiceAgentProps) {
+  const submittedUrlLabel = formatDisplayUrl(submittedUrl);
+
   return (
     <section className="create-analysis-panel create-analysis-panel--manual-choice" aria-labelledby="manual-choice-title">
       <div className="manual-choice-agent">
@@ -564,7 +569,7 @@ function ManualChoiceAgent({ submittedUrl, scenarios, onChooseScenario, onBackTo
           </div>
         </div>
 
-        <p className="manual-choice-agent__url">{submittedUrl}</p>
+        <p className="manual-choice-agent__url" title={submittedUrl}>{submittedUrlLabel}</p>
         <p className="manual-choice-agent__note">자동 탐지 근거가 약한 흐름은 사용자가 선택한 목표를 기준으로 안전하게 탐색합니다.</p>
         <div className="manual-choice-agent__divider" aria-hidden="true" />
 
@@ -680,6 +685,8 @@ function ReadyAgent({
   onStartRun,
 }: ReadyAgentProps) {
   const preview = scenarioAuthoringState.kind === 'succeeded' ? scenarioAuthoringState.preview : null;
+  const submittedUrlLabel = formatDisplayUrl(submittedUrl);
+  const previewStartUrlLabel = preview?.startUrl ? formatDisplayUrl(preview.startUrl) : '';
 
   return (
     <section className="create-analysis-panel create-analysis-panel--ready" aria-labelledby="ready-title">
@@ -701,7 +708,7 @@ function ReadyAgent({
 
         <div className="ready-agent__url-card">
           <span>대상 URL</span>
-          <strong>{submittedUrl}</strong>
+          <strong title={submittedUrl}>{submittedUrlLabel}</strong>
         </div>
 
         <div className="ready-agent__summary-grid" aria-label="진단 시작 전 요약">
@@ -726,7 +733,7 @@ function ReadyAgent({
               </div>
               <small>{preview.stepCount} steps</small>
             </div>
-            {preview.startUrl ? <p className="ready-agent__scenario-plan-url">{preview.startUrl}</p> : null}
+            {preview.startUrl ? <p className="ready-agent__scenario-plan-url" title={preview.startUrl}>{previewStartUrlLabel}</p> : null}
             <ol className="ready-agent__scenario-steps">
               {preview.steps.map((step) => (
                 <li key={step.id}>

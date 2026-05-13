@@ -2,8 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { useAuthenticatedResourceUrl } from '../../../shared/lib/authenticatedResourceUrl';
 import { RUNS_PATH } from '../../../shared/lib/appPaths';
+import { formatDisplayUrl } from '../../../shared/lib/displayUrl';
 import { resolveActiveFinding, resolveLinkedFindingId } from '../lib/runReportInteractions';
-import type { ReportDecisionNode, ReportFinding, ReportRecommendation, RunReportViewModel } from '../lib/runReportViewModel';
+import type { ReportFinding, ReportRecommendation, RunReportViewModel } from '../lib/runReportViewModel';
 import '../styles/run-report-viewer.css';
 
 interface RunReportViewerProps {
@@ -32,6 +33,14 @@ function markerLabel(label: string) {
 
 const TOP_RECOMMENDATION_COUNT = 3;
 
+const REPORT_FLOW_STAGES = [
+  { id: 'first', label: '첫 화면', shortLabel: '첫 화면' },
+  { id: 'value', label: '가치 판단', shortLabel: '가치' },
+  { id: 'action', label: '행동 선택', shortLabel: '행동' },
+] as const;
+
+type ReportFlowStageId = (typeof REPORT_FLOW_STAGES)[number]['id'];
+
 function normalizeStageLabel(value: string | null | undefined) {
   return (value ?? '').replace(/[\s/·_-]/g, '').toLowerCase();
 }
@@ -54,52 +63,29 @@ function stageBucket(value: string | null | undefined) {
   return normalized || 'unknown';
 }
 
-function resolveActiveFlowNodeId(nodes: ReportDecisionNode[], finding: ReportFinding | null) {
-  if (nodes.length === 0) {
-    return null;
+function toReportFlowStageId(value: string | null | undefined): ReportFlowStageId {
+  const bucket = stageBucket(value);
+
+  if (bucket === 'first' || bucket === 'value' || bucket === 'action') {
+    return bucket;
   }
 
-  if (!finding) {
-    return nodes.find((node) => node.tone === 'friction')?.id ?? nodes[0].id;
-  }
-
-  const findingBucket = stageBucket(finding.stage);
-  const titleMatch = nodes.find((node) => stageBucket(node.title) === findingBucket);
-
-  if (titleMatch) {
-    return titleMatch.id;
-  }
-
-  const codeMatch = nodes.find((node) => stageBucket(node.code) === findingBucket);
-  return codeMatch?.id ?? nodes.find((node) => node.tone === 'friction')?.id ?? nodes[0].id;
+  return 'action';
 }
 
-function flowNodeLabel(node: ReportDecisionNode, index: number) {
-  const bucket = stageBucket(node.title);
-
-  if (bucket === 'first') {
-    return '첫 화면 발견';
-  }
-
-  if (bucket === 'value') {
-    return /신뢰|trust/.test(normalizeStageLabel(`${node.code} ${node.title}`)) ? '신뢰 형성' : '가치 이해';
-  }
-
-  if (bucket === 'action') {
-    return '행동 선택';
-  }
-
-  return ['첫 화면', '가치 판단', '행동 선택'][index] ?? node.title;
+function reportFlowStageLabel(value: string | null | undefined) {
+  const flowStageId = toReportFlowStageId(value);
+  return REPORT_FLOW_STAGES.find((stage) => stage.id === flowStageId)?.label ?? '행동 선택';
 }
 
-function shortFlowNodeLabel(label: string) {
-  return {
-    '첫 화면 발견': '첫 화면',
-    '가치 이해': '가치',
-    '신뢰 형성': '신뢰',
-    '행동 선택': '행동',
-    '가치 판단': '가치',
-  }[label] ?? label.replace(/\s+/g, '');
+function resolveActiveFlowStageId(report: RunReportViewModel, finding: ReportFinding | null): ReportFlowStageId {
+  if (finding) {
+    return toReportFlowStageId(finding.stage);
+  }
+
+  const frictionNode = report.decisionNodes.find((node) => node.tone === 'friction');
+  const fallbackNode = frictionNode ?? report.decisionNodes[0];
+  return toReportFlowStageId(`${fallbackNode?.title ?? ''} ${fallbackNode?.code ?? ''}`);
 }
 
 function linkedFinding(findings: ReportFinding[], recommendation: ReportRecommendation | null) {
@@ -115,12 +101,8 @@ function recommendationReason(recommendation: ReportRecommendation, finding: Rep
   return recommendation.rationale ?? finding?.summary ?? recommendation.expectedImpact;
 }
 
-function recommendationProblem(recommendation: ReportRecommendation, finding: ReportFinding | null) {
-  return recommendation.rationale ?? finding?.summary ?? '사용자가 다음 행동을 판단하는 데 필요한 정보가 부족합니다.';
-}
-
 function recommendationMeta(recommendation: ReportRecommendation, finding: ReportFinding | null) {
-  const stage = finding?.stage ?? '분석 결과';
+  const stage = finding ? reportFlowStageLabel(finding.stage) : '분석 결과';
   let signal = '판단 보강';
 
   if (finding?.severity === 'high') {
@@ -130,10 +112,6 @@ function recommendationMeta(recommendation: ReportRecommendation, finding: Repor
   }
 
   return `${stage} · ${signal}`;
-}
-
-function recommendationLocationLabel(finding: ReportFinding | null) {
-  return finding?.evidenceLabel ?? finding?.title ?? '화면 근거 확인';
 }
 
 export function RunReportBrand() {
@@ -152,6 +130,7 @@ export function RunReportViewer({
   onDownloadReport,
 }: RunReportViewerProps) {
   const evidencePreviewRef = useRef<HTMLDivElement | null>(null);
+  const targetUrlLabel = formatDisplayUrl(report.targetUrl);
   const [hoveredFindingId, setHoveredFindingId] = useState<string | null>(null);
   const [selectedFindingId, setSelectedFindingId] = useState<string | null>(report.findings[0]?.id ?? null);
   const [selectedRecommendationId, setSelectedRecommendationId] = useState<string | null>(report.recommendations[0]?.id ?? null);
@@ -164,16 +143,8 @@ export function RunReportViewer({
   const selectedRecommendationFindingId = selectedRecommendation
     ? resolveLinkedFindingId(report.findings, selectedRecommendation.findingId)
     : null;
-  const activeFlowNodeId = resolveActiveFlowNodeId(report.decisionNodes, selectedRecommendationFinding);
-  const flowNodes = report.decisionNodes.map((node, index) => {
-    const label = flowNodeLabel(node, index);
-
-    return {
-      id: node.id,
-      label,
-      shortLabel: shortFlowNodeLabel(label),
-    };
-  });
+  const activeFlowStageId = resolveActiveFlowStageId(report, selectedRecommendationFinding);
+  const flowNodes = REPORT_FLOW_STAGES;
   const activeFinding = useMemo(() => {
     const activeId = hoveredFindingId ?? selectedFindingId;
     return resolveActiveFinding(report.findings, activeId);
@@ -227,7 +198,6 @@ export function RunReportViewer({
 
   const evidencePreviewUrl = useAuthenticatedResourceUrl(selectedEvidencePreviewUrl);
   const isEvidencePreviewResolving = Boolean(selectedEvidencePreviewUrl && !evidencePreviewUrl);
-  const browserModeLabel = isEvidencePreviewResolving ? '캡처 로딩' : evidencePreviewUrl ? '페이지 캡처' : '모의 프리뷰';
 
   useEffect(() => {
     const preview = evidencePreviewRef.current;
@@ -350,13 +320,13 @@ export function RunReportViewer({
         <header className="run-report-hero">
           <div className="run-report-hero__copy">
             <div className="run-report-hero__meta">
-              <span className="run-report-tag">분석 완료</span>
+              <span className="run-report-tag">완료된 리포트</span>
             </div>
-            <h1 id="run-report-title">CTA 전환 마찰 분석</h1>
+            <h1 id="run-report-title">전환 흐름 리포트</h1>
             <dl className="run-report-hero-context" aria-label="리포트 대상 정보">
               <div>
                 <dt>분석 대상</dt>
-                <dd>{report.targetUrl}</dd>
+                <dd title={report.targetUrl}>{targetUrlLabel}</dd>
               </div>
               <div>
                 <dt>점검 시나리오</dt>
@@ -386,16 +356,10 @@ export function RunReportViewer({
           <section className="run-report-visual-panel" aria-label="분석 화면 미리보기">
             <article className="run-report-evidence-card">
               <div className="run-report-browser" aria-label="최근 화면 캡처">
-                <div className="run-report-browser__bar">
-                  <div className="run-report-browser__dots" aria-hidden="true">
-                    <span />
-                    <span />
-                    <span />
-                  </div>
-                  <div className="run-report-browser__address">{report.targetUrl}</div>
-                  <span className="run-report-browser__mode-pill">{browserModeLabel}</span>
+                <div className="run-report-browser__header" aria-hidden="true">
+                  <span />
+                  <span />
                 </div>
-
                 <div
                   ref={evidencePreviewRef}
                   className={`run-report-evidence-preview${evidencePreviewUrl ? ' run-report-evidence-preview--image' : ''}${isEvidencePreviewResolving ? ' run-report-evidence-preview--resolving' : ''}`}
@@ -432,18 +396,19 @@ export function RunReportViewer({
 
           <aside className="run-report-insight-panel" aria-label="먼저 고칠 항목">
             <header className="run-report-insight-summary">
-              <span>먼저 고칠 항목</span>
-              <h2>{recommendations.length > 0 ? '개선 후보를 선택해 화면 근거를 확인하세요' : '이번 실행에서 바로 고칠 항목은 없습니다'}</h2>
+              <div className="run-report-insight-summary__label">
+                <h2>먼저 고칠 항목</h2>
+              </div>
               <p>
                 {recommendations.length > 0
-                  ? '상단 후보를 선택하면 오른쪽 진단과 왼쪽 화면 위치가 함께 바뀝니다.'
+                  ? '개선 후보를 선택하면 진단과 관련 근거가 함께 바뀝니다.'
                   : '사용자가 지나간 단계에서 큰 전환 마찰이 발견되지 않았습니다.'}
               </p>
             </header>
 
             <section className="run-report-section run-report-section--priority" aria-labelledby="run-report-actions-title">
               <div className="run-report-section-heading">
-                <h2 id="run-report-actions-title">개선 후보 선택</h2>
+                <h3 id="run-report-actions-title">개선 후보</h3>
               </div>
 
               {recommendations.length === 0 ? (
@@ -534,11 +499,13 @@ export function RunReportViewer({
               <section className="run-report-section run-report-section--selected-recommendation" aria-labelledby="run-report-selected-action-title">
                 <div className="run-report-selected-action" onMouseLeave={() => setHoveredFindingId(null)}>
                   <div className="run-report-stage-group">
-                    <span className="run-report-stage-group__title">전환 단계</span>
+                    <div className="run-report-section-heading run-report-section-heading--compact">
+                      <h3>전환 흐름</h3>
+                    </div>
                     <div className="run-report-stage-chips" aria-label="전환 단계">
                       <ol>
                         {flowNodes.map((node) => {
-                          const isActive = node.id === activeFlowNodeId;
+                          const isActive = node.id === activeFlowStageId;
 
                           return (
                             <li key={node.id} className={isActive ? 'run-report-stage-chips__item--active' : undefined}>
@@ -557,31 +524,19 @@ export function RunReportViewer({
                   </div>
 
                   <div className="run-report-selected-action__body" key={selectedRecommendation.id}>
-                    <h2 id="run-report-selected-action-title">{selectedRecommendation.title}</h2>
-                    <div className="run-report-selected-action__reason">
-                      <strong>전환이 끊기는 지점입니다</strong>
-                      <p>{recommendationReason(selectedRecommendation, selectedRecommendationFinding)}</p>
+                    <div className="run-report-selected-action__summary">
+                      <span>문제 요약</span>
+                      <h2 id="run-report-selected-action-title">{selectedRecommendation.title}</h2>
                     </div>
 
-                    <span className="run-report-selected-action__location">
-                      화면 위치 <strong>{recommendationLocationLabel(selectedRecommendationFinding)}</strong>
-                    </span>
-
-                    <div className="run-report-selected-action__steps">
-                      <article>
-                        <span>1</span>
-                        <strong>문제</strong>
-                        <p>{recommendationProblem(selectedRecommendation, selectedRecommendationFinding)}</p>
-                      </article>
-                      <article>
-                        <span>2</span>
-                        <strong>바꿀 것</strong>
+                    <div className="run-report-selected-action__details">
+                      <article className="run-report-selected-action__detail-card run-report-selected-action__detail-card--primary">
+                        <span>개선 방향</span>
                         <p>{selectedRecommendation.detail}</p>
                       </article>
-                      <article>
-                        <span>3</span>
-                        <strong>확인할 신호</strong>
-                        <p>{selectedRecommendation.validationQuestion ?? selectedRecommendation.expectedImpact}</p>
+                      <article className="run-report-selected-action__detail-card">
+                        <span>판단 근거</span>
+                        <p>{recommendationReason(selectedRecommendation, selectedRecommendationFinding)}</p>
                       </article>
                     </div>
                   </div>
