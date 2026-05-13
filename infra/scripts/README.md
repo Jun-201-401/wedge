@@ -19,6 +19,16 @@ node --test infra/scripts/real-run-e2e-smoke.test.mjs infra/scripts/real-agent-r
 
 ## Real E2E smoke
 
+전체 Runner smoke gate는 Discovery(local fixture), Scenario replay(real API/MQ), Agent runtime(real API/MQ)을 순서대로 실행한다. Runner 변경 후 배포 전에는 이 단일 명령을 기본으로 사용한다.
+
+```bash
+node infra/scripts/runner-e2e-smoke-suite.mjs
+# 또는 apps/runner 기준
+cd apps/runner && npm run smoke:e2e
+```
+
+`WEDGE_RUNNER_SMOKE_SUITE_STEPS=discovery,scenario,agent`로 실행 순서/범위를 좁힐 수 있다. `scenario`와 `agent` 단계는 API server, RabbitMQ consumer Runner, DB migration, callback base URL이 준비된 환경이 필요하다.
+
 Scenario replay:
 
 ```bash

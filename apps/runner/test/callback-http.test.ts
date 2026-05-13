@@ -137,6 +137,70 @@ test("[콜백:http] runner callback을 HTTP로 보내고 worker/event/signature 
   }
 });
 
+
+test("[콜백:http] 400 계열 callback 실패는 outbox에 적재하지 않고 본문 요약을 노출한다", async () => {
+  const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-callback-http-nonretryable-"));
+  const callbackOutboxFile = join(artifactsRoot, "callback-outbox.jsonl");
+  let requestCount = 0;
+  const server = createServer((_request, response) => {
+    requestCount += 1;
+    response.writeHead(400, {
+      "content-type": "application/json"
+    });
+    response.end(JSON.stringify({ error: "invalid terminal transition" }));
+  });
+
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      server.off("error", reject);
+      resolve();
+    });
+  });
+
+  try {
+    const address = server.address();
+    assert.ok(address && typeof address !== "string");
+
+    const callbackClient = createCallbackClient(
+      createRunnerTestConfig({
+        callbackMode: "http",
+        callbackBaseUrl: `http://127.0.0.1:${address.port}`,
+        callbackOutboxFile,
+        callbackRetryDelaysMs: [1, 1]
+      })
+    );
+
+    await assert.rejects(
+      () => callbackClient.sendFinished("run-1", {
+        workerId: "worker-1",
+        executionFinishedAt: "2026-04-21T00:00:00.000Z",
+        summary: {
+          completedStepCount: 1,
+          failedStepCount: 0,
+          stopped: false
+        }
+      }),
+      /invalid terminal transition/
+    );
+
+    assert.equal(requestCount, 1);
+    await assert.rejects(() => access(callbackOutboxFile), /ENOENT/);
+  } finally {
+    await new Promise<void>((resolve, reject) => {
+      server.close((error) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+
+        resolve();
+      });
+    });
+    await rm(artifactsRoot, { recursive: true, force: true });
+  }
+});
+
 test("[콜백:http] control-state 조회로 STOP_REQUESTED 신호를 읽는다", async () => {
   const received: Array<{ method: string; url: string; headers: Record<string, string | string[] | undefined> }> = [];
   const server = createServer((request, response) => {
@@ -416,10 +480,10 @@ test("[콜백:http] agent callbacks use dedicated run endpoints", async () => {
 
 test("[콜백:http] 비정상 HTTP 응답은 callback 실패로 처리하고 outbox에 남긴다", async () => {
   const server = createServer((_request, response) => {
-    response.writeHead(409, {
+    response.writeHead(503, {
       "content-type": "application/json"
     });
-    response.end(JSON.stringify({ error: "conflict" }));
+    response.end(JSON.stringify({ error: "temporarily unavailable" }));
   });
 
   await new Promise<void>((resolve, reject) => {
@@ -456,7 +520,7 @@ test("[콜백:http] 비정상 HTTP 응답은 callback 실패로 처리하고 out
             stopped: false
           }
         }),
-      /runner callback finished failed after 3 attempts: runner callback finished failed with status 409/
+      /runner callback finished failed after 3 attempts: runner callback finished failed with status 503/
     );
 
     const outboxLog = await readFile(callbackOutboxFile, "utf8");

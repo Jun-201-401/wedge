@@ -9,7 +9,7 @@
 ```bash
 cd apps/runner && npm test
 cd apps/runner && npx tsc --noEmit
-node --test infra/scripts/real-run-e2e-smoke.test.mjs infra/scripts/real-agent-run-e2e-smoke.test.mjs
+node --test infra/scripts/runner-e2e-smoke-suite.test.mjs infra/scripts/real-run-e2e-smoke.test.mjs infra/scripts/real-agent-run-e2e-smoke.test.mjs
 ```
 
 API callback/idempotency schema를 바꿨다면 추가로 실행한다.
@@ -42,6 +42,18 @@ RUNNER_MQ_ARTIFACT_OUTBOX_WORKER_ENABLED=true
 Agent API idempotency lease는 운영 기본값으로 5분 TTL, 60초 renewal을 사용한다. Renewal interval은 lease TTL의 1/3 이하로 유지해야 하며 Runner는 더 큰 값을 자동으로 clamp한다. Agent 실행 시간이 더 긴 환경에서는 TTL을 먼저 늘리고, renewal 실패 로그(`idempotency_lease_renew_failed`)가 반복되면 API callback 경로/서명/네트워크를 확인한다. Runner crash 이후 중복 재실행 허용 대기시간은 최대 lease TTL에 비례하므로 TTL을 무작정 늘리지 않는다.
 
 ## 3. Real smoke / E2E 절차
+
+### 3.0 Runner smoke suite gate
+
+Runner 변경 후 배포 전 기본 smoke gate는 아래 단일 명령이다. Discovery local fixture smoke를 먼저 실행한 뒤, 실제 API/MQ 기반 Scenario replay와 Agent runtime smoke를 순서대로 실행한다.
+
+```bash
+node infra/scripts/runner-e2e-smoke-suite.mjs
+# apps/runner 기준
+cd apps/runner && npm run smoke:e2e
+```
+
+부분 실행이 필요하면 `WEDGE_RUNNER_SMOKE_SUITE_STEPS=discovery,scenario,agent` 값을 쉼표로 지정한다. `scenario`와 `agent` 단계는 API server, RabbitMQ consumer Runner, DB migration, callback base URL, smoke project/template seed가 준비되어 있어야 한다.
 
 ### 3.1 Scenario replay smoke
 

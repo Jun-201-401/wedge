@@ -7,7 +7,7 @@ import {
   type CallbackType
 } from "./client.ts";
 import { createFileCallbackClient } from "./file.ts";
-import { createHttpCallbackClient } from "./http.ts";
+import { createHttpCallbackClient, RunnerCallbackHttpError } from "./http.ts";
 import { appendCallbackOutboxRecord } from "./outbox.ts";
 
 export type { CallbackClient, CallbackType } from "./client.ts";
@@ -67,6 +67,7 @@ export async function sendWithRetry(
   let lastError: unknown;
   let firstErrorMessage: string | null = null;
   let failureCount = 0;
+  let nonRetryable = false;
   const maxAttempts = config.callbackRetryDelaysMs.length + 1;
   const appendOutboxOnFailure = options.appendOutboxOnFailure ?? true;
 
@@ -99,6 +100,25 @@ export async function sendWithRetry(
         firstErrorMessage = errorMessage(error);
       }
 
+      if (isNonRetryableCallbackError(error)) {
+        nonRetryable = true;
+        logOperationalEvent(
+          "callback",
+          "non_retryable_failure_detected",
+          {
+            callbackType,
+            runId,
+            failedAttempts: failureCount,
+            maxAttempts,
+            errorMessage: errorMessage(error),
+            httpStatus: readCallbackHttpStatus(error),
+            responseBodySummary: readCallbackHttpResponseBody(error)
+          },
+          "error"
+        );
+        break;
+      }
+
       if (attempt < maxAttempts) {
         await sleep(config.callbackRetryDelaysMs[attempt - 1] ?? 0);
         continue;
@@ -107,6 +127,7 @@ export async function sendWithRetry(
   }
 
   const lastErrorMessage = errorMessage(lastError);
+  const attemptedCount = nonRetryable ? failureCount : maxAttempts;
   logOperationalEvent(
     "callback",
     "retry_sequence_exhausted",
@@ -118,18 +139,19 @@ export async function sendWithRetry(
       firstErrorMessage,
       lastErrorMessage,
       appendOutboxOnFailure,
-      terminalAction: appendOutboxOnFailure ? "append_outbox_then_throw" : "throw"
+      terminalAction: nonRetryable ? "throw_non_retryable" : appendOutboxOnFailure ? "append_outbox_then_throw" : "throw",
+      nonRetryable
     }),
     "error"
   );
 
-  if (appendOutboxOnFailure) {
+  if (appendOutboxOnFailure && !nonRetryable) {
     try {
       await appendCallbackOutboxRecord(config, {
         callbackType,
         runId,
         payload,
-        attempts: maxAttempts,
+        attempts: attemptedCount,
         errorMessage: lastErrorMessage
       });
       logOperationalEvent(
@@ -138,21 +160,21 @@ export async function sendWithRetry(
         {
           callbackType,
           runId,
-          attempts: maxAttempts,
+          attempts: attemptedCount,
           errorMessage: lastErrorMessage,
           outboxAction: "appended",
-          httpStatus: parseHttpStatus(lastErrorMessage)
+          httpStatus: readCallbackHttpStatus(lastError)
         },
         "error"
       );
     } catch (outboxError) {
       throw new Error(
-        `runner callback ${callbackType} failed after ${maxAttempts} attempts: ${lastErrorMessage}; outbox persistence failed: ${errorMessage(outboxError)}`
+        `runner callback ${callbackType} failed after ${attemptedCount} attempts: ${lastErrorMessage}; outbox persistence failed: ${errorMessage(outboxError)}`
       );
     }
   }
 
-  throw new Error(`runner callback ${callbackType} failed after ${maxAttempts} attempts: ${lastErrorMessage}`);
+  throw new Error(`runner callback ${callbackType} failed after ${attemptedCount} attempts: ${lastErrorMessage}`);
 }
 
 function createCallbackRetryLogDetails(input: {
@@ -164,7 +186,8 @@ function createCallbackRetryLogDetails(input: {
   firstErrorMessage: string | null;
   lastErrorMessage: string;
   appendOutboxOnFailure: boolean;
-  terminalAction: "recovered" | "append_outbox_then_throw" | "throw";
+  terminalAction: "recovered" | "append_outbox_then_throw" | "throw" | "throw_non_retryable";
+  nonRetryable?: boolean;
 }): Record<string, unknown> {
   return {
     callbackType: input.callbackType,
@@ -174,10 +197,35 @@ function createCallbackRetryLogDetails(input: {
     maxAttempts: input.maxAttempts,
     firstErrorMessage: input.firstErrorMessage,
     lastErrorMessage: input.lastErrorMessage,
-    httpStatus: parseHttpStatus(input.lastErrorMessage),
+    httpStatus: readCallbackHttpStatus(input.lastErrorMessage),
     outboxEnabled: input.appendOutboxOnFailure,
-    terminalAction: input.terminalAction
+    terminalAction: input.terminalAction,
+    nonRetryable: input.nonRetryable ?? false,
+    responseBodySummary: readCallbackHttpResponseBody(input.lastErrorMessage)
   };
+}
+
+export function isNonRetryableCallbackError(error: unknown): boolean {
+  const status = readCallbackHttpStatus(error);
+  return status === 400 || status === 404 || status === 409;
+}
+
+export function readCallbackHttpStatus(error: unknown): number | null {
+  if (error instanceof RunnerCallbackHttpError) {
+    return error.status;
+  }
+
+  return parseHttpStatus(errorMessage(error));
+}
+
+export function readCallbackHttpResponseBody(error: unknown): string | null {
+  if (error instanceof RunnerCallbackHttpError) {
+    return error.responseBody || null;
+  }
+
+  const message = typeof error === "string" ? error : errorMessage(error);
+  const match = /status\s+\d{3}:\s+(.+)$/i.exec(message);
+  return match?.[1] ?? null;
 }
 
 function parseHttpStatus(message: string): number | null {

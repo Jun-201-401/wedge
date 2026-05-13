@@ -144,6 +144,75 @@ test("[콜백 재전송] 재전송 실패 record는 보존하고 attempts를 증
   }
 });
 
+
+test("[콜백 재전송] 400/404/409 non-retryable record는 보존하지 않고 제거한다", async () => {
+  const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-replay-nonretryable-"));
+  const callbackOutboxFile = join(artifactsRoot, "callback-outbox.jsonl");
+  let requestCount = 0;
+  const server = createServer((_request, response) => {
+    requestCount += 1;
+    response.writeHead(400, { "content-type": "application/json" });
+    response.end(JSON.stringify({ error: "state conflict cannot be retried" }));
+  });
+
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      server.off("error", reject);
+      resolve();
+    });
+  });
+
+  try {
+    const address = server.address();
+    assert.ok(address && typeof address !== "string");
+    const config = createRunnerTestConfig({
+      callbackMode: "http",
+      callbackBaseUrl: `http://127.0.0.1:${address.port}`,
+      callbackOutboxFile,
+      callbackRetryDelaysMs: [1, 1]
+    });
+
+    await appendCallbackOutboxRecord(config, {
+      callbackType: "finished",
+      runId: "run-1",
+      payload: {
+        workerId: "worker-1",
+        executionFinishedAt: "2026-04-21T00:00:00.000Z",
+        summary: {
+          completedStepCount: 1,
+          failedStepCount: 0,
+          stopped: false
+        }
+      },
+      attempts: 3,
+      errorMessage: "old 400 failure"
+    });
+
+    const summary = await replayCallbackOutbox(config);
+
+    assert.equal(summary.processedCount, 1);
+    assert.equal(summary.deliveredCount, 0);
+    assert.equal(summary.failedCount, 0);
+    assert.equal(summary.discardedCount, 1);
+    assert.equal(summary.remainingCount, 0);
+    assert.equal(requestCount, 1);
+    await assert.rejects(() => readFile(callbackOutboxFile, "utf8"), /ENOENT/);
+  } finally {
+    await new Promise<void>((resolve, reject) => {
+      server.close((error) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+
+        resolve();
+      });
+    });
+    await rm(artifactsRoot, { recursive: true, force: true });
+  }
+});
+
 test("[콜백 재전송] 활성 lock이 있으면 중복 replay를 실행하지 않는다", async () => {
   const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-replay-lock-skip-"));
   const callbackOutboxFile = join(artifactsRoot, "callback-outbox.jsonl");

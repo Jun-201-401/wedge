@@ -149,6 +149,7 @@ function createSensitiveTrace(): AgentTrace {
     ],
     outcome: {
       status: "SUCCESS",
+      reason_code: "GOAL_REACHED",
       reason: "Checkout reached for mvp.tester@example.com."
     }
   };
