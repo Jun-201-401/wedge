@@ -4037,6 +4037,7 @@ components:
         goal:
           type: string
           nullable: true
+          description: Run execution goal. For scenarioPlan-backed runs, this value is normalized to scenarioPlan.goal.
         devicePreset:
           type: string
           enum:
@@ -4140,6 +4141,7 @@ components:
         goal:
           type: string
           nullable: true
+          description: Requested run goal. If scenarioPlan is provided, scenarioPlan.goal takes precedence and is stored/returned as the run goal.
         devicePreset:
           type: string
           enum:
@@ -4156,6 +4158,7 @@ components:
         scenarioPlan:
           type: object
           additionalProperties: true
+          description: Materialized execution plan. If present, its goal is authoritative over the top-level goal for run storage and run.execute.request payloads.
       required:
       - projectId
       - name

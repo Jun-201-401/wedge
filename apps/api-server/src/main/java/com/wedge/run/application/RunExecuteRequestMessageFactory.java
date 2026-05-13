@@ -33,13 +33,15 @@ public class RunExecuteRequestMessageFactory {
         if (run.scenarioTemplateVersionId() == null) {
             throw new IllegalStateException("Cannot publish run.execute.request without a scenarioTemplateVersionId");
         }
+        String payloadGoal = ScenarioPlanGoalResolver.resolve(scenarioPlan)
+                .orElseGet(() -> resolveGoal(run));
 
         Map<String, Object> payload = Map.of(
                 "runId", runId,
                 "projectId", projectId,
                 "triggerSource", run.triggerSource(),
                 "startUrl", run.startUrl().toString(),
-                "goal", resolveRunExecuteGoal(run, scenarioPlan),
+                "goal", payloadGoal,
                 "devicePreset", run.devicePreset(),
                 "scenarioTemplateVersionId", run.scenarioTemplateVersionId().toString(),
                 "scenarioPlan", scenarioPlan,
@@ -181,11 +183,4 @@ public class RunExecuteRequestMessageFactory {
         return (run.goal() == null || run.goal().isBlank()) ? "기본 실행 흐름 점검" : run.goal();
     }
 
-    private String resolveRunExecuteGoal(RunExecutionRequestSource run, Map<String, Object> scenarioPlan) {
-        Object scenarioGoal = scenarioPlan.get("goal");
-        if (scenarioGoal instanceof String text && !text.isBlank()) {
-            return text;
-        }
-        return resolveGoal(run);
-    }
 }
