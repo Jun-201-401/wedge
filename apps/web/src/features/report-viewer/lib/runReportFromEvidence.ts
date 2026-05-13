@@ -166,16 +166,20 @@ function stageLabel(stage: string) {
     return '첫 화면';
   }
 
+  if (stage === 'VALUE') {
+    return '가치 판단';
+  }
+
   if (stage === 'CTA') {
     return '행동 선택';
   }
 
   if (stage === 'INPUT') {
-    return '입력';
+    return '행동 선택';
   }
 
   if (stage === 'COMMIT') {
-    return '결정';
+    return '행동 선택';
   }
 
   return stage || '근거';

@@ -54,6 +54,37 @@ test('discovery recommendation mapper exposes canonical levels and CONTACT copy'
   assert.deepEqual(card.suggestedTarget, { text: 'Book a demo' });
 });
 
+test('discovery recommendation mapper shortens long href labels for cards', () => {
+  const card = toScenarioRecommendationViewModel({
+    ...contactRecommendation,
+    evidenceSummary: {
+      matched_signals: [{
+        signal_id: 'sig_href',
+        source: 'href',
+        signal_type: 'pricing_keyword',
+        value: 'https://in.naver.com/pland/contents/internal/950698252839936?campaign=very-long-campaign-value',
+        evidence_ref: 'cp_001.obs_004',
+        weight: 0.3,
+      }],
+      missing_signals: [],
+      limitations: [],
+    },
+    suggestedTarget: {
+      href: 'https://in.naver.com/pland/contents/internal/950698252839936?campaign=very-long-campaign-value',
+    },
+  });
+
+  assert.match(card.signalLabels[0], /^href: in\.naver\.com\/pland\/contents\/.+\?…$/);
+  assert.ok(card.signalLabels[0].length <= 52);
+  assert.match(card.targetLabel ?? '', /^in\.naver\.com\/pland\/contents\/.+\?…$/);
+  assert.ok((card.targetLabel ?? '').length <= 46);
+  assert.deepEqual(card.previewSteps, [
+    '추천 시작 URL에서 첫 화면을 열어요',
+    `"${card.targetLabel}" 요소를 따라가요`,
+    '위험 행동 전 멈추고 마찰 근거를 기록해요',
+  ]);
+});
+
 test('discovery recommendation mapper keeps NOT_AVAILABLE non-runnable without a percentage confidence', () => {
   const card = toScenarioRecommendationViewModel({
     ...contactRecommendation,

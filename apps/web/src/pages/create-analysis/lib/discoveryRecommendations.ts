@@ -1,4 +1,5 @@
 import type { Discovery, DiscoveryScenarioType, ScenarioRecommendation as ApiScenarioRecommendation, ScenarioRecommendationLevel } from '../../../entities/discovery';
+import { formatDisplayUrl } from '../../../shared/lib/displayUrl';
 
 export type CreateAnalysisScenarioId = 'landing-cta' | 'signup-form' | 'contact' | 'pricing' | 'checkout';
 export type ScenarioTone = 'recommended' | 'available' | 'low' | 'unavailable';
@@ -80,6 +81,14 @@ const SCENARIO_COPY = {
   availableSummary: string;
   unavailableSummary: string;
 }>;
+
+function isUrlLikeField(field: string) {
+  return field === 'href' || field === 'href_contains';
+}
+
+function displayTargetValue(field: string, value: string) {
+  return isUrlLikeField(field) ? formatDisplayUrl(value, 46) : value;
+}
 
 function toneFor(level: ScenarioRecommendationLevel): ScenarioTone {
   if (level === 'HIGH') {
@@ -175,7 +184,8 @@ function targetLabelFor(target: Record<string, unknown> | null | undefined) {
   for (const key of candidateKeys) {
     const value = target[key];
     if (typeof value === 'string' && value.trim().length > 0) {
-      return value.trim();
+      const trimmed = value.trim();
+      return displayTargetValue(key, trimmed);
     }
   }
 
@@ -221,7 +231,8 @@ function signalLabelsFor(recommendation: ApiScenarioRecommendation) {
     .map((signal) => {
       const source = sourceLabel(signal.source);
       const value = signal.value?.trim();
-      return value ? `${source}: ${value}` : '';
+      const displayValue = value ? displayTargetValue(signal.source, value) : '';
+      return displayValue ? `${source}: ${displayValue}` : '';
     })
     .filter(Boolean)
     .slice(0, 4);

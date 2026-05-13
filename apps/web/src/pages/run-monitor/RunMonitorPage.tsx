@@ -14,6 +14,7 @@ import {
 import { generateRunReport, getRunReport } from '../../api/reports';
 import { handleSpaNavigationClick, replaceAppPath } from '../../shared/lib/navigation';
 import { useAuthenticatedResourceUrl } from '../../shared/lib/authenticatedResourceUrl';
+import { formatDisplayUrl } from '../../shared/lib/displayUrl';
 import { deleteRun, requestRunAnalysis, stopRun } from '../../api/runs';
 import type { RunReportProjection } from '../../entities/report';
 import type { EvidencePacket, RunEvidenceCounts } from '../../entities/run';
@@ -151,12 +152,14 @@ interface RunContextBarProps {
 }
 
 function RunContextBar({ runId, targetUrl, statusTone, statusLabel, deviceLabel, actions }: RunContextBarProps) {
+  const targetUrlLabel = formatDisplayUrl(targetUrl);
+
   return (
     <section className="run-monitor-run-context" aria-label="현재 Run 정보">
       <div className="run-monitor-run-context__meta">
         <div className="run-monitor-target-inline run-monitor-target-inline--target">
           <span>대상</span>
-          <strong>{targetUrl}</strong>
+          <strong title={targetUrl}>{targetUrlLabel}</strong>
         </div>
         <div className="run-monitor-target-inline run-monitor-target-inline--optional">
           <span>디바이스</span>
@@ -270,8 +273,6 @@ function RunMonitorLoadingShell({ runId, targetUrl }: { runId: string; targetUrl
                   <span />
                   <span />
                 </div>
-                <div className="run-monitor-browser__address">{targetUrl}</div>
-                <span className="run-monitor-browser__mode-pill">실제 캡처</span>
               </div>
 
               <div className="run-monitor-browser__stage run-monitor-browser__stage--skeleton" />
@@ -823,7 +824,7 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
 
   let reportCtaActionLabel = '대기 중';
   if (reportPath) {
-    reportCtaActionLabel = '리포트 보기';
+    reportCtaActionLabel = '리포트 열기';
   } else if (canGenerateReport) {
     reportCtaActionLabel = reportActionState.kind === 'error' ? '다시 시도' : PREPARE_REPORT_PENDING_LABEL;
   } else if (canRequestAnalysis) {
@@ -831,7 +832,7 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
   }
 
   const reportCtaAction = reportPath ? (
-    <a href={reportPath} onClick={openReport}>{reportCtaActionLabel}</a>
+    <span className="run-monitor-report-cta__open-label">{reportCtaActionLabel}</span>
   ) : canGenerateReport && reportActionState.kind === 'error' ? (
     <button type="button" onClick={retryGenerateReport} disabled={isReportActionPending}>
       {reportCtaActionLabel}
@@ -841,7 +842,29 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
       {reportCtaActionLabel}
     </button>
   ) : (
-    <button type="button" disabled>{reportCtaActionLabel}</button>
+    <span className="run-monitor-report-cta__passive-label">{reportCtaActionLabel}</span>
+  );
+  const reportCtaCardClassName = 'run-monitor-live-insight__card run-monitor-live-insight__card--report run-monitor-report-cta';
+  const reportCtaContent = (
+    <>
+      <div className="run-monitor-report-cta__state">
+        <span>{reportCtaState.eyebrow}</span>
+        <b>{reportCtaStatusLabel}</b>
+      </div>
+      <strong>분석 결과 리포트</strong>
+      <p>{reportCtaState.message}</p>
+      <div className="run-monitor-report-cta__footer">
+        <EvidenceCollectionSummary
+          stats={evidenceStats}
+          isLoading={isEvidenceLoading}
+          errorMessage={evidenceLoadError}
+        />
+        {reportActionMessage}
+        <div className="run-monitor-report-cta__actions">
+          {reportCtaAction}
+        </div>
+      </div>
+    </>
   );
 
   return (
@@ -901,8 +924,6 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
                   <span />
                   <span />
                 </div>
-                <div className="run-monitor-browser__address">{run.startUrl}</div>
-                <span className="run-monitor-browser__mode-pill">{isApiFallback ? '모의 프리뷰' : '페이지 캡처'}</span>
               </div>
 
               <div className={authenticatedSnapshotUrl ? 'run-monitor-browser__stage run-monitor-browser__stage--snapshot' : 'run-monitor-browser__stage'}>
@@ -999,25 +1020,19 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
               <h2 id="live-insight-title">{reportCtaState.titleLabel}</h2>
             </div>
             {reportCtaState.kind !== 'hidden' ? (
-              <div className="run-monitor-live-insight__card run-monitor-live-insight__card--report run-monitor-report-cta">
-                <div className="run-monitor-report-cta__state">
-                  <span>{reportCtaState.eyebrow}</span>
-                  <b>{reportCtaStatusLabel}</b>
+              reportPath ? (
+                <a
+                  className={`${reportCtaCardClassName} run-monitor-report-cta--clickable`}
+                  href={reportPath}
+                  onClick={openReport}
+                >
+                  {reportCtaContent}
+                </a>
+              ) : (
+                <div className={reportCtaCardClassName}>
+                  {reportCtaContent}
                 </div>
-                <strong>분석 결과 리포트</strong>
-                <p>{reportCtaState.message}</p>
-                <div className="run-monitor-report-cta__footer">
-                  <EvidenceCollectionSummary
-                    stats={evidenceStats}
-                    isLoading={isEvidenceLoading}
-                    errorMessage={evidenceLoadError}
-                  />
-                  {reportActionMessage}
-                  <div className="run-monitor-report-cta__actions">
-                    {reportCtaAction}
-                  </div>
-                </div>
-              </div>
+              )
             ) : (
               <div className="run-monitor-live-insight__card">
                 <strong>{currentCheckpoint}</strong>
