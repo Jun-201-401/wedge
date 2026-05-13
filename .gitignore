@@ -17,6 +17,9 @@ env.prod
 *.log
 logs/
 
+# Production release metadata generated on the EC2 host
+.deploy/
+
 # Node / frontend / runner
 node_modules/
 dist/
