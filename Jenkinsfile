@@ -305,6 +305,115 @@ wait_for_rabbitmq() {
     return 1
 }
 
+backup_rabbitmq_definitions() {
+    if compose_prod ps --status running --services rabbitmq | grep -qx rabbitmq; then
+        mkdir -p backups/rabbitmq
+        RABBITMQ_BACKUP_FILE="rabbitmq-definitions-$(date -u +%Y%m%dT%H%M%SZ).json"
+        compose_prod exec -T rabbitmq rabbitmqctl export_definitions "/tmp/${RABBITMQ_BACKUP_FILE}"
+        compose_prod cp "rabbitmq:/tmp/${RABBITMQ_BACKUP_FILE}" "backups/rabbitmq/${RABBITMQ_BACKUP_FILE}"
+    fi
+}
+
+start_rabbitmq() {
+    local force_recreate="${1:-false}"
+
+    if [ "$force_recreate" = "true" ]; then
+        backup_rabbitmq_definitions
+        compose_prod up -d --force-recreate rabbitmq
+    else
+        compose_prod up -d rabbitmq
+    fi
+
+    wait_for_rabbitmq 90 2
+    bash infra/rabbitmq/provision-prod-user.sh
+}
+
+verify_rabbitmq_topology() {
+    local expected_definitions="infra/rabbitmq/rabbitmq-definitions-prod.json"
+    local actual_definitions
+
+    actual_definitions="$(mktemp)"
+
+    compose_prod exec -T rabbitmq rabbitmqctl export_definitions /tmp/rabbitmq-current-definitions.json > /dev/null
+    compose_prod exec -T rabbitmq cat /tmp/rabbitmq-current-definitions.json > "$actual_definitions"
+
+    if ! python3 - "$expected_definitions" "$actual_definitions" << 'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as source:
+    expected = json.load(source)
+with open(sys.argv[2], encoding="utf-8") as source:
+    actual = json.load(source)
+
+missing = []
+
+actual_queues = {
+    (queue.get("vhost", "/"), queue.get("name", "")): queue.get("arguments") or {}
+    for queue in actual.get("queues", [])
+}
+for queue in expected.get("queues", []):
+    key = (queue.get("vhost", "/"), queue.get("name", ""))
+    actual_arguments = actual_queues.get(key)
+    if actual_arguments is None:
+        missing.append(f"queue {key[0]} {key[1]}")
+        continue
+    for argument_name, expected_value in (queue.get("arguments") or {}).items():
+        if actual_arguments.get(argument_name) != expected_value:
+            missing.append(f"queue-argument {key[0]} {key[1]} {argument_name}={expected_value}")
+
+actual_bindings = actual.get("bindings", [])
+for binding in expected.get("bindings", []):
+    if binding.get("destination_type") != "queue":
+        continue
+    expected_arguments = binding.get("arguments") or {}
+    match = None
+    for actual_binding in actual_bindings:
+        if (
+            actual_binding.get("vhost", "/") == binding.get("vhost", "/")
+            and actual_binding.get("source", "") == binding.get("source", "")
+            and actual_binding.get("destination_type", "") == binding.get("destination_type", "")
+            and actual_binding.get("destination", "") == binding.get("destination", "")
+            and actual_binding.get("routing_key", "") == binding.get("routing_key", "")
+        ):
+            match = actual_binding
+            break
+    if match is None:
+        missing.append(
+            "binding "
+            f"{binding.get('vhost', '/')} "
+            f"{binding.get('source', '')} "
+            f"{binding.get('destination', '')} "
+            f"{binding.get('routing_key', '')}"
+        )
+        continue
+    actual_arguments = match.get("arguments") or {}
+    for argument_name, expected_value in expected_arguments.items():
+        if actual_arguments.get(argument_name) != expected_value:
+            missing.append(
+                "binding-argument "
+                f"{binding.get('vhost', '/')} "
+                f"{binding.get('source', '')} "
+                f"{binding.get('destination', '')} "
+                f"{binding.get('routing_key', '')} "
+                f"{argument_name}={expected_value}"
+            )
+
+if missing:
+    print("RabbitMQ topology mismatch. Missing expected topology entries:")
+    for entry in missing:
+        print(entry)
+    sys.exit(1)
+PY
+    then
+        rm -f "$actual_definitions"
+        return 1
+    fi
+
+    rm -f "$actual_definitions"
+    echo "RabbitMQ topology verified against ${expected_definitions}"
+}
+
 verify_service_image() {
     local service="$1"
     local expected_image="$2"
@@ -324,19 +433,13 @@ verify_service_image() {
     fi
 }
 
-if [ "$RABBITMQ_RECREATE_REQUIRED" = "true" ] && compose_prod ps --status running --services rabbitmq | grep -qx rabbitmq; then
-    mkdir -p backups/rabbitmq
-    RABBITMQ_BACKUP_FILE="rabbitmq-definitions-$(date -u +%Y%m%dT%H%M%SZ).json"
-    compose_prod exec -T rabbitmq rabbitmqctl export_definitions "/tmp/${RABBITMQ_BACKUP_FILE}"
-    compose_prod cp "rabbitmq:/tmp/${RABBITMQ_BACKUP_FILE}" "backups/rabbitmq/${RABBITMQ_BACKUP_FILE}"
+start_rabbitmq "$RABBITMQ_RECREATE_REQUIRED"
+if ! verify_rabbitmq_topology; then
+    echo "RabbitMQ topology does not match the production definitions. Recreating RabbitMQ once..."
+    start_rabbitmq true
+    verify_rabbitmq_topology
 fi
-if [ "$RABBITMQ_RECREATE_REQUIRED" = "true" ]; then
-    compose_prod up -d --force-recreate rabbitmq
-else
-    compose_prod up -d rabbitmq
-fi
-wait_for_rabbitmq 90 2
-bash infra/rabbitmq/provision-prod-user.sh
+
 compose_prod up -d postgres redis
 compose_prod up -d --no-deps --force-recreate api-server web runner analyzer-worker
 compose_prod up -d --force-recreate nginx
