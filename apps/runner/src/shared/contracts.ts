@@ -25,6 +25,7 @@ export type {
   AgentObservationPageSignals,
   AgentOutcome,
   AgentOutcomeCategory,
+  AgentOutcomeReasonCode,
   AgentOutcomeStatus,
   AgentPolicyDecision,
   AgentPolicyResult,

@@ -205,6 +205,25 @@ export type AgentEventType =
 export type AgentOutcomeStatus = "RUNNING" | "SUCCESS" | "POLICY_BLOCKED" | "BLOCKED" | "FAILED" | "EXHAUSTED";
 export type AgentFinalOutcome = AgentOutcomeStatus;
 export type AgentOutcomeCategory = AgentOutcomeStatus;
+export type AgentOutcomeReasonCode =
+  | "IN_PROGRESS"
+  | "GOAL_REACHED"
+  | "LOGIN_REQUIRED"
+  | "CAPTCHA_DETECTED"
+  | "FINAL_COMMIT_VISIBLE"
+  | "POLICY_EXTERNAL_NAVIGATION_BLOCKED"
+  | "POLICY_CHECKOUT_NAVIGATION_BLOCKED"
+  | "POLICY_CART_MUTATION_BLOCKED"
+  | "POLICY_SHIPPING_FORM_ENTRY_BLOCKED"
+  | "POLICY_PAYMENT_INFO_ENTRY_BLOCKED"
+  | "POLICY_PAYMENT_COMMIT_BLOCKED"
+  | "POLICY_DESTRUCTIVE_ACTION_BLOCKED"
+  | "POLICY_EXTERNAL_MESSAGE_BLOCKED"
+  | "TURN_BUDGET_EXHAUSTED"
+  | "DURATION_BUDGET_EXHAUSTED"
+  | "STOP_CONDITION_REACHED"
+  | "FINISH_DECISION"
+  | "RUNNER_ERROR";
 
 export type AgentRiskClass =
   | "LOW"
@@ -227,6 +246,7 @@ export interface AgentPolicyResult {
 
 export interface AgentOutcome {
   status: AgentOutcomeStatus;
+  reason_code: AgentOutcomeReasonCode;
   reason: string;
 }
 

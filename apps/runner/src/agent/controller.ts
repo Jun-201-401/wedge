@@ -17,7 +17,13 @@ import { observePage } from "./observation.ts";
 import { evaluateAgentPolicy } from "./policy.ts";
 import { decideFromReplayHints } from "./replay-hint-planner.ts";
 import { createInitialAgentState } from "./state.ts";
-import { shouldReportStopped, traceStatusFromVerification } from "./outcome.ts";
+import {
+  createTraceOutcome,
+  reasonCodeFromPolicy,
+  reasonCodeFromVerification,
+  shouldReportStopped,
+  traceStatusFromVerification
+} from "./outcome.ts";
 import { exportAgentTraceToScenarioPlan, type AgentTraceScenarioPlanExport } from "./trace/export.ts";
 import { createAgentTrace, summarizeObservation, type AgentTrace, type AgentTurnTrace } from "./trace/index.ts";
 import { verifyGoal } from "./verifier.ts";
@@ -81,6 +87,7 @@ export async function executeAgentRun(input: AgentExecutorInput): Promise<AgentE
 
     deliveryIssues.push(...(await emitAgentEventBestEffort(input.callbackClient, input.runId, input.task, "PRE_DECISION_VERIFIED", {
       outcome: preDecisionVerification.outcome,
+      outcomeReasonCode: reasonCodeFromVerification(preDecisionVerification.outcome),
       terminal: preDecisionVerification.terminal,
       satisfied: preDecisionVerification.satisfied,
       reason: preDecisionVerification.reason,
@@ -88,10 +95,11 @@ export async function executeAgentRun(input: AgentExecutorInput): Promise<AgentE
     }, turn)));
 
     if (preDecisionVerification.terminal) {
-      trace.outcome = {
-        status: traceStatusFromVerification(preDecisionVerification.outcome),
-        reason: preDecisionVerification.reason
-      };
+      trace.outcome = createTraceOutcome(
+        traceStatusFromVerification(preDecisionVerification.outcome),
+        preDecisionVerification.reason,
+        reasonCodeFromVerification(preDecisionVerification.outcome)
+      );
       break;
     }
 
@@ -142,14 +150,12 @@ export async function executeAgentRun(input: AgentExecutorInput): Promise<AgentE
     deliveryIssues.push(...(await emitAgentEventBestEffort(input.callbackClient, input.runId, input.task, "POLICY_CHECKED", {
       allowed: policy.allowed,
       riskClass: policy.riskClass,
-      reason: policy.reason
+      reason: policy.reason,
+      outcomeReasonCode: policy.allowed ? "IN_PROGRESS" : reasonCodeFromPolicy(policy)
     }, turn)));
 
     if (!policy.allowed) {
-      trace.outcome = {
-        status: "POLICY_BLOCKED",
-        reason: policy.reason
-      };
+      trace.outcome = createTraceOutcome("POLICY_BLOCKED", policy.reason, reasonCodeFromPolicy(policy));
       break;
     }
 
@@ -274,10 +280,11 @@ export async function executeAgentRun(input: AgentExecutorInput): Promise<AgentE
       }
 
       if (stopRequested) {
-        trace.outcome = {
-          status: "EXHAUSTED",
-          reason: "Agent action requested a stop condition before completing the goal."
-        };
+        trace.outcome = createTraceOutcome(
+          "EXHAUSTED",
+          "Agent action requested a stop condition before completing the goal.",
+          "STOP_CONDITION_REACHED"
+        );
         break;
       }
     } else {
@@ -309,6 +316,7 @@ export async function executeAgentRun(input: AgentExecutorInput): Promise<AgentE
 
     deliveryIssues.push(...(await emitAgentEventBestEffort(input.callbackClient, input.runId, input.task, "GOAL_VERIFIED", {
       outcome: verification.outcome,
+      outcomeReasonCode: reasonCodeFromVerification(verification.outcome),
       terminal: verification.terminal,
       satisfied: verification.satisfied,
       reason: verification.reason,
@@ -316,19 +324,21 @@ export async function executeAgentRun(input: AgentExecutorInput): Promise<AgentE
     }, turn)));
 
     if (verification.satisfied || decision.kind === "finish") {
-      trace.outcome = {
-        status: verification.satisfied ? "SUCCESS" : "EXHAUSTED",
-        reason: verification.reason
-      };
+      trace.outcome = createTraceOutcome(
+        verification.satisfied ? "SUCCESS" : "EXHAUSTED",
+        verification.reason,
+        verification.satisfied ? "GOAL_REACHED" : "FINISH_DECISION"
+      );
       break;
     }
   }
 
   if (trace.outcome.status === "RUNNING") {
-    trace.outcome = {
-      status: "EXHAUSTED",
-      reason: "Agent execution reached the configured turn budget."
-    };
+    trace.outcome = createTraceOutcome(
+      "EXHAUSTED",
+      "Agent execution reached the configured turn budget.",
+      "TURN_BUDGET_EXHAUSTED"
+    );
   }
 
   const {
@@ -342,6 +352,7 @@ export async function executeAgentRun(input: AgentExecutorInput): Promise<AgentE
   if (input.task.artifact_policy?.capture_trace !== false) {
     deliveryIssues.push(...(await emitAgentEventBestEffort(input.callbackClient, input.runId, input.task, "TRACE_PERSISTED", {
       outcome: trace.outcome.status,
+      outcomeReasonCode: trace.outcome.reason_code,
       traceArtifactId: traceDelivery.artifact?.artifactId,
       scenarioPlanExportStatus: scenarioPlanExport.status,
       scenarioPlanExportArtifactId: scenarioPlanExportDelivery.artifact?.artifactId
@@ -414,6 +425,7 @@ function markBudgetExceeded(trace: AgentTrace, error: unknown): boolean {
 
   trace.outcome = {
     status: "EXHAUSTED",
+    reason_code: "DURATION_BUDGET_EXHAUSTED",
     reason: error.message
   };
   return true;

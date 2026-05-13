@@ -1,3 +1,5 @@
+import type { AgentOutcomeReasonCode } from "../shared/contracts.ts";
+import type { AgentPolicyResult } from "./policy.ts";
 import type { AgentTrace } from "./trace/index.ts";
 import type { AgentVerificationOutcome } from "./verifier.ts";
 
@@ -19,4 +21,56 @@ export function traceStatusFromVerification(outcome: AgentVerificationOutcome): 
 
 export function shouldReportStopped(trace: AgentTrace): boolean {
   return trace.outcome.status === "POLICY_BLOCKED" || trace.outcome.status === "BLOCKED";
+}
+
+export function reasonCodeFromVerification(outcome: AgentVerificationOutcome): AgentOutcomeReasonCode {
+  switch (outcome) {
+    case "SUCCESS":
+      return "GOAL_REACHED";
+    case "BLOCKED_LOGIN":
+      return "LOGIN_REQUIRED";
+    case "BLOCKED_CAPTCHA":
+      return "CAPTCHA_DETECTED";
+    case "POLICY_BLOCKED":
+      return "FINAL_COMMIT_VISIBLE";
+    case "EXHAUSTED":
+      return "FINISH_DECISION";
+    case "CONTINUE":
+      return "IN_PROGRESS";
+  }
+}
+
+export function reasonCodeFromPolicy(policy: AgentPolicyResult): AgentOutcomeReasonCode {
+  switch (policy.riskClass) {
+    case "EXTERNAL_NAVIGATION":
+      return "POLICY_EXTERNAL_NAVIGATION_BLOCKED";
+    case "CHECKOUT_NAVIGATION":
+      return "POLICY_CHECKOUT_NAVIGATION_BLOCKED";
+    case "CART_MUTATION":
+      return "POLICY_CART_MUTATION_BLOCKED";
+    case "SHIPPING_FORM_ENTRY":
+      return "POLICY_SHIPPING_FORM_ENTRY_BLOCKED";
+    case "PAYMENT_INFO_ENTRY":
+      return "POLICY_PAYMENT_INFO_ENTRY_BLOCKED";
+    case "PAYMENT_COMMIT":
+      return "POLICY_PAYMENT_COMMIT_BLOCKED";
+    case "DESTRUCTIVE_ACTION":
+      return "POLICY_DESTRUCTIVE_ACTION_BLOCKED";
+    case "EXTERNAL_MESSAGE_SEND":
+      return "POLICY_EXTERNAL_MESSAGE_BLOCKED";
+    case "LOW":
+      return "IN_PROGRESS";
+  }
+}
+
+export function createTraceOutcome(
+  status: AgentTrace["outcome"]["status"],
+  reason: string,
+  reasonCode: AgentOutcomeReasonCode
+): AgentTrace["outcome"] {
+  return {
+    status,
+    reason_code: reasonCode,
+    reason
+  };
 }
