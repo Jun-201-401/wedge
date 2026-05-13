@@ -78,7 +78,9 @@
 
 > Runner 구현 메모 (2026-05-13): P0 component-level 값인 `visible_text`, `accessible_name`, `container_role`, `container_bounds`, `container_heading`, `nearby_text`, `nearest_target_spacing_px`는 `interactive_components.components[]`와 AgentTrace candidate summary에 추가됐다. `accessible_name`은 CDP AX tree의 exact computed name이 아니라 DOM/ARIA 기반 근사값이며, `nearest_target_spacing_px`는 현재 수집된 visible interactive target 집합 기준이다.
 >
-> Runner 구현 메모 (2026-05-13): P1 중 `form_fields[].describedby_text/help_text/pattern/min/max/maxlength`, `loading_state` observation, `journey_action_raw.action_kind`, `journey_action_raw.expected_outcome_hint`는 Runner 계약과 Playwright collector/capture pipeline에 추가됐다. `step_indicator` / `back_link_candidate`와 P2 `accordion_state`, `checkout_context`는 아직 별도 collector 구현이 필요하다.
+> Runner 구현 메모 (2026-05-13): P1 중 `form_fields[].describedby_text/help_text/pattern/min/max/maxlength`, `loading_state` observation, `journey_action_raw.action_kind`, `journey_action_raw.expected_outcome_hint`는 Runner 계약과 Playwright collector/capture pipeline에 추가됐다.
+>
+> Runner 구현 메모 (2026-05-13): P1 `step_indicator` / `back_link_candidate`와 P2 `accordion_state`, `checkout_context`도 Runner 계약과 Playwright collector/capture pipeline에 추가됐다. 이 문서의 "Runner 추가 수집 우선순위" 표에 적힌 추가 필요 값은 Runner 수집 관점에서는 모두 반영됐고, Rule별 판정 연결은 Analyzer 작업으로 남는다.
 
 ## 5. 기존 Rule에 흡수하는 것이 좋은 후보
 

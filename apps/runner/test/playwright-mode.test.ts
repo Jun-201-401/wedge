@@ -980,6 +980,28 @@ test("[MVP 가격/결제] checkout 진입점까지 이동하되 실제 결제 co
       "pricing_007_checkout_entry_checkpoint"
     ]);
     assert.ok(!result.domSnapshots.some((snapshot) => snapshot.includes('data-payment-committed="true"')));
+
+    const checkoutCheckpoint = findCheckpoint(result.checkpoints, "pricing_007_checkout_entry_checkpoint");
+    const pathNavigation = findObservation(checkoutCheckpoint, "path_navigation");
+    const accordionState = findObservation(checkoutCheckpoint, "accordion_state");
+    const checkoutContext = findObservation(checkoutCheckpoint, "checkout_context");
+    const stepIndicators = readRecordArray(pathNavigation, "step_indicator");
+    const backLinkCandidates = readRecordArray(pathNavigation, "back_link_candidate");
+    const accordions = readRecordArray(accordionState, "accordions");
+    const checkoutContextValue = checkoutContext.checkout_context as Record<string, unknown>;
+
+    assert.equal(stepIndicators[0]?.current_step, 2);
+    assert.equal(stepIndicators[0]?.total_steps, 3);
+    assert.equal(backLinkCandidates[0]?.text, "Back to pricing");
+    assert.equal(backLinkCandidates[0]?.reason, "text_back");
+    assert.equal(accordions[0]?.trigger_text, "Order details");
+    assert.equal(accordions[0]?.expanded, false);
+    assert.equal(accordions[0]?.hidden_panel_has_cta, true);
+    assert.equal(checkoutContextValue.is_checkout_flow, true);
+    assert.equal(checkoutContextValue.has_order_summary, true);
+    assert.equal(checkoutContextValue.has_editable_summary, true);
+    assert.equal(checkoutContextValue.has_final_submit, true);
+    assert.equal(checkoutContextValue.final_submit_text, "Pay now");
   } finally {
     await rm(fixtureRoot, { recursive: true, force: true });
     await rm(artifactsRoot, { recursive: true, force: true });
@@ -2989,6 +3011,27 @@ async function createMvpFixtureSite(root: string): Promise<{ homeUrl: string; ch
   <body>
     <main>
       <h1>Checkout entry</h1>
+      <nav id="checkout-steps" aria-label="Checkout steps">
+        <ol>
+          <li>Cart</li>
+          <li aria-current="step">Checkout</li>
+          <li>Payment</li>
+        </ol>
+      </nav>
+      <a id="back-pricing" href="./mvp-home.html#pricing">Back to pricing</a>
+      <aside id="order-summary" class="order-summary">
+        <h2>Order summary</h2>
+        <p>Starter plan</p>
+        <p>Total $19</p>
+        <button id="edit-summary" type="button">Edit summary</button>
+      </aside>
+      <details id="order-details">
+        <summary id="order-details-trigger">Order details</summary>
+        <div id="order-details-panel">
+          <p>Starter plan includes reporting.</p>
+          <a id="change-plan" href="./mvp-home.html#pricing">Change plan</a>
+        </div>
+      </details>
       <form id="payment-method">
         <label for="card-number">Card number</label>
         <input id="card-number" name="card-number" placeholder="Card number" />

@@ -204,6 +204,18 @@ export function createSimulatedPageSnapshot(
       clicked_submit_disabled: null,
       aria_busy: false
     },
+    stepIndicators: [],
+    backLinkCandidates: [],
+    accordionStates: [],
+    checkoutContext: {
+      is_checkout_flow: false,
+      has_order_summary: false,
+      has_editable_summary: false,
+      has_final_submit: false,
+      order_summary_text: [],
+      final_submit_text: null,
+      checkout_keywords: []
+    },
     cartCount: null,
     visiblePrices: [],
     productImages: [],

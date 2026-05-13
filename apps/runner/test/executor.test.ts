@@ -1385,6 +1385,102 @@ test("[수집 pipeline] Journey raw signal은 click 전후 상태와 artifact/bb
   );
 });
 
+test("[수집 pipeline] path/accordion/checkout context를 observation으로 남긴다", async () => {
+  const capturePipeline = createCapturePipeline();
+  const plan = createMinimalPlan();
+  const bounds = {
+    x: 40,
+    y: 40,
+    width: 320,
+    height: 48,
+    unit: "css_px" as const
+  };
+  const pageSnapshot = createSimulatedPageSnapshot(plan, {
+    finalUrl: "https://example.com/checkout",
+    title: "Checkout",
+    visitedUrls: ["https://example.com/cart", "https://example.com/checkout"],
+    stepIndicators: [
+      {
+        text: "1. Cart 2. Checkout 3. Payment",
+        selector: "#checkout-steps",
+        current_step: 2,
+        total_steps: 3,
+        bounds
+      }
+    ],
+    backLinkCandidates: [
+      {
+        text: "Back to cart",
+        selector: "#back-cart",
+        href: "https://example.com/cart",
+        role: "link",
+        reason: "text_back",
+        bounds
+      }
+    ],
+    accordionStates: [
+      {
+        trigger_text: "Order details",
+        trigger_selector: "#order-details-trigger",
+        panel_selector: "#order-details-panel",
+        expanded: false,
+        panel_text_sample: ["Starter plan $19 Edit"],
+        hidden_panel_has_cta: true,
+        bounds
+      }
+    ],
+    checkoutContext: {
+      is_checkout_flow: true,
+      has_order_summary: true,
+      has_editable_summary: true,
+      has_final_submit: true,
+      order_summary_text: ["Order summary Starter plan $19"],
+      final_submit_text: "Pay now",
+      checkout_keywords: ["checkout", "summary", "total"]
+    }
+  });
+
+  const collection = await capturePipeline.collectCheckpoint({
+    step: {
+      step_id: "step_checkout_context",
+      stage: "COMMIT",
+      description: "checkout context checkpoint",
+      action: {
+        type: "checkpoint"
+      },
+      settle_strategy: {
+        type: "none",
+        timeout_ms: 0
+      },
+      checkpoint: true
+    },
+    stepOrder: 3,
+    plan,
+    pageSnapshot,
+    settleResult: createSettledResult()
+  });
+
+  const pathNavigation = collection.checkpoint.observations.find((candidate) => candidate.type === "path_navigation");
+  const accordionState = collection.checkpoint.observations.find((candidate) => candidate.type === "accordion_state");
+  const checkoutContext = collection.checkpoint.observations.find((candidate) => candidate.type === "checkout_context");
+  const stepIndicators = pathNavigation?.step_indicator as Array<Record<string, unknown>> | undefined;
+  const backLinkCandidates = pathNavigation?.back_link_candidate as Array<Record<string, unknown>> | undefined;
+  const accordions = accordionState?.accordions as Array<Record<string, unknown>> | undefined;
+  const checkoutContextValue = checkoutContext?.checkout_context as Record<string, unknown> | undefined;
+
+  assert.ok(pathNavigation);
+  assert.equal(pathNavigation.browser_history_back_available, true);
+  assert.equal(stepIndicators?.[0]?.current_step, 2);
+  assert.equal(backLinkCandidates?.[0]?.reason, "text_back");
+  assert.ok(accordionState);
+  assert.equal(accordions?.[0]?.expanded, false);
+  assert.equal(accordions?.[0]?.hidden_panel_has_cta, true);
+  assert.ok(checkoutContext);
+  assert.equal(checkoutContextValue?.is_checkout_flow, true);
+  assert.equal(checkoutContextValue?.has_order_summary, true);
+  assert.equal(checkoutContextValue?.has_final_submit, true);
+});
+
 test("[수집 pipeline] 상품 카드 클릭 후 상세 진입 근거를 product_detail_signal로 남긴다", async () => {
   const capturePipeline = createCapturePipeline();
   const plan = createMinimalPlan();

@@ -2,9 +2,11 @@ import { randomUUID } from "node:crypto";
 import type { BrowserActionResult, BrowserCapturedArtifacts, BrowserPageSnapshot, BrowserSettleResult } from "../browser/playwright/index.ts";
 import type {
   ArtifactDraft,
+  AccordionStateObservation,
   AxTreeObservation,
   LayoutCollectorObservation,
   NetworkTimelineObservation,
+  CheckoutContextObservation,
   PerformanceMetricObservation,
   CategoryFilterSignalObservation,
   Checkpoint,
@@ -14,6 +16,7 @@ import type {
   InteractiveComponentsObservation,
   JourneyActionRawObservation,
   LoadingStateObservation,
+  PathNavigationObservation,
   ProductCardObservation,
   ProductDetailSignalObservation,
   RunnerActionKind,
@@ -348,6 +351,10 @@ function createCheckpointState(
     selectedFilters: pageSnapshot.selectedFilters,
     searchQuery: pageSnapshot.searchQuery,
     loading_state: pageSnapshot.loadingState,
+    step_indicator: pageSnapshot.stepIndicators,
+    back_link_candidate: pageSnapshot.backLinkCandidates,
+    accordion_state: pageSnapshot.accordionStates,
+    checkout_context: pageSnapshot.checkoutContext,
     network_summary: {
       event_count: pageSnapshot.networkEvents.length,
       failed_request_count: pageSnapshot.networkEvents.filter((event) => event.failed).length
@@ -449,6 +456,9 @@ function createCheckpointObservations({
       actionResult,
       settleResult
     }).map((observation) => ({ ...observation })),
+    ...createPathNavigationObservations(step, pageSnapshot).map((observation) => ({ ...observation })),
+    ...createAccordionStateObservations(step, pageSnapshot).map((observation) => ({ ...observation })),
+    ...createCheckoutContextObservations(step, pageSnapshot).map((observation) => ({ ...observation })),
     ...createVisibleTextBlockObservations(step, pageSnapshot),
     ...createInteractiveComponentsObservations(step, pageSnapshot).map((observation) => ({ ...observation })),
     ...createFormFieldObservations(pageSnapshot),
@@ -991,6 +1001,70 @@ function createVisibleTextBlockObservations(
       dom_summary: pageSnapshot.domSummary,
       layout_summary: pageSnapshot.layoutSummary,
       blocks: pageSnapshot.visibleTextBlocks.slice(0, 20)
+    }
+  ];
+}
+
+function createPathNavigationObservations(
+  step: ScenarioStep,
+  pageSnapshot: BrowserPageSnapshot
+): PathNavigationObservation[] {
+  if (pageSnapshot.stepIndicators.length === 0 && pageSnapshot.backLinkCandidates.length === 0 && pageSnapshot.visitedUrls.length <= 1) {
+    return [];
+  }
+
+  return [
+    {
+      observation_id: `${step.step_id}.obs_path_navigation`,
+      type: "path_navigation",
+      stage: step.stage,
+      source: ["dom", "browser"],
+      confidence: pageSnapshot.stepIndicators.length > 0 || pageSnapshot.backLinkCandidates.length > 0 ? 0.74 : 0.52,
+      step_indicator: pageSnapshot.stepIndicators,
+      back_link_candidate: pageSnapshot.backLinkCandidates,
+      visited_url_count: pageSnapshot.visitedUrls.length,
+      browser_history_back_available: pageSnapshot.visitedUrls.length > 1
+    }
+  ];
+}
+
+function createAccordionStateObservations(
+  step: ScenarioStep,
+  pageSnapshot: BrowserPageSnapshot
+): AccordionStateObservation[] {
+  if (pageSnapshot.accordionStates.length === 0) {
+    return [];
+  }
+
+  return [
+    {
+      observation_id: `${step.step_id}.obs_accordion_state`,
+      type: "accordion_state",
+      stage: step.stage,
+      source: ["dom"],
+      confidence: 0.72,
+      accordions: pageSnapshot.accordionStates
+    }
+  ];
+}
+
+function createCheckoutContextObservations(
+  step: ScenarioStep,
+  pageSnapshot: BrowserPageSnapshot
+): CheckoutContextObservation[] {
+  const context = pageSnapshot.checkoutContext;
+  if (!context.is_checkout_flow && !context.has_order_summary && !context.has_final_submit) {
+    return [];
+  }
+
+  return [
+    {
+      observation_id: `${step.step_id}.obs_checkout_context`,
+      type: "checkout_context",
+      stage: step.stage,
+      source: ["dom", "browser"],
+      confidence: context.is_checkout_flow ? 0.78 : 0.6,
+      checkout_context: context
     }
   ];
 }

@@ -16,8 +16,12 @@ import type { RunnerBrowserName, RunnerConfig } from "../../config/index.ts";
 import type {
   AgentArtifactPolicy,
   AxTreeSummary,
+  BrowserAccordionState,
+  BrowserBackLinkCandidateSignal,
+  BrowserCheckoutContext,
   BrowserPerformanceSummary,
   BrowserLoadingState,
+  BrowserStepIndicatorSignal,
   InteractiveComponentBounds,
   InteractiveComponentLayout,
   InteractiveComponentVisibility,
@@ -121,6 +125,10 @@ export interface BrowserPageSnapshot {
   breadcrumb: string[];
   toastTexts: string[];
   loadingState: BrowserLoadingState;
+  stepIndicators: BrowserStepIndicatorSignal[];
+  backLinkCandidates: BrowserBackLinkCandidateSignal[];
+  accordionStates: BrowserAccordionState[];
+  checkoutContext: BrowserCheckoutContext;
   cartCount: number | null;
   visiblePrices: string[];
   productImages: BrowserProductImageSignal[];
@@ -267,6 +275,10 @@ interface MutableBrowserState {
   breadcrumb: string[];
   toastTexts: string[];
   loadingState: BrowserLoadingState;
+  stepIndicators: BrowserStepIndicatorSignal[];
+  backLinkCandidates: BrowserBackLinkCandidateSignal[];
+  accordionStates: BrowserAccordionState[];
+  checkoutContext: BrowserCheckoutContext;
   cartCount: number | null;
   visiblePrices: string[];
   productImages: BrowserProductImageSignal[];
@@ -1207,6 +1219,10 @@ class RealPlaywrightSession implements BrowserSession {
     this.state.breadcrumb = await safeBreadcrumb(this.page, this.state.breadcrumb);
     this.state.toastTexts = await safeToastTexts(this.page, this.state.toastTexts);
     this.state.loadingState = await safeLoadingState(this.page, this.state.lastAction, this.state.loadingState);
+    this.state.stepIndicators = await safeStepIndicators(this.page, this.state.stepIndicators);
+    this.state.backLinkCandidates = await safeBackLinkCandidates(this.page, this.state.backLinkCandidates);
+    this.state.accordionStates = await safeAccordionStates(this.page, this.state.accordionStates);
+    this.state.checkoutContext = await safeCheckoutContext(this.page, this.state.checkoutContext);
     this.state.cartCount = await safeCartCount(this.page, this.state.cartCount);
     this.state.visiblePrices = await safeVisiblePrices(this.page, this.state.visiblePrices);
     this.state.productImages = await safeProductImages(this.page, this.state.productImages);
@@ -1347,6 +1363,10 @@ function createInitialBrowserState(plan: ScenarioPlan): MutableBrowserState {
     breadcrumb: [],
     toastTexts: [],
     loadingState: emptyLoadingState(),
+    stepIndicators: [],
+    backLinkCandidates: [],
+    accordionStates: [],
+    checkoutContext: emptyCheckoutContext(),
     cartCount: null,
     visiblePrices: [],
     productImages: [],
@@ -1369,6 +1389,18 @@ function emptyLoadingState(): BrowserLoadingState {
     status_text: [],
     clicked_submit_disabled: null,
     aria_busy: false
+  };
+}
+
+function emptyCheckoutContext(): BrowserCheckoutContext {
+  return {
+    is_checkout_flow: false,
+    has_order_summary: false,
+    has_editable_summary: false,
+    has_final_submit: false,
+    order_summary_text: [],
+    final_submit_text: null,
+    checkout_keywords: []
   };
 }
 
@@ -1412,6 +1444,24 @@ function createBrowserPageSnapshot(
     loadingState: {
       ...state.loadingState,
       status_text: [...state.loadingState.status_text]
+    },
+    stepIndicators: state.stepIndicators.map((indicator) => ({
+      ...indicator,
+      bounds: { ...indicator.bounds }
+    })),
+    backLinkCandidates: state.backLinkCandidates.map((candidate) => ({
+      ...candidate,
+      bounds: { ...candidate.bounds }
+    })),
+    accordionStates: state.accordionStates.map((accordion) => ({
+      ...accordion,
+      panel_text_sample: [...accordion.panel_text_sample],
+      bounds: { ...accordion.bounds }
+    })),
+    checkoutContext: {
+      ...state.checkoutContext,
+      order_summary_text: [...state.checkoutContext.order_summary_text],
+      checkout_keywords: [...state.checkoutContext.checkout_keywords]
     },
     cartCount: state.cartCount,
     visiblePrices: [...state.visiblePrices],
@@ -2449,6 +2499,388 @@ async function safeLoadingState(
     }, {
       clickedSelector: lastAction?.type === "click" ? lastAction.clickedSelector ?? null : null,
       clickedText: lastAction?.type === "click" ? lastAction.clickedText ?? null : null
+    });
+  } catch {
+    return fallbackValue;
+  }
+}
+
+async function safeStepIndicators(page: Page, fallbackValue: BrowserStepIndicatorSignal[]): Promise<BrowserStepIndicatorSignal[]> {
+  try {
+    return await page.evaluate(() => {
+      function normalizeText(value: string | null | undefined): string {
+        return (value ?? "").replace(/\s+/g, " ").trim();
+      }
+
+      function isVisible(element: Element): boolean {
+        const rect = element.getBoundingClientRect();
+        const style = globalThis.getComputedStyle(element);
+        return rect.width > 0 && rect.height > 0 && style.visibility !== "hidden" && style.display !== "none";
+      }
+
+      function escapeSelector(value: string): string {
+        return ((globalThis as typeof globalThis & { CSS?: { escape?: (value: string) => string } }).CSS?.escape?.(value)) ??
+          value.replace(/[^a-zA-Z0-9_-]/g, "\\$&");
+      }
+
+      function selectorFor(element: Element): string | null {
+        const id = element.getAttribute("id");
+        if (id) {
+          return `#${escapeSelector(id)}`;
+        }
+        const testId = element.getAttribute("data-testid") ?? element.getAttribute("data-test");
+        if (testId) {
+          return `[data-testid="${testId.replace(/"/g, '\\"')}"]`;
+        }
+        const className = Array.from(element.classList).find((entry) => entry.length > 0);
+        return className ? `${element.tagName.toLowerCase()}.${escapeSelector(className)}` : element.tagName.toLowerCase();
+      }
+
+      function boundsFor(element: Element): InteractiveComponentBounds {
+        const rect = element.getBoundingClientRect();
+        return {
+          x: Math.round(rect.x),
+          y: Math.round(rect.y),
+          width: Math.round(rect.width),
+          height: Math.round(rect.height),
+          unit: "css_px" as const
+        };
+      }
+
+      function parseStepNumbers(text: string, element: Element): { current_step: number | null; total_steps: number | null } {
+        const normalized = text.toLowerCase();
+        const explicit = normalized.match(/(?:step\s*)?(\d+)\s*(?:\/|of|중)\s*(\d+)/) ??
+          normalized.match(/(\d+)\s*단계\s*(?:\/|중|of)?\s*(\d+)?/);
+        const currentFromText = explicit?.[1] ? Number.parseInt(explicit[1], 10) : null;
+        const totalFromText = explicit?.[2] ? Number.parseInt(explicit[2], 10) : null;
+        const children = Array.from(element.querySelectorAll("li, [role='listitem'], [aria-current], .active, [class*='current' i], [data-current='true']"))
+          .filter((candidate) => normalizeText(candidate.textContent).length > 0);
+        const currentIndex = children.findIndex((candidate) =>
+          candidate.getAttribute("aria-current") === "step" ||
+          candidate.getAttribute("aria-current") === "true" ||
+          candidate.getAttribute("data-current") === "true" ||
+          candidate.classList.contains("active") ||
+          Array.from(candidate.classList).some((className) => /current|active|selected/i.test(className))
+        );
+        return {
+          current_step: currentFromText ?? (currentIndex >= 0 ? currentIndex + 1 : null),
+          total_steps: totalFromText ?? (children.length > 1 ? children.length : null)
+        };
+      }
+
+      const selectors = [
+        "[aria-label*='step' i]",
+        "[aria-label*='progress' i]",
+        "[aria-label*='단계' i]",
+        "[aria-label*='진행' i]",
+        "[class*='step' i]",
+        "[class*='progress' i]",
+        "[data-testid*='step' i]",
+        "[data-testid*='progress' i]",
+        "ol",
+        "nav"
+      ];
+      const stepTextPattern = /step\s*\d+|\d+\s*\/\s*\d+|\d+\s*of\s*\d+|\d+\s*단계|정보\s*입력.*(?:결제|주문|예약).*완료|cart.*checkout.*payment/i;
+      const seen = new Set<string>();
+
+      return selectors
+        .flatMap((selector) => Array.from(document.querySelectorAll(selector)))
+        .map((element) => {
+          const text = normalizeText(element.textContent || element.getAttribute("aria-label"));
+          const numbers = parseStepNumbers(text, element);
+          return {
+            text: text.slice(0, 240),
+            selector: selectorFor(element),
+            current_step: numbers.current_step,
+            total_steps: numbers.total_steps,
+            bounds: boundsFor(element),
+            visible: isVisible(element),
+            likely: stepTextPattern.test(text) || (numbers.total_steps ?? 0) > 1
+          };
+        })
+        .filter((indicator) => indicator.visible && indicator.likely && indicator.text.length > 0)
+        .filter((indicator) => {
+          const key = `${indicator.selector ?? ""}:${indicator.text}`;
+          if (seen.has(key)) {
+            return false;
+          }
+          seen.add(key);
+          return true;
+        })
+        .slice(0, 8)
+        .map(({ visible, likely, ...indicator }) => indicator);
+    });
+  } catch {
+    return fallbackValue;
+  }
+}
+
+async function safeBackLinkCandidates(page: Page, fallbackValue: BrowserBackLinkCandidateSignal[]): Promise<BrowserBackLinkCandidateSignal[]> {
+  try {
+    return await page.evaluate(() => {
+      function normalizeText(value: string | null | undefined): string {
+        return (value ?? "").replace(/\s+/g, " ").trim();
+      }
+
+      function isVisible(element: Element): boolean {
+        const rect = element.getBoundingClientRect();
+        const style = globalThis.getComputedStyle(element);
+        return rect.width > 0 && rect.height > 0 && style.visibility !== "hidden" && style.display !== "none";
+      }
+
+      function escapeSelector(value: string): string {
+        return ((globalThis as typeof globalThis & { CSS?: { escape?: (value: string) => string } }).CSS?.escape?.(value)) ??
+          value.replace(/[^a-zA-Z0-9_-]/g, "\\$&");
+      }
+
+      function selectorFor(element: Element): string | null {
+        const id = element.getAttribute("id");
+        if (id) {
+          return `#${escapeSelector(id)}`;
+        }
+        const href = element.getAttribute("href");
+        if (href && element.tagName.toLowerCase() === "a") {
+          return `a[href="${href.replace(/"/g, '\\"')}"]`;
+        }
+        const className = Array.from(element.classList).find((entry) => entry.length > 0);
+        return className ? `${element.tagName.toLowerCase()}.${escapeSelector(className)}` : element.tagName.toLowerCase();
+      }
+
+      function hrefFor(element: Element): string | null {
+        const href = element.getAttribute("href");
+        if (!href) {
+          return null;
+        }
+        try {
+          return new URL(href, document.baseURI).toString();
+        } catch {
+          return href;
+        }
+      }
+
+      function boundsFor(element: Element): InteractiveComponentBounds {
+        const rect = element.getBoundingClientRect();
+        return {
+          x: Math.round(rect.x),
+          y: Math.round(rect.y),
+          width: Math.round(rect.width),
+          height: Math.round(rect.height),
+          unit: "css_px" as const
+        };
+      }
+
+      function reasonFor(text: string, href: string | null, element: Element): BrowserBackLinkCandidateSignal["reason"] | null {
+        if (/수정|변경|edit|change/i.test(text)) {
+          return "edit_summary";
+        }
+        if (/이전|뒤로|돌아|back|previous|return/i.test(text)) {
+          return element.getAttribute("onclick")?.toLowerCase().includes("history") ? "history_control" : "text_back";
+        }
+        if (href && /back|prev|previous|return|cart|checkout|edit|change/i.test(href)) {
+          return "href_back";
+        }
+        return null;
+      }
+
+      const seen = new Set<string>();
+      return Array.from(document.querySelectorAll("a[href], button, [role='button'], [role='link']"))
+        .map((element) => {
+          const text = normalizeText(element.textContent || element.getAttribute("aria-label") || element.getAttribute("title"));
+          const href = hrefFor(element);
+          const reason = reasonFor(text, href, element);
+          return {
+            text: text.slice(0, 120),
+            selector: selectorFor(element),
+            href,
+            role: element.getAttribute("role") ?? (element.tagName.toLowerCase() === "a" ? "link" : element.tagName.toLowerCase() === "button" ? "button" : null),
+            reason,
+            bounds: boundsFor(element),
+            visible: isVisible(element)
+          };
+        })
+        .filter((candidate): candidate is Omit<typeof candidate, "reason" | "visible"> & { reason: BrowserBackLinkCandidateSignal["reason"]; visible: boolean } =>
+          candidate.visible && candidate.reason !== null && candidate.text.length > 0
+        )
+        .filter((candidate) => {
+          const key = `${candidate.selector ?? ""}:${candidate.text}:${candidate.href ?? ""}`;
+          if (seen.has(key)) {
+            return false;
+          }
+          seen.add(key);
+          return true;
+        })
+        .slice(0, 12)
+        .map(({ visible, ...candidate }) => candidate);
+    });
+  } catch {
+    return fallbackValue;
+  }
+}
+
+async function safeAccordionStates(page: Page, fallbackValue: BrowserAccordionState[]): Promise<BrowserAccordionState[]> {
+  try {
+    return await page.evaluate(() => {
+      function normalizeText(value: string | null | undefined): string {
+        return (value ?? "").replace(/\s+/g, " ").trim();
+      }
+
+      function escapeSelector(value: string): string {
+        return ((globalThis as typeof globalThis & { CSS?: { escape?: (value: string) => string } }).CSS?.escape?.(value)) ??
+          value.replace(/[^a-zA-Z0-9_-]/g, "\\$&");
+      }
+
+      function selectorFor(element: Element | null): string | null {
+        if (!element) {
+          return null;
+        }
+        const id = element.getAttribute("id");
+        if (id) {
+          return `#${escapeSelector(id)}`;
+        }
+        const className = Array.from(element.classList).find((entry) => entry.length > 0);
+        return className ? `${element.tagName.toLowerCase()}.${escapeSelector(className)}` : element.tagName.toLowerCase();
+      }
+
+      function boundsFor(element: Element): InteractiveComponentBounds {
+        const rect = element.getBoundingClientRect();
+        return {
+          x: Math.round(rect.x),
+          y: Math.round(rect.y),
+          width: Math.round(rect.width),
+          height: Math.round(rect.height),
+          unit: "css_px" as const
+        };
+      }
+
+      function panelFor(trigger: Element): Element | null {
+        const controls = trigger.getAttribute("aria-controls");
+        if (controls) {
+          const controlled = document.getElementById(controls);
+          if (controlled) {
+            return controlled;
+          }
+        }
+        if (trigger.tagName.toLowerCase() === "summary") {
+          return trigger.closest("details");
+        }
+        return trigger.nextElementSibling ?? trigger.closest("[class*='accordion' i], [data-testid*='accordion' i]") ?? null;
+      }
+
+      function isExpanded(trigger: Element, panel: Element | null): boolean {
+        if (trigger.tagName.toLowerCase() === "summary") {
+          return trigger.closest("details")?.hasAttribute("open") === true;
+        }
+        const ariaExpanded = trigger.getAttribute("aria-expanded");
+        if (ariaExpanded === "true") {
+          return true;
+        }
+        if (ariaExpanded === "false") {
+          return false;
+        }
+        if (panel instanceof HTMLDetailsElement) {
+          return panel.open;
+        }
+        return panel ? !panel.hasAttribute("hidden") && globalThis.getComputedStyle(panel).display !== "none" : false;
+      }
+
+      function hiddenPanelHasCta(panel: Element | null, expanded: boolean): boolean {
+        if (!panel || expanded) {
+          return false;
+        }
+        return Array.from(panel.querySelectorAll("a[href], button, input:not([type='hidden']), [role='button'], [role='link']"))
+          .some((element) => normalizeText(element.textContent || element.getAttribute("aria-label") || element.getAttribute("value")).length > 0);
+      }
+
+      const triggers = [
+        ...Array.from(document.querySelectorAll("details > summary")),
+        ...Array.from(document.querySelectorAll("[aria-expanded][aria-controls], [data-state='open'], [data-state='closed'], [class*='accordion' i] button, [data-testid*='accordion' i] button"))
+      ];
+      const seen = new Set<Element>();
+
+      return triggers
+        .filter((trigger) => {
+          if (seen.has(trigger)) {
+            return false;
+          }
+          seen.add(trigger);
+          return true;
+        })
+        .map((trigger) => {
+          const panel = panelFor(trigger);
+          const expanded = isExpanded(trigger, panel);
+          const panelText = normalizeText(panel?.textContent);
+          return {
+            trigger_text: normalizeText(trigger.textContent || trigger.getAttribute("aria-label")).slice(0, 160),
+            trigger_selector: selectorFor(trigger),
+            panel_selector: selectorFor(panel),
+            expanded,
+            panel_text_sample: panelText ? [panelText.slice(0, 240)] : [],
+            hidden_panel_has_cta: hiddenPanelHasCta(panel, expanded),
+            bounds: boundsFor(trigger)
+          };
+        })
+        .filter((accordion) => accordion.trigger_text.length > 0)
+        .slice(0, 12);
+    });
+  } catch {
+    return fallbackValue;
+  }
+}
+
+async function safeCheckoutContext(page: Page, fallbackValue: BrowserCheckoutContext): Promise<BrowserCheckoutContext> {
+  try {
+    return await page.evaluate(() => {
+      function normalizeText(value: string | null | undefined): string {
+        return (value ?? "").replace(/\s+/g, " ").trim();
+      }
+
+      function isVisible(element: Element): boolean {
+        const rect = element.getBoundingClientRect();
+        const style = globalThis.getComputedStyle(element);
+        return rect.width > 0 && rect.height > 0 && style.visibility !== "hidden" && style.display !== "none";
+      }
+
+      const pageText = normalizeText(document.body?.innerText).slice(0, 8_000);
+      const urlText = `${location.pathname} ${location.hash} ${document.title}`.toLowerCase();
+      const keywordPatterns: Array<[string, RegExp]> = [
+        ["checkout", /checkout|결제|주문|예약|신청|payment|booking|order/i],
+        ["summary", /summary|order summary|요약|주문 내역|결제 정보|예약 정보/i],
+        ["total", /total|합계|총액|결제 금액|최종 금액/i]
+      ];
+      const checkoutKeywords = keywordPatterns
+        .filter(([, pattern]) => pattern.test(pageText) || pattern.test(urlText))
+        .map(([keyword]) => keyword);
+      const summarySelectors = [
+        "[class*='summary' i]",
+        "[class*='order' i]",
+        "[data-testid*='summary' i]",
+        "[data-testid*='order' i]",
+        "aside",
+        "table"
+      ];
+      const pricePattern = /(?:[$€£₩]\s?\d[\d,.]*|\d[\d,.]*\s?(?:원|달러|USD|KRW|만원|천원))/i;
+      const summaryElements = summarySelectors
+        .flatMap((selector) => Array.from(document.querySelectorAll(selector)))
+        .filter(isVisible)
+        .map((element) => normalizeText(element.textContent).slice(0, 240))
+        .filter((text) => text.length > 0 && (/summary|요약|주문|예약|결제|total|합계|총액/i.test(text) || pricePattern.test(text)));
+      const finalSubmitCandidates = Array.from(document.querySelectorAll("button, input[type='submit'], input[type='button'], [role='button']"))
+        .filter(isVisible)
+        .map((element) => normalizeText(element.textContent || element.getAttribute("value") || element.getAttribute("aria-label")).slice(0, 120))
+        .filter((text) => /결제하기|결제|예약 확정|주문 완료|주문하기|신청 완료|pay now|place order|complete order|confirm booking|submit payment/i.test(text));
+      const editableSummary = Array.from(document.querySelectorAll("a[href], button, [role='button'], [role='link']"))
+        .filter(isVisible)
+        .some((element) => /수정|변경|edit|change/i.test(normalizeText(element.textContent || element.getAttribute("aria-label") || element.getAttribute("title"))));
+
+      return {
+        is_checkout_flow: checkoutKeywords.includes("checkout") || finalSubmitCandidates.length > 0,
+        has_order_summary: summaryElements.length > 0,
+        has_editable_summary: editableSummary,
+        has_final_submit: finalSubmitCandidates.length > 0,
+        order_summary_text: Array.from(new Set(summaryElements)).slice(0, 8),
+        final_submit_text: finalSubmitCandidates[0] ?? null,
+        checkout_keywords: checkoutKeywords
+      };
     });
   } catch {
     return fallbackValue;

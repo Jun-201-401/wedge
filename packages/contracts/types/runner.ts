@@ -1152,6 +1152,43 @@ export interface BrowserLoadingState {
   aria_busy: boolean;
 }
 
+export interface BrowserStepIndicatorSignal {
+  text: string;
+  selector: string | null;
+  current_step: number | null;
+  total_steps: number | null;
+  bounds: InteractiveComponentBounds;
+}
+
+export interface BrowserBackLinkCandidateSignal {
+  text: string;
+  selector: string | null;
+  href?: string | null;
+  role?: string | null;
+  reason: "text_back" | "href_back" | "history_control" | "edit_summary";
+  bounds: InteractiveComponentBounds;
+}
+
+export interface BrowserAccordionState {
+  trigger_text: string;
+  trigger_selector: string | null;
+  panel_selector: string | null;
+  expanded: boolean;
+  panel_text_sample: string[];
+  hidden_panel_has_cta: boolean;
+  bounds: InteractiveComponentBounds;
+}
+
+export interface BrowserCheckoutContext {
+  is_checkout_flow: boolean;
+  has_order_summary: boolean;
+  has_editable_summary: boolean;
+  has_final_submit: boolean;
+  order_summary_text: string[];
+  final_submit_text: string | null;
+  checkout_keywords: string[];
+}
+
 export interface LoadingStateObservation {
   observation_id: string;
   type: "loading_state";
@@ -1163,6 +1200,36 @@ export interface LoadingStateObservation {
   settle_status: "settled" | "timeout" | "failed";
   duration_ms: number;
   loading_state: BrowserLoadingState;
+}
+
+export interface PathNavigationObservation {
+  observation_id: string;
+  type: "path_navigation";
+  stage: ScenarioStage;
+  source: ("dom" | "browser")[];
+  confidence: number;
+  step_indicator: BrowserStepIndicatorSignal[];
+  back_link_candidate: BrowserBackLinkCandidateSignal[];
+  visited_url_count: number;
+  browser_history_back_available: boolean;
+}
+
+export interface AccordionStateObservation {
+  observation_id: string;
+  type: "accordion_state";
+  stage: ScenarioStage;
+  source: ["dom"];
+  confidence: number;
+  accordions: BrowserAccordionState[];
+}
+
+export interface CheckoutContextObservation {
+  observation_id: string;
+  type: "checkout_context";
+  stage: ScenarioStage;
+  source: ("dom" | "browser")[];
+  confidence: number;
+  checkout_context: BrowserCheckoutContext;
 }
 
 export interface InteractiveComponentsObservation {
