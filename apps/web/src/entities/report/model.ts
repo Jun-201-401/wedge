@@ -18,6 +18,14 @@ export interface ReportPreviewImage {
   source: string;
 }
 
+export interface ReportReference {
+  label: string;
+  publisher: string;
+  title: string;
+  basisSummary: string;
+  url: string;
+}
+
 export interface ReportFinding {
   id: string;
   rankOrder?: number | null;
@@ -31,6 +39,7 @@ export interface ReportFinding {
   priorityScore?: number | null;
   impactHypothesis?: string | null;
   evidenceRefs?: unknown;
+  references?: ReportReference[];
 }
 
 export interface ReportNudge {
@@ -107,6 +116,7 @@ export interface ReportDetailFinding {
   priorityScore?: number | null;
   impactHypothesis?: string | null;
   evidenceRefs: Array<Record<string, unknown>>;
+  references?: ReportReference[];
   previewImage?: ReportPreviewImage | null;
   highlight?: ReportFindingHighlight | null;
   nudges: ReportDetailNudge[];

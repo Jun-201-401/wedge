@@ -62,6 +62,13 @@ const readyReport: RunReportProjection = {
     priorityScore: 94,
     impactHypothesis: 'CTA 근처에 신뢰 문구를 추가하세요.',
     evidenceRefs: [{ checkpointId: 'cp-1', observationId: 'obs-1' }],
+    references: [{
+      label: 'WCAG 3.3.2',
+      publisher: 'W3C',
+      title: 'Labels or Instructions',
+      basisSummary: 'Inputs need labels or instructions.',
+      url: 'https://www.w3.org/WAI/WCAG22/Understanding/labels-or-instructions.html',
+    }],
   }],
   nudges: [{
     id: 'nudge-1',
@@ -111,6 +118,13 @@ const reportDetail: ReportDetail = {
     priorityScore: 98,
     impactHypothesis: 'CTA 근처에 신뢰 문구를 추가하세요.',
     evidenceRefs: [{ ref: 'cp-detail.obs-1' }],
+    references: [{
+      label: 'GOV.UK Buttons',
+      publisher: 'GOV.UK',
+      title: 'Button component',
+      basisSummary: 'Buttons should communicate the action users can take.',
+      url: 'https://design-system.service.gov.uk/components/button/',
+    }],
     previewImage: {
       artifact: {
         id: '66666666-6666-4666-8666-666666666666',
@@ -229,6 +243,7 @@ test('buildRunReportFromApi projects backend report data into report view model'
   assert.equal(report.decisionNodes[0].tone, 'friction');
   assert.equal(report.findings[0].severity, 'high');
   assert.equal(report.findings[0].evidenceRefs[0], 'cp-1');
+  assert.equal(report.findings[0].references?.[0]?.label, 'WCAG 3.3.2');
   assert.equal(report.findings[0].highlight, null);
   assert.equal(report.recommendations[0].detail, 'CTA 아래에 기대 결과를 한 문장으로 설명하세요.');
 });
@@ -246,6 +261,7 @@ test('buildRunReportFromApi prefers report detail finding preview image when ava
   assert.equal(report.findings[0].title, '상세 CTA 문맥 부족');
   assert.equal(report.findings[0].previewImageUrl, reportDetail.findings[0].previewImage?.artifact.contentUrl);
   assert.equal(report.findings[0].evidenceRefs[0], 'cp-detail.obs-1');
+  assert.equal(report.findings[0].references?.[0]?.label, 'GOV.UK Buttons');
   assert.equal(report.findings[0].highlight?.source, 'artifact-coordinate');
   assert.equal(report.findings[0].highlight?.label, 'Start free');
   assert.equal(report.findings[0].highlight?.left, '36.11%');

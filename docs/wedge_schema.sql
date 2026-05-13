@@ -436,6 +436,7 @@ CREATE TABLE analysis_finding (
     priority_score      NUMERIC(8,3),
     impact_hypothesis   TEXT,
     evidence_refs_jsonb JSONB NOT NULL DEFAULT '[]'::jsonb,
+    references_jsonb    JSONB NOT NULL DEFAULT '[]'::jsonb,
     created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     UNIQUE (analysis_job_id, rank_order)
 );

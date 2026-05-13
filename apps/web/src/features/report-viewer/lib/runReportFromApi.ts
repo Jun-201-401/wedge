@@ -1,4 +1,4 @@
-import type { ReportDetail, ReportFindingHighlightUnit, RunReportProjection } from '../../../entities/report';
+import type { ReportDetail, ReportFindingHighlightUnit, ReportReference, RunReportProjection } from '../../../entities/report';
 import type { Run, RunArtifact } from '../../../entities/run';
 import { getScenarioLabel } from '../../../shared';
 import type { FindingSeverity, ReportDecisionNode, ReportFinding, ReportRecommendation, RunReportViewModel } from './runReportViewModel';
@@ -160,6 +160,31 @@ function normalizeEvidenceRefs(value: unknown): string[] {
   });
 }
 
+function normalizeReferences(value: unknown): ReportReference[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.flatMap((item) => {
+    if (typeof item !== 'object' || item === null) {
+      return [];
+    }
+
+    const record = item as Record<string, unknown>;
+    const label = readString(record.label);
+    const publisher = readString(record.publisher);
+    const title = readString(record.title);
+    const basisSummary = readString(record.basisSummary);
+    const url = readString(record.url);
+
+    if (!label || !publisher || !title || !basisSummary || !url) {
+      return [];
+    }
+
+    return [{ label, publisher, title, basisSummary, url }];
+  });
+}
+
 function buildFindings(report: RunReportProjection): ReportFinding[] {
   return report.findings.map((finding, index) => {
     const severity = severityFromScore(finding.severity);
@@ -178,6 +203,7 @@ function buildFindings(report: RunReportProjection): ReportFinding[] {
       confidence: finding.confidence ?? 0.72,
       priorityScore: finding.priorityScore ?? Math.max(50, 86 - index * 8),
       evidenceRefs,
+      references: normalizeReferences(finding.references),
       previewImageUrl: null,
       recommendation: finding.impactHypothesis ?? '분석 결과의 근거와 개선 제안을 함께 검토하세요.',
       highlight: null,
@@ -314,6 +340,7 @@ function buildFindingsFromDetail(detail: ReportDetail): ReportFinding[] {
       confidence: finding.confidence ?? 0.72,
       priorityScore: finding.priorityScore ?? Math.max(50, 86 - index * 8),
       evidenceRefs,
+      references: normalizeReferences(finding.references),
       previewImageUrl: getFindingPreviewUrl(finding),
       recommendation: firstNudge?.recommendation
         ?? firstNudge?.rationale
