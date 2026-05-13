@@ -61,6 +61,23 @@ class ScenarioPlanValidatorTest {
                 .hasMessageContaining("required_flow_type");
     }
 
+
+    @Test
+    void validateScenarioPlanAcceptsAllowedExternalOriginsSafetyField() {
+        Map<String, Object> plan = validPlan();
+        plan.put("safety", Map.of(
+                "allow_external_navigation", true,
+                "allowed_external_origins", List.of("https://checkout.example.com"),
+                "allow_payment_commit", false,
+                "allow_destructive_action", false,
+                "use_synthetic_inputs", true,
+                "stop_before_real_payment", true
+        ));
+
+        assertThatCode(() -> validator.validateScenarioPlan(plan, URI.create("https://example.com"), "desktop"))
+                .doesNotThrowAnyException();
+    }
+
     @Test
     void validateScenarioPlanAcceptsStopWhenWithTopLevelStopCondition() {
         Map<String, Object> plan = validPlan();

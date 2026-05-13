@@ -92,7 +92,6 @@ export function createRetainedOutboxRecord(
 ): CallbackOutboxRecord {
   return {
     ...record,
-    failedAt: toIsoTimestamp(),
     attempts: record.attempts + additionalAttempts,
     retryDelaysMs: [...config.callbackRetryDelaysMs],
     errorMessage: errorMessageValue

@@ -6,6 +6,7 @@ import type {
   AgentObservationCandidateSummary,
   AgentObservationFormControlSummary,
   AgentObservationPageSignals,
+  AgentOutcomeReasonCode,
   AgentTask,
   ArtifactDraft,
   ScenarioAction
@@ -40,6 +41,7 @@ export interface AgentTrace {
   turns: AgentTurnTrace[];
   outcome: {
     status: "RUNNING" | "SUCCESS" | "POLICY_BLOCKED" | "BLOCKED" | "FAILED" | "EXHAUSTED";
+    reason_code: AgentOutcomeReasonCode;
     reason: string;
   };
 }
@@ -54,6 +56,7 @@ export function createAgentTrace(task: AgentTask): AgentTrace {
     turns: [],
     outcome: {
       status: "RUNNING",
+      reason_code: "IN_PROGRESS",
       reason: "Agent execution is in progress."
     }
   };

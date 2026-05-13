@@ -85,7 +85,6 @@ export function createRetainedArtifactOutboxRecord(
 ): ArtifactOutboxRecord {
   return {
     ...record,
-    failedAt: toIsoTimestamp(),
     attempts: record.attempts + additionalAttempts,
     retryDelaysMs: [...config.artifactRetryDelaysMs],
     errorMessage: errorMessageValue

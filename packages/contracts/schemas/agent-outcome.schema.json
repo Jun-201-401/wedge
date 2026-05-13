@@ -10,10 +10,33 @@
       "type": "string",
       "enum": ["RUNNING", "SUCCESS", "POLICY_BLOCKED", "BLOCKED", "FAILED", "EXHAUSTED"]
     },
+    "reason_code": {
+      "type": "string",
+      "enum": [
+        "IN_PROGRESS",
+        "GOAL_REACHED",
+        "LOGIN_REQUIRED",
+        "CAPTCHA_DETECTED",
+        "FINAL_COMMIT_VISIBLE",
+        "POLICY_EXTERNAL_NAVIGATION_BLOCKED",
+        "POLICY_CHECKOUT_NAVIGATION_BLOCKED",
+        "POLICY_CART_MUTATION_BLOCKED",
+        "POLICY_SHIPPING_FORM_ENTRY_BLOCKED",
+        "POLICY_PAYMENT_INFO_ENTRY_BLOCKED",
+        "POLICY_PAYMENT_COMMIT_BLOCKED",
+        "POLICY_DESTRUCTIVE_ACTION_BLOCKED",
+        "POLICY_EXTERNAL_MESSAGE_BLOCKED",
+        "TURN_BUDGET_EXHAUSTED",
+        "DURATION_BUDGET_EXHAUSTED",
+        "STOP_CONDITION_REACHED",
+        "FINISH_DECISION",
+        "RUNNER_ERROR"
+      ]
+    },
     "reason": {
       "type": "string",
       "minLength": 1
     }
   },
-  "required": ["status", "reason"]
+  "required": ["status", "reason_code", "reason"]
 }
