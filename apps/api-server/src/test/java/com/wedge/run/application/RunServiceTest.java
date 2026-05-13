@@ -8,6 +8,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.wedge.common.error.BusinessException;
+import com.wedge.common.error.ErrorCode;
 import com.wedge.run.api.dto.RunCreateRequest;
 import com.wedge.run.api.dto.RunEventResponse;
 import com.wedge.run.api.dto.RunResponse;
@@ -248,13 +249,20 @@ class RunServiceTest {
     }
 
     @Test
-    void markStartFailedIfAwaitingRunnerDoesNotOverrideRunningOrTerminalRun() {
+    void markStartFailedIfAwaitingRunnerDoesNotOverrideAcceptedRunningOrTerminalRun() {
+        RunResponse starting = sampleRun(RunStatus.STARTING, ResultCompleteness.NONE);
         RunResponse running = sampleRun(RunStatus.RUNNING, ResultCompleteness.NONE);
         RunResponse completed = sampleRun(UUID.randomUUID(), RunStatus.COMPLETED, ResultCompleteness.FINAL);
 
+        when(runPersistenceAdapter.findRun(starting.id())).thenReturn(Optional.of(starting));
         when(runPersistenceAdapter.findRun(running.id())).thenReturn(Optional.of(running));
         when(runPersistenceAdapter.findRun(completed.id())).thenReturn(Optional.of(completed));
 
+        assertThat(runService.markStartFailedIfAwaitingRunner(
+                starting.id(),
+                RunFailureCodes.RUN_START_FAILED,
+                "요청을 시작하지 못했습니다."
+        )).isEmpty();
         assertThat(runService.markStartFailedIfAwaitingRunner(
                 running.id(),
                 RunFailureCodes.RUN_START_FAILED,
@@ -267,6 +275,25 @@ class RunServiceTest {
         )).isEmpty();
 
         verify(runPersistenceAdapter, never()).updateFailureState(any(), any(), any(), any());
+    }
+
+    @Test
+    void markStartFailedIfAwaitingRunnerIgnoresConcurrentStateConflict() {
+        RunResponse queued = sampleRun(RunStatus.QUEUED, ResultCompleteness.NONE);
+
+        when(runPersistenceAdapter.findRun(queued.id())).thenReturn(Optional.of(queued));
+        when(runPersistenceAdapter.updateFailureState(
+                queued,
+                RunFailureCodes.RUN_START_FAILED,
+                "요청을 시작하지 못했습니다.",
+                ResultCompleteness.NONE
+        )).thenThrow(new BusinessException(ErrorCode.STATE_CONFLICT, "Run state changed during transition."));
+
+        assertThat(runService.markStartFailedIfAwaitingRunner(
+                queued.id(),
+                RunFailureCodes.RUN_START_FAILED,
+                "요청을 시작하지 못했습니다."
+        )).isEmpty();
     }
 
     @Test

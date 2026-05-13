@@ -61,7 +61,6 @@ public class RunnerExecutionDeadLetterListener {
                     valueAt(message, "payload", "agentTask", "run_id"),
                     valueAt(message, "payload", "agentTask", "runId"),
                     valueAt(message, "payload", "run_id"),
-                    message.get("correlationId"),
                     message.get("runId"),
                     message.get("run_id")
             );
@@ -72,16 +71,21 @@ public class RunnerExecutionDeadLetterListener {
     }
 
     private Optional<UUID> firstUuid(Object... candidates) {
+        UUID resolved = null;
         for (Object candidate : candidates) {
             if (candidate instanceof String value && !value.isBlank()) {
                 try {
-                    return Optional.of(UUID.fromString(value.trim()));
+                    UUID parsed = UUID.fromString(value.trim());
+                    if (resolved != null && !resolved.equals(parsed)) {
+                        return Optional.empty();
+                    }
+                    resolved = parsed;
                 } catch (IllegalArgumentException ignored) {
-                    // Try the next candidate before deciding that the payload has no usable run id.
+                    return Optional.empty();
                 }
             }
         }
-        return Optional.empty();
+        return Optional.ofNullable(resolved);
     }
 
     private Object valueAt(Map<String, Object> source, String... path) {

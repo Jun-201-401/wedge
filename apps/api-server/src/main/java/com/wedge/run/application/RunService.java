@@ -27,8 +27,7 @@ public class RunService {
     private static final int MAX_EVENT_LIMIT = 100;
     private static final Set<RunStatus> START_FAILURE_STATUSES = EnumSet.of(
             RunStatus.CREATED,
-            RunStatus.QUEUED,
-            RunStatus.STARTING
+            RunStatus.QUEUED
     );
 
     private final RunPersistenceAdapter runPersistenceAdapter;
@@ -217,13 +216,20 @@ public class RunService {
             return Optional.empty();
         }
 
-        RunResponse failed = runPersistenceAdapter.updateFailureState(
-                current.get(),
-                failureCode,
-                failureMessage,
-                ResultCompleteness.NONE
-        );
-        return Optional.of(failed);
+        try {
+            RunResponse failed = runPersistenceAdapter.updateFailureState(
+                    current.get(),
+                    failureCode,
+                    failureMessage,
+                    ResultCompleteness.NONE
+            );
+            return Optional.of(failed);
+        } catch (BusinessException exception) {
+            if (exception.errorCode() == ErrorCode.STATE_CONFLICT) {
+                return Optional.empty();
+            }
+            throw exception;
+        }
     }
 
     private RunResponse transition(UUID runId, RunStatus nextStatus, ResultCompleteness resultCompleteness) {

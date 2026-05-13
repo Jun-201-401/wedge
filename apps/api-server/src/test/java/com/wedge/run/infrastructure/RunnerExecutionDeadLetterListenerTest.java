@@ -76,6 +76,40 @@ class RunnerExecutionDeadLetterListenerTest {
     }
 
     @Test
+    void invalidPayloadRunIdDoesNotFallBackToCorrelationId() throws Exception {
+        String body = new ObjectMapper().writeValueAsString(Map.of(
+                "correlationId", UUID.randomUUID().toString(),
+                "payload", Map.of("runId", "not-a-uuid")
+        ));
+
+        listener.handleRunExecuteDeadLetter(body);
+
+        verify(runService, never()).markStartFailedIfAwaitingRunner(
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any()
+        );
+    }
+
+    @Test
+    void conflictingExplicitRunIdsAreAckedWithoutFailingAnyRun() throws Exception {
+        String body = new ObjectMapper().writeValueAsString(Map.of(
+                "payload", Map.of(
+                        "runId", UUID.randomUUID().toString(),
+                        "run_id", UUID.randomUUID().toString()
+                )
+        ));
+
+        listener.handleRunExecuteDeadLetter(body);
+
+        verify(runService, never()).markStartFailedIfAwaitingRunner(
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any()
+        );
+    }
+
+    @Test
     void listenerMethodsAreBoundToRunnerDeadLetterQueues() throws NoSuchMethodException {
         Method runListener = RunnerExecutionDeadLetterListener.class.getDeclaredMethod("handleRunExecuteDeadLetter", String.class);
         Method agentListener = RunnerExecutionDeadLetterListener.class.getDeclaredMethod("handleAgentExecuteDeadLetter", String.class);
