@@ -275,8 +275,16 @@ export function getFailureCodeLabel(failureCode?: string | null) {
     return '시간 초과';
   }
 
+  if (failureCode === 'RUN_START_FAILED') {
+    return '시작 실패';
+  }
+
+  if (failureCode === 'RUN_REQUEST_FAILED') {
+    return '요청 실패';
+  }
+
   if (failureCode === 'RUNNER_EXECUTION_FAILED') {
-    return '실행 실패';
+    return '진행 실패';
   }
 
   return failureCode ?? '실패';

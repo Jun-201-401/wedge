@@ -190,6 +190,9 @@ test('run monitor view model maps API run steps into a real timeline with failur
   assert.equal(steps[1].label, 'CTA 제출');
   assert.equal(steps[1].detail, '응답이 지연되어 확인이 막혔습니다.');
   assert.equal(getFailureCodeLabel('RUNNER_TIMEOUT'), '시간 초과');
+  assert.equal(getFailureCodeLabel('RUN_START_FAILED'), '시작 실패');
+  assert.equal(getFailureCodeLabel('RUN_REQUEST_FAILED'), '요청 실패');
+  assert.equal(getFailureCodeLabel('RUNNER_EXECUTION_FAILED'), '진행 실패');
 });
 
 
