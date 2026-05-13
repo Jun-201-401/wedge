@@ -17,6 +17,7 @@ import type {
   AgentArtifactPolicy,
   AxTreeSummary,
   BrowserPerformanceSummary,
+  BrowserLoadingState,
   InteractiveComponentBounds,
   InteractiveComponentLayout,
   InteractiveComponentVisibility,
@@ -119,6 +120,7 @@ export interface BrowserPageSnapshot {
   performanceSummary: BrowserPerformanceSummary | null;
   breadcrumb: string[];
   toastTexts: string[];
+  loadingState: BrowserLoadingState;
   cartCount: number | null;
   visiblePrices: string[];
   productImages: BrowserProductImageSignal[];
@@ -264,6 +266,7 @@ interface MutableBrowserState {
   performanceSummary: BrowserPerformanceSummary | null;
   breadcrumb: string[];
   toastTexts: string[];
+  loadingState: BrowserLoadingState;
   cartCount: number | null;
   visiblePrices: string[];
   productImages: BrowserProductImageSignal[];
@@ -708,6 +711,17 @@ class RealPlaywrightSession implements BrowserSession {
     const startedAt = Date.now();
     const targetSummary = describeTarget(strategy.target);
 
+    if (strategy.type === "item_count_change") {
+      const { attempt, timeoutDetails } = this.createItemCountSettleAttempt(strategy);
+      return this.settleWithAttempt(
+        strategy.type,
+        startedAt,
+        targetSummary,
+        attempt,
+        timeoutDetails
+      );
+    }
+
     await this.refreshPageState();
 
     if (strategy.type === "none") {
@@ -772,17 +786,6 @@ class RealPlaywrightSession implements BrowserSession {
 
     if (strategy.type === "response") {
       const { attempt, timeoutDetails } = this.createResponseSettleAttempt(strategy);
-      return this.settleWithAttempt(
-        strategy.type,
-        startedAt,
-        targetSummary,
-        attempt,
-        timeoutDetails
-      );
-    }
-
-    if (strategy.type === "item_count_change") {
-      const { attempt, timeoutDetails } = this.createItemCountSettleAttempt(strategy);
       return this.settleWithAttempt(
         strategy.type,
         startedAt,
@@ -1203,6 +1206,7 @@ class RealPlaywrightSession implements BrowserSession {
     this.state.visibleTextBlocks = await safeVisibleTextBlocks(this.page, this.state.visibleTextBlocks);
     this.state.breadcrumb = await safeBreadcrumb(this.page, this.state.breadcrumb);
     this.state.toastTexts = await safeToastTexts(this.page, this.state.toastTexts);
+    this.state.loadingState = await safeLoadingState(this.page, this.state.lastAction, this.state.loadingState);
     this.state.cartCount = await safeCartCount(this.page, this.state.cartCount);
     this.state.visiblePrices = await safeVisiblePrices(this.page, this.state.visiblePrices);
     this.state.productImages = await safeProductImages(this.page, this.state.productImages);
@@ -1342,6 +1346,7 @@ function createInitialBrowserState(plan: ScenarioPlan): MutableBrowserState {
     performanceSummary: null,
     breadcrumb: [],
     toastTexts: [],
+    loadingState: emptyLoadingState(),
     cartCount: null,
     visiblePrices: [],
     productImages: [],
@@ -1354,6 +1359,16 @@ function createInitialBrowserState(plan: ScenarioPlan): MutableBrowserState {
       reason: null,
       observedAt: null
     }
+  };
+}
+
+function emptyLoadingState(): BrowserLoadingState {
+  return {
+    has_spinner: false,
+    has_progressbar: false,
+    status_text: [],
+    clicked_submit_disabled: null,
+    aria_busy: false
   };
 }
 
@@ -1394,6 +1409,10 @@ function createBrowserPageSnapshot(
     performanceSummary: state.performanceSummary ? { ...state.performanceSummary } : null,
     breadcrumb: [...state.breadcrumb],
     toastTexts: [...state.toastTexts],
+    loadingState: {
+      ...state.loadingState,
+      status_text: [...state.loadingState.status_text]
+    },
     cartCount: state.cartCount,
     visiblePrices: [...state.visiblePrices],
     productImages: state.productImages.map((image) => ({
@@ -2329,6 +2348,113 @@ async function safeToastTexts(page: Page, fallbackValue: string[]): Promise<stri
   }
 }
 
+async function safeLoadingState(
+  page: Page,
+  lastAction: BrowserPageSnapshot["lastAction"],
+  fallbackValue: BrowserLoadingState
+): Promise<BrowserLoadingState> {
+  try {
+    return await page.evaluate(({ clickedSelector, clickedText }) => {
+      function normalizeText(value: string | null | undefined): string {
+        return (value ?? "").replace(/\s+/g, " ").trim();
+      }
+
+      function isVisible(element: Element): boolean {
+        const rect = element.getBoundingClientRect();
+        const style = globalThis.getComputedStyle(element);
+        return rect.width > 0 &&
+          rect.height > 0 &&
+          style.visibility !== "hidden" &&
+          style.display !== "none" &&
+          Number(style.opacity || "1") > 0;
+      }
+
+      function isDisabled(element: Element | null): boolean | null {
+        if (!element) {
+          return null;
+        }
+        return element.hasAttribute("disabled") ||
+          element.getAttribute("aria-disabled") === "true" ||
+          Boolean((element as HTMLButtonElement | HTMLInputElement).disabled);
+      }
+
+      function queryClickedElement(): Element | null {
+        if (clickedSelector) {
+          try {
+            const selected = document.querySelector(clickedSelector);
+            if (selected) {
+              return selected;
+            }
+          } catch {
+            // Fall back to text matching below.
+          }
+        }
+
+        const normalizedClickedText = normalizeText(clickedText).toLowerCase();
+        if (!normalizedClickedText) {
+          return null;
+        }
+
+        return Array.from(document.querySelectorAll("button, input[type='submit'], input[type='button'], [role='button']"))
+          .find((element) => normalizeText(element.textContent || element.getAttribute("value") || element.getAttribute("aria-label")).toLowerCase() === normalizedClickedText) ?? null;
+      }
+
+      const spinnerSelectors = [
+        "[class*='spinner' i]",
+        "[class*='loading' i]",
+        "[class*='loader' i]",
+        "[data-testid*='spinner' i]",
+        "[data-testid*='loading' i]",
+        "[data-test*='spinner' i]",
+        "[data-test*='loading' i]",
+        "[aria-label*='loading' i]",
+        "[aria-label*='로딩' i]"
+      ];
+      const progressSelectors = [
+        "progress",
+        "[role='progressbar']",
+        "[aria-valuenow][aria-valuemin][aria-valuemax]"
+      ];
+      const statusSelectors = [
+        "[role='status']",
+        "[role='alert']",
+        "[aria-live]",
+        "[class*='status' i]",
+        "[class*='loading' i]",
+        "[class*='progress' i]"
+      ];
+
+      const hasSpinner = spinnerSelectors.some((selector) =>
+        Array.from(document.querySelectorAll(selector)).some(isVisible)
+      );
+      const hasProgressbar = progressSelectors.some((selector) =>
+        Array.from(document.querySelectorAll(selector)).some(isVisible)
+      );
+      const statusTextPattern = /loading|please wait|processing|submitting|saving|로딩|처리 중|처리중|저장 중|저장중|제출 중|제출중|결제 중|결제중|예약 중|예약중/i;
+      const statusText = Array.from(new Set(statusSelectors
+        .flatMap((selector) => Array.from(document.querySelectorAll(selector)))
+        .filter(isVisible)
+        .map((element) => normalizeText(element.textContent || element.getAttribute("aria-label")))
+        .filter((text) => text.length > 0 && statusTextPattern.test(text))
+        .map((text) => text.slice(0, 160))))
+        .slice(0, 10);
+
+      return {
+        has_spinner: hasSpinner,
+        has_progressbar: hasProgressbar,
+        status_text: statusText,
+        clicked_submit_disabled: isDisabled(queryClickedElement()),
+        aria_busy: Array.from(document.querySelectorAll("[aria-busy='true']")).some(isVisible)
+      };
+    }, {
+      clickedSelector: lastAction?.type === "click" ? lastAction.clickedSelector ?? null : null,
+      clickedText: lastAction?.type === "click" ? lastAction.clickedText ?? null : null
+    });
+  } catch {
+    return fallbackValue;
+  }
+}
+
 async function safeCartCount(page: Page, fallbackValue: number | null): Promise<number | null> {
   try {
     return await page.evaluate(() => {
@@ -2940,6 +3066,45 @@ async function extractInteractiveComponentsFromFrame(
           : null;
       }
 
+      function describedByTextFor(element: Element): string | null {
+        const describedBy = element.getAttribute("aria-describedby");
+        if (!describedBy) {
+          return null;
+        }
+
+        return firstText(describedBy
+          .split(/\s+/)
+          .map((id) => document.getElementById(id)?.textContent ?? null))?.slice(0, 240) ?? null;
+      }
+
+      function helpTextFor(element: Element): string | null {
+        const describedByText = describedByTextFor(element);
+        if (describedByText) {
+          return describedByText;
+        }
+
+        const container = element.closest("label, .field, .form-field, .input, .control, [data-testid*='field' i], [data-test*='field' i]") ?? element.parentElement;
+        if (!container) {
+          return null;
+        }
+
+        return firstText(Array.from(container.querySelectorAll("small, .help, .hint, .description, [class*='help' i], [class*='hint' i], [data-testid*='help' i], [data-test*='help' i]"))
+          .map((candidate) => candidate.textContent))?.slice(0, 240) ?? null;
+      }
+
+      function inputConstraintFor(element: Element, attribute: "pattern" | "min" | "max"): string | null {
+        return element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement
+          ? element.getAttribute(attribute)
+          : null;
+      }
+
+      function maxLengthFor(element: Element): number | null {
+        if (!(element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement)) {
+          return null;
+        }
+        return element.maxLength >= 0 ? element.maxLength : null;
+      }
+
       function nameFor(element: Element): string | null {
         const name = element.getAttribute("name");
         return name && name.trim().length > 0 ? name.trim() : null;
@@ -3263,6 +3428,8 @@ async function extractInteractiveComponentsFromFrame(
           const inputType = inputTypeFor(element, tag);
           const labelText = labelTextFor(element);
           const placeholder = placeholderFor(element);
+          const describedbyText = describedByTextFor(element);
+          const helpText = helpTextFor(element);
           const name = nameFor(element);
           const formControl = isFormControl(element, tag);
           const disabled = isDisabled(element);
@@ -3284,6 +3451,12 @@ async function extractInteractiveComponentsFromFrame(
             label_text: labelText,
             placeholder,
             name,
+            describedby_text: describedbyText,
+            help_text: helpText,
+            pattern: inputConstraintFor(element, "pattern"),
+            min: inputConstraintFor(element, "min"),
+            max: inputConstraintFor(element, "max"),
+            maxlength: maxLengthFor(element),
             required: isRequired(element),
             disabled,
             is_form_control: formControl,
@@ -3321,6 +3494,12 @@ async function extractInteractiveComponentsFromFrame(
         label_text: component.label_text,
         placeholder: component.placeholder,
         name: component.name,
+        describedby_text: component.describedby_text,
+        help_text: component.help_text,
+        pattern: component.pattern,
+        min: component.min,
+        max: component.max,
+        maxlength: component.maxlength,
         required: component.required,
         disabled: component.disabled,
         is_form_control: component.is_form_control,

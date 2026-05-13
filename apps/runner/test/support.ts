@@ -197,6 +197,13 @@ export function createSimulatedPageSnapshot(
     performanceSummary: null,
     breadcrumb: [],
     toastTexts: [],
+    loadingState: {
+      has_spinner: false,
+      has_progressbar: false,
+      status_text: [],
+      clicked_submit_disabled: null,
+      aria_busy: false
+    },
     cartCount: null,
     visiblePrices: [],
     productImages: [],

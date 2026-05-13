@@ -973,6 +973,12 @@ export interface InteractiveComponentObservationItem {
   label_text?: string | null;
   placeholder?: string | null;
   name?: string | null;
+  describedby_text?: string | null;
+  help_text?: string | null;
+  pattern?: string | null;
+  min?: string | null;
+  max?: string | null;
+  maxlength?: number | null;
   required?: boolean;
   disabled?: boolean;
   is_form_control?: boolean;
@@ -1117,6 +1123,48 @@ export interface PerformanceMetricObservation {
   summary: BrowserPerformanceSummary;
 }
 
+export type RunnerActionKind =
+  | "navigation"
+  | "submit"
+  | "form_input"
+  | "tab_change"
+  | "menu_open"
+  | "filter_change"
+  | "checkout_submit"
+  | "payment_submit"
+  | "other";
+
+export type RunnerExpectedOutcomeHint =
+  | "url_change"
+  | "modal_open"
+  | "toast_show"
+  | "form_submit"
+  | "item_count_change"
+  | "checkout_processing"
+  | "dom_change"
+  | "no_visible_change_expected";
+
+export interface BrowserLoadingState {
+  has_spinner: boolean;
+  has_progressbar: boolean;
+  status_text: string[];
+  clicked_submit_disabled: boolean | null;
+  aria_busy: boolean;
+}
+
+export interface LoadingStateObservation {
+  observation_id: string;
+  type: "loading_state";
+  stage: ScenarioStage;
+  source: ("dom" | "browser")[];
+  confidence: number;
+  action_kind: RunnerActionKind;
+  expected_outcome_hint: RunnerExpectedOutcomeHint[];
+  settle_status: "settled" | "timeout" | "failed";
+  duration_ms: number;
+  loading_state: BrowserLoadingState;
+}
+
 export interface InteractiveComponentsObservation {
   observation_id: string;
   type: "interactive_components";
@@ -1136,6 +1184,8 @@ export interface JourneyActionRawObservation {
   step_order: number;
   step_key: string;
   action_type: ScenarioActionType;
+  action_kind?: RunnerActionKind;
+  expected_outcome_hint?: RunnerExpectedOutcomeHint[];
   clicked_text?: string | null;
   clicked_selector?: string | null;
   element_role?: string | null;

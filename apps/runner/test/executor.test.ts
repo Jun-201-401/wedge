@@ -1192,6 +1192,13 @@ test("[수집 pipeline] Journey raw signal은 click 전후 상태와 artifact/bb
     breadcrumb: ["Home", "Products", "SKU 1"],
     cartCount: 1,
     toastTexts: ["장바구니에 담았습니다"],
+    loadingState: {
+      has_spinner: true,
+      has_progressbar: false,
+      status_text: ["처리 중입니다"],
+      clicked_submit_disabled: true,
+      aria_busy: true
+    },
     visiblePrices: ["₩12,000"],
     productImages: [
       {
@@ -1292,8 +1299,19 @@ test("[수집 pipeline] Journey raw signal은 click 전후 상태와 artifact/bb
   const goalActionResult = collection.checkpoint.observations.find(
     (candidate) => candidate.type === "goal_action_result"
   );
+  const loadingState = collection.checkpoint.observations.find(
+    (candidate) => candidate.type === "loading_state"
+  );
 
   assert.ok(observation);
+  assert.equal(observation.action_kind, "submit");
+  assert.deepEqual(observation.expected_outcome_hint, [
+    "url_change",
+    "dom_change",
+    "toast_show",
+    "item_count_change",
+    "form_submit"
+  ]);
   assert.equal(observation.clicked_text, "장바구니 담기");
   assert.equal(observation.clicked_selector, "button.add-cart");
   assert.equal(observation.url_before, "https://example.com");
@@ -1329,6 +1347,16 @@ test("[수집 pipeline] Journey raw signal은 click 전후 상태와 artifact/bb
     unit: "css_px"
   });
   assert.ok(Array.isArray(observation.network_result));
+  assert.ok(loadingState);
+  assert.equal(loadingState.action_kind, "submit");
+  assert.equal(loadingState.settle_status, "settled");
+  assert.deepEqual(loadingState.loading_state, {
+    has_spinner: true,
+    has_progressbar: false,
+    status_text: ["처리 중입니다"],
+    clicked_submit_disabled: true,
+    aria_busy: true
+  });
 
   assert.ok(goalActionResult);
   assert.equal(goalActionResult.clicked_text, "장바구니 담기");
