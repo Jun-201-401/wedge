@@ -37,8 +37,25 @@ public class RunService {
 
     @Transactional
     public RunResponse createRun(RunCreateRequest request) {
-        scenarioPlanValidator.validateCreateRequest(request);
-        return runPersistenceAdapter.createRun(request);
+        RunCreateRequest normalizedRequest = normalizeScenarioPlanGoal(request);
+        scenarioPlanValidator.validateCreateRequest(normalizedRequest);
+        return runPersistenceAdapter.createRun(normalizedRequest);
+    }
+
+    private RunCreateRequest normalizeScenarioPlanGoal(RunCreateRequest request) {
+        return ScenarioPlanGoalResolver.resolve(request.scenarioPlan())
+                .filter(scenarioPlanGoal -> !scenarioPlanGoal.equals(request.goal()))
+                .map(scenarioPlanGoal -> new RunCreateRequest(
+                        request.projectId(),
+                        request.name(),
+                        request.startUrl(),
+                        scenarioPlanGoal,
+                        request.devicePreset(),
+                        request.scenarioTemplateVersionId(),
+                        request.scenarioOverrides(),
+                        request.scenarioPlan()
+                ))
+                .orElse(request);
     }
 
     @Transactional(readOnly = true)
