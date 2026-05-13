@@ -1,8 +1,8 @@
 package com.wedge.report.api.dto;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import com.wedge.analysis.domain.AnalysisFinding;
 import java.math.BigDecimal;
+import java.util.List;
 import java.util.UUID;
 
 public record ReportFindingResponse(
@@ -17,9 +17,10 @@ public record ReportFindingResponse(
         BigDecimal confidence,
         BigDecimal priorityScore,
         String impactHypothesis,
-        JsonNode evidenceRefs
+        List<Object> evidenceRefs,
+        List<Object> references
 ) {
-    public static ReportFindingResponse from(AnalysisFinding finding, JsonNode evidenceRefs) {
+    public static ReportFindingResponse from(AnalysisFinding finding, List<Object> evidenceRefs, List<Object> references) {
         return new ReportFindingResponse(
                 finding.getId(),
                 finding.getRankOrder(),
@@ -32,7 +33,8 @@ public record ReportFindingResponse(
                 finding.getConfidence(),
                 finding.getPriorityScore(),
                 finding.getImpactHypothesis(),
-                evidenceRefs
+                evidenceRefs,
+                references
         );
     }
 }

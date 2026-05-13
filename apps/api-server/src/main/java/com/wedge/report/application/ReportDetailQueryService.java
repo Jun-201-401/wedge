@@ -116,6 +116,7 @@ public class ReportDetailQueryService {
             ReportPreviewImageResolver.DetailPreviewContext previewContext
     ) {
         List<Object> evidenceRefs = reportJsonReader.readArray(finding.getEvidenceRefsJsonb());
+        List<Object> references = reportJsonReader.readArray(finding.getReferencesJsonb());
         ReportFindingHighlightResponse highlight = highlight(evidenceRefs);
         ReportPreviewImageResponse previewImage = previewImageResolver.resolve(
                 report,
@@ -139,6 +140,7 @@ public class ReportDetailQueryService {
                 finding.getPriorityScore(),
                 finding.getImpactHypothesis(),
                 evidenceRefs,
+                references,
                 previewImage,
                 highlight,
                 detailNudges(nudgesByFindingId.getOrDefault(finding.getId(), List.of()))

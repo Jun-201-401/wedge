@@ -33,6 +33,7 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 public class ReportGenerationService {
     private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {};
+    private static final TypeReference<List<Object>> LIST_TYPE = new TypeReference<>() {};
     private static final String DEFAULT_REPORT_TITLE = "JudgeResult analysis report";
     private static final String READY = "READY";
     private static final String GENERATABLE = "GENERATABLE";
@@ -195,7 +196,11 @@ public class ReportGenerationService {
             return List.of();
         }
         return analysisFindingMapper.findByAnalysisJobId(analysisJobId).stream()
-                .map(finding -> ReportFindingResponse.from(finding, readJsonNode(finding.getEvidenceRefsJsonb(), false)))
+                .map(finding -> ReportFindingResponse.from(
+                        finding,
+                        readJsonArray(finding.getEvidenceRefsJsonb()),
+                        readJsonArray(finding.getReferencesJsonb())
+                ))
                 .toList();
     }
 
@@ -233,6 +238,21 @@ public class ReportGenerationService {
         }
         try {
             return objectMapper.readTree(rawJson);
+        } catch (JsonProcessingException exception) {
+            throw new IllegalStateException("Stored report JSON is invalid", exception);
+        }
+    }
+
+    private List<Object> readJsonArray(String rawJson) {
+        if (rawJson == null || rawJson.isBlank()) {
+            return List.of();
+        }
+        try {
+            JsonNode node = objectMapper.readTree(rawJson);
+            if (!node.isArray()) {
+                throw new IllegalStateException("Stored report JSON array is invalid");
+            }
+            return objectMapper.convertValue(node, LIST_TYPE);
         } catch (JsonProcessingException exception) {
             throw new IllegalStateException("Stored report JSON is invalid", exception);
         }

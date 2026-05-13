@@ -22,6 +22,7 @@ import com.wedge.report.api.dto.ReportDetailFindingResponse;
 import com.wedge.report.api.dto.ReportDetailNudgeResponse;
 import com.wedge.report.api.dto.ReportDetailResponse;
 import com.wedge.report.api.dto.ReportExportResponse;
+import com.wedge.report.api.dto.ReportFindingResponse;
 import com.wedge.report.api.dto.ReportShareResponse;
 import com.wedge.report.api.dto.ReportSummaryResponse;
 import com.wedge.report.api.dto.RunReportResponse;
@@ -130,6 +131,7 @@ class ReportControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.reportStatus").value("READY"))
                 .andExpect(jsonPath("$.data.reportId").value(reportId.toString()))
+                .andExpect(jsonPath("$.data.findings[0].references[0].label").value("WCAG 3.3.2"))
                 .andExpect(jsonPath("$.meta.requestId").value(RUN_REPORT_REQUEST_ID));
     }
 
@@ -205,6 +207,8 @@ class ReportControllerTest {
                 .andExpect(jsonPath("$.data.id").value(reportId.toString()))
                 .andExpect(jsonPath("$.data.initialDisplayCount").value(INITIAL_DISPLAY_COUNT))
                 .andExpect(jsonPath("$.data.findings[0].title").value(FINDING_TITLE))
+                .andExpect(jsonPath("$.data.findings[0].evidenceRefs[0].ref").value("cp_001.obs_001"))
+                .andExpect(jsonPath("$.data.findings[0].references[0].label").value("WCAG 3.3.2"))
                 .andExpect(jsonPath("$.data.findings[0].nudges[0].title").value(NUDGE_TITLE))
                 .andExpect(jsonPath("$.meta.requestId").value(DETAIL_REQUEST_ID));
     }
@@ -389,6 +393,7 @@ class ReportControllerTest {
                 new BigDecimal("9.2"),
                 "Users may miss the next action.",
                 List.of(Map.of("ref", "cp_001.obs_001")),
+                List.of(referencePayload()),
                 null,
                 null,
                 List.of(detailNudge())
@@ -453,7 +458,7 @@ class ReportControllerTest {
                 ReportStatus.READY,
                 null,
                 null,
-                List.of(),
+                List.of(runReportFinding()),
                 List.of(),
                 null,
                 null,
@@ -464,6 +469,34 @@ class ReportControllerTest {
 
     private Map<String, Object> summaryPayload() {
         return Map.of("headline", FINDING_TITLE);
+    }
+
+    private ReportFindingResponse runReportFinding() {
+        return new ReportFindingResponse(
+                UUID.randomUUID(),
+                1,
+                FINDING_TITLE,
+                "CTA is unclear.",
+                "conversion",
+                "CTA",
+                "clarity",
+                2,
+                new BigDecimal("0.87"),
+                new BigDecimal("9.2"),
+                "Users may miss the next action.",
+                List.of(Map.of("ref", "cp_001.obs_001")),
+                List.of(referencePayload())
+        );
+    }
+
+    private Map<String, Object> referencePayload() {
+        return Map.of(
+                "label", "WCAG 3.3.2",
+                "publisher", "W3C",
+                "title", "Labels or Instructions",
+                "basisSummary", "Inputs need labels or instructions.",
+                "url", "https://www.w3.org/WAI/WCAG22/Understanding/labels-or-instructions.html"
+        );
     }
 
     private UsernamePasswordAuthenticationToken authentication(UUID userId) {
