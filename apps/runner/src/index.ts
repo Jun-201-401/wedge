@@ -5,6 +5,7 @@ import {
   RUNNER_MQ_ARTIFACT_OUTBOX_WORKER_ENABLED_ENV,
   RUNNER_MQ_CALLBACK_OUTBOX_WORKER_ENABLED_ENV
 } from "./config/index.ts";
+import { startRunnerMetricsServer, type RunnerMetricsServer } from "./observability/metrics.ts";
 
 interface CliOptions {
   messageFile?: string;
@@ -26,8 +27,9 @@ try {
     const app = createRunnerApp();
 
     if (cliOptions.watchArtifactOutbox) {
+      const metricsServer = startMetricsServerForLongRunningMode(app.config);
       const worker = await app.startArtifactOutboxReplayWorker();
-      registerShutdownHooks(worker.close);
+      registerShutdownHooks(() => closeLongRunningResources(worker.close, metricsServer));
 
       console.log(
         JSON.stringify(
@@ -61,8 +63,9 @@ try {
         )
       );
     } else if (cliOptions.watchOutbox) {
+      const metricsServer = startMetricsServerForLongRunningMode(app.config);
       const worker = await app.startCallbackOutboxReplayWorker();
-      registerShutdownHooks(worker.close);
+      registerShutdownHooks(() => closeLongRunningResources(worker.close, metricsServer));
 
       console.log(
         JSON.stringify(
@@ -96,8 +99,9 @@ try {
         )
       );
     } else if (cliOptions.consumeMq || app.config.mqConsumerEnabled) {
+      const metricsServer = startMetricsServerForLongRunningMode(app.config);
       const runtime = await app.startMqRuntime();
-      registerShutdownHooks(runtime.close);
+      registerShutdownHooks(() => closeLongRunningResources(runtime.close, metricsServer));
 
       console.log(
         JSON.stringify(
@@ -317,4 +321,16 @@ function registerShutdownHooks(close: () => Promise<void>): void {
   process.once("SIGTERM", () => {
     void handleShutdown();
   });
+}
+
+function startMetricsServerForLongRunningMode(config: ReturnType<typeof createRunnerApp>["config"]): RunnerMetricsServer | null {
+  return startRunnerMetricsServer(config);
+}
+
+async function closeLongRunningResources(
+  closePrimary: () => Promise<void>,
+  metricsServer: RunnerMetricsServer | null
+): Promise<void> {
+  await closePrimary();
+  await metricsServer?.close();
 }

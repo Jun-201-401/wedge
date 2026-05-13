@@ -198,7 +198,7 @@ class GMSSemanticProvider:
     provider_name = "gms_semantic_provider"
 
     def __init__(self, client: GMSClient | None = None, *, enabled: bool = True) -> None:
-        self._client = client or GMSClient()
+        self._client = client or GMSClient(feature="semantic_cta")
         self._enabled = enabled
 
     @classmethod

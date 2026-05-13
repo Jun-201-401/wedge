@@ -41,7 +41,10 @@ const AGENT_LLM_ENV_KEYS = [
   "RUNNER_AGENT_LLM_TIMEOUT_MS",
   "RUNNER_AGENT_MCP_GATEWAY_URL",
   "RUNNER_AGENT_MCP_SERVICE_TOKEN",
-  "RUNNER_AGENT_MCP_GATEWAY_TIMEOUT_MS"
+  "RUNNER_AGENT_MCP_GATEWAY_TIMEOUT_MS",
+  "RUNNER_METRICS_ENABLED",
+  "RUNNER_METRICS_HOST",
+  "RUNNER_METRICS_PORT"
 ] as const;
 
 type ArtifactEnvKey = typeof ARTIFACT_ENV_KEYS[number];
@@ -351,6 +354,31 @@ test("[설정] Agent decision client는 env로만 MCP mode와 gateway 값을 활
       assert.equal(config.agentMcpGatewayUrl, "http://api-server:8080/internal/agent/mcp/decision");
       assert.equal(config.agentMcpServiceToken, "mcp-gateway-token");
       assert.equal(config.agentMcpGatewayTimeoutMs, 7_000);
+    }
+  );
+});
+
+test("[설정] Runner metrics endpoint는 env로만 활성화한다", () => {
+  withAgentLlmEnv({}, () => {
+    const config = loadRunnerConfig({ serviceName: "runner-test" });
+
+    assert.equal(config.metricsEnabled, false);
+    assert.equal(config.metricsHost, "0.0.0.0");
+    assert.equal(config.metricsPort, 9101);
+  });
+
+  withAgentLlmEnv(
+    {
+      RUNNER_METRICS_ENABLED: "true",
+      RUNNER_METRICS_HOST: "127.0.0.1",
+      RUNNER_METRICS_PORT: "19101"
+    },
+    () => {
+      const config = loadRunnerConfig({ serviceName: "runner-test" });
+
+      assert.equal(config.metricsEnabled, true);
+      assert.equal(config.metricsHost, "127.0.0.1");
+      assert.equal(config.metricsPort, 19101);
     }
   );
 });

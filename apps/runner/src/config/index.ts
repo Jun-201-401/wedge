@@ -24,6 +24,7 @@ const DEFAULT_AGENT_MCP_GATEWAY_TIMEOUT_MS = 10_000;
 const DEFAULT_AGENT_IDEMPOTENCY_LEASE_TTL_MS = 300_000;
 const DEFAULT_AGENT_IDEMPOTENCY_RENEW_INTERVAL_MS = 60_000;
 const MIN_AGENT_IDEMPOTENCY_RENEW_INTERVAL_MS = 1_000;
+const DEFAULT_METRICS_PORT = 9101;
 export const RUNNER_MQ_CALLBACK_OUTBOX_WORKER_ENABLED_ENV = "RUNNER_MQ_CALLBACK_OUTBOX_WORKER_ENABLED";
 export const RUNNER_MQ_ARTIFACT_OUTBOX_WORKER_ENABLED_ENV = "RUNNER_MQ_ARTIFACT_OUTBOX_WORKER_ENABLED";
 
@@ -93,6 +94,9 @@ export interface RunnerConfig {
   agentMcpGatewayUrl?: string;
   agentMcpServiceToken?: string;
   agentMcpGatewayTimeoutMs: number;
+  metricsEnabled: boolean;
+  metricsHost: string;
+  metricsPort: number;
 }
 
 export function loadRunnerConfig(overrides: Partial<RunnerConfig> = {}): RunnerConfig {
@@ -256,6 +260,16 @@ export function loadRunnerConfig(overrides: Partial<RunnerConfig> = {}): RunnerC
     process.env.RUNNER_AGENT_MCP_GATEWAY_TIMEOUT_MS,
     DEFAULT_AGENT_MCP_GATEWAY_TIMEOUT_MS
   );
+  const metricsEnabled = parseBoolean(
+    overrides.metricsEnabled,
+    process.env.RUNNER_METRICS_ENABLED,
+    false
+  );
+  const metricsPort = parsePositiveInteger(
+    overrides.metricsPort,
+    process.env.RUNNER_METRICS_PORT,
+    DEFAULT_METRICS_PORT
+  );
 
   return {
     serviceName,
@@ -340,7 +354,10 @@ export function loadRunnerConfig(overrides: Partial<RunnerConfig> = {}): RunnerC
     agentLlmTimeoutMs,
     agentMcpGatewayUrl: overrides.agentMcpGatewayUrl ?? process.env.RUNNER_AGENT_MCP_GATEWAY_URL ?? undefined,
     agentMcpServiceToken: overrides.agentMcpServiceToken ?? process.env.RUNNER_AGENT_MCP_SERVICE_TOKEN ?? undefined,
-    agentMcpGatewayTimeoutMs
+    agentMcpGatewayTimeoutMs,
+    metricsEnabled,
+    metricsHost: overrides.metricsHost ?? process.env.RUNNER_METRICS_HOST ?? "0.0.0.0",
+    metricsPort
   };
 }
 

@@ -145,6 +145,9 @@ export function createRunnerTestConfig(overrides: Partial<RunnerConfig> = {}): R
     agentMcpServiceToken: undefined,
     agentMcpGatewayTimeoutMs: 10_000,
     ...overrides,
+    metricsEnabled: overrides.metricsEnabled ?? false,
+    metricsHost: overrides.metricsHost ?? "127.0.0.1",
+    metricsPort: overrides.metricsPort ?? 9101,
     mqMaxDeliveryAttempts: overrides.mqMaxDeliveryAttempts ?? 3
   };
 }

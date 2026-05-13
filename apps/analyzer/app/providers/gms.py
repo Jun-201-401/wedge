@@ -3,11 +3,14 @@ from __future__ import annotations
 import json
 import os
 import re
+import time
 from dataclasses import dataclass
 from http.client import IncompleteRead
 from pathlib import Path
 from typing import Any
 from urllib import error, request
+
+from app.observability.metrics import AiRequestErrorType, observe_gms_request
 
 
 class GMSClientError(RuntimeError):
@@ -48,8 +51,9 @@ class GMSClient:
     sanitize and decide which fields are allowed to affect JudgeResult.
     """
 
-    def __init__(self, config: GMSConfig | None = None) -> None:
+    def __init__(self, config: GMSConfig | None = None, *, feature: str = "unknown") -> None:
         self._config = config or GMSConfig.from_env()
+        self._feature = feature
 
     def generate_text(self, *, prompt: str) -> str:
         body = {
@@ -74,9 +78,12 @@ class GMSClient:
         return self._generate(body)
 
     def _generate(self, body: dict[str, Any]) -> str:
+        started_at = time.perf_counter()
         if not self._config.enabled:
+            self._observe(started_at, "error", "disabled")
             raise GMSClientError("GMS is disabled")
         if not self._config.api_key:
+            self._observe(started_at, "error", "missing_api_key")
             raise GMSClientError("ANALYZER_GMS_API_KEY is not configured")
 
         request_body = json.dumps(body, ensure_ascii=False).encode("utf-8")
@@ -99,13 +106,17 @@ class GMSClient:
             partial = exc.partial or b""
             response_body = partial.decode("utf-8", errors="replace")
             if not response_body.strip():
+                self._observe(started_at, "error", "invalid_json")
                 raise GMSClientError("GMS response read was incomplete with an empty partial body") from exc
         except error.HTTPError as exc:
             details = exc.read().decode("utf-8", errors="replace")[:500]
+            self._observe(started_at, "error", "http_error")
             raise GMSClientError(f"GMS request failed with HTTP {exc.code}: {details}") from exc
         except error.URLError as exc:
+            self._observe(started_at, "error", "network_error")
             raise GMSClientError(f"GMS request failed: {exc.reason}") from exc
         except TimeoutError as exc:
+            self._observe(started_at, "error", "timeout")
             raise GMSClientError("GMS request timed out") from exc
 
         try:
@@ -113,10 +124,27 @@ class GMSClient:
         except json.JSONDecodeError as exc:
             partial_text = extract_openai_response_text_from_body(response_body)
             if partial_text:
+                self._observe(started_at, "success", "none")
                 return partial_text
+            self._observe(started_at, "error", "invalid_json")
             raise GMSClientError("GMS returned non-JSON response") from exc
 
-        return extract_openai_response_text(payload)
+        try:
+            output_text = extract_openai_response_text(payload)
+        except GMSClientError:
+            self._observe(started_at, "error", "invalid_json")
+            raise
+        self._observe(started_at, "success", "none")
+        return output_text
+
+    def _observe(self, started_at: float, status: str, error_type: AiRequestErrorType) -> None:
+        observe_gms_request(
+            feature=self._feature,
+            model=self._config.model,
+            status="success" if status == "success" else "error",
+            error_type=error_type,
+            started_at=started_at,
+        )
 
 
 def extract_openai_response_text(payload: Any) -> str:
