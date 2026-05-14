@@ -64,6 +64,7 @@ interface ExecuteDiscoveryInput {
 
 interface RawDiscoveryElement {
   domIndex: number;
+  sourceTagName: string;
   tagName: string;
   role: string | null;
   text: string;
@@ -84,6 +85,7 @@ interface RawDiscoveryElement {
   visible: boolean;
   inViewport: boolean;
   interactive: boolean;
+  linkedImageAlt: boolean;
   editable: boolean;
   hiddenInput: boolean;
   disabled: boolean;
@@ -590,6 +592,7 @@ async function collectCandidatesFromPage(page: Page): Promise<DiscoveryCandidate
 
       return {
         domIndex,
+        sourceTagName: originalTagName,
         tagName,
         role,
         text,
@@ -610,6 +613,7 @@ async function collectCandidatesFromPage(page: Page): Promise<DiscoveryCandidate
         visible: visibility.visible,
         inViewport: visibility.inViewport,
         interactive,
+        linkedImageAlt: originalTagName === "img" && Boolean(linkedElement) && Boolean(alt),
         editable,
         hiddenInput,
         disabled,
@@ -1275,6 +1279,10 @@ function matchedSignalsFor(flowType: DiscoveryFlowType, raw: RawDiscoveryElement
     signals.push(signal("selector", signalTypeFor(flowType, "selector"), raw.selector, 0.1));
   }
 
+  if (raw.linkedImageAlt && raw.selector) {
+    signals.push(signal("selector", signalTypeFor(flowType, "linked_image_parent"), raw.selector, 0.15));
+  }
+
   if (flowType === "SIGNUP_LEAD_FORM" && (
     raw.inputType === "email" ||
     raw.editable ||
@@ -1504,6 +1512,8 @@ function createCandidate(
       text: input.label,
       href: raw.href,
       selector: raw.selector,
+      source_tag_name: raw.sourceTagName,
+      linked_image_alt: raw.linkedImageAlt,
       role,
       name: raw.name,
       placeholder: raw.placeholder,

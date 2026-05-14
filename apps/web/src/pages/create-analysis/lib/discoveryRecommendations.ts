@@ -216,12 +216,49 @@ function previewStepsFor(recommendation: ApiScenarioRecommendation) {
       ? `추천 시작 URL에서 첫 화면을 열어요`
       : '입력한 URL의 첫 화면을 열어요',
     targetLabel
-      ? `"${targetLabel}" 요소를 따라가요`
+      ? `"${targetLabel}" ${targetActionNounFor(recommendation.suggestedTarget)}를 따라가요`
       : scenarioActionLabel(recommendation.scenarioType),
-    '위험 행동 전 멈추고 마찰 근거를 기록해요',
+    stopBoundaryStepFor(recommendation),
   ];
 
   return steps;
+}
+
+function targetActionNounFor(target: Record<string, unknown> | null | undefined) {
+  const role = typeof target?.role === 'string' ? target.role.toLowerCase() : '';
+  if (role === 'button') {
+    return '버튼';
+  }
+
+  if (role === 'link' || typeof target?.href_contains === 'string' || typeof target?.href === 'string') {
+    return '링크';
+  }
+
+  if (role === 'textbox' || typeof target?.placeholder === 'string' || typeof target?.name === 'string') {
+    return '입력 영역';
+  }
+
+  return '요소';
+}
+
+function stopBoundaryStepFor(recommendation: ApiScenarioRecommendation) {
+  if (recommendation.scenarioType === 'PURCHASE_CHECKOUT') {
+    return '결제/주문 확정 같은 위험 행동 직전까지만 확인해요';
+  }
+
+  if (hasLimitation(recommendation, 'authenticated_pages_not_explored')) {
+    return '로그인/인증 화면이 나오면 그 지점을 마찰로 기록하고 멈춰요';
+  }
+
+  if (recommendation.scenarioType === 'SIGNUP_LEAD_FORM' || recommendation.scenarioType === 'CONTACT') {
+    return '제출 버튼 전 단계까지 입력 부담과 마찰 근거를 기록해요';
+  }
+
+  return '위험 행동 전 멈추고 마찰 근거를 기록해요';
+}
+
+function hasLimitation(recommendation: ApiScenarioRecommendation, limitation: string) {
+  return recommendation.evidenceSummary?.limitations?.includes(limitation) ?? false;
 }
 
 function signalLabelsFor(recommendation: ApiScenarioRecommendation) {
@@ -256,6 +293,10 @@ function sourceLabel(source: string) {
       return 'form field';
     case 'shallow_navigation':
       return '도착 확인';
+    case 'alt':
+      return '이미지 alt';
+    case 'selector':
+      return 'selector';
     default:
       return source;
   }
