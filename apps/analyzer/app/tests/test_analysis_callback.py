@@ -94,6 +94,58 @@ class AnalysisCallbackPayloadTest(unittest.TestCase):
         self.assertEqual(payload["nudges"][0]["followUpQuestion"], "Is the primary CTA visually dominant?")
         self.assertEqual(payload["judgeResult"]["issues"][0]["stage"], "CTA")
 
+    def test_completed_payload_carries_issue_references_to_spring_callback(self) -> None:
+        payload = build_completed_callback_payload(
+            analysis_job_id="22222222-2222-2222-2222-222222222222",
+            run_id="11111111-1111-1111-1111-111111111111",
+            judge_result={
+                "schema_version": "0.5",
+                "run_id": "11111111-1111-1111-1111-111111111111",
+                "rule_registry_id": "registry_p0_v0_1",
+                "summary": {"friction_score": 72.0},
+                "issues": [
+                    {
+                        "issue_id": "issue_001",
+                        "criterion_id": "FRICTION-FORM-001",
+                        "stage": "INPUT",
+                        "axis": "Friction",
+                        "severity": 2,
+                        "confidence": 0.9,
+                        "priority_score": 2.4,
+                        "evidence_refs": ["cp_001.obs_form_field"],
+                        "references": [
+                            {
+                                "label": "WCAG 3.3.2",
+                                "publisher": "W3C",
+                                "title": "Labels or Instructions",
+                                "basisSummary": "입력을 요구하는 화면에서는 사용자가 무엇을 입력해야 하는지 알 수 있는 라벨 또는 안내가 제공되어야 합니다.",
+                                "url": "<https://www.w3.org/WAI/WCAG22/Understanding/labels-or-instructions.html>",
+                            }
+                        ],
+                        "summary": "입력 필드의 목적을 알기 어렵습니다.",
+                        "impact_hypothesis": "사용자가 무엇을 입력해야 하는지 망설일 수 있습니다.",
+                    }
+                ],
+                "decision_map": [],
+                "nudges": [],
+            },
+            completed_at=datetime(2026, 4, 29, 1, 2, 3, tzinfo=UTC),
+        )
+
+        references = payload["judgeResult"]["issues"][0]["references"]
+        self.assertEqual(
+            references,
+            [
+                {
+                    "label": "WCAG 3.3.2",
+                    "publisher": "W3C",
+                    "title": "Labels or Instructions",
+                    "basisSummary": "입력을 요구하는 화면에서는 사용자가 무엇을 입력해야 하는지 알 수 있는 라벨 또는 안내가 제공되어야 합니다.",
+                    "url": "https://www.w3.org/WAI/WCAG22/Understanding/labels-or-instructions.html",
+                }
+            ],
+        )
+
 
 class SpringCallbackClientTest(unittest.TestCase):
     def test_send_started_posts_to_spring_internal_endpoint(self) -> None:

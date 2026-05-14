@@ -10,6 +10,8 @@ from app.providers.label_role import GMSLabelRoleProvider
 from app.rule_engine import analyze_evidence_packet, load_default_registry
 from app.services.llm_analysis import GMSReportExplainer
 
+REFERENCE_FIELDS = ("label", "publisher", "title", "basisSummary", "url")
+
 
 def analyzer_health() -> dict[str, str]:
     registry = load_default_registry()
@@ -110,6 +112,7 @@ def build_completed_callback_payload(
     completed_at: datetime | None = None,
 ) -> dict[str, Any]:
     completed_at = completed_at or datetime.now(UTC)
+    judge_result = _with_normalized_issue_references(judge_result)
     return {
         "analysisJobId": analysis_job_id,
         "runId": run_id,
@@ -125,6 +128,48 @@ def build_completed_callback_payload(
         "judgeResult": judge_result,
         "completedAt": _format_instant(completed_at),
     }
+
+
+def _with_normalized_issue_references(judge_result: dict[str, Any]) -> dict[str, Any]:
+    issues = judge_result.get("issues")
+    if not isinstance(issues, list):
+        return dict(judge_result)
+
+    normalized = dict(judge_result)
+    normalized_issues: list[Any] = []
+    for issue in issues:
+        if not isinstance(issue, dict):
+            normalized_issues.append(issue)
+            continue
+        normalized_issue = dict(issue)
+        normalized_issue["references"] = _normalized_references(issue.get("references"))
+        normalized_issues.append(normalized_issue)
+    normalized["issues"] = normalized_issues
+    return normalized
+
+
+def _normalized_references(value: Any) -> list[dict[str, str]]:
+    if not isinstance(value, list):
+        return []
+
+    references: list[dict[str, str]] = []
+    for item in value:
+        if not isinstance(item, dict):
+            continue
+        reference: dict[str, str] = {}
+        for field in REFERENCE_FIELDS:
+            text = item.get(field)
+            if not isinstance(text, str) or not text.strip():
+                reference = {}
+                break
+            reference[field] = _normalized_reference_url(text) if field == "url" else text.strip()
+        if reference:
+            references.append(reference)
+    return references
+
+
+def _normalized_reference_url(value: str) -> str:
+    return value.strip().removeprefix("<").removesuffix(">").strip()
 
 
 def build_failed_callback_payload(
