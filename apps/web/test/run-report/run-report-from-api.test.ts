@@ -272,6 +272,49 @@ test('buildRunReportFromApi prefers report detail finding preview image when ava
   assert.equal(report.recommendations[0].detail, '상세 CTA 아래에 기대 결과를 한 문장으로 설명하세요.');
 });
 
+test('buildRunReportFromApi projects viewport coordinates onto tall screenshot artifacts', () => {
+  const tallScreenshotDetail: ReportDetail = {
+    ...reportDetail,
+    findings: [{
+      ...reportDetail.findings[0],
+      previewImage: {
+        ...reportDetail.findings[0].previewImage!,
+        artifact: {
+          ...reportDetail.findings[0].previewImage!.artifact,
+          width: 1440,
+          height: 2835,
+        },
+      },
+      highlight: {
+        ...reportDetail.findings[0].highlight!,
+        bounds: {
+          x: 102,
+          y: 47,
+          width: 32,
+          height: 32,
+          unit: 'css_px',
+        },
+        viewport: {
+          width: 1440,
+          height: 900,
+        },
+      },
+    }],
+  };
+
+  const report = buildRunReportFromApi({
+    run: completedRun,
+    report: readyReport,
+    detail: tallScreenshotDetail,
+    scenarioId: 'landing-cta',
+  });
+
+  assert.equal(report.findings[0].highlight?.left, '7.08%');
+  assert.equal(report.findings[0].highlight?.top, '1.66%');
+  assert.equal(report.findings[0].highlight?.width, '2.22%');
+  assert.equal(report.findings[0].highlight?.height, '1.13%');
+});
+
 test('buildRunReportFromApi ignores coordinate highlight when it targets another screenshot', () => {
   const mismatchedDetail: ReportDetail = {
     ...reportDetail,

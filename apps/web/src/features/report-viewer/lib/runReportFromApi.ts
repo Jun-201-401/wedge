@@ -306,9 +306,24 @@ function createArtifactHighlight(finding: ReportDetail['findings'][number]) {
   const scaleHeight = unit === 'screenshot_px'
     ? readBound(finding.previewImage?.artifact.height)
     : readBound(viewport?.height) ?? readBound(finding.previewImage?.artifact.height);
+  const artifactWidth = readBound(finding.previewImage?.artifact.width);
+  const artifactHeight = readBound(finding.previewImage?.artifact.height);
 
   if (!scaleWidth || !scaleHeight) {
     return null;
+  }
+
+  if (unit === 'css_px' && artifactWidth && artifactHeight) {
+    const imageScale = artifactWidth / scaleWidth;
+
+    return {
+      label: readString(finding.highlight?.label) ?? '근거 대상',
+      source: 'artifact-coordinate' as const,
+      top: boundsToPercent(y * imageScale, artifactHeight),
+      left: boundsToPercent(x * imageScale, artifactWidth),
+      width: boundsToPercent(width * imageScale, artifactWidth),
+      height: boundsToPercent(height * imageScale, artifactHeight),
+    };
   }
 
   return {
