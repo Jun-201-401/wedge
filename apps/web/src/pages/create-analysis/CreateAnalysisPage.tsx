@@ -694,7 +694,6 @@ function ReadyAgent({
         <div className="ready-agent__header">
           <div className="ready-agent__header-main">
             <div className="ready-agent__header-copy">
-              <p>선택한 흐름으로 바로 진단을 시작할 수 있어요</p>
               <h2 id="ready-title">분석 시작 준비 완료</h2>
               <div className="ready-agent__header-status">
                 <span className="ready-agent__header-status-dot" aria-hidden="true" />
