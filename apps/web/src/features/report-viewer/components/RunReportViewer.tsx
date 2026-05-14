@@ -66,6 +66,7 @@ const REPORT_FLOW_STAGES = [
 type ReportFlowStageId = (typeof REPORT_FLOW_STAGES)[number]['id'];
 
 interface ReportHelpReference {
+  title: string;
   label: string;
   source: string;
   summary: string;
@@ -85,9 +86,10 @@ const REPORT_FLOW_HELP_TERMS: ReportFlowHelpTerm[] = [
     description:
       '페이지 방문부터 가입, 구매, 문의 같은 목표 행동까지 이어지는 전체 과정입니다.',
     reference: {
+      title: '왜 단계로 나눠 보나요?',
       label: 'Funnel exploration',
       source: 'Google Analytics',
-      summary: '사용자가 목표를 완료하기까지 거치는 단계를 살펴보는 데 쓰이는 개념입니다.',
+      summary: '사용자는 목표 행동까지 한 번에 이동하지 않고 여러 단계를 거쳐 판단합니다.\nWedge는 이 과정을 전환 흐름으로 나누어 봅니다.',
       quote: 'steps your users take to complete a task',
       url: 'https://support.google.com/analytics/answer/9327974?hl=en-GB',
     },
@@ -95,11 +97,12 @@ const REPORT_FLOW_HELP_TERMS: ReportFlowHelpTerm[] = [
   {
     label: '첫 화면',
     description:
-      '처음 보이는 화면에서 서비스가 무엇을 하는지, 내게 필요한지, 어디서 시작해야 하는지 봅니다.',
+      '처음 보이는 화면에서 서비스의 목적, 필요성, 시작 지점을 알 수 있는지 봅니다.',
     reference: {
+      title: '왜 첫 화면을 보나요?',
       label: 'Start using a service',
       source: 'GOV.UK Design System',
-      summary: '처음 보는 화면에서 서비스의 목적과 시작 지점을 이해할 수 있어야 한다는 내용입니다.',
+      summary: '사용자가 첫 화면에서 서비스의 목적과 시작 지점을 판단하기 때문에 첫 화면을 따로 봅니다.',
       quote: 'what the service does',
       url: 'https://design-system.service.gov.uk/patterns/start-using-a-service/',
     },
@@ -109,9 +112,10 @@ const REPORT_FLOW_HELP_TERMS: ReportFlowHelpTerm[] = [
     description:
       '혜택, 조건, 비용처럼 행동 전에 필요한 정보가 충분히 드러나는지 봅니다.',
     reference: {
+      title: '왜 가치 이해를 보나요?',
       label: 'PR on Websites',
       source: 'Nielsen Norman Group',
-      summary: '웹사이트가 무엇을 제공하고 사용자가 무엇을 얻을 수 있는지 분명히 보여줘야 한다는 내용입니다.',
+      summary: '사용자는 행동하기 전에 이 페이지에서 무엇을 얻을 수 있는지 이해해야 합니다.',
       quote: 'what the site is about and what visitors can get from it',
       url: 'https://media.nngroup.com/media/reports/free/PR_on_Websites_3rd_Edition.pdf',
     },
@@ -121,9 +125,10 @@ const REPORT_FLOW_HELP_TERMS: ReportFlowHelpTerm[] = [
     description:
       '사용자가 다음에 눌러야 할 버튼이나 링크를 쉽게 고를 수 있는지 봅니다.',
     reference: {
+      title: '왜 다음 행동 선택을 보나요?',
       label: 'Button Design',
       source: 'Baymard Institute',
-      summary: '사용자가 다음으로 이동할 수 있는 명확한 행동 경로를 제공해야 한다는 내용입니다.',
+      summary: '사용자는 목표 행동으로 이어질 수 있는 명확한 다음 경로가 필요합니다.',
       quote: 'a clear path forward',
       url: 'https://baymard.com/learn/button-design',
     },
@@ -517,7 +522,7 @@ function ReportFlowHelpButton() {
                   rel="noreferrer"
                   onClick={(event) => event.stopPropagation()}
                 >
-                  <em>{item.label} 참고 자료</em>
+                  <em>{item.reference.title}</em>
                   <p>{item.reference.summary}</p>
                   <small>원문: <q>{item.reference.quote}</q></small>
                   <span>{item.reference.source} · {item.reference.label}</span>
