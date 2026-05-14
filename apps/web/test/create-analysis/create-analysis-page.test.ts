@@ -158,7 +158,7 @@ test('create analysis recommendations use a wider agent-style results card', () 
   assert.match(css, /\.scenario-card,\s*\n\.manual-choice-agent__option\s*\{[\s\S]*?width: 100%/);
   assert.match(css, /\.scenario-card,\s*\n\.manual-choice-agent__option\s*\{[\s\S]*?min-width: 0/);
   assert.match(css, /\.scenario-card,\s*\n\.manual-choice-agent__option\s*\{[\s\S]*?border: 0/);
-  assert.match(css, /\.scenario-card,\s*\n\.manual-choice-agent__option\s*\{[\s\S]*?background: #f8fafc/);
+  assert.match(css, /\.scenario-card,\s*\n\.manual-choice-agent__option\s*\{[\s\S]*?background: #f1f5f9/);
   assert.match(css, /\.scenario-card\s*\{[\s\S]*?overflow: hidden/);
   assert.match(css, /\.scenario-card h3\s*\{[\s\S]*?overflow-wrap: anywhere/);
   assert.match(css, /\.scenario-card p\s*\{[\s\S]*?overflow-wrap: anywhere/);
@@ -171,7 +171,7 @@ test('create analysis recommendations use a wider agent-style results card', () 
   assert.match(css, /\.create-analysis-panel__action,\s*\n\.scenario-card button\s*\{[\s\S]*?overflow-wrap: anywhere/);
   assert.match(css, /\.recommendation-agent \.scenario-card > p\s*\{[\s\S]*?margin-bottom: 1\.35rem/);
   assert.match(css, /\.scenario-card__site-context\s*\{[\s\S]*?border: 0/);
-  assert.match(css, /\.scenario-card__site-context\s*\{[\s\S]*?background: #f1f5f9/);
+  assert.match(css, /\.scenario-card__site-context\s*\{[\s\S]*?background: #e8eef5/);
   assert.match(css, /\.scenario-card__site-context\s*\{[\s\S]*?min-width: 0/);
   assert.match(css, /\.scenario-card__site-context\s*\{[\s\S]*?min-height: 10\.85rem/);
   assert.match(css, /\.scenario-card__site-context\s*\{[\s\S]*?gap: 0\.62rem/);
@@ -187,9 +187,11 @@ test('create analysis recommendations use a wider agent-style results card', () 
   assert.match(css, /\.scenario-card__preview-steps\s*\{[\s\S]*?gap: 0\.4rem/);
   assert.match(css, /\.scenario-card__preview-steps\s*\{[\s\S]*?line-height: 1\.5/);
   assert.doesNotMatch(css, /\.recommendation-agent \.scenario-card--recommended\s*\{[\s\S]*?background:/);
+  assert.doesNotMatch(css, /\.scenario-grid \.scenario-card:nth-child/);
+  assert.doesNotMatch(css, /\.manual-choice-agent__option:nth-child/);
   assert.match(css, /\.recommendation-agent \.scenario-card:hover,\s*\n\.recommendation-agent \.scenario-card:focus-within,\s*\n\.manual-choice-agent__option:hover,\s*\n\.manual-choice-agent__option:focus-visible\s*\{[\s\S]*?box-shadow: 0 14px 30px rgba\(15, 23, 42, 0\.06\)/);
   assert.match(css, /\.recommendation-agent \.scenario-card:hover,\s*\n\.recommendation-agent \.scenario-card:focus-within,\s*\n\.manual-choice-agent__option:hover,\s*\n\.manual-choice-agent__option:focus-visible\s*\{[\s\S]*?border: 0/);
-  assert.match(css, /\.recommendation-agent \.scenario-card:hover,\s*\n\.recommendation-agent \.scenario-card:focus-within,\s*\n\.manual-choice-agent__option:hover,\s*\n\.manual-choice-agent__option:focus-visible\s*\{[\s\S]*?background: #f8fafc/);
+  assert.match(css, /\.recommendation-agent \.scenario-card:hover,\s*\n\.recommendation-agent \.scenario-card:focus-within\s*\{[\s\S]*?background: #eef6fb/);
   assert.match(css, /\.recommendation-agent__empty\s*\{[\s\S]*?border: 0/);
   assert.match(css, /\.recommendation-agent__empty\s*\{[\s\S]*?background: #f8fafc/);
   assert.match(css, /\.recommendation-agent__empty-action\s*\{[\s\S]*?justify-self: flex-end/);
@@ -210,6 +212,7 @@ test('create analysis manual choice uses a separate low-noise selection screen',
     new URL('../../src/pages/create-analysis/CreateAnalysisPage.css', import.meta.url),
     'utf8',
   );
+  const manualChoiceGridRule = css.match(/\.manual-choice-agent__grid\s*\{[^}]*\}/)?.[0] ?? '';
 
   assert.match(source, /function ManualChoiceAgent/);
   assert.match(source, /className="create-analysis-panel create-analysis-panel--manual-choice"/);
@@ -225,7 +228,10 @@ test('create analysis manual choice uses a separate low-noise selection screen',
   assert.match(css, /\.create-analysis-panel--manual-choice\s*\{[\s\S]*?width: min\(100%, 58rem\)/);
   assert.match(css, /\.manual-choice-agent__note\s*\{[\s\S]*?margin: 0\.9rem 0 0/);
   assert.match(css, /\.manual-choice-agent__grid\s*\{[\s\S]*?grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/);
+  assert.doesNotMatch(manualChoiceGridRule, /padding:/);
   assert.match(css, /\.manual-choice-agent__option\s*\{[\s\S]*?border-radius: 1\.5rem/);
+  assert.doesNotMatch(css, /\.manual-choice-agent__option:nth-child/);
+  assert.match(css, /\.manual-choice-agent__option:hover,\s*\n\.manual-choice-agent__option:focus-visible\s*\{[\s\S]*?background: #eef6fb/);
   assert.match(css, /\.scenario-card__level,\s*\n\.manual-choice-agent__option span\s*\{[\s\S]*?background: rgba\(224, 242, 254, 0\.88\)/);
   assert.match(css, /\.create-analysis-secondary-action\s*\{[\s\S]*?background: #334155/);
   assert.match(css, /\.create-analysis-secondary-action\s*\{[\s\S]*?box-shadow: 0 10px 22px rgba\(51, 65, 85, 0\.12\)/);

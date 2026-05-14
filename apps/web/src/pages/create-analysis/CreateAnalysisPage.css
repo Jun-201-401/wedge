@@ -919,7 +919,7 @@
 .manual-choice-agent__grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.85rem;
+  gap: 0.95rem;
 }
 
 .scenario-card,
@@ -932,7 +932,7 @@
   border: 0;
   border-radius: 1.5rem;
   padding: 1.25rem;
-  background: #f8fafc;
+  background: #f1f5f9;
   box-shadow: 0 10px 24px rgba(15, 23, 42, 0.04);
   transition: border-color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
 }
@@ -950,8 +950,17 @@
 .manual-choice-agent__option:hover,
 .manual-choice-agent__option:focus-visible {
   border: 0;
-  background: #f8fafc;
   box-shadow: 0 14px 30px rgba(15, 23, 42, 0.06);
+}
+
+.manual-choice-agent__option:hover,
+.manual-choice-agent__option:focus-visible {
+  background: #eef6fb;
+}
+
+.recommendation-agent .scenario-card:hover,
+.recommendation-agent .scenario-card:focus-within {
+  background: #eef6fb;
 }
 
 .scenario-card__level,
@@ -1174,7 +1183,7 @@
   padding: 0.88rem 0.92rem;
   border: 0;
   border-radius: 1rem;
-  background: #f1f5f9;
+  background: #e8eef5;
 }
 
 .scenario-card__context-row {
