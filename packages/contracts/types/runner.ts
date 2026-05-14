@@ -1022,6 +1022,19 @@ export interface VisibleTextBlockObservationItem {
   tag: string;
   role?: string | null;
   is_heading: boolean;
+  line_count?: number | null;
+  line_width_px?: number | null;
+  block_width_px?: number | null;
+  font_size_px?: number | null;
+  line_height_px?: number | null;
+  text_align?: string | null;
+  nearby_cta_ref?: {
+    text: string;
+    selector: string | null;
+    distance_px: number;
+  } | null;
+  cta_distance_px?: number | null;
+  mobile_line_break_segments?: string[];
   bounds: InteractiveComponentBounds;
   visibility: InteractiveComponentVisibility;
 }
@@ -1117,6 +1130,19 @@ export interface LayoutCollectorObservation {
     visibility?: InteractiveComponentVisibility;
     layout?: InteractiveComponentLayout;
   }>;
+}
+
+export interface TextBlockMetricsObservation {
+  observation_id: string;
+  type: "text_block_metrics";
+  stage: ScenarioStage;
+  source: ("dom" | "layout")[];
+  confidence: number;
+  viewport: {
+    width: number;
+    height: number;
+  };
+  blocks: VisibleTextBlockObservationItem[];
 }
 
 export interface NetworkTimelineObservation {

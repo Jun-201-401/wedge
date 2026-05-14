@@ -1438,6 +1438,8 @@ function createBrowserPageSnapshot(
     })),
     visibleTextBlocks: state.visibleTextBlocks.map((block) => ({
       ...block,
+      nearby_cta_ref: block.nearby_cta_ref ? { ...block.nearby_cta_ref } : block.nearby_cta_ref,
+      mobile_line_break_segments: block.mobile_line_break_segments ? [...block.mobile_line_break_segments] : undefined,
       bounds: { ...block.bounds },
       visibility: { ...block.visibility }
     })),
@@ -3480,6 +3482,7 @@ async function safeVisibleTextBlocks(
   try {
     return await page.evaluate(() => {
       const TEXT_BLOCK_SELECTOR = "main h1, main h2, main h3, main p, main li, main label, h1, h2, h3, p, li, label, legend, [role='heading'], [role='alert'], [role='status']";
+      const CTA_TEXT_PATTERN = /무료|시작|가입|신청|구매|결제|문의|상담|체험|다운로드|start|sign\s*up|try|buy|checkout|contact|demo|continue/i;
       const viewportWidth = globalThis.innerWidth || 0;
       const viewportHeight = globalThis.innerHeight || 0;
       const seen = new Set<string>();
@@ -3501,6 +3504,18 @@ async function safeVisibleTextBlocks(
         return null;
       }
 
+      function selectorFor(element: Element, tag: string): string | null {
+        const id = element.getAttribute("id");
+        if (id) {
+          return `#${id.replace(/[^a-zA-Z0-9_-]/g, "\\$&")}`;
+        }
+        const className = Array.from(element.classList).find((entry) => entry.length > 0);
+        if (className) {
+          return `${tag}.${className.replace(/[^a-zA-Z0-9_-]/g, "\\$&")}`;
+        }
+        return tag;
+      }
+
       function visibilityFor(rect: DOMRect): InteractiveComponentVisibility {
         const area = Math.max(0, rect.width) * Math.max(0, rect.height);
         const intersectionWidth = Math.max(0, Math.min(rect.right, viewportWidth) - Math.max(rect.left, 0));
@@ -3515,17 +3530,106 @@ async function safeVisibleTextBlocks(
         };
       }
 
+      function parseCssPixels(value: string): number | null {
+        const parsed = Number(value.replace("px", ""));
+        return Number.isFinite(parsed) ? Math.round(parsed * 100) / 100 : null;
+      }
+
+      function lineMetricsFor(element: Element, rect: DOMRect): {
+        line_count: number | null;
+        line_width_px: number | null;
+        block_width_px: number;
+        font_size_px: number | null;
+        line_height_px: number | null;
+        text_align: string | null;
+        mobile_line_break_segments: string[];
+      } {
+        const style = globalThis.getComputedStyle(element);
+        const fontSize = parseCssPixels(style.fontSize);
+        const lineHeight = style.lineHeight === "normal" ? (fontSize ? Math.round(fontSize * 1.2 * 100) / 100 : null) : parseCssPixels(style.lineHeight);
+        const lineCount = lineHeight && lineHeight > 0 ? Math.max(1, Math.round(rect.height / lineHeight)) : null;
+        const blockWidth = Math.round(rect.width);
+        return {
+          line_count: lineCount,
+          line_width_px: lineCount && lineCount > 0 ? Math.round(blockWidth / lineCount) : blockWidth,
+          block_width_px: blockWidth,
+          font_size_px: fontSize,
+          line_height_px: lineHeight,
+          text_align: style.textAlign || null,
+          mobile_line_break_segments: estimateMobileLineSegments(normalizeText(element.textContent), fontSize, 360)
+        };
+      }
+
+      function estimateMobileLineSegments(text: string, fontSize: number | null, mobileWidth: number): string[] {
+        if (!text) {
+          return [];
+        }
+        const approxCharWidth = Math.max(7, (fontSize ?? 16) * 0.55);
+        const maxChars = Math.max(12, Math.floor((mobileWidth - 32) / approxCharWidth));
+        const words = text.split(/\s+/);
+        const lines: string[] = [];
+        let current = "";
+        for (const word of words) {
+          const next = current ? `${current} ${word}` : word;
+          if (next.length > maxChars && current) {
+            lines.push(current);
+            current = word;
+          } else {
+            current = next;
+          }
+        }
+        if (current) {
+          lines.push(current);
+        }
+        return lines.slice(0, 8);
+      }
+
+      function distanceBetween(left: DOMRect, right: DOMRect): number {
+        const dx = Math.max(0, Math.max(left.left, right.left) - Math.min(left.right, right.right));
+        const dy = Math.max(0, Math.max(left.top, right.top) - Math.min(left.bottom, right.bottom));
+        return Math.round(Math.sqrt(dx * dx + dy * dy));
+      }
+
+      const ctaCandidates = Array.from(document.querySelectorAll("a[href], button, [role='button'], [role='link']"))
+        .map((element) => {
+          const tag = element.tagName.toLowerCase();
+          const text = normalizeText((element as HTMLElement & { innerText?: string }).innerText ?? element.textContent);
+          const rect = element.getBoundingClientRect();
+          return {
+            text,
+            selector: selectorFor(element, tag),
+            rect
+          };
+        })
+        .filter((candidate) => candidate.text.length > 0 && CTA_TEXT_PATTERN.test(candidate.text) && candidate.rect.width > 0 && candidate.rect.height > 0);
+
+      function nearbyCtaFor(rect: DOMRect): VisibleTextBlockObservationItem["nearby_cta_ref"] {
+        const nearest = ctaCandidates
+          .map((candidate) => ({
+            text: candidate.text.slice(0, 120),
+            selector: candidate.selector,
+            distance_px: distanceBetween(rect, candidate.rect)
+          }))
+          .sort((left, right) => left.distance_px - right.distance_px)[0];
+        return nearest ?? null;
+      }
+
       return Array.from(document.querySelectorAll(TEXT_BLOCK_SELECTOR))
         .map((element) => {
           const rect = element.getBoundingClientRect();
           const text = normalizeText(element.textContent);
           const tag = element.tagName.toLowerCase();
           const visibility = visibilityFor(rect);
+          const metrics = lineMetricsFor(element, rect);
+          const nearbyCta = nearbyCtaFor(rect);
           return {
             text,
             tag,
             role: element.getAttribute("role") ?? implicitRole(element, tag),
             is_heading: /^h[1-6]$/.test(tag) || element.getAttribute("role") === "heading",
+            ...metrics,
+            nearby_cta_ref: nearbyCta,
+            cta_distance_px: nearbyCta?.distance_px ?? null,
             bounds: {
               x: Math.round(rect.x),
               y: Math.round(rect.y),

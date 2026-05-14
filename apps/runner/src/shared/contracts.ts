@@ -132,6 +132,7 @@ export type {
   StepEventBatch,
   TargetDescriptor,
   TargetDescriptorMap,
+  TextBlockMetricsObservation,
   VisibleTextBlockObservationItem
 } from "../../../../packages/contracts/types/runner.ts";
 

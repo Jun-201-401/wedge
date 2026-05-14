@@ -23,7 +23,8 @@ import type {
   RunnerActionKind,
   RunnerExpectedOutcomeHint,
   ScenarioPlan,
-  ScenarioStep
+  ScenarioStep,
+  TextBlockMetricsObservation
 } from "../shared/contracts.ts";
 
 export interface CheckpointCollection {
@@ -477,6 +478,7 @@ function createCheckpointObservations({
     ...createAccordionStateObservations(step, pageSnapshot).map((observation) => ({ ...observation })),
     ...createCheckoutContextObservations(step, pageSnapshot).map((observation) => ({ ...observation })),
     ...createVisibleTextBlockObservations(step, pageSnapshot),
+    ...createTextBlockMetricsObservations(step, pageSnapshot).map((observation) => ({ ...observation })),
     ...createInteractiveComponentsObservations(step, stepOrder, pageSnapshot).map((observation) => ({ ...observation })),
     ...createFormFieldObservations(stepOrder, pageSnapshot),
     ...createCtaCandidateObservations(step, pageSnapshot),
@@ -1073,6 +1075,34 @@ function createVisibleTextBlockObservations(
       dom_summary: pageSnapshot.domSummary,
       layout_summary: pageSnapshot.layoutSummary,
       blocks: pageSnapshot.visibleTextBlocks.slice(0, 20)
+    }
+  ];
+}
+
+function createTextBlockMetricsObservations(
+  step: ScenarioStep,
+  pageSnapshot: BrowserPageSnapshot
+): TextBlockMetricsObservation[] {
+  const metricBlocks = pageSnapshot.visibleTextBlocks.filter((block) =>
+    block.line_count !== undefined ||
+    block.font_size_px !== undefined ||
+    block.nearby_cta_ref !== undefined ||
+    (block.mobile_line_break_segments?.length ?? 0) > 0
+  );
+
+  if (metricBlocks.length === 0) {
+    return [];
+  }
+
+  return [
+    {
+      observation_id: `${step.step_id}.obs_text_block_metrics`,
+      type: "text_block_metrics",
+      stage: step.stage,
+      source: ["dom", "layout"],
+      confidence: 0.7,
+      viewport: pageSnapshot.viewport,
+      blocks: metricBlocks.slice(0, 20)
     }
   ];
 }
