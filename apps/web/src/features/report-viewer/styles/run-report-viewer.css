@@ -565,6 +565,112 @@
   list-style: none;
 }
 
+.run-report-recommendation-tab-shell {
+  position: relative;
+  z-index: 0;
+  min-width: 0;
+  transition: z-index 0s 160ms;
+}
+
+.run-report-recommendation-tab-shell:has(.run-report-reference-badge:hover),
+.run-report-recommendation-tab-shell:has(.run-report-reference-badge:focus),
+.run-report-recommendation-tab-shell:has(.run-report-reference-badge:focus-visible),
+.run-report-recommendation-tab-shell:has(.run-report-reference-badge[aria-pressed="true"]) {
+  z-index: 5;
+  transition-delay: 0s;
+}
+
+.run-report-recommendation-reference-badges {
+  position: absolute;
+  top: 0.52rem;
+  right: 0.52rem;
+  z-index: 1;
+  display: flex;
+  max-width: calc(100% - 3.4rem);
+  justify-content: flex-end;
+  gap: 0.28rem;
+  pointer-events: none;
+}
+
+.run-report-reference-badge {
+  position: relative;
+  display: inline-flex;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  padding: 0;
+  pointer-events: auto;
+}
+
+.run-report-reference-badge__label {
+  display: inline-flex;
+  overflow: hidden;
+  max-width: 6.8rem;
+  align-items: center;
+  border: 1px solid #bae6fd;
+  border-radius: 999px;
+  background: rgba(240, 249, 255, 0.96);
+  padding: 0.18rem 0.42rem;
+  color: #0369a1;
+  font-size: 0.52rem;
+  font-weight: 900;
+  line-height: 1.1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.run-report-reference-badge--pending .run-report-reference-badge__label {
+  border-color: #e5e7eb;
+  background: rgba(248, 250, 252, 0.96);
+  color: #64748b;
+}
+
+.run-report-reference-badge:focus-visible {
+  border-radius: 999px;
+  outline: 3px solid rgba(14, 165, 233, 0.18);
+  outline-offset: 2px;
+}
+
+.run-report-reference-badge__tooltip {
+  position: fixed;
+  z-index: 1000;
+  display: grid;
+  width: min(16rem, 72vw);
+  gap: 0.16rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.62rem;
+  background: #fff;
+  padding: 0.58rem 0.66rem;
+  color: #334155;
+  box-shadow: 0 16px 36px rgba(15, 23, 42, 0.16);
+  pointer-events: none;
+  transform: translate(-50%, -100%);
+}
+
+.run-report-reference-badge__tooltip strong {
+  color: #0369a1;
+  font-size: 0.62rem;
+  font-weight: 900;
+}
+
+.run-report-reference-badge__tooltip span {
+  color: #020617;
+  font-size: 0.68rem;
+  font-weight: 850;
+  line-height: 1.35;
+}
+
+.run-report-reference-badge__tooltip small {
+  color: #64748b;
+  font-size: 0.64rem;
+  font-weight: 700;
+  line-height: 1.42;
+}
+
+
 .run-report-recommendation-tab {
   display: grid;
   width: 100%;
@@ -574,7 +680,7 @@
   border: 0;
   border-radius: 0.72rem;
   background: transparent;
-  padding: 0.72rem;
+  padding: 2.05rem 0.72rem 0.72rem;
   color: inherit;
   cursor: pointer;
   font: inherit;

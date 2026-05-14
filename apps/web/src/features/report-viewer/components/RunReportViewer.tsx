@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 
 import { useAuthenticatedResourceUrl } from '../../../shared/lib/authenticatedResourceUrl';
 import { RUNS_PATH } from '../../../shared/lib/appPaths';
 import { formatDisplayUrl } from '../../../shared/lib/displayUrl';
 import { resolveActiveFinding, resolveLinkedFindingId } from '../lib/runReportInteractions';
+import { nextPinnedReferenceBadgeId, referenceBadgesForFinding, type ReferenceBadgeViewModel } from '../lib/runReportReferences';
 import type { ReportFinding, ReportRecommendation, RunReportViewModel } from '../lib/runReportViewModel';
 import '../styles/run-report-viewer.css';
 
@@ -114,6 +116,153 @@ function recommendationMeta(recommendation: ReportRecommendation, finding: Repor
   return `${stage} · ${signal}`;
 }
 
+function ReferenceBadge({
+  badge,
+  badgeId,
+  isPinned,
+  onToggle,
+}: {
+  badge: ReferenceBadgeViewModel;
+  badgeId: string;
+  isPinned: boolean;
+  onToggle: () => void;
+}) {
+  const badgeRef = useRef<HTMLButtonElement | null>(null);
+  const [tooltipPosition, setTooltipPosition] = useState<{ top: number; left: number } | null>(null);
+  const [isHoveringOrFocused, setIsHoveringOrFocused] = useState(false);
+  const isTooltipVisible = isPinned || isHoveringOrFocused;
+  const tooltipId = `run-report-reference-tooltip-${badgeId.replace(/[^a-zA-Z0-9_-]/g, '-')}`;
+
+  const updateTooltipPosition = useCallback(() => {
+    const badgeElement = badgeRef.current;
+    if (!badgeElement) {
+      return;
+    }
+
+    const rect = badgeElement.getBoundingClientRect();
+    const tooltipHalfWidth = 128;
+    const viewportMargin = 16;
+    const viewportWidth = window.innerWidth || document.documentElement.clientWidth;
+    const left = Math.min(
+      Math.max(rect.left + rect.width / 2, tooltipHalfWidth + viewportMargin),
+      Math.max(tooltipHalfWidth + viewportMargin, viewportWidth - tooltipHalfWidth - viewportMargin),
+    );
+
+    setTooltipPosition({
+      top: rect.top - 8,
+      left,
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!isTooltipVisible) {
+      setTooltipPosition(null);
+      return;
+    }
+
+    updateTooltipPosition();
+  }, [isTooltipVisible, updateTooltipPosition]);
+
+  const handleMouseEnter = useCallback(() => {
+    setIsHoveringOrFocused(true);
+    updateTooltipPosition();
+  }, [updateTooltipPosition]);
+
+  const handleMouseLeave = useCallback(() => {
+    setIsHoveringOrFocused(false);
+  }, []);
+
+  const handleFocus = useCallback(() => {
+    setIsHoveringOrFocused(true);
+    updateTooltipPosition();
+  }, [updateTooltipPosition]);
+
+  const handleBlur = useCallback(() => {
+    setIsHoveringOrFocused(false);
+  }, []);
+
+  const handleClick = useCallback((event: React.MouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation();
+
+    if (isPinned) {
+      setIsHoveringOrFocused(false);
+      setTooltipPosition(null);
+      onToggle();
+      return;
+    }
+
+    onToggle();
+    updateTooltipPosition();
+  }, [isPinned, onToggle, updateTooltipPosition]);
+
+  const tooltip = tooltipPosition && typeof document !== 'undefined'
+    ? createPortal(
+        <span
+          id={tooltipId}
+          className="run-report-reference-badge__tooltip run-report-reference-badge__tooltip--portal"
+          role="tooltip"
+          style={{ top: tooltipPosition.top, left: tooltipPosition.left }}
+        >
+          <strong>{badge.publisher}</strong>
+          <span>{badge.title}</span>
+          <small>{badge.basisSummary}</small>
+        </span>,
+        document.body,
+      )
+    : null;
+
+  return (
+    <button
+      type="button"
+      ref={badgeRef}
+      className={`run-report-reference-badge${badge.isFallback ? ' run-report-reference-badge--pending' : ''}`}
+      aria-label={badge.ariaLabel}
+      aria-describedby={tooltipPosition ? tooltipId : undefined}
+      aria-pressed={isPinned}
+      onClick={handleClick}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
+      onFocus={handleFocus}
+      onBlur={handleBlur}
+    >
+      <span className="run-report-reference-badge__label">{badge.label}</span>
+      {tooltip}
+    </button>
+  );
+}
+
+function RecommendationReferenceBadges({
+  recommendation,
+  finding,
+  pinnedReferenceBadgeId,
+  onBadgeToggle,
+}: {
+  recommendation: ReportRecommendation;
+  finding: ReportFinding | null;
+  pinnedReferenceBadgeId: string | null;
+  onBadgeToggle: (recommendation: ReportRecommendation, badgeId: string) => void;
+}) {
+  const badges = referenceBadgesForFinding(finding);
+
+  return (
+    <span className="run-report-recommendation-reference-badges" aria-label="기준 근거 배지">
+      {badges.map((badge) => {
+        const badgeId = `${recommendation.id}:${badge.key}`;
+
+        return (
+          <ReferenceBadge
+            key={badge.key}
+            badge={badge}
+            badgeId={badgeId}
+            isPinned={pinnedReferenceBadgeId === badgeId}
+            onToggle={() => onBadgeToggle(recommendation, badgeId)}
+          />
+        );
+      })}
+    </span>
+  );
+}
+
 export function RunReportBrand() {
   return (
     <a href="/" className="run-report-brand" aria-label="Wedge 홈">
@@ -134,6 +283,7 @@ export function RunReportViewer({
   const [hoveredFindingId, setHoveredFindingId] = useState<string | null>(null);
   const [selectedFindingId, setSelectedFindingId] = useState<string | null>(report.findings[0]?.id ?? null);
   const [selectedRecommendationId, setSelectedRecommendationId] = useState<string | null>(report.recommendations[0]?.id ?? null);
+  const [pinnedReferenceBadgeId, setPinnedReferenceBadgeId] = useState<string | null>(null);
   const [isAllRecommendationsOpen, setIsAllRecommendationsOpen] = useState(false);
   const recommendations = report.recommendations;
   const topRecommendations = recommendations.slice(0, TOP_RECOMMENDATION_COUNT);
@@ -188,10 +338,12 @@ export function RunReportViewer({
       const linked = recommendationByFindingId.get(finding.id);
       if (!linked) {
         setSelectedFindingId(finding.id);
+        setPinnedReferenceBadgeId(null);
         return;
       }
       setSelectedRecommendationId(linked.id);
       setSelectedFindingId(finding.id);
+      setPinnedReferenceBadgeId(null);
     },
     [recommendationByFindingId],
   );
@@ -247,13 +399,22 @@ export function RunReportViewer({
     }
   }, [report.findings, selectedFindingId, selectedRecommendationFindingId]);
 
-  function selectRecommendation(recommendation: ReportRecommendation) {
+  function selectRecommendation(recommendation: ReportRecommendation, options: { preservePinnedReference?: boolean } = {}) {
     const findingId = resolveLinkedFindingId(report.findings, recommendation.findingId);
     setSelectedRecommendationId(recommendation.id);
 
     if (findingId) {
       setSelectedFindingId(findingId);
     }
+
+    if (!options.preservePinnedReference) {
+      setPinnedReferenceBadgeId(null);
+    }
+  }
+
+  function toggleRecommendationReferenceBadge(recommendation: ReportRecommendation, badgeId: string) {
+    selectRecommendation(recommendation, { preservePinnedReference: true });
+    setPinnedReferenceBadgeId((currentBadgeId) => nextPinnedReferenceBadgeId(currentBadgeId, badgeId));
   }
 
   const frictionMarkers = isEvidencePreviewResolving
@@ -412,7 +573,13 @@ export function RunReportViewer({
                       const isHinted = !isSelected && hintedRecommendationId === recommendation.id;
 
                       return (
-                        <li key={recommendation.id}>
+                        <li key={recommendation.id} className="run-report-recommendation-tab-shell">
+                          <RecommendationReferenceBadges
+                            recommendation={recommendation}
+                            finding={relatedFinding}
+                            pinnedReferenceBadgeId={pinnedReferenceBadgeId}
+                            onBadgeToggle={toggleRecommendationReferenceBadge}
+                          />
                           <button
                             type="button"
                             className={`run-report-recommendation-tab${isSelected ? ' run-report-recommendation-tab--active' : ''}${isHinted ? ' run-report-recommendation-tab--hinted' : ''}`}
