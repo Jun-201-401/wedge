@@ -183,7 +183,7 @@ test('run report css keeps result-first content in the live simulation cockpit t
   assert.match(css, /\.run-report-hero__meta\s*\{[\s\S]*?display: flex/);
   assert.match(css, /\.run-report-hero-context\s*\{[\s\S]*?display: flex/);
   assert.match(css, /\.run-report-hero-context div\s*\{[\s\S]*?gap: 0\.38rem/);
-  assert.match(css, /\.run-report-hero h1\s*\{[\s\S]*?font-size: 0\.92rem/);
+  assert.match(css, /\.run-report-hero h1\s*\{[\s\S]*?font-size: 0\.82rem/);
   assert.match(css, /\.run-report-hero-context dd\s*\{[\s\S]*?display: block/);
   assert.match(css, /\.run-report-hero \.run-report-hero__notice\s*\{[\s\S]*?background: rgba\(254, 252, 232, 0\.92\)/);
   assert.match(css, /\.run-report-hero-stats\s*\{[\s\S]*?display: inline-flex/);
@@ -260,7 +260,7 @@ test('run report css keeps result-first content in the live simulation cockpit t
   assert.match(css, /\.run-report-selected-action h2\s*\{[\s\S]*?font-size: 0\.82rem/);
   assert.match(css, /\.run-report-selected-action h2\s*\{[\s\S]*?font-weight: 760/);
   assert.match(css, /\.run-report-selected-action__details\s*\{[\s\S]*?gap: 0\.58rem/);
-  assert.match(css, /\.run-report-selected-action__detail-card--primary\s*\{[\s\S]*?background: #f1f5f9/);
+  assert.match(css, /\.run-report-selected-action__detail-card--primary\s*\{[\s\S]*?background: #f8fafc/);
   assert.match(css, /\.run-report-selected-action__detail-card--primary p\s*\{[\s\S]*?font-weight: 760/);
   assert.doesNotMatch(css, /\.run-report-selected-action__location/);
   assert.doesNotMatch(css, /\.run-report-selected-action__steps/);
