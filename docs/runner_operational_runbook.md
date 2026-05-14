@@ -55,6 +55,33 @@ cd apps/runner && npm run smoke:e2e
 
 부분 실행이 필요하면 `WEDGE_RUNNER_SMOKE_SUITE_STEPS=discovery,scenario,agent` 값을 쉼표로 지정한다. `scenario`와 `agent` 단계는 API server, RabbitMQ consumer Runner, DB migration, callback base URL, smoke project/template seed가 준비되어 있어야 한다.
 
+실제 사이트 Discovery 회귀만 반복 확인하려면 별도 target sweep smoke를 실행한다. 이 smoke는 API server 없이 Runner local message-file 경로로 동작하며, 기본 대상은 운영 안정화에 사용한 `https://www.mgdj.co.kr/`, `https://www.jinjood.com/`, `http://hanaro.mrpage.kr/` 세 곳이다.
+
+```bash
+# repo root 기준
+node infra/scripts/real-discovery-targets-smoke.mjs
+
+# apps/runner 기준
+cd apps/runner && npm run smoke:discovery-targets
+```
+
+대상을 바꾸거나 일부 사이트 장애를 summary로만 남기려면 다음 환경변수를 사용한다.
+
+```bash
+WEDGE_DISCOVERY_SMOKE_TARGET_URLS=https://www.mgdj.co.kr/,https://www.jinjood.com/ \
+WEDGE_DISCOVERY_TARGET_SMOKE_ALLOW_PARTIAL=true \
+WEDGE_DISCOVERY_TARGET_SMOKE_ARTIFACTS_ROOT=/tmp/wedge-discovery-targets \
+node infra/scripts/real-discovery-targets-smoke.mjs
+```
+
+성공 기준:
+- 각 target이 `site-discovery-result.json`을 생성한다.
+- `recommendation_level`이 `NOT_AVAILABLE`이 아닌 실행 가능한 recommendation이 1개 이상 생성된다.
+- checkout 추천은 배송/마감/혜택 안내 문구가 아니라 장바구니/구매/결제 같은 실제 action 진입점으로 잡힌다.
+- 이미지 alt 기반 링크는 `selector`/`href_contains`가 부모 링크를 가리켜야 하며, 로그인 페이지가 나오면 그 지점은 마찰로 기록하고 로그인 뒤는 탐색하지 않는다.
+
+기본 suite에 실제 외부 URL을 넣지 않는 이유는 외부 사이트 가용성·네트워크·WAF 정책에 따라 CI가 흔들릴 수 있기 때문이다. 배포 전 수동 gate 또는 야간 smoke에서 `WEDGE_RUNNER_SMOKE_SUITE_STEPS=discovery-targets`로 편입한다.
+
 ### 3.1 Scenario replay smoke
 
 ```bash

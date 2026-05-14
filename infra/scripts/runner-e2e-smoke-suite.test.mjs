@@ -30,6 +30,19 @@ test('runner smoke suite allows a narrowed ordered step list', () => {
   assert.deepEqual(plan.map((step) => step.name), ['agent', 'scenario']);
 });
 
+test('runner smoke suite exposes optional real discovery target sweep', () => {
+  const plan = buildRunnerSmokeSuitePlan({
+    env: {
+      WEDGE_RUNNER_SMOKE_SUITE_STEPS: 'discovery-targets',
+    },
+    root: '/repo',
+  });
+
+  assert.equal(plan[0].name, 'discovery-targets');
+  assert.equal(plan[0].requiresApi, false);
+  assert.equal(plan[0].args[0], '/repo/infra/scripts/real-discovery-targets-smoke.mjs');
+});
+
 test('runner smoke suite rejects unknown step names', () => {
   assert.throws(
     () => buildRunnerSmokeSuitePlan({

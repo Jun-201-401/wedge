@@ -13,6 +13,11 @@ const STEP_DEFINITIONS = Object.freeze({
     script: 'infra/scripts/real-discovery-smoke.mjs',
     requiresApi: false,
   },
+  'discovery-targets': {
+    label: 'Runner Discovery real target smoke',
+    script: 'infra/scripts/real-discovery-targets-smoke.mjs',
+    requiresApi: false,
+  },
   scenario: {
     label: 'Runner Scenario replay real E2E smoke',
     script: 'infra/scripts/real-run-e2e-smoke.mjs',

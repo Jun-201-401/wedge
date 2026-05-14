@@ -12,6 +12,7 @@
     "dev": "node --experimental-strip-types src/index.ts",
     "test": "node --experimental-strip-types --test test/**/*.test.ts",
     "smoke:e2e": "node ../../infra/scripts/runner-e2e-smoke-suite.mjs",
+    "smoke:discovery-targets": "node ../../infra/scripts/real-discovery-targets-smoke.mjs",
     "playwright:install": "playwright install chromium"
   },
   "dependencies": {
