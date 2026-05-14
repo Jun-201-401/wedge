@@ -34,6 +34,37 @@
 | COPY-FLOW-QUALITY-001 | Clarity | FIRST_VIEW, VALUE, CTA, INPUT, COMMIT | 라벨이 요소의 역할과 주변 맥락을 제대로 설명하는지 판단한다. |
 | COPY-LABEL-INTEGRITY-001 | Clarity | FIRST_VIEW, VALUE, CTA, INPUT, COMMIT | 라벨이나 짧은 문구가 깨지거나 잘리거나 겹치지 않고 읽히는지 판단한다. |
 
+## Rule 근거 사이트 매핑
+
+이 섹션은 Rule별로 참고할 수 있는 외부 기준 사이트를 매핑한다. 근거 강도는 별도로 등급화하지 않고, Rule 설명과 리포트 근거 표시에 사용할 수 있는 출처만 정리한다.
+
+### 근거 사이트 키
+
+| 키 | 출처 | URL |
+| --- | --- | --- |
+| WAI-TUTORIALS | W3C WAI Tutorials | https://www.w3.org/WAI/tutorials/ |
+| WCAG22-QUICKREF | WCAG 2.2 Quick Reference | https://www.w3.org/WAI/WCAG22/quickref/ |
+| GOVUK-COMPONENTS | GOV.UK Design System Components | https://design-system.service.gov.uk/components/ |
+| USWDS-COMPONENTS | U.S. Web Design System Components | https://designsystem.digital.gov/components/overview/ |
+| LIGHTHOUSE | Chrome Lighthouse | https://developer.chrome.com/docs/lighthouse/overview?hl=ko |
+| WEB-VITALS | web.dev Web Vitals | https://web.dev/articles/vitals?hl=ko |
+| NNG-HEURISTICS | Nielsen Norman Group 10 Usability Heuristics | https://www.nngroup.com/articles/ten-usability-heuristics/ |
+| BAYMARD-CHECKOUT | Baymard Checkout Usability Research | https://baymard.com/research/checkout-usability |
+
+### Rule별 매핑
+
+| criterion_id | 매핑 근거 사이트 | 매핑 이유 |
+| --- | --- | --- |
+| `PATH-CTA-001` | USWDS-COMPONENTS, GOVUK-COMPONENTS, NNG-HEURISTICS | 주요 행동 진입점은 버튼/링크/서비스 내비게이션 같은 명확한 행동 요소와 연결된다. USWDS는 button을 중요한 행동에 주의를 끄는 요소로 설명하고, GOV.UK도 button/link/navigation 계열 컴포넌트를 서비스 흐름의 기본 구성요소로 제공한다. NN/g의 recognition rather than recall 관점에서도 사용자가 다음 행동을 기억하지 않고 화면에서 인식할 수 있어야 한다. |
+| `PATH-CTA-002` | USWDS-COMPONENTS, GOVUK-COMPONENTS, NNG-HEURISTICS | 같은 결정 순간에 주요 버튼처럼 보이는 선택지가 많으면 행동 우선순위가 흐려진다. USWDS의 button group은 관련 행동을 묶는 패턴이고, NN/g의 aesthetic and minimalist design은 불필요한 정보나 행동이 핵심 목표의 가시성을 낮출 수 있음을 설명한다. |
+| `PATH-CHOICE-OVERLOAD-001` | NNG-HEURISTICS, USWDS-COMPONENTS, GOVUK-COMPONENTS | 이 Rule은 화면 전체 클릭 요소 수가 아니라 같은 행동 선택 영역 안에서 사용자가 비교해야 하는 선택지가 과도한지를 본다. NN/g의 aesthetic and minimalist design, recognition rather than recall과 연결되며, USWDS/GOV.UK의 navigation, button group, card, service navigation 같은 컴포넌트 패턴은 선택지를 그룹화하고 구조화하는 기준으로 참고한다. |
+| `FRICTION-FORM-001` | WCAG22-QUICKREF, WAI-TUTORIALS, GOVUK-COMPONENTS, USWDS-COMPONENTS, BAYMARD-CHECKOUT | 입력 필드의 목적을 알 수 있는 라벨/설명은 WCAG의 Labels or Instructions, Headings and Labels, Name/Role/Value와 직접 연결된다. WAI Tutorials의 Forms는 label, grouping, instruction 패턴을 다루고, GOV.UK/USWDS는 text input, select, radios, checkboxes, validation 컴포넌트를 제공한다. Baymard는 checkout form의 field labels와 microcopy를 별도 연구 주제로 다룬다. |
+| `RELIABILITY-TECH-001` | LIGHTHOUSE, WEB-VITALS, NNG-HEURISTICS | 네트워크 실패와 콘솔 오류는 기술적 신뢰성 문제이며 Lighthouse의 performance/best-practices 계열 진단과 연결된다. Web Vitals는 사용자 중심 성능 신호를 다루고, NN/g의 visibility of system status는 사용자가 시스템 상태와 행동 결과를 적절한 시간 안에 알아야 한다는 근거로 연결된다. |
+| `RELIABILITY-LOADING-STUCK-001` | WEB-VITALS, LIGHTHOUSE, NNG-HEURISTICS, BAYMARD-CHECKOUT | 일반 페이지 전환 후 다음 화면이 사용 가능한 상태가 되기까지 오래 걸리는 문제는 Web Vitals의 loading/interactivity 관점과 연결된다. Lighthouse는 실험실 환경에서 성능 회귀를 포착하는 도구로 참고할 수 있고, NN/g의 visibility of system status는 지연 중 상태 피드백의 필요성과 연결된다. Baymard는 checkout interaction/load indicator와 사용자 행동 피드백을 연구 주제로 다룬다. |
+| `JOURNEY-GOAL-CTA-MISMATCH-001` | NNG-HEURISTICS, USWDS-COMPONENTS, GOVUK-COMPONENTS, BAYMARD-CHECKOUT | 선택한 CTA가 시나리오 목표와 의미적으로 맞는지는 사용자의 언어와 실제 행동 결과가 일치해야 한다는 NN/g의 match between system and real world, consistency and standards와 연결된다. GOV.UK/USWDS의 button/link 패턴은 행동 라벨과 목적을 명확히 하는 기준으로 참고하고, Baymard는 checkout/account/payment 같은 목표 흐름에서 버튼 문구와 단계 맥락을 다룬다. |
+| `COPY-FLOW-QUALITY-001` | NNG-HEURISTICS, WCAG22-QUICKREF, WAI-TUTORIALS, GOVUK-COMPONENTS, USWDS-COMPONENTS | 라벨이 요소 역할과 주변 맥락을 설명하는지는 NN/g의 match between system and real world, consistency and standards와 연결된다. WCAG의 Headings and Labels, Link Purpose, Label in Name, Name/Role/Value도 라벨 의미와 역할 전달의 기준으로 참고한다. GOV.UK/USWDS는 버튼, 링크, 입력, 오류, 내비게이션 컴포넌트의 라벨링 관례를 제공한다. |
+| `COPY-LABEL-INTEGRITY-001` | WCAG22-QUICKREF, WAI-TUTORIALS, NNG-HEURISTICS, GOVUK-COMPONENTS, USWDS-COMPONENTS | 깨짐, 잘림, 겹침, 낮은 가독성은 사용자가 텍스트를 인식하고 이해하는 것을 방해한다. WCAG의 perceivable/understandable 계열 기준, text spacing, resize/reflow, headings and labels와 연결되며, WAI Tutorials는 접근 가능한 텍스트/구조 작성 기준을 제공한다. GOV.UK/USWDS의 typography, form, button 컴포넌트는 라벨이 읽히는 UI 패턴의 참고 기준이다. |
+
 ## Spring/Runner Evidence 필수 데이터
 
 Analyzer는 URL을 직접 방문해 화면을 수집하지 않는다. Spring이 저장한 evidence packet 또는 Runner가 생성한 observation을 받아 Rule을 평가한다. 따라서 아래 데이터가 없으면 Rule은 `NOT_EVALUABLE`이 되거나 낮은 confidence로 fallback된다.
