@@ -29,8 +29,7 @@ const MQ_RUNTIME_ENV_KEYS = [
   "RUNNER_AGENT_IDEMPOTENCY_LEASE_TTL_MS",
   "RUNNER_AGENT_IDEMPOTENCY_RENEW_INTERVAL_MS",
   "RUNNER_MESSAGE_IDEMPOTENCY_STORE_MODE",
-  "RUNNER_MQ_MAX_DELIVERY_ATTEMPTS",
-  "RUNNER_MQ_QUEUE_SCENARIO_AUTHORING_EXECUTE"
+  "RUNNER_MQ_MAX_DELIVERY_ATTEMPTS"
 ] as const;
 
 const AGENT_LLM_ENV_KEYS = [
@@ -286,25 +285,6 @@ test("[설정] MQ max delivery attempts는 poison message 차단용 양의 정�
       const config = loadRunnerConfig({ serviceName: "runner-test" });
 
       assert.equal(config.mqMaxDeliveryAttempts, 3);
-    }
-  );
-});
-
-test("[설정] ScenarioAuthoring execute queue는 전용 환경변수로 읽는다", () => {
-  withMqRuntimeEnv({}, () => {
-    const config = loadRunnerConfig({ serviceName: "runner-test" });
-
-    assert.equal(config.mqQueueScenarioAuthoringExecute, "scenario-authoring.execute.request");
-  });
-
-  withMqRuntimeEnv(
-    {
-      RUNNER_MQ_QUEUE_SCENARIO_AUTHORING_EXECUTE: "custom.scenario-authoring.execute"
-    },
-    () => {
-      const config = loadRunnerConfig({ serviceName: "runner-test" });
-
-      assert.equal(config.mqQueueScenarioAuthoringExecute, "custom.scenario-authoring.execute");
     }
   );
 });

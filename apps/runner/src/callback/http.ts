@@ -137,11 +137,6 @@ function buildRunnerCallbackUrl(baseUrl: string, resourceId: string, callbackTyp
     return `${normalizedBaseUrl}/internal/runner/discoveries/${resourceId}/${discoveryCallbackType}`;
   }
 
-  if (callbackType.startsWith("scenario-authoring-")) {
-    const authoringCallbackType = callbackType.replace("scenario-authoring-", "");
-    return `${normalizedBaseUrl}/internal/runner/scenario-authoring-jobs/${resourceId}/${authoringCallbackType}`;
-  }
-
   return `${normalizedBaseUrl}/internal/runner/runs/${resourceId}/${callbackType}`;
 }
 

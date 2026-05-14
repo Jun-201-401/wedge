@@ -12,16 +12,13 @@ import { createCapturePipeline } from "./capture/index.ts";
 import {
   parseAgentExecuteMessage,
   parseDiscoveryExecuteMessage,
-  parseScenarioAuthoringExecuteMessage,
   parseRunExecuteMessage,
   readAgentExecuteMessage,
   readDiscoveryExecuteMessage,
-  readScenarioAuthoringExecuteMessage,
   readRunExecuteMessage,
   RunnerMessageValidationError
 } from "./messaging/index.ts";
 import { notifyRunMessageValidationFailure } from "./messaging/validation-failure.ts";
-import { executeScenarioAuthoring, type ScenarioAuthoringExecutionResult } from "./authoring/index.ts";
 import { executeDiscoveryAndPersist, type DiscoveryExecutionResult } from "./discovery/index.ts";
 import { startRunnerQueueConsumers, type RunnerQueueConsumer } from "./messaging/rabbitmq/index.ts";
 import { startRunnerMqRuntime, type RunnerMqRuntime } from "./runtime/index.ts";
@@ -37,8 +34,7 @@ import { registerWorker, type RunnerExecutionResult } from "./worker/index.ts";
 import type {
   AgentExecuteMessage,
   DiscoveryExecuteMessage,
-  RunExecuteMessage,
-  ScenarioAuthoringExecuteMessage
+  RunExecuteMessage
 } from "./shared/contracts.ts";
 
 export type RunnerInputMessageResult =
@@ -53,10 +49,6 @@ export type RunnerInputMessageResult =
   | {
       kind: "discovery";
       discovery: DiscoveryExecutionResult;
-    }
-  | {
-      kind: "scenario-authoring";
-      authoring: ScenarioAuthoringExecutionResult;
     };
 
 export interface RunnerApp {
@@ -69,8 +61,6 @@ export interface RunnerApp {
   processAgentMessageFile: (messageFile: string) => Promise<AgentRunnerExecutionResult>;
   processDiscoveryMessage: (message: DiscoveryExecuteMessage) => Promise<DiscoveryExecutionResult>;
   processDiscoveryMessageFile: (messageFile: string) => Promise<DiscoveryExecutionResult>;
-  processScenarioAuthoringMessage: (message: ScenarioAuthoringExecuteMessage) => Promise<ScenarioAuthoringExecutionResult>;
-  processScenarioAuthoringMessageFile: (messageFile: string) => Promise<ScenarioAuthoringExecutionResult>;
   processRawInputMessage: (rawMessage: string) => Promise<RunnerInputMessageResult>;
   processInputMessageFile: (messageFile: string) => Promise<RunnerInputMessageResult>;
   replayCallbackOutbox: () => Promise<CallbackOutboxReplaySummary>;
@@ -128,13 +118,6 @@ export function createRunnerApp(overrides: Partial<RunnerConfig> = {}): RunnerAp
           callbackClient,
           artifactStore
         });
-      },
-      processRawScenarioAuthoringMessage: async (rawMessage) => {
-        await executeScenarioAuthoring({
-          message: parseScenarioAuthoringExecuteMessage(rawMessage),
-          config,
-          callbackClient
-        });
       }
     });
 
@@ -153,13 +136,6 @@ export function createRunnerApp(overrides: Partial<RunnerConfig> = {}): RunnerAp
         config,
         callbackClient,
         artifactStore
-      }),
-    processScenarioAuthoringMessage: (message) => executeScenarioAuthoring({ message, config, callbackClient }),
-    processScenarioAuthoringMessageFile: async (messageFile) =>
-      executeScenarioAuthoring({
-        message: await readScenarioAuthoringExecuteMessage(messageFile),
-        config,
-        callbackClient
       }),
     processRawInputMessage: async (rawMessage) => {
       const messageType = readInputMessageType(rawMessage);
@@ -182,17 +158,6 @@ export function createRunnerApp(overrides: Partial<RunnerConfig> = {}): RunnerAp
         };
       }
 
-      if (messageType === "scenario-authoring.execute.request") {
-        return {
-          kind: "scenario-authoring",
-          authoring: await executeScenarioAuthoring({
-            message: parseScenarioAuthoringExecuteMessage(rawMessage),
-            config,
-            callbackClient
-          })
-        };
-      }
-
       return {
         kind: "run",
         execution: await processRawRunMessage(rawMessage)
@@ -203,8 +168,7 @@ export function createRunnerApp(overrides: Partial<RunnerConfig> = {}): RunnerAp
       return dispatchInputMessage(rawMessage, {
         processRun: async (message) => worker.handleMessage(message),
         processAgent: async (message) => agentWorker.handleMessage(message),
-        processDiscovery: async (message) => executeDiscoveryAndPersist({ message, config, callbackClient, artifactStore }),
-        processScenarioAuthoring: async (message) => executeScenarioAuthoring({ message, config, callbackClient })
+        processDiscovery: async (message) => executeDiscoveryAndPersist({ message, config, callbackClient, artifactStore })
       });
     },
     replayCallbackOutbox: async () => replayCallbackOutbox(config),
@@ -265,7 +229,6 @@ async function dispatchInputMessage(
     processRun: (message: RunExecuteMessage) => Promise<RunnerExecutionResult>;
     processAgent: (message: AgentExecuteMessage) => Promise<AgentRunnerExecutionResult>;
     processDiscovery: (message: DiscoveryExecuteMessage) => Promise<DiscoveryExecutionResult>;
-    processScenarioAuthoring: (message: ScenarioAuthoringExecuteMessage) => Promise<ScenarioAuthoringExecutionResult>;
   }
 ): Promise<RunnerInputMessageResult> {
   const messageType = readInputMessageType(rawMessage);
@@ -280,13 +243,6 @@ async function dispatchInputMessage(
     return {
       kind: "discovery",
       discovery: await handlers.processDiscovery(parseDiscoveryExecuteMessage(rawMessage))
-    };
-  }
-
-  if (messageType === "scenario-authoring.execute.request") {
-    return {
-      kind: "scenario-authoring",
-      authoring: await handlers.processScenarioAuthoring(parseScenarioAuthoringExecuteMessage(rawMessage))
     };
   }
 

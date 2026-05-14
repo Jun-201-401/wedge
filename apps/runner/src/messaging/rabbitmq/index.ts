@@ -29,18 +29,11 @@ export interface DiscoveryExecuteConsumerInput {
   client?: RabbitMqClient;
 }
 
-export interface ScenarioAuthoringExecuteConsumerInput {
-  config: Pick<RunnerConfig, "mqUrl" | "mqQueueScenarioAuthoringExecute" | "mqPrefetch" | "mqRequeueOnFailure"> & Partial<Pick<RunnerConfig, "mqMaxDeliveryAttempts">>;
-  processRawMessage: (rawMessage: string) => Promise<void>;
-  client?: RabbitMqClient;
-}
-
 export interface RunnerQueuesConsumerInput {
-  config: Pick<RunnerConfig, "mqUrl" | "mqQueueRunExecute" | "mqQueueAgentExecute" | "mqQueueDiscoveryExecute" | "mqQueueScenarioAuthoringExecute" | "mqPrefetch" | "agentConcurrency" | "mqRequeueOnFailure"> & Partial<Pick<RunnerConfig, "mqMaxDeliveryAttempts">>;
+  config: Pick<RunnerConfig, "mqUrl" | "mqQueueRunExecute" | "mqQueueAgentExecute" | "mqQueueDiscoveryExecute" | "mqPrefetch" | "agentConcurrency" | "mqRequeueOnFailure"> & Partial<Pick<RunnerConfig, "mqMaxDeliveryAttempts">>;
   processRawRunMessage: (rawMessage: string) => Promise<void>;
   processRawAgentMessage: (rawMessage: string) => Promise<void>;
   processRawDiscoveryMessage: (rawMessage: string) => Promise<void>;
-  processRawScenarioAuthoringMessage: (rawMessage: string) => Promise<void>;
   client?: RabbitMqClient;
 }
 
@@ -114,28 +107,11 @@ export async function startDiscoveryExecuteQueueConsumer({
   });
 }
 
-export async function startScenarioAuthoringExecuteQueueConsumer({
-  config,
-  processRawMessage,
-  client = defaultRabbitMqClient
-}: ScenarioAuthoringExecuteConsumerInput): Promise<RunExecuteQueueConsumer> {
-  return startSingleQueueConsumer({
-    mqUrl: config.mqUrl,
-    queue: config.mqQueueScenarioAuthoringExecute,
-    prefetch: config.mqPrefetch,
-    requeueOnFailure: config.mqRequeueOnFailure,
-    maxDeliveryAttempts: config.mqMaxDeliveryAttempts,
-    processRawMessage,
-    client
-  });
-}
-
 export async function startRunnerQueueConsumers({
   config,
   processRawRunMessage,
   processRawAgentMessage,
   processRawDiscoveryMessage,
-  processRawScenarioAuthoringMessage,
   client = defaultRabbitMqClient
 }: RunnerQueuesConsumerInput): Promise<RunnerQueueConsumer> {
   const connection = await client.connect(config.mqUrl);
@@ -171,16 +147,6 @@ export async function startRunnerQueueConsumers({
       processRawMessage: processRawDiscoveryMessage
     });
     channels.push(discoveryChannel);
-
-    const scenarioAuthoringChannel = await startQueueConsumerOnNewChannel({
-      connection,
-      queue: config.mqQueueScenarioAuthoringExecute,
-      prefetch: config.mqPrefetch,
-      requeueOnFailure: config.mqRequeueOnFailure,
-      maxDeliveryAttempts: config.mqMaxDeliveryAttempts,
-      processRawMessage: processRawScenarioAuthoringMessage
-    });
-    channels.push(scenarioAuthoringChannel);
   } catch (error) {
     await closeQueueConsumerResources(channels, connection);
     throw error;

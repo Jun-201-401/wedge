@@ -117,7 +117,6 @@ export function createRunnerTestConfig(overrides: Partial<RunnerConfig> = {}): R
     mqQueueRunExecute: "run.execute.request",
     mqQueueAgentExecute: "agent.execute.request",
     mqQueueDiscoveryExecute: "discovery.execute.request",
-    mqQueueScenarioAuthoringExecute: "scenario-authoring.execute.request",
     mqPrefetch: 1,
     agentConcurrency: 1,
     agentIdempotencyStoreEnabled: false,
