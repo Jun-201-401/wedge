@@ -14,11 +14,6 @@ import type { CallbackClient } from "../callback/index.ts";
 import { preparePageForScreenshot } from "../browser/playwright/screenshot.ts";
 import type { RunnerBrowserName, RunnerConfig } from "../config/index.ts";
 import { createArtifactStore, type ArtifactStore } from "../storage/index.ts";
-import {
-  normalizeMessageIdempotencyKey,
-  persistMessageIdempotencyResult,
-  readMessageIdempotencyResult
-} from "../runtime/message-idempotency.ts";
 import type {
   Artifact,
   ArtifactDraft,
@@ -36,6 +31,7 @@ import type {
   TargetDescriptorMap,
   DiscoverySummaryPayload
 } from "../shared/contracts.ts";
+import { executeDiscoveryWithIdempotency } from "./idempotent-execution.ts";
 
 const DEFAULT_DISCOVERY_LOCALE = "ko-KR";
 const DEFAULT_DISCOVERY_TIMEZONE = "Asia/Seoul";
@@ -250,33 +246,12 @@ async function executeDiscoveryForPersistence({
 }
 
 export async function executeDiscoveryAndPersist(input: ExecuteDiscoveryInput): Promise<DiscoveryExecutionResult> {
-  const idempotencyKey = normalizeMessageIdempotencyKey(input.message.idempotencyKey);
-  if (idempotencyKey) {
-    const existingExecution = discoveryIdempotentExecutions.get(idempotencyKey);
-    if (existingExecution) {
-      return existingExecution;
-    }
-
-    const persistedResult = await readMessageIdempotencyResult<DiscoveryExecutionResult>(input.config, "discovery", idempotencyKey);
-    if (persistedResult) {
-      return persistedResult;
-    }
-
-    const execution = executeDiscoveryAndPersistOnce(input)
-      .then(async (result) => {
-        await persistMessageIdempotencyResult(input.config, "discovery", idempotencyKey, result);
-        discoveryIdempotentExecutions.delete(idempotencyKey);
-        return result;
-      })
-      .catch((error) => {
-        discoveryIdempotentExecutions.delete(idempotencyKey);
-        throw error;
-      });
-    discoveryIdempotentExecutions.set(idempotencyKey, execution);
-    return execution;
-  }
-
-  return executeDiscoveryAndPersistOnce(input);
+  return executeDiscoveryWithIdempotency({
+    config: input.config,
+    message: input.message,
+    idempotentExecutions: discoveryIdempotentExecutions,
+    execute: () => executeDiscoveryAndPersistOnce(input)
+  });
 }
 
 async function executeDiscoveryAndPersistOnce(input: ExecuteDiscoveryInput): Promise<DiscoveryExecutionResult> {
