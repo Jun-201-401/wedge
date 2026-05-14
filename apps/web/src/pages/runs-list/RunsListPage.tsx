@@ -325,7 +325,11 @@ export function RunsListPage({ currentUser, onLogout }: RunsListPageProps) {
                     <div role="cell" className="runs-list-actions">
                       <span className="runs-list-cell-label">열기</span>
                       <a href={`/runs/${encodeURIComponent(run.id)}`}>실시간 보기</a>
-                      {run.status === 'COMPLETED' ? <a href={reportPath}>리포트</a> : null}
+                      {run.status === 'COMPLETED' ? (
+                        <a href={reportPath}>리포트</a>
+                      ) : (
+                        <span className="runs-list-action-placeholder" aria-hidden="true" />
+                      )}
                     </div>
                   </article>
                 );
