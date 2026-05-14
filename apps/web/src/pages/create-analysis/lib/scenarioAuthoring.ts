@@ -61,7 +61,7 @@ export function createScenarioPlanPreview(scenarioPlan: Record<string, unknown> 
   const startUrl = readScenarioPlanString(scenarioPlan, 'start_url');
   const steps = Array.isArray(scenarioPlan.steps) ? scenarioPlan.steps : [];
   const previewSteps = steps
-    .map((step, index) => toPreviewStep(step, index))
+    .map((step, index, allSteps) => toPreviewStep(step, index, allSteps))
     .filter((step): step is ScenarioPlanPreviewStep => step !== null)
     .slice(0, 5);
 
@@ -74,42 +74,69 @@ export function createScenarioPlanPreview(scenarioPlan: Record<string, unknown> 
   };
 }
 
-function toPreviewStep(value: unknown, index: number): ScenarioPlanPreviewStep | null {
+function toPreviewStep(value: unknown, index: number, allSteps: unknown[]): ScenarioPlanPreviewStep | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     return null;
+  }
+
+  const step = value as Record<string, unknown>;
+  const actionType = readActionType(step);
+  const isAfterClick = allSteps
+    .slice(0, index)
+    .some((candidate) => readActionType(candidate) === 'click');
+
+  return {
+    id: typeof step.step_id === 'string' && step.step_id.length > 0 ? step.step_id : `step_${index + 1}`,
+    label: `${index + 1}. ${actionLabel(actionType, isAfterClick)}`,
+    detail: actionDetail(actionType, isAfterClick),
+  };
+}
+
+function readActionType(value: unknown) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return 'step';
   }
 
   const step = value as Record<string, unknown>;
   const action = step.action && typeof step.action === 'object' && !Array.isArray(step.action)
     ? step.action as Record<string, unknown>
     : {};
-  const actionType = typeof action.type === 'string' ? action.type : 'step';
-  const description = typeof step.description === 'string' && step.description.trim().length > 0
-    ? step.description
-    : actionLabel(actionType);
-
-  return {
-    id: typeof step.step_id === 'string' && step.step_id.length > 0 ? step.step_id : `step_${index + 1}`,
-    label: `${index + 1}. ${actionLabel(actionType)}`,
-    detail: description,
-  };
+  return typeof action.type === 'string' ? action.type : 'step';
 }
 
-function actionLabel(actionType: string) {
+function actionLabel(actionType: string, isAfterClick = false) {
   switch (actionType) {
     case 'goto':
-      return '페이지 진입';
+      return '시작 화면 열기';
     case 'click':
-      return '추천 요소 클릭';
+      return '진입점 따라가기';
     case 'fill':
     case 'select':
-      return '입력 요소 확인';
+      return '입력 확인';
     case 'checkpoint':
-      return '화면 근거 수집';
+      return isAfterClick ? '도착 지점 기록' : '핵심 맥락 기록';
     case 'stop_when':
-      return '안전 중단 지점';
+      return '안전 중단';
     default:
-      return '시나리오 단계';
+      return '확인';
+  }
+}
+
+function actionDetail(actionType: string, isAfterClick = false) {
+  switch (actionType) {
+    case 'goto':
+      return '첫 화면을 엽니다';
+    case 'click':
+      return '추천 진입점으로 이동합니다';
+    case 'fill':
+    case 'select':
+      return '입력 항목을 확인합니다';
+    case 'checkpoint':
+      return isAfterClick ? '이동 후 화면을 기록합니다' : '첫 화면의 맥락을 기록합니다';
+    case 'stop_when':
+      return '위험 행동 전에 멈춥니다';
+    default:
+      return '다음 단계를 확인합니다';
   }
 }
 

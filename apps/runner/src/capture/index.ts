@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { BrowserActionResult, BrowserCapturedArtifacts, BrowserPageSnapshot, BrowserSettleResult } from "../browser/playwright/index.ts";
+import { meaningfulTokens, normalizeSearchQuery, normalizeSearchText } from "./text-normalization.ts";
 import type {
   ArtifactDraft,
   AccordionStateObservation,
@@ -526,11 +527,11 @@ function createCheckpointObservations({
     ...createCtaCandidateObservations(step, pageSnapshot),
     ...createProductCardObservations(step, pageSnapshot, screenshotArtifactId).map((observation) => ({ ...observation })),
     ...createGoalActionCandidateObservations(step, pageSnapshot).map((observation) => ({ ...observation })),
-    ...pageSnapshot.consoleErrors.map((message) => ({
+    ...pageSnapshot.consoleErrors.filter(isActionableConsoleError).map((message) => ({
       type: "console_error",
       message
     })),
-    ...pageSnapshot.networkErrors.map((message) => ({
+    ...pageSnapshot.networkErrors.filter(isActionableNetworkFailure).map((message) => ({
       type: "network_failure",
       message
     })),
@@ -544,6 +545,36 @@ function createCheckpointObservations({
         }]),
     ...createSettleObservations(settleResult)
   ];
+}
+
+function isActionableConsoleError(message: string): boolean {
+  const normalizedMessage = message.trim();
+  if (normalizedMessage.length === 0) {
+    return false;
+  }
+
+  if (normalizedMessage.includes("net::ERR_UNKNOWN_URL_SCHEME")) {
+    return false;
+  }
+
+  return true;
+}
+
+function isActionableNetworkFailure(message: string): boolean {
+  const normalizedMessage = message.trim();
+  if (normalizedMessage.length === 0) {
+    return false;
+  }
+
+  if (normalizedMessage.includes("chrome-extension://") && normalizedMessage.includes("net::ERR_UNKNOWN_URL_SCHEME")) {
+    return false;
+  }
+
+  if (normalizedMessage.includes("bc.ad.daum.net") && normalizedMessage.includes("net::ERR_ABORTED")) {
+    return false;
+  }
+
+  return true;
 }
 
 function createPageReadyTimingObservations({
@@ -1609,20 +1640,12 @@ function inferExpectedOutcomeHints({
   return [...hints];
 }
 
-function normalizeSearchText(text: string): string {
-  return text.trim().replaceAll(/\s+/g, " ").toLowerCase();
-}
-
 function sameJsonArray(left: unknown[], right: unknown[]): boolean {
   return JSON.stringify(left) === JSON.stringify(right);
 }
 
 function sameStringArray(left: string[], right: string[]): boolean {
   return left.length === right.length && left.every((value, index) => value === right[index]);
-}
-
-function normalizeSearchQuery(value: string | null | undefined): string {
-  return (value ?? "").trim().replaceAll(/\s+/g, " ").toLowerCase();
 }
 
 function categoryUrlSignalChanged(beforeUrl: string, afterUrl: string): boolean {
@@ -1856,12 +1879,6 @@ function matchTextScore(clickedText: string | null, cardText: string): number {
   return overlapRatio >= 0.5 ? Math.min(0.86, 0.42 + overlapRatio * 0.44) : 0;
 }
 
-function meaningfulTokens(value: string): string[] {
-  return normalizeTextForMatch(value)
-    .split(" ")
-    .filter((token) => token.length >= 2 && !/^(add|to|the|for|보기|상세|선택|담기)$/.test(token));
-}
-
 function boundsOverlapRatio(
   left: BrowserPageSnapshot["interactiveComponents"][number]["bounds"],
   right: BrowserPageSnapshot["interactiveComponents"][number]["bounds"]
@@ -1903,14 +1920,6 @@ function matchReason({
     return "text_overlap";
   }
   return "bbox_overlap";
-}
-
-function normalizeTextForMatch(value: string): string {
-  return value
-    .toLowerCase()
-    .replaceAll(/[^\p{Letter}\p{Number}]+/gu, " ")
-    .trim()
-    .replaceAll(/\s+/g, " ");
 }
 
 function createGoalActionResultSignal({

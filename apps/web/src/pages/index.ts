@@ -1,4 +1,4 @@
-import { CREATE_ANALYSIS_PATH, LOGIN_PATH, RUNS_PATH, SIGNUP_PATH } from '../shared/lib/appPaths';
+import { CREATE_ANALYSIS_PATH, HOME_PATH, LANDING_PATH, LOGIN_PATH, RUNS_PATH, SIGNUP_PATH } from '../shared/lib/appPaths';
 import { RUN_MONITOR_PATH_PREFIX } from './run-monitor/lib/runMonitorRoute';
 
 export { LoginPage, SignupPage } from './auth';
@@ -19,8 +19,12 @@ export const pages = {
     path: CREATE_ANALYSIS_PATH,
   },
   home: {
+    id: 'home',
+    path: HOME_PATH,
+  },
+  landing: {
     id: 'landing',
-    path: '/',
+    path: LANDING_PATH,
   },
   runsList: {
     id: 'runs-list',

@@ -201,6 +201,13 @@
       "source_refs": ["docs/20_final_analyzer_rules.md#form-required-optional-001"],
       "references": [
         {
+          "label": "WCAG 3.3.2",
+          "publisher": "W3C",
+          "title": "Labels or Instructions",
+          "basisSummary": "폼을 제출하기 전에 사용자가 어떤 입력이 필요한지 알 수 있도록 라벨이나 안내를 제공해야 합니다.",
+          "url": "https://www.w3.org/WAI/WCAG22/Understanding/labels-or-instructions.html"
+        },
+        {
           "label": "GOV.UK Error Message",
           "publisher": "GOV.UK",
           "title": "Error message component",
@@ -472,6 +479,13 @@
       "output_template": "일부 클릭 대상이 너무 작거나 서로 가까워 정확히 누르기 어렵습니다.",
       "source_refs": ["docs/20_final_analyzer_rules.md#tech-target-size-001"],
       "references": [
+        {
+          "label": "WCAG 2.5.8",
+          "publisher": "W3C",
+          "title": "Target Size (Minimum)",
+          "basisSummary": "예외가 적용되지 않는 한 포인터 대상은 일반적으로 최소 24 x 24 CSS 픽셀 이상이어야 합니다.",
+          "url": "https://www.w3.org/WAI/WCAG22/Understanding/target-size-minimum.html"
+        },
         {
           "label": "Lighthouse",
           "publisher": "Chrome",

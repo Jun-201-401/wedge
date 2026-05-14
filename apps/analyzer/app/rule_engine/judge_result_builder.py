@@ -34,6 +34,13 @@ RELIABILITY_LOCATION_TYPES = {
 TOP_LEVEL_BOUNDS_COMPONENT_CRITERION_IDS = {"COPY-LABEL-INTEGRITY-001", "FORM-REQUIRED-OPTIONAL-001"}
 PATH_CHOICE_OVERLOAD_CRITERION_IDS = {"PATH-CHOICE-OVERLOAD-001"}
 TARGET_SIZE_CRITERION_IDS = {"TECH-TARGET-SIZE-001"}
+COMPONENT_MARKER_CRITERION_IDS = {
+    "PATH-CTA-002",
+    *RELIABILITY_ACTION_CONTEXT_CRITERION_IDS,
+    *TOP_LEVEL_BOUNDS_COMPONENT_CRITERION_IDS,
+    *PATH_CHOICE_OVERLOAD_CRITERION_IDS,
+    *TARGET_SIZE_CRITERION_IDS,
+}
 
 
 def analyze_evidence_packet(
@@ -98,20 +105,28 @@ def _attach_evidence_locations(
     action_locations_by_checkpoint = _action_target_locations_by_checkpoint(location_index.values())
     located_issues: list[dict[str, Any]] = []
     for issue in issues:
+        criterion_id = issue.get("criterion_id")
+        supports_component_marker = criterion_id in COMPONENT_MARKER_CRITERION_IDS
         locations = [
             location_index[ref]
             for ref in issue.get("evidence_refs") or []
             if isinstance(ref, str) and ref in location_index
         ]
-        if issue.get("criterion_id") in RELIABILITY_ACTION_CONTEXT_CRITERION_IDS:
+        if criterion_id in RELIABILITY_ACTION_CONTEXT_CRITERION_IDS:
             locations = _with_related_action_locations(locations, action_locations_by_checkpoint)
-        if issue.get("criterion_id") in TOP_LEVEL_BOUNDS_COMPONENT_CRITERION_IDS:
+        if criterion_id in TOP_LEVEL_BOUNDS_COMPONENT_CRITERION_IDS:
             locations = _with_top_level_bounds_problem_components(locations)
-        if issue.get("criterion_id") in PATH_CHOICE_OVERLOAD_CRITERION_IDS:
+        if criterion_id in PATH_CHOICE_OVERLOAD_CRITERION_IDS:
             locations = _with_path_choice_overload_problem_components(issue, locations)
-        if issue.get("criterion_id") in TARGET_SIZE_CRITERION_IDS:
+        if criterion_id in TARGET_SIZE_CRITERION_IDS:
             locations = _with_target_size_problem_components(issue, locations)
-        problem_components = _problem_components_from_locations(locations, screenshot_artifact_ids)
+        if not supports_component_marker:
+            locations = _without_problem_components(locations)
+        problem_components = (
+            _problem_components_from_locations(locations, screenshot_artifact_ids)
+            if supports_component_marker
+            else []
+        )
         if locations:
             located_issue = {**issue, "evidence_locations": locations}
             if problem_components:
@@ -373,6 +388,18 @@ def _number(value: Any) -> float | None:
 
 def _bucket(value: float) -> str:
     return str(round(value / 24))
+
+
+def _without_problem_components(locations: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    result: list[dict[str, Any]] = []
+    for location in locations:
+        if "problem_components" not in location:
+            result.append(location)
+            continue
+        sanitized_location = {**location}
+        sanitized_location.pop("problem_components", None)
+        result.append(sanitized_location)
+    return result
 
 
 def _problem_components_from_locations(

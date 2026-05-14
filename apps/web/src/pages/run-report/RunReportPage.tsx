@@ -13,6 +13,7 @@ import {
   RunReportViewer,
   selectLatestScreenshotPreviewUrl,
 } from '../../features/report-viewer';
+import { CREATE_ANALYSIS_PATH } from '../../shared/lib/appPaths';
 import { isMockRunId } from '../run-monitor/lib/runMonitorRoute';
 import { resolveRunReportState } from './lib/runReportState';
 
@@ -95,7 +96,7 @@ function RunReportStatePage({
           <RunReportBrand />
         </div>
         <div className="run-report-topbar__right">
-          <a href="/create-analysis" className="run-report-topbar__link">새 분석</a>
+          <a href={CREATE_ANALYSIS_PATH} className="run-report-topbar__link">새 분석</a>
         </div>
       </header>
 

@@ -1,9 +1,26 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type FocusEvent,
+  type MouseEvent,
+} from 'react';
+import { createPortal } from 'react-dom';
 
 import { useAuthenticatedResourceUrl } from '../../../shared/lib/authenticatedResourceUrl';
-import { RUNS_PATH } from '../../../shared/lib/appPaths';
+import { HOME_PATH, RUNS_PATH } from '../../../shared/lib/appPaths';
 import { formatDisplayUrl } from '../../../shared/lib/displayUrl';
+import { useResizableTrailingPanel } from '../../../shared/lib/resizableTrailingPanel';
 import { resolveActiveFinding, resolveLinkedFindingId } from '../lib/runReportInteractions';
+import {
+  referenceBadgesForFinding,
+  splitReferenceBadges,
+  type ReferenceBadgeViewModel,
+} from '../lib/runReportReferences';
 import type { ReportFinding, ReportRecommendation, RunReportViewModel } from '../lib/runReportViewModel';
 import '../styles/run-report-viewer.css';
 
@@ -32,14 +49,94 @@ function markerLabel(label: string) {
 }
 
 const TOP_RECOMMENDATION_COUNT = 3;
+const RUN_REPORT_INSIGHT_PANEL_DEFAULT_WIDTH = 576;
+const RUN_REPORT_INSIGHT_PANEL_DEFAULT_RATIO = 0.4;
+const RUN_REPORT_INSIGHT_PANEL_MIN_WIDTH = 384;
+const RUN_REPORT_INSIGHT_PANEL_MAX_WIDTH = 704;
+const RUN_REPORT_VISUAL_MIN_WIDTH = 560;
+const RUN_REPORT_RESIZE_STEP = 24;
+const RUN_REPORT_RESIZER_FALLBACK_WIDTH = 8;
 
 const REPORT_FLOW_STAGES = [
   { id: 'first', label: '첫 화면', shortLabel: '첫 화면' },
-  { id: 'value', label: '가치 판단', shortLabel: '가치' },
-  { id: 'action', label: '행동 선택', shortLabel: '행동' },
+  { id: 'value', label: '가치 이해', shortLabel: '가치 이해' },
+  { id: 'action', label: '다음 행동 선택', shortLabel: '행동 선택' },
 ] as const;
 
 type ReportFlowStageId = (typeof REPORT_FLOW_STAGES)[number]['id'];
+
+interface ReportHelpReference {
+  title: string;
+  label: string;
+  source: string;
+  summary: string;
+  url: string;
+  quote: string;
+}
+
+interface ReportFlowHelpTerm {
+  label: string;
+  description: string;
+  reference: ReportHelpReference;
+}
+
+const REPORT_FLOW_HELP_TERMS: ReportFlowHelpTerm[] = [
+  {
+    label: '전환 흐름',
+    description:
+      '페이지 방문부터 가입, 구매, 문의 같은 목표 행동까지 이어지는 전체 과정입니다.',
+    reference: {
+      title: '왜 단계로 나눠 보나요?',
+      label: 'Funnel exploration',
+      source: 'Google Analytics',
+      summary: '사용자는 목표 행동까지 한 번에 이동하지 않고 여러 단계를 거쳐 판단합니다.\nWedge는 이 과정을 전환 흐름으로 나누어 봅니다.',
+      quote: 'steps your users take to complete a task',
+      url: 'https://support.google.com/analytics/answer/9327974?hl=en-GB',
+    },
+  },
+  {
+    label: '첫 화면',
+    description:
+      '처음 보이는 화면에서 서비스의 목적, 필요성, 시작 지점을 알 수 있는지 봅니다.',
+    reference: {
+      title: '왜 첫 화면을 보나요?',
+      label: 'Start using a service',
+      source: 'GOV.UK Design System',
+      summary: '사용자가 첫 화면에서 서비스의 목적과 시작 지점을 판단하기 때문에 첫 화면을 따로 봅니다.',
+      quote: 'what the service does',
+      url: 'https://design-system.service.gov.uk/patterns/start-using-a-service/',
+    },
+  },
+  {
+    label: '가치 이해',
+    description:
+      '혜택, 조건, 비용처럼 행동 전에 필요한 정보가 충분히 드러나는지 봅니다.',
+    reference: {
+      title: '왜 가치 이해를 보나요?',
+      label: 'PR on Websites',
+      source: 'Nielsen Norman Group',
+      summary: '사용자는 행동하기 전에 이 페이지에서 무엇을 얻을 수 있는지 이해해야 합니다.',
+      quote: 'what the site is about and what visitors can get from it',
+      url: 'https://media.nngroup.com/media/reports/free/PR_on_Websites_3rd_Edition.pdf',
+    },
+  },
+  {
+    label: '다음 행동 선택',
+    description:
+      '사용자가 다음에 눌러야 할 버튼이나 링크를 쉽게 고를 수 있는지 봅니다.',
+    reference: {
+      title: '왜 다음 행동 선택을 보나요?',
+      label: 'Button Design',
+      source: 'Baymard Institute',
+      summary: '사용자는 목표 행동으로 이어질 수 있는 명확한 다음 경로가 필요합니다.',
+      quote: 'a clear path forward',
+      url: 'https://baymard.com/learn/button-design',
+    },
+  },
+];
+
+const REPORT_FLOW_HELP_SUMMARY =
+  'Wedge는 사용자가 페이지를 보고 행동을 결정하는 과정을 세 단계로 나누어 확인합니다.';
 
 function normalizeStageLabel(value: string | null | undefined) {
   return (value ?? '').replace(/[\s/·_-]/g, '').toLowerCase();
@@ -114,9 +211,352 @@ function recommendationMeta(recommendation: ReportRecommendation, finding: Repor
   return `${stage} · ${signal}`;
 }
 
+function ReferenceBadge({
+  badge,
+  badgeId,
+}: {
+  badge: ReferenceBadgeViewModel;
+  badgeId: string;
+}) {
+  const badgeRef = useRef<HTMLButtonElement | null>(null);
+  const [tooltipPosition, setTooltipPosition] = useState<{ top: number; left: number } | null>(null);
+  const [isHoveringOrFocused, setIsHoveringOrFocused] = useState(false);
+  const isTooltipVisible = isHoveringOrFocused;
+  const tooltipId = `run-report-reference-tooltip-${badgeId.replace(/[^a-zA-Z0-9_-]/g, '-')}`;
+
+  const updateTooltipPosition = useCallback(() => {
+    const badgeElement = badgeRef.current;
+    if (!badgeElement) {
+      return;
+    }
+
+    const rect = badgeElement.getBoundingClientRect();
+    const tooltipHalfWidth = 128;
+    const viewportMargin = 16;
+    const viewportWidth = window.innerWidth || document.documentElement.clientWidth;
+    const left = Math.min(
+      Math.max(rect.left + rect.width / 2, tooltipHalfWidth + viewportMargin),
+      Math.max(tooltipHalfWidth + viewportMargin, viewportWidth - tooltipHalfWidth - viewportMargin),
+    );
+
+    setTooltipPosition({
+      top: rect.top - 8,
+      left,
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!isTooltipVisible) {
+      setTooltipPosition(null);
+      return;
+    }
+
+    updateTooltipPosition();
+  }, [isTooltipVisible, updateTooltipPosition]);
+
+  const handleMouseEnter = useCallback(() => {
+    setIsHoveringOrFocused(true);
+    updateTooltipPosition();
+  }, [updateTooltipPosition]);
+
+  const handleMouseLeave = useCallback(() => {
+    setIsHoveringOrFocused(false);
+  }, []);
+
+  const handleFocus = useCallback(() => {
+    setIsHoveringOrFocused(true);
+    updateTooltipPosition();
+  }, [updateTooltipPosition]);
+
+  const handleBlur = useCallback(() => {
+    setIsHoveringOrFocused(false);
+  }, []);
+
+  const handleClick = useCallback((event: MouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation();
+  }, []);
+
+  const tooltip = tooltipPosition && typeof document !== 'undefined'
+    ? createPortal(
+        <span
+          id={tooltipId}
+          className="run-report-reference-badge__tooltip run-report-reference-badge__tooltip--portal"
+          role="tooltip"
+          style={{ top: tooltipPosition.top, left: tooltipPosition.left }}
+        >
+          <strong>{badge.publisher}</strong>
+          <span>{badge.title}</span>
+          <small>{badge.basisSummary}</small>
+        </span>,
+        document.body,
+      )
+    : null;
+
+  return (
+    <button
+      type="button"
+      ref={badgeRef}
+      className="run-report-reference-badge"
+      aria-label={badge.ariaLabel}
+      aria-describedby={tooltipPosition ? tooltipId : undefined}
+      onClick={handleClick}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
+      onFocus={handleFocus}
+      onBlur={handleBlur}
+    >
+      <span className="run-report-reference-badge__label">{badge.label}</span>
+      {tooltip}
+    </button>
+  );
+}
+
+function RecommendationReferenceBadges({
+  recommendation,
+  finding,
+}: {
+  recommendation: ReportRecommendation;
+  finding: ReportFinding | null;
+}) {
+  const badges = referenceBadgesForFinding(finding);
+  const { visible, overflow } = splitReferenceBadges(badges);
+
+  if (badges.length === 0) {
+    return null;
+  }
+
+  return (
+    <span className="run-report-recommendation-reference-badges" aria-label="기준 근거 배지">
+      {visible.map((badge) => {
+        const badgeId = `${recommendation.id}:${badge.key}`;
+
+        return (
+          <ReferenceBadge key={badge.key} badge={badge} badgeId={badgeId} />
+        );
+      })}
+      {overflow.length > 0 ? (
+        <ReferenceOverflowBadge
+          recommendation={recommendation}
+          overflowId={`${recommendation.id}:references-overflow`}
+          badges={overflow}
+        />
+      ) : null}
+    </span>
+  );
+}
+
+function ReferenceOverflowBadge({
+  recommendation,
+  overflowId,
+  badges,
+}: {
+  recommendation: ReportRecommendation;
+  overflowId: string;
+  badges: ReferenceBadgeViewModel[];
+}) {
+  const overflowRef = useRef<HTMLSpanElement | null>(null);
+  const [isHoveringOrFocused, setIsHoveringOrFocused] = useState(false);
+  const isOpen = isHoveringOrFocused;
+  const popoverId = `run-report-reference-overflow-${overflowId.replace(/[^a-zA-Z0-9_-]/g, '-')}`;
+
+  const handleClick = useCallback((event: MouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation();
+  }, []);
+
+  const handleBlur = useCallback((event: FocusEvent<HTMLSpanElement>) => {
+    const nextFocusedElement = event.relatedTarget;
+
+    if (nextFocusedElement instanceof Node && event.currentTarget.contains(nextFocusedElement)) {
+      return;
+    }
+
+    setIsHoveringOrFocused(false);
+  }, []);
+
+  return (
+    <span
+      ref={overflowRef}
+      className="run-report-reference-overflow"
+      onMouseEnter={() => setIsHoveringOrFocused(true)}
+      onMouseLeave={() => setIsHoveringOrFocused(false)}
+      onFocus={() => setIsHoveringOrFocused(true)}
+      onBlur={handleBlur}
+    >
+      <button
+        type="button"
+        className="run-report-reference-badge run-report-reference-badge--overflow"
+        aria-label={`숨겨진 기준 근거 ${badges.length}개 더 보기`}
+        aria-describedby={isOpen ? popoverId : undefined}
+        aria-expanded={isOpen}
+        onClick={handleClick}
+      >
+        <span className="run-report-reference-badge__label">출처</span>
+      </button>
+      {isOpen ? (
+        <span id={popoverId} className="run-report-reference-overflow__popover" role="tooltip">
+          {badges.map((badge) => {
+            const badgeId = `${recommendation.id}:${badge.key}`;
+
+            return (
+              <ReferenceBadge key={badge.key} badge={badge} badgeId={badgeId} />
+            );
+          })}
+        </span>
+      ) : null}
+    </span>
+  );
+}
+
+function ReportFlowHelpButton() {
+  const buttonRef = useRef<HTMLButtonElement | null>(null);
+  const [popoverPosition, setPopoverPosition] = useState<{ top: number; left: number } | null>(null);
+  const isOpen = popoverPosition !== null;
+  const instanceId = useId().replace(/[^a-zA-Z0-9_-]/g, '-');
+  const popoverId = `run-report-flow-help-${instanceId}`;
+
+  const updatePopoverPosition = useCallback(() => {
+    const buttonElement = buttonRef.current;
+    if (!buttonElement) {
+      return;
+    }
+
+    const rect = buttonElement.getBoundingClientRect();
+    const popoverWidth = 360;
+    const viewportMargin = 14;
+    const viewportWidth = window.innerWidth || document.documentElement.clientWidth;
+    const left = Math.min(
+      Math.max(rect.left + rect.width / 2 - popoverWidth / 2, viewportMargin),
+      Math.max(viewportMargin, viewportWidth - popoverWidth - viewportMargin),
+    );
+
+    setPopoverPosition({
+      top: rect.bottom + 8,
+      left,
+    });
+  }, []);
+
+  const closePopover = useCallback(() => {
+    setPopoverPosition(null);
+  }, []);
+
+  const togglePopover = useCallback((event: React.MouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation();
+    if (isOpen) {
+      closePopover();
+      return;
+    }
+
+    updatePopoverPosition();
+  }, [closePopover, isOpen, updatePopoverPosition]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      return undefined;
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        closePopover();
+        buttonRef.current?.focus();
+      }
+    };
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (target instanceof Node && buttonRef.current?.contains(target)) {
+        return;
+      }
+
+      const popover = document.getElementById(popoverId);
+      if (target instanceof Node && popover?.contains(target)) {
+        return;
+      }
+
+      closePopover();
+    };
+
+    const handleResize = () => updatePopoverPosition();
+    const handleScroll = () => updatePopoverPosition();
+
+    document.addEventListener('keydown', handleKeyDown);
+    document.addEventListener('pointerdown', handlePointerDown);
+    window.addEventListener('resize', handleResize);
+    window.addEventListener('scroll', handleScroll, true);
+
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener('pointerdown', handlePointerDown);
+      window.removeEventListener('resize', handleResize);
+      window.removeEventListener('scroll', handleScroll, true);
+    };
+  }, [closePopover, isOpen, popoverId, updatePopoverPosition]);
+
+  const popover = popoverPosition && typeof document !== 'undefined'
+    ? createPortal(
+        <aside
+          id={popoverId}
+          className="run-report-term-help__popover"
+          role="dialog"
+          aria-label="전환 흐름 용어 설명"
+          style={{ top: popoverPosition.top, left: popoverPosition.left }}
+        >
+          <div className="run-report-term-help__header">
+            <p>{REPORT_FLOW_HELP_SUMMARY}</p>
+          </div>
+          <ol className="run-report-term-help__terms" aria-label="전환 흐름 단계 설명">
+            {REPORT_FLOW_HELP_TERMS.map((item) => (
+              <li key={item.label} className="run-report-term-help__term">
+                <span>{item.label}</span>
+                <p>{item.description}</p>
+              </li>
+            ))}
+          </ol>
+          <details className="run-report-term-help__references">
+            <summary>참고 자료</summary>
+            <div className="run-report-term-help__reference-list" aria-label="전환 흐름 설명 참고 자료">
+              {REPORT_FLOW_HELP_TERMS.map((item) => (
+                <a
+                  key={item.reference.url}
+                  href={item.reference.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  onClick={(event) => event.stopPropagation()}
+                >
+                  <em>{item.reference.title}</em>
+                  <p>{item.reference.summary}</p>
+                  <small>원문: <q>{item.reference.quote}</q></small>
+                  <span>{item.reference.source} · {item.reference.label}</span>
+                </a>
+              ))}
+            </div>
+          </details>
+        </aside>,
+        document.body,
+      )
+    : null;
+
+  return (
+    <span className="run-report-term-help">
+      <button
+        ref={buttonRef}
+        type="button"
+        className="run-report-term-help__button"
+        aria-label="전환 흐름 용어 설명 보기"
+        aria-haspopup="dialog"
+        aria-expanded={isOpen}
+        aria-controls={isOpen ? popoverId : undefined}
+        onClick={togglePopover}
+      >
+        ?
+      </button>
+      {popover}
+    </span>
+  );
+}
+
 export function RunReportBrand() {
   return (
-    <a href="/" className="run-report-brand" aria-label="Wedge 홈">
+    <a href={HOME_PATH} className="run-report-brand" aria-label="Wedge 홈">
       <span>Wedge</span>
     </a>
   );
@@ -129,12 +569,30 @@ export function RunReportViewer({
   reportDownloadMessage = '',
   onDownloadReport,
 }: RunReportViewerProps) {
+  const reportLayoutRef = useRef<HTMLDivElement | null>(null);
   const evidencePreviewRef = useRef<HTMLDivElement | null>(null);
   const targetUrlLabel = formatDisplayUrl(report.targetUrl);
+  const {
+    panelWidth: insightPanelWidth,
+    handleResizeKeyDown: handleInsightPanelResizeKeyDown,
+    handleResizePointerDown: handleInsightPanelResizePointerDown,
+    handleResizePointerMove: handleInsightPanelResizePointerMove,
+  } = useResizableTrailingPanel(reportLayoutRef, {
+    defaultWidth: RUN_REPORT_INSIGHT_PANEL_DEFAULT_WIDTH,
+    defaultRatio: RUN_REPORT_INSIGHT_PANEL_DEFAULT_RATIO,
+    minWidth: RUN_REPORT_INSIGHT_PANEL_MIN_WIDTH,
+    maxWidth: RUN_REPORT_INSIGHT_PANEL_MAX_WIDTH,
+    leadMinWidth: RUN_REPORT_VISUAL_MIN_WIDTH,
+    resizeStep: RUN_REPORT_RESIZE_STEP,
+    resizerFallbackWidth: RUN_REPORT_RESIZER_FALLBACK_WIDTH,
+    resizerSelector: '.run-report-panel-resizer',
+    resetKey: report.reportId,
+  });
   const [hoveredFindingId, setHoveredFindingId] = useState<string | null>(null);
   const [selectedFindingId, setSelectedFindingId] = useState<string | null>(report.findings[0]?.id ?? null);
   const [selectedRecommendationId, setSelectedRecommendationId] = useState<string | null>(report.recommendations[0]?.id ?? null);
   const [isAllRecommendationsOpen, setIsAllRecommendationsOpen] = useState(false);
+  const [loadedEvidencePreviewUrl, setLoadedEvidencePreviewUrl] = useState<string | null>(null);
   const recommendations = report.recommendations;
   const topRecommendations = recommendations.slice(0, TOP_RECOMMENDATION_COUNT);
   const hasMoreRecommendations = recommendations.length > TOP_RECOMMENDATION_COUNT;
@@ -200,9 +658,17 @@ export function RunReportViewer({
   const isEvidencePreviewResolving = Boolean(selectedEvidencePreviewUrl && !evidencePreviewUrl);
 
   useEffect(() => {
+    setLoadedEvidencePreviewUrl(null);
+  }, [evidencePreviewUrl]);
+
+  const handleEvidencePreviewImageLoad = useCallback(() => {
+    setLoadedEvidencePreviewUrl(evidencePreviewUrl);
+  }, [evidencePreviewUrl]);
+
+  useEffect(() => {
     const preview = evidencePreviewRef.current;
     const markerTop = activeFinding?.highlight?.top;
-    if (!preview || !markerTop || !evidencePreviewUrl) {
+    if (!preview || !markerTop || !evidencePreviewUrl || loadedEvidencePreviewUrl !== evidencePreviewUrl) {
       return;
     }
 
@@ -221,7 +687,7 @@ export function RunReportViewer({
       Math.min(maxScrollTop, preview.scrollHeight * topRatio - preview.clientHeight * 0.35),
     );
     preview.scrollTo({ top: targetScrollTop, behavior: 'smooth' });
-  }, [activeFinding?.id, activeFinding?.highlight?.top, evidencePreviewUrl]);
+  }, [activeFinding?.id, activeFinding?.highlight?.top, evidencePreviewUrl, loadedEvidencePreviewUrl]);
 
   useEffect(() => {
     if (recommendations.length === 0) {
@@ -322,7 +788,9 @@ export function RunReportViewer({
             <div className="run-report-hero__meta">
               <span className="run-report-tag">완료된 리포트</span>
             </div>
-            <h1 id="run-report-title">전환 흐름 리포트</h1>
+            <h1 id="run-report-title">
+              <span>전환 흐름 리포트</span>
+            </h1>
             <dl className="run-report-hero-context" aria-label="리포트 대상 정보">
               <div>
                 <dt>분석 대상</dt>
@@ -352,7 +820,11 @@ export function RunReportViewer({
           </dl>
         </header>
 
-        <div className="run-report-layout">
+        <div
+          ref={reportLayoutRef}
+          className="run-report-layout run-report-layout--resizable"
+          style={{ '--run-report-insight-panel-width': `${insightPanelWidth}px` } as CSSProperties}
+        >
           <section className="run-report-visual-panel" aria-label="분석 화면 미리보기">
             <article className="run-report-evidence-card">
               <div className="run-report-browser" aria-label="최근 화면 캡처">
@@ -367,7 +839,7 @@ export function RunReportViewer({
                 >
                   {evidencePreviewUrl ? (
                     <div className="run-report-evidence-preview__canvas">
-                      <img className="run-report-evidence-preview__image" src={evidencePreviewUrl} alt="실제 실행에서 수집된 화면" />
+                      <img className="run-report-evidence-preview__image" src={evidencePreviewUrl} alt="실제 실행에서 수집된 화면" onLoad={handleEvidencePreviewImageLoad} />
                       {frictionMarkers}
                     </div>
                   ) : isEvidencePreviewResolving ? (
@@ -379,6 +851,18 @@ export function RunReportViewer({
               </div>
             </article>
           </section>
+
+          <button
+            type="button"
+            className="run-report-panel-resizer"
+            aria-label="리포트 화면과 인사이트 패널 폭 조절"
+            title="좌우로 드래그해서 패널 폭 조절"
+            onKeyDown={handleInsightPanelResizeKeyDown}
+            onPointerDown={handleInsightPanelResizePointerDown}
+            onPointerMove={handleInsightPanelResizePointerMove}
+          >
+            <span aria-hidden="true" />
+          </button>
 
           <aside className="run-report-insight-panel" aria-label="먼저 고칠 항목">
             <header className="run-report-insight-summary">
@@ -412,7 +896,11 @@ export function RunReportViewer({
                       const isHinted = !isSelected && hintedRecommendationId === recommendation.id;
 
                       return (
-                        <li key={recommendation.id}>
+                        <li key={recommendation.id} className="run-report-recommendation-tab-shell">
+                          <RecommendationReferenceBadges
+                            recommendation={recommendation}
+                            finding={relatedFinding}
+                          />
                           <button
                             type="button"
                             className={`run-report-recommendation-tab${isSelected ? ' run-report-recommendation-tab--active' : ''}${isHinted ? ' run-report-recommendation-tab--hinted' : ''}`}
@@ -486,12 +974,16 @@ export function RunReportViewer({
                 <div className="run-report-selected-action" onMouseLeave={() => setHoveredFindingId(null)}>
                   <div className="run-report-stage-group">
                     <div className="run-report-section-heading run-report-section-heading--compact">
-                      <h3>전환 흐름</h3>
+                      <h3>
+                        <span>전환 흐름</span>
+                        <ReportFlowHelpButton />
+                      </h3>
                     </div>
                     <div className="run-report-stage-chips" aria-label="전환 단계">
                       <ol>
                         {flowNodes.map((node) => {
                           const isActive = node.id === activeFlowStageId;
+                          const displayLabel = isActive ? node.label : node.shortLabel;
 
                           return (
                             <li key={node.id} className={isActive ? 'run-report-stage-chips__item--active' : undefined}>
@@ -500,7 +992,7 @@ export function RunReportViewer({
                                 aria-current={isActive ? 'step' : undefined}
                                 title={node.label}
                               >
-                                {isActive ? node.label : node.shortLabel}
+                                <span className="run-report-stage-chip__label">{displayLabel}</span>
                               </span>
                             </li>
                           );

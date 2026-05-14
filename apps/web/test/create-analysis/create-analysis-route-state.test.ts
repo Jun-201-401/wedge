@@ -5,7 +5,6 @@ import {
   buildCreateAnalysisPath,
   createManualChoiceRouteState,
   createRecommendationChoiceRouteState,
-  createScenarioReadyRouteState,
   parseCreateAnalysisRouteState,
   readCreateRunContextFromEnv,
   withCreateRunContextFallback,
@@ -70,7 +69,7 @@ test('parseCreateAnalysisRouteState restores preflight, recommendations, and man
   });
 });
 
-test('parseCreateAnalysisRouteState restores setup and ready scenario state', () => {
+test('parseCreateAnalysisRouteState restores setup and maps legacy ready links to setup', () => {
   assert.deepEqual(parseCreateAnalysisRouteState('?step=setup&url=example.com&scenario=landing-cta&depth=next-screen', options), {
     stage: 'onboarding',
     submittedUrl: 'https://example.com/',
@@ -79,7 +78,7 @@ test('parseCreateAnalysisRouteState restores setup and ready scenario state', ()
   });
 
   assert.deepEqual(parseCreateAnalysisRouteState('?step=ready&url=example.com&scenario=signup-form&depth=nope', options), {
-    stage: 'ready',
+    stage: 'onboarding',
     submittedUrl: 'https://example.com/',
     scenarioId: 'signup-form',
     depthId: 'hero-only',
@@ -105,7 +104,7 @@ test('create-analysis route state preserves valid run creation context', () => {
   assert.equal(
     buildCreateAnalysisPath(
       {
-        stage: 'ready',
+        stage: 'onboarding',
         submittedUrl: 'https://example.com/',
         scenarioId: 'landing-cta',
         depthId: 'next-screen',
@@ -114,7 +113,7 @@ test('create-analysis route state preserves valid run creation context', () => {
       },
       options,
     ),
-    `/create-analysis?step=ready&url=https%3A%2F%2Fexample.com%2F&scenario=landing-cta&depth=next-screen&projectId=${projectId}&scenarioTemplateVersionId=${scenarioTemplateVersionId}`,
+    `/create-analysis?step=setup&url=https%3A%2F%2Fexample.com%2F&scenario=landing-cta&depth=next-screen&projectId=${projectId}&scenarioTemplateVersionId=${scenarioTemplateVersionId}`,
   );
 });
 
@@ -242,14 +241,14 @@ test('buildCreateAnalysisPath encodes create-analysis route state', () => {
   assert.equal(
     buildCreateAnalysisPath(
       {
-        stage: 'ready',
+        stage: 'onboarding',
         submittedUrl: 'https://example.com/',
         scenarioId: 'landing-cta',
         depthId: 'next-screen',
       },
       options,
     ),
-    '/create-analysis?step=ready&url=https%3A%2F%2Fexample.com%2F&scenario=landing-cta&depth=next-screen',
+    '/create-analysis?step=setup&url=https%3A%2F%2Fexample.com%2F&scenario=landing-cta&depth=next-screen',
   );
 });
 
@@ -262,7 +261,7 @@ test('buildCreateAnalysisPath avoids impossible non-input route states', () => {
   assert.equal(
     buildCreateAnalysisPath(
       {
-        stage: 'ready',
+        stage: 'onboarding',
         submittedUrl: 'https://example.com/',
         scenarioId: null,
         depthId: null,
@@ -274,7 +273,7 @@ test('buildCreateAnalysisPath avoids impossible non-input route states', () => {
 });
 
 
-test('create-analysis recommendation route helpers move selection directly to ready and back', () => {
+test('create-analysis recommendation route helpers preserve run context when returning from setup', () => {
   const currentState = {
     stage: 'recommendations',
     submittedUrl: 'https://example.com/',
@@ -284,10 +283,15 @@ test('create-analysis recommendation route helpers move selection directly to re
     scenarioTemplateVersionId,
   } as const;
 
-  const readyState = createScenarioReadyRouteState(currentState, 'https://example.com/', 'landing-cta', options.defaultDepthId);
+  const setupState = {
+    ...currentState,
+    stage: 'onboarding',
+    scenarioId: 'landing-cta',
+    depthId: options.defaultDepthId,
+  } as const;
 
-  assert.deepEqual(readyState, {
-    stage: 'ready',
+  assert.deepEqual(setupState, {
+    stage: 'onboarding',
     submittedUrl: 'https://example.com/',
     scenarioId: 'landing-cta',
     depthId: 'hero-only',
@@ -295,11 +299,11 @@ test('create-analysis recommendation route helpers move selection directly to re
     scenarioTemplateVersionId,
   });
   assert.equal(
-    buildCreateAnalysisPath(readyState, options),
-    `/create-analysis?step=ready&url=https%3A%2F%2Fexample.com%2F&scenario=landing-cta&depth=hero-only&projectId=${projectId}&scenarioTemplateVersionId=${scenarioTemplateVersionId}`,
+    buildCreateAnalysisPath(setupState, options),
+    `/create-analysis?step=setup&url=https%3A%2F%2Fexample.com%2F&scenario=landing-cta&depth=hero-only&projectId=${projectId}&scenarioTemplateVersionId=${scenarioTemplateVersionId}`,
   );
 
-  assert.deepEqual(createRecommendationChoiceRouteState(readyState, 'https://example.com/'), {
+  assert.deepEqual(createRecommendationChoiceRouteState(setupState, 'https://example.com/'), {
     stage: 'recommendations',
     submittedUrl: 'https://example.com/',
     scenarioId: null,
@@ -308,7 +312,7 @@ test('create-analysis recommendation route helpers move selection directly to re
     scenarioTemplateVersionId,
   });
 
-  assert.deepEqual(createManualChoiceRouteState(readyState, 'https://example.com/'), {
+  assert.deepEqual(createManualChoiceRouteState(setupState, 'https://example.com/'), {
     stage: 'manual-choice',
     submittedUrl: 'https://example.com/',
     scenarioId: null,

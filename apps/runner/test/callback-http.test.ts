@@ -343,6 +343,65 @@ test("createCallbackClient sends discovery callbacks to discovery endpoint", asy
   }
 });
 
+test("createCallbackClient sends scenario authoring callbacks to scenario authoring endpoint", async () => {
+  const received: Array<{ url: string; headers: Record<string, string | string[] | undefined>; body: string }> = [];
+  const server = createServer((request, response) => {
+    let body = "";
+    request.setEncoding("utf8");
+    request.on("data", (chunk) => {
+      body += chunk;
+    });
+    request.on("end", () => {
+      received.push({ url: request.url ?? "", headers: request.headers, body });
+      response.writeHead(200, {
+        "content-type": "application/json"
+      });
+      response.end(JSON.stringify({ accepted: true }));
+    });
+  });
+
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      server.off("error", reject);
+      resolve();
+    });
+  });
+
+  try {
+    const address = server.address();
+    assert.ok(address && typeof address !== "string");
+
+    const callbackClient = createCallbackClient(
+      createRunnerTestConfig({
+        callbackMode: "http",
+        callbackBaseUrl: `http://127.0.0.1:${address.port}`
+      })
+    );
+
+    await callbackClient.sendScenarioAuthoringAccepted!("authoring-1", {
+      eventId: "event-authoring-1",
+      workerId: "worker-1",
+      acceptedAt: "2026-05-12T00:00:00.000Z"
+    });
+
+    assert.equal(received.length, 1);
+    assert.equal(received[0]?.url, "/internal/runner/scenario-authoring-jobs/authoring-1/accepted");
+    assert.equal(received[0]?.headers["x-event-id"], "event-authoring-1");
+    assert.match(received[0]?.body ?? "", /"acceptedAt":"2026-05-12T00:00:00.000Z"/);
+  } finally {
+    await new Promise<void>((resolve, reject) => {
+      server.close((error) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+        resolve();
+      });
+    });
+  }
+});
+
 test("[콜백:http] agent callbacks use dedicated run endpoints", async () => {
   const received: Array<{ url: string; body: string }> = [];
   const server = createServer((request, response) => {

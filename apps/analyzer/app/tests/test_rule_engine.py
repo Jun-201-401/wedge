@@ -485,6 +485,8 @@ class RuleEngineTest(unittest.TestCase):
         self.assertEqual(overload[0]["evidence_refs"], ["cp_001.obs_many_choices"])
         self.assertIn("group_interactive_choice_count=15", overload[0]["signals"])
         self.assertTrue(any(signal.startswith("choice_group_key=") for signal in overload[0]["signals"]))
+        self.assertIn("evidence_locations", overload[0])
+        self.assertIn("components", overload[0]["evidence_locations"][0])
         self.assertEqual(len(overload[0]["problem_components"]), 15)
 
     def test_path_choice_overload_ignores_header_and_footer_utility_links(self) -> None:
@@ -872,7 +874,7 @@ class RuleEngineTest(unittest.TestCase):
         self.assertEqual(issue["stage"], "CTA")
         self.assertEqual(issue["severity"], 2)
         self.assertEqual(issue["confidence"], 0.88)
-        self.assertEqual(issue["references"][0]["label"], "WCAG 2.5.8")
+        self.assertIn("WCAG 2.5.8", [reference["label"] for reference in issue["references"]])
         self.assertIn("min_target_size_px=24", issue["signals"])
         self.assertIn("tight_spacing_px=8", issue["signals"])
         self.assertIn("target_size_problem_selectors=button.icon-open", issue["signals"])
@@ -1045,7 +1047,7 @@ class RuleEngineTest(unittest.TestCase):
         self.assertEqual(issue["axis"], "Clarity")
         self.assertEqual(issue["severity"], 2)
         self.assertEqual(issue["confidence"], 0.89)
-        self.assertEqual(issue["references"][0]["label"], "WCAG 3.3.2")
+        self.assertIn("WCAG 3.3.2", [reference["label"] for reference in issue["references"]])
         self.assertIn("submit_required_error=true", issue["signals"])
         self.assertIn("visible_required_marker=false", issue["signals"])
         self.assertEqual(issue["problem_components"][0]["selector"], "input.email")

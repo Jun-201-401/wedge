@@ -113,7 +113,8 @@ try {
             queues: [
               app.config.mqQueueRunExecute,
               app.config.mqQueueAgentExecute,
-              app.config.mqQueueDiscoveryExecute
+              app.config.mqQueueDiscoveryExecute,
+              app.config.mqQueueScenarioAuthoringExecute
             ],
             prefetch: app.config.mqPrefetch,
             agentConcurrency: app.config.agentConcurrency,
@@ -157,6 +158,23 @@ try {
                 detectedFlowTypes: result.discovery.result.detected_flow_types,
                 missingFlowTypes: result.discovery.result.missing_flow_types ?? [],
                 recommendationCount: result.discovery.result.scenario_recommendations.length
+              }
+            },
+            null,
+            2
+          )
+        );
+      } else if (result.kind === "scenario-authoring") {
+        console.log(
+          JSON.stringify(
+            {
+              service: app.service,
+              authoringJobId: result.authoring.authoringJobId,
+              workerId: app.config.workerId,
+              mode: "scenario-authoring-file",
+              summary: {
+                candidateCount: result.authoring.candidateCount,
+                validation: result.authoring.validation
               }
             },
             null,
@@ -243,7 +261,7 @@ function parseCliOptions(argv: string[]): CliOptions {
 }
 
 function printHelp(): void {
-  console.log(`Usage: npm run start -- [--message-file <path-to-run-discovery-or-agent-request.json>] [--consume-mq] [--replay-outbox] [--watch-outbox] [--replay-artifact-outbox] [--watch-artifact-outbox]
+  console.log(`Usage: npm run start -- [--message-file <path-to-run-discovery-or-authoring-request.json>] [--consume-mq] [--replay-outbox] [--watch-outbox] [--replay-artifact-outbox] [--watch-artifact-outbox]
 
 If --message-file is omitted, the runner uses:
   examples/run-execute.request.json
@@ -252,8 +270,9 @@ The --message-file input supports:
   run.execute.request
   agent.execute.request
   discovery.execute.request
+  scenario-authoring.execute.request
 
-If --consume-mq is provided, the runner starts RabbitMQ consumers for run.execute.request, agent.execute.request, and discovery.execute.request instead of file input.
+If --consume-mq is provided, the runner starts RabbitMQ consumers for run.execute.request, agent.execute.request, discovery.execute.request, and scenario-authoring.execute.request instead of file input.
 MQ consumer mode also starts callback and artifact outbox replay workers by default.
 Agent queue concurrency uses RUNNER_AGENT_CONCURRENCY separately from RUNNER_MQ_PREFETCH.
 Set RUNNER_MQ_MAX_DELIVERY_ATTEMPTS to bound poison message requeue attempts when RUNNER_MQ_REQUEUE_ON_FAILURE=true.

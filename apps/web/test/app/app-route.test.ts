@@ -17,7 +17,7 @@ test('resolveAppRoute routes report paths before run monitor paths', () => {
   });
 });
 
-test('resolveAppRoute routes monitor, create-analysis, and landing paths', () => {
+test('resolveAppRoute routes monitor, home, create-analysis, and landing paths', () => {
   assert.deepEqual(resolveAppRoute(`/runs/${runUuid}`), {
     kind: 'run-monitor',
     runId: runUuid,
@@ -26,8 +26,9 @@ test('resolveAppRoute routes monitor, create-analysis, and landing paths', () =>
   assert.deepEqual(resolveAppRoute('/runs'), { kind: 'runs-list' });
   assert.deepEqual(resolveAppRoute('/login'), { kind: 'login' });
   assert.deepEqual(resolveAppRoute('/signup'), { kind: 'signup' });
-  assert.deepEqual(resolveAppRoute('/'), { kind: 'landing' });
-  assert.deepEqual(resolveAppRoute('/runs/not-a-valid-run/report'), { kind: 'landing' });
+  assert.deepEqual(resolveAppRoute('/'), { kind: 'create-analysis' });
+  assert.deepEqual(resolveAppRoute('/landing'), { kind: 'landing' });
+  assert.deepEqual(resolveAppRoute('/runs/not-a-valid-run/report'), { kind: 'create-analysis' });
 });
 
 
@@ -47,5 +48,6 @@ test('resolveProtectedRouteGate leaves mock and public routes open during auth c
   assert.equal(resolveProtectedRouteGate(resolveAppRoute('/runs/mock-landing-cta'), 'checking'), 'open');
   assert.equal(resolveProtectedRouteGate(resolveAppRoute('/'), 'checking'), 'open');
   assert.equal(resolveProtectedRouteGate(resolveAppRoute('/create-analysis'), 'checking'), 'open');
+  assert.equal(resolveProtectedRouteGate(resolveAppRoute('/landing'), 'checking'), 'open');
   assert.equal(resolveProtectedRouteGate(resolveAppRoute('/runs'), 'checking'), 'loading');
 });
