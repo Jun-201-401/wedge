@@ -527,11 +527,11 @@ function createCheckpointObservations({
     ...createCtaCandidateObservations(step, pageSnapshot),
     ...createProductCardObservations(step, pageSnapshot, screenshotArtifactId).map((observation) => ({ ...observation })),
     ...createGoalActionCandidateObservations(step, pageSnapshot).map((observation) => ({ ...observation })),
-    ...pageSnapshot.consoleErrors.map((message) => ({
+    ...pageSnapshot.consoleErrors.filter(isActionableConsoleError).map((message) => ({
       type: "console_error",
       message
     })),
-    ...pageSnapshot.networkErrors.map((message) => ({
+    ...pageSnapshot.networkErrors.filter(isActionableNetworkFailure).map((message) => ({
       type: "network_failure",
       message
     })),
@@ -545,6 +545,36 @@ function createCheckpointObservations({
         }]),
     ...createSettleObservations(settleResult)
   ];
+}
+
+function isActionableConsoleError(message: string): boolean {
+  const normalizedMessage = message.trim();
+  if (normalizedMessage.length === 0) {
+    return false;
+  }
+
+  if (normalizedMessage.includes("net::ERR_UNKNOWN_URL_SCHEME")) {
+    return false;
+  }
+
+  return true;
+}
+
+function isActionableNetworkFailure(message: string): boolean {
+  const normalizedMessage = message.trim();
+  if (normalizedMessage.length === 0) {
+    return false;
+  }
+
+  if (normalizedMessage.includes("chrome-extension://") && normalizedMessage.includes("net::ERR_UNKNOWN_URL_SCHEME")) {
+    return false;
+  }
+
+  if (normalizedMessage.includes("bc.ad.daum.net") && normalizedMessage.includes("net::ERR_ABORTED")) {
+    return false;
+  }
+
+  return true;
 }
 
 function createPageReadyTimingObservations({

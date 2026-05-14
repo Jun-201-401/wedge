@@ -924,6 +924,54 @@ test("[수집 pipeline] page snapshot만 있어도 fallback screenshot/DOM/conso
   );
 });
 
+test("[수집 pipeline] third-party console/network noise는 observation에서 제외하고 raw console artifact에는 보존한다", async () => {
+  const capturePipeline = createCapturePipeline();
+  const plan = createMinimalPlan();
+  const benignConsoleError = "Failed to load resource: net::ERR_UNKNOWN_URL_SCHEME";
+  const actionableConsoleError = "ReferenceError: checkoutButton is not defined";
+  const benignExtensionFailure = "GET chrome-extension://aefibgbaijilanbphdomgjlogkldhlpm/vendor/crypto/aes.js?_=1 net::ERR_UNKNOWN_URL_SCHEME";
+  const benignTrackerAbort = "GET https://bc.ad.daum.net/bc?d=tracking net::ERR_ABORTED";
+  const actionableNetworkFailure = "GET https://example.com/api/checkout net::ERR_CONNECTION_REFUSED";
+  const pageSnapshot: BrowserPageSnapshot = createSimulatedPageSnapshot(plan, {
+    consoleErrors: [benignConsoleError, actionableConsoleError],
+    networkErrors: [benignExtensionFailure, benignTrackerAbort, actionableNetworkFailure]
+  });
+
+  const collection = await capturePipeline.collectCheckpoint({
+    step: {
+      step_id: "step_noise_filter",
+      stage: "CTA",
+      description: "filter benign third-party browser noise",
+      action: {
+        type: "checkpoint"
+      },
+      settle_strategy: {
+        type: "none",
+        timeout_ms: 0
+      },
+      checkpoint: true
+    },
+    stepOrder: 2,
+    plan,
+    pageSnapshot,
+    settleResult: createSettledResult()
+  });
+
+  const consoleArtifact = collection.artifacts.find((artifact) => artifact.artifactType === "CONSOLE_LOG");
+  assert.match(consoleArtifact?.content ?? "", /ERR_UNKNOWN_URL_SCHEME/);
+  assert.match(consoleArtifact?.content ?? "", /checkoutButton is not defined/);
+
+  const consoleErrorMessages = collection.checkpoint.observations
+    .filter((observation) => observation.type === "console_error")
+    .map((observation) => observation.message);
+  const networkFailureMessages = collection.checkpoint.observations
+    .filter((observation) => observation.type === "network_failure")
+    .map((observation) => observation.message);
+
+  assert.deepEqual(consoleErrorMessages, [actionableConsoleError]);
+  assert.deepEqual(networkFailureMessages, [actionableNetworkFailure]);
+});
+
 test("[수집 pipeline] CTA 분석용 interactive_components observation을 checkpoint에 포함한다", async () => {
   const capturePipeline = createCapturePipeline();
   const plan = createMinimalPlan();
