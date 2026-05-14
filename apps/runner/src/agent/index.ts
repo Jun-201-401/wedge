@@ -1,4 +1,15 @@
-export { executeAgentRun, type AgentExecutionResult, type AgentExecutorInput } from "./controller.ts";
+export {
+  executeAgentRun,
+  type AgentActionRuntime,
+  type AgentActionRuntimeErrorInput,
+  type AgentActionRuntimeFailureEvidence,
+  type AgentActionRuntimeFailureInput,
+  type AgentActionRuntimeStepInput,
+  type AgentActionRuntimeStepResult,
+  type AgentExecutionResult,
+  type AgentExecutionSummary,
+  type AgentExecutorInput
+} from "./controller.ts";
 export { AgentLlmDecisionClient, createAgentDecisionClient, type AgentLlmDecisionTransport } from "./llm-client.ts";
 export {
   AgentMcpDecisionClient,

@@ -8,6 +8,7 @@ import { ScenarioExecutionError, type ScenarioExecutionSummary } from "../scenar
 import type { AgentExecuteMessage, Artifact } from "../shared/contracts.ts";
 import { classifyRunnerFailure, errorMessage, logOperationalEvent, runnerFailureOutcome } from "../shared/utils.ts";
 import type { ArtifactStore } from "../storage/index.ts";
+import { createScenarioBackedAgentActionRuntime } from "./agent-action-runtime.ts";
 import {
   AgentIdempotencyInProgressError,
   createApiAgentIdempotencyStore,
@@ -351,6 +352,7 @@ async function executeAgentMessage({
       callbackClient,
       capturePipeline,
       artifactStore,
+      actionRuntime: createScenarioBackedAgentActionRuntime(),
       decisionClient: createAgentDecisionClient(config)
     });
 

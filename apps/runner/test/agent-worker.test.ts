@@ -3,10 +3,17 @@ import test from "node:test";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
-import { createAgentRuntimePlan, executeAgentRun, type AgentDecisionClient } from "../src/agent/index.ts";
+import {
+  createAgentRuntimePlan,
+  executeAgentRun,
+  type AgentDecisionClient,
+  type AgentExecutionResult,
+  type AgentExecutorInput
+} from "../src/agent/index.ts";
 import { createCapturePipeline } from "../src/capture/index.ts";
 import { createAgentWorkerHarness, createCheckoutHeuristicComponents } from "./agent-support.ts";
 import { registerAgentWorker } from "../src/worker/agent-worker.ts";
+import { createScenarioBackedAgentActionRuntime } from "../src/worker/agent-action-runtime.ts";
 import type { AgentRunnerExecutionResult } from "../src/worker/agent-worker.ts";
 import type { AgentIdempotencyStore } from "../src/worker/agent-idempotency.ts";
 import { ScenarioExecutionError } from "../src/scenario/executor/index.ts";
@@ -20,6 +27,15 @@ import {
   loadAgentExampleMessage
 } from "./support.ts";
 import type { AgentEvent, AgentTraceCallbackPayload, Artifact, ArtifactDraft, RunnerCheckpointsRequest, StepEvent } from "../src/shared/contracts.ts";
+
+function executeAgentRunWithScenarioRuntime(
+  input: Omit<AgentExecutorInput, "actionRuntime">
+): Promise<AgentExecutionResult> {
+  return executeAgentRun({
+    ...input,
+    actionRuntime: createScenarioBackedAgentActionRuntime()
+  });
+}
 
 test("[Agent Worker] AgentTask로 CTA 후보를 관찰해 클릭한다", async () => {
   const message = await loadAgentExampleMessage();
@@ -386,7 +402,7 @@ test("[Agent Worker] checkpoint decision은 browser action으로 실행하지 �
     })
   };
 
-  const result = await executeAgentRun({
+  const result = await executeAgentRunWithScenarioRuntime({
     runId: task.run_id,
     task,
     runtimePlan,
@@ -465,7 +481,7 @@ test("[Agent Worker] 빈 초기 탭에서는 LLM checkpoint보다 start_url boot
     }
   };
 
-  const result = await executeAgentRun({
+  const result = await executeAgentRunWithScenarioRuntime({
     runId: task.run_id,
     task,
     runtimePlan,
@@ -542,7 +558,7 @@ test("[Agent Worker] checkpoint decision도 캡처 정책이 켜져 있으면 ch
     })
   };
 
-  const result = await executeAgentRun({
+  const result = await executeAgentRunWithScenarioRuntime({
     runId: task.run_id,
     task,
     runtimePlan,
@@ -655,7 +671,7 @@ test("[Agent Worker] 첫 turn action 실패도 failure checkpoint artifact를 �
 
   let caught: unknown;
   try {
-    await executeAgentRun({
+    await executeAgentRunWithScenarioRuntime({
       runId: task.run_id,
       task,
       runtimePlan,
@@ -768,7 +784,7 @@ test("[Agent Worker] max_duration_ms를 넘긴 decision은 action 전에 EXHAUST
     }
   };
 
-  const result = await executeAgentRun({
+  const result = await executeAgentRunWithScenarioRuntime({
     runId: task.run_id,
     task,
     runtimePlan,
@@ -835,7 +851,7 @@ test("[Agent Worker] max_duration_ms를 넘긴 in-flight action은 반환 전 �
     })
   };
 
-  const result = await executeAgentRun({
+  const result = await executeAgentRunWithScenarioRuntime({
     runId: task.run_id,
     task,
     runtimePlan,

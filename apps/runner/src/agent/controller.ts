@@ -2,13 +2,14 @@ import type { BrowserSession } from "../browser/playwright/index.ts";
 import type { CallbackClient } from "../callback/index.ts";
 import type { CapturePipeline } from "../capture/index.ts";
 import { createDeliverySummary, mergeDeliveryIssues, type DeliveryIssue, type DeliverySummary } from "../delivery/index.ts";
-import { createEmptyCollectorStatusSummary, mergeCollectorStatusSummaries } from "../observability/collectors.ts";
-import { emitFailureCheckpointArtifactsAndCallbacks } from "../scenario/executor/checkpoint-emitter.ts";
-import { ScenarioExecutionError, type ScenarioExecutionSummary } from "../scenario/executor/index.ts";
-import { executeScenarioStep } from "../scenario/executor/step-executor.ts";
+import {
+  createEmptyCollectorStatusSummary,
+  mergeCollectorStatusSummaries,
+  type CollectorStatusSummary
+} from "../observability/collectors.ts";
 import type { ArtifactStore } from "../storage/index.ts";
 import type { AgentTask, Artifact, ScenarioPlan, ScenarioStep } from "../shared/contracts.ts";
-import { classifyRunnerFailure, errorMessage, logOperationalEvent } from "../shared/utils.ts";
+import { classifyRunnerFailure, errorMessage, logOperationalEvent, type RunnerFailureCode } from "../shared/utils.ts";
 import { persistAgentScenarioPlanExportArtifact, persistAgentTraceArtifact } from "./trace/artifacts.ts";
 import { emitAgentEventBestEffort, emitAgentTraceBestEffort } from "./callbacks.ts";
 import { AgentBudgetExceededError, assertAgentDeadline, createAgentDeadline, remainingAgentBudgetMs, runSideEffectWithDeadlineCleanup, runWithinAgentDeadline } from "./deadline.ts";
@@ -29,12 +30,73 @@ import { createAgentTrace, summarizeObservation, type AgentTrace, type AgentTurn
 import { verifyGoal } from "./verifier.ts";
 
 export interface AgentExecutionResult {
-  summary: ScenarioExecutionSummary;
+  summary: AgentExecutionSummary;
   delivery: DeliverySummary;
   trace: AgentTrace;
   traceArtifact?: Artifact;
   scenarioPlanExport?: AgentTraceScenarioPlanExport;
   scenarioPlanExportArtifact?: Artifact;
+}
+
+export interface AgentExecutionSummary {
+  completedStepCount: number;
+  failedStepCount: number;
+  stopped: boolean;
+  collectorStatus?: CollectorStatusSummary;
+}
+
+export interface AgentActionRuntime {
+  executeStep: (input: AgentActionRuntimeStepInput) => Promise<AgentActionRuntimeStepResult>;
+  emitFailureEvidence: (input: AgentActionRuntimeFailureInput) => Promise<AgentActionRuntimeFailureEvidence>;
+  createExecutionError: (input: AgentActionRuntimeErrorInput) => Error;
+}
+
+export interface AgentActionRuntimeStepInput {
+  runId: string;
+  stepOrder: number;
+  step: ScenarioStep;
+  plan: ScenarioPlan;
+  session: BrowserSession;
+  callbackClient: CallbackClient;
+  capturePipeline: CapturePipeline;
+  artifactStore: ArtifactStore;
+}
+
+export interface AgentActionRuntimeStepResult {
+  stopRequested: boolean;
+  deliveryIssues: DeliveryIssue[];
+  collectorStatus: CollectorStatusSummary;
+}
+
+export interface AgentActionRuntimeFailureInput {
+  runId: string;
+  stepOrder: number;
+  step: ScenarioStep;
+  plan: ScenarioPlan;
+  failureCode: RunnerFailureCode;
+  failureMessage: string;
+  session: BrowserSession;
+  callbackClient: CallbackClient;
+  capturePipeline: CapturePipeline;
+  artifactStore: ArtifactStore;
+}
+
+export interface AgentActionRuntimeFailureEvidence {
+  deliveryIssues: DeliveryIssue[];
+  artifactRefs: string[];
+  checkpointId?: string;
+  collectorStatus: CollectorStatusSummary;
+}
+
+export interface AgentActionRuntimeErrorInput {
+  cause: unknown;
+  summary: AgentExecutionSummary;
+  delivery: DeliverySummary;
+  failedStepKey: string;
+  failedStepOrder: number;
+  failureCode: RunnerFailureCode;
+  failureArtifactRefs: string[];
+  failureCheckpointId?: string;
 }
 
 export interface AgentExecutorInput {
@@ -45,6 +107,7 @@ export interface AgentExecutorInput {
   callbackClient: CallbackClient;
   capturePipeline: CapturePipeline;
   artifactStore: ArtifactStore;
+  actionRuntime: AgentActionRuntime;
   decisionClient?: AgentDecisionClient;
 }
 
@@ -164,7 +227,7 @@ export async function executeAgentRun(input: AgentExecutorInput): Promise<AgentE
 
     if (decision.kind === "act" || (decision.kind === "checkpoint" && step.checkpoint)) {
       try {
-        const stepResult = await runSideEffectWithDeadlineCleanup(deadline, "action", () => executeScenarioStep({
+        const stepResult = await runSideEffectWithDeadlineCleanup(deadline, "action", () => input.actionRuntime.executeStep({
           runId: input.runId,
           stepOrder: turn,
           step,
@@ -172,8 +235,7 @@ export async function executeAgentRun(input: AgentExecutorInput): Promise<AgentE
           session: input.session,
           callbackClient: input.callbackClient,
           capturePipeline: input.capturePipeline,
-          artifactStore: input.artifactStore,
-          emitStepEvents: false
+          artifactStore: input.artifactStore
         }));
         deliveryIssues.push(...stepResult.deliveryIssues);
         collectorStatus = mergeCollectorStatusSummaries(collectorStatus, stepResult.collectorStatus);
@@ -239,7 +301,7 @@ export async function executeAgentRun(input: AgentExecutorInput): Promise<AgentE
           continue;
         }
 
-        const failureEvidence = await emitFailureCheckpointArtifactsAndCallbacks({
+        const failureEvidence = await input.actionRuntime.emitFailureEvidence({
           runId: input.runId,
           stepOrder: turn,
           step,
@@ -254,7 +316,7 @@ export async function executeAgentRun(input: AgentExecutorInput): Promise<AgentE
         deliveryIssues.push(...failureEvidence.deliveryIssues);
         collectorStatus = mergeCollectorStatusSummaries(collectorStatus, failureEvidence.collectorStatus);
 
-        throw new ScenarioExecutionError({
+        throw input.actionRuntime.createExecutionError({
           cause: error,
           summary: {
             completedStepCount,
@@ -266,7 +328,8 @@ export async function executeAgentRun(input: AgentExecutorInput): Promise<AgentE
           failedStepKey: step.step_id,
           failedStepOrder: turn,
           failureCode,
-          failureArtifactRefs: failureEvidence.artifactRefs
+          failureArtifactRefs: failureEvidence.artifactRefs,
+          failureCheckpointId: failureEvidence.checkpointId
         });
       }
 
