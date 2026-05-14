@@ -18,6 +18,7 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.atomic.AtomicLong;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
@@ -25,6 +26,8 @@ import org.springframework.stereotype.Component;
 @Component
 public class InMemoryMcpPendingDecisionRegistry implements McpPendingDecisionRegistry {
     private final ConcurrentMap<UUID, McpPendingDecision> decisionsById = new ConcurrentHashMap<>();
+    private final ConcurrentMap<UUID, Long> creationOrderById = new ConcurrentHashMap<>();
+    private final AtomicLong nextCreationOrder = new AtomicLong();
     private final Duration ttl;
     private final Clock clock;
 
@@ -55,6 +58,7 @@ public class InMemoryMcpPendingDecisionRegistry implements McpPendingDecisionReg
                 null
         );
         decisionsById.put(decision.id(), decision);
+        creationOrderById.put(decision.id(), nextCreationOrder.getAndIncrement());
         return decision;
     }
 
@@ -75,7 +79,8 @@ public class InMemoryMcpPendingDecisionRegistry implements McpPendingDecisionReg
                 .filter(decision -> decision.status() == McpPendingDecisionStatus.PENDING)
                 .filter(decision -> sessionId.equals(decision.sessionId()))
                 .filter(decision -> !decision.expiredAt(now))
-                .min(Comparator.comparing(McpPendingDecision::createdAt));
+                .min(Comparator.comparing(McpPendingDecision::createdAt)
+                        .thenComparingLong(decision -> creationOrderById.getOrDefault(decision.id(), Long.MAX_VALUE)));
     }
 
     @Override
