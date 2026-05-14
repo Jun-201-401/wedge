@@ -140,6 +140,13 @@ test('run report page follows the report.html result-first layout', () => {
   assert.match(source, /현재 우선 수정할 항목은 없습니다/);
   assert.match(source, /run-report-visual-panel/);
   assert.match(source, /run-report-insight-panel/);
+  assert.match(source, /RUN_REPORT_INSIGHT_PANEL_DEFAULT_RATIO = 0\.4/);
+  assert.match(source, /useResizableTrailingPanel\(reportLayoutRef/);
+  assert.match(source, /leadMinWidth: RUN_REPORT_VISUAL_MIN_WIDTH/);
+  assert.match(source, /resetKey: report\.reportId/);
+  assert.match(source, /handleInsightPanelResizePointerDown/);
+  assert.match(source, /run-report-layout run-report-layout--resizable/);
+  assert.match(source, /run-report-panel-resizer/);
   assert.match(source, /run-report-section--priority/);
   assert.match(source, /run-report-evidence-preview/);
   assert.doesNotMatch(source, /run-report-side-column/);
@@ -224,8 +231,12 @@ test('run report css keeps result-first content in the live simulation cockpit t
   assert.match(css, /\.run-report-hero-stats div \+ div::before\s*\{[\s\S]*?height: 0\.9rem/);
   assert.match(css, /\.run-report-hero-stats div \+ div::before\s*\{[\s\S]*?background: #e5e7eb/);
   assert.match(css, /\.run-report-layout\s*\{[\s\S]*?width: 100%/);
-  assert.match(css, /\.run-report-layout\s*\{[\s\S]*?grid-template-columns: minmax\(0, 1fr\) minmax\(32rem, 36rem\)/);
+  assert.match(css, /\.run-report-layout\s*\{[\s\S]*?grid-template-columns: minmax\(0, 1fr\) 36rem/);
+  assert.match(css, /\.run-report-layout--resizable\s*\{[\s\S]*?grid-template-columns: minmax\(0, 1fr\) 0\.5rem minmax\(24rem, var\(--run-report-insight-panel-width, 36rem\)\)/);
   assert.match(css, /\.run-report-layout\s*\{[\s\S]*?padding: 1\.5rem 1\.75rem 1\.75rem/);
+  assert.match(css, /\.run-report-panel-resizer\s*\{[\s\S]*?cursor: col-resize/);
+  assert.match(css, /\.run-report-panel-resizer\s*\{[\s\S]*?touch-action: none/);
+  assert.match(css, /@media \(max-width: 1080px\)[\s\S]*?\.run-report-panel-resizer\s*\{[\s\S]*?display: none/);
   assert.match(css, /\.run-report-visual-panel\s*\{[\s\S]*?height: 100%/);
   assert.match(css, /\.run-report-visual-panel\s*\{[\s\S]*?background: transparent/);
   assert.match(css, /\.run-report-visual-panel\s*\{[\s\S]*?overflow: hidden/);

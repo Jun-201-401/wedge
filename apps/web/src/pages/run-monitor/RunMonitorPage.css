@@ -447,23 +447,28 @@
 .run-monitor-action-message {
   flex: 0 0 auto;
   margin: 0 0 1rem;
-  border: 1px solid #e2e8f0;
+  border: 0;
   border-radius: 0.9rem;
-  background: #fff;
+  background: #f8fafc;
   padding: 0.75rem 1rem;
   color: #64748b;
-  font-size: 0.72rem;
+  font-size: 0.875rem;
   font-weight: 800;
   line-height: 1.5;
 }
 
+.run-monitor-action-message--pending {
+  background: #eff6ff;
+  color: #2563eb;
+}
+
 .run-monitor-action-message--success {
-  border-color: rgba(34, 197, 94, 0.2);
-  color: #15803d;
+  background: #fffaf2;
+  color: #9a6a2f;
 }
 
 .run-monitor-action-message--error {
-  border-color: rgba(249, 115, 22, 0.22);
+  background: #fff7ed;
   color: #c2410c;
 }
 

@@ -1,8 +1,16 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+} from 'react';
 
 import { useAuthenticatedResourceUrl } from '../../../shared/lib/authenticatedResourceUrl';
 import { RUNS_PATH } from '../../../shared/lib/appPaths';
 import { formatDisplayUrl } from '../../../shared/lib/displayUrl';
+import { useResizableTrailingPanel } from '../../../shared/lib/resizableTrailingPanel';
 import { resolveActiveFinding, resolveLinkedFindingId } from '../lib/runReportInteractions';
 import type { ReportFinding, ReportRecommendation, RunReportViewModel } from '../lib/runReportViewModel';
 import '../styles/run-report-viewer.css';
@@ -32,6 +40,12 @@ function markerLabel(label: string) {
 }
 
 const TOP_RECOMMENDATION_COUNT = 3;
+const RUN_REPORT_INSIGHT_PANEL_DEFAULT_WIDTH = 576;
+const RUN_REPORT_INSIGHT_PANEL_DEFAULT_RATIO = 0.4;
+const RUN_REPORT_INSIGHT_PANEL_MIN_WIDTH = 384;
+const RUN_REPORT_VISUAL_MIN_WIDTH = 560;
+const RUN_REPORT_RESIZE_STEP = 24;
+const RUN_REPORT_RESIZER_FALLBACK_WIDTH = 8;
 
 const REPORT_FLOW_STAGES = [
   { id: 'first', label: '첫 화면', shortLabel: '첫 화면' },
@@ -129,8 +143,24 @@ export function RunReportViewer({
   reportDownloadMessage = '',
   onDownloadReport,
 }: RunReportViewerProps) {
+  const reportLayoutRef = useRef<HTMLDivElement | null>(null);
   const evidencePreviewRef = useRef<HTMLDivElement | null>(null);
   const targetUrlLabel = formatDisplayUrl(report.targetUrl);
+  const {
+    panelWidth: insightPanelWidth,
+    handleResizeKeyDown: handleInsightPanelResizeKeyDown,
+    handleResizePointerDown: handleInsightPanelResizePointerDown,
+    handleResizePointerMove: handleInsightPanelResizePointerMove,
+  } = useResizableTrailingPanel(reportLayoutRef, {
+    defaultWidth: RUN_REPORT_INSIGHT_PANEL_DEFAULT_WIDTH,
+    defaultRatio: RUN_REPORT_INSIGHT_PANEL_DEFAULT_RATIO,
+    minWidth: RUN_REPORT_INSIGHT_PANEL_MIN_WIDTH,
+    leadMinWidth: RUN_REPORT_VISUAL_MIN_WIDTH,
+    resizeStep: RUN_REPORT_RESIZE_STEP,
+    resizerFallbackWidth: RUN_REPORT_RESIZER_FALLBACK_WIDTH,
+    resizerSelector: '.run-report-panel-resizer',
+    resetKey: report.reportId,
+  });
   const [hoveredFindingId, setHoveredFindingId] = useState<string | null>(null);
   const [selectedFindingId, setSelectedFindingId] = useState<string | null>(report.findings[0]?.id ?? null);
   const [selectedRecommendationId, setSelectedRecommendationId] = useState<string | null>(report.recommendations[0]?.id ?? null);
@@ -352,7 +382,11 @@ export function RunReportViewer({
           </dl>
         </header>
 
-        <div className="run-report-layout">
+        <div
+          ref={reportLayoutRef}
+          className="run-report-layout run-report-layout--resizable"
+          style={{ '--run-report-insight-panel-width': `${insightPanelWidth}px` } as CSSProperties}
+        >
           <section className="run-report-visual-panel" aria-label="분석 화면 미리보기">
             <article className="run-report-evidence-card">
               <div className="run-report-browser" aria-label="최근 화면 캡처">
@@ -379,6 +413,18 @@ export function RunReportViewer({
               </div>
             </article>
           </section>
+
+          <button
+            type="button"
+            className="run-report-panel-resizer"
+            aria-label="리포트 화면과 인사이트 패널 폭 조절"
+            title="좌우로 드래그해서 패널 폭 조절"
+            onKeyDown={handleInsightPanelResizeKeyDown}
+            onPointerDown={handleInsightPanelResizePointerDown}
+            onPointerMove={handleInsightPanelResizePointerMove}
+          >
+            <span aria-hidden="true" />
+          </button>
 
           <aside className="run-report-insight-panel" aria-label="먼저 고칠 항목">
             <header className="run-report-insight-summary">

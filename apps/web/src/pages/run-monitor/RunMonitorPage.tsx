@@ -5,9 +5,7 @@ import {
   useRef,
   useState,
   type CSSProperties,
-  type KeyboardEvent,
   type MouseEvent,
-  type PointerEvent,
   type ReactNode,
 } from 'react';
 
@@ -15,6 +13,7 @@ import { generateRunReport, getRunReport } from '../../api/reports';
 import { handleSpaNavigationClick, replaceAppPath } from '../../shared/lib/navigation';
 import { useAuthenticatedResourceUrl } from '../../shared/lib/authenticatedResourceUrl';
 import { formatDisplayUrl } from '../../shared/lib/displayUrl';
+import { useResizableTrailingPanel } from '../../shared/lib/resizableTrailingPanel';
 import { deleteRun, requestRunAnalysis, stopRun } from '../../api/runs';
 import type { RunReportProjection } from '../../entities/report';
 import type { EvidencePacket, RunEvidenceCounts } from '../../entities/run';
@@ -68,10 +67,11 @@ const REQUEST_ANALYSIS_SUCCESS_MESSAGE = '분석 요청이 접수됐습니다. �
 const REQUEST_ANALYSIS_ERROR_MESSAGE = '분석 요청에 실패했습니다. Run 상태 또는 접근 권한을 확인해주세요.';
 const PREPARE_REPORT_PENDING_LABEL = '리포트 준비 중';
 const RUN_MONITOR_PANEL_DEFAULT_WIDTH = 448;
+const RUN_MONITOR_PANEL_DEFAULT_RATIO = 0.4;
 const RUN_MONITOR_PANEL_MIN_WIDTH = 336;
-const RUN_MONITOR_PANEL_MAX_WIDTH = 640;
 const RUN_MONITOR_CAPTURE_MIN_WIDTH = 560;
 const RUN_MONITOR_RESIZE_STEP = 24;
+const RUN_MONITOR_RESIZER_FALLBACK_WIDTH = 8;
 
 function readQueryParam(name: string) {
   if (typeof window === 'undefined') {
@@ -83,27 +83,6 @@ function readQueryParam(name: string) {
 
 function getFallbackUrl() {
   return readQueryParam('url') ?? 'https://example.com/';
-}
-
-function clampNumber(value: number, min: number, max: number) {
-  return Math.min(Math.max(value, min), max);
-}
-
-function getResizablePanelBounds(cockpit: HTMLDivElement | null) {
-  if (!cockpit) {
-    return {
-      min: RUN_MONITOR_PANEL_MIN_WIDTH,
-      max: RUN_MONITOR_PANEL_MAX_WIDTH,
-    };
-  }
-
-  const availableWidth = cockpit.getBoundingClientRect().width;
-  const maxByCaptureWidth = Math.max(RUN_MONITOR_PANEL_MIN_WIDTH, availableWidth - RUN_MONITOR_CAPTURE_MIN_WIDTH);
-
-  return {
-    min: RUN_MONITOR_PANEL_MIN_WIDTH,
-    max: Math.min(RUN_MONITOR_PANEL_MAX_WIDTH, maxByCaptureWidth),
-  };
 }
 
 function CheckIcon({ className }: { className: string }) {
@@ -441,7 +420,21 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
   const autoReportGenerationRunIdRef = useRef<string | null>(null);
   const isMonitorMountedRef = useRef(false);
   const cockpitRef = useRef<HTMLDivElement | null>(null);
-  const [analysisPanelWidth, setAnalysisPanelWidth] = useState(RUN_MONITOR_PANEL_DEFAULT_WIDTH);
+  const {
+    panelWidth: analysisPanelWidth,
+    handleResizeKeyDown: handleAnalysisPanelResizeKeyDown,
+    handleResizePointerDown: handleAnalysisPanelResizePointerDown,
+    handleResizePointerMove: handleAnalysisPanelResizePointerMove,
+  } = useResizableTrailingPanel(cockpitRef, {
+    defaultWidth: RUN_MONITOR_PANEL_DEFAULT_WIDTH,
+    defaultRatio: RUN_MONITOR_PANEL_DEFAULT_RATIO,
+    minWidth: RUN_MONITOR_PANEL_MIN_WIDTH,
+    leadMinWidth: RUN_MONITOR_CAPTURE_MIN_WIDTH,
+    resizeStep: RUN_MONITOR_RESIZE_STEP,
+    resizerFallbackWidth: RUN_MONITOR_RESIZER_FALLBACK_WIDTH,
+    resizerSelector: '.run-monitor-panel-resizer',
+    resetKey: `${isRealRunLoading}:${runId}`,
+  });
 
   useEffect(() => {
     isMonitorMountedRef.current = true;
@@ -634,61 +627,6 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
     generateReportForRun(run.id);
   }, [currentReportProjection?.reportStatus, generateReportForRun, isMockRun, reportActionState.kind, run.id, run.status, runId]);
 
-  const updateAnalysisPanelWidth = useCallback((nextWidth: number) => {
-    const bounds = getResizablePanelBounds(cockpitRef.current);
-    setAnalysisPanelWidth(clampNumber(nextWidth, bounds.min, bounds.max));
-  }, []);
-
-  const updateAnalysisPanelWidthFromPointer = useCallback((clientX: number) => {
-    const cockpit = cockpitRef.current;
-
-    if (!cockpit) {
-      return;
-    }
-
-    const rect = cockpit.getBoundingClientRect();
-    updateAnalysisPanelWidth(rect.right - clientX);
-  }, [updateAnalysisPanelWidth]);
-
-  const handleAnalysisPanelResizePointerDown = useCallback((event: PointerEvent<HTMLButtonElement>) => {
-    event.preventDefault();
-    event.currentTarget.setPointerCapture(event.pointerId);
-    updateAnalysisPanelWidthFromPointer(event.clientX);
-  }, [updateAnalysisPanelWidthFromPointer]);
-
-  const handleAnalysisPanelResizePointerMove = useCallback((event: PointerEvent<HTMLButtonElement>) => {
-    if (event.buttons !== 1) {
-      return;
-    }
-
-    updateAnalysisPanelWidthFromPointer(event.clientX);
-  }, [updateAnalysisPanelWidthFromPointer]);
-
-  const handleAnalysisPanelResizeKeyDown = useCallback((event: KeyboardEvent<HTMLButtonElement>) => {
-    if (event.key === 'ArrowLeft') {
-      event.preventDefault();
-      updateAnalysisPanelWidth(analysisPanelWidth + RUN_MONITOR_RESIZE_STEP);
-      return;
-    }
-
-    if (event.key === 'ArrowRight') {
-      event.preventDefault();
-      updateAnalysisPanelWidth(analysisPanelWidth - RUN_MONITOR_RESIZE_STEP);
-      return;
-    }
-
-    if (event.key === 'Home') {
-      event.preventDefault();
-      updateAnalysisPanelWidth(RUN_MONITOR_PANEL_DEFAULT_WIDTH);
-      return;
-    }
-
-    if (event.key === 'End') {
-      event.preventDefault();
-      updateAnalysisPanelWidth(RUN_MONITOR_PANEL_MAX_WIDTH);
-    }
-  }, [analysisPanelWidth, updateAnalysisPanelWidth]);
-
   const evidenceScreenshotUrl = findEvidenceScreenshotArtifact(evidencePacket)?.uri ?? null;
   const snapshotUrl = live.latestFrame?.url ?? run.latestSnapshot?.url ?? evidenceScreenshotUrl;
   const authenticatedSnapshotUrl = useAuthenticatedResourceUrl(snapshotUrl);
@@ -752,13 +690,13 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
       return;
     }
 
-    setRunActionState({ kind: 'pending', message: 'Run 중지 요청을 보내는 중입니다.' });
+    setRunActionState({ kind: 'pending', message: '중지 요청을 보내고 있어요.' });
     void stopRun(run.id, { reason: 'user_requested_from_monitor' })
       .then(() => {
-        setRunActionState({ kind: 'success', message: 'Run 중지 요청을 보냈습니다. 상태가 갱신될 때까지 잠시 기다려주세요.' });
+        setRunActionState({ kind: 'success', message: '중지 요청을 보냈어요. 상태가 갱신되면 자동으로 반영됩니다.' });
       })
       .catch(() => {
-        setRunActionState({ kind: 'error', message: 'Run 중지 요청에 실패했습니다. 권한 또는 API 서버 상태를 확인해주세요.' });
+        setRunActionState({ kind: 'error', message: '중지 요청을 보내지 못했어요. 권한 또는 서버 상태를 확인해주세요.' });
       });
   };
 
@@ -767,17 +705,17 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
       return;
     }
 
-    if (!window.confirm('이 Run을 삭제할까요? 삭제 후 실행 목록으로 이동합니다.')) {
+    if (!window.confirm('이 실행을 삭제할까요? 삭제하면 실행 목록으로 이동합니다.')) {
       return;
     }
 
-    setRunActionState({ kind: 'pending', message: 'Run 삭제 요청을 보내는 중입니다.' });
+    setRunActionState({ kind: 'pending', message: '삭제 요청을 보내고 있어요.' });
     void deleteRun(run.id)
       .then(() => {
         replaceAppPath(RUNS_PATH);
       })
       .catch(() => {
-        setRunActionState({ kind: 'error', message: 'Run 삭제에 실패했습니다. 권한 또는 API 서버 상태를 확인해주세요.' });
+        setRunActionState({ kind: 'error', message: '삭제 요청을 보내지 못했어요. 권한 또는 서버 상태를 확인해주세요.' });
       });
   };
 
