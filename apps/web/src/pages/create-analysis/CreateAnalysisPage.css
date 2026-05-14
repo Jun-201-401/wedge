@@ -1147,6 +1147,7 @@
 
 .scenario-card__site-context {
   display: flex;
+  min-width: 0;
   flex-direction: column;
   gap: 0.68rem;
   margin: 1rem 0 1.2rem;
@@ -1158,6 +1159,7 @@
 
 .scenario-card__context-row {
   display: flex;
+  min-width: 0;
   flex-direction: column;
   gap: 0.2rem;
 }
@@ -1171,6 +1173,8 @@
 }
 
 .scenario-card__context-row strong {
+  display: block;
+  max-width: 100%;
   overflow: hidden;
   color: #334155;
   font-size: 0.78rem;
@@ -1178,6 +1182,12 @@
   line-height: 1.45;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.scenario-card__preview-steps li,
+.scenario-card__context-note {
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .scenario-card__preview-steps {

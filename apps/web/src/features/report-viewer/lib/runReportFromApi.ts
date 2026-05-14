@@ -63,9 +63,9 @@ function stageDisplayName(stage: string | null | undefined) {
   return {
     FIRST_VIEW: '첫 화면',
     VALUE: '가치 판단',
-    CTA: '행동/CTA',
-    INPUT: '입력',
-    COMMIT: '최종 전환',
+    CTA: '행동 선택',
+    INPUT: '행동 선택',
+    COMMIT: '행동 선택',
   }[stage ?? ''] ?? stage ?? '리포트';
 }
 

@@ -852,6 +852,7 @@ test("[수집 pipeline] CTA 분석용 interactive_components observation을 chec
     source: ["dom", "layout", "screenshot"],
     confidence: 0.82,
     primary_like_component_count: 1,
+    repeated_generic_link_grouping: [],
     components: [
       {
         text: "무료로 시작하기",
@@ -1192,6 +1193,13 @@ test("[수집 pipeline] Journey raw signal은 click 전후 상태와 artifact/bb
     breadcrumb: ["Home", "Products", "SKU 1"],
     cartCount: 1,
     toastTexts: ["장바구니에 담았습니다"],
+    loadingState: {
+      has_spinner: true,
+      has_progressbar: false,
+      status_text: ["처리 중입니다"],
+      clicked_submit_disabled: true,
+      aria_busy: true
+    },
     visiblePrices: ["₩12,000"],
     productImages: [
       {
@@ -1292,8 +1300,19 @@ test("[수집 pipeline] Journey raw signal은 click 전후 상태와 artifact/bb
   const goalActionResult = collection.checkpoint.observations.find(
     (candidate) => candidate.type === "goal_action_result"
   );
+  const loadingState = collection.checkpoint.observations.find(
+    (candidate) => candidate.type === "loading_state"
+  );
 
   assert.ok(observation);
+  assert.equal(observation.action_kind, "submit");
+  assert.deepEqual(observation.expected_outcome_hint, [
+    "url_change",
+    "dom_change",
+    "toast_show",
+    "item_count_change",
+    "form_submit"
+  ]);
   assert.equal(observation.clicked_text, "장바구니 담기");
   assert.equal(observation.clicked_selector, "button.add-cart");
   assert.equal(observation.url_before, "https://example.com");
@@ -1329,6 +1348,16 @@ test("[수집 pipeline] Journey raw signal은 click 전후 상태와 artifact/bb
     unit: "css_px"
   });
   assert.ok(Array.isArray(observation.network_result));
+  assert.ok(loadingState);
+  assert.equal(loadingState.action_kind, "submit");
+  assert.equal(loadingState.settle_status, "settled");
+  assert.deepEqual(loadingState.loading_state, {
+    has_spinner: true,
+    has_progressbar: false,
+    status_text: ["처리 중입니다"],
+    clicked_submit_disabled: true,
+    aria_busy: true
+  });
 
   assert.ok(goalActionResult);
   assert.equal(goalActionResult.clicked_text, "장바구니 담기");
@@ -1355,6 +1384,114 @@ test("[수집 pipeline] Journey raw signal은 click 전후 상태와 artifact/bb
     (goalActionResult.matched_product_card as { match_reason?: unknown }).match_reason,
     "selector_exact"
   );
+});
+
+test("[수집 pipeline] path/accordion/checkout context를 observation으로 남긴다", async () => {
+  const capturePipeline = createCapturePipeline();
+  const plan = createMinimalPlan();
+  const bounds = {
+    x: 40,
+    y: 40,
+    width: 320,
+    height: 48,
+    unit: "css_px" as const
+  };
+  const pageSnapshot = createSimulatedPageSnapshot(plan, {
+    finalUrl: "https://example.com/checkout",
+    title: "Checkout",
+    visitedUrls: ["https://example.com/cart", "https://example.com/checkout"],
+    stepIndicators: [
+      {
+        text: "1. Cart 2. Checkout 3. Payment",
+        selector: "#checkout-steps",
+        current_step: 2,
+        total_steps: 3,
+        bounds
+      }
+    ],
+    backLinkCandidates: [
+      {
+        text: "Back to cart",
+        selector: "#back-cart",
+        href: "https://example.com/cart",
+        role: "link",
+        reason: "text_back",
+        bounds
+      }
+    ],
+    accordionStates: [
+      {
+        trigger_text: "Order details",
+        trigger_selector: "#order-details-trigger",
+        panel_selector: "#order-details-panel",
+        panel_relationship: "aria_controls",
+        expanded: false,
+        panel_text_sample: ["Starter plan $19 Edit"],
+        hidden_panel_has_cta: true,
+        hidden_panel_has_required_info: true,
+        bounds
+      }
+    ],
+    checkoutContext: {
+      is_checkout_flow: true,
+      flow_subtype: "payment",
+      has_order_summary: true,
+      has_editable_summary: true,
+      has_final_submit: true,
+      order_summary_text: ["Order summary Starter plan $19"],
+      final_submit_text: "Pay now",
+      checkout_keywords: ["checkout", "summary", "total"],
+      final_submit_relation: {
+        related: true,
+        relation_type: "summary_before_submit",
+        summary_selector: "#order-summary",
+        submit_selector: "#pay-now"
+      }
+    }
+  });
+
+  const collection = await capturePipeline.collectCheckpoint({
+    step: {
+      step_id: "step_checkout_context",
+      stage: "COMMIT",
+      description: "checkout context checkpoint",
+      action: {
+        type: "checkpoint"
+      },
+      settle_strategy: {
+        type: "none",
+        timeout_ms: 0
+      },
+      checkpoint: true
+    },
+    stepOrder: 3,
+    plan,
+    pageSnapshot,
+    settleResult: createSettledResult()
+  });
+
+  const pathNavigation = collection.checkpoint.observations.find((candidate) => candidate.type === "path_navigation");
+  const accordionState = collection.checkpoint.observations.find((candidate) => candidate.type === "accordion_state");
+  const checkoutContext = collection.checkpoint.observations.find((candidate) => candidate.type === "checkout_context");
+  const stepIndicators = pathNavigation?.step_indicator as Array<Record<string, unknown>> | undefined;
+  const backLinkCandidates = pathNavigation?.back_link_candidate as Array<Record<string, unknown>> | undefined;
+  const accordions = accordionState?.accordions as Array<Record<string, unknown>> | undefined;
+  const checkoutContextValue = checkoutContext?.checkout_context as Record<string, unknown> | undefined;
+
+  assert.ok(pathNavigation);
+  assert.equal(pathNavigation.browser_history_back_available, true);
+  assert.equal(pathNavigation.flow_step_count, 3);
+  assert.equal(stepIndicators?.[0]?.current_step, 2);
+  assert.equal(backLinkCandidates?.[0]?.reason, "text_back");
+  assert.ok(accordionState);
+  assert.equal(accordions?.[0]?.expanded, false);
+  assert.equal(accordions?.[0]?.hidden_panel_has_cta, true);
+  assert.equal(accordions?.[0]?.hidden_panel_has_required_info, true);
+  assert.ok(checkoutContext);
+  assert.equal(checkoutContextValue?.is_checkout_flow, true);
+  assert.equal(checkoutContextValue?.flow_subtype, "payment");
+  assert.equal(checkoutContextValue?.has_order_summary, true);
+  assert.equal(checkoutContextValue?.has_final_submit, true);
 });
 
 test("[수집 pipeline] 상품 카드 클릭 후 상세 진입 근거를 product_detail_signal로 남긴다", async () => {

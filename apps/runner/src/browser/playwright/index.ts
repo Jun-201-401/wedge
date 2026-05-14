@@ -16,7 +16,14 @@ import type { RunnerBrowserName, RunnerConfig } from "../../config/index.ts";
 import type {
   AgentArtifactPolicy,
   AxTreeSummary,
+  BrowserAccordionState,
+  BrowserBackLinkCandidateSignal,
+  BrowserCheckoutContext,
+  BrowserFormGroupRequiredState,
   BrowserPerformanceSummary,
+  BrowserLoadingState,
+  BrowserRepeatedGenericLinkGroup,
+  BrowserStepIndicatorSignal,
   InteractiveComponentBounds,
   InteractiveComponentLayout,
   InteractiveComponentVisibility,
@@ -119,6 +126,12 @@ export interface BrowserPageSnapshot {
   performanceSummary: BrowserPerformanceSummary | null;
   breadcrumb: string[];
   toastTexts: string[];
+  loadingState: BrowserLoadingState;
+  stepIndicators: BrowserStepIndicatorSignal[];
+  backLinkCandidates: BrowserBackLinkCandidateSignal[];
+  accordionStates: BrowserAccordionState[];
+  checkoutContext: BrowserCheckoutContext;
+  repeatedGenericLinkGrouping: BrowserRepeatedGenericLinkGroup[];
   cartCount: number | null;
   visiblePrices: string[];
   productImages: BrowserProductImageSignal[];
@@ -264,6 +277,12 @@ interface MutableBrowserState {
   performanceSummary: BrowserPerformanceSummary | null;
   breadcrumb: string[];
   toastTexts: string[];
+  loadingState: BrowserLoadingState;
+  stepIndicators: BrowserStepIndicatorSignal[];
+  backLinkCandidates: BrowserBackLinkCandidateSignal[];
+  accordionStates: BrowserAccordionState[];
+  checkoutContext: BrowserCheckoutContext;
+  repeatedGenericLinkGrouping: BrowserRepeatedGenericLinkGroup[];
   cartCount: number | null;
   visiblePrices: string[];
   productImages: BrowserProductImageSignal[];
@@ -708,6 +727,17 @@ class RealPlaywrightSession implements BrowserSession {
     const startedAt = Date.now();
     const targetSummary = describeTarget(strategy.target);
 
+    if (strategy.type === "item_count_change") {
+      const { attempt, timeoutDetails } = this.createItemCountSettleAttempt(strategy);
+      return this.settleWithAttempt(
+        strategy.type,
+        startedAt,
+        targetSummary,
+        attempt,
+        timeoutDetails
+      );
+    }
+
     await this.refreshPageState();
 
     if (strategy.type === "none") {
@@ -772,17 +802,6 @@ class RealPlaywrightSession implements BrowserSession {
 
     if (strategy.type === "response") {
       const { attempt, timeoutDetails } = this.createResponseSettleAttempt(strategy);
-      return this.settleWithAttempt(
-        strategy.type,
-        startedAt,
-        targetSummary,
-        attempt,
-        timeoutDetails
-      );
-    }
-
-    if (strategy.type === "item_count_change") {
-      const { attempt, timeoutDetails } = this.createItemCountSettleAttempt(strategy);
       return this.settleWithAttempt(
         strategy.type,
         startedAt,
@@ -1203,6 +1222,12 @@ class RealPlaywrightSession implements BrowserSession {
     this.state.visibleTextBlocks = await safeVisibleTextBlocks(this.page, this.state.visibleTextBlocks);
     this.state.breadcrumb = await safeBreadcrumb(this.page, this.state.breadcrumb);
     this.state.toastTexts = await safeToastTexts(this.page, this.state.toastTexts);
+    this.state.loadingState = await safeLoadingState(this.page, this.state.lastAction, this.state.loadingState);
+    this.state.stepIndicators = await safeStepIndicators(this.page, this.state.stepIndicators);
+    this.state.backLinkCandidates = await safeBackLinkCandidates(this.page, this.state.backLinkCandidates);
+    this.state.accordionStates = await safeAccordionStates(this.page, this.state.accordionStates);
+    this.state.checkoutContext = await safeCheckoutContext(this.page, this.state.checkoutContext);
+    this.state.repeatedGenericLinkGrouping = await safeRepeatedGenericLinkGrouping(this.page, this.state.repeatedGenericLinkGrouping);
     this.state.cartCount = await safeCartCount(this.page, this.state.cartCount);
     this.state.visiblePrices = await safeVisiblePrices(this.page, this.state.visiblePrices);
     this.state.productImages = await safeProductImages(this.page, this.state.productImages);
@@ -1342,6 +1367,12 @@ function createInitialBrowserState(plan: ScenarioPlan): MutableBrowserState {
     performanceSummary: null,
     breadcrumb: [],
     toastTexts: [],
+    loadingState: emptyLoadingState(),
+    stepIndicators: [],
+    backLinkCandidates: [],
+    accordionStates: [],
+    checkoutContext: emptyCheckoutContext(),
+    repeatedGenericLinkGrouping: [],
     cartCount: null,
     visiblePrices: [],
     productImages: [],
@@ -1354,6 +1385,30 @@ function createInitialBrowserState(plan: ScenarioPlan): MutableBrowserState {
       reason: null,
       observedAt: null
     }
+  };
+}
+
+function emptyLoadingState(): BrowserLoadingState {
+  return {
+    has_spinner: false,
+    has_progressbar: false,
+    status_text: [],
+    clicked_submit_disabled: null,
+    aria_busy: false
+  };
+}
+
+function emptyCheckoutContext(): BrowserCheckoutContext {
+  return {
+    is_checkout_flow: false,
+    flow_subtype: "unknown",
+    has_order_summary: false,
+    has_editable_summary: false,
+    has_final_submit: false,
+    order_summary_text: [],
+    final_submit_text: null,
+    checkout_keywords: [],
+    final_submit_relation: null
   };
 }
 
@@ -1377,6 +1432,7 @@ function createBrowserPageSnapshot(
     interactiveComponents: state.interactiveComponents.map((component) => ({
       ...component,
       bounds: { ...component.bounds },
+      container_bounds: component.container_bounds ? { ...component.container_bounds } : component.container_bounds,
       visibility: component.visibility ? { ...component.visibility } : undefined,
       layout: component.layout ? { ...component.layout } : undefined
     })),
@@ -1393,6 +1449,36 @@ function createBrowserPageSnapshot(
     performanceSummary: state.performanceSummary ? { ...state.performanceSummary } : null,
     breadcrumb: [...state.breadcrumb],
     toastTexts: [...state.toastTexts],
+    loadingState: {
+      ...state.loadingState,
+      status_text: [...state.loadingState.status_text]
+    },
+    stepIndicators: state.stepIndicators.map((indicator) => ({
+      ...indicator,
+      bounds: { ...indicator.bounds }
+    })),
+    backLinkCandidates: state.backLinkCandidates.map((candidate) => ({
+      ...candidate,
+      bounds: { ...candidate.bounds }
+    })),
+    accordionStates: state.accordionStates.map((accordion) => ({
+      ...accordion,
+      panel_text_sample: [...accordion.panel_text_sample],
+      bounds: { ...accordion.bounds }
+    })),
+    checkoutContext: {
+      ...state.checkoutContext,
+      order_summary_text: [...state.checkoutContext.order_summary_text],
+      checkout_keywords: [...state.checkoutContext.checkout_keywords],
+      final_submit_relation: state.checkoutContext.final_submit_relation
+        ? { ...state.checkoutContext.final_submit_relation }
+        : state.checkoutContext.final_submit_relation
+    },
+    repeatedGenericLinkGrouping: state.repeatedGenericLinkGrouping.map((group) => ({
+      ...group,
+      nearby_text: [...group.nearby_text],
+      selectors: [...group.selectors]
+    })),
     cartCount: state.cartCount,
     visiblePrices: [...state.visiblePrices],
     productImages: state.productImages.map((image) => ({
@@ -2328,6 +2414,680 @@ async function safeToastTexts(page: Page, fallbackValue: string[]): Promise<stri
   }
 }
 
+async function safeLoadingState(
+  page: Page,
+  lastAction: BrowserPageSnapshot["lastAction"],
+  fallbackValue: BrowserLoadingState
+): Promise<BrowserLoadingState> {
+  try {
+    return await page.evaluate(({ clickedSelector, clickedText }) => {
+      function normalizeText(value: string | null | undefined): string {
+        return (value ?? "").replace(/\s+/g, " ").trim();
+      }
+
+      function isVisible(element: Element): boolean {
+        const rect = element.getBoundingClientRect();
+        const style = globalThis.getComputedStyle(element);
+        return rect.width > 0 &&
+          rect.height > 0 &&
+          style.visibility !== "hidden" &&
+          style.display !== "none" &&
+          Number(style.opacity || "1") > 0;
+      }
+
+      function isDisabled(element: Element | null): boolean | null {
+        if (!element) {
+          return null;
+        }
+        return element.hasAttribute("disabled") ||
+          element.getAttribute("aria-disabled") === "true" ||
+          Boolean((element as HTMLButtonElement | HTMLInputElement).disabled);
+      }
+
+      function queryClickedElement(): Element | null {
+        if (clickedSelector) {
+          try {
+            const selected = document.querySelector(clickedSelector);
+            if (selected) {
+              return selected;
+            }
+          } catch {
+            // Fall back to text matching below.
+          }
+        }
+
+        const normalizedClickedText = normalizeText(clickedText).toLowerCase();
+        if (!normalizedClickedText) {
+          return null;
+        }
+
+        return Array.from(document.querySelectorAll("button, input[type='submit'], input[type='button'], [role='button']"))
+          .find((element) => normalizeText(element.textContent || element.getAttribute("value") || element.getAttribute("aria-label")).toLowerCase() === normalizedClickedText) ?? null;
+      }
+
+      const spinnerSelectors = [
+        "[class*='spinner' i]",
+        "[class*='loading' i]",
+        "[class*='loader' i]",
+        "[data-testid*='spinner' i]",
+        "[data-testid*='loading' i]",
+        "[data-test*='spinner' i]",
+        "[data-test*='loading' i]",
+        "[aria-label*='loading' i]",
+        "[aria-label*='로딩' i]"
+      ];
+      const progressSelectors = [
+        "progress",
+        "[role='progressbar']",
+        "[aria-valuenow][aria-valuemin][aria-valuemax]"
+      ];
+      const statusSelectors = [
+        "[role='status']",
+        "[role='alert']",
+        "[aria-live]",
+        "[class*='status' i]",
+        "[class*='loading' i]",
+        "[class*='progress' i]"
+      ];
+
+      const hasSpinner = spinnerSelectors.some((selector) =>
+        Array.from(document.querySelectorAll(selector)).some(isVisible)
+      );
+      const hasProgressbar = progressSelectors.some((selector) =>
+        Array.from(document.querySelectorAll(selector)).some(isVisible)
+      );
+      const statusTextPattern = /loading|please wait|processing|submitting|saving|로딩|처리 중|처리중|저장 중|저장중|제출 중|제출중|결제 중|결제중|예약 중|예약중/i;
+      const statusText = Array.from(new Set(statusSelectors
+        .flatMap((selector) => Array.from(document.querySelectorAll(selector)))
+        .filter(isVisible)
+        .map((element) => normalizeText(element.textContent || element.getAttribute("aria-label")))
+        .filter((text) => text.length > 0 && statusTextPattern.test(text))
+        .map((text) => text.slice(0, 160))))
+        .slice(0, 10);
+
+      return {
+        has_spinner: hasSpinner,
+        has_progressbar: hasProgressbar,
+        status_text: statusText,
+        clicked_submit_disabled: isDisabled(queryClickedElement()),
+        aria_busy: Array.from(document.querySelectorAll("[aria-busy='true']")).some(isVisible)
+      };
+    }, {
+      clickedSelector: lastAction?.type === "click" ? lastAction.clickedSelector ?? null : null,
+      clickedText: lastAction?.type === "click" ? lastAction.clickedText ?? null : null
+    });
+  } catch {
+    return fallbackValue;
+  }
+}
+
+async function safeStepIndicators(page: Page, fallbackValue: BrowserStepIndicatorSignal[]): Promise<BrowserStepIndicatorSignal[]> {
+  try {
+    return await page.evaluate(() => {
+      function normalizeText(value: string | null | undefined): string {
+        return (value ?? "").replace(/\s+/g, " ").trim();
+      }
+
+      function isVisible(element: Element): boolean {
+        const rect = element.getBoundingClientRect();
+        const style = globalThis.getComputedStyle(element);
+        return rect.width > 0 && rect.height > 0 && style.visibility !== "hidden" && style.display !== "none";
+      }
+
+      function escapeSelector(value: string): string {
+        return ((globalThis as typeof globalThis & { CSS?: { escape?: (value: string) => string } }).CSS?.escape?.(value)) ??
+          value.replace(/[^a-zA-Z0-9_-]/g, "\\$&");
+      }
+
+      function selectorFor(element: Element): string | null {
+        const id = element.getAttribute("id");
+        if (id) {
+          return `#${escapeSelector(id)}`;
+        }
+        const testId = element.getAttribute("data-testid") ?? element.getAttribute("data-test");
+        if (testId) {
+          return `[data-testid="${testId.replace(/"/g, '\\"')}"]`;
+        }
+        const className = Array.from(element.classList).find((entry) => entry.length > 0);
+        return className ? `${element.tagName.toLowerCase()}.${escapeSelector(className)}` : element.tagName.toLowerCase();
+      }
+
+      function boundsFor(element: Element): InteractiveComponentBounds {
+        const rect = element.getBoundingClientRect();
+        return {
+          x: Math.round(rect.x),
+          y: Math.round(rect.y),
+          width: Math.round(rect.width),
+          height: Math.round(rect.height),
+          unit: "css_px" as const
+        };
+      }
+
+      function parseStepNumbers(text: string, element: Element): { current_step: number | null; total_steps: number | null } {
+        const normalized = text.toLowerCase();
+        const explicit = normalized.match(/(?:step\s*)?(\d+)\s*(?:\/|of|중)\s*(\d+)/) ??
+          normalized.match(/(\d+)\s*단계\s*(?:\/|중|of)?\s*(\d+)?/);
+        const currentFromText = explicit?.[1] ? Number.parseInt(explicit[1], 10) : null;
+        const totalFromText = explicit?.[2] ? Number.parseInt(explicit[2], 10) : null;
+        const children = Array.from(element.querySelectorAll("li, [role='listitem'], [aria-current], .active, [class*='current' i], [data-current='true']"))
+          .filter((candidate) => normalizeText(candidate.textContent).length > 0);
+        const currentIndex = children.findIndex((candidate) =>
+          candidate.getAttribute("aria-current") === "step" ||
+          candidate.getAttribute("aria-current") === "true" ||
+          candidate.getAttribute("data-current") === "true" ||
+          candidate.classList.contains("active") ||
+          Array.from(candidate.classList).some((className) => /current|active|selected/i.test(className))
+        );
+        return {
+          current_step: currentFromText ?? (currentIndex >= 0 ? currentIndex + 1 : null),
+          total_steps: totalFromText ?? (children.length > 1 ? children.length : null)
+        };
+      }
+
+      const selectors = [
+        "[aria-label*='step' i]",
+        "[aria-label*='progress' i]",
+        "[aria-label*='단계' i]",
+        "[aria-label*='진행' i]",
+        "[class*='step' i]",
+        "[class*='progress' i]",
+        "[data-testid*='step' i]",
+        "[data-testid*='progress' i]",
+        "ol",
+        "nav"
+      ];
+      const stepTextPattern = /step\s*\d+|\d+\s*\/\s*\d+|\d+\s*of\s*\d+|\d+\s*단계|정보\s*입력.*(?:결제|주문|예약).*완료|cart.*checkout.*payment/i;
+      const seen = new Set<string>();
+
+      return selectors
+        .flatMap((selector) => Array.from(document.querySelectorAll(selector)))
+        .map((element) => {
+          const text = normalizeText(element.textContent || element.getAttribute("aria-label"));
+          const numbers = parseStepNumbers(text, element);
+          return {
+            text: text.slice(0, 240),
+            selector: selectorFor(element),
+            current_step: numbers.current_step,
+            total_steps: numbers.total_steps,
+            bounds: boundsFor(element),
+            visible: isVisible(element),
+            likely: stepTextPattern.test(text) || (numbers.total_steps ?? 0) > 1
+          };
+        })
+        .filter((indicator) => indicator.visible && indicator.likely && indicator.text.length > 0)
+        .filter((indicator) => {
+          const key = `${indicator.selector ?? ""}:${indicator.text}`;
+          if (seen.has(key)) {
+            return false;
+          }
+          seen.add(key);
+          return true;
+        })
+        .slice(0, 8)
+        .map(({ visible, likely, ...indicator }) => indicator);
+    });
+  } catch {
+    return fallbackValue;
+  }
+}
+
+async function safeBackLinkCandidates(page: Page, fallbackValue: BrowserBackLinkCandidateSignal[]): Promise<BrowserBackLinkCandidateSignal[]> {
+  try {
+    return await page.evaluate(() => {
+      function normalizeText(value: string | null | undefined): string {
+        return (value ?? "").replace(/\s+/g, " ").trim();
+      }
+
+      function isVisible(element: Element): boolean {
+        const rect = element.getBoundingClientRect();
+        const style = globalThis.getComputedStyle(element);
+        return rect.width > 0 && rect.height > 0 && style.visibility !== "hidden" && style.display !== "none";
+      }
+
+      function escapeSelector(value: string): string {
+        return ((globalThis as typeof globalThis & { CSS?: { escape?: (value: string) => string } }).CSS?.escape?.(value)) ??
+          value.replace(/[^a-zA-Z0-9_-]/g, "\\$&");
+      }
+
+      function selectorFor(element: Element): string | null {
+        const id = element.getAttribute("id");
+        if (id) {
+          return `#${escapeSelector(id)}`;
+        }
+        const href = element.getAttribute("href");
+        if (href && element.tagName.toLowerCase() === "a") {
+          return `a[href="${href.replace(/"/g, '\\"')}"]`;
+        }
+        const className = Array.from(element.classList).find((entry) => entry.length > 0);
+        return className ? `${element.tagName.toLowerCase()}.${escapeSelector(className)}` : element.tagName.toLowerCase();
+      }
+
+      function hrefFor(element: Element): string | null {
+        const href = element.getAttribute("href");
+        if (!href) {
+          return null;
+        }
+        try {
+          return new URL(href, document.baseURI).toString();
+        } catch {
+          return href;
+        }
+      }
+
+      function boundsFor(element: Element): InteractiveComponentBounds {
+        const rect = element.getBoundingClientRect();
+        return {
+          x: Math.round(rect.x),
+          y: Math.round(rect.y),
+          width: Math.round(rect.width),
+          height: Math.round(rect.height),
+          unit: "css_px" as const
+        };
+      }
+
+      function reasonFor(text: string, href: string | null, element: Element): BrowserBackLinkCandidateSignal["reason"] | null {
+        if (/수정|변경|edit|change/i.test(text)) {
+          return "edit_summary";
+        }
+        if (/이전|뒤로|돌아|back|previous|return/i.test(text)) {
+          return element.getAttribute("onclick")?.toLowerCase().includes("history") ? "history_control" : "text_back";
+        }
+        if (href && /back|prev|previous|return|cart|checkout|edit|change/i.test(href)) {
+          return "href_back";
+        }
+        return null;
+      }
+
+      const seen = new Set<string>();
+      return Array.from(document.querySelectorAll("a[href], button, [role='button'], [role='link']"))
+        .map((element) => {
+          const text = normalizeText(element.textContent || element.getAttribute("aria-label") || element.getAttribute("title"));
+          const href = hrefFor(element);
+          const reason = reasonFor(text, href, element);
+          return {
+            text: text.slice(0, 120),
+            selector: selectorFor(element),
+            href,
+            role: element.getAttribute("role") ?? (element.tagName.toLowerCase() === "a" ? "link" : element.tagName.toLowerCase() === "button" ? "button" : null),
+            reason,
+            bounds: boundsFor(element),
+            visible: isVisible(element)
+          };
+        })
+        .filter((candidate): candidate is Omit<typeof candidate, "reason" | "visible"> & { reason: BrowserBackLinkCandidateSignal["reason"]; visible: boolean } =>
+          candidate.visible && candidate.reason !== null && candidate.text.length > 0
+        )
+        .filter((candidate) => {
+          const key = `${candidate.selector ?? ""}:${candidate.text}:${candidate.href ?? ""}`;
+          if (seen.has(key)) {
+            return false;
+          }
+          seen.add(key);
+          return true;
+        })
+        .slice(0, 12)
+        .map(({ visible, ...candidate }) => candidate);
+    });
+  } catch {
+    return fallbackValue;
+  }
+}
+
+async function safeAccordionStates(page: Page, fallbackValue: BrowserAccordionState[]): Promise<BrowserAccordionState[]> {
+  try {
+    return await page.evaluate(() => {
+      function normalizeText(value: string | null | undefined): string {
+        return (value ?? "").replace(/\s+/g, " ").trim();
+      }
+
+      function escapeSelector(value: string): string {
+        return ((globalThis as typeof globalThis & { CSS?: { escape?: (value: string) => string } }).CSS?.escape?.(value)) ??
+          value.replace(/[^a-zA-Z0-9_-]/g, "\\$&");
+      }
+
+      function selectorFor(element: Element | null): string | null {
+        if (!element) {
+          return null;
+        }
+        const id = element.getAttribute("id");
+        if (id) {
+          return `#${escapeSelector(id)}`;
+        }
+        const className = Array.from(element.classList).find((entry) => entry.length > 0);
+        return className ? `${element.tagName.toLowerCase()}.${escapeSelector(className)}` : element.tagName.toLowerCase();
+      }
+
+      function boundsFor(element: Element): InteractiveComponentBounds {
+        const rect = element.getBoundingClientRect();
+        return {
+          x: Math.round(rect.x),
+          y: Math.round(rect.y),
+          width: Math.round(rect.width),
+          height: Math.round(rect.height),
+          unit: "css_px" as const
+        };
+      }
+
+      function panelFor(trigger: Element): Element | null {
+        const controls = trigger.getAttribute("aria-controls");
+        if (controls) {
+          const controlled = document.getElementById(controls);
+          if (controlled) {
+            return controlled;
+          }
+        }
+        if (trigger.tagName.toLowerCase() === "summary") {
+          return trigger.closest("details");
+        }
+        return trigger.nextElementSibling ?? trigger.closest("[class*='accordion' i], [data-testid*='accordion' i]") ?? null;
+      }
+
+      function panelRelationshipFor(trigger: Element, panel: Element | null): BrowserAccordionState["panel_relationship"] {
+        if (!panel) {
+          return "unknown";
+        }
+        const controls = trigger.getAttribute("aria-controls");
+        if (controls && document.getElementById(controls) === panel) {
+          return "aria_controls";
+        }
+        if (trigger.tagName.toLowerCase() === "summary" && trigger.closest("details") === panel) {
+          return "details_summary";
+        }
+        if (trigger.nextElementSibling === panel) {
+          return "next_sibling";
+        }
+        if (trigger.closest("[class*='accordion' i], [data-testid*='accordion' i]") === panel) {
+          return "container";
+        }
+        return "unknown";
+      }
+
+      function isExpanded(trigger: Element, panel: Element | null): boolean {
+        if (trigger.tagName.toLowerCase() === "summary") {
+          return trigger.closest("details")?.hasAttribute("open") === true;
+        }
+        const ariaExpanded = trigger.getAttribute("aria-expanded");
+        if (ariaExpanded === "true") {
+          return true;
+        }
+        if (ariaExpanded === "false") {
+          return false;
+        }
+        if (panel instanceof HTMLDetailsElement) {
+          return panel.open;
+        }
+        return panel ? !panel.hasAttribute("hidden") && globalThis.getComputedStyle(panel).display !== "none" : false;
+      }
+
+      function hiddenPanelHasCta(panel: Element | null, expanded: boolean): boolean {
+        if (!panel || expanded) {
+          return false;
+        }
+        return Array.from(panel.querySelectorAll("a[href], button, input:not([type='hidden']), [role='button'], [role='link']"))
+          .some((element) => normalizeText(element.textContent || element.getAttribute("aria-label") || element.getAttribute("value")).length > 0);
+      }
+
+      function hiddenPanelHasRequiredInfo(panel: Element | null, expanded: boolean): boolean {
+        if (!panel || expanded) {
+          return false;
+        }
+        const text = normalizeText(panel.textContent);
+        const hasRequiredControl = Array.from(panel.querySelectorAll("input[required], select[required], textarea[required], [aria-required='true']")).length > 0;
+        const hasRequiredText = /필수|required|must|mandatory|약관|동의|주의|제한|조건|마감|취소|환불|total|합계|총액|결제 금액/i.test(text);
+        return hasRequiredControl || hasRequiredText;
+      }
+
+      const triggers = [
+        ...Array.from(document.querySelectorAll("details > summary")),
+        ...Array.from(document.querySelectorAll("[aria-expanded][aria-controls], [data-state='open'], [data-state='closed'], [class*='accordion' i] button, [data-testid*='accordion' i] button"))
+      ];
+      const seen = new Set<Element>();
+
+      return triggers
+        .filter((trigger) => {
+          if (seen.has(trigger)) {
+            return false;
+          }
+          seen.add(trigger);
+          return true;
+        })
+        .map((trigger) => {
+          const panel = panelFor(trigger);
+          const expanded = isExpanded(trigger, panel);
+          const panelText = normalizeText(panel?.textContent);
+          return {
+            trigger_text: normalizeText(trigger.textContent || trigger.getAttribute("aria-label")).slice(0, 160),
+            trigger_selector: selectorFor(trigger),
+            panel_selector: selectorFor(panel),
+            panel_relationship: panelRelationshipFor(trigger, panel),
+            expanded,
+            panel_text_sample: panelText ? [panelText.slice(0, 240)] : [],
+            hidden_panel_has_cta: hiddenPanelHasCta(panel, expanded),
+            hidden_panel_has_required_info: hiddenPanelHasRequiredInfo(panel, expanded),
+            bounds: boundsFor(trigger)
+          };
+        })
+        .filter((accordion) => accordion.trigger_text.length > 0)
+        .slice(0, 12);
+    });
+  } catch {
+    return fallbackValue;
+  }
+}
+
+async function safeCheckoutContext(page: Page, fallbackValue: BrowserCheckoutContext): Promise<BrowserCheckoutContext> {
+  try {
+    return await page.evaluate(() => {
+      function normalizeText(value: string | null | undefined): string {
+        return (value ?? "").replace(/\s+/g, " ").trim();
+      }
+
+      function isVisible(element: Element): boolean {
+        const rect = element.getBoundingClientRect();
+        const style = globalThis.getComputedStyle(element);
+        return rect.width > 0 && rect.height > 0 && style.visibility !== "hidden" && style.display !== "none";
+      }
+
+      function escapeSelector(value: string): string {
+        return ((globalThis as typeof globalThis & { CSS?: { escape?: (value: string) => string } }).CSS?.escape?.(value)) ??
+          value.replace(/[^a-zA-Z0-9_-]/g, "\\$&");
+      }
+
+      function selectorFor(element: Element | null): string | null {
+        if (!element) {
+          return null;
+        }
+        const id = element.getAttribute("id");
+        if (id) {
+          return `#${escapeSelector(id)}`;
+        }
+        const testId = element.getAttribute("data-testid") ?? element.getAttribute("data-test");
+        if (testId) {
+          return `[data-testid="${testId.replace(/"/g, '\\"')}"]`;
+        }
+        const className = Array.from(element.classList).find((entry) => entry.length > 0);
+        return className ? `${element.tagName.toLowerCase()}.${escapeSelector(className)}` : element.tagName.toLowerCase();
+      }
+
+      function flowSubtypeFor(pageText: string, urlText: string): BrowserCheckoutContext["flow_subtype"] {
+        const searchable = `${pageText} ${urlText}`;
+        if (/결제|payment|pay now|submit payment/i.test(searchable)) {
+          return "payment";
+        }
+        if (/예약|booking|reservation|confirm booking/i.test(searchable)) {
+          return "booking";
+        }
+        if (/주문|order|place order|complete order/i.test(searchable)) {
+          return "order";
+        }
+        if (/신청|application|apply|submit application/i.test(searchable)) {
+          return "application";
+        }
+        if (/checkout/i.test(searchable)) {
+          return "checkout";
+        }
+        return "unknown";
+      }
+
+      const pageText = normalizeText(document.body?.innerText).slice(0, 8_000);
+      const urlText = `${location.pathname} ${location.hash} ${document.title}`.toLowerCase();
+      const keywordPatterns: Array<[string, RegExp]> = [
+        ["checkout", /checkout|결제|주문|예약|신청|payment|booking|order/i],
+        ["summary", /summary|order summary|요약|주문 내역|결제 정보|예약 정보/i],
+        ["total", /total|합계|총액|결제 금액|최종 금액/i]
+      ];
+      const checkoutKeywords = keywordPatterns
+        .filter(([, pattern]) => pattern.test(pageText) || pattern.test(urlText))
+        .map(([keyword]) => keyword);
+      const summarySelectors = [
+        "[class*='summary' i]",
+        "[class*='order' i]",
+        "[data-testid*='summary' i]",
+        "[data-testid*='order' i]",
+        "aside",
+        "table"
+      ];
+      const pricePattern = /(?:[$€£₩]\s?\d[\d,.]*|\d[\d,.]*\s?(?:원|달러|USD|KRW|만원|천원))/i;
+      const summaryElements = summarySelectors
+        .flatMap((selector) => Array.from(document.querySelectorAll(selector)))
+        .filter(isVisible)
+        .map((element) => ({
+          element,
+          text: normalizeText(element.textContent).slice(0, 240)
+        }))
+        .filter((summary) => summary.text.length > 0 && (/summary|요약|주문|예약|결제|total|합계|총액/i.test(summary.text) || pricePattern.test(summary.text)));
+      const finalSubmitCandidates = Array.from(document.querySelectorAll("button, input[type='submit'], input[type='button'], [role='button']"))
+        .filter(isVisible)
+        .map((element) => ({
+          element,
+          text: normalizeText(element.textContent || element.getAttribute("value") || element.getAttribute("aria-label")).slice(0, 120)
+        }))
+        .filter((candidate) => /결제하기|결제|예약 확정|주문 완료|주문하기|신청 완료|pay now|place order|complete order|confirm booking|submit payment/i.test(candidate.text));
+      const editableSummary = Array.from(document.querySelectorAll("a[href], button, [role='button'], [role='link']"))
+        .filter(isVisible)
+        .some((element) => /수정|변경|edit|change/i.test(normalizeText(element.textContent || element.getAttribute("aria-label") || element.getAttribute("title"))));
+      const summaryElement = summaryElements[0]?.element ?? null;
+      const finalSubmitElement = finalSubmitCandidates[0]?.element ?? null;
+      const summarySelector = selectorFor(summaryElement);
+      const submitSelector = selectorFor(finalSubmitElement);
+      const sameForm = Boolean(summaryElement && finalSubmitElement && summaryElement.closest("form") && summaryElement.closest("form") === finalSubmitElement.closest("form"));
+      const sameContainer = Boolean(summaryElement && finalSubmitElement && summaryElement.closest("main, section, article, aside, form, [class*='checkout' i], [class*='order' i], [data-testid*='checkout' i]") === finalSubmitElement.closest("main, section, article, aside, form, [class*='checkout' i], [class*='order' i], [data-testid*='checkout' i]"));
+      const summaryBeforeSubmit = Boolean(summaryElement && finalSubmitElement && (summaryElement.compareDocumentPosition(finalSubmitElement) & Node.DOCUMENT_POSITION_FOLLOWING));
+      const finalSubmitRelation = finalSubmitElement
+        ? {
+            related: Boolean(summaryElement && (sameForm || sameContainer || summaryBeforeSubmit)),
+            relation_type: sameForm ? "same_form" as const : sameContainer ? "same_container" as const : summaryBeforeSubmit ? "summary_before_submit" as const : summaryElement ? "unknown" as const : "submit_without_summary" as const,
+            summary_selector: summarySelector,
+            submit_selector: submitSelector
+          }
+        : null;
+
+      return {
+        is_checkout_flow: checkoutKeywords.includes("checkout") || finalSubmitCandidates.length > 0,
+        flow_subtype: flowSubtypeFor(pageText, urlText),
+        has_order_summary: summaryElements.length > 0,
+        has_editable_summary: editableSummary,
+        has_final_submit: finalSubmitCandidates.length > 0,
+        order_summary_text: Array.from(new Set(summaryElements.map((summary) => summary.text))).slice(0, 8),
+        final_submit_text: finalSubmitCandidates[0]?.text ?? null,
+        checkout_keywords: checkoutKeywords,
+        final_submit_relation: finalSubmitRelation
+      };
+    });
+  } catch {
+    return fallbackValue;
+  }
+}
+
+async function safeRepeatedGenericLinkGrouping(page: Page, fallbackValue: BrowserRepeatedGenericLinkGroup[]): Promise<BrowserRepeatedGenericLinkGroup[]> {
+  try {
+    return await page.evaluate(() => {
+      function normalizeText(value: string | null | undefined): string {
+        return (value ?? "").replace(/\s+/g, " ").trim();
+      }
+
+      function isVisible(element: Element): boolean {
+        const rect = element.getBoundingClientRect();
+        const style = globalThis.getComputedStyle(element);
+        return rect.width > 0 && rect.height > 0 && style.visibility !== "hidden" && style.display !== "none";
+      }
+
+      function escapeSelector(value: string): string {
+        return ((globalThis as typeof globalThis & { CSS?: { escape?: (value: string) => string } }).CSS?.escape?.(value)) ??
+          value.replace(/[^a-zA-Z0-9_-]/g, "\\$&");
+      }
+
+      function selectorFor(element: Element): string {
+        const id = element.getAttribute("id");
+        if (id) {
+          return `#${escapeSelector(id)}`;
+        }
+        const href = element.getAttribute("href");
+        if (href && element.tagName.toLowerCase() === "a") {
+          return `a[href="${href.replace(/"/g, '\\"')}"]`;
+        }
+        const className = Array.from(element.classList).find((entry) => entry.length > 0);
+        return className ? `${element.tagName.toLowerCase()}.${escapeSelector(className)}` : element.tagName.toLowerCase();
+      }
+
+      function headingFor(container: Element | null): string | null {
+        if (!container) {
+          return null;
+        }
+        const heading = container.querySelector("h1, h2, h3, h4, h5, h6, [role='heading']");
+        return normalizeText(heading?.textContent).slice(0, 120) || null;
+      }
+
+      function nearbyTextFor(container: Element | null, linkText: string): string[] {
+        if (!container) {
+          return [];
+        }
+        const normalizedLink = linkText.toLowerCase();
+        return Array.from(new Set(Array.from(container.querySelectorAll("h1, h2, h3, h4, h5, h6, [role='heading'], p, li, label, legend"))
+          .map((candidate) => normalizeText(candidate.textContent).slice(0, 180))
+          .filter((text) => text.length > 0 && text.toLowerCase() !== normalizedLink)))
+          .slice(0, 5);
+      }
+
+      const genericPattern = /^(자세히 보기|더보기|더 보기|여기|보기|read more|learn more|more|details|click here)$/i;
+      const grouped = new Map<string, BrowserRepeatedGenericLinkGroup>();
+
+      for (const link of Array.from(document.querySelectorAll("a[href], [role='link']"))) {
+        if (!isVisible(link)) {
+          continue;
+        }
+        const linkText = normalizeText(link.textContent || link.getAttribute("aria-label") || link.getAttribute("title"));
+        if (!genericPattern.test(linkText)) {
+          continue;
+        }
+        const container = link.closest("article, section, li, [class*='card' i], [data-testid*='card' i], [data-test*='card' i]") ?? link.parentElement;
+        const heading = headingFor(container);
+        const key = linkText.toLowerCase();
+        const existing = grouped.get(key) ?? {
+          link_text: linkText,
+          occurrence_count: 0,
+          container_heading: heading,
+          nearby_text: nearbyTextFor(container, linkText),
+          selectors: []
+        };
+        existing.occurrence_count += 1;
+        if (existing.container_heading !== heading) {
+          existing.container_heading = null;
+        }
+        existing.nearby_text = Array.from(new Set([...existing.nearby_text, ...nearbyTextFor(container, linkText)])).slice(0, 8);
+        existing.selectors.push(selectorFor(link));
+        grouped.set(key, existing);
+      }
+
+      return Array.from(grouped.values())
+        .filter((group) => group.occurrence_count > 1 || group.container_heading !== null || group.nearby_text.length > 0)
+        .slice(0, 12);
+    });
+  } catch {
+    return fallbackValue;
+  }
+}
+
 async function safeCartCount(page: Page, fallbackValue: number | null): Promise<number | null> {
   try {
     return await page.evaluate(() => {
@@ -2843,23 +3603,85 @@ async function extractInteractiveComponentsFromFrame(
         return null;
       }
 
-      function textFor(element: Element): string {
+      function normalizeText(value: string | null | undefined): string {
+        return (value ?? "").replace(/\s+/g, " ").trim();
+      }
+
+      function firstText(values: Array<string | null | undefined>): string | null {
+        for (const value of values) {
+          const normalized = normalizeText(value);
+          if (normalized.length > 0) {
+            return normalized;
+          }
+        }
+        return null;
+      }
+
+      function visibleTextFor(element: Element): string | null {
         const inputValue = element instanceof HTMLInputElement && ["button", "submit", "reset"].includes(element.type.toLowerCase())
           ? element.value
           : "";
-        return [
-          element.textContent,
-          element.getAttribute("aria-label"),
-          element.getAttribute("title"),
-          labelTextFor(element),
-          placeholderFor(element),
+        const elementWithInnerText = element as HTMLElement & { innerText?: string };
+        return firstText([
           inputValue,
+          elementWithInnerText.innerText,
+          element.textContent
+        ])?.slice(0, 120) ?? null;
+      }
+
+      function ariaLabelledByTextFor(element: Element): string | null {
+        const labelledBy = element.getAttribute("aria-labelledby");
+        if (!labelledBy) {
+          return null;
+        }
+
+        return firstText(labelledBy
+          .split(/\s+/)
+          .map((id) => document.getElementById(id)?.textContent ?? null));
+      }
+
+      function associatedLabelTextFor(element: Element): string | null {
+        const id = element.getAttribute("id");
+        if (id) {
+          const explicitLabel = document.querySelector(`label[for="${escapeSelector(id)}"]`);
+          const explicitLabelText = explicitLabel?.textContent;
+          if (normalizeText(explicitLabelText).length > 0) {
+            return normalizeText(explicitLabelText);
+          }
+        }
+
+        const wrappingLabelText = element.closest("label")?.textContent;
+        if (normalizeText(wrappingLabelText).length > 0) {
+          return normalizeText(wrappingLabelText);
+        }
+
+        return null;
+      }
+
+      function accessibleNameFor(element: Element, visibleText: string | null): string | null {
+        const altText = element instanceof HTMLImageElement || element instanceof HTMLInputElement
+          ? element.getAttribute("alt")
+          : null;
+        return firstText([
+          element.getAttribute("aria-label"),
+          ariaLabelledByTextFor(element),
+          associatedLabelTextFor(element),
+          altText,
+          visibleText,
+          element.getAttribute("title"),
+          placeholderFor(element),
           nameFor(element)
-        ]
-          .find((value) => typeof value === "string" && value.trim().length > 0)
-          ?.trim()
-          .replaceAll(/\\s+/g, " ")
-          .slice(0, 120) ?? "";
+        ])?.slice(0, 120) ?? null;
+      }
+
+      function textFor(element: Element, visibleText: string | null, accessibleName: string | null): string {
+        return firstText([
+          visibleText,
+          accessibleName,
+          element.getAttribute("title"),
+          placeholderFor(element),
+          nameFor(element)
+        ])?.slice(0, 120) ?? "";
       }
 
       function labelTextFor(element: Element): string | null {
@@ -2868,27 +3690,125 @@ async function extractInteractiveComponentsFromFrame(
           return explicitAria.trim();
         }
 
-        const id = element.getAttribute("id");
-        if (id) {
-          const explicitLabel = document.querySelector(`label[for="${escapeSelector(id)}"]`);
-          const explicitLabelText = explicitLabel?.textContent?.trim();
-          if (explicitLabelText) {
-            return explicitLabelText.replaceAll(/\\s+/g, " ");
-          }
-        }
-
-        const wrappingLabelText = element.closest("label")?.textContent?.trim();
-        if (wrappingLabelText) {
-          return wrappingLabelText.replaceAll(/\\s+/g, " ");
-        }
-
-        return null;
+        return associatedLabelTextFor(element);
       }
 
       function placeholderFor(element: Element): string | null {
         return element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement
           ? element.getAttribute("placeholder")
           : null;
+      }
+
+      function describedByTextFor(element: Element): string | null {
+        const describedBy = element.getAttribute("aria-describedby");
+        if (!describedBy) {
+          return null;
+        }
+
+        return firstText(describedBy
+          .split(/\s+/)
+          .map((id) => document.getElementById(id)?.textContent ?? null))?.slice(0, 240) ?? null;
+      }
+
+      function helpTextFor(element: Element): string | null {
+        const describedByText = describedByTextFor(element);
+        if (describedByText) {
+          return describedByText;
+        }
+
+        const container = element.closest("label, .field, .form-field, .input, .control, [data-testid*='field' i], [data-test*='field' i]") ?? element.parentElement;
+        if (!container) {
+          return null;
+        }
+
+        return firstText(Array.from(container.querySelectorAll("small, .help, .hint, .description, [class*='help' i], [class*='hint' i], [data-testid*='help' i], [data-test*='help' i]"))
+          .map((candidate) => candidate.textContent))?.slice(0, 240) ?? null;
+      }
+
+      function fieldContainerFor(element: Element): Element | null {
+        return element.closest("label, fieldset, .field, .form-field, .input, .control, [data-testid*='field' i], [data-test*='field' i]") ?? element.parentElement;
+      }
+
+      function visibleRequiredMarkerFor(element: Element, labelText: string | null): string | null {
+        const container = fieldContainerFor(element);
+        const text = normalizeText(`${labelText ?? ""} ${container?.textContent ?? ""}`);
+        const marker = text.match(/(\*|필수|required|mandatory|must)/i)?.[1] ?? null;
+        return marker?.slice(0, 40) ?? null;
+      }
+
+      function visibleOptionalMarkerFor(element: Element, labelText: string | null): string | null {
+        const container = fieldContainerFor(element);
+        const text = normalizeText(`${labelText ?? ""} ${container?.textContent ?? ""}`);
+        const marker = text.match(/(선택|optional|옵션)/i)?.[1] ?? null;
+        return marker?.slice(0, 40) ?? null;
+      }
+
+      function groupLevelRequiredStateFor(element: Element): BrowserFormGroupRequiredState | null {
+        if (!(element instanceof HTMLInputElement) || !["radio", "checkbox"].includes(element.type.toLowerCase())) {
+          return null;
+        }
+        const groupName = element.name;
+        const group = element.closest("fieldset, [role='radiogroup'], [role='group'], .field, .form-field, [data-testid*='group' i]");
+        const members = groupName
+          ? Array.from(document.querySelectorAll(`input[type="${element.type}"][name="${groupName.replace(/"/g, '\\"')}"]`))
+          : Array.from(group?.querySelectorAll(`input[type="${element.type}"]`) ?? [element]);
+        const requiredCount = members.filter((member) => member.hasAttribute("required") || member.getAttribute("aria-required") === "true").length;
+        if (requiredCount === members.length && members.length > 0) {
+          return "required";
+        }
+        if (requiredCount === 0 && members.length > 0) {
+          return "optional";
+        }
+        if (requiredCount > 0) {
+          return "mixed";
+        }
+        return "unknown";
+      }
+
+      function submitRequiredErrorFor(element: Element): string | null {
+        const invalid = element.getAttribute("aria-invalid") === "true" || (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement || element instanceof HTMLSelectElement ? !element.validity.valid : false);
+        const container = fieldContainerFor(element);
+        const errorText = firstText(Array.from(container?.querySelectorAll("[role='alert'], .error, .invalid, [class*='error' i], [class*='invalid' i], [data-testid*='error' i]") ?? [])
+          .map((candidate) => candidate.textContent))?.slice(0, 240) ?? null;
+        if (errorText) {
+          return errorText;
+        }
+        if (invalid && (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement || element instanceof HTMLSelectElement)) {
+          return element.validationMessage ? element.validationMessage.slice(0, 240) : null;
+        }
+        return null;
+      }
+
+      function inputConstraintFor(element: Element, attribute: "pattern" | "min" | "max"): string | null {
+        return element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement
+          ? element.getAttribute(attribute)
+          : null;
+      }
+
+      function inputFormatHintFor(input: {
+        inputType: string | null;
+        describedbyText: string | null;
+        helpText: string | null;
+        pattern: string | null;
+        min: string | null;
+        max: string | null;
+        maxlength: number | null;
+      }): string | null {
+        return firstText([
+          input.describedbyText,
+          input.helpText,
+          input.pattern ? `pattern: ${input.pattern}` : null,
+          input.min || input.max ? `range: ${input.min ?? "any"}-${input.max ?? "any"}` : null,
+          input.maxlength !== null ? `max length: ${input.maxlength}` : null,
+          input.inputType && !["text", "search"].includes(input.inputType) ? `type: ${input.inputType}` : null
+        ])?.slice(0, 240) ?? null;
+      }
+
+      function maxLengthFor(element: Element): number | null {
+        if (!(element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement)) {
+          return null;
+        }
+        return element.maxLength >= 0 ? element.maxLength : null;
       }
 
       function nameFor(element: Element): string | null {
@@ -3037,6 +3957,153 @@ async function extractInteractiveComponentsFromFrame(
         };
       }
 
+      function boundsFor(rect: DOMRect): InteractiveComponentBounds {
+        return {
+          x: Math.round(rect.x),
+          y: Math.round(rect.y),
+          width: Math.round(rect.width),
+          height: Math.round(rect.height),
+          unit: "css_px" as const
+        };
+      }
+
+      function containerRoleFor(element: Element): string | null {
+        const explicitRole = element.getAttribute("role");
+        if (explicitRole) {
+          return explicitRole;
+        }
+
+        const tag = element.tagName.toLowerCase();
+        if (tag === "header") {
+          return "header";
+        }
+        if (tag === "footer") {
+          return "footer";
+        }
+        if (tag === "main") {
+          return "main";
+        }
+        if (tag === "nav") {
+          return "nav";
+        }
+        if (tag === "form") {
+          return "form";
+        }
+        if (tag === "section") {
+          return "section";
+        }
+        if (tag === "article") {
+          return "card";
+        }
+        if (tag === "aside") {
+          return "aside";
+        }
+        if (tag === "dialog") {
+          return "modal";
+        }
+        if (tag === "ul" || tag === "ol") {
+          return "list";
+        }
+
+        const className = typeof (element as HTMLElement).className === "string"
+          ? (element as HTMLElement).className.toLowerCase()
+          : "";
+        const testId = `${element.getAttribute("data-testid") ?? ""} ${element.getAttribute("data-test") ?? ""}`.toLowerCase();
+        if (className.includes("card") || testId.includes("card")) {
+          return "card";
+        }
+        if (className.includes("modal") || testId.includes("modal")) {
+          return "modal";
+        }
+        if (className.includes("accordion") || testId.includes("accordion")) {
+          return "accordion";
+        }
+
+        return null;
+      }
+
+      function textSnippetsFor(container: Element, componentText: string | null): string[] {
+        const componentNormalized = normalizeText(componentText).toLowerCase();
+        const candidates = Array.from(container.querySelectorAll("h1, h2, h3, h4, h5, h6, [role='heading'], p, li, label, legend"))
+          .map((candidate) => normalizeText(candidate.textContent).slice(0, 180))
+          .filter((text) => text.length > 0)
+          .filter((text) => text.toLowerCase() !== componentNormalized);
+        return Array.from(new Set(candidates)).slice(0, 5);
+      }
+
+      function headingFor(container: Element): string | null {
+        const heading = container.querySelector("h1, h2, h3, h4, h5, h6, [role='heading']");
+        return normalizeText(heading?.textContent).slice(0, 120) || null;
+      }
+
+      function containerInfoFor(element: Element, componentText: string | null): {
+        container_role: string | null;
+        container_bounds: InteractiveComponentBounds | null;
+        container_heading: string | null;
+        nearby_text: string[];
+      } {
+        const selector = [
+          "header",
+          "footer",
+          "main",
+          "nav",
+          "form",
+          "section",
+          "article",
+          "aside",
+          "dialog",
+          "ul",
+          "ol",
+          "[role='banner']",
+          "[role='contentinfo']",
+          "[role='main']",
+          "[role='navigation']",
+          "[role='form']",
+          "[role='region']",
+          "[role='dialog']",
+          "[role='list']",
+          "[class*='card' i]",
+          "[class*='modal' i]",
+          "[class*='accordion' i]",
+          "[data-testid*='card' i]",
+          "[data-testid*='modal' i]",
+          "[data-testid*='accordion' i]"
+        ].join(",");
+        const container = element.closest(selector);
+        if (!container) {
+          return {
+            container_role: null,
+            container_bounds: null,
+            container_heading: null,
+            nearby_text: []
+          };
+        }
+
+        const rect = container.getBoundingClientRect();
+        return {
+          container_role: containerRoleFor(container),
+          container_bounds: boundsFor(rect),
+          container_heading: headingFor(container),
+          nearby_text: textSnippetsFor(container, componentText)
+        };
+      }
+
+      function targetSpacingPx(
+        component: { bounds: InteractiveComponentBounds },
+        components: Array<{ bounds: InteractiveComponentBounds }>
+      ): number | null {
+        const distances = components
+          .filter((candidate) => candidate !== component)
+          .map((candidate) => {
+            const left = component.bounds;
+            const right = candidate.bounds;
+            const dx = Math.max(0, Math.max(left.x, right.x) - Math.min(left.x + left.width, right.x + right.width));
+            const dy = Math.max(0, Math.max(left.y, right.y) - Math.min(left.y + left.height, right.y + right.height));
+            return Math.round(Math.sqrt(dx * dx + dy * dy));
+          });
+        return distances.length > 0 ? Math.min(...distances) : null;
+      }
+
       const INTERACTIVE_SELECTOR = "a[href], button, input:not([type='hidden']), select, textarea, [role='button'], [role='link'], [role='textbox'], [role='searchbox'], [onclick], [tabindex='0']";
 
       function collectInteractiveElements(root: Document | ShadowRoot, shadowRoot: boolean): Array<{ element: Element; shadowRoot: boolean }> {
@@ -3059,12 +4126,33 @@ async function extractInteractiveComponentsFromFrame(
           const rect = element.getBoundingClientRect();
           const tag = element.tagName.toLowerCase();
           const role = element.getAttribute("role") ?? implicitRole(element, tag);
-          const text = textFor(element);
+          const visibleText = visibleTextFor(element);
+          const accessibleName = accessibleNameFor(element, visibleText);
+          const text = textFor(element, visibleText, accessibleName);
           const selector = selectorFor(element, tag);
           const href = hrefFor(element, tag);
           const inputType = inputTypeFor(element, tag);
           const labelText = labelTextFor(element);
           const placeholder = placeholderFor(element);
+          const describedbyText = describedByTextFor(element);
+          const helpText = helpTextFor(element);
+          const pattern = inputConstraintFor(element, "pattern");
+          const min = inputConstraintFor(element, "min");
+          const max = inputConstraintFor(element, "max");
+          const maxlength = maxLengthFor(element);
+          const inputFormatHint = inputFormatHintFor({
+            inputType,
+            describedbyText,
+            helpText,
+            pattern,
+            min,
+            max,
+            maxlength
+          });
+          const visibleRequiredMarker = visibleRequiredMarkerFor(element, labelText);
+          const visibleOptionalMarker = visibleOptionalMarkerFor(element, labelText);
+          const groupRequiredState = groupLevelRequiredStateFor(element);
+          const submitRequiredError = submitRequiredErrorFor(element);
           const name = nameFor(element);
           const formControl = isFormControl(element, tag);
           const disabled = isDisabled(element);
@@ -3073,9 +4161,12 @@ async function extractInteractiveComponentsFromFrame(
           const layout = layoutFor(element, rect, visibility);
           const visible = visibility.visible && visibility.in_viewport;
           const isCtaCandidate = clickable && !formControl && !disabled && Boolean(text.match(CTA_TEXT_PATTERN) || role === "button" || tag === "button");
+          const containerInfo = containerInfoFor(element, visibleText ?? text);
 
           return {
             text,
+            visible_text: visibleText,
+            accessible_name: accessibleName,
             selector,
             role,
             href,
@@ -3083,6 +4174,17 @@ async function extractInteractiveComponentsFromFrame(
             label_text: labelText,
             placeholder,
             name,
+            describedby_text: describedbyText,
+            help_text: helpText,
+            input_format_hint: inputFormatHint,
+            pattern,
+            min,
+            max,
+            maxlength,
+            visible_required_marker: visibleRequiredMarker,
+            visible_optional_marker: visibleOptionalMarker,
+            group_level_required_state: groupRequiredState,
+            submit_required_error: submitRequiredError,
             required: isRequired(element),
             disabled,
             is_form_control: formControl,
@@ -3093,25 +4195,26 @@ async function extractInteractiveComponentsFromFrame(
             clicked_in_scenario: isClickedInScenario({ text, selector, role }),
             is_cta_candidate: isCtaCandidate,
             is_primary_like: false,
-            bounds: {
-              x: Math.round(rect.x),
-              y: Math.round(rect.y),
-              width: Math.round(rect.width),
-              height: Math.round(rect.height),
-              unit: "css_px" as const
-            },
+            bounds: boundsFor(rect),
             visibility,
             layout,
+            ...containerInfo,
             visible,
             score: (isCtaCandidate ? 1000 : 0) + (formControl ? 100 : 0) + rect.width * rect.height + (text.match(CTA_TEXT_PATTERN) ? 500 : 0)
           };
         })
         .filter((component) => component.visible && (component.clickable || component.is_form_control) && component.bounds.width > 0 && component.bounds.height > 0)
+        .map((component, index, allComponents) => ({
+          ...component,
+          nearest_target_spacing_px: targetSpacingPx(component, allComponents)
+        }))
         .sort((left, right) => right.score - left.score)
         .slice(0, 20);
 
       return components.map((component) => ({
         text: component.text,
+        visible_text: component.visible_text,
+        accessible_name: component.accessible_name,
         selector: component.selector,
         role: component.role,
         href: component.href,
@@ -3119,6 +4222,17 @@ async function extractInteractiveComponentsFromFrame(
         label_text: component.label_text,
         placeholder: component.placeholder,
         name: component.name,
+        describedby_text: component.describedby_text,
+        help_text: component.help_text,
+        input_format_hint: component.input_format_hint,
+        pattern: component.pattern,
+        min: component.min,
+        max: component.max,
+        maxlength: component.maxlength,
+        visible_required_marker: component.visible_required_marker,
+        visible_optional_marker: component.visible_optional_marker,
+        group_level_required_state: component.group_level_required_state,
+        submit_required_error: component.submit_required_error,
         required: component.required,
         disabled: component.disabled,
         is_form_control: component.is_form_control,
@@ -3131,7 +4245,12 @@ async function extractInteractiveComponentsFromFrame(
         is_primary_like: false,
         bounds: component.bounds,
         visibility: component.visibility,
-        layout: component.layout
+        layout: component.layout,
+        container_role: component.container_role,
+        container_bounds: component.container_bounds,
+        container_heading: component.container_heading,
+        nearby_text: component.nearby_text,
+        nearest_target_spacing_px: component.nearest_target_spacing_px
       }));
     }, { clickedTarget, frameId });
 }

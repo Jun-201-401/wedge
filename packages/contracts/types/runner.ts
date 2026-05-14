@@ -304,6 +304,8 @@ export interface AgentObservationCandidateSummary {
   role: string | null;
   tag: string;
   text: string;
+  visibleText?: string | null;
+  accessibleName?: string | null;
   inputType?: string | null;
   labelText?: string | null;
   placeholder?: string | null;
@@ -322,6 +324,11 @@ export interface AgentObservationCandidateSummary {
   bounds: InteractiveComponentBounds;
   visibility?: InteractiveComponentVisibility;
   layout?: InteractiveComponentLayout;
+  containerRole?: string | null;
+  containerBounds?: InteractiveComponentBounds | null;
+  containerHeading?: string | null;
+  nearbyText?: string[];
+  nearestTargetSpacingPx?: number | null;
 }
 
 export interface AgentObservationFormControlSummary {
@@ -957,6 +964,8 @@ export interface InteractiveComponentLayout {
 
 export interface InteractiveComponentObservationItem {
   text: string;
+  visible_text?: string | null;
+  accessible_name?: string | null;
   selector: string | null;
   role: string | null;
   href?: string | null;
@@ -964,6 +973,17 @@ export interface InteractiveComponentObservationItem {
   label_text?: string | null;
   placeholder?: string | null;
   name?: string | null;
+  describedby_text?: string | null;
+  help_text?: string | null;
+  input_format_hint?: string | null;
+  pattern?: string | null;
+  min?: string | null;
+  max?: string | null;
+  maxlength?: number | null;
+  visible_required_marker?: string | null;
+  visible_optional_marker?: string | null;
+  group_level_required_state?: BrowserFormGroupRequiredState | null;
+  submit_required_error?: string | null;
   required?: boolean;
   disabled?: boolean;
   is_form_control?: boolean;
@@ -977,6 +997,11 @@ export interface InteractiveComponentObservationItem {
   bounds: InteractiveComponentBounds;
   visibility?: InteractiveComponentVisibility;
   layout?: InteractiveComponentLayout;
+  container_role?: string | null;
+  container_bounds?: InteractiveComponentBounds | null;
+  container_heading?: string | null;
+  nearby_text?: string[];
+  nearest_target_spacing_px?: number | null;
 }
 
 export interface VisibleTextBlockObservationItem {
@@ -1103,6 +1128,141 @@ export interface PerformanceMetricObservation {
   summary: BrowserPerformanceSummary;
 }
 
+export type RunnerActionKind =
+  | "navigation"
+  | "submit"
+  | "form_input"
+  | "tab_change"
+  | "menu_open"
+  | "filter_change"
+  | "checkout_submit"
+  | "payment_submit"
+  | "other";
+
+export type RunnerExpectedOutcomeHint =
+  | "url_change"
+  | "modal_open"
+  | "toast_show"
+  | "form_submit"
+  | "item_count_change"
+  | "checkout_processing"
+  | "dom_change"
+  | "no_visible_change_expected";
+
+export interface BrowserLoadingState {
+  has_spinner: boolean;
+  has_progressbar: boolean;
+  status_text: string[];
+  clicked_submit_disabled: boolean | null;
+  aria_busy: boolean;
+}
+
+export type BrowserFormGroupRequiredState =
+  | "required"
+  | "optional"
+  | "mixed"
+  | "unknown";
+
+export interface BrowserRepeatedGenericLinkGroup {
+  link_text: string;
+  occurrence_count: number;
+  container_heading: string | null;
+  nearby_text: string[];
+  selectors: string[];
+}
+
+export interface BrowserStepIndicatorSignal {
+  text: string;
+  selector: string | null;
+  current_step: number | null;
+  total_steps: number | null;
+  bounds: InteractiveComponentBounds;
+}
+
+export interface BrowserBackLinkCandidateSignal {
+  text: string;
+  selector: string | null;
+  href?: string | null;
+  role?: string | null;
+  reason: "text_back" | "href_back" | "history_control" | "edit_summary";
+  bounds: InteractiveComponentBounds;
+}
+
+export interface BrowserAccordionState {
+  trigger_text: string;
+  trigger_selector: string | null;
+  panel_selector: string | null;
+  panel_relationship: "aria_controls" | "details_summary" | "next_sibling" | "container" | "unknown";
+  expanded: boolean;
+  panel_text_sample: string[];
+  hidden_panel_has_cta: boolean;
+  hidden_panel_has_required_info: boolean;
+  bounds: InteractiveComponentBounds;
+}
+
+export interface BrowserFinalSubmitRelation {
+  related: boolean;
+  relation_type: "same_form" | "same_container" | "summary_before_submit" | "submit_without_summary" | "unknown";
+  summary_selector?: string | null;
+  submit_selector?: string | null;
+}
+
+export interface BrowserCheckoutContext {
+  is_checkout_flow: boolean;
+  flow_subtype: "checkout" | "payment" | "booking" | "order" | "application" | "unknown";
+  has_order_summary: boolean;
+  has_editable_summary: boolean;
+  has_final_submit: boolean;
+  order_summary_text: string[];
+  final_submit_text: string | null;
+  checkout_keywords: string[];
+  final_submit_relation: BrowserFinalSubmitRelation | null;
+}
+
+export interface LoadingStateObservation {
+  observation_id: string;
+  type: "loading_state";
+  stage: ScenarioStage;
+  source: ("dom" | "browser")[];
+  confidence: number;
+  action_kind: RunnerActionKind;
+  expected_outcome_hint: RunnerExpectedOutcomeHint[];
+  settle_status: "settled" | "timeout" | "failed";
+  duration_ms: number;
+  loading_state: BrowserLoadingState;
+}
+
+export interface PathNavigationObservation {
+  observation_id: string;
+  type: "path_navigation";
+  stage: ScenarioStage;
+  source: ("dom" | "browser")[];
+  confidence: number;
+  step_indicator: BrowserStepIndicatorSignal[];
+  back_link_candidate: BrowserBackLinkCandidateSignal[];
+  visited_url_count: number;
+  browser_history_back_available: boolean;
+  flow_step_count: number | null;
+}
+
+export interface AccordionStateObservation {
+  observation_id: string;
+  type: "accordion_state";
+  stage: ScenarioStage;
+  source: ["dom"];
+  confidence: number;
+  accordions: BrowserAccordionState[];
+}
+
+export interface CheckoutContextObservation {
+  observation_id: string;
+  type: "checkout_context";
+  stage: ScenarioStage;
+  source: ("dom" | "browser")[];
+  confidence: number;
+  checkout_context: BrowserCheckoutContext;
+}
+
 export interface InteractiveComponentsObservation {
   observation_id: string;
   type: "interactive_components";
@@ -1110,6 +1270,7 @@ export interface InteractiveComponentsObservation {
   source: ("dom" | "layout" | "screenshot")[];
   confidence: number;
   primary_like_component_count: number;
+  repeated_generic_link_grouping?: BrowserRepeatedGenericLinkGroup[];
   components: InteractiveComponentObservationItem[];
 }
 
@@ -1122,6 +1283,8 @@ export interface JourneyActionRawObservation {
   step_order: number;
   step_key: string;
   action_type: ScenarioActionType;
+  action_kind?: RunnerActionKind;
+  expected_outcome_hint?: RunnerExpectedOutcomeHint[];
   clicked_text?: string | null;
   clicked_selector?: string | null;
   element_role?: string | null;

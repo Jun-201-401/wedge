@@ -197,6 +197,28 @@ export function createSimulatedPageSnapshot(
     performanceSummary: null,
     breadcrumb: [],
     toastTexts: [],
+    loadingState: {
+      has_spinner: false,
+      has_progressbar: false,
+      status_text: [],
+      clicked_submit_disabled: null,
+      aria_busy: false
+    },
+    stepIndicators: [],
+    backLinkCandidates: [],
+    accordionStates: [],
+    checkoutContext: {
+      is_checkout_flow: false,
+      flow_subtype: "unknown",
+      has_order_summary: false,
+      has_editable_summary: false,
+      has_final_submit: false,
+      order_summary_text: [],
+      final_submit_text: null,
+      checkout_keywords: [],
+      final_submit_relation: null
+    },
+    repeatedGenericLinkGrouping: [],
     cartCount: null,
     visiblePrices: [],
     productImages: [],

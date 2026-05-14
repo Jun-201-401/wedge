@@ -2,9 +2,11 @@ import { randomUUID } from "node:crypto";
 import type { BrowserActionResult, BrowserCapturedArtifacts, BrowserPageSnapshot, BrowserSettleResult } from "../browser/playwright/index.ts";
 import type {
   ArtifactDraft,
+  AccordionStateObservation,
   AxTreeObservation,
   LayoutCollectorObservation,
   NetworkTimelineObservation,
+  CheckoutContextObservation,
   PerformanceMetricObservation,
   CategoryFilterSignalObservation,
   Checkpoint,
@@ -13,8 +15,12 @@ import type {
   GoalActionResultObservation,
   InteractiveComponentsObservation,
   JourneyActionRawObservation,
+  LoadingStateObservation,
+  PathNavigationObservation,
   ProductCardObservation,
   ProductDetailSignalObservation,
+  RunnerActionKind,
+  RunnerExpectedOutcomeHint,
   ScenarioPlan,
   ScenarioStep
 } from "../shared/contracts.ts";
@@ -322,6 +328,13 @@ function statusCodeCounts(events: BrowserPageSnapshot["networkEvents"]): Record<
   return counts;
 }
 
+function inferFlowStepCount(stepIndicators: BrowserPageSnapshot["stepIndicators"]): number | null {
+  const counts = stepIndicators
+    .map((indicator) => indicator.total_steps)
+    .filter((value): value is number => typeof value === "number" && Number.isInteger(value) && value > 1);
+  return counts.length > 0 ? Math.max(...counts) : null;
+}
+
 function createCheckpointState(
   pageSnapshot: BrowserPageSnapshot,
   capturedArtifacts?: BrowserCapturedArtifacts
@@ -344,6 +357,13 @@ function createCheckpointState(
     layout_summary: pageSnapshot.layoutSummary,
     selectedFilters: pageSnapshot.selectedFilters,
     searchQuery: pageSnapshot.searchQuery,
+    loading_state: pageSnapshot.loadingState,
+    step_indicator: pageSnapshot.stepIndicators,
+    back_link_candidate: pageSnapshot.backLinkCandidates,
+    flow_step_count: inferFlowStepCount(pageSnapshot.stepIndicators),
+    accordion_state: pageSnapshot.accordionStates,
+    checkout_context: pageSnapshot.checkoutContext,
+    repeated_generic_link_grouping: pageSnapshot.repeatedGenericLinkGrouping,
     network_summary: {
       event_count: pageSnapshot.networkEvents.length,
       failed_request_count: pageSnapshot.networkEvents.filter((event) => event.failed).length
@@ -438,9 +458,19 @@ function createCheckpointObservations({
     ...createLayoutCollectorObservations(step, pageSnapshot).map((observation) => ({ ...observation })),
     ...createNetworkTimelineObservations(step, pageSnapshot, harArtifactId).map((observation) => ({ ...observation })),
     ...(capturePerformance ? createPerformanceMetricObservations(step, pageSnapshot).map((observation) => ({ ...observation })) : []),
+    ...createLoadingStateObservations({
+      step,
+      beforeSnapshot,
+      pageSnapshot,
+      actionResult,
+      settleResult
+    }).map((observation) => ({ ...observation })),
+    ...createPathNavigationObservations(step, pageSnapshot).map((observation) => ({ ...observation })),
+    ...createAccordionStateObservations(step, pageSnapshot).map((observation) => ({ ...observation })),
+    ...createCheckoutContextObservations(step, pageSnapshot).map((observation) => ({ ...observation })),
     ...createVisibleTextBlockObservations(step, pageSnapshot),
     ...createInteractiveComponentsObservations(step, pageSnapshot).map((observation) => ({ ...observation })),
-    ...createFormFieldObservations(pageSnapshot.fields),
+    ...createFormFieldObservations(pageSnapshot),
     ...createCtaCandidateObservations(step, pageSnapshot),
     ...createProductCardObservations(step, pageSnapshot, screenshotArtifactId).map((observation) => ({ ...observation })),
     ...createGoalActionCandidateObservations(step, pageSnapshot).map((observation) => ({ ...observation })),
@@ -492,6 +522,8 @@ function createJourneyActionRawObservation({
   const elementRole = readOptionalString(actionDetails, "elementRole") ?? clickedComponent(pageSnapshot)?.role ?? null;
   const bbox = readBounds(actionDetails.bbox) ?? clickedComponent(pageSnapshot)?.bounds ?? null;
   const networkResult = createNetworkResult(pageSnapshot, settleResult);
+  const actionKind = inferActionKind({ step, beforeSnapshot: baselineSnapshot, pageSnapshot, clickedText, elementRole });
+  const expectedOutcomeHint = inferExpectedOutcomeHints({ actionKind, beforeSnapshot: baselineSnapshot, pageSnapshot });
   const matchedProductCard = matchProductCardAcrossSnapshots({
     snapshots: [beforeSnapshot, pageSnapshot],
     clickedText,
@@ -508,6 +540,8 @@ function createJourneyActionRawObservation({
     step_order: stepOrder,
     step_key: step.step_id,
     action_type: step.action.type,
+    action_kind: actionKind,
+    expected_outcome_hint: expectedOutcomeHint,
     clicked_text: clickedText,
     clicked_selector: clickedSelector,
     element_role: elementRole,
@@ -906,6 +940,58 @@ function createPerformanceMetricObservations(
   ];
 }
 
+function createLoadingStateObservations({
+  step,
+  beforeSnapshot,
+  pageSnapshot,
+  actionResult,
+  settleResult
+}: {
+  step: ScenarioStep;
+  beforeSnapshot?: BrowserPageSnapshot;
+  pageSnapshot: BrowserPageSnapshot;
+  actionResult?: BrowserActionResult;
+  settleResult: BrowserSettleResult;
+}): LoadingStateObservation[] {
+  const actionDetails = actionResult?.details ?? {};
+  const actionKind = inferActionKind({
+    step,
+    beforeSnapshot,
+    pageSnapshot,
+    clickedText: readOptionalString(actionDetails, "clickedText") ?? pageSnapshot.lastAction?.clickedText ?? null,
+    elementRole: readOptionalString(actionDetails, "elementRole") ?? pageSnapshot.lastAction?.elementRole ?? null
+  });
+  const expectedOutcomeHint = inferExpectedOutcomeHints({
+    actionKind,
+    beforeSnapshot,
+    pageSnapshot
+  });
+  const hasLoadingSignal = pageSnapshot.loadingState.has_spinner ||
+    pageSnapshot.loadingState.has_progressbar ||
+    pageSnapshot.loadingState.status_text.length > 0 ||
+    pageSnapshot.loadingState.clicked_submit_disabled === true ||
+    pageSnapshot.loadingState.aria_busy;
+
+  if (!hasLoadingSignal && actionKind !== "submit" && actionKind !== "checkout_submit" && actionKind !== "payment_submit" && settleResult.status !== "timeout") {
+    return [];
+  }
+
+  return [
+    {
+      observation_id: `${step.step_id}.obs_loading_state`,
+      type: "loading_state",
+      stage: step.stage,
+      source: ["dom", "browser"],
+      confidence: hasLoadingSignal ? 0.78 : 0.58,
+      action_kind: actionKind,
+      expected_outcome_hint: expectedOutcomeHint,
+      settle_status: settleResult.status,
+      duration_ms: settleResult.durationMs,
+      loading_state: pageSnapshot.loadingState
+    }
+  ];
+}
+
 function createVisibleTextBlockObservations(
   step: ScenarioStep,
   pageSnapshot: BrowserPageSnapshot
@@ -928,6 +1014,71 @@ function createVisibleTextBlockObservations(
   ];
 }
 
+function createPathNavigationObservations(
+  step: ScenarioStep,
+  pageSnapshot: BrowserPageSnapshot
+): PathNavigationObservation[] {
+  if (pageSnapshot.stepIndicators.length === 0 && pageSnapshot.backLinkCandidates.length === 0 && pageSnapshot.visitedUrls.length <= 1) {
+    return [];
+  }
+
+  return [
+    {
+      observation_id: `${step.step_id}.obs_path_navigation`,
+      type: "path_navigation",
+      stage: step.stage,
+      source: ["dom", "browser"],
+      confidence: pageSnapshot.stepIndicators.length > 0 || pageSnapshot.backLinkCandidates.length > 0 ? 0.74 : 0.52,
+      step_indicator: pageSnapshot.stepIndicators,
+      back_link_candidate: pageSnapshot.backLinkCandidates,
+      visited_url_count: pageSnapshot.visitedUrls.length,
+      browser_history_back_available: pageSnapshot.visitedUrls.length > 1,
+      flow_step_count: inferFlowStepCount(pageSnapshot.stepIndicators)
+    }
+  ];
+}
+
+function createAccordionStateObservations(
+  step: ScenarioStep,
+  pageSnapshot: BrowserPageSnapshot
+): AccordionStateObservation[] {
+  if (pageSnapshot.accordionStates.length === 0) {
+    return [];
+  }
+
+  return [
+    {
+      observation_id: `${step.step_id}.obs_accordion_state`,
+      type: "accordion_state",
+      stage: step.stage,
+      source: ["dom"],
+      confidence: 0.72,
+      accordions: pageSnapshot.accordionStates
+    }
+  ];
+}
+
+function createCheckoutContextObservations(
+  step: ScenarioStep,
+  pageSnapshot: BrowserPageSnapshot
+): CheckoutContextObservation[] {
+  const context = pageSnapshot.checkoutContext;
+  if (!context.is_checkout_flow && !context.has_order_summary && !context.has_final_submit) {
+    return [];
+  }
+
+  return [
+    {
+      observation_id: `${step.step_id}.obs_checkout_context`,
+      type: "checkout_context",
+      stage: step.stage,
+      source: ["dom", "browser"],
+      confidence: context.is_checkout_flow ? 0.78 : 0.6,
+      checkout_context: context
+    }
+  ];
+}
+
 function createInteractiveComponentsObservations(
   step: ScenarioStep,
   pageSnapshot: BrowserPageSnapshot
@@ -945,6 +1096,7 @@ function createInteractiveComponentsObservations(
       source: ["dom", "layout", "screenshot"],
       confidence: primaryLikeComponentCount > 0 ? 0.82 : 0.65,
       primary_like_component_count: primaryLikeComponentCount,
+      repeated_generic_link_grouping: pageSnapshot.repeatedGenericLinkGrouping,
       components: pageSnapshot.interactiveComponents
     }
   ];
@@ -1005,12 +1157,51 @@ function createGoalActionCandidateObservations(
   ];
 }
 
-function createFormFieldObservations(fields: BrowserPageSnapshot["fields"]): Record<string, unknown>[] {
-  return Object.entries(fields).map(([fieldKey, value]) => ({
-    type: "form_field",
-    field_key: fieldKey,
-    value_length: value.length
-  }));
+function createFormFieldObservations(pageSnapshot: BrowserPageSnapshot): Record<string, unknown>[] {
+  const fieldValueLengths = Object.fromEntries(
+    Object.entries(pageSnapshot.fields).map(([fieldKey, value]) => [fieldKey, value.length])
+  );
+  const componentFieldKeys = new Set<string>();
+
+  const componentFields = pageSnapshot.interactiveComponents
+    .filter((component) => component.is_form_control === true)
+    .map((component) => {
+      const fieldKey = component.name ?? component.selector ?? component.label_text ?? component.placeholder ?? component.text;
+      componentFieldKeys.add(fieldKey);
+      return {
+        type: "form_field",
+        field_key: fieldKey,
+        value_length: component.name ? fieldValueLengths[component.name] ?? 0 : 0,
+        label_text: component.label_text ?? null,
+        accessible_name: component.accessible_name ?? null,
+        visible_text: component.visible_text ?? null,
+        placeholder: component.placeholder ?? null,
+        required: component.required === true,
+        input_type: component.input_type ?? null,
+        describedby_text: component.describedby_text ?? null,
+        help_text: component.help_text ?? null,
+        input_format_hint: component.input_format_hint ?? null,
+        pattern: component.pattern ?? null,
+        min: component.min ?? null,
+        max: component.max ?? null,
+        maxlength: component.maxlength ?? null,
+        visible_required_marker: component.visible_required_marker ?? null,
+        visible_optional_marker: component.visible_optional_marker ?? null,
+        group_level_required_state: component.group_level_required_state ?? null,
+        submit_required_error: component.submit_required_error ?? null,
+        bounds: component.bounds,
+        visibility: component.visibility
+      };
+    });
+  const fieldOnlyEntries = Object.entries(pageSnapshot.fields)
+    .filter(([fieldKey]) => !componentFieldKeys.has(fieldKey))
+    .map(([fieldKey, value]) => ({
+      type: "form_field",
+      field_key: fieldKey,
+      value_length: value.length
+    }));
+
+  return [...componentFields, ...fieldOnlyEntries];
 }
 
 function createCtaCandidateObservations(
@@ -1131,6 +1322,115 @@ function readBounds(value: unknown): BrowserPageSnapshot["interactiveComponents"
 
 function isAddToCartLike(text: string | null | undefined): boolean {
   return /add to cart|add to basket|장바구니|카트|담기|신청|예약|문의|결제|무료 체험|다운로드|가입/i.test(text ?? "");
+}
+
+function inferActionKind({
+  step,
+  beforeSnapshot,
+  pageSnapshot,
+  clickedText,
+  elementRole
+}: {
+  step: ScenarioStep;
+  beforeSnapshot?: BrowserPageSnapshot;
+  pageSnapshot: BrowserPageSnapshot;
+  clickedText?: string | null;
+  elementRole?: string | null;
+}): RunnerActionKind {
+  if (step.action.type === "goto") {
+    return "navigation";
+  }
+  if (step.action.type === "fill" || step.action.type === "select") {
+    return "form_input";
+  }
+  if (step.action.type !== "click") {
+    return "other";
+  }
+
+  const text = normalizeSearchText([
+    clickedText,
+    elementRole,
+    pageSnapshot.lastAction?.target,
+    clickedComponent(pageSnapshot)?.input_type,
+    clickedComponent(pageSnapshot)?.href
+  ].filter(Boolean).join(" "));
+
+  if (/결제|payment|pay now|place order|order now|주문|구매/.test(text)) {
+    return "payment_submit";
+  }
+  if (/checkout|예약|신청|submit|제출|가입|create account|sign up/.test(text)) {
+    return "checkout_submit";
+  }
+  if (/add to cart|add to basket|장바구니|카트|담기/.test(text)) {
+    return "submit";
+  }
+  if (elementRole === "link" || clickedComponent(pageSnapshot)?.href) {
+    return "navigation";
+  }
+  if (clickedComponent(pageSnapshot)?.input_type === "submit" || elementRole === "button" || /submit|button|제출/.test(text)) {
+    return "submit";
+  }
+  if (beforeSnapshot?.finalUrl !== pageSnapshot.finalUrl) {
+    return "navigation";
+  }
+  if (/tab|탭/.test(text)) {
+    return "tab_change";
+  }
+  if (/menu|메뉴/.test(text)) {
+    return "menu_open";
+  }
+  if (/filter|sort|category|필터|정렬|카테고리/.test(text)) {
+    return "filter_change";
+  }
+  return "other";
+}
+
+function inferExpectedOutcomeHints({
+  actionKind,
+  beforeSnapshot,
+  pageSnapshot
+}: {
+  actionKind: RunnerActionKind;
+  beforeSnapshot?: BrowserPageSnapshot;
+  pageSnapshot: BrowserPageSnapshot;
+}): RunnerExpectedOutcomeHint[] {
+  const hints = new Set<RunnerExpectedOutcomeHint>();
+  const urlChanged = Boolean(beforeSnapshot && beforeSnapshot.finalUrl !== pageSnapshot.finalUrl);
+  const domChanged = beforeSnapshot ? domChangedBetween(beforeSnapshot, pageSnapshot) : false;
+  const cartChanged = typeof beforeSnapshot?.cartCount === "number" &&
+    typeof pageSnapshot.cartCount === "number" &&
+    beforeSnapshot.cartCount !== pageSnapshot.cartCount;
+
+  if (urlChanged || actionKind === "navigation") {
+    hints.add("url_change");
+  }
+  if (domChanged) {
+    hints.add("dom_change");
+  }
+  if (pageSnapshot.toastTexts.length > 0) {
+    hints.add("toast_show");
+  }
+  if (cartChanged) {
+    hints.add("item_count_change");
+  }
+  if (actionKind === "form_input" || actionKind === "submit") {
+    hints.add("form_submit");
+  }
+  if (actionKind === "checkout_submit" || actionKind === "payment_submit") {
+    hints.add("checkout_processing");
+  }
+  if (hints.size === 0 && (actionKind === "tab_change" || actionKind === "menu_open")) {
+    hints.add("no_visible_change_expected");
+  }
+  if (hints.size === 0) {
+    hints.add("dom_change");
+  }
+
+  return [...hints];
+}
+
+function normalizeSearchText(text: string): string {
+  return text.trim().replaceAll(/\s+/g, " ").toLowerCase();
 }
 
 function sameJsonArray(left: unknown[], right: unknown[]): boolean {

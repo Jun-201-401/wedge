@@ -15,6 +15,9 @@ test('create analysis preflight renders an agent-style progress card', () => {
   assert.doesNotMatch(source, /preflight-agent__header-status/);
   assert.match(source, /className="preflight-agent__progress"/);
   assert.match(source, /분석할 흐름을 찾고 있어요/);
+  assert.match(source, /formatDisplayUrl/);
+  assert.match(source, /const submittedUrlLabel = formatDisplayUrl\(submittedUrl\)/);
+  assert.match(source, /className="preflight-agent__url" title=\{submittedUrl\}>\{submittedUrlLabel\}<\/p>/);
   assert.doesNotMatch(source, /className="preflight-agent__scope"/);
   assert.doesNotMatch(source, /전체 분석 전 확인/);
   assert.doesNotMatch(source, /첫 화면과 주요 진입점 중심/);
@@ -108,6 +111,8 @@ test('create analysis recommendations use a wider agent-style results card', () 
   assert.match(source, /recommendation-agent__empty/);
   assert.match(source, /className="recommendation-agent__count"/);
   assert.match(source, /visibleScenarios = scenarios\.filter\(\(scenario\) => scenario\.isRunnable\)/);
+  assert.match(source, /className="recommendation-agent__url" title=\{submittedUrl\}>\{submittedUrlLabel\}<\/p>/);
+  assert.match(source, /className="manual-choice-agent__url" title=\{submittedUrl\}>\{submittedUrlLabel\}<\/p>/);
   assert.match(source, /onOpenManualChoice/);
   assert.match(source, /다른 흐름 선택/);
   assert.match(source, /탐지됨/);
@@ -122,6 +127,9 @@ test('create analysis recommendations use a wider agent-style results card', () 
   assert.match(css, /\.recommendation-agent \.scenario-card button\s*\{[\s\S]*?background: #334155/);
   assert.match(css, /\.recommendation-agent \.scenario-card > p\s*\{[\s\S]*?margin-bottom: 1\.35rem/);
   assert.match(css, /\.scenario-card__site-context\s*\{[\s\S]*?background: rgba\(248, 250, 252, 0\.72\)/);
+  assert.match(css, /\.scenario-card__site-context\s*\{[\s\S]*?min-width: 0/);
+  assert.match(css, /\.scenario-card__context-row strong\s*\{[\s\S]*?max-width: 100%/);
+  assert.match(css, /\.scenario-card__preview-steps li,\s*\n\.scenario-card__context-note\s*\{[\s\S]*?overflow-wrap: anywhere/);
   assert.match(css, /\.scenario-card__preview-steps\s*\{[\s\S]*?font-size: 0\.76rem/);
   assert.doesNotMatch(css, /\.recommendation-agent \.scenario-card--recommended\s*\{[\s\S]*?background:/);
   assert.match(css, /\.recommendation-agent \.scenario-card:hover,\s*\n\.recommendation-agent \.scenario-card:focus-within,\s*\n\.manual-choice-agent__option:hover,\s*\n\.manual-choice-agent__option:focus-visible\s*\{[\s\S]*?box-shadow: 0 14px 30px rgba\(15, 23, 42, 0\.06\)/);
@@ -211,6 +219,9 @@ test('create analysis ready screen uses an agent card layout', () => {
   assert.match(source, /className="ready-agent__scenario-plan"/);
   assert.match(source, /생성된 Scenario/);
   assert.match(source, /preview\.steps\.map/);
+  assert.match(source, /const previewStartUrlLabel = preview\?\.startUrl \? formatDisplayUrl\(preview\.startUrl\) : ''/);
+  assert.match(source, /<strong title=\{submittedUrl\}>\{submittedUrlLabel\}<\/strong>/);
+  assert.match(source, /className="ready-agent__scenario-plan-url" title=\{preview\.startUrl\}>\{previewStartUrlLabel\}<\/p>/);
   assert.match(source, /scenarioAuthoringRequestKey/);
   assert.match(source, /stage !== 'ready' \|\| !scenarioAuthoringRequestKey/);
 
