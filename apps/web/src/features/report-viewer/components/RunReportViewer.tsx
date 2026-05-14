@@ -5,7 +5,13 @@ import { useAuthenticatedResourceUrl } from '../../../shared/lib/authenticatedRe
 import { RUNS_PATH } from '../../../shared/lib/appPaths';
 import { formatDisplayUrl } from '../../../shared/lib/displayUrl';
 import { resolveActiveFinding, resolveLinkedFindingId } from '../lib/runReportInteractions';
-import { nextPinnedReferenceBadgeId, referenceBadgesForFinding, type ReferenceBadgeViewModel } from '../lib/runReportReferences';
+import {
+  nextPinnedReferenceBadgeId,
+  nextPinnedReferenceOverflowId,
+  referenceBadgesForFinding,
+  splitReferenceBadges,
+  type ReferenceBadgeViewModel,
+} from '../lib/runReportReferences';
 import type { ReportFinding, ReportRecommendation, RunReportViewModel } from '../lib/runReportViewModel';
 import '../styles/run-report-viewer.css';
 
@@ -215,7 +221,7 @@ function ReferenceBadge({
     <button
       type="button"
       ref={badgeRef}
-      className={`run-report-reference-badge${badge.isFallback ? ' run-report-reference-badge--pending' : ''}`}
+      className="run-report-reference-badge"
       aria-label={badge.ariaLabel}
       aria-describedby={tooltipPosition ? tooltipId : undefined}
       aria-pressed={isPinned}
@@ -235,18 +241,27 @@ function RecommendationReferenceBadges({
   recommendation,
   finding,
   pinnedReferenceBadgeId,
+  pinnedReferenceOverflowId,
   onBadgeToggle,
+  onOverflowToggle,
 }: {
   recommendation: ReportRecommendation;
   finding: ReportFinding | null;
   pinnedReferenceBadgeId: string | null;
+  pinnedReferenceOverflowId: string | null;
   onBadgeToggle: (recommendation: ReportRecommendation, badgeId: string) => void;
+  onOverflowToggle: (recommendation: ReportRecommendation, overflowId: string) => void;
 }) {
   const badges = referenceBadgesForFinding(finding);
+  const { visible, overflow } = splitReferenceBadges(badges);
+
+  if (badges.length === 0) {
+    return null;
+  }
 
   return (
     <span className="run-report-recommendation-reference-badges" aria-label="기준 근거 배지">
-      {badges.map((badge) => {
+      {visible.map((badge) => {
         const badgeId = `${recommendation.id}:${badge.key}`;
 
         return (
@@ -259,6 +274,83 @@ function RecommendationReferenceBadges({
           />
         );
       })}
+      {overflow.length > 0 ? (
+        <ReferenceOverflowBadge
+          recommendation={recommendation}
+          overflowId={`${recommendation.id}:references-overflow`}
+          badges={overflow}
+          pinnedReferenceBadgeId={pinnedReferenceBadgeId}
+          isPinned={pinnedReferenceOverflowId === `${recommendation.id}:references-overflow`}
+          onBadgeToggle={onBadgeToggle}
+          onOverflowToggle={onOverflowToggle}
+        />
+      ) : null}
+    </span>
+  );
+}
+
+function ReferenceOverflowBadge({
+  recommendation,
+  overflowId,
+  badges,
+  pinnedReferenceBadgeId,
+  isPinned,
+  onBadgeToggle,
+  onOverflowToggle,
+}: {
+  recommendation: ReportRecommendation;
+  overflowId: string;
+  badges: ReferenceBadgeViewModel[];
+  pinnedReferenceBadgeId: string | null;
+  isPinned: boolean;
+  onBadgeToggle: (recommendation: ReportRecommendation, badgeId: string) => void;
+  onOverflowToggle: (recommendation: ReportRecommendation, overflowId: string) => void;
+}) {
+  const [isHoveringOrFocused, setIsHoveringOrFocused] = useState(false);
+  const isOpen = isPinned || isHoveringOrFocused;
+  const popoverId = `run-report-reference-overflow-${overflowId.replace(/[^a-zA-Z0-9_-]/g, '-')}`;
+
+  const handleClick = useCallback((event: React.MouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation();
+    onOverflowToggle(recommendation, overflowId);
+  }, [onOverflowToggle, overflowId, recommendation]);
+
+  return (
+    <span
+      className="run-report-reference-overflow"
+      onMouseEnter={() => setIsHoveringOrFocused(true)}
+      onMouseLeave={() => setIsHoveringOrFocused(false)}
+      onFocus={() => setIsHoveringOrFocused(true)}
+      onBlur={() => setIsHoveringOrFocused(false)}
+    >
+      <button
+        type="button"
+        className="run-report-reference-badge run-report-reference-badge--overflow"
+        aria-label={`숨겨진 기준 근거 ${badges.length}개 더 보기`}
+        aria-describedby={isOpen ? popoverId : undefined}
+        aria-expanded={isOpen}
+        aria-pressed={isPinned}
+        onClick={handleClick}
+      >
+        <span className="run-report-reference-badge__label">[...]</span>
+      </button>
+      {isOpen ? (
+        <span id={popoverId} className="run-report-reference-overflow__popover" role="tooltip">
+          {badges.map((badge) => {
+            const badgeId = `${recommendation.id}:${badge.key}`;
+
+            return (
+              <ReferenceBadge
+                key={badge.key}
+                badge={badge}
+                badgeId={badgeId}
+                isPinned={pinnedReferenceBadgeId === badgeId}
+                onToggle={() => onBadgeToggle(recommendation, badgeId)}
+              />
+            );
+          })}
+        </span>
+      ) : null}
     </span>
   );
 }
@@ -284,6 +376,7 @@ export function RunReportViewer({
   const [selectedFindingId, setSelectedFindingId] = useState<string | null>(report.findings[0]?.id ?? null);
   const [selectedRecommendationId, setSelectedRecommendationId] = useState<string | null>(report.recommendations[0]?.id ?? null);
   const [pinnedReferenceBadgeId, setPinnedReferenceBadgeId] = useState<string | null>(null);
+  const [pinnedReferenceOverflowId, setPinnedReferenceOverflowId] = useState<string | null>(null);
   const [isAllRecommendationsOpen, setIsAllRecommendationsOpen] = useState(false);
   const recommendations = report.recommendations;
   const topRecommendations = recommendations.slice(0, TOP_RECOMMENDATION_COUNT);
@@ -339,11 +432,13 @@ export function RunReportViewer({
       if (!linked) {
         setSelectedFindingId(finding.id);
         setPinnedReferenceBadgeId(null);
+        setPinnedReferenceOverflowId(null);
         return;
       }
       setSelectedRecommendationId(linked.id);
       setSelectedFindingId(finding.id);
       setPinnedReferenceBadgeId(null);
+      setPinnedReferenceOverflowId(null);
     },
     [recommendationByFindingId],
   );
@@ -399,7 +494,10 @@ export function RunReportViewer({
     }
   }, [report.findings, selectedFindingId, selectedRecommendationFindingId]);
 
-  function selectRecommendation(recommendation: ReportRecommendation, options: { preservePinnedReference?: boolean } = {}) {
+  function selectRecommendation(
+    recommendation: ReportRecommendation,
+    options: { preservePinnedReference?: boolean; preservePinnedOverflow?: boolean } = {},
+  ) {
     const findingId = resolveLinkedFindingId(report.findings, recommendation.findingId);
     setSelectedRecommendationId(recommendation.id);
 
@@ -410,11 +508,20 @@ export function RunReportViewer({
     if (!options.preservePinnedReference) {
       setPinnedReferenceBadgeId(null);
     }
+
+    if (!options.preservePinnedOverflow) {
+      setPinnedReferenceOverflowId(null);
+    }
   }
 
   function toggleRecommendationReferenceBadge(recommendation: ReportRecommendation, badgeId: string) {
-    selectRecommendation(recommendation, { preservePinnedReference: true });
+    selectRecommendation(recommendation, { preservePinnedReference: true, preservePinnedOverflow: true });
     setPinnedReferenceBadgeId((currentBadgeId) => nextPinnedReferenceBadgeId(currentBadgeId, badgeId));
+  }
+
+  function toggleRecommendationReferenceOverflow(recommendation: ReportRecommendation, overflowId: string) {
+    selectRecommendation(recommendation, { preservePinnedReference: true, preservePinnedOverflow: true });
+    setPinnedReferenceOverflowId((currentOverflowId) => nextPinnedReferenceOverflowId(currentOverflowId, overflowId));
   }
 
   const frictionMarkers = isEvidencePreviewResolving
@@ -578,7 +685,9 @@ export function RunReportViewer({
                             recommendation={recommendation}
                             finding={relatedFinding}
                             pinnedReferenceBadgeId={pinnedReferenceBadgeId}
+                            pinnedReferenceOverflowId={pinnedReferenceOverflowId}
                             onBadgeToggle={toggleRecommendationReferenceBadge}
+                            onOverflowToggle={toggleRecommendationReferenceOverflow}
                           />
                           <button
                             type="button"

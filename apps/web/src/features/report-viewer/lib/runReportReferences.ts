@@ -7,37 +7,62 @@ export interface ReferenceBadgeViewModel {
   title: string;
   basisSummary: string;
   ariaLabel: string;
-  isFallback: boolean;
 }
 
-const PENDING_REFERENCE_BADGE: ReferenceBadgeViewModel = {
-  key: 'reference-pending',
-  label: '근거 준비중',
-  publisher: '외부 기준 배지 준비중',
-  title: '분석 근거는 리포트 내용에 포함되어 있습니다',
-  basisSummary: '이 항목의 외부 기준 배지는 아직 연결 준비 중입니다.',
-  ariaLabel: '근거 준비중: 외부 기준 배지 준비중. 이 항목의 외부 기준 배지는 아직 연결 준비 중입니다.',
-  isFallback: true,
-};
+export const MAX_VISIBLE_REFERENCE_BADGES = 0;
+const PREVIEW_REFERENCE_BADGE_COUNT = 5;
+
+function referencePublisherLabel(publisher: string | null | undefined, index: number) {
+  const trimmed = publisher?.trim();
+  return trimmed || `출처${index + 1}`;
+}
 
 export function referenceBadgesForFinding(finding: Pick<ReportFinding, 'references'> | null | undefined): ReferenceBadgeViewModel[] {
   const references = finding?.references ?? [];
 
   if (references.length === 0) {
-    return [PENDING_REFERENCE_BADGE];
+    return Array.from({ length: PREVIEW_REFERENCE_BADGE_COUNT }, (_, index) => {
+      const publisherLabel = referencePublisherLabel(null, index);
+
+      return {
+        key: `reference-preview-${index + 1}`,
+        label: `[${publisherLabel}]`,
+        publisher: publisherLabel,
+        title: '출처 표시 확인용 임시값',
+        basisSummary: 'Analyzer reference가 연결되면 실제 출처와 근거 요약으로 대체됩니다.',
+        ariaLabel: `${publisherLabel} 기준 근거 확인용 임시값. Analyzer reference가 연결되면 실제 출처와 근거 요약으로 대체됩니다.`,
+      };
+    });
   }
 
-  return references.map((reference, index) => ({
-    key: `${reference.label}:${reference.url || index}`,
-    label: reference.label,
-    publisher: reference.publisher,
-    title: reference.title,
-    basisSummary: reference.basisSummary,
-    ariaLabel: `${reference.label} 기준 근거: ${reference.publisher} ${reference.title}. ${reference.basisSummary}`,
-    isFallback: false,
-  }));
+  return references.map((reference, index) => {
+    const publisherLabel = referencePublisherLabel(reference.publisher, index);
+
+    return {
+      key: `${reference.label}:${reference.url || index}`,
+      label: `[${publisherLabel}]`,
+      publisher: publisherLabel,
+      title: reference.title,
+      basisSummary: reference.basisSummary,
+      ariaLabel: `${reference.label} 기준 근거: ${publisherLabel} ${reference.title}. ${reference.basisSummary}`,
+    };
+  });
+}
+
+export function splitReferenceBadges(
+  badges: ReferenceBadgeViewModel[],
+  visibleLimit = MAX_VISIBLE_REFERENCE_BADGES,
+) {
+  return {
+    visible: badges.slice(0, visibleLimit),
+    overflow: badges.slice(visibleLimit),
+  };
 }
 
 export function nextPinnedReferenceBadgeId(currentBadgeId: string | null, selectedBadgeId: string) {
   return currentBadgeId === selectedBadgeId ? null : selectedBadgeId;
+}
+
+export function nextPinnedReferenceOverflowId(currentOverflowId: string | null, selectedOverflowId: string) {
+  return currentOverflowId === selectedOverflowId ? null : selectedOverflowId;
 }

@@ -575,19 +575,23 @@
 .run-report-recommendation-tab-shell:has(.run-report-reference-badge:hover),
 .run-report-recommendation-tab-shell:has(.run-report-reference-badge:focus),
 .run-report-recommendation-tab-shell:has(.run-report-reference-badge:focus-visible),
-.run-report-recommendation-tab-shell:has(.run-report-reference-badge[aria-pressed="true"]) {
+.run-report-recommendation-tab-shell:has(.run-report-reference-badge[aria-pressed="true"]),
+.run-report-recommendation-tab-shell:has(.run-report-reference-overflow:hover) {
   z-index: 5;
   transition-delay: 0s;
 }
 
 .run-report-recommendation-reference-badges {
   position: absolute;
-  top: 0.52rem;
-  right: 0.52rem;
+  top: 0.72rem;
+  left: 2.6rem;
   z-index: 1;
   display: flex;
-  max-width: calc(100% - 3.4rem);
-  justify-content: flex-end;
+  min-width: 0;
+  min-height: 1.5rem;
+  max-width: calc(100% - 3.2rem);
+  align-items: center;
+  justify-content: flex-start;
   gap: 0.28rem;
   pointer-events: none;
 }
@@ -608,7 +612,7 @@
 .run-report-reference-badge__label {
   display: inline-flex;
   overflow: hidden;
-  max-width: 6.8rem;
+  max-width: 4.6rem;
   align-items: center;
   border: 1px solid #bae6fd;
   border-radius: 999px;
@@ -622,16 +626,43 @@
   white-space: nowrap;
 }
 
-.run-report-reference-badge--pending .run-report-reference-badge__label {
-  border-color: #e5e7eb;
-  background: rgba(248, 250, 252, 0.96);
-  color: #64748b;
-}
-
 .run-report-reference-badge:focus-visible {
   border-radius: 999px;
   outline: 3px solid rgba(14, 165, 233, 0.18);
   outline-offset: 2px;
+}
+
+.run-report-reference-overflow {
+  position: relative;
+  display: inline-flex;
+  pointer-events: auto;
+}
+
+.run-report-reference-overflow__popover {
+  position: absolute;
+  top: calc(100% + 0.12rem);
+  left: 0;
+  z-index: 20;
+  display: flex;
+  width: max-content;
+  max-width: min(18rem, 72vw);
+  flex-wrap: wrap;
+  gap: 0.28rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.62rem;
+  background: #fff;
+  padding: 0.5rem;
+  box-shadow: 0 16px 36px rgba(15, 23, 42, 0.16);
+  pointer-events: auto;
+}
+
+.run-report-reference-overflow__popover::before {
+  content: "";
+  position: absolute;
+  top: -0.2rem;
+  right: 0;
+  left: 0;
+  height: 0.2rem;
 }
 
 .run-report-reference-badge__tooltip {
@@ -680,7 +711,7 @@
   border: 0;
   border-radius: 0.72rem;
   background: transparent;
-  padding: 2.05rem 0.72rem 0.72rem;
+  padding: 0.72rem;
   color: inherit;
   cursor: pointer;
   font: inherit;
@@ -709,6 +740,7 @@
 
 .run-report-recommendation-tab__rank {
   display: grid;
+  flex: 0 0 auto;
   width: 1.5rem;
   height: 1.5rem;
   place-items: center;
