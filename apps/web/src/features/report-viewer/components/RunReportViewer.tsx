@@ -244,6 +244,7 @@ function RecommendationReferenceBadges({
   pinnedReferenceOverflowId,
   onBadgeToggle,
   onOverflowToggle,
+  onOverflowDismiss,
 }: {
   recommendation: ReportRecommendation;
   finding: ReportFinding | null;
@@ -251,6 +252,7 @@ function RecommendationReferenceBadges({
   pinnedReferenceOverflowId: string | null;
   onBadgeToggle: (recommendation: ReportRecommendation, badgeId: string) => void;
   onOverflowToggle: (recommendation: ReportRecommendation, overflowId: string) => void;
+  onOverflowDismiss: (overflowId: string) => void;
 }) {
   const badges = referenceBadgesForFinding(finding);
   const { visible, overflow } = splitReferenceBadges(badges);
@@ -283,6 +285,7 @@ function RecommendationReferenceBadges({
           isPinned={pinnedReferenceOverflowId === `${recommendation.id}:references-overflow`}
           onBadgeToggle={onBadgeToggle}
           onOverflowToggle={onOverflowToggle}
+          onOverflowDismiss={onOverflowDismiss}
         />
       ) : null}
     </span>
@@ -297,6 +300,7 @@ function ReferenceOverflowBadge({
   isPinned,
   onBadgeToggle,
   onOverflowToggle,
+  onOverflowDismiss,
 }: {
   recommendation: ReportRecommendation;
   overflowId: string;
@@ -305,7 +309,9 @@ function ReferenceOverflowBadge({
   isPinned: boolean;
   onBadgeToggle: (recommendation: ReportRecommendation, badgeId: string) => void;
   onOverflowToggle: (recommendation: ReportRecommendation, overflowId: string) => void;
+  onOverflowDismiss: (overflowId: string) => void;
 }) {
+  const overflowRef = useRef<HTMLSpanElement | null>(null);
   const [isHoveringOrFocused, setIsHoveringOrFocused] = useState(false);
   const isOpen = isPinned || isHoveringOrFocused;
   const popoverId = `run-report-reference-overflow-${overflowId.replace(/[^a-zA-Z0-9_-]/g, '-')}`;
@@ -315,8 +321,30 @@ function ReferenceOverflowBadge({
     onOverflowToggle(recommendation, overflowId);
   }, [onOverflowToggle, overflowId, recommendation]);
 
+  useEffect(() => {
+    if (!isPinned) {
+      return;
+    }
+
+    function handleDocumentPointerDown(event: PointerEvent) {
+      const target = event.target;
+
+      if (target instanceof Node && overflowRef.current?.contains(target)) {
+        return;
+      }
+
+      onOverflowDismiss(overflowId);
+    }
+
+    document.addEventListener('pointerdown', handleDocumentPointerDown);
+    return () => {
+      document.removeEventListener('pointerdown', handleDocumentPointerDown);
+    };
+  }, [isPinned, onOverflowDismiss, overflowId]);
+
   return (
     <span
+      ref={overflowRef}
       className="run-report-reference-overflow"
       onMouseEnter={() => setIsHoveringOrFocused(true)}
       onMouseLeave={() => setIsHoveringOrFocused(false)}
@@ -524,6 +552,10 @@ export function RunReportViewer({
     setPinnedReferenceOverflowId((currentOverflowId) => nextPinnedReferenceOverflowId(currentOverflowId, overflowId));
   }
 
+  function dismissRecommendationReferenceOverflow(overflowId: string) {
+    setPinnedReferenceOverflowId((currentOverflowId) => (currentOverflowId === overflowId ? null : currentOverflowId));
+  }
+
   const frictionMarkers = isEvidencePreviewResolving
     ? null
     : markerCandidates.map((finding) => {
@@ -688,6 +720,7 @@ export function RunReportViewer({
                             pinnedReferenceOverflowId={pinnedReferenceOverflowId}
                             onBadgeToggle={toggleRecommendationReferenceBadge}
                             onOverflowToggle={toggleRecommendationReferenceOverflow}
+                            onOverflowDismiss={dismissRecommendationReferenceOverflow}
                           />
                           <button
                             type="button"
