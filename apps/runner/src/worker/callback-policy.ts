@@ -1,6 +1,7 @@
 import type { CallbackClient } from "../callback/index.ts";
 import { createDeliveryIssue, type DeliveryIssue } from "../delivery/index.ts";
 import type { ScenarioExecutionSummary } from "../scenario/executor/index.ts";
+import type { RunnerFailedPayload } from "../shared/contracts.ts";
 import { classifyRunnerFailure, errorMessage, toIsoTimestamp, type RunnerFailureCode } from "../shared/utils.ts";
 
 export interface AcceptedCallbackInput {
@@ -25,6 +26,9 @@ export interface FailedCallbackInput {
   accepted: boolean;
   hasSession: boolean;
   summary?: ScenarioExecutionSummary;
+  failedStepKey?: string;
+  failedStepOrder?: number;
+  lastCheckpointId?: string;
   failureCode?: RunnerFailureCode;
   failureArtifactRefs?: string[];
 }
@@ -73,6 +77,9 @@ export async function emitFailedCallback({
   accepted,
   hasSession,
   summary,
+  failedStepKey,
+  failedStepOrder,
+  lastCheckpointId,
   failureCode,
   failureArtifactRefs
 }: FailedCallbackInput): Promise<void> {
@@ -86,8 +93,16 @@ export async function emitFailedCallback({
       failedAt: toIsoTimestamp(),
       failureCode: failureCode ?? classifyRunnerFailure(error),
       failureMessage: errorMessage(error),
-      resultCompleteness: accepted ? "PARTIAL" : "NONE",
+      resultCompleteness: resolveFailureResultCompleteness({
+        accepted,
+        summary,
+        lastCheckpointId,
+        failureArtifactRefs
+      }),
       summary,
+      failedStepKey,
+      failedStepOrder,
+      lastCheckpointId,
       failureArtifactRefs: failureArtifactRefs && failureArtifactRefs.length > 0 ? failureArtifactRefs : undefined
     });
   } catch (sendFailedError) {
@@ -95,4 +110,26 @@ export async function emitFailedCallback({
       `runner execution failed: ${errorMessage(error)}; failed callback emission failed: ${errorMessage(sendFailedError)}`
     );
   }
+}
+
+export function resolveFailureResultCompleteness({
+  accepted,
+  summary,
+  lastCheckpointId,
+  failureArtifactRefs
+}: {
+  accepted: boolean;
+  summary?: ScenarioExecutionSummary;
+  lastCheckpointId?: string;
+  failureArtifactRefs?: string[];
+}): RunnerFailedPayload["resultCompleteness"] {
+  if (!accepted) {
+    return "NONE";
+  }
+
+  const hasCompletedCheckpointPath = (summary?.completedStepCount ?? 0) > 0;
+  const hasFailureCheckpoint = typeof lastCheckpointId === "string" && lastCheckpointId.length > 0;
+  const hasFailureArtifact = (failureArtifactRefs?.length ?? 0) > 0;
+
+  return hasCompletedCheckpointPath || hasFailureCheckpoint || hasFailureArtifact ? "PARTIAL" : "NONE";
 }

@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { registerWorker } from "../src/worker/index.ts";
+import { resolveFailureResultCompleteness } from "../src/worker/callback-policy.ts";
 import {
   createRunnerTestConfig,
   createSettledResult,
@@ -61,6 +62,49 @@ test("[Worker lifecycle] accepted callback 실패 시 session을 닫고 failed c
 
   const capturedFailedPayload = failedPayload as RunnerFailedPayload;
   assert.equal(capturedFailedPayload.resultCompleteness, "NONE");
+});
+
+test("[Worker failure policy] PARTIAL은 실제 completed step 또는 failure artifact가 있을 때만 사용한다", () => {
+  assert.equal(resolveFailureResultCompleteness({
+    accepted: false
+  }), "NONE");
+  assert.equal(resolveFailureResultCompleteness({
+    accepted: true,
+    summary: {
+      completedStepCount: 0,
+      failedStepCount: 1,
+      stopped: false
+    },
+    failureArtifactRefs: []
+  }), "NONE");
+  assert.equal(resolveFailureResultCompleteness({
+    accepted: true,
+    summary: {
+      completedStepCount: 1,
+      failedStepCount: 1,
+      stopped: false
+    },
+    failureArtifactRefs: []
+  }), "PARTIAL");
+  assert.equal(resolveFailureResultCompleteness({
+    accepted: true,
+    summary: {
+      completedStepCount: 0,
+      failedStepCount: 1,
+      stopped: false
+    },
+    lastCheckpointId: "checkpoint-failure",
+    failureArtifactRefs: []
+  }), "PARTIAL");
+  assert.equal(resolveFailureResultCompleteness({
+    accepted: true,
+    summary: {
+      completedStepCount: 0,
+      failedStepCount: 1,
+      stopped: false
+    },
+    failureArtifactRefs: ["artifact-failure"]
+  }), "PARTIAL");
 });
 
 test("[Worker capture policy] run artifactPolicy.captureAxTree를 ScenarioPlan capture 옵션으로 전달한다", async () => {
@@ -278,8 +322,10 @@ test("[Worker 관측성] step timeout 실패는 timeout code와 runId/stepKey �
   let failedPayload: RunnerFailedPayload | null = null;
   const stepEvents: StepEvent[] = [];
   const checkpointStatuses: string[] = [];
+  const runnerFailureObservations: Record<string, unknown>[] = [];
   const persistedArtifactIds: string[] = [];
   const sentArtifactIds: string[] = [];
+  const callbackOrder: string[] = [];
   const capturedLogs: string[] = [];
   const originalError = console.error;
   console.error = (message?: unknown, ...optional: unknown[]) => {
@@ -311,12 +357,20 @@ test("[Worker 관측성] step timeout 실패는 timeout code와 runId/stepKey �
           stepEvents.push(...payload.events);
         },
         sendArtifacts: async (_runId, payload) => {
+          callbackOrder.push("artifacts");
           sentArtifactIds.push(...payload.artifacts.map((artifact) => artifact.artifactId));
         },
         sendCheckpoints: async (_runId, payload) => {
+          callbackOrder.push("checkpoints");
           checkpointStatuses.push(...payload.checkpoints.map((checkpoint) => checkpoint.settle.status));
+          runnerFailureObservations.push(
+            ...payload.checkpoints.flatMap((checkpoint) =>
+              checkpoint.observations.filter((observation) => observation.type === "runner_failure")
+            )
+          );
         },
         sendFailed: async (_runId, payload) => {
+          callbackOrder.push("failed");
           failedPayload = payload;
         }
       }),
@@ -374,6 +428,10 @@ test("[Worker 관측성] step timeout 실패는 timeout code와 runId/stepKey �
 
   const capturedFailedPayload = failedPayload as RunnerFailedPayload;
   assert.equal(capturedFailedPayload.failureCode, "RUNNER_TIMEOUT");
+  assert.equal(capturedFailedPayload.resultCompleteness, "PARTIAL");
+  assert.equal(capturedFailedPayload.failedStepKey, "step_001_timeout");
+  assert.equal(capturedFailedPayload.failedStepOrder, 1);
+  assert.equal(capturedFailedPayload.lastCheckpointId, "checkpoint-timeout");
   assert.deepEqual(capturedFailedPayload.failureArtifactRefs, ["failure-screenshot"]);
   assert.equal(capturedFailedPayload.summary?.completedStepCount, 0);
   assert.equal(capturedFailedPayload.summary?.failedStepCount, 1);
@@ -382,6 +440,12 @@ test("[Worker 관측성] step timeout 실패는 timeout code와 runId/stepKey �
   assert.deepEqual(persistedArtifactIds, ["failure-screenshot"]);
   assert.deepEqual(sentArtifactIds, ["failure-screenshot"]);
   assert.deepEqual(checkpointStatuses, ["failed"]);
+  assert.deepEqual(callbackOrder, ["artifacts", "checkpoints", "failed"]);
+  assert.equal(runnerFailureObservations.length, 1);
+  assert.equal(runnerFailureObservations[0].failed_step_key, "step_001_timeout");
+  assert.equal(runnerFailureObservations[0].failed_step_order, 1);
+  assert.equal(runnerFailureObservations[0].failure_code, "RUNNER_TIMEOUT");
+  assert.equal(runnerFailureObservations[0].result_completeness_candidate, "PARTIAL");
   assert.ok(
     stepEvents.some(
       (event) =>

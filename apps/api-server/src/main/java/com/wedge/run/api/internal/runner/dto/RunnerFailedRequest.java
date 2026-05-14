@@ -14,6 +14,9 @@ public record RunnerFailedRequest(
         @NotBlank String failureMessage,
         @NotNull ResultCompleteness resultCompleteness,
         @Valid RunnerFinishedSummary summary,
+        String failedStepKey,
+        Integer failedStepOrder,
+        String lastCheckpointId,
         List<@NotBlank String> failureArtifactRefs
 ) {
 }

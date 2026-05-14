@@ -1363,6 +1363,20 @@ export interface KeyboardFocusStateObservation {
   focus_state: BrowserKeyboardFocusState;
 }
 
+export interface RunnerFailureObservation {
+  observation_id: string;
+  type: "runner_failure";
+  stage: ScenarioStage;
+  source: ("scenario_log" | "browser")[];
+  confidence: number;
+  failed_step_key: string;
+  failed_step_order: number;
+  failure_code: string;
+  failure_message: string;
+  result_completeness_candidate: "NONE" | "PARTIAL";
+  capture_reason: "step_failure";
+}
+
 export interface InteractiveComponentsObservation {
   observation_id: string;
   type: "interactive_components";
@@ -1624,6 +1638,9 @@ export interface RunnerFailedPayload {
   failureMessage: string;
   resultCompleteness: "NONE" | "PARTIAL" | "FINAL";
   summary?: RunnerExecutionSummary;
+  failedStepKey?: string;
+  failedStepOrder?: number;
+  lastCheckpointId?: string;
   failureArtifactRefs?: string[];
 }
 

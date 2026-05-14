@@ -290,6 +290,7 @@
             "text_block_metrics",
             "page_ready_timing",
             "keyboard_focus_state",
+            "runner_failure",
             "performance_metric",
             "scroll_delta",
             "flow_candidate",
@@ -332,6 +333,7 @@
               "network",
               "console",
               "performance",
+              "browser",
               "discovery",
               "scenario_log",
               "rule"

@@ -38,6 +38,7 @@ export class ScenarioExecutionError extends Error {
   readonly failedStepOrder: number;
   readonly failureCode: RunnerFailureCode;
   readonly failureArtifactRefs: string[];
+  readonly failureCheckpointId?: string;
   readonly timeoutPhase?: string;
   readonly timeoutMs?: number | null;
   readonly timeoutPolicy?: string;
@@ -51,6 +52,7 @@ export class ScenarioExecutionError extends Error {
     failedStepOrder: number;
     failureCode: RunnerFailureCode;
     failureArtifactRefs?: string[];
+    failureCheckpointId?: string;
     timeoutPhase?: string;
     timeoutMs?: number | null;
     timeoutPolicy?: string;
@@ -63,6 +65,7 @@ export class ScenarioExecutionError extends Error {
     this.failedStepOrder = input.failedStepOrder;
     this.failureCode = input.failureCode;
     this.failureArtifactRefs = input.failureArtifactRefs ?? [];
+    this.failureCheckpointId = input.failureCheckpointId;
     this.timeoutPhase = input.timeoutPhase;
     this.timeoutMs = input.timeoutMs;
     this.timeoutPolicy = input.timeoutPolicy;
@@ -180,6 +183,7 @@ export async function executeScenario({
         failedStepOrder: stepOrder,
         failureCode,
         failureArtifactRefs: failureEvidence.artifactRefs,
+        failureCheckpointId: failureEvidence.checkpointId,
         timeoutPhase: failureCode === "RUNNER_TIMEOUT" ? failureDetails.timeoutPhase : undefined,
         timeoutMs: failureCode === "RUNNER_TIMEOUT" ? failureDetails.timeoutMs ?? null : undefined,
         timeoutPolicy: failureCode === "RUNNER_TIMEOUT" ? "fail_step_and_run" : undefined

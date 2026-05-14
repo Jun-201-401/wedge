@@ -5780,6 +5780,16 @@ components:
           - completedStepCount
           - failedStepCount
           - stopped
+        failedStepKey:
+          type: string
+          nullable: true
+        failedStepOrder:
+          type: integer
+          minimum: 1
+          nullable: true
+        lastCheckpointId:
+          type: string
+          nullable: true
         failureArtifactRefs:
           type: array
           items:

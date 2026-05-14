@@ -12,7 +12,7 @@ import {
 import type { ArtifactStore } from "../storage/index.ts";
 import type { AgentArtifactPolicy, RunExecuteMessage, ScenarioPlan } from "../shared/contracts.ts";
 import { classifyRunnerFailure, errorMessage, logOperationalEvent, runnerFailureOutcome } from "../shared/utils.ts";
-import { emitAcceptedCallback, emitFailedCallback, emitFinishedCallback } from "./callback-policy.ts";
+import { emitAcceptedCallback, emitFailedCallback, emitFinishedCallback, resolveFailureResultCompleteness } from "./callback-policy.ts";
 
 export interface RunnerExecutionResult {
   runId: string;
@@ -188,7 +188,12 @@ async function executeRunMessage({
     const failureCode = error instanceof ScenarioExecutionError
       ? error.failureCode
       : classifyRunnerFailure(error);
-    const resultCompleteness = accepted ? "PARTIAL" : "NONE";
+    const resultCompleteness = resolveFailureResultCompleteness({
+      accepted,
+      summary: error instanceof ScenarioExecutionError ? error.summary : undefined,
+      lastCheckpointId: error instanceof ScenarioExecutionError ? error.failureCheckpointId : undefined,
+      failureArtifactRefs: error instanceof ScenarioExecutionError ? error.failureArtifactRefs : undefined
+    });
 
     logOperationalEvent(
       "worker",
@@ -220,6 +225,9 @@ async function executeRunMessage({
       accepted,
       hasSession: session !== undefined,
       summary: error instanceof ScenarioExecutionError ? error.summary : undefined,
+      failedStepKey: error instanceof ScenarioExecutionError ? error.failedStepKey : undefined,
+      failedStepOrder: error instanceof ScenarioExecutionError ? error.failedStepOrder : undefined,
+      lastCheckpointId: error instanceof ScenarioExecutionError ? error.failureCheckpointId : undefined,
       failureCode,
       failureArtifactRefs: error instanceof ScenarioExecutionError ? error.failureArtifactRefs : undefined
     });

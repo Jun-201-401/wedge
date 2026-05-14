@@ -103,6 +103,7 @@ export type {
   RunnerControlStatePayload,
   RunnerActionKind,
   RunnerExpectedOutcomeHint,
+  RunnerFailureObservation,
   RunnerFailedPayload,
   RunnerFinishedPayload,
   ScenarioAuthoringCandidate,

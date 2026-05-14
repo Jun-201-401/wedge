@@ -255,6 +255,18 @@
         "summary": {
           "$ref": "#/$defs/Finished/properties/summary"
         },
+        "failedStepKey": {
+          "type": "string",
+          "minLength": 1
+        },
+        "failedStepOrder": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "lastCheckpointId": {
+          "type": "string",
+          "minLength": 1
+        },
         "failureArtifactRefs": {
           "type": "array",
           "items": {

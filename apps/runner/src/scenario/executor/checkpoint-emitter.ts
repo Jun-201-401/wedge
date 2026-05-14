@@ -10,13 +10,14 @@ import {
   type CollectorStatusSummary
 } from "../../observability/collectors.ts";
 import type { ArtifactStore } from "../../storage/index.ts";
-import type { ScenarioPlan, ScenarioStep } from "../../shared/contracts.ts";
+import type { RunnerFailureObservation, ScenarioPlan, ScenarioStep } from "../../shared/contracts.ts";
 import { errorMessage, logOperationalEvent } from "../../shared/utils.ts";
 import { createArtifactBatch, createCheckpointRequest } from "./checkpoint-payloads.ts";
 
 export interface CheckpointEmissionResult {
   deliveryIssues: DeliveryIssue[];
   artifactRefs: string[];
+  checkpointId?: string;
   artifactManifest: ArtifactManifestSummary;
   collectorStatus: CollectorStatusSummary;
 }
@@ -116,6 +117,12 @@ export async function emitFailureCheckpointArtifactsAndCallbacks({
       },
       capturedArtifacts
     });
+    collection.checkpoint.observations.push({ ...createRunnerFailureObservation({
+      step,
+      stepOrder,
+      failureCode,
+      failureMessage
+    }) });
 
     return await emitCheckpointCollection({
       runId,
@@ -136,6 +143,7 @@ export async function emitFailureCheckpointArtifactsAndCallbacks({
         })
       ],
       artifactRefs: [],
+      checkpointId: undefined,
       artifactManifest: summarizeArtifactManifest({
         requestedArtifacts: [],
         storedArtifacts: []
@@ -231,8 +239,35 @@ async function emitCheckpointCollection({
   return {
     deliveryIssues,
     artifactRefs: storedArtifacts.map((artifact) => artifact.artifactId),
+    checkpointId: collection.checkpoint.checkpointId,
     artifactManifest,
     collectorStatus
+  };
+}
+
+function createRunnerFailureObservation({
+  step,
+  stepOrder,
+  failureCode,
+  failureMessage
+}: {
+  step: ScenarioStep;
+  stepOrder: number;
+  failureCode: string;
+  failureMessage: string;
+}): RunnerFailureObservation {
+  return {
+    observation_id: `${step.step_id}.obs_runner_failure`,
+    type: "runner_failure",
+    stage: step.stage,
+    source: ["scenario_log", "browser"],
+    confidence: 0.95,
+    failed_step_key: step.step_id,
+    failed_step_order: stepOrder,
+    failure_code: failureCode,
+    failure_message: failureMessage,
+    result_completeness_candidate: "PARTIAL",
+    capture_reason: "step_failure"
   };
 }
 

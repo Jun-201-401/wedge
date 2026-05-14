@@ -16,7 +16,7 @@ import {
   type AgentIdempotencyClaimInput,
   type AgentIdempotencyStore
 } from "./agent-idempotency.ts";
-import { emitAcceptedCallback, emitFailedCallback, emitFinishedCallback } from "./callback-policy.ts";
+import { emitAcceptedCallback, emitFailedCallback, emitFinishedCallback, resolveFailureResultCompleteness } from "./callback-policy.ts";
 
 export interface AgentRunnerExecutionResult {
   runId: string;
@@ -399,7 +399,12 @@ async function executeAgentMessage({
     const failureCode = error instanceof ScenarioExecutionError
       ? error.failureCode
       : classifyRunnerFailure(error);
-    const resultCompleteness = accepted ? "PARTIAL" : "NONE";
+    const resultCompleteness = resolveFailureResultCompleteness({
+      accepted,
+      summary: error instanceof ScenarioExecutionError ? error.summary : undefined,
+      lastCheckpointId: error instanceof ScenarioExecutionError ? error.failureCheckpointId : undefined,
+      failureArtifactRefs: error instanceof ScenarioExecutionError ? error.failureArtifactRefs : undefined
+    });
 
     logOperationalEvent(
       "agent-worker",
@@ -432,7 +437,11 @@ async function executeAgentMessage({
       accepted,
       hasSession: session !== undefined,
       summary: error instanceof ScenarioExecutionError ? error.summary : undefined,
-      failureCode
+      failedStepKey: error instanceof ScenarioExecutionError ? error.failedStepKey : undefined,
+      failedStepOrder: error instanceof ScenarioExecutionError ? error.failedStepOrder : undefined,
+      lastCheckpointId: error instanceof ScenarioExecutionError ? error.failureCheckpointId : undefined,
+      failureCode,
+      failureArtifactRefs: error instanceof ScenarioExecutionError ? error.failureArtifactRefs : undefined
     });
 
     throw error;
