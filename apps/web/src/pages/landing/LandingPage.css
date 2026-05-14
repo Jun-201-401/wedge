@@ -226,6 +226,11 @@
   height: 250vh;
 }
 
+.vision-wrap.vision-wrap--complete {
+  height: 100vh;
+  height: 100svh;
+}
+
 .vision-sticky {
   position: sticky;
   top: 0;

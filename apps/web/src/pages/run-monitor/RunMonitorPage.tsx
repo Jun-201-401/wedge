@@ -38,6 +38,7 @@ import {
   RUN_MONITOR_REFRESH_INTERVAL_MS,
   resolveRunMonitorReportCtaState,
   shouldRefreshRunReport,
+  type RunActionLog,
   type RunStatusTone,
   type StepStatus,
   useRunMonitorState,
@@ -105,13 +106,17 @@ function getResizablePanelBounds(cockpit: HTMLDivElement | null) {
   };
 }
 
+function CheckIcon({ className }: { className: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
+      <path d="M19.5 6.5 9 17 4.5 12.5" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 function StepNode({ status }: { status: StepStatus }) {
   if (status === 'complete') {
-    return (
-      <svg viewBox="0 0 24 24" fill="none" className="run-monitor-step__check" aria-hidden="true">
-        <path d="M19.5 6.5 9 17 4.5 12.5" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
-      </svg>
-    );
+    return <CheckIcon className="run-monitor-step__check" />;
   }
 
   if (status === 'active') {
@@ -123,6 +128,14 @@ function StepNode({ status }: { status: StepStatus }) {
   }
 
   return <span className="run-monitor-step__dot" aria-hidden="true" />;
+}
+
+function LogMarker({ tone }: { tone: RunActionLog['tone'] }) {
+  if (tone === 'success') {
+    return <CheckIcon className="run-monitor-log__check" />;
+  }
+
+  return <span className="run-monitor-log__dot" aria-hidden="true" />;
 }
 
 function RunMonitorTopbar() {
@@ -1067,7 +1080,9 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
               <ul className="run-monitor-log__list">
                 {visibleLogs.map((log) => (
                   <li key={log.id} className={`run-monitor-log__item run-monitor-log__item--${log.tone}`}>
-                    <span className="run-monitor-log__dot" aria-hidden="true" />
+                    <span className="run-monitor-log__marker" aria-hidden="true">
+                      <LogMarker tone={log.tone} />
+                    </span>
                     <span className="run-monitor-log__message">{log.message}</span>
                     <time>{log.time}</time>
                   </li>

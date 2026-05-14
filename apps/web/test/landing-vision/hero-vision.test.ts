@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 
 import {
   FIRST_WORD_DELAY_MS,
@@ -49,4 +50,13 @@ test('vision scroll state marks the panel pinned only after the section reaches 
 
   assert.equal(result.isVisionActive, true);
   assert.equal(result.isVisionPanelPinned, true);
+});
+
+test('landing page collapses the vision scroll track after the final result step', () => {
+  const landing = fs.readFileSync(new URL('../../src/pages/landing/LandingPage.tsx', import.meta.url), 'utf8');
+  const css = fs.readFileSync(new URL('../../src/pages/landing/LandingPage.css', import.meta.url), 'utf8');
+
+  assert.match(landing, /isResultsVisible && currentResultStepIndex >= 2/);
+  assert.match(landing, /vision-wrap--complete/);
+  assert.match(css, /\.vision-wrap\.vision-wrap--complete\s*\{[\s\S]*?height: 100svh/);
 });

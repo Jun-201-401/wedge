@@ -52,6 +52,9 @@ test('run monitor page exposes Sprint 2 live cockpit essentials with Korean-faci
   assert.match(stateHook, /shouldRefreshRunLive\(liveResponse\.data\.status\)/);
   assert.match(source, /visibleSteps\.map/);
   assert.match(source, /visibleLogs\.map/);
+  assert.match(source, /function LogMarker/);
+  assert.match(source, /run-monitor-log__marker/);
+  assert.match(source, /run-monitor-log__check/);
   assert.match(source, /run-monitor-log__dot/);
   assert.match(source, /run-monitor-log__message/);
   assert.match(source, /run-monitor-step__status/);
@@ -184,8 +187,10 @@ test('run monitor css follows the live cockpit visual language', () => {
   assert.match(css, /\.run-monitor-step__head h3\s*\{[\s\S]*?text-overflow: ellipsis/);
   assert.match(css, /\.run-monitor-step__status\s*\{[\s\S]*?border-radius: 999px/);
   assert.match(css, /\.run-monitor-step__content time\s*\{[\s\S]*?color: #cbd5e1/);
-  assert.match(css, /\.run-monitor-log__item\s*\{[\s\S]*?grid-template-columns: 0\.42rem minmax\(0, 1fr\) auto/);
+  assert.match(css, /\.run-monitor-log__item\s*\{[\s\S]*?grid-template-columns: 0\.95rem minmax\(0, 1fr\) auto/);
+  assert.match(css, /\.run-monitor-log__marker\s*\{[\s\S]*?width: 0\.95rem/);
   assert.match(css, /\.run-monitor-log__dot\s*\{[\s\S]*?background: #cbd5e1/);
+  assert.match(css, /\.run-monitor-log__check\s*\{[\s\S]*?color: #7dd3fc/);
   assert.match(css, /\.run-monitor-log__message\s*\{[\s\S]*?font-size: 0\.66rem/);
   assert.match(css, /\.run-monitor-evidence-summary\s*\{[\s\S]*?display: flex/);
   assert.match(css, /\.run-monitor-evidence-summary\s*\{[\s\S]*?border-top: 0/);

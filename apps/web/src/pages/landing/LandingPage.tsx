@@ -140,6 +140,7 @@ export function LandingPage() {
   );
 
   const isVisionInverted = isVisionActive && scrollProgress > 0.06;
+  const isVisionSequenceComplete = isResultsVisible && currentResultStepIndex >= 2;
 
   const navClassName = useMemo(() => {
     const base = 'site-nav';
@@ -217,7 +218,11 @@ export function LandingPage() {
           </div>
         </section>
 
-        <section ref={revealRef} className="vision-wrap" id="vision">
+        <section
+          ref={revealRef}
+          className={`vision-wrap ${isVisionSequenceComplete ? 'vision-wrap--complete' : ''}`}
+          id="vision"
+        >
           <div className="vision-sticky">
             <VisionStage
               isPanelVisible={isVisionPanelVisible}
