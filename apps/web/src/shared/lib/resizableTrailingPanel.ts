@@ -11,6 +11,7 @@ interface ResizableTrailingPanelOptions {
   defaultWidth: number;
   defaultRatio: number;
   minWidth: number;
+  maxWidth: number;
   leadMinWidth: number;
   resizeStep: number;
   resizerFallbackWidth: number;
@@ -25,22 +26,24 @@ function clampNumber(value: number, min: number, max: number) {
 function getResizablePanelBounds(
   container: HTMLElement | null,
   minWidth: number,
+  maxWidth: number,
   defaultWidth: number,
   leadMinWidth: number,
 ) {
   if (!container) {
     return {
       min: minWidth,
-      max: defaultWidth,
+      max: Math.max(minWidth, Math.min(maxWidth, defaultWidth)),
     };
   }
 
   const availableWidth = container.getBoundingClientRect().width;
   const maxByLeadWidth = Math.max(minWidth, availableWidth - leadMinWidth);
+  const boundedMaxWidth = Math.max(minWidth, Math.min(maxWidth, maxByLeadWidth));
 
   return {
     min: minWidth,
-    max: maxByLeadWidth,
+    max: boundedMaxWidth,
   };
 }
 
@@ -49,7 +52,13 @@ function getPanelResizerWidth(container: HTMLElement, selector: string, fallback
 }
 
 function getDefaultPanelWidth(container: HTMLElement | null, options: ResizableTrailingPanelOptions) {
-  const bounds = getResizablePanelBounds(container, options.minWidth, options.defaultWidth, options.leadMinWidth);
+  const bounds = getResizablePanelBounds(
+    container,
+    options.minWidth,
+    options.maxWidth,
+    options.defaultWidth,
+    options.leadMinWidth,
+  );
   if (!container) {
     return clampNumber(options.defaultWidth, bounds.min, bounds.max);
   }
@@ -68,6 +77,7 @@ export function useResizableTrailingPanel(
     defaultWidth,
     defaultRatio,
     minWidth,
+    maxWidth,
     leadMinWidth,
     resizeStep,
     resizerFallbackWidth,
@@ -80,11 +90,12 @@ export function useResizableTrailingPanel(
     const bounds = getResizablePanelBounds(
       containerRef.current,
       minWidth,
+      maxWidth,
       defaultWidth,
       leadMinWidth,
     );
     setPanelWidth(clampNumber(nextWidth, bounds.min, bounds.max));
-  }, [containerRef, defaultWidth, leadMinWidth, minWidth]);
+  }, [containerRef, defaultWidth, leadMinWidth, maxWidth, minWidth]);
 
   const updatePanelWidthFromPointer = useCallback((clientX: number) => {
     const container = containerRef.current;
@@ -130,6 +141,7 @@ export function useResizableTrailingPanel(
         defaultRatio,
         defaultWidth,
         leadMinWidth,
+        maxWidth,
         minWidth,
         resetKey,
         resizeStep,
@@ -148,6 +160,7 @@ export function useResizableTrailingPanel(
     defaultRatio,
     defaultWidth,
     leadMinWidth,
+    maxWidth,
     minWidth,
     panelWidth,
     resetKey,
@@ -166,6 +179,7 @@ export function useResizableTrailingPanel(
       defaultRatio,
       defaultWidth,
       leadMinWidth,
+      maxWidth,
       minWidth,
       resetKey,
       resizeStep,
@@ -177,6 +191,7 @@ export function useResizableTrailingPanel(
     defaultRatio,
     defaultWidth,
     leadMinWidth,
+    maxWidth,
     minWidth,
     resetKey,
     resizeStep,

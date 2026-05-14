@@ -64,6 +64,9 @@ test('run report page follows the report.html result-first layout', () => {
   assert.match(source, /const isEvidencePreviewResolving = Boolean\(selectedEvidencePreviewUrl && !evidencePreviewUrl\)/);
   assert.match(source, /useRef<HTMLDivElement \| null>\(null\)/);
   assert.match(source, /ref=\{evidencePreviewRef\}/);
+  assert.match(source, /const \[loadedEvidencePreviewUrl, setLoadedEvidencePreviewUrl\] = useState<string \| null>\(null\)/);
+  assert.match(source, /onLoad=\{handleEvidencePreviewImageLoad\}/);
+  assert.match(source, /loadedEvidencePreviewUrl !== evidencePreviewUrl/);
   assert.match(source, /preview\.scrollTo\(\{ top: targetScrollTop, behavior: 'smooth' \}\)/);
   assert.match(source, /run-report-evidence-preview__canvas/);
   assert.match(source, /run-report-evidence-preview--resolving/);
@@ -141,8 +144,10 @@ test('run report page follows the report.html result-first layout', () => {
   assert.match(source, /run-report-visual-panel/);
   assert.match(source, /run-report-insight-panel/);
   assert.match(source, /RUN_REPORT_INSIGHT_PANEL_DEFAULT_RATIO = 0\.4/);
+  assert.match(source, /RUN_REPORT_INSIGHT_PANEL_MAX_WIDTH = 704/);
   assert.match(source, /useResizableTrailingPanel\(reportLayoutRef/);
   assert.match(source, /leadMinWidth: RUN_REPORT_VISUAL_MIN_WIDTH/);
+  assert.match(source, /maxWidth: RUN_REPORT_INSIGHT_PANEL_MAX_WIDTH/);
   assert.match(source, /resetKey: report\.reportId/);
   assert.match(source, /handleInsightPanelResizePointerDown/);
   assert.match(source, /run-report-layout run-report-layout--resizable/);

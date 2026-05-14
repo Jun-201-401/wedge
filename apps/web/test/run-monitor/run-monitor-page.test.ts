@@ -149,9 +149,11 @@ test('run monitor page exposes Sprint 2 live cockpit essentials with Korean-faci
   assert.doesNotMatch(source, /리포트 보기/);
   assert.match(source, /RUN_MONITOR_PANEL_DEFAULT_WIDTH/);
   assert.match(source, /RUN_MONITOR_PANEL_DEFAULT_RATIO = 0\.4/);
+  assert.match(source, /RUN_MONITOR_PANEL_MAX_WIDTH = 560/);
   assert.match(source, /RUN_MONITOR_RESIZER_FALLBACK_WIDTH = 8/);
   assert.match(source, /useResizableTrailingPanel\(cockpitRef/);
   assert.match(source, /leadMinWidth: RUN_MONITOR_CAPTURE_MIN_WIDTH/);
+  assert.match(source, /maxWidth: RUN_MONITOR_PANEL_MAX_WIDTH/);
   assert.match(source, /resetKey: `\$\{isRealRunLoading\}:\$\{runId\}`/);
   assert.match(source, /handleAnalysisPanelResizePointerDown/);
   assert.match(source, /run-monitor-cockpit run-monitor-cockpit--resizable/);

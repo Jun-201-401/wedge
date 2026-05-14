@@ -43,6 +43,7 @@ const TOP_RECOMMENDATION_COUNT = 3;
 const RUN_REPORT_INSIGHT_PANEL_DEFAULT_WIDTH = 576;
 const RUN_REPORT_INSIGHT_PANEL_DEFAULT_RATIO = 0.4;
 const RUN_REPORT_INSIGHT_PANEL_MIN_WIDTH = 384;
+const RUN_REPORT_INSIGHT_PANEL_MAX_WIDTH = 704;
 const RUN_REPORT_VISUAL_MIN_WIDTH = 560;
 const RUN_REPORT_RESIZE_STEP = 24;
 const RUN_REPORT_RESIZER_FALLBACK_WIDTH = 8;
@@ -155,6 +156,7 @@ export function RunReportViewer({
     defaultWidth: RUN_REPORT_INSIGHT_PANEL_DEFAULT_WIDTH,
     defaultRatio: RUN_REPORT_INSIGHT_PANEL_DEFAULT_RATIO,
     minWidth: RUN_REPORT_INSIGHT_PANEL_MIN_WIDTH,
+    maxWidth: RUN_REPORT_INSIGHT_PANEL_MAX_WIDTH,
     leadMinWidth: RUN_REPORT_VISUAL_MIN_WIDTH,
     resizeStep: RUN_REPORT_RESIZE_STEP,
     resizerFallbackWidth: RUN_REPORT_RESIZER_FALLBACK_WIDTH,
@@ -165,6 +167,7 @@ export function RunReportViewer({
   const [selectedFindingId, setSelectedFindingId] = useState<string | null>(report.findings[0]?.id ?? null);
   const [selectedRecommendationId, setSelectedRecommendationId] = useState<string | null>(report.recommendations[0]?.id ?? null);
   const [isAllRecommendationsOpen, setIsAllRecommendationsOpen] = useState(false);
+  const [loadedEvidencePreviewUrl, setLoadedEvidencePreviewUrl] = useState<string | null>(null);
   const recommendations = report.recommendations;
   const topRecommendations = recommendations.slice(0, TOP_RECOMMENDATION_COUNT);
   const hasMoreRecommendations = recommendations.length > TOP_RECOMMENDATION_COUNT;
@@ -230,9 +233,17 @@ export function RunReportViewer({
   const isEvidencePreviewResolving = Boolean(selectedEvidencePreviewUrl && !evidencePreviewUrl);
 
   useEffect(() => {
+    setLoadedEvidencePreviewUrl(null);
+  }, [evidencePreviewUrl]);
+
+  const handleEvidencePreviewImageLoad = useCallback(() => {
+    setLoadedEvidencePreviewUrl(evidencePreviewUrl);
+  }, [evidencePreviewUrl]);
+
+  useEffect(() => {
     const preview = evidencePreviewRef.current;
     const markerTop = activeFinding?.highlight?.top;
-    if (!preview || !markerTop || !evidencePreviewUrl) {
+    if (!preview || !markerTop || !evidencePreviewUrl || loadedEvidencePreviewUrl !== evidencePreviewUrl) {
       return;
     }
 
@@ -251,7 +262,7 @@ export function RunReportViewer({
       Math.min(maxScrollTop, preview.scrollHeight * topRatio - preview.clientHeight * 0.35),
     );
     preview.scrollTo({ top: targetScrollTop, behavior: 'smooth' });
-  }, [activeFinding?.id, activeFinding?.highlight?.top, evidencePreviewUrl]);
+  }, [activeFinding?.id, activeFinding?.highlight?.top, evidencePreviewUrl, loadedEvidencePreviewUrl]);
 
   useEffect(() => {
     if (recommendations.length === 0) {
@@ -401,7 +412,7 @@ export function RunReportViewer({
                 >
                   {evidencePreviewUrl ? (
                     <div className="run-report-evidence-preview__canvas">
-                      <img className="run-report-evidence-preview__image" src={evidencePreviewUrl} alt="실제 실행에서 수집된 화면" />
+                      <img className="run-report-evidence-preview__image" src={evidencePreviewUrl} alt="실제 실행에서 수집된 화면" onLoad={handleEvidencePreviewImageLoad} />
                       {frictionMarkers}
                     </div>
                   ) : isEvidencePreviewResolving ? (
