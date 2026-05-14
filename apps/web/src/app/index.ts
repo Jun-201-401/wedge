@@ -2,5 +2,5 @@ export { App } from './App';
 
 export const appShell = {
   name: 'wedge-web',
-  status: 'landing-enabled',
+  status: 'product-home-enabled',
 } as const;

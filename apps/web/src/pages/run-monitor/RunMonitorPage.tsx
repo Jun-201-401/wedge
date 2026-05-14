@@ -43,7 +43,7 @@ import {
   useRunMonitorState,
 } from '../../features/run-monitor';
 import { getScenarioLabel } from '../../shared';
-import { RUNS_PATH } from '../../shared/lib/appPaths';
+import { CREATE_ANALYSIS_PATH, HOME_PATH, RUNS_PATH } from '../../shared/lib/appPaths';
 import { buildRunReportPath } from '../run-report/lib/runReportRoute';
 import { isMockRunId } from './lib/runMonitorRoute';
 import './RunMonitorPage.css';
@@ -122,14 +122,14 @@ function RunMonitorTopbar() {
   return (
     <header className="run-monitor-topbar" aria-label="Wedge navigation">
       <div className="run-monitor-topbar__left">
-        <a href="/" className="run-monitor-brand" aria-label="Wedge home">
+        <a href={HOME_PATH} className="run-monitor-brand" aria-label="Wedge home">
           <span>Wedge</span>
         </a>
       </div>
 
       <nav className="run-monitor-topbar__right" aria-label="주요 이동">
         <a href={RUNS_PATH} className="run-monitor-topbar__link run-monitor-topbar__link--secondary">실행 목록</a>
-        <a href="/create-analysis" className="run-monitor-topbar__link run-monitor-topbar__link--primary">새 분석</a>
+        <a href={CREATE_ANALYSIS_PATH} className="run-monitor-topbar__link run-monitor-topbar__link--primary">새 분석</a>
       </nav>
     </header>
   );
@@ -221,7 +221,7 @@ function RunMonitorStatePage({ title, message }: { title: string; message: strin
           <span className="run-monitor-state-card__badge">실시간 Trace</span>
           <h1 id="run-monitor-state-title">{title}</h1>
           <p>{message}</p>
-          <a href="/create-analysis">새 분석 만들기</a>
+          <a href={CREATE_ANALYSIS_PATH}>새 분석 만들기</a>
         </section>
       </main>
     </div>

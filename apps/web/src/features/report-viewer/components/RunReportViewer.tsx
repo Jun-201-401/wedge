@@ -8,7 +8,7 @@ import {
 } from 'react';
 
 import { useAuthenticatedResourceUrl } from '../../../shared/lib/authenticatedResourceUrl';
-import { RUNS_PATH } from '../../../shared/lib/appPaths';
+import { HOME_PATH, RUNS_PATH } from '../../../shared/lib/appPaths';
 import { formatDisplayUrl } from '../../../shared/lib/displayUrl';
 import { useResizableTrailingPanel } from '../../../shared/lib/resizableTrailingPanel';
 import { resolveActiveFinding, resolveLinkedFindingId } from '../lib/runReportInteractions';
@@ -131,7 +131,7 @@ function recommendationMeta(recommendation: ReportRecommendation, finding: Repor
 
 export function RunReportBrand() {
   return (
-    <a href="/" className="run-report-brand" aria-label="Wedge 홈">
+    <a href={HOME_PATH} className="run-report-brand" aria-label="Wedge 홈">
       <span>Wedge</span>
     </a>
   );

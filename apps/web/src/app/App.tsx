@@ -4,6 +4,7 @@ import { ensureAuthSession, getCurrentUser, logout } from '../api/auth';
 import { readCurrentUser, saveCurrentUser } from '../api/authSession';
 import type { User } from '../entities';
 import { CreateAnalysisPage, LandingPage, LoginPage, RunMonitorPage, RunReportPage, RunsListPage, SignupPage } from '../pages';
+import { HOME_PATH } from '../shared/lib/appPaths';
 import { replaceAppPath } from '../shared/lib/navigation';
 import { resolveAppRoute, resolveProtectedRouteGate, type AppAuthState } from './appRoute';
 import './App.css';
@@ -104,17 +105,7 @@ export function App() {
     } finally {
       setCurrentUser(null);
       setAuthState('anonymous');
-      replaceAppPath('/');
-    }
-  }, []);
-
-  const handleCreateAnalysisLogout = useCallback(async () => {
-    try {
-      await logout();
-    } finally {
-      setCurrentUser(null);
-      setAuthState('anonymous');
-      replaceAppPath('/create-analysis');
+      replaceAppPath(HOME_PATH);
     }
   }, []);
 
@@ -123,13 +114,26 @@ export function App() {
   const isAuthChecking = authState === 'checking';
   const protectedRouteGate = resolveProtectedRouteGate(route, authState);
   const shouldShowProtectedRouteLoading = useDelayedProtectedRouteLoading(protectedRouteGate === 'loading');
+  const createAnalysisPage = (
+    <CreateAnalysisPage
+      isAuthenticated={isAuthenticated}
+      isAuthChecking={isAuthChecking}
+      onLogout={handleLogout}
+    />
+  );
+
+  useEffect(() => {
+    if (protectedRouteGate === 'blocked') {
+      replaceAppPath(HOME_PATH);
+    }
+  }, [protectedRouteGate]);
 
   if (protectedRouteGate === 'loading') {
     return shouldShowProtectedRouteLoading ? <ProtectedRouteLoadingPage /> : null;
   }
 
   if (protectedRouteGate === 'blocked') {
-    return <LandingPage />;
+    return null;
   }
 
   if (route.kind === 'run-report') {
@@ -149,13 +153,7 @@ export function App() {
   }
 
   if (route.kind === 'create-analysis') {
-    return (
-      <CreateAnalysisPage
-        isAuthenticated={isAuthenticated}
-        isAuthChecking={isAuthChecking}
-        onLogout={handleCreateAnalysisLogout}
-      />
-    );
+    return createAnalysisPage;
   }
 
   if (route.kind === 'runs-list') {

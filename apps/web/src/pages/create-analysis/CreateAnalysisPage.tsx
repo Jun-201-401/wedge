@@ -7,7 +7,7 @@ import { createRun, startRun } from '../../api/runs';
 import { confirmScenarioAuthoringCandidate, createScenarioAuthoringJob, getScenarioAuthoringJob } from '../../api/scenario-authoring';
 import type { ScenarioAuthoringCandidate } from '../../entities/scenario-authoring';
 import { FIRST_WORD_DELAY_MS, WORD_ROTATION_INTERVAL_MS } from '../../features/landing-vision';
-import { LOGIN_PATH, RUNS_PATH } from '../../shared/lib/appPaths';
+import { HOME_PATH, LOGIN_PATH, RUNS_PATH } from '../../shared/lib/appPaths';
 import { formatDisplayUrl } from '../../shared/lib/displayUrl';
 import { pushAppPath } from '../../shared/lib/navigation';
 import { buildRunMonitorPath } from '../run-monitor/lib/runMonitorRoute';
@@ -1380,7 +1380,7 @@ export function CreateAnalysisPage({ isAuthenticated = false, isAuthChecking = f
       </svg>
 
       <header className="create-analysis-nav" aria-label="Wedge home">
-        <a href="/" className="create-analysis-nav__brand">
+        <a href={HOME_PATH} className="create-analysis-nav__brand">
           Wedge
         </a>
         {stage === 'input' ? (

@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { listRuns } from '../../api/runs';
 import type { Run, RunStatus, User } from '../../entities';
 import { RUN_STATUS_LABEL } from '../../entities';
-import { CREATE_ANALYSIS_PATH } from '../../shared/lib/appPaths';
+import { CREATE_ANALYSIS_PATH, HOME_PATH } from '../../shared/lib/appPaths';
 import { getSafeHttpUrl } from '../../shared/lib/safeUrl';
 import { buildRunReportPath } from '../run-report/lib/runReportRoute';
 import './RunsListPage.css';
@@ -155,7 +155,7 @@ function RunsListTopbar({ currentUser, onLogout }: RunsListPageProps) {
   return (
     <header className="runs-list-topbar" aria-label="Wedge runs">
       <div className="runs-list-topbar__left">
-        <a href="/" className="runs-list-brand" aria-label="Wedge home">Wedge</a>
+        <a href={HOME_PATH} className="runs-list-brand" aria-label="Wedge home">Wedge</a>
       </div>
 
       <div className="runs-list-topbar__right">

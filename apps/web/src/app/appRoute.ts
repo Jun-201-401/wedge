@@ -1,6 +1,6 @@
 import { getRunReportIdFromPath } from '../pages/run-report/lib/runReportRoute';
 import { getRunIdFromPath } from '../pages/run-monitor/lib/runMonitorRoute';
-import { CREATE_ANALYSIS_PATH, LOGIN_PATH, RUNS_PATH, SIGNUP_PATH } from '../shared/lib/appPaths';
+import { CREATE_ANALYSIS_PATH, HOME_PATH, LANDING_PATH, LOGIN_PATH, RUNS_PATH, SIGNUP_PATH } from '../shared/lib/appPaths';
 
 export type AppAuthState = 'checking' | 'authenticated' | 'anonymous';
 
@@ -36,7 +36,7 @@ export function resolveAppRoute(pathname: string): AppRoute {
     return { kind: 'signup' };
   }
 
-  if (pathname === CREATE_ANALYSIS_PATH) {
+  if (pathname === HOME_PATH || pathname === CREATE_ANALYSIS_PATH) {
     return { kind: 'create-analysis' };
   }
 
@@ -44,7 +44,11 @@ export function resolveAppRoute(pathname: string): AppRoute {
     return { kind: 'runs-list' };
   }
 
-  return { kind: 'landing' };
+  if (pathname === LANDING_PATH) {
+    return { kind: 'landing' };
+  }
+
+  return { kind: 'create-analysis' };
 }
 
 export function isProtectedAppRoute(route: AppRoute) {
