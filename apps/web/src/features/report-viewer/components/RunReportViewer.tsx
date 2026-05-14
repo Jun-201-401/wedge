@@ -1,9 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 
 import { useAuthenticatedResourceUrl } from '../../../shared/lib/authenticatedResourceUrl';
 import { RUNS_PATH } from '../../../shared/lib/appPaths';
 import { formatDisplayUrl } from '../../../shared/lib/displayUrl';
 import { resolveActiveFinding, resolveLinkedFindingId } from '../lib/runReportInteractions';
+import {
+  referenceBadgesForFinding,
+  splitReferenceBadges,
+  type ReferenceBadgeViewModel,
+} from '../lib/runReportReferences';
 import type { ReportFinding, ReportRecommendation, RunReportViewModel } from '../lib/runReportViewModel';
 import '../styles/run-report-viewer.css';
 
@@ -112,6 +118,202 @@ function recommendationMeta(recommendation: ReportRecommendation, finding: Repor
   }
 
   return `${stage} · ${signal}`;
+}
+
+function ReferenceBadge({
+  badge,
+  badgeId,
+}: {
+  badge: ReferenceBadgeViewModel;
+  badgeId: string;
+}) {
+  const badgeRef = useRef<HTMLButtonElement | null>(null);
+  const [tooltipPosition, setTooltipPosition] = useState<{ top: number; left: number } | null>(null);
+  const [isHoveringOrFocused, setIsHoveringOrFocused] = useState(false);
+  const isTooltipVisible = isHoveringOrFocused;
+  const tooltipId = `run-report-reference-tooltip-${badgeId.replace(/[^a-zA-Z0-9_-]/g, '-')}`;
+
+  const updateTooltipPosition = useCallback(() => {
+    const badgeElement = badgeRef.current;
+    if (!badgeElement) {
+      return;
+    }
+
+    const rect = badgeElement.getBoundingClientRect();
+    const tooltipHalfWidth = 128;
+    const viewportMargin = 16;
+    const viewportWidth = window.innerWidth || document.documentElement.clientWidth;
+    const left = Math.min(
+      Math.max(rect.left + rect.width / 2, tooltipHalfWidth + viewportMargin),
+      Math.max(tooltipHalfWidth + viewportMargin, viewportWidth - tooltipHalfWidth - viewportMargin),
+    );
+
+    setTooltipPosition({
+      top: rect.top - 8,
+      left,
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!isTooltipVisible) {
+      setTooltipPosition(null);
+      return;
+    }
+
+    updateTooltipPosition();
+  }, [isTooltipVisible, updateTooltipPosition]);
+
+  const handleMouseEnter = useCallback(() => {
+    setIsHoveringOrFocused(true);
+    updateTooltipPosition();
+  }, [updateTooltipPosition]);
+
+  const handleMouseLeave = useCallback(() => {
+    setIsHoveringOrFocused(false);
+  }, []);
+
+  const handleFocus = useCallback(() => {
+    setIsHoveringOrFocused(true);
+    updateTooltipPosition();
+  }, [updateTooltipPosition]);
+
+  const handleBlur = useCallback(() => {
+    setIsHoveringOrFocused(false);
+  }, []);
+
+  const handleClick = useCallback((event: React.MouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation();
+  }, []);
+
+  const tooltip = tooltipPosition && typeof document !== 'undefined'
+    ? createPortal(
+        <span
+          id={tooltipId}
+          className="run-report-reference-badge__tooltip run-report-reference-badge__tooltip--portal"
+          role="tooltip"
+          style={{ top: tooltipPosition.top, left: tooltipPosition.left }}
+        >
+          <strong>{badge.publisher}</strong>
+          <span>{badge.title}</span>
+          <small>{badge.basisSummary}</small>
+        </span>,
+        document.body,
+      )
+    : null;
+
+  return (
+    <button
+      type="button"
+      ref={badgeRef}
+      className="run-report-reference-badge"
+      aria-label={badge.ariaLabel}
+      aria-describedby={tooltipPosition ? tooltipId : undefined}
+      onClick={handleClick}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
+      onFocus={handleFocus}
+      onBlur={handleBlur}
+    >
+      <span className="run-report-reference-badge__label">{badge.label}</span>
+      {tooltip}
+    </button>
+  );
+}
+
+function RecommendationReferenceBadges({
+  recommendation,
+  finding,
+}: {
+  recommendation: ReportRecommendation;
+  finding: ReportFinding | null;
+}) {
+  const badges = referenceBadgesForFinding(finding);
+  const { visible, overflow } = splitReferenceBadges(badges);
+
+  if (badges.length === 0) {
+    return null;
+  }
+
+  return (
+    <span className="run-report-recommendation-reference-badges" aria-label="기준 근거 배지">
+      {visible.map((badge) => {
+        const badgeId = `${recommendation.id}:${badge.key}`;
+
+        return (
+          <ReferenceBadge key={badge.key} badge={badge} badgeId={badgeId} />
+        );
+      })}
+      {overflow.length > 0 ? (
+        <ReferenceOverflowBadge
+          recommendation={recommendation}
+          overflowId={`${recommendation.id}:references-overflow`}
+          badges={overflow}
+        />
+      ) : null}
+    </span>
+  );
+}
+
+function ReferenceOverflowBadge({
+  recommendation,
+  overflowId,
+  badges,
+}: {
+  recommendation: ReportRecommendation;
+  overflowId: string;
+  badges: ReferenceBadgeViewModel[];
+}) {
+  const overflowRef = useRef<HTMLSpanElement | null>(null);
+  const [isHoveringOrFocused, setIsHoveringOrFocused] = useState(false);
+  const isOpen = isHoveringOrFocused;
+  const popoverId = `run-report-reference-overflow-${overflowId.replace(/[^a-zA-Z0-9_-]/g, '-')}`;
+
+  const handleClick = useCallback((event: React.MouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation();
+  }, []);
+
+  const handleBlur = useCallback((event: React.FocusEvent<HTMLSpanElement>) => {
+    const nextFocusedElement = event.relatedTarget;
+
+    if (nextFocusedElement instanceof Node && event.currentTarget.contains(nextFocusedElement)) {
+      return;
+    }
+
+    setIsHoveringOrFocused(false);
+  }, []);
+
+  return (
+    <span
+      ref={overflowRef}
+      className="run-report-reference-overflow"
+      onMouseEnter={() => setIsHoveringOrFocused(true)}
+      onMouseLeave={() => setIsHoveringOrFocused(false)}
+      onFocus={() => setIsHoveringOrFocused(true)}
+      onBlur={handleBlur}
+    >
+      <button
+        type="button"
+        className="run-report-reference-badge run-report-reference-badge--overflow"
+        aria-label={`숨겨진 기준 근거 ${badges.length}개 더 보기`}
+        aria-describedby={isOpen ? popoverId : undefined}
+        aria-expanded={isOpen}
+        onClick={handleClick}
+      >
+        <span className="run-report-reference-badge__label">출처</span>
+      </button>
+      {isOpen ? (
+        <span id={popoverId} className="run-report-reference-overflow__popover" role="tooltip">
+          {badges.map((badge) => {
+            const badgeId = `${recommendation.id}:${badge.key}`;
+
+            return (
+              <ReferenceBadge key={badge.key} badge={badge} badgeId={badgeId} />
+            );
+          })}
+        </span>
+      ) : null}
+    </span>
+  );
 }
 
 export function RunReportBrand() {
@@ -412,7 +614,11 @@ export function RunReportViewer({
                       const isHinted = !isSelected && hintedRecommendationId === recommendation.id;
 
                       return (
-                        <li key={recommendation.id}>
+                        <li key={recommendation.id} className="run-report-recommendation-tab-shell">
+                          <RecommendationReferenceBadges
+                            recommendation={recommendation}
+                            finding={relatedFinding}
+                          />
                           <button
                             type="button"
                             className={`run-report-recommendation-tab${isSelected ? ' run-report-recommendation-tab--active' : ''}${isHinted ? ' run-report-recommendation-tab--hinted' : ''}`}

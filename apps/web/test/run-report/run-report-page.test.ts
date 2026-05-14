@@ -124,6 +124,12 @@ test('run report page follows the report.html result-first layout', () => {
   assert.match(source, /resolveActiveFlowStageId/);
   assert.match(source, /reportFlowStageLabel/);
   assert.match(source, /const flowNodes = REPORT_FLOW_STAGES/);
+  assert.match(viewer, /const isTooltipVisible = isHoveringOrFocused/);
+  assert.match(viewer, /const isOpen = isHoveringOrFocused/);
+  assert.doesNotMatch(viewer, /pinnedReferenceBadgeId/);
+  assert.doesNotMatch(viewer, /pinnedReferenceOverflowId/);
+  assert.doesNotMatch(viewer, /nextPinnedReferenceBadgeId/);
+  assert.doesNotMatch(viewer, /nextPinnedReferenceOverflowId/);
   assert.match(source, /첫 화면/);
   assert.match(source, /가치 판단/);
   assert.match(source, /행동 선택/);
@@ -270,6 +276,10 @@ test('run report css keeps result-first content in the live simulation cockpit t
   assert.match(css, /\.run-report-recommendation-picker\s*\{[\s\S]*?gap: 0\.72rem/);
   assert.match(css, /\.run-report-recommendation-tabs\s*\{[\s\S]*?grid-template-columns: repeat\(3, minmax\(0, 1fr\)\)/);
   assert.match(css, /\.run-report-recommendation-tab\s*\{[\s\S]*?min-height: 6\.05rem/);
+  assert.match(css, /\.run-report-reference-overflow__popover\s*\{[\s\S]*?bottom: calc\(100% \+ 0\.12rem\)/);
+  assert.match(css, /\.run-report-reference-overflow__popover\s*\{[\s\S]*?left: 0/);
+  assert.match(css, /\.run-report-recommendation-tab-shell:nth-child\(3\) \.run-report-reference-overflow__popover\s*\{[\s\S]*?right: 0/);
+  assert.match(css, /\.run-report-recommendation-tab-shell:nth-child\(3\) \.run-report-reference-overflow__popover\s*\{[\s\S]*?left: auto/);
   assert.match(css, /\.run-report-recommendation-tab\s*\{[\s\S]*?background: transparent/);
   assert.match(css, /\.run-report-recommendation-tab--active\s*\{[\s\S]*?background: #f0f9ff/);
   assert.match(css, /\.run-report-recommendation-tab--active\s*\{[\s\S]*?box-shadow: none/);
