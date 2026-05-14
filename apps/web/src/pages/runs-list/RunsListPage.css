@@ -69,22 +69,21 @@
   height: 2.05rem;
   align-items: center;
   justify-content: center;
-  border: 1px solid rgba(125, 211, 252, 0.48);
+  border: 0;
   border-radius: 999px;
-  background: rgba(240, 249, 255, 0.82);
+  background: rgba(224, 242, 254, 0.72);
   padding: 0 0.86rem;
-  color: #0284c7;
+  color: #0369a1;
   cursor: pointer;
   line-height: 1;
   text-decoration: none;
-  transition: border-color 0.18s ease, background 0.18s ease, color 0.18s ease;
+  transition: background 0.18s ease, color 0.18s ease;
   white-space: nowrap;
 }
 
 .runs-list-topbar__logout:hover {
-  border-color: rgba(14, 165, 233, 0.52);
   background: rgba(224, 242, 254, 0.92);
-  color: #0369a1;
+  color: #075985;
 }
 
 .runs-list-shell {

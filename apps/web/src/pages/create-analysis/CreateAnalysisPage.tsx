@@ -1366,13 +1366,13 @@ export function CreateAnalysisPage({ isAuthenticated = false, isAuthChecking = f
         {stage === 'input' ? (
           <div className="create-analysis-nav__actions" aria-label="계정">
             {!isAuthenticated && !isAuthChecking ? (
-              <a href={getLoginPathForCurrentCreateAnalysisState()}>Login</a>
+              <a href={getLoginPathForCurrentCreateAnalysisState()}>로그인</a>
             ) : null}
             {isAuthenticated ? (
               <a href={RUNS_PATH} className="create-analysis-nav__link--secondary">실행 목록</a>
             ) : null}
             {isAuthenticated && onLogout ? (
-              <button type="button" onClick={onLogout}>Logout</button>
+              <button type="button" onClick={onLogout}>로그아웃</button>
             ) : null}
           </div>
         ) : null}

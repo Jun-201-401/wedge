@@ -44,9 +44,13 @@ test('create analysis top nav links to previous run list beside logout', () => {
   assert.match(source, /LOGIN_PATH, RUNS_PATH/);
   assert.match(source, /stage === 'input' \? \(/);
   assert.match(source, /<a href=\{RUNS_PATH\} className="create-analysis-nav__link--secondary">실행 목록<\/a>/);
-  assert.match(source, /<button type="button" onClick=\{onLogout\}>Logout<\/button>/);
+  assert.match(source, /<a href=\{getLoginPathForCurrentCreateAnalysisState\(\)\}>로그인<\/a>/);
+  assert.match(source, /<button type="button" onClick=\{onLogout\}>로그아웃<\/button>/);
   assert.match(css, /\.create-analysis-nav__actions a,\s*\n\.create-analysis-nav__actions button\s*\{[\s\S]*?display: inline-flex/);
+  assert.match(css, /\.create-analysis-nav__actions a,\s*\n\.create-analysis-nav__actions button\s*\{[\s\S]*?height: 2\.05rem/);
+  assert.match(css, /\.create-analysis-nav__actions a,\s*\n\.create-analysis-nav__actions button\s*\{[\s\S]*?border: 0/);
   assert.match(css, /\.create-analysis-nav__actions \.create-analysis-nav__link--secondary\s*\{[\s\S]*?border: 0/);
+  assert.match(css, /\.create-analysis-nav__actions \.create-analysis-nav__link--secondary\s*\{[\s\S]*?height: 2\.05rem/);
   assert.match(css, /\.create-analysis-nav__actions \.create-analysis-nav__link--secondary\s*\{[\s\S]*?background: rgba\(255, 255, 255, 0\.42\)/);
   assert.match(css, /\.create-analysis-nav__actions \.create-analysis-nav__link--secondary:hover\s*\{[\s\S]*?background: rgba\(240, 249, 255, 0\.82\)/);
   assert.doesNotMatch(source, /create-analysis-previous-runs/);

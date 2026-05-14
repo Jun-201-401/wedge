@@ -90,48 +90,45 @@
 .create-analysis-nav__actions button {
   display: inline-flex;
   box-sizing: border-box;
-  min-width: 5.35rem;
-  height: 2.2rem;
+  min-width: 4.95rem;
+  height: 2.05rem;
   align-items: center;
   justify-content: center;
-  border: 1px solid rgba(125, 211, 252, 0.48);
+  border: 0;
   border-radius: 999px;
-  padding: 0 1rem;
-  color: #0284c7;
-  background: rgba(240, 249, 255, 0.82);
-  box-shadow: 0 12px 28px rgba(14, 165, 233, 0.12);
+  padding: 0 0.86rem;
+  color: #0369a1;
+  background: rgba(224, 242, 254, 0.72);
+  box-shadow: none;
   cursor: pointer;
   font: inherit;
-  font-size: 0.625rem;
+  font-size: 0.62rem;
   font-weight: 900;
-  letter-spacing: 0.16em;
+  letter-spacing: 0.14em;
   line-height: 1;
   text-decoration: none;
   text-transform: uppercase;
-  transition: border-color 0.2s ease, background 0.2s ease, color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+  transition: background 0.18s ease, color 0.18s ease;
   white-space: nowrap;
 }
 
 .create-analysis-nav__actions a:hover,
 .create-analysis-nav__actions button:hover {
-  border-color: rgba(14, 165, 233, 0.52);
   background: rgba(224, 242, 254, 0.92);
-  color: #0369a1;
-  transform: translateY(-1px);
-  box-shadow: 0 16px 34px rgba(14, 165, 233, 0.18);
+  color: #075985;
 }
 
 .create-analysis-nav__actions .create-analysis-nav__link--secondary {
-  min-width: 0;
-  height: 2.25rem;
+  min-width: 4.95rem;
+  height: 2.05rem;
   border: 0;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.42);
   box-shadow: none;
-  padding: 0 0.95rem;
+  padding: 0 0.86rem;
   color: #0284c7;
-  font-size: 0.68rem;
-  letter-spacing: 0.08em;
+  font-size: 0.62rem;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
 }
 
@@ -139,7 +136,6 @@
   background: rgba(240, 249, 255, 0.82);
   box-shadow: none;
   color: #0369a1;
-  transform: translateY(-1px);
 }
 
 .create-analysis-nav__actions a:focus-visible,
@@ -1533,8 +1529,8 @@
     min-width: 4.95rem;
     height: 2.05rem;
     padding-inline: 0.86rem;
-    font-size: 0.5625rem;
-    letter-spacing: 0.12em;
+    font-size: 0.62rem;
+    letter-spacing: 0.14em;
   }
 
   .create-analysis-page__main {

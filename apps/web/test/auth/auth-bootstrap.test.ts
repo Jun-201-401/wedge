@@ -37,8 +37,8 @@ test('app bootstraps memory auth from refresh cookie and shares auth state with 
   assert.doesNotMatch(landing, />Login<\/a>/);
   assert.doesNotMatch(landing, />Logout<\/button>/);
   assert.match(createAnalysis, /interface CreateAnalysisPageProps/);
-  assert.match(createAnalysis, /!isAuthenticated && !isAuthChecking \? \(\s*<a href=\{getLoginPathForCurrentCreateAnalysisState\(\)\}>Login<\/a>/);
-  assert.match(createAnalysis, /isAuthenticated && onLogout \? \(\s*<button type="button" onClick=\{onLogout\}>Logout<\/button>/);
+  assert.match(createAnalysis, /!isAuthenticated && !isAuthChecking \? \(\s*<a href=\{getLoginPathForCurrentCreateAnalysisState\(\)\}>로그인<\/a>/);
+  assert.match(createAnalysis, /isAuthenticated && onLogout \? \(\s*<button type="button" onClick=\{onLogout\}>로그아웃<\/button>/);
   assert.match(appCss, /\.app-route-loading\s*\{[\s\S]*?background: #fff/);
   assert.match(globals, /body \{[\s\S]*?background: #fff/);
   assert.match(globals, /#root \{[\s\S]*?background: #fff/);
