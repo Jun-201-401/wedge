@@ -52,11 +52,12 @@ test('vision scroll state marks the panel pinned only after the section reaches 
   assert.equal(result.isVisionPanelPinned, true);
 });
 
-test('landing page collapses the vision scroll track after the final result step', () => {
+test('landing page keeps the vision section as the final viewport without extra scroll track', () => {
   const landing = fs.readFileSync(new URL('../../src/pages/landing/LandingPage.tsx', import.meta.url), 'utf8');
   const css = fs.readFileSync(new URL('../../src/pages/landing/LandingPage.css', import.meta.url), 'utf8');
 
-  assert.match(landing, /isResultsVisible && currentResultStepIndex >= 2/);
-  assert.match(landing, /vision-wrap--complete/);
-  assert.match(css, /\.vision-wrap\.vision-wrap--complete\s*\{[\s\S]*?height: 100svh/);
+  assert.match(landing, /className="vision-wrap"/);
+  assert.doesNotMatch(landing, /vision-wrap--complete/);
+  assert.match(css, /\.vision-wrap\s*\{[\s\S]*?height: 100svh/);
+  assert.doesNotMatch(css, /height:\s*2[025]0vh/);
 });

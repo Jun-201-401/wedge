@@ -223,10 +223,6 @@
 
 .vision-wrap {
   position: relative;
-  height: 250vh;
-}
-
-.vision-wrap.vision-wrap--complete {
   height: 100vh;
   height: 100svh;
 }
@@ -279,15 +275,6 @@
     bottom: 3rem;
   }
 
-  .vision-wrap {
-    height: 220vh;
-  }
-}
-
-@media (max-height: 720px) {
-  .vision-wrap {
-    height: 200vh;
-  }
 }
 
 @media (max-width: 760px) and (max-height: 500px) {
