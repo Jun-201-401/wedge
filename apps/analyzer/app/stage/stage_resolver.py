@@ -32,6 +32,8 @@ OBSERVATION_STAGE_DEFAULTS: dict[str, DecisionStage] = {
     "network_failure": "CTA",
     "console_error": "CTA",
     "page_ready_timing": "CTA",
+    "accordion_state": "VALUE",
+    "checkout_context": "COMMIT",
     "settle_response": "INPUT",
     "settle_item_count_change": "VALUE",
 }
