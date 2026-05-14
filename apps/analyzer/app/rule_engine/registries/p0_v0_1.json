@@ -34,7 +34,7 @@
           "label": "NN/g Heuristics",
           "publisher": "NN/g",
           "title": "Recognition rather than recall",
-          "basisSummary": "사용자가 다음 행동을 기억해내기보다 화면에서 인식할 수 있도록 선택지와 행동 진입점을 보여주는 것이 좋습니다.",
+          "basisSummary": "사용자가 다음 행동을 기억해내기보다 화면에서 인식할 수 있도록 명확한 선택지룰 보여주는 것이 좋습니다.",
           "url": "https://www.nngroup.com/articles/ten-usability-heuristics/"
         }
       ]
@@ -58,25 +58,11 @@
       "source_refs": ["docs/05_judge_scoring_validation.md#11-나머지-p0-rule-최소-정책"],
       "references": [
         {
-          "label": "GOV.UK Buttons",
-          "publisher": "GOV.UK",
-          "title": "Button component",
-          "basisSummary": "버튼은 사용자가 수행할 수 있는 행동을 명확히 전달해야 하며, 주요 행동처럼 보이는 선택지는 의도적으로 구분되어야 합니다.",
-          "url": "https://design-system.service.gov.uk/components/button/"
-        },
-        {
           "label": "USWDS Button Group",
           "publisher": "USWDS",
           "title": "Button group component",
-          "basisSummary": "관련 행동은 그룹화할 수 있지만, 같은 결정 순간에서 행동 우선순위가 흐려지지 않도록 구성해야 합니다.",
+          "basisSummary": "서로 관련된 버튼은 함께 배치하되, 사용자가 각 행동의 차이와 우선순위를 쉽게 이해할 수 있어야 합니다.",
           "url": "https://designsystem.digital.gov/components/button-group/"
-        },
-        {
-          "label": "NN/g Heuristics",
-          "publisher": "NN/g",
-          "title": "Aesthetic and Minimalist Design",
-          "basisSummary": "불필요하거나 경쟁적인 정보와 행동은 사용자가 핵심 목표를 파악하는 데 방해가 될 수 있습니다.",
-          "url": "https://www.nngroup.com/articles/ten-usability-heuristics/"
         }
       ]
     },
@@ -101,24 +87,10 @@
       "source_refs": ["docs/12_analyzer_rule_catalog.md#path-choice-overload-001", "docs/13_analyzer_rule_required_data.md#path-choice-overload-001"],
       "references": [
         {
-          "label": "NN/g Heuristics",
-          "publisher": "NN/g",
-          "title": "Aesthetic and Minimalist Design",
-          "basisSummary": "화면의 선택지와 정보는 사용자가 핵심 행동을 고르는 데 필요한 만큼으로 정리되어야 합니다.",
-          "url": "https://www.nngroup.com/articles/ten-usability-heuristics/"
-        },
-        {
-          "label": "USWDS Components",
-          "publisher": "USWDS",
-          "title": "Components overview",
-          "basisSummary": "내비게이션, 버튼, 카드 같은 반복 선택지는 구조화된 컴포넌트 패턴으로 묶어 사용자가 선택 구조를 이해하기 쉽게 해야 합니다.",
-          "url": "https://designsystem.digital.gov/components/overview/"
-        },
-        {
           "label": "GOV.UK Components",
           "publisher": "GOV.UK",
           "title": "Components",
-          "basisSummary": "서비스 화면의 행동 요소는 목적과 맥락에 맞는 컴포넌트로 구성해 선택 부담을 줄이는 것이 좋습니다.",
+          "basisSummary": "버튼이나 링크가 많을 때는 사용자가 무엇을 눌러야 할지 쉽게 알 수 있도록 묶음과 구분이 명확해야 합니다.",
           "url": "https://design-system.service.gov.uk/components/"
         }
       ]
@@ -137,9 +109,9 @@
         {"severity": 1, "condition": "placeholder-only label support"},
         {"severity": 2, "condition": "visible field has no label or accessible name"}
       ],
-      "confidence_rule": "Cap confidence if AX or label relation evidence is absent.",
+      "confidence_rule": "입력 필드에 목적을 알 수 있는 라벨이나 설명이 있는지 판단한다.",
       "fix_leverage_default": 1.0,
-      "output_template": "입력 필드의 목적을 알려주는 label 또는 instruction이 부족해 입력 진행이 어려울 수 있습니다.",
+      "output_template": "입력 필드의 목적을 알려주는 label 또는 지시사항이 부족해 입력 진행이 어려울 수 있습니다.",
       "source_refs": ["docs/05_judge_scoring_validation.md#10-friction-form-001-상세"],
       "references": [
         {
@@ -148,20 +120,6 @@
           "title": "Labels or Instructions",
           "basisSummary": "입력을 요구하는 화면에서는 사용자가 무엇을 입력해야 하는지 알 수 있는 라벨 또는 안내가 제공되어야 합니다.",
           "url": "https://www.w3.org/WAI/WCAG22/Understanding/labels-or-instructions.html"
-        },
-        {
-          "label": "WAI Forms",
-          "publisher": "W3C WAI",
-          "title": "Labeling Controls",
-          "basisSummary": "폼 컨트롤은 사용자가 입력 필드의 목적을 이해할 수 있도록 명시적인 라벨과 연결되어야 합니다.",
-          "url": "https://www.w3.org/WAI/tutorials/forms/labels/"
-        },
-        {
-          "label": "GOV.UK Text Input",
-          "publisher": "GOV.UK",
-          "title": "Text input component",
-          "basisSummary": "텍스트 입력은 사용자가 어떤 값을 입력해야 하는지 이해할 수 있도록 라벨과 필요한 설명을 함께 제공해야 합니다.",
-          "url": "https://design-system.service.gov.uk/components/text-input/"
         }
       ]
     },
@@ -189,22 +147,8 @@
           "label": "WCAG 2.4.6",
           "publisher": "W3C",
           "title": "Headings and Labels",
-          "basisSummary": "제목과 라벨은 사용자가 해당 영역이나 요소의 목적을 이해할 수 있도록 설명적이어야 합니다.",
+          "basisSummary": "버튼이나 라벨 문구는 주변 화면 흐름과 어울리고, 사용자가 기대하는 행동을 헷갈리지 않게 해야 합니다",
           "url": "https://www.w3.org/WAI/WCAG22/Understanding/headings-and-labels.html"
-        },
-        {
-          "label": "WCAG 2.5.3",
-          "publisher": "W3C",
-          "title": "Label in Name",
-          "basisSummary": "보이는 라벨과 접근성 이름은 사용자가 같은 컨트롤을 일관되게 이해할 수 있도록 서로 어긋나지 않아야 합니다.",
-          "url": "https://www.w3.org/WAI/WCAG22/Understanding/label-in-name.html"
-        },
-        {
-          "label": "NN/g Heuristics",
-          "publisher": "NN/g",
-          "title": "Match between system and the real world",
-          "basisSummary": "화면의 문구와 행동 이름은 사용자의 언어와 실제 기대 행동에 맞게 표현되어야 합니다.",
-          "url": "https://www.nngroup.com/articles/ten-usability-heuristics/"
         }
       ]
     },
@@ -229,25 +173,11 @@
       "source_refs": ["docs/12_analyzer_rule_catalog.md#copy-label-integrity-001"],
       "references": [
         {
-          "label": "WCAG 1.4.10",
-          "publisher": "W3C",
-          "title": "Reflow",
-          "basisSummary": "콘텐츠는 확대나 화면 크기 변화에서도 정보 손실 없이 읽을 수 있어야 합니다.",
-          "url": "https://www.w3.org/WAI/WCAG22/Understanding/reflow.html"
-        },
-        {
           "label": "WCAG 1.4.12",
           "publisher": "W3C",
           "title": "Text Spacing",
           "basisSummary": "텍스트 간격이나 레이아웃 변화가 문구의 잘림, 겹침, 정보 손실을 만들지 않아야 합니다.",
           "url": "https://www.w3.org/WAI/WCAG22/Understanding/text-spacing.html"
-        },
-        {
-          "label": "GOV.UK Typography",
-          "publisher": "GOV.UK",
-          "title": "Typography",
-          "basisSummary": "화면의 문구는 사용자가 쉽게 읽고 이해할 수 있도록 명확한 타이포그래피와 간격으로 제공되어야 합니다.",
-          "url": "https://design-system.service.gov.uk/styles/typography/"
         }
       ]
     },
@@ -269,20 +199,6 @@
       "output_template": "사용자 행동 직후 기술 오류가 관찰되어 진행 신뢰성이 낮아질 수 있습니다.",
       "source_refs": ["docs/05_judge_scoring_validation.md#11-나머지-p0-rule-최소-정책"],
       "references": [
-        {
-          "label": "Lighthouse",
-          "publisher": "Chrome Developers",
-          "title": "Lighthouse overview",
-          "basisSummary": "Lighthouse는 성능, 접근성, 권장 사항 등 웹 품질 문제를 자동 감사하는 기준으로 활용될 수 있습니다.",
-          "url": "https://developer.chrome.com/docs/lighthouse/overview?hl=ko"
-        },
-        {
-          "label": "Web Vitals",
-          "publisher": "web.dev",
-          "title": "Web Vitals",
-          "basisSummary": "사용자 중심 성능과 안정성 신호는 실제 사용자가 페이지 품질을 체감하는 방식과 연결됩니다.",
-          "url": "https://web.dev/articles/vitals?hl=ko"
-        },
         {
           "label": "NN/g Heuristics",
           "publisher": "NN/g",
@@ -317,20 +233,6 @@
       "source_refs": ["docs/12_analyzer_rule_catalog.md#reliability-loading-stuck-001", "docs/13_analyzer_rule_required_data.md#reliability-loading-stuck-001"],
       "references": [
         {
-          "label": "Web Vitals",
-          "publisher": "web.dev",
-          "title": "Web Vitals",
-          "basisSummary": "페이지 로딩과 상호작용 성능은 사용자가 다음 화면을 사용할 수 있다고 느끼는 시점에 직접 영향을 줍니다.",
-          "url": "https://web.dev/articles/vitals?hl=ko"
-        },
-        {
-          "label": "Lighthouse",
-          "publisher": "Chrome Developers",
-          "title": "Lighthouse overview",
-          "basisSummary": "Lighthouse는 페이지 성능과 웹 품질 회귀를 진단하는 자동 감사 기준으로 활용될 수 있습니다.",
-          "url": "https://developer.chrome.com/docs/lighthouse/overview?hl=ko"
-        },
-        {
           "label": "NN/g Heuristics",
           "publisher": "NN/g",
           "title": "Visibility of System Status",
@@ -364,13 +266,6 @@
           "title": "Match between system and the real world",
           "basisSummary": "사용자가 선택한 행동의 문구와 결과는 사용자의 목표와 기대하는 실제 작업 흐름에 맞아야 합니다.",
           "url": "https://www.nngroup.com/articles/ten-usability-heuristics/"
-        },
-        {
-          "label": "GOV.UK Buttons",
-          "publisher": "GOV.UK",
-          "title": "Button component",
-          "basisSummary": "버튼 문구는 사용자가 해당 버튼을 눌렀을 때 수행되는 행동을 명확하게 설명해야 합니다.",
-          "url": "https://design-system.service.gov.uk/components/button/"
         },
         {
           "label": "Baymard Checkout",
