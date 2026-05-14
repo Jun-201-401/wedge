@@ -962,6 +962,14 @@ export interface InteractiveComponentLayout {
   overlay_candidate?: boolean;
 }
 
+export interface InteractiveComponentVisualProminence {
+  score: number;
+  rank: number | null;
+  area_px: number;
+  above_fold: boolean;
+  primary_like: boolean;
+}
+
 export interface InteractiveComponentObservationItem {
   text: string;
   visible_text?: string | null;
@@ -992,8 +1000,13 @@ export interface InteractiveComponentObservationItem {
   tag: string;
   clickable: boolean;
   clicked_in_scenario: boolean;
+  typed_in_scenario?: boolean;
+  filled_in_scenario?: boolean;
+  selected_in_scenario?: boolean;
+  interaction_order?: number | null;
   is_cta_candidate: boolean;
   is_primary_like: boolean;
+  visual_prominence?: InteractiveComponentVisualProminence;
   bounds: InteractiveComponentBounds;
   visibility?: InteractiveComponentVisibility;
   layout?: InteractiveComponentLayout;

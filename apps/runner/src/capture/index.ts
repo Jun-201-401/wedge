@@ -477,8 +477,8 @@ function createCheckpointObservations({
     ...createAccordionStateObservations(step, pageSnapshot).map((observation) => ({ ...observation })),
     ...createCheckoutContextObservations(step, pageSnapshot).map((observation) => ({ ...observation })),
     ...createVisibleTextBlockObservations(step, pageSnapshot),
-    ...createInteractiveComponentsObservations(step, pageSnapshot).map((observation) => ({ ...observation })),
-    ...createFormFieldObservations(pageSnapshot),
+    ...createInteractiveComponentsObservations(step, stepOrder, pageSnapshot).map((observation) => ({ ...observation })),
+    ...createFormFieldObservations(stepOrder, pageSnapshot),
     ...createCtaCandidateObservations(step, pageSnapshot),
     ...createProductCardObservations(step, pageSnapshot, screenshotArtifactId).map((observation) => ({ ...observation })),
     ...createGoalActionCandidateObservations(step, pageSnapshot).map((observation) => ({ ...observation })),
@@ -1144,6 +1144,7 @@ function createCheckoutContextObservations(
 
 function createInteractiveComponentsObservations(
   step: ScenarioStep,
+  stepOrder: number,
   pageSnapshot: BrowserPageSnapshot
 ): InteractiveComponentsObservation[] {
   if (pageSnapshot.interactiveComponents.length === 0) {
@@ -1160,9 +1161,23 @@ function createInteractiveComponentsObservations(
       confidence: primaryLikeComponentCount > 0 ? 0.82 : 0.65,
       primary_like_component_count: primaryLikeComponentCount,
       repeated_generic_link_grouping: pageSnapshot.repeatedGenericLinkGrouping,
-      components: pageSnapshot.interactiveComponents
+      components: pageSnapshot.interactiveComponents.map((component) => withInteractionOrder(component, stepOrder))
     }
   ];
+}
+
+function withInteractionOrder(
+  component: BrowserPageSnapshot["interactiveComponents"][number],
+  stepOrder: number
+): BrowserPageSnapshot["interactiveComponents"][number] {
+  const interacted = component.clicked_in_scenario ||
+    component.typed_in_scenario === true ||
+    component.filled_in_scenario === true ||
+    component.selected_in_scenario === true;
+  return {
+    ...component,
+    interaction_order: interacted ? stepOrder : component.interaction_order ?? null
+  };
 }
 
 function createProductCardObservations(
@@ -1220,7 +1235,7 @@ function createGoalActionCandidateObservations(
   ];
 }
 
-function createFormFieldObservations(pageSnapshot: BrowserPageSnapshot): Record<string, unknown>[] {
+function createFormFieldObservations(stepOrder: number, pageSnapshot: BrowserPageSnapshot): Record<string, unknown>[] {
   const fieldValueLengths = Object.fromEntries(
     Object.entries(pageSnapshot.fields).map(([fieldKey, value]) => [fieldKey, value.length])
   );
@@ -1252,6 +1267,13 @@ function createFormFieldObservations(pageSnapshot: BrowserPageSnapshot): Record<
         visible_optional_marker: component.visible_optional_marker ?? null,
         group_level_required_state: component.group_level_required_state ?? null,
         submit_required_error: component.submit_required_error ?? null,
+        typed_in_scenario: component.typed_in_scenario === true,
+        filled_in_scenario: component.filled_in_scenario === true,
+        selected_in_scenario: component.selected_in_scenario === true,
+        interaction_order: component.filled_in_scenario === true || component.typed_in_scenario === true || component.selected_in_scenario === true
+          ? stepOrder
+          : component.interaction_order ?? null,
+        visual_prominence: component.visual_prominence ?? null,
         bounds: component.bounds,
         visibility: component.visibility
       };

@@ -3445,14 +3445,13 @@ async function safeInteractiveComponents(
   lastAction: BrowserPageSnapshot["lastAction"],
   fallbackValue: InteractiveComponentObservationItem[]
 ): Promise<InteractiveComponentObservationItem[]> {
-  const clickedTarget = lastAction?.type === "click" ? lastAction.target : null;
   try {
-    const mainComponents = await extractInteractiveComponentsFromFrame(page.mainFrame(), clickedTarget, null);
+    const mainComponents = await extractInteractiveComponentsFromFrame(page.mainFrame(), lastAction, null);
     const frameComponents: InteractiveComponentObservationItem[] = [];
 
     for (const [index, frame] of page.frames().filter((frame) => frame !== page.mainFrame()).entries()) {
       try {
-        frameComponents.push(...await extractInteractiveComponentsFromFrame(frame, clickedTarget, `frame:${index + 1}`));
+        frameComponents.push(...await extractInteractiveComponentsFromFrame(frame, lastAction, `frame:${index + 1}`));
       } catch {
         continue;
       }
@@ -3465,7 +3464,9 @@ async function safeInteractiveComponents(
 
     return components.map((component, index) => ({
       ...component,
-      is_primary_like: index === primaryIndex
+      is_primary_like: index === primaryIndex,
+      interaction_order: component.clicked_in_scenario || component.typed_in_scenario || component.filled_in_scenario || component.selected_in_scenario ? 1 : null,
+      visual_prominence: createVisualProminence(component, index, index === primaryIndex)
     }));
   } catch {
     return fallbackValue;
@@ -3556,10 +3557,10 @@ async function safeVisibleTextBlocks(
 
 async function extractInteractiveComponentsFromFrame(
   frame: Frame,
-  clickedTarget: string | null,
+  lastAction: BrowserPageSnapshot["lastAction"],
   frameId: string | null
 ): Promise<InteractiveComponentObservationItem[]> {
-  return frame.evaluate(({ clickedTarget, frameId }) => {
+  return frame.evaluate(({ lastAction, frameId }) => {
       const CTA_TEXT_PATTERN = /무료|시작|가입|신청|구매|결제|문의|상담|체험|다운로드|start|sign\s*up|try|buy|checkout|contact|demo|continue/i;
       const SELECTOR_ESCAPE_SCOPE = globalThis as typeof globalThis & {
         CSS?: {
@@ -3895,15 +3896,25 @@ async function extractInteractiveComponentsFromFrame(
         );
       }
 
-      function isClickedInScenario(input: { text: string; selector: string | null; role: string | null }): boolean {
-        const target = (clickedTarget ?? "").toLowerCase();
+      function scenarioTargetMatches(input: {
+        text: string;
+        selector: string | null;
+        role: string | null;
+        name: string | null;
+        labelText: string | null;
+        placeholder: string | null;
+      }): boolean {
+        const target = (lastAction?.target ?? "").toLowerCase();
         if (!target) {
           return false;
         }
         return Boolean(
           (input.selector && target.includes(input.selector.toLowerCase())) ||
           (input.text && target.includes(input.text.toLowerCase())) ||
-          (input.role && target.includes(`role=${input.role.toLowerCase()}`))
+          (input.role && target.includes(`role=${input.role.toLowerCase()}`)) ||
+          (input.name && target.includes(input.name.toLowerCase())) ||
+          (input.labelText && target.includes(input.labelText.toLowerCase())) ||
+          (input.placeholder && target.includes(input.placeholder.toLowerCase()))
         );
       }
 
@@ -4162,6 +4173,9 @@ async function extractInteractiveComponentsFromFrame(
           const visible = visibility.visible && visibility.in_viewport;
           const isCtaCandidate = clickable && !formControl && !disabled && Boolean(text.match(CTA_TEXT_PATTERN) || role === "button" || tag === "button");
           const containerInfo = containerInfoFor(element, visibleText ?? text);
+          const targetMatched = scenarioTargetMatches({ text, selector, role, name, labelText, placeholder });
+          const lastActionType = lastAction?.type ?? null;
+          const textLikeInput = formControl && ["text", "email", "password", "search", "tel", "url", "textarea", "number"].includes(inputType ?? "text");
 
           return {
             text,
@@ -4192,9 +4206,14 @@ async function extractInteractiveComponentsFromFrame(
             shadow_root: shadowRoot,
             tag,
             clickable: clickable && !formControl && !disabled,
-            clicked_in_scenario: isClickedInScenario({ text, selector, role }),
+            clicked_in_scenario: lastActionType === "click" && targetMatched,
+            typed_in_scenario: lastActionType === "fill" && targetMatched && textLikeInput,
+            filled_in_scenario: (lastActionType === "fill" || lastActionType === "select") && targetMatched && formControl,
+            selected_in_scenario: lastActionType === "select" && targetMatched && (tag === "select" || role === "combobox" || role === "listbox"),
+            interaction_order: null,
             is_cta_candidate: isCtaCandidate,
             is_primary_like: false,
+            visual_prominence: undefined,
             bounds: boundsFor(rect),
             visibility,
             layout,
@@ -4241,8 +4260,13 @@ async function extractInteractiveComponentsFromFrame(
         tag: component.tag,
         clickable: component.clickable,
         clicked_in_scenario: component.clicked_in_scenario,
+        typed_in_scenario: component.typed_in_scenario,
+        filled_in_scenario: component.filled_in_scenario,
+        selected_in_scenario: component.selected_in_scenario,
+        interaction_order: component.interaction_order,
         is_cta_candidate: component.is_cta_candidate,
         is_primary_like: false,
+        visual_prominence: component.visual_prominence,
         bounds: component.bounds,
         visibility: component.visibility,
         layout: component.layout,
@@ -4252,11 +4276,29 @@ async function extractInteractiveComponentsFromFrame(
         nearby_text: component.nearby_text,
         nearest_target_spacing_px: component.nearest_target_spacing_px
       }));
-    }, { clickedTarget, frameId });
+    }, { lastAction, frameId });
 }
 
 function componentScore(component: InteractiveComponentObservationItem): number {
   return (component.is_cta_candidate ? 1_000_000 : 0) +
     component.bounds.width * component.bounds.height +
     (component.frame_id ? 100 : 0);
+}
+
+function createVisualProminence(
+  component: InteractiveComponentObservationItem,
+  zeroBasedRank: number,
+  primaryLike: boolean
+): NonNullable<InteractiveComponentObservationItem["visual_prominence"]> {
+  const area = component.visibility?.area_px ?? component.bounds.width * component.bounds.height;
+  const aboveFoldBonus = component.visibility?.above_fold === true ? 200 : 0;
+  const primaryBonus = primaryLike ? 500 : 0;
+  const ctaBonus = component.is_cta_candidate ? 250 : 0;
+  return {
+    score: Math.round(area + aboveFoldBonus + primaryBonus + ctaBonus),
+    rank: zeroBasedRank + 1,
+    area_px: area,
+    above_fold: component.visibility?.above_fold === true,
+    primary_like: primaryLike
+  };
 }
