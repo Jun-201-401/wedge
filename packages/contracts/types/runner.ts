@@ -1284,6 +1284,25 @@ export interface BrowserCheckoutContext {
   final_submit_relation: BrowserFinalSubmitRelation | null;
 }
 
+export interface BrowserFocusTraversalStep {
+  order: number;
+  selector: string | null;
+  text: string | null;
+  role: string | null;
+  visible_focus: boolean;
+  inside_modal: boolean;
+  bounds: InteractiveComponentBounds | null;
+}
+
+export interface BrowserKeyboardFocusState {
+  sampled: boolean;
+  tab_stop_count: number;
+  modal_open: boolean;
+  keyboard_trap_candidate: boolean;
+  focus_order: BrowserFocusTraversalStep[];
+  reason?: string | null;
+}
+
 export interface LoadingStateObservation {
   observation_id: string;
   type: "loading_state";
@@ -1326,6 +1345,15 @@ export interface CheckoutContextObservation {
   source: ("dom" | "browser")[];
   confidence: number;
   checkout_context: BrowserCheckoutContext;
+}
+
+export interface KeyboardFocusStateObservation {
+  observation_id: string;
+  type: "keyboard_focus_state";
+  stage: ScenarioStage;
+  source: ("browser" | "dom")[];
+  confidence: number;
+  focus_state: BrowserKeyboardFocusState;
 }
 
 export interface InteractiveComponentsObservation {

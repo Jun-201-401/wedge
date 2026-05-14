@@ -19,6 +19,7 @@ import type {
   BrowserAccordionState,
   BrowserBackLinkCandidateSignal,
   BrowserCheckoutContext,
+  BrowserKeyboardFocusState,
   BrowserFormGroupRequiredState,
   BrowserPerformanceSummary,
   BrowserLoadingState,
@@ -131,6 +132,7 @@ export interface BrowserPageSnapshot {
   backLinkCandidates: BrowserBackLinkCandidateSignal[];
   accordionStates: BrowserAccordionState[];
   checkoutContext: BrowserCheckoutContext;
+  keyboardFocusState: BrowserKeyboardFocusState;
   repeatedGenericLinkGrouping: BrowserRepeatedGenericLinkGroup[];
   cartCount: number | null;
   visiblePrices: string[];
@@ -282,6 +284,7 @@ interface MutableBrowserState {
   backLinkCandidates: BrowserBackLinkCandidateSignal[];
   accordionStates: BrowserAccordionState[];
   checkoutContext: BrowserCheckoutContext;
+  keyboardFocusState: BrowserKeyboardFocusState;
   repeatedGenericLinkGrouping: BrowserRepeatedGenericLinkGroup[];
   cartCount: number | null;
   visiblePrices: string[];
@@ -1227,6 +1230,7 @@ class RealPlaywrightSession implements BrowserSession {
     this.state.backLinkCandidates = await safeBackLinkCandidates(this.page, this.state.backLinkCandidates);
     this.state.accordionStates = await safeAccordionStates(this.page, this.state.accordionStates);
     this.state.checkoutContext = await safeCheckoutContext(this.page, this.state.checkoutContext);
+    this.state.keyboardFocusState = await safeKeyboardFocusState(this.page, this.state.keyboardFocusState);
     this.state.repeatedGenericLinkGrouping = await safeRepeatedGenericLinkGrouping(this.page, this.state.repeatedGenericLinkGrouping);
     this.state.cartCount = await safeCartCount(this.page, this.state.cartCount);
     this.state.visiblePrices = await safeVisiblePrices(this.page, this.state.visiblePrices);
@@ -1372,6 +1376,7 @@ function createInitialBrowserState(plan: ScenarioPlan): MutableBrowserState {
     backLinkCandidates: [],
     accordionStates: [],
     checkoutContext: emptyCheckoutContext(),
+    keyboardFocusState: emptyKeyboardFocusState("not_sampled"),
     repeatedGenericLinkGrouping: [],
     cartCount: null,
     visiblePrices: [],
@@ -1385,6 +1390,17 @@ function createInitialBrowserState(plan: ScenarioPlan): MutableBrowserState {
       reason: null,
       observedAt: null
     }
+  };
+}
+
+function emptyKeyboardFocusState(reason: string | null = null): BrowserKeyboardFocusState {
+  return {
+    sampled: false,
+    tab_stop_count: 0,
+    modal_open: false,
+    keyboard_trap_candidate: false,
+    focus_order: [],
+    reason
   };
 }
 
@@ -1475,6 +1491,13 @@ function createBrowserPageSnapshot(
       final_submit_relation: state.checkoutContext.final_submit_relation
         ? { ...state.checkoutContext.final_submit_relation }
         : state.checkoutContext.final_submit_relation
+    },
+    keyboardFocusState: {
+      ...state.keyboardFocusState,
+      focus_order: state.keyboardFocusState.focus_order.map((step) => ({
+        ...step,
+        bounds: step.bounds ? { ...step.bounds } : null
+      }))
     },
     repeatedGenericLinkGrouping: state.repeatedGenericLinkGrouping.map((group) => ({
       ...group,
@@ -2998,6 +3021,133 @@ async function safeCheckoutContext(page: Page, fallbackValue: BrowserCheckoutCon
     });
   } catch {
     return fallbackValue;
+  }
+}
+
+async function safeKeyboardFocusState(page: Page, fallbackValue: BrowserKeyboardFocusState): Promise<BrowserKeyboardFocusState> {
+  try {
+    const focusOrder: BrowserKeyboardFocusState["focus_order"] = [];
+    const seenSelectors = new Set<string>();
+    let repeatedSelector: string | null = null;
+
+    for (let index = 0; index < 12; index += 1) {
+      await page.keyboard.press("Tab");
+      const step = await page.evaluate((order) => {
+        function normalizeText(value: string | null | undefined): string {
+          return (value ?? "").replace(/\s+/g, " ").trim();
+        }
+
+        function escapeSelector(value: string): string {
+          return ((globalThis as typeof globalThis & { CSS?: { escape?: (value: string) => string } }).CSS?.escape?.(value)) ??
+            value.replace(/[^a-zA-Z0-9_-]/g, "\\$&");
+        }
+
+        function selectorFor(element: Element | null): string | null {
+          if (!element || element === document.body || element === document.documentElement) {
+            return null;
+          }
+          const id = element.getAttribute("id");
+          if (id) {
+            return `#${escapeSelector(id)}`;
+          }
+          const name = element.getAttribute("name");
+          if (name) {
+            return `${element.tagName.toLowerCase()}[name="${name.replace(/"/g, '\\"')}"]`;
+          }
+          const className = Array.from(element.classList).find((entry) => entry.length > 0);
+          return className ? `${element.tagName.toLowerCase()}.${escapeSelector(className)}` : element.tagName.toLowerCase();
+        }
+
+        function roleFor(element: Element | null): string | null {
+          if (!element) {
+            return null;
+          }
+          const explicit = element.getAttribute("role");
+          if (explicit) {
+            return explicit;
+          }
+          const tag = element.tagName.toLowerCase();
+          if (tag === "a") {
+            return "link";
+          }
+          if (tag === "button") {
+            return "button";
+          }
+          if (tag === "input" || tag === "textarea") {
+            return "textbox";
+          }
+          if (tag === "select") {
+            return "combobox";
+          }
+          return null;
+        }
+
+        function boundsFor(element: Element | null): InteractiveComponentBounds | null {
+          if (!element) {
+            return null;
+          }
+          const rect = element.getBoundingClientRect();
+          if (rect.width <= 0 || rect.height <= 0) {
+            return null;
+          }
+          return {
+            x: Math.round(rect.x),
+            y: Math.round(rect.y),
+            width: Math.round(rect.width),
+            height: Math.round(rect.height),
+            unit: "css_px" as const
+          };
+        }
+
+        function hasVisibleFocus(element: Element | null): boolean {
+          if (!element) {
+            return false;
+          }
+          const style = globalThis.getComputedStyle(element);
+          return Boolean(
+            (style.outlineStyle && style.outlineStyle !== "none" && style.outlineWidth !== "0px") ||
+            (style.boxShadow && style.boxShadow !== "none") ||
+            element.matches(":focus-visible")
+          );
+        }
+
+        const active = document.activeElement;
+        const modal = document.querySelector("dialog[open], [role='dialog'][aria-modal='true'], [aria-modal='true'], .modal[open], .modal.is-open, [data-testid*='modal' i]");
+        return {
+          order,
+          selector: selectorFor(active),
+          text: normalizeText(active?.textContent || active?.getAttribute("aria-label") || active?.getAttribute("placeholder")).slice(0, 120) || null,
+          role: roleFor(active),
+          visible_focus: hasVisibleFocus(active),
+          inside_modal: Boolean(active && modal?.contains(active)),
+          bounds: boundsFor(active)
+        };
+      }, index + 1);
+
+      focusOrder.push(step);
+      if (step.selector && seenSelectors.has(step.selector)) {
+        repeatedSelector = step.selector;
+        break;
+      }
+      if (step.selector) {
+        seenSelectors.add(step.selector);
+      }
+    }
+
+    const modalOpen = focusOrder.some((step) => step.inside_modal) || await page.evaluate(() =>
+      Boolean(document.querySelector("dialog[open], [role='dialog'][aria-modal='true'], [aria-modal='true'], .modal[open], .modal.is-open, [data-testid*='modal' i]"))
+    ).catch(() => false);
+    const uniqueTabStops = new Set(focusOrder.map((step) => step.selector).filter(Boolean)).size;
+    return {
+      sampled: true,
+      tab_stop_count: uniqueTabStops,
+      modal_open: modalOpen,
+      keyboard_trap_candidate: Boolean(modalOpen && (repeatedSelector || uniqueTabStops <= 1) && focusOrder.length > 1),
+      focus_order: focusOrder,
+      reason: repeatedSelector ? `repeated_focus:${repeatedSelector}` : null
+    };
+  } catch {
+    return fallbackValue.sampled ? fallbackValue : emptyKeyboardFocusState("focus_sampling_failed");
   }
 }
 

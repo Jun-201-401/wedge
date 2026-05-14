@@ -15,6 +15,7 @@ import type {
   GoalActionResultObservation,
   InteractiveComponentsObservation,
   JourneyActionRawObservation,
+  KeyboardFocusStateObservation,
   LoadingStateObservation,
   PageReadyTimingObservation,
   PathNavigationObservation,
@@ -365,6 +366,7 @@ function createCheckpointState(
     flow_step_count: inferFlowStepCount(pageSnapshot.stepIndicators),
     accordion_state: pageSnapshot.accordionStates,
     checkout_context: pageSnapshot.checkoutContext,
+    keyboard_focus_state: pageSnapshot.keyboardFocusState,
     repeated_generic_link_grouping: pageSnapshot.repeatedGenericLinkGrouping,
     network_summary: {
       event_count: pageSnapshot.networkEvents.length,
@@ -477,6 +479,7 @@ function createCheckpointObservations({
     ...createPathNavigationObservations(step, pageSnapshot).map((observation) => ({ ...observation })),
     ...createAccordionStateObservations(step, pageSnapshot).map((observation) => ({ ...observation })),
     ...createCheckoutContextObservations(step, pageSnapshot).map((observation) => ({ ...observation })),
+    ...createKeyboardFocusStateObservations(step, pageSnapshot).map((observation) => ({ ...observation })),
     ...createVisibleTextBlockObservations(step, pageSnapshot),
     ...createTextBlockMetricsObservations(step, pageSnapshot).map((observation) => ({ ...observation })),
     ...createInteractiveComponentsObservations(step, stepOrder, pageSnapshot).map((observation) => ({ ...observation })),
@@ -1053,6 +1056,27 @@ function createLoadingStateObservations({
       settle_status: settleResult.status,
       duration_ms: settleResult.durationMs,
       loading_state: pageSnapshot.loadingState
+    }
+  ];
+}
+
+function createKeyboardFocusStateObservations(
+  step: ScenarioStep,
+  pageSnapshot: BrowserPageSnapshot
+): KeyboardFocusStateObservation[] {
+  const focusState = pageSnapshot.keyboardFocusState;
+  if (!focusState.sampled || focusState.focus_order.length === 0) {
+    return [];
+  }
+
+  return [
+    {
+      observation_id: `${step.step_id}.obs_keyboard_focus_state`,
+      type: "keyboard_focus_state",
+      stage: step.stage,
+      source: ["browser", "dom"],
+      confidence: focusState.keyboard_trap_candidate || focusState.modal_open ? 0.78 : 0.68,
+      focus_state: focusState
     }
   ];
 }

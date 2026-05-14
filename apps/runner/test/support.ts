@@ -218,6 +218,14 @@ export function createSimulatedPageSnapshot(
       checkout_keywords: [],
       final_submit_relation: null
     },
+    keyboardFocusState: {
+      sampled: false,
+      tab_stop_count: 0,
+      modal_open: false,
+      keyboard_trap_candidate: false,
+      focus_order: [],
+      reason: "not_sampled"
+    },
     repeatedGenericLinkGrouping: [],
     cartCount: null,
     visiblePrices: [],
