@@ -333,9 +333,11 @@ test('run report css keeps result-first content in the live simulation cockpit t
   assert.match(css, /\.run-report-evidence-preview__canvas\s*\{[\s\S]*?width: 100%/);
   assert.doesNotMatch(css.match(/\.run-report-evidence-preview__canvas\s*\{[^}]*\}/)?.[0] ?? '', /min-height:\s*100%/);
   assert.match(css, /\.run-report-friction-marker\s*\{[\s\S]*?border: 0/);
-  assert.match(css, /\.run-report-friction-marker::before\s*\{[\s\S]*?border-radius: 999px/);
-  assert.match(css, /\.run-report-friction-marker::before\s*\{[\s\S]*?rgba\(245, 158, 11, 0\.72\)/);
-  assert.match(css, /\.run-report-friction-marker span\s*\{[\s\S]*?background: #78350f/);
+  assert.match(css, /\.run-report-friction-marker\s*\{[\s\S]*?isolation: isolate/);
+  assert.match(css, /\.run-report-friction-marker::before\s*\{[\s\S]*?report-friction-marker\.png/);
+  assert.match(css, /\.run-report-friction-marker::before\s*\{[\s\S]*?background: url\('\/report-friction-marker\.png'\) center \/ 100% 100% no-repeat/);
+  assert.match(css, /\.run-report-friction-marker--active::before\s*\{[\s\S]*?opacity: 1/);
+  assert.match(css, /\.run-report-friction-marker span\s*\{[\s\S]*?background: #7f1d1d/);
   assert.match(css, /\.run-report-friction-marker span\s*\{[\s\S]*?font-size: 0\.62rem/);
   assert.match(css, /\.run-report-friction-marker span\s*\{[\s\S]*?text-transform: none/);
   assert.doesNotMatch(css, /runReportMarkerRipple|runReportMarkerBreath/);

@@ -1147,17 +1147,19 @@
   color: inherit;
   cursor: pointer;
   font: inherit;
+  isolation: isolate;
   pointer-events: auto;
   transition: inset 220ms cubic-bezier(0.2, 0.65, 0.3, 1),
     width 220ms cubic-bezier(0.2, 0.65, 0.3, 1),
     height 220ms cubic-bezier(0.2, 0.65, 0.3, 1),
-    box-shadow 240ms ease;
+    box-shadow 240ms ease,
+    filter 220ms ease;
 }
 
 .run-report-friction-marker:focus-visible {
-  outline: 3px solid rgba(14, 165, 233, 0.35);
-  outline-offset: 4px;
-  border-radius: 999px;
+  outline: 3px solid rgba(239, 68, 68, 0.35);
+  outline-offset: 0.5rem;
+  border-radius: 1rem;
 }
 
 .run-report-friction-marker::before {
@@ -1165,86 +1167,51 @@
   position: absolute;
   top: 50%;
   left: 50%;
-  width: 0.95rem;
-  aspect-ratio: 1;
-  border: 2px solid rgba(245, 158, 11, 0.5);
-  border-radius: 999px;
-  background: rgba(245, 158, 11, 0.16);
+  width: max(3.4rem, calc(100% + 2.2rem));
+  height: max(2.4rem, calc(100% + 1.7rem));
+  background: url('/report-friction-marker.png') center / 100% 100% no-repeat;
+  opacity: 0.72;
   transform: translate(-50%, -50%);
   transition: width 260ms cubic-bezier(0.2, 0.65, 0.3, 1),
-    border-color 220ms ease,
-    background 220ms ease,
-    box-shadow 240ms ease;
-}
-
-.run-report-friction-marker::after {
-  content: '';
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 0.32rem;
-  height: 0.32rem;
-  border-radius: 999px;
-  background: #b45309;
-  opacity: 0.7;
-  transform: translate(-50%, -50%);
-  transition: width 220ms cubic-bezier(0.2, 0.65, 0.3, 1),
-    height 220ms cubic-bezier(0.2, 0.65, 0.3, 1),
-    background 220ms ease,
-    opacity 220ms ease;
+    height 260ms cubic-bezier(0.2, 0.65, 0.3, 1),
+    opacity 220ms ease,
+    filter 240ms ease;
 }
 
 .run-report-friction-marker--inactive {
   z-index: 2;
-  box-shadow: none;
+  filter: drop-shadow(0 0 0.3rem rgba(220, 38, 38, 0.2));
 }
 
 .run-report-friction-marker--active {
   z-index: 1;
+  box-shadow: 0 0 0 999px rgba(15, 23, 42, 0.12);
+  filter: drop-shadow(0 0 0.8rem rgba(220, 38, 38, 0.42));
 }
 
 .run-report-friction-marker--inactive:hover::before,
 .run-report-friction-marker--inactive:focus-visible::before {
-  width: 1.45rem;
-  border-color: rgba(245, 158, 11, 0.85);
-  background: rgba(245, 158, 11, 0.3);
-  box-shadow: 0 0 0 0.24rem rgba(245, 158, 11, 0.14);
-}
-
-.run-report-friction-marker--inactive:hover::after,
-.run-report-friction-marker--inactive:focus-visible::after {
-  width: 0.4rem;
-  height: 0.4rem;
-  background: #92400e;
-  opacity: 1;
-}
-
-.run-report-friction-marker--active {
-  box-shadow: 0 0 0 999px rgba(15, 23, 42, 0.12);
+  width: max(3.8rem, calc(100% + 2.6rem));
+  height: max(2.75rem, calc(100% + 2rem));
+  opacity: 0.88;
+  filter: drop-shadow(0 0 0.55rem rgba(239, 68, 68, 0.34));
 }
 
 .run-report-friction-marker--active::before {
-  width: clamp(2.4rem, 42%, 5.2rem);
-  border-color: rgba(245, 158, 11, 0.72);
-  background: rgba(245, 158, 11, 0.14);
-  box-shadow: 0 0 0 0.36rem rgba(245, 158, 11, 0.13), 0 14px 34px rgba(120, 53, 15, 0.18);
-}
-
-.run-report-friction-marker--active::after {
-  width: 0.42rem;
-  height: 0.42rem;
-  background: #92400e;
+  width: max(4.6rem, calc(100% + 3.4rem));
+  height: max(3.2rem, calc(100% + 2.6rem));
   opacity: 1;
+  filter: drop-shadow(0 0 0.9rem rgba(239, 68, 68, 0.54));
 }
 
 .run-report-friction-marker span {
   position: absolute;
   top: 50%;
-  left: calc(50% + clamp(1.55rem, 24%, 3.3rem));
+  left: calc(50% + max(1.9rem, 38%));
   z-index: 1;
   transform: translateY(-50%);
   border-radius: 999px;
-  background: #78350f;
+  background: #7f1d1d;
   padding: 0.22rem 0.52rem;
   color: #fff;
   font-size: 0.62rem;
@@ -1594,7 +1561,6 @@
 
   .run-report-friction-marker,
   .run-report-friction-marker::before,
-  .run-report-friction-marker::after,
   .run-report-stage-chips li,
   .run-report-stage-chip,
   .run-report-all-recommendations__panel {
