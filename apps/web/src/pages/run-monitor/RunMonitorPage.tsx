@@ -217,12 +217,12 @@ function RunLifecycleActions({
   return (
     <div className="run-monitor-lifecycle-actions" aria-label="Run 제어">
       {canStop ? (
-        <button type="button" onClick={onStop} disabled={isPending}>
+        <button className="run-monitor-lifecycle-actions__stop" type="button" onClick={onStop} disabled={isPending}>
           {isPending ? '요청 중' : '중지'}
         </button>
       ) : null}
       {canDelete ? (
-        <button type="button" onClick={onDelete} disabled={isPending}>
+        <button className="run-monitor-lifecycle-actions__delete" type="button" onClick={onDelete} disabled={isPending}>
           {isPending ? '처리 중' : '삭제'}
         </button>
       ) : null}

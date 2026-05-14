@@ -218,8 +218,9 @@ test('run report css keeps result-first content in the live simulation cockpit t
   assert.match(css, /\.run-report-hero-stats div\s*\{[\s\S]*?align-items: baseline/);
   assert.match(css, /\.run-report-hero-stats dt\s*\{[\s\S]*?font-size: 0\.56rem/);
   assert.match(css, /\.run-report-hero-stats dt\s*\{[\s\S]*?color: #94a3b8/);
-  assert.match(css, /\.run-report-hero-stats dd\s*\{[\s\S]*?font-size: 0\.82rem/);
-  assert.match(css, /\.run-report-hero-stats dd\s*\{[\s\S]*?font-weight: 850/);
+  assert.match(css, /\.run-report-hero-stats dd\s*\{[\s\S]*?font-size: 1rem/);
+  assert.match(css, /\.run-report-hero-stats dd\s*\{[\s\S]*?font-weight: 900/);
+  assert.match(css, /\.run-report-hero-stats dd\.run-report-hero-stats__danger\s*\{[\s\S]*?color: #0ea5e9/);
   assert.match(css, /\.run-report-hero-stats div \+ div::before\s*\{[\s\S]*?height: 0\.9rem/);
   assert.match(css, /\.run-report-hero-stats div \+ div::before\s*\{[\s\S]*?background: #e5e7eb/);
   assert.match(css, /\.run-report-layout\s*\{[\s\S]*?width: 100%/);

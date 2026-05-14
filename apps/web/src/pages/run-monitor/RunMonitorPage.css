@@ -129,9 +129,9 @@
   background: #f8fafc;
   padding: 0.34rem 0.72rem;
   color: #0284c7;
-  font-size: 0.58rem;
+  font-size: 0.68rem;
   font-weight: 900;
-  letter-spacing: 0.14em;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
 }
 
@@ -143,12 +143,26 @@
   background: #0ea5e9;
 }
 
+.run-monitor-status--complete,
+.run-monitor-status--queued {
+  border-color: transparent;
+  background: transparent;
+  padding-right: 0.2rem;
+  padding-left: 0.2rem;
+}
+
 .run-monitor-status--complete {
-  color: #16a34a;
+  color: #0284c7;
+}
+
+.run-monitor-status--complete .run-monitor-status__dot,
+.run-monitor-status--queued .run-monitor-status__dot {
+  width: 0.32rem;
+  height: 0.32rem;
 }
 
 .run-monitor-status--complete .run-monitor-status__dot {
-  background: #22c55e;
+  background: #7dd3fc;
 }
 
 .run-monitor-status--failed {
@@ -168,11 +182,11 @@
 }
 
 .run-monitor-status--queued {
-  color: #64748b;
+  color: #475569;
 }
 
 .run-monitor-status--queued .run-monitor-status__dot {
-  background: #94a3b8;
+  background: #bae6fd;
 }
 
 .run-monitor-status--running .run-monitor-status__dot::after {
@@ -191,22 +205,44 @@
 }
 
 .run-monitor-lifecycle-actions button {
-  min-height: 2rem;
-  border: 1px solid #e2e8f0;
+  box-sizing: border-box;
+  height: 2.05rem;
+  border: 0;
   border-radius: 999px;
   background: #fff;
-  padding: 0 0.72rem;
+  padding: 0 0.86rem;
   color: #64748b;
   cursor: pointer;
-  font-size: 0.62rem;
+  font-size: 0.68rem;
   font-weight: 900;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.06em;
+  line-height: 1;
   text-transform: uppercase;
 }
 
 .run-monitor-lifecycle-actions button:hover:not(:disabled) {
-  border-color: #cbd5e1;
+  background: #f8fafc;
   color: #020617;
+}
+
+.run-monitor-lifecycle-actions .run-monitor-lifecycle-actions__stop {
+  background: #fffaf2;
+  color: #9a6a2f;
+}
+
+.run-monitor-lifecycle-actions .run-monitor-lifecycle-actions__stop:hover:not(:disabled) {
+  background: #fff4df;
+  color: #80551d;
+}
+
+.run-monitor-lifecycle-actions .run-monitor-lifecycle-actions__delete {
+  background: #fff9fa;
+  color: #a65f68;
+}
+
+.run-monitor-lifecycle-actions .run-monitor-lifecycle-actions__delete:hover:not(:disabled) {
+  background: #fff1f3;
+  color: #8f4b55;
 }
 
 .run-monitor-lifecycle-actions button:disabled {
@@ -1055,11 +1091,26 @@
   border-radius: 0.72rem;
   background: #fff;
   padding: 0.7rem;
+  transform: translateY(0);
+  transition: box-shadow 160ms ease, transform 160ms ease;
+}
+
+.run-monitor-step:hover {
+  box-shadow: 0 8px 18px rgba(148, 163, 184, 0.1);
+  transform: translateY(-1px);
 }
 
 .run-monitor-step--active {
   border-color: rgba(125, 211, 252, 0.42);
   background: rgba(240, 249, 255, 0.64);
+}
+
+.run-monitor-step--active:hover {
+  box-shadow: 0 8px 18px rgba(14, 165, 233, 0.1);
+}
+
+.run-monitor-step--complete:hover {
+  box-shadow: 0 8px 18px rgba(125, 211, 252, 0.12);
 }
 
 .run-monitor-step__node {
@@ -1193,6 +1244,21 @@
   grid-template-columns: 0.95rem minmax(0, 1fr) auto;
   align-items: baseline;
   gap: 0.44rem;
+  margin: 0 -0.24rem;
+  border-radius: 0.52rem;
+  padding: 0.18rem 0.24rem;
+  transform: translateY(0);
+  transition: background 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+}
+
+.run-monitor-log__item:hover {
+  background: rgba(248, 250, 252, 0.82);
+  box-shadow: 0 6px 14px rgba(148, 163, 184, 0.08);
+  transform: translateY(-1px);
+}
+
+.run-monitor-log__item--success:hover {
+  box-shadow: 0 6px 14px rgba(125, 211, 252, 0.1);
 }
 
 .run-monitor-log__marker {
@@ -1673,6 +1739,22 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .run-monitor-step {
+    transition: none;
+  }
+
+  .run-monitor-step:hover {
+    transform: none;
+  }
+
+  .run-monitor-log__item {
+    transition: none;
+  }
+
+  .run-monitor-log__item:hover {
+    transform: none;
+  }
+
   .run-monitor-status--running .run-monitor-status__dot::after,
   .run-monitor-step__active-dot,
   .run-monitor-browser__empty-state > span,

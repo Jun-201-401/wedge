@@ -408,15 +408,15 @@
 .run-report-hero-stats dd {
   margin: 0;
   color: #020617;
-  font-size: 0.82rem;
-  font-weight: 850;
+  font-size: 1rem;
+  font-weight: 900;
   letter-spacing: 0;
-  line-height: 1.2;
+  line-height: 1.1;
   white-space: nowrap;
 }
 
 .run-report-hero-stats dd.run-report-hero-stats__danger {
-  color: #0284c7;
+  color: #0ea5e9;
 }
 
 .run-report-layout {
