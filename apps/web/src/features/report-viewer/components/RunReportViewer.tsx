@@ -68,6 +68,7 @@ type ReportFlowStageId = (typeof REPORT_FLOW_STAGES)[number]['id'];
 interface ReportHelpReference {
   label: string;
   source: string;
+  summary: string;
   url: string;
   quote: string;
 }
@@ -86,6 +87,7 @@ const REPORT_FLOW_HELP_TERMS: ReportFlowHelpTerm[] = [
     reference: {
       label: 'Funnel exploration',
       source: 'Google Analytics',
+      summary: '사용자가 목표를 완료하기까지 거치는 단계를 살펴보는 데 쓰이는 개념입니다.',
       quote: 'steps your users take to complete a task',
       url: 'https://support.google.com/analytics/answer/9327974?hl=en-GB',
     },
@@ -97,6 +99,7 @@ const REPORT_FLOW_HELP_TERMS: ReportFlowHelpTerm[] = [
     reference: {
       label: 'Start using a service',
       source: 'GOV.UK Design System',
+      summary: '처음 보는 화면에서 서비스의 목적과 시작 지점을 이해할 수 있어야 한다는 내용입니다.',
       quote: 'what the service does',
       url: 'https://design-system.service.gov.uk/patterns/start-using-a-service/',
     },
@@ -108,6 +111,7 @@ const REPORT_FLOW_HELP_TERMS: ReportFlowHelpTerm[] = [
     reference: {
       label: 'PR on Websites',
       source: 'Nielsen Norman Group',
+      summary: '웹사이트가 무엇을 제공하고 사용자가 무엇을 얻을 수 있는지 분명히 보여줘야 한다는 내용입니다.',
       quote: 'what the site is about and what visitors can get from it',
       url: 'https://media.nngroup.com/media/reports/free/PR_on_Websites_3rd_Edition.pdf',
     },
@@ -119,6 +123,7 @@ const REPORT_FLOW_HELP_TERMS: ReportFlowHelpTerm[] = [
     reference: {
       label: 'Button Design',
       source: 'Baymard Institute',
+      summary: '사용자가 다음으로 이동할 수 있는 명확한 행동 경로를 제공해야 한다는 내용입니다.',
       quote: 'a clear path forward',
       url: 'https://baymard.com/learn/button-design',
     },
@@ -501,9 +506,9 @@ function ReportFlowHelpButton() {
               </li>
             ))}
           </ol>
-          <details className="run-report-term-help__criteria">
-            <summary>관련 기준</summary>
-            <div className="run-report-term-help__criteria-list" aria-label="전환 흐름 설명 관련 기준">
+          <details className="run-report-term-help__references">
+            <summary>참고 자료</summary>
+            <div className="run-report-term-help__reference-list" aria-label="전환 흐름 설명 참고 자료">
               {REPORT_FLOW_HELP_TERMS.map((item) => (
                 <a
                   key={item.reference.url}
@@ -512,9 +517,10 @@ function ReportFlowHelpButton() {
                   rel="noreferrer"
                   onClick={(event) => event.stopPropagation()}
                 >
-                  <span>{item.reference.source}</span>
-                  <strong>{item.reference.label}</strong>
-                  <q>{item.reference.quote}</q>
+                  <em>{item.label} 참고 자료</em>
+                  <p>{item.reference.summary}</p>
+                  <small>원문: <q>{item.reference.quote}</q></small>
+                  <span>{item.reference.source} · {item.reference.label}</span>
                 </a>
               ))}
             </div>

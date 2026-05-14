@@ -861,13 +861,13 @@
   text-wrap: pretty;
 }
 
-.run-report-term-help__criteria {
+.run-report-term-help__references {
   display: grid;
   border-top: 1px solid #f1f5f9;
   padding-top: 0.5rem;
 }
 
-.run-report-term-help__criteria > summary {
+.run-report-term-help__references > summary {
   display: inline-flex;
   width: fit-content;
   align-items: center;
@@ -883,11 +883,11 @@
   list-style: none;
 }
 
-.run-report-term-help__criteria > summary::-webkit-details-marker {
+.run-report-term-help__references > summary::-webkit-details-marker {
   display: none;
 }
 
-.run-report-term-help__criteria > summary::after {
+.run-report-term-help__references > summary::after {
   content: '';
   display: inline-block;
   width: 0.34rem;
@@ -898,56 +898,72 @@
   transform: rotate(45deg);
 }
 
-.run-report-term-help__criteria[open] > summary::after {
+.run-report-term-help__references[open] > summary::after {
   margin-top: 0.12rem;
   transform: rotate(225deg);
 }
 
-.run-report-term-help__criteria > summary:focus-visible {
+.run-report-term-help__references > summary:focus-visible {
   outline: 3px solid rgba(14, 165, 233, 0.18);
   outline-offset: 2px;
 }
 
-.run-report-term-help__criteria-list {
+.run-report-term-help__reference-list {
   display: grid;
-  gap: 0.38rem;
+  gap: 0.42rem;
   margin-top: 0.52rem;
 }
 
-.run-report-term-help__criteria-list > a {
+.run-report-term-help__reference-list > a {
   display: grid;
-  gap: 0.14rem;
+  gap: 0.22rem;
   border-left: 2px solid #bae6fd;
   background: #f8fafc;
-  padding: 0.42rem 0.52rem;
+  padding: 0.5rem 0.56rem;
   text-decoration: none;
 }
 
-.run-report-term-help__criteria-list > a:hover {
+.run-report-term-help__reference-list > a:hover {
   background: #f0f9ff;
 }
 
-.run-report-term-help__criteria-list > a > span {
-  color: #64748b;
+.run-report-term-help__reference-list > a > em {
+  color: #0369a1;
   font-size: 0.56rem;
   font-weight: 900;
   letter-spacing: 0.08em;
   line-height: 1.2;
+  font-style: normal;
   text-transform: uppercase;
 }
 
-.run-report-term-help__criteria-list > a > strong {
-  color: #0369a1;
-  font-size: 0.62rem;
-  font-weight: 900;
-  line-height: 1.3;
+.run-report-term-help__reference-list > a > p {
+  margin: 0;
+  color: #0f172a;
+  font-size: 0.64rem;
+  font-weight: 780;
+  line-height: 1.46;
+  word-break: keep-all;
 }
 
-.run-report-term-help__criteria-list > a > q {
-  color: #0f172a;
-  font-size: 0.62rem;
-  font-weight: 780;
+.run-report-term-help__reference-list > a > small {
+  color: #64748b;
+  font-size: 0.58rem;
+  font-weight: 720;
   line-height: 1.45;
+  word-break: keep-all;
+}
+
+.run-report-term-help__reference-list > a > small q {
+  color: #334155;
+  font-weight: 780;
+}
+
+.run-report-term-help__reference-list > a > span {
+  color: #2563eb;
+  font-size: 0.58rem;
+  font-weight: 850;
+  line-height: 1.35;
 }
 
 
