@@ -46,6 +46,12 @@ test('create analysis top nav links to previous run list beside logout', () => {
   assert.match(source, /<a href=\{RUNS_PATH\} className="create-analysis-nav__link--secondary">실행 목록<\/a>/);
   assert.match(source, /<a href=\{getLoginPathForCurrentCreateAnalysisState\(\)\}>로그인<\/a>/);
   assert.match(source, /<button type="button" onClick=\{onLogout\}>로그아웃<\/button>/);
+  assert.match(css, /\.create-analysis-nav\s*\{[\s\S]*?position: relative/);
+  assert.match(css, /\.create-analysis-nav\s*\{[\s\S]*?height: 4rem/);
+  assert.match(css, /\.create-analysis-nav\s*\{[\s\S]*?border-bottom: 1px solid rgba\(248, 250, 252, 1\)/);
+  assert.match(css, /\.create-analysis-nav\s*\{[\s\S]*?background: rgba\(255, 255, 255, 0\.96\)/);
+  assert.match(css, /\.create-analysis-nav\s*\{[\s\S]*?padding: 0 2rem/);
+  assert.match(css, /\.create-analysis-page__main\s*\{[\s\S]*?min-height: calc\(100svh - 4rem\)/);
   assert.match(css, /\.create-analysis-nav__actions a,\s*\n\.create-analysis-nav__actions button\s*\{[\s\S]*?display: inline-flex/);
   assert.match(css, /\.create-analysis-nav__actions a,\s*\n\.create-analysis-nav__actions button\s*\{[\s\S]*?height: 2\.05rem/);
   assert.match(css, /\.create-analysis-nav__actions a,\s*\n\.create-analysis-nav__actions button\s*\{[\s\S]*?border: 0/);
@@ -53,6 +59,9 @@ test('create analysis top nav links to previous run list beside logout', () => {
   assert.match(css, /\.create-analysis-nav__actions \.create-analysis-nav__link--secondary\s*\{[\s\S]*?height: 2\.05rem/);
   assert.match(css, /\.create-analysis-nav__actions \.create-analysis-nav__link--secondary\s*\{[\s\S]*?background: rgba\(255, 255, 255, 0\.42\)/);
   assert.match(css, /\.create-analysis-nav__actions \.create-analysis-nav__link--secondary:hover\s*\{[\s\S]*?background: rgba\(240, 249, 255, 0\.82\)/);
+  assert.match(css, /@media \(max-width: 640px\) \{[\s\S]*?\.create-analysis-nav\s*\{[\s\S]*?padding: 0 1\.25rem/);
+  assert.match(css, /@media \(max-width: 640px\) \{[\s\S]*?\.create-analysis-nav__actions\s*\{[\s\S]*?gap: 0\.5rem/);
+  assert.match(css, /@media \(max-width: 640px\) \{[\s\S]*?\.create-analysis-page__main\s*\{[\s\S]*?padding: 1\.25rem/);
   assert.doesNotMatch(source, /create-analysis-previous-runs/);
 });
 
@@ -125,18 +134,40 @@ test('create analysis recommendations use a wider agent-style results card', () 
   assert.doesNotMatch(source, /disabled=\{!scenario\.isRunnable\}/);
 
   assert.match(css, /\.create-analysis-panel--recommendations\s*\{[\s\S]*?width: min\(100%, 66rem\)/);
+  assert.match(css, /\.create-analysis-panel\s*\{[\s\S]*?box-sizing: border-box/);
   assert.match(css, /\.preflight-agent,\s*\n\.recommendation-agent,\s*\n\.manual-choice-agent,\s*\n\.scenario-setup-agent,\s*\n\.ready-agent\s*\{[\s\S]*?font-family: 'Pretendard Variable', Pretendard, 'Inter', sans-serif/);
+  assert.match(css, /\.preflight-agent,\s*\n\.recommendation-agent,\s*\n\.manual-choice-agent,\s*\n\.scenario-setup-agent,\s*\n\.ready-agent\s*\{[\s\S]*?box-sizing: border-box/);
+  assert.match(css, /\.preflight-agent,\s*\n\.recommendation-agent,\s*\n\.manual-choice-agent,\s*\n\.scenario-setup-agent,\s*\n\.ready-agent\s*\{[\s\S]*?min-width: 0/);
   assert.match(css, /\.recommendation-agent__limitation\s*\{[\s\S]*?margin: 0\.9rem 0 0/);
+  assert.match(css, /\.scenario-grid\s*\{[\s\S]*?width: 100%/);
+  assert.match(css, /\.scenario-grid\s*\{[\s\S]*?min-width: 0/);
+  assert.match(css, /\.scenario-card,\s*\n\.manual-choice-agent__option\s*\{[\s\S]*?box-sizing: border-box/);
+  assert.match(css, /\.scenario-card,\s*\n\.manual-choice-agent__option\s*\{[\s\S]*?width: 100%/);
+  assert.match(css, /\.scenario-card,\s*\n\.manual-choice-agent__option\s*\{[\s\S]*?min-width: 0/);
+  assert.match(css, /\.scenario-card,\s*\n\.manual-choice-agent__option\s*\{[\s\S]*?border: 0/);
+  assert.match(css, /\.scenario-card,\s*\n\.manual-choice-agent__option\s*\{[\s\S]*?background: #f8fafc/);
+  assert.match(css, /\.scenario-card\s*\{[\s\S]*?overflow: hidden/);
+  assert.match(css, /\.scenario-card h3\s*\{[\s\S]*?overflow-wrap: anywhere/);
+  assert.match(css, /\.scenario-card p\s*\{[\s\S]*?overflow-wrap: anywhere/);
   assert.match(css, /\.recommendation-agent \.scenario-card button\s*\{[\s\S]*?margin-top: auto/);
   assert.match(css, /\.recommendation-agent \.scenario-card button\s*\{[\s\S]*?background: #334155/);
+  assert.match(css, /\.create-analysis-panel__action,\s*\n\.scenario-card button\s*\{[\s\S]*?max-width: 100%/);
+  assert.match(css, /\.create-analysis-panel__action,\s*\n\.scenario-card button\s*\{[\s\S]*?overflow-wrap: anywhere/);
   assert.match(css, /\.recommendation-agent \.scenario-card > p\s*\{[\s\S]*?margin-bottom: 1\.35rem/);
-  assert.match(css, /\.scenario-card__site-context\s*\{[\s\S]*?background: rgba\(248, 250, 252, 0\.72\)/);
+  assert.match(css, /\.scenario-card__site-context\s*\{[\s\S]*?border: 0/);
+  assert.match(css, /\.scenario-card__site-context\s*\{[\s\S]*?background: #f1f5f9/);
   assert.match(css, /\.scenario-card__site-context\s*\{[\s\S]*?min-width: 0/);
   assert.match(css, /\.scenario-card__context-row strong\s*\{[\s\S]*?max-width: 100%/);
   assert.match(css, /\.scenario-card__preview-steps li,\s*\n\.scenario-card__context-note\s*\{[\s\S]*?overflow-wrap: anywhere/);
   assert.match(css, /\.scenario-card__preview-steps\s*\{[\s\S]*?font-size: 0\.76rem/);
   assert.doesNotMatch(css, /\.recommendation-agent \.scenario-card--recommended\s*\{[\s\S]*?background:/);
   assert.match(css, /\.recommendation-agent \.scenario-card:hover,\s*\n\.recommendation-agent \.scenario-card:focus-within,\s*\n\.manual-choice-agent__option:hover,\s*\n\.manual-choice-agent__option:focus-visible\s*\{[\s\S]*?box-shadow: 0 14px 30px rgba\(15, 23, 42, 0\.06\)/);
+  assert.match(css, /\.recommendation-agent \.scenario-card:hover,\s*\n\.recommendation-agent \.scenario-card:focus-within,\s*\n\.manual-choice-agent__option:hover,\s*\n\.manual-choice-agent__option:focus-visible\s*\{[\s\S]*?border: 0/);
+  assert.match(css, /\.recommendation-agent \.scenario-card:hover,\s*\n\.recommendation-agent \.scenario-card:focus-within,\s*\n\.manual-choice-agent__option:hover,\s*\n\.manual-choice-agent__option:focus-visible\s*\{[\s\S]*?background: #f8fafc/);
+  assert.doesNotMatch(css, /\.scenario-card--available\s*\{/);
+  assert.doesNotMatch(css, /\.scenario-card--available \.scenario-card__site-context/);
+  assert.doesNotMatch(css, /\.recommendation-agent \.scenario-card--available:hover \.scenario-card__site-context/);
+  assert.doesNotMatch(css, /\.recommendation-agent \.scenario-card--available:focus-within \.scenario-card__site-context/);
   assert.match(css, /\.recommendation-agent__manual-entry\s*\{[\s\S]*?border-top: 1px solid rgba\(226, 232, 240, 0\.78\)/);
   assert.doesNotMatch(css, /recommendation-agent__header-status-dot/);
 });
@@ -231,9 +262,16 @@ test('create analysis ready screen uses an agent card layout', () => {
 
   assert.match(css, /\.create-analysis-panel--ready\s*\{[\s\S]*?width: min\(100%, 48rem\)/);
   assert.match(css, /\.ready-agent__summary-grid\s*\{[\s\S]*?grid-template-columns: 1fr/);
+  assert.match(css, /\.ready-agent__summary-card\s*\{[\s\S]*?border: 0/);
+  assert.match(css, /\.ready-agent__summary-card\s*\{[\s\S]*?background: rgba\(255, 255, 255, 0\.96\)/);
   assert.match(css, /\.ready-agent__launch-plan\s*\{[\s\S]*?grid-template-columns: repeat\(3, minmax\(0, 1fr\)\)/);
-  assert.match(css, /\.ready-agent__scenario-plan\s*\{[\s\S]*?background: linear-gradient/);
+  assert.match(css, /\.ready-agent__scenario-plan\s*\{[\s\S]*?border: 0/);
+  assert.match(css, /\.ready-agent__scenario-plan\s*\{[\s\S]*?background: rgba\(240, 249, 255, 0\.88\)/);
+  assert.match(css, /\.ready-agent__scenario-plan\s*\{[\s\S]*?transition: box-shadow 0\.2s ease, transform 0\.2s ease/);
+  assert.match(css, /\.ready-agent__scenario-plan:hover,\s*\n\.ready-agent__scenario-plan:focus-within\s*\{[\s\S]*?transform: translateY\(-1px\)/);
+  assert.doesNotMatch(css, /\.ready-agent__scenario-plan\s*\{[\s\S]*?background: linear-gradient/);
   assert.match(css, /@media \(prefers-reduced-motion: reduce\)\s*\{[\s\S]*?\.ready-agent__header-status-dot::after[\s\S]*?animation: none/);
+  assert.match(css, /@media \(prefers-reduced-motion: reduce\)\s*\{[\s\S]*?\.ready-agent__scenario-plan[\s\S]*?transition-duration: 0\.01ms/);
 });
 
 test('create analysis ready safety setting uses a muted notice block', () => {
