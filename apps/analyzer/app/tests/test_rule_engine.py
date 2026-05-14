@@ -601,7 +601,7 @@ class RuleEngineTest(unittest.TestCase):
         reliability = [issue for issue in result["issues"] if issue["criterion_id"] == "RELIABILITY-TECH-001"]
         self.assertEqual(len(reliability), 1)
         self.assertEqual(reliability[0]["stage"], "INPUT")
-        self.assertEqual(reliability[0]["references"], [])
+        self.assertEqual(reliability[0]["references"][0]["label"], "Lighthouse")
         self.assertIn("cp_002.state.network_summary", reliability[0]["evidence_refs"])
 
     def test_loading_stuck_emits_from_general_page_ready_timing(self) -> None:
