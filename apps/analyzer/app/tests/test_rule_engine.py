@@ -484,6 +484,10 @@ class RuleEngineTest(unittest.TestCase):
         self.assertEqual(overload[0]["confidence"], 0.86)
         self.assertEqual(overload[0]["evidence_refs"], ["cp_001.obs_many_choices"])
         self.assertIn("viewport_interactive_choice_count=15", overload[0]["signals"])
+        self.assertIn("evidence_locations", overload[0])
+        self.assertIn("components", overload[0]["evidence_locations"][0])
+        self.assertNotIn("problem_components", overload[0])
+        self.assertNotIn("problem_components", overload[0]["evidence_locations"][0])
 
     def test_missing_cta_evidence_is_not_user_facing_issue(self) -> None:
         packet = load_sample_packet()

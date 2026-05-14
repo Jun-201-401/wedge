@@ -10,6 +10,7 @@ import {
   WORD_ROTATION_INTERVAL_MS,
   WORDS,
 } from '../../features/landing-vision';
+import { HOME_PATH } from '../../shared/lib/appPaths';
 import './LandingPage.css';
 
 export function LandingPage() {
@@ -176,7 +177,7 @@ export function LandingPage() {
 
         <div className="site-nav__links" aria-label="Section shortcuts">
           <a href="#vision">Vision</a>
-          <a href="/create-analysis" className="site-nav__cta">Start</a>
+          <a href={HOME_PATH} className="site-nav__cta">Start</a>
         </div>
       </nav>
 

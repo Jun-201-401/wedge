@@ -359,6 +359,31 @@ test('buildRunReportFromApi adds scroll offset when projecting viewport coordina
   assert.equal(report.findings[0].highlight?.height, '0.43%');
 });
 
+test('buildRunReportFromApi ignores scroll offset when projecting viewport coordinates onto viewport screenshots', () => {
+  const viewportScreenshotDetail: ReportDetail = {
+    ...reportDetail,
+    findings: [{
+      ...reportDetail.findings[0],
+      highlight: {
+        ...reportDetail.findings[0].highlight!,
+        scrollY: 640,
+      },
+    }],
+  };
+
+  const report = buildRunReportFromApi({
+    run: completedRun,
+    report: readyReport,
+    detail: viewportScreenshotDetail,
+    scenarioId: 'landing-cta',
+  });
+
+  assert.equal(report.findings[0].highlight?.left, '36.11%');
+  assert.equal(report.findings[0].highlight?.top, '40.00%');
+  assert.equal(report.findings[0].highlight?.width, '15.28%');
+  assert.equal(report.findings[0].highlight?.height, '6.22%');
+});
+
 test('buildRunReportFromApi ignores coordinate highlight when it targets another screenshot', () => {
   const mismatchedDetail: ReportDetail = {
     ...reportDetail,

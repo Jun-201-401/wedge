@@ -17,7 +17,8 @@ test('app bootstraps memory auth from refresh cookie and shares auth state with 
   assert.match(app, /readCurrentUser\(\)/);
   assert.match(app, /setCurrentUser\(response\.data\)/);
   assert.match(app, /await logout\(\)/);
-  assert.match(app, /replaceAppPath\('\/'\)/);
+  assert.match(app, /import \{ HOME_PATH \} from '..\/shared\/lib\/appPaths'/);
+  assert.match(app, /replaceAppPath\(HOME_PATH\)/);
   assert.match(app, /<LoginPage isAuthenticated=\{isAuthenticated\} onAuthenticated=\{markAuthenticated\}/);
   assert.match(app, /<SignupPage isAuthenticated=\{isAuthenticated\} onAuthenticated=\{markAuthenticated\}/);
   assert.match(app, /const isAuthChecking = authState === 'checking'/);
@@ -30,7 +31,7 @@ test('app bootstraps memory auth from refresh cookie and shares auth state with 
   assert.match(app, /const shouldShowProtectedRouteLoading = useDelayedProtectedRouteLoading\(protectedRouteGate === 'loading'\)/);
   assert.match(app, /if \(protectedRouteGate === 'loading'\) \{[\s\S]*?shouldShowProtectedRouteLoading \? <ProtectedRouteLoadingPage \/> : null/);
   assert.match(app, /if \(protectedRouteGate === 'blocked'\)/);
-  assert.match(app, /onLogout=\{handleCreateAnalysisLogout\}/);
+  assert.match(app, /onLogout=\{handleLogout\}/);
   assert.match(app, /<RunsListPage currentUser=\{currentUser\} onLogout=\{handleLogout\} \/>/);
 
   assert.doesNotMatch(landing, /LOGIN_PATH/);

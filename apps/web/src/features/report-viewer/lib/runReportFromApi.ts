@@ -316,11 +316,13 @@ function createArtifactHighlight(finding: ReportDetail['findings'][number]) {
 
   if (unit === 'css_px' && artifactWidth && artifactHeight) {
     const imageScale = artifactWidth / scaleWidth;
+    const viewportImageHeight = scaleHeight * imageScale;
+    const scrollYOffset = scrollY > 0 && artifactHeight > viewportImageHeight + 1 ? scrollY : 0;
 
     return {
       label: readString(finding.highlight?.label) ?? '근거 대상',
       source: 'artifact-coordinate' as const,
-      top: boundsToPercent((y + scrollY) * imageScale, artifactHeight),
+      top: boundsToPercent((y + scrollYOffset) * imageScale, artifactHeight),
       left: boundsToPercent(x * imageScale, artifactWidth),
       width: boundsToPercent(width * imageScale, artifactWidth),
       height: boundsToPercent(height * imageScale, artifactHeight),

@@ -22,7 +22,6 @@ export interface ScenarioRecommendationViewModel {
   evidenceRefs: string[];
   evidenceSummary: ApiScenarioRecommendation['evidenceSummary'];
   signalLabels: string[];
-  limitationLabels: string[];
   targetLabel: string | null;
   previewSteps: string[];
   suggestedStartUrl?: string | null;
@@ -35,9 +34,9 @@ const MANUAL_SCENARIO_TYPES = ['LANDING_CTA', 'SIGNUP_LEAD_FORM', 'CONTACT', 'PR
 const SCENARIO_COPY = {
   LANDING_CTA: {
     id: 'landing-cta',
-    title: '랜딩 전환 CTA 점검',
-    availableSummary: '랜딩 페이지에서 가입, 체험, 문의 같은 전환 CTA 후보를 발견했어요. 사용자가 다음 행동을 바로 이해할 수 있는지 확인하기 좋습니다.',
-    unavailableSummary: '랜딩 페이지에서 명확한 전환 CTA 진입점을 찾지 못했어요.',
+    title: '랜딩 전환 버튼 점검',
+    availableSummary: '첫 화면의 가입, 체험, 문의 버튼 흐름을 확인해요.',
+    unavailableSummary: '랜딩 페이지에서 명확한 전환 버튼 진입점을 찾지 못했어요.',
   },
   SIGNUP_LEAD_FORM: {
     id: 'signup-form',
@@ -86,8 +85,54 @@ function isUrlLikeField(field: string) {
   return field === 'href' || field === 'href_contains';
 }
 
-function displayTargetValue(field: string, value: string) {
-  return isUrlLikeField(field) ? formatDisplayUrl(value, 46) : value;
+function truncateTextLabel(value: string, maxLength = 34) {
+  const characters = Array.from(value.trim());
+  if (characters.length <= maxLength) {
+    return value.trim();
+  }
+
+  return `${characters.slice(0, maxLength).join('')}…`;
+}
+
+function isInternalDisplayValue(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return true;
+  }
+
+  if (/^[.#][\w-]+(?:\s*[,{:#.[>+~]|\{)/.test(trimmed)) {
+    return true;
+  }
+
+  if (trimmed.includes('{') || trimmed.includes('}') || trimmed.split(';').length > 2) {
+    return true;
+  }
+
+  return /^cp_\d+\.obs_\d+/i.test(trimmed);
+}
+
+function displayTargetValue(field: string, value: string, baseUrl?: string | null) {
+  if (isInternalDisplayValue(value)) {
+    return null;
+  }
+
+  if (!isUrlLikeField(field)) {
+    return truncateTextLabel(value);
+  }
+
+  if (baseUrl && value.startsWith('/')) {
+    try {
+      return formatDisplayUrl(new URL(value, baseUrl).toString(), 46);
+    } catch {
+      return formatDisplayUrl(value, 46);
+    }
+  }
+
+  return formatDisplayUrl(value, 46);
+}
+
+function isUrlishValue(value: string) {
+  return /^(https?:\/\/|\/|#)/i.test(value.trim());
 }
 
 function toneFor(level: ScenarioRecommendationLevel): ScenarioTone {
@@ -163,29 +208,32 @@ function evidenceLabel(recommendation: ApiScenarioRecommendation) {
     return signalLabels.slice(0, 2).join(', ');
   }
 
-  const refs = recommendation.evidenceRefs?.filter(Boolean) ?? [];
-  if (refs.length > 0) {
-    return refs.slice(0, 3).join(', ');
-  }
-
   const target = recommendation.suggestedTarget;
   const text = typeof target?.text === 'string' ? target.text : null;
-  const selector = typeof target?.selector === 'string' ? target.selector : null;
   const href = typeof target?.href_contains === 'string' ? target.href_contains : null;
-  return text ?? selector ?? href ?? '발견된 근거 없음';
+  const readableTarget = text && !isInternalDisplayValue(text)
+    ? text
+    : href && !isInternalDisplayValue(href)
+      ? href
+      : null;
+  return readableTarget ?? signalLabelForType('', recommendation.scenarioType);
 }
 
-function targetLabelFor(target: Record<string, unknown> | null | undefined) {
+function targetLabelFor(recommendation: ApiScenarioRecommendation) {
+  const target = recommendation.suggestedTarget;
   if (!target) {
     return null;
   }
 
-  const candidateKeys = ['text', 'aria_label', 'label', 'placeholder', 'name', 'href_contains', 'href', 'selector'];
+  const candidateKeys = ['text', 'aria_label', 'label', 'placeholder', 'name', 'href_contains', 'href'];
   for (const key of candidateKeys) {
     const value = target[key];
     if (typeof value === 'string' && value.trim().length > 0) {
       const trimmed = value.trim();
-      return displayTargetValue(key, trimmed);
+      const displayValue = displayTargetValue(key, trimmed, recommendation.suggestedStartUrl);
+      if (displayValue) {
+        return displayValue;
+      }
     }
   }
 
@@ -205,112 +253,68 @@ function scenarioActionLabel(scenarioType: DiscoveryScenarioType) {
     case 'CONTENT_ONLY':
       return '핵심 정보 탐색 흐름을 확인';
     default:
-      return '전환 CTA 진입점을 확인';
+      return '전환 버튼 진입점을 확인';
   }
 }
 
 function previewStepsFor(recommendation: ApiScenarioRecommendation) {
-  const targetLabel = targetLabelFor(recommendation.suggestedTarget);
+  const targetLabel = targetLabelFor(recommendation);
+  const targetText = typeof recommendation.suggestedTarget?.text === 'string' ? recommendation.suggestedTarget.text.trim() : '';
   const steps = [
     recommendation.suggestedStartUrl
-      ? `추천 시작 URL에서 첫 화면을 열어요`
+      ? '추천 시작 화면을 열어요'
       : '입력한 URL의 첫 화면을 열어요',
-    targetLabel
-      ? `"${targetLabel}" ${targetActionNounFor(recommendation.suggestedTarget)}를 따라가요`
+    targetLabel && targetText && !isUrlishValue(targetText)
+      ? `"${targetLabel}" 버튼이나 링크를 따라가요`
+      : targetLabel
+        ? '추천 링크를 따라가요'
       : scenarioActionLabel(recommendation.scenarioType),
-    stopBoundaryStepFor(recommendation),
+    '제출 직전까지 이동하며 막히는 지점을 기록해요',
   ];
 
   return steps;
 }
 
-function targetActionNounFor(target: Record<string, unknown> | null | undefined) {
-  const role = typeof target?.role === 'string' ? target.role.toLowerCase() : '';
-  if (role === 'button') {
-    return '버튼';
+function signalLabelForType(signalType: string, scenarioType: DiscoveryScenarioType) {
+  if (signalType.includes('pricing')) {
+    return '가격이나 요금제 관련 진입점을 발견했어요';
   }
 
-  if (role === 'link' || typeof target?.href_contains === 'string' || typeof target?.href === 'string') {
-    return '링크';
+  if (signalType.includes('purchase') || signalType.includes('checkout')) {
+    return '구매나 결제로 이어지는 진입점을 발견했어요';
   }
 
-  if (role === 'textbox' || typeof target?.placeholder === 'string' || typeof target?.name === 'string') {
-    return '입력 영역';
+  if (signalType.includes('contact')) {
+    return '문의나 신청으로 이어지는 링크를 발견했어요';
   }
 
-  return '요소';
-}
-
-function stopBoundaryStepFor(recommendation: ApiScenarioRecommendation) {
-  if (recommendation.scenarioType === 'PURCHASE_CHECKOUT') {
-    return '결제/주문 확정 같은 위험 행동 직전까지만 확인해요';
+  if (signalType.includes('form')) {
+    return '입력 폼으로 이어지는 흐름을 발견했어요';
   }
 
-  if (hasLimitation(recommendation, 'authenticated_pages_not_explored')) {
-    return '로그인/인증 화면이 나오면 그 지점을 마찰로 기록하고 멈춰요';
+  if (signalType.includes('landing') || signalType.includes('cta')) {
+    return '전환 행동으로 이어지는 링크를 발견했어요';
   }
 
-  if (recommendation.scenarioType === 'SIGNUP_LEAD_FORM' || recommendation.scenarioType === 'CONTACT') {
-    return '제출 버튼 전 단계까지 입력 부담과 마찰 근거를 기록해요';
+  switch (scenarioType) {
+    case 'CONTACT':
+      return '문의나 신청으로 이어지는 링크를 발견했어요';
+    case 'PRICING':
+      return '가격이나 요금제 관련 진입점을 발견했어요';
+    case 'PURCHASE_CHECKOUT':
+      return '구매나 결제로 이어지는 진입점을 발견했어요';
+    case 'SIGNUP_LEAD_FORM':
+      return '입력 폼으로 이어지는 흐름을 발견했어요';
+    default:
+      return '전환 행동으로 이어지는 링크를 발견했어요';
   }
-
-  return '위험 행동 전 멈추고 마찰 근거를 기록해요';
-}
-
-function hasLimitation(recommendation: ApiScenarioRecommendation, limitation: string) {
-  return recommendation.evidenceSummary?.limitations?.includes(limitation) ?? false;
 }
 
 function signalLabelsFor(recommendation: ApiScenarioRecommendation) {
   const summary = recommendation.evidenceSummary;
   const signals = summary?.matched_signals ?? [];
-  return signals
-    .map((signal) => {
-      const source = sourceLabel(signal.source);
-      const value = signal.value?.trim();
-      const displayValue = value ? displayTargetValue(signal.source, value) : '';
-      return displayValue ? `${source}: ${displayValue}` : '';
-    })
-    .filter(Boolean)
-    .slice(0, 4);
-}
-
-function limitationLabelsFor(recommendation: ApiScenarioRecommendation) {
-  const summary = recommendation.evidenceSummary;
-  const limitations = summary?.limitations ?? [];
-  return limitations.map(limitationLabel).filter(Boolean).slice(0, 3);
-}
-
-function sourceLabel(source: string) {
-  switch (source) {
-    case 'aria_label':
-      return 'aria-label';
-    case 'aria_labelled_by_text':
-      return 'aria-labelledby';
-    case 'label_text':
-      return 'label';
-    case 'form_field':
-      return 'form field';
-    case 'shallow_navigation':
-      return '도착 확인';
-    case 'alt':
-      return '이미지 alt';
-    case 'selector':
-      return 'selector';
-    default:
-      return source;
-  }
-}
-
-function limitationLabel(limitation: string) {
-  switch (limitation) {
-    case 'image_text_ocr_not_performed':
-      return '이미지 안 텍스트는 OCR하지 않음';
-    case 'authenticated_pages_not_explored':
-      return '로그인 뒤 흐름은 탐색하지 않음';
-    default:
-      return limitation.replace(/_/g, ' ');
-  }
+  const labels = signals.map((signal) => signalLabelForType(signal.signal_type, recommendation.scenarioType));
+  return Array.from(new Set(labels)).slice(0, 4);
 }
 
 function manualSummaryFor(scenarioType: DiscoveryScenarioType) {
@@ -334,7 +338,7 @@ export function toScenarioRecommendationViewModel(recommendation: ApiScenarioRec
   const copy = SCENARIO_COPY[recommendation.scenarioType] ?? SCENARIO_COPY.CUSTOM_GUIDED;
   const isRunnable = recommendation.recommendationLevel !== 'NOT_AVAILABLE';
   const summaryPrefix = isRunnable ? copy.availableSummary : copy.unavailableSummary;
-  const targetLabel = targetLabelFor(recommendation.suggestedTarget);
+  const targetLabel = targetLabelFor(recommendation);
 
   return {
     id: copy.id,
@@ -354,7 +358,6 @@ export function toScenarioRecommendationViewModel(recommendation: ApiScenarioRec
     evidenceRefs: recommendation.evidenceRefs ?? [],
     evidenceSummary: recommendation.evidenceSummary ?? null,
     signalLabels: signalLabelsFor(recommendation),
-    limitationLabels: limitationLabelsFor(recommendation),
     targetLabel,
     previewSteps: previewStepsFor(recommendation),
     suggestedStartUrl: recommendation.suggestedStartUrl ?? null,
@@ -385,12 +388,11 @@ export function toManualScenarioRecommendationViewModels(excludedScenarioIds: re
         evidenceRefs: [],
         evidenceSummary: null,
         signalLabels: [],
-        limitationLabels: [],
         targetLabel: null,
         previewSteps: [
           '입력한 URL의 첫 화면을 열어요',
           scenarioActionLabel(scenarioType),
-          '위험 행동 전 멈추고 마찰 근거를 기록해요',
+          '제출 직전까지 이동하며 막히는 지점을 기록해요',
         ],
         suggestedStartUrl: null,
         suggestedTarget: null,
