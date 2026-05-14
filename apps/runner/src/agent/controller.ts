@@ -471,8 +471,22 @@ function agentDecisionToScenarioStep(decision: AgentDecision, turn: number, chec
     step_id: `agent_turn_${String(turn).padStart(3, "0")}`,
     stage: decision.stage,
     description: decision.description,
-    action: decision.action,
+    action: actionForScenarioExecution(decision),
     settle_strategy: decision.settleStrategy,
     checkpoint
+  };
+}
+
+function actionForScenarioExecution(decision: AgentDecision): AgentDecision["action"] {
+  if (decision.metadata?.decisionSource !== "replay_hint") {
+    return decision.action;
+  }
+
+  return {
+    ...decision.action,
+    options: {
+      ...decision.action.options,
+      disable_recovery_retry: true
+    }
   };
 }

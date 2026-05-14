@@ -3,6 +3,7 @@ import test from "node:test";
 import type { BrowserPageSnapshot, BrowserSettleResult } from "../src/browser/playwright/index.ts";
 import { createCapturePipeline } from "../src/capture/index.ts";
 import { createDeliverySummary, mergeDeliveryIssues, resolveDeliveryStatus } from "../src/delivery/index.ts";
+import { RunnerExecutionPolicyError } from "../src/scenario/policy.ts";
 import { executeScenario, ScenarioExecutionError } from "../src/scenario/executor/index.ts";
 import { createArtifactBatch, createCheckpointRequest } from "../src/scenario/executor/checkpoint-payloads.ts";
 import { executeScenarioStep } from "../src/scenario/executor/step-executor.ts";
@@ -192,6 +193,133 @@ test("[증거 전달] step-event callback 실패는 실행 실패로 보지 않�
   assert.equal(result.stopRequested, false);
   assert.equal(result.deliveryIssues.length, 3);
   assert.ok(result.deliveryIssues.every((issue) => issue.scope === "step-events"));
+});
+
+test("[복구 실행] retryable action은 일시 실패 후 bounded retry로 성공 처리한다", async () => {
+  const plan = createMinimalPlan();
+  const step: ScenarioStep = {
+    step_id: "step_001_wait_for_cta",
+    stage: "CTA",
+    description: "transient target recovery",
+    action: {
+      type: "wait_for",
+      target: {
+        selector: "#cta"
+      },
+      options: {
+        recovery_delay_ms: 1
+      }
+    },
+    settle_strategy: {
+      type: "fixed_short",
+      timeout_ms: 1
+    },
+    checkpoint: false
+  };
+  let executeCount = 0;
+  const actionExecutedDetails: Record<string, unknown>[] = [];
+
+  const result = await executeScenarioStep({
+    runId: "run-1",
+    stepOrder: 1,
+    step,
+    plan,
+    session: createSimulatedSession(plan, {
+      execute: async (action) => {
+        executeCount += 1;
+        if (executeCount === 1) {
+          throw new Error("Unable to satisfy wait_for action: selector=#cta");
+        }
+
+        return {
+          actionType: action.type,
+          targetSummary: "selector=#cta",
+          stopRequested: false,
+          details: {}
+        };
+      },
+      settle: async (strategy) => createSettledResult({ strategy: strategy.type, durationMs: 1 })
+    }),
+    callbackClient: createStubCallbackClient({
+      sendStepEvents: async (_runId, payload) => {
+        for (const event of payload.events) {
+          if (event.eventType === "ACTION_EXECUTED") {
+            actionExecutedDetails.push(event.payload.details as Record<string, unknown>);
+          }
+        }
+      }
+    }),
+    capturePipeline: {
+      collectCheckpoint: async () => {
+        throw new Error("checkpoint collection should not be called");
+      }
+    },
+    artifactStore: {
+      persistArtifacts: async () => []
+    }
+  });
+
+  assert.equal(result.stopRequested, false);
+  assert.equal(executeCount, 2);
+  assert.equal(actionExecutedDetails.length, 1);
+  assert.deepEqual(actionExecutedDetails[0]?.recovery, {
+    recovered: true,
+    attempts: 2,
+    failedAttempts: [
+      {
+        attempt: 1,
+        message: "Unable to satisfy wait_for action: selector=#cta"
+      }
+    ]
+  });
+});
+
+test("[복구 실행] policy error는 안전을 위해 retry하지 않는다", async () => {
+  const plan = createMinimalPlan();
+  const step: ScenarioStep = {
+    step_id: "step_001_payment",
+    stage: "COMMIT",
+    description: "payment safety",
+    action: {
+      type: "click",
+      target: {
+        text: "결제하기"
+      }
+    },
+    settle_strategy: {
+      type: "none",
+      timeout_ms: 0
+    },
+    checkpoint: false
+  };
+  let executeCount = 0;
+
+  await assert.rejects(
+    () => executeScenarioStep({
+      runId: "run-1",
+      stepOrder: 1,
+      step,
+      plan,
+      session: createSimulatedSession(plan, {
+        execute: async () => {
+          executeCount += 1;
+          throw new RunnerExecutionPolicyError("Scenario safety forbids payment-commit click targets");
+        }
+      }),
+      callbackClient: createStubCallbackClient(),
+      capturePipeline: {
+        collectCheckpoint: async () => {
+          throw new Error("checkpoint collection should not be called");
+        }
+      },
+      artifactStore: {
+        persistArtifacts: async () => []
+      }
+    }),
+    /payment-commit/
+  );
+
+  assert.equal(executeCount, 1);
 });
 
 test("[증거 전달] artifact 저장과 checkpoint callback이 실패해도 실행 요약은 degraded 상태로 끝낸다", async () => {
@@ -808,6 +936,7 @@ test("[수집 pipeline] CTA 분석용 interactive_components observation을 chec
         tag: "a",
         clickable: true,
         clicked_in_scenario: true,
+        interaction_order: 4,
         is_cta_candidate: true,
         is_primary_like: true,
         bounds: {
@@ -861,6 +990,7 @@ test("[수집 pipeline] CTA 분석용 interactive_components observation을 chec
         tag: "a",
         clickable: true,
         clicked_in_scenario: true,
+        interaction_order: 4,
         is_cta_candidate: true,
         is_primary_like: true,
         bounds: {

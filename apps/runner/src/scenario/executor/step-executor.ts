@@ -8,8 +8,9 @@ import {
 } from "../../observability/collectors.ts";
 import type { ArtifactStore } from "../../storage/index.ts";
 import type { ScenarioPlan, ScenarioStep } from "../../shared/contracts.ts";
-import { logOperationalEvent } from "../../shared/utils.ts";
+import { errorMessage, logOperationalEvent, sleep } from "../../shared/utils.ts";
 import { executeScenarioAction } from "../actions/index.ts";
+import { RunnerExecutionPolicyError } from "../policy.ts";
 import { emitCheckpointArtifactsAndCallbacks } from "./checkpoint-emitter.ts";
 import { emitStepEventBestEffort } from "./step-events.ts";
 
@@ -32,6 +33,11 @@ export interface ScenarioStepExecutionResult {
   collectorStatus: CollectorStatusSummary;
 }
 
+const RETRYABLE_ACTION_TYPES = new Set(["click", "fill", "wait_for"]);
+const DEFAULT_ACTION_RECOVERY_MAX_ATTEMPTS = 3;
+const MAX_ACTION_RECOVERY_ATTEMPTS = 5;
+const DEFAULT_ACTION_RECOVERY_DELAY_MS = 250;
+
 export async function executeScenarioStep({
   runId,
   stepOrder,
@@ -45,7 +51,6 @@ export async function executeScenarioStep({
   journeyDepthContext
 }: ScenarioStepExecutorInput): Promise<ScenarioStepExecutionResult> {
   const deliveryIssues: DeliveryIssue[] = [];
-  const preparedSettle = await session.prepareSettle?.(step.settle_strategy);
 
   if (emitStepEvents) {
     deliveryIssues.push(...(await emitStepEventBestEffort(callbackClient, runId, stepOrder, step.step_id, "STEP_STARTED", {
@@ -56,8 +61,16 @@ export async function executeScenarioStep({
 
   const beforeSnapshot = step.checkpoint ? session.snapshot() : undefined;
   let actionResult;
+  let preparedSettle: Awaited<ReturnType<NonNullable<BrowserSession["prepareSettle"]>>> | null = null;
   try {
-    actionResult = await executeScenarioAction(session, step);
+    const recoveredExecution = await executeScenarioActionWithRecovery({
+      runId,
+      stepOrder,
+      step,
+      session
+    });
+    actionResult = recoveredExecution.actionResult;
+    preparedSettle = recoveredExecution.preparedSettle;
   } catch (error) {
     await preparedSettle?.cancel();
     throw error;
@@ -141,6 +154,174 @@ export async function executeScenarioStep({
     }),
     collectorStatus: createEmptyCollectorStatusSummary()
   };
+}
+
+async function executeScenarioActionWithRecovery({
+  runId,
+  stepOrder,
+  step,
+  session
+}: {
+  runId: string;
+  stepOrder: number;
+  step: ScenarioStep;
+  session: BrowserSession;
+}): Promise<{
+  actionResult: Awaited<ReturnType<typeof executeScenarioAction>>;
+  preparedSettle: Awaited<ReturnType<NonNullable<BrowserSession["prepareSettle"]>>> | null;
+}> {
+  const maxAttempts = resolveActionRecoveryMaxAttempts(step);
+  const failures: Array<{ attempt: number; message: string }> = [];
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const preparedSettle = await session.prepareSettle?.(step.settle_strategy) ?? null;
+
+    try {
+      const actionResult = await executeScenarioAction(session, step);
+      if (failures.length === 0) {
+        return {
+          actionResult,
+          preparedSettle
+        };
+      }
+
+      return {
+        actionResult: {
+          ...actionResult,
+          details: {
+            ...actionResult.details,
+            recovery: {
+              recovered: true,
+              attempts: attempt,
+              failedAttempts: failures
+            }
+          }
+        },
+        preparedSettle
+      };
+    } catch (error) {
+      await preparedSettle?.cancel();
+
+      if (!shouldRetryActionFailure(step, error, attempt, maxAttempts)) {
+        throw error;
+      }
+
+      failures.push({
+        attempt,
+        message: errorMessage(error)
+      });
+
+      logOperationalEvent(
+        "scenario-executor",
+        "action_recovery_retry",
+        {
+          runId,
+          stepOrder,
+          stepKey: step.step_id,
+          stage: step.stage,
+          actionType: step.action.type,
+          attempt,
+          nextAttempt: attempt + 1,
+          maxAttempts,
+          failureMessage: errorMessage(error)
+        },
+        "warn"
+      );
+
+      await waitBeforeActionRecoveryRetry(session, step);
+    }
+  }
+
+  throw new Error("action recovery retry exhausted without a terminal error");
+}
+
+function shouldRetryActionFailure(
+  step: ScenarioStep,
+  error: unknown,
+  attempt: number,
+  maxAttempts: number
+): boolean {
+  if (attempt >= maxAttempts) {
+    return false;
+  }
+
+  if (!RETRYABLE_ACTION_TYPES.has(step.action.type)) {
+    return false;
+  }
+
+  if (error instanceof RunnerExecutionPolicyError) {
+    return false;
+  }
+
+  if (error instanceof Error && error.name === "BrowserCrashError") {
+    return false;
+  }
+
+  return true;
+}
+
+function resolveActionRecoveryMaxAttempts(step: ScenarioStep): number {
+  if (!RETRYABLE_ACTION_TYPES.has(step.action.type)) {
+    return 1;
+  }
+
+  if (step.action.options?.recovery_retry === false || step.action.options?.disable_recovery_retry === true) {
+    return 1;
+  }
+
+  const configuredAttempts =
+    readNumberOption(step, "recovery_max_attempts") ??
+    readNumberOption(step, "recoveryMaxAttempts");
+
+  if (configuredAttempts === undefined) {
+    return DEFAULT_ACTION_RECOVERY_MAX_ATTEMPTS;
+  }
+
+  if (!Number.isInteger(configuredAttempts) || configuredAttempts < 1) {
+    return DEFAULT_ACTION_RECOVERY_MAX_ATTEMPTS;
+  }
+
+  return Math.min(configuredAttempts, MAX_ACTION_RECOVERY_ATTEMPTS);
+}
+
+async function waitBeforeActionRecoveryRetry(session: BrowserSession, step: ScenarioStep): Promise<void> {
+  const delayMs = resolveActionRecoveryDelayMs(step);
+
+  try {
+    await session.settle({
+      type: "fixed_short",
+      timeout_ms: delayMs
+    });
+  } catch (error) {
+    logOperationalEvent(
+      "scenario-executor",
+      "action_recovery_wait_failed",
+      {
+        stepKey: step.step_id,
+        actionType: step.action.type,
+        failureMessage: errorMessage(error)
+      },
+      "warn"
+    );
+    await sleep(delayMs);
+  }
+}
+
+function resolveActionRecoveryDelayMs(step: ScenarioStep): number {
+  const configuredDelay =
+    readNumberOption(step, "recovery_delay_ms") ??
+    readNumberOption(step, "recoveryDelayMs");
+
+  if (configuredDelay === undefined || !Number.isFinite(configuredDelay) || configuredDelay < 0) {
+    return DEFAULT_ACTION_RECOVERY_DELAY_MS;
+  }
+
+  return Math.min(configuredDelay, 2_000);
+}
+
+function readNumberOption(step: ScenarioStep, key: string): number | undefined {
+  const value = step.action.options?.[key];
+  return typeof value === "number" ? value : undefined;
 }
 
 async function appendStepCompletedEvent({
