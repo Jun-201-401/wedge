@@ -122,122 +122,10 @@ function RunReportStatePage({
   );
 }
 
-function RunReportSkeletonLine({ className = '' }: { className?: string }) {
-  const skeletonClassName = className ? `run-report-skeleton-line ${className}` : 'run-report-skeleton-line';
-  return <span className={skeletonClassName} aria-hidden="true" />;
-}
-
-function RunReportLoadingShell({ runId, title }: { runId: string; title: string }) {
+function RunReportLoadingShell({ title }: { title: string }) {
   return (
     <div className="run-report-page run-report-page--loading" aria-busy="true">
-      <div className="run-report-grid-bg" aria-hidden="true" />
-
-      <header className="run-report-topbar" aria-label="Wedge 분석 리포트">
-        <div className="run-report-topbar__left">
-          <RunReportBrand />
-          <span className="run-report-topbar__divider" aria-hidden="true" />
-          <div className="run-report-target-inline run-report-target-inline--optional">
-            <span>분석</span>
-            <strong>{runId}</strong>
-          </div>
-        </div>
-
-        <div className="run-report-topbar__right">
-          <button type="button" className="run-report-topbar__export" disabled>내보내기 · 준비 중</button>
-        </div>
-      </header>
-
-      <main className="run-report-shell" aria-labelledby="run-report-title">
-        <header className="run-report-hero">
-          <div className="run-report-hero__copy">
-            <span className="run-report-tag">리포트</span>
-            <h1 id="run-report-title">
-              랜딩 페이지 <span>CTA 전환 마찰 리포트</span>
-            </h1>
-            <p>
-              분석 대상: <strong>확인 중</strong>
-              <span aria-hidden="true">•</span>
-              시나리오: 확인 중
-            </p>
-            <p className="run-report-loading-status" role="status">{title}</p>
-          </div>
-
-          <dl className="run-report-hero-stats run-report-hero-stats--skeleton" aria-hidden="true">
-            <div>
-              <dt>총 단계</dt>
-              <dd>00</dd>
-            </div>
-            <div>
-              <dt>마찰 지점</dt>
-              <dd className="run-report-hero-stats__danger">00</dd>
-            </div>
-            <div>
-              <dt>소요 시간</dt>
-              <dd>--</dd>
-            </div>
-          </dl>
-        </header>
-
-        <div className="run-report-layout" aria-hidden="true">
-          <section className="run-report-visual-panel">
-            <div className="run-report-section-heading">
-              <h2>분석 화면</h2>
-            </div>
-
-            <article className="run-report-evidence-card run-report-evidence-card--skeleton">
-              <div className="run-report-evidence-card__head">
-                <div>
-                  <RunReportSkeletonLine className="run-report-skeleton-line--title" />
-                  <RunReportSkeletonLine className="run-report-skeleton-line--short" />
-                </div>
-                <div>
-                  <span>신뢰도</span>
-                  <RunReportSkeletonLine className="run-report-skeleton-line--score" />
-                </div>
-              </div>
-
-              <div className="run-report-evidence-preview run-report-evidence-preview--skeleton" />
-
-              <div className="run-report-evidence-card__summary">
-                <RunReportSkeletonLine className="run-report-skeleton-line--short" />
-                <RunReportSkeletonLine />
-              </div>
-            </article>
-          </section>
-
-          <aside className="run-report-insight-panel">
-            <section className="run-report-section run-report-section--top-findings">
-              <div className="run-report-section-heading">
-                <h2>주요 마찰 지점</h2>
-              </div>
-              <ol className="run-report-top-finding-list run-report-top-finding-list--skeleton">
-                {[0, 1, 2].map((item) => (
-                  <li key={item} className="run-report-top-finding-card">
-                    <div className="run-report-top-finding-card__button run-report-top-finding-card__button--skeleton">
-                      <RunReportSkeletonLine className="run-report-skeleton-line--short" />
-                      <RunReportSkeletonLine className="run-report-skeleton-line--title" />
-                      <RunReportSkeletonLine />
-                    </div>
-                  </li>
-                ))}
-              </ol>
-            </section>
-
-            <section className="run-report-section run-report-section--priority">
-              <div className="run-report-section-heading">
-                <h2>개선 제안</h2>
-              </div>
-              <div className="run-report-nudge-list">
-                <div className="run-report-nudge-card run-report-nudge-card--skeleton">
-                  <RunReportSkeletonLine className="run-report-skeleton-line--title" />
-                  <RunReportSkeletonLine />
-                  <RunReportSkeletonLine className="run-report-skeleton-line--short" />
-                </div>
-              </div>
-            </section>
-          </aside>
-        </div>
-      </main>
+      <span className="run-report-sr-only" role="status">{title}</span>
     </div>
   );
 }
@@ -548,7 +436,7 @@ export function RunReportPage({ runId }: RunReportPageProps) {
 
   if (reportState.kind !== 'ready') {
     if (reportState.kind === 'loading') {
-      return <RunReportLoadingShell runId={runId} title={reportState.title} />;
+      return <RunReportLoadingShell title={reportState.title} />;
     }
 
     const message = reportActionState.message

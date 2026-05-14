@@ -373,21 +373,7 @@ export function RunReportViewer({
                   ) : isEvidencePreviewResolving ? (
                     <div className="run-report-sr-only" role="status">근거 화면을 불러오는 중입니다.</div>
                   ) : (
-                    <>
-                      <div className="run-report-evidence-preview__site">
-                        <div className="run-report-evidence-preview__nav" aria-hidden="true">
-                          <span />
-                          <span />
-                          <span />
-                        </div>
-                        <div className="run-report-evidence-preview__hero">
-                          <small>{report.heroSubtitle}</small>
-                          <strong>{report.heroTitle}</strong>
-                          <button type="button">{report.heroCallToAction}</button>
-                        </div>
-                      </div>
-                      {frictionMarkers}
-                    </>
+                    <div className="run-report-evidence-preview__blank" aria-hidden="true" />
                   )}
                 </div>
               </div>
