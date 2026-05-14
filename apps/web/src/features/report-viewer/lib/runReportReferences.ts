@@ -26,7 +26,7 @@ export function referenceBadgesForFinding(finding: Pick<ReportFinding, 'referenc
 
       return {
         key: `reference-preview-${index + 1}`,
-        label: `[${publisherLabel}]`,
+        label: publisherLabel,
         publisher: publisherLabel,
         title: '출처 표시 확인용 임시값',
         basisSummary: 'Analyzer reference가 연결되면 실제 출처와 근거 요약으로 대체됩니다.',
@@ -40,7 +40,7 @@ export function referenceBadgesForFinding(finding: Pick<ReportFinding, 'referenc
 
     return {
       key: `${reference.label}:${reference.url || index}`,
-      label: `[${publisherLabel}]`,
+      label: publisherLabel,
       publisher: publisherLabel,
       title: reference.title,
       basisSummary: reference.basisSummary,
@@ -57,12 +57,4 @@ export function splitReferenceBadges(
     visible: badges.slice(0, visibleLimit),
     overflow: badges.slice(visibleLimit),
   };
-}
-
-export function nextPinnedReferenceBadgeId(currentBadgeId: string | null, selectedBadgeId: string) {
-  return currentBadgeId === selectedBadgeId ? null : selectedBadgeId;
-}
-
-export function nextPinnedReferenceOverflowId(currentOverflowId: string | null, selectedOverflowId: string) {
-  return currentOverflowId === selectedOverflowId ? null : selectedOverflowId;
 }

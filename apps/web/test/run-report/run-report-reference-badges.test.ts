@@ -2,8 +2,6 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
-  nextPinnedReferenceBadgeId,
-  nextPinnedReferenceOverflowId,
   referenceBadgesForFinding,
   splitReferenceBadges,
 } from '../../src/features/report-viewer/lib/runReportReferences';
@@ -50,7 +48,7 @@ test('reference badges expose Analyzer provided reference labels and tooltip cop
 
   assert.deepEqual(badges, [{
     key: 'WCAG 3.3.2:https://www.w3.org/WAI/WCAG22/Understanding/labels-or-instructions.html',
-    label: '[W3C]',
+    label: 'W3C',
     publisher: 'W3C',
     title: 'Labels or Instructions',
     basisSummary: 'Inputs need labels or instructions.',
@@ -63,7 +61,7 @@ test('reference badges show five preview source labels when a rule has no extern
   const split = splitReferenceBadges(badges);
 
   assert.deepEqual(split.visible.map((badge) => badge.label), []);
-  assert.deepEqual(split.overflow.map((badge) => badge.label), ['[출처1]', '[출처2]', '[출처3]', '[출처4]', '[출처5]']);
+  assert.deepEqual(split.overflow.map((badge) => badge.label), ['출처1', '출처2', '출처3', '출처4', '출처5']);
 });
 
 test('reference badges show five preview source labels when the recommendation is not linked to a finding', () => {
@@ -71,7 +69,7 @@ test('reference badges show five preview source labels when the recommendation i
   const split = splitReferenceBadges(badges);
 
   assert.deepEqual(split.visible.map((badge) => badge.label), []);
-  assert.deepEqual(split.overflow.map((badge) => badge.label), ['[출처1]', '[출처2]', '[출처3]', '[출처4]', '[출처5]']);
+  assert.deepEqual(split.overflow.map((badge) => badge.label), ['출처1', '출처2', '출처3', '출처4', '출처5']);
 });
 
 test('reference badges keep all publishers inside the overflow references list', () => {
@@ -101,23 +99,5 @@ test('reference badges use numbered source labels when publisher is missing', ()
   const split = splitReferenceBadges(badges);
 
   assert.deepEqual(split.visible.map((badge) => badge.label), []);
-  assert.deepEqual(split.overflow.map((badge) => badge.label), ['[출처1]', '[출처2]', '[출처3]', '[출처4]', '[출처5]']);
-});
-
-test('reference badge click state toggles the selected badge and switches to another badge', () => {
-  assert.equal(nextPinnedReferenceBadgeId(null, 'recommendation-1:WCAG 3.3.2'), 'recommendation-1:WCAG 3.3.2');
-  assert.equal(nextPinnedReferenceBadgeId('recommendation-1:WCAG 3.3.2', 'recommendation-1:WCAG 3.3.2'), null);
-  assert.equal(
-    nextPinnedReferenceBadgeId('recommendation-1:WCAG 3.3.2', 'recommendation-2:GOV.UK Buttons'),
-    'recommendation-2:GOV.UK Buttons',
-  );
-});
-
-test('reference overflow click state toggles the selected overflow list', () => {
-  assert.equal(nextPinnedReferenceOverflowId(null, 'recommendation-1:references-overflow'), 'recommendation-1:references-overflow');
-  assert.equal(nextPinnedReferenceOverflowId('recommendation-1:references-overflow', 'recommendation-1:references-overflow'), null);
-  assert.equal(
-    nextPinnedReferenceOverflowId('recommendation-1:references-overflow', 'recommendation-2:references-overflow'),
-    'recommendation-2:references-overflow',
-  );
+  assert.deepEqual(split.overflow.map((badge) => badge.label), ['출처1', '출처2', '출처3', '출처4', '출처5']);
 });

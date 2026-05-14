@@ -640,7 +640,8 @@
 
 .run-report-reference-overflow__popover {
   position: absolute;
-  top: calc(100% + 0.12rem);
+  right: auto;
+  bottom: calc(100% + 0.12rem);
   left: 0;
   z-index: 20;
   display: flex;
@@ -656,11 +657,16 @@
   pointer-events: auto;
 }
 
+.run-report-recommendation-tab-shell:nth-child(3) .run-report-reference-overflow__popover {
+  right: 0;
+  left: auto;
+}
+
 .run-report-reference-overflow__popover::before {
   content: "";
   position: absolute;
-  top: -0.2rem;
   right: 0;
+  bottom: -0.2rem;
   left: 0;
   height: 0.2rem;
 }
