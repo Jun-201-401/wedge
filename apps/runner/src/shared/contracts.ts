@@ -90,6 +90,7 @@ export type {
   NetworkTimelineEvent,
   NetworkTimelineObservation,
   PathNavigationObservation,
+  PageReadyTimingObservation,
   PerformanceMetricObservation,
   ProductDetailSignalObservation,
   ProductCardObservation,

@@ -288,6 +288,7 @@
             "category_filter_signal",
             "depth_from_discovery",
             "text_block_metrics",
+            "page_ready_timing",
             "performance_metric",
             "scroll_delta",
             "flow_candidate",

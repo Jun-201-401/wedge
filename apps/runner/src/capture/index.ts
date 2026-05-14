@@ -16,6 +16,7 @@ import type {
   InteractiveComponentsObservation,
   JourneyActionRawObservation,
   LoadingStateObservation,
+  PageReadyTimingObservation,
   PathNavigationObservation,
   ProductCardObservation,
   ProductDetailSignalObservation,
@@ -465,6 +466,13 @@ function createCheckpointObservations({
       actionResult,
       settleResult
     }).map((observation) => ({ ...observation })),
+    ...createPageReadyTimingObservations({
+      step,
+      beforeSnapshot,
+      pageSnapshot,
+      actionResult,
+      settleResult
+    }).map((observation) => ({ ...observation })),
     ...createPathNavigationObservations(step, pageSnapshot).map((observation) => ({ ...observation })),
     ...createAccordionStateObservations(step, pageSnapshot).map((observation) => ({ ...observation })),
     ...createCheckoutContextObservations(step, pageSnapshot).map((observation) => ({ ...observation })),
@@ -491,6 +499,61 @@ function createCheckpointObservations({
           observed_at: pageSnapshot.browserHealth.observedAt
         }]),
     ...createSettleObservations(settleResult)
+  ];
+}
+
+function createPageReadyTimingObservations({
+  step,
+  beforeSnapshot,
+  pageSnapshot,
+  actionResult,
+  settleResult
+}: {
+  step: ScenarioStep;
+  beforeSnapshot?: BrowserPageSnapshot;
+  pageSnapshot: BrowserPageSnapshot;
+  actionResult?: BrowserActionResult;
+  settleResult: BrowserSettleResult;
+}): PageReadyTimingObservation[] {
+  if (!beforeSnapshot && !actionResult && step.action.type === "checkpoint") {
+    return [];
+  }
+
+  const baselineSnapshot = beforeSnapshot ?? pageSnapshot;
+  const actionDetails = actionResult?.details ?? {};
+  const actionKind = inferActionKind({
+    step,
+    beforeSnapshot: baselineSnapshot,
+    pageSnapshot,
+    clickedText: readOptionalString(actionDetails, "clickedText") ?? pageSnapshot.lastAction?.clickedText ?? null,
+    elementRole: readOptionalString(actionDetails, "elementRole") ?? pageSnapshot.lastAction?.elementRole ?? null
+  });
+  const urlChanged = baselineSnapshot.finalUrl !== pageSnapshot.finalUrl;
+  const routeChanged = routeChangedBetween(baselineSnapshot.finalUrl, pageSnapshot.finalUrl);
+  const mainContentChanged = domChangedBetween(baselineSnapshot, pageSnapshot);
+  const targetPageSignals = inferTargetPageSignals(pageSnapshot);
+
+  if (!urlChanged && !mainContentChanged && settleResult.status === "settled" && settleResult.durationMs < 1_000) {
+    return [];
+  }
+
+  return [
+    {
+      observation_id: `${step.step_id}.obs_page_ready_timing`,
+      type: "page_ready_timing",
+      stage: step.stage,
+      source: ["browser", "performance", "dom", "scenario_log"],
+      confidence: settleResult.status === "timeout" ? 0.82 : 0.74,
+      trigger_type: settleResult.strategy,
+      action_kind: actionKind,
+      settle_status: settleResult.status,
+      duration_ms: settleResult.durationMs,
+      url_changed: urlChanged,
+      route_changed: routeChanged,
+      main_content_changed: mainContentChanged,
+      same_origin: sameOrigin(baselineSnapshot.finalUrl, pageSnapshot.finalUrl),
+      target_page_signals: targetPageSignals
+    }
   ];
 }
 
@@ -1474,6 +1537,52 @@ function parseCategoryUrlSignal(urlString: string): string | null {
   } catch {
     return null;
   }
+}
+
+function routeChangedBetween(beforeUrl: string, afterUrl: string): boolean {
+  try {
+    const before = new URL(beforeUrl);
+    const after = new URL(afterUrl);
+    return before.origin !== after.origin || before.pathname !== after.pathname;
+  } catch {
+    return beforeUrl !== afterUrl;
+  }
+}
+
+function sameOrigin(beforeUrl: string, afterUrl: string): boolean {
+  try {
+    return new URL(beforeUrl).origin === new URL(afterUrl).origin;
+  } catch {
+    return beforeUrl === afterUrl;
+  }
+}
+
+function inferTargetPageSignals(pageSnapshot: BrowserPageSnapshot): PageReadyTimingObservation["target_page_signals"] {
+  const pageText = normalizeSearchText([
+    pageSnapshot.title,
+    pageSnapshot.finalUrl,
+    ...pageSnapshot.visibleTextBlocks.map((block) => block.text),
+    ...pageSnapshot.toastTexts,
+    ...pageSnapshot.loadingState.status_text,
+    ...pageSnapshot.interactiveComponents.map((component) => `${component.text} ${component.accessible_name ?? ""} ${component.input_type ?? ""}`)
+  ].join(" "));
+
+  return {
+    has_permission_prompt: /allow|permission|권한|허용|위치|알림|마이크|카메라/.test(pageText),
+    has_streaming_response: /streaming|generating|loading|생성 중|불러오는 중|처리 중/.test(pageText) || pageSnapshot.loadingState.aria_busy,
+    has_map: /map|지도|매장 찾기|location|위치/.test(pageText),
+    has_webgl: /webgl|canvas|3d|ar\b|vr\b/.test(pageText),
+    has_payment_form: pageSnapshot.checkoutContext.has_final_submit ||
+      pageSnapshot.checkoutContext.flow_subtype === "payment" ||
+      pageSnapshot.interactiveComponents.some((component) => /card|카드|cvc|cvv|expiry|만료|payment|결제/i.test([
+        component.name,
+        component.label_text,
+        component.placeholder,
+        component.accessible_name,
+        component.input_type
+      ].filter(Boolean).join(" "))),
+    has_auth_redirect: /login|signin|sign-in|auth|oauth|로그인|인증/.test(pageText)
+  };
 }
 
 function isCategoryFilterSearchText(text: string): boolean {

@@ -1128,6 +1128,32 @@ export interface PerformanceMetricObservation {
   summary: BrowserPerformanceSummary;
 }
 
+export interface RunnerTargetPageSignals {
+  has_permission_prompt: boolean;
+  has_streaming_response: boolean;
+  has_map: boolean;
+  has_webgl: boolean;
+  has_payment_form: boolean;
+  has_auth_redirect: boolean;
+}
+
+export interface PageReadyTimingObservation {
+  observation_id: string;
+  type: "page_ready_timing";
+  stage: ScenarioStage;
+  source: ("browser" | "performance" | "dom" | "scenario_log")[];
+  confidence: number;
+  trigger_type: string;
+  action_kind: RunnerActionKind;
+  settle_status: "settled" | "timeout" | "failed";
+  duration_ms: number;
+  url_changed: boolean;
+  route_changed: boolean;
+  main_content_changed: boolean;
+  same_origin: boolean;
+  target_page_signals: RunnerTargetPageSignals;
+}
+
 export type RunnerActionKind =
   | "navigation"
   | "submit"
