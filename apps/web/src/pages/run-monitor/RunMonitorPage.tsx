@@ -261,6 +261,7 @@ function RunMonitorLoadingShell({ runId, targetUrl }: { runId: string; targetUrl
       <RunMonitorTopbar />
 
       <main className="run-monitor-workspace" aria-labelledby="run-monitor-title">
+        <h1 id="run-monitor-title" className="run-monitor-sr-only">실행 모니터</h1>
         <RunContextBar
           runId={runId}
           targetUrl={targetUrl}
@@ -268,16 +269,8 @@ function RunMonitorLoadingShell({ runId, targetUrl }: { runId: string; targetUrl
         />
 
         <div className="run-monitor-cockpit">
-          <section className="run-monitor-simulation" aria-labelledby="run-monitor-title">
+          <section className="run-monitor-simulation" aria-label="최근 화면 캡처">
             <span className="run-monitor-sr-only" role="status">실제 실행 데이터를 연결하고 있습니다.</span>
-
-            <div className="run-monitor-simulation__header">
-              <div className="run-monitor-section-title">
-                <h1 id="run-monitor-title">실시간 시뮬레이션</h1>
-                <span aria-hidden="true" />
-                <RunMonitorSkeletonLine className="run-monitor-skeleton-line--checkpoint" />
-              </div>
-            </div>
 
             <div className="run-monitor-browser" aria-hidden="true">
               <div className="run-monitor-browser__header">
@@ -862,6 +855,7 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
       <RunMonitorTopbar />
 
       <main className="run-monitor-workspace" aria-labelledby="run-monitor-title">
+        <h1 id="run-monitor-title" className="run-monitor-sr-only">실행 모니터</h1>
         <RunContextBar
           runId={run.id}
           targetUrl={run.startUrl}
@@ -884,20 +878,12 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
           className="run-monitor-cockpit run-monitor-cockpit--resizable"
           style={{ '--run-monitor-analysis-panel-width': `${analysisPanelWidth}px` } as CSSProperties}
         >
-          <section className="run-monitor-simulation" aria-labelledby="run-monitor-title">
+          <section className="run-monitor-simulation" aria-label="최근 화면 캡처">
             {runActionState.message ? (
               <p className={`run-monitor-action-message run-monitor-action-message--${runActionState.kind}`} role="status">
                 {runActionState.message}
               </p>
             ) : null}
-
-            <div className="run-monitor-simulation__header">
-              <div className="run-monitor-section-title">
-                <h1 id="run-monitor-title">실시간 시뮬레이션</h1>
-                <span aria-hidden="true" />
-                <p>{currentCheckpoint}</p>
-              </div>
-            </div>
 
             {apiLoadError && (
               <p className="run-monitor-api-warning" role="status">
