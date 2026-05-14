@@ -80,7 +80,7 @@
 >
 > Runner 구현 메모 (2026-05-13): P1 중 `form_fields[].describedby_text/help_text/pattern/min/max/maxlength`, `loading_state` observation, `journey_action_raw.action_kind`, `journey_action_raw.expected_outcome_hint`는 Runner 계약과 Playwright collector/capture pipeline에 추가됐다.
 >
-> Runner 구현 메모 (2026-05-13): P1 `step_indicator` / `back_link_candidate`와 P2 `accordion_state`, `checkout_context`도 Runner 계약과 Playwright collector/capture pipeline에 추가됐다. 다만 pull 이후 문서의 세부 부족 값까지 기준으로 보면 `repeated_generic_link_grouping`, `visible_required_marker`, `visible_optional_marker`, `group_level_required_state`, `submit_required_error`, `hidden_panel_has_required_info`, 명시적 `panel_relationship`, 명시적 `flow_step_count`, 명시적 `final_submit_relation`은 아직 Runner 보강이 필요하다. Rule별 판정 연결은 Analyzer 작업으로 남는다.
+> Runner 구현 메모 (2026-05-13): P1 `step_indicator` / `back_link_candidate`와 P2 `accordion_state`, `checkout_context`도 Runner 계약과 Playwright collector/capture pipeline에 추가됐다. 추가로 `repeated_generic_link_grouping`, `visible_required_marker`, `visible_optional_marker`, `group_level_required_state`, `submit_required_error`, `hidden_panel_has_required_info`, 명시적 `panel_relationship`, 명시적 `flow_step_count`, `final_submit_relation`, `checkout_context.flow_subtype`, `input_format_hint`도 Runner 계약과 Playwright collector/capture pipeline에 추가됐다. Rule별 판정 연결은 Analyzer 작업으로 남는다.
 
 ## 5. 기존 Rule에 흡수하는 것이 좋은 후보
 
@@ -95,18 +95,18 @@
 
 아래 후보들은 지금 observation만으로도 일부 신호를 추정할 수는 있지만, 정식 Rule로 만들면 오탐 위험이 크다. 따라서 Runner가 추가 값을 내려준 뒤 구현하는 편이 안전하다.
 
-> Runner 구현 상태 (2026-05-13): 아래 표의 "부족한 값" 중 핵심 관측값은 대부분 Runner에서 제공한다. 남은 값은 반복 링크 grouping, visible required/optional marker, submit-error, hidden required info, explicit relationship/count/relation 같은 세부 파생값이다.
+> Runner 구현 상태 (2026-05-13): 아래 표의 "부족한 값"은 Runner 계약과 Playwright collector/capture pipeline에 반영됐다. 다만 이 문서는 Runner 수집 상태만 다루며, Rule별 판정 연결과 severity/report wording은 Analyzer 작업으로 남는다.
 
 | Candidate ID | 현재 있는 값 | 부족한 값 | 왜 바로 만들기 어려운가 |
 | --- | --- | --- | --- |
-| `A11Y-LINK-PURPOSE-001` | `interactive_components.role`, `text`, `href`, `visible_text_blocks` | 구현됨: `components[].nearby_text`, `container_heading` / 남음: `repeated_generic_link_grouping` | `더보기` 자체만 보고는 무엇을 더 보는지 알 수 없다. 주변 카드/섹션 제목이 필요하다. |
-| `PATH-BACK-LINK-001` | `interactive_components.text/href`, `breadcrumb`, `visitedUrls`, `journey_action_raw.url_before/after`, `step_order` | 구현됨: `step_indicator`, `back_link_candidate`, `browser_history_back_available` / 남음: 명시적 `flow_step_count` | 현재 화면이 다단계 흐름인지 먼저 알아야 한다. 단순 페이지에서 back 버튼이 없다고 issue를 내면 오탐이다. |
-| `PATH-ACCORDION-DISCOVERABILITY-001` | `interactive_components`, DOM snapshot artifact | 구현됨: `accordion_state.expanded`, trigger/panel selector, `hidden_panel_has_cta` / 남음: `hidden_panel_has_required_info`, 명시적 `panel_relationship` | 현재 visible component 중심 evidence로는 접힌 패널 안에 숨은 CTA/정보를 안정적으로 알기 어렵다. |
-| `FORM-INSTRUCTIONS-001` | form control의 `label_text`, `placeholder`, `name`, `required`, `input_type`, `visible_text_blocks` | 구현됨: `describedby_text`, `help_text`, `pattern`, `min`, `max`, `maxlength` / 남음: 별도 `input_format_hint` 필드가 필요하면 추가 | label 부재와 instruction 부재를 분리해야 한다. 현재 값만 쓰면 `FRICTION-FORM-001`과 겹친다. |
-| `FORM-REQUIRED-OPTIONAL-001` | `required`, `label_text`, `placeholder`, form control component | visible required/optional marker, group-level required state, submit attempt 후 required error | DOM required와 화면상 표시가 일치하는지 봐야 한다. 표시 문구가 없으면 사용자 문제로 설명하기 어렵다. |
+| `A11Y-LINK-PURPOSE-001` | `interactive_components.role`, `text`, `href`, `visible_text_blocks` | 구현됨: `components[].nearby_text`, `container_heading`, `repeated_generic_link_grouping` | `더보기` 자체만 보고는 무엇을 더 보는지 알 수 없다. 주변 카드/섹션 제목이 필요하다. |
+| `PATH-BACK-LINK-001` | `interactive_components.text/href`, `breadcrumb`, `visitedUrls`, `journey_action_raw.url_before/after`, `step_order` | 구현됨: `step_indicator`, `back_link_candidate`, `browser_history_back_available`, 명시적 `flow_step_count` | 현재 화면이 다단계 흐름인지 먼저 알아야 한다. 단순 페이지에서 back 버튼이 없다고 issue를 내면 오탐이다. |
+| `PATH-ACCORDION-DISCOVERABILITY-001` | `interactive_components`, DOM snapshot artifact | 구현됨: `accordion_state.expanded`, trigger/panel selector, `hidden_panel_has_cta`, `hidden_panel_has_required_info`, 명시적 `panel_relationship` | 현재 visible component 중심 evidence로는 접힌 패널 안에 숨은 CTA/정보를 안정적으로 알기 어렵다. |
+| `FORM-INSTRUCTIONS-001` | form control의 `label_text`, `placeholder`, `name`, `required`, `input_type`, `visible_text_blocks` | 구현됨: `describedby_text`, `help_text`, `input_format_hint`, `pattern`, `min`, `max`, `maxlength` | label 부재와 instruction 부재를 분리해야 한다. 현재 값만 쓰면 `FRICTION-FORM-001`과 겹친다. |
+| `FORM-REQUIRED-OPTIONAL-001` | `required`, `label_text`, `placeholder`, form control component | 구현됨: `visible_required_marker`, `visible_optional_marker`, `group_level_required_state`, `submit_required_error` | DOM required와 화면상 표시가 일치하는지 봐야 한다. 표시 문구가 없으면 사용자 문제로 설명하기 어렵다. |
 | `FEEDBACK-SYSTEM-STATUS-001` | `settle_status`, `settle.durationMs`, `toast_text`, clicked component | 구현됨: `loading_state.has_spinner`, `has_progressbar`, `status_text`, `aria_busy`, `clicked_submit_disabled` | 오래 걸렸다는 사실과 처리 중 안내가 없었다는 사실은 다르다. 화면 상태 신호가 필요하다. |
-| `CHECKOUT-ORDER-REVIEW-001` | `final_submit_candidate`, `payment_or_sensitive_action`이 있으면 보조 가능 | 구현됨: `checkout_context.is_checkout_flow`, `has_order_summary`, `has_editable_summary`, `has_final_submit` / 남음: 명시적 `final_submit_relation` | checkout/booking/payment 흐름인지 확정하지 않으면 일반 제출 페이지에서 오탐이 많다. |
-| `CHECKOUT-LOAD-INDICATOR-001` | `COMMIT` stage, `settle_status`, `settle.durationMs`, `toast_text`, `network_result` | 구현됨: `action_kind`의 `checkout_submit`/`payment_submit`, `loading_state.*`, `clicked_submit_disabled` / 남음: booking/payment subtype을 별도 필드로 분리하려면 추가 | 결제/예약 제출인지, 중복 제출 방지가 있는지 별도 확인이 필요하다. |
+| `CHECKOUT-ORDER-REVIEW-001` | `final_submit_candidate`, `payment_or_sensitive_action`이 있으면 보조 가능 | 구현됨: `checkout_context.is_checkout_flow`, `has_order_summary`, `has_editable_summary`, `has_final_submit`, 명시적 `final_submit_relation` | checkout/booking/payment 흐름인지 확정하지 않으면 일반 제출 페이지에서 오탐이 많다. |
+| `CHECKOUT-LOAD-INDICATOR-001` | `COMMIT` stage, `settle_status`, `settle.durationMs`, `toast_text`, `network_result` | 구현됨: `action_kind`의 `checkout_submit`/`payment_submit`, `loading_state.*`, `clicked_submit_disabled`, `checkout_context.flow_subtype` | 결제/예약 제출인지, 중복 제출 방지가 있는지 별도 확인이 필요하다. |
 
 ## 7. 추가 수집 값 설명
 

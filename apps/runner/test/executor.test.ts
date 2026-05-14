@@ -852,6 +852,7 @@ test("[수집 pipeline] CTA 분석용 interactive_components observation을 chec
     source: ["dom", "layout", "screenshot"],
     confidence: 0.82,
     primary_like_component_count: 1,
+    repeated_generic_link_grouping: [],
     components: [
       {
         text: "무료로 시작하기",
@@ -1423,20 +1424,29 @@ test("[수집 pipeline] path/accordion/checkout context를 observation으로 남
         trigger_text: "Order details",
         trigger_selector: "#order-details-trigger",
         panel_selector: "#order-details-panel",
+        panel_relationship: "aria_controls",
         expanded: false,
         panel_text_sample: ["Starter plan $19 Edit"],
         hidden_panel_has_cta: true,
+        hidden_panel_has_required_info: true,
         bounds
       }
     ],
     checkoutContext: {
       is_checkout_flow: true,
+      flow_subtype: "payment",
       has_order_summary: true,
       has_editable_summary: true,
       has_final_submit: true,
       order_summary_text: ["Order summary Starter plan $19"],
       final_submit_text: "Pay now",
-      checkout_keywords: ["checkout", "summary", "total"]
+      checkout_keywords: ["checkout", "summary", "total"],
+      final_submit_relation: {
+        related: true,
+        relation_type: "summary_before_submit",
+        summary_selector: "#order-summary",
+        submit_selector: "#pay-now"
+      }
     }
   });
 
@@ -1470,13 +1480,16 @@ test("[수집 pipeline] path/accordion/checkout context를 observation으로 남
 
   assert.ok(pathNavigation);
   assert.equal(pathNavigation.browser_history_back_available, true);
+  assert.equal(pathNavigation.flow_step_count, 3);
   assert.equal(stepIndicators?.[0]?.current_step, 2);
   assert.equal(backLinkCandidates?.[0]?.reason, "text_back");
   assert.ok(accordionState);
   assert.equal(accordions?.[0]?.expanded, false);
   assert.equal(accordions?.[0]?.hidden_panel_has_cta, true);
+  assert.equal(accordions?.[0]?.hidden_panel_has_required_info, true);
   assert.ok(checkoutContext);
   assert.equal(checkoutContextValue?.is_checkout_flow, true);
+  assert.equal(checkoutContextValue?.flow_subtype, "payment");
   assert.equal(checkoutContextValue?.has_order_summary, true);
   assert.equal(checkoutContextValue?.has_final_submit, true);
 });

@@ -328,6 +328,13 @@ function statusCodeCounts(events: BrowserPageSnapshot["networkEvents"]): Record<
   return counts;
 }
 
+function inferFlowStepCount(stepIndicators: BrowserPageSnapshot["stepIndicators"]): number | null {
+  const counts = stepIndicators
+    .map((indicator) => indicator.total_steps)
+    .filter((value): value is number => typeof value === "number" && Number.isInteger(value) && value > 1);
+  return counts.length > 0 ? Math.max(...counts) : null;
+}
+
 function createCheckpointState(
   pageSnapshot: BrowserPageSnapshot,
   capturedArtifacts?: BrowserCapturedArtifacts
@@ -353,8 +360,10 @@ function createCheckpointState(
     loading_state: pageSnapshot.loadingState,
     step_indicator: pageSnapshot.stepIndicators,
     back_link_candidate: pageSnapshot.backLinkCandidates,
+    flow_step_count: inferFlowStepCount(pageSnapshot.stepIndicators),
     accordion_state: pageSnapshot.accordionStates,
     checkout_context: pageSnapshot.checkoutContext,
+    repeated_generic_link_grouping: pageSnapshot.repeatedGenericLinkGrouping,
     network_summary: {
       event_count: pageSnapshot.networkEvents.length,
       failed_request_count: pageSnapshot.networkEvents.filter((event) => event.failed).length
@@ -1023,7 +1032,8 @@ function createPathNavigationObservations(
       step_indicator: pageSnapshot.stepIndicators,
       back_link_candidate: pageSnapshot.backLinkCandidates,
       visited_url_count: pageSnapshot.visitedUrls.length,
-      browser_history_back_available: pageSnapshot.visitedUrls.length > 1
+      browser_history_back_available: pageSnapshot.visitedUrls.length > 1,
+      flow_step_count: inferFlowStepCount(pageSnapshot.stepIndicators)
     }
   ];
 }
@@ -1086,6 +1096,7 @@ function createInteractiveComponentsObservations(
       source: ["dom", "layout", "screenshot"],
       confidence: primaryLikeComponentCount > 0 ? 0.82 : 0.65,
       primary_like_component_count: primaryLikeComponentCount,
+      repeated_generic_link_grouping: pageSnapshot.repeatedGenericLinkGrouping,
       components: pageSnapshot.interactiveComponents
     }
   ];
@@ -1169,10 +1180,15 @@ function createFormFieldObservations(pageSnapshot: BrowserPageSnapshot): Record<
         input_type: component.input_type ?? null,
         describedby_text: component.describedby_text ?? null,
         help_text: component.help_text ?? null,
+        input_format_hint: component.input_format_hint ?? null,
         pattern: component.pattern ?? null,
         min: component.min ?? null,
         max: component.max ?? null,
         maxlength: component.maxlength ?? null,
+        visible_required_marker: component.visible_required_marker ?? null,
+        visible_optional_marker: component.visible_optional_marker ?? null,
+        group_level_required_state: component.group_level_required_state ?? null,
+        submit_required_error: component.submit_required_error ?? null,
         bounds: component.bounds,
         visibility: component.visibility
       };

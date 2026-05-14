@@ -975,10 +975,15 @@ export interface InteractiveComponentObservationItem {
   name?: string | null;
   describedby_text?: string | null;
   help_text?: string | null;
+  input_format_hint?: string | null;
   pattern?: string | null;
   min?: string | null;
   max?: string | null;
   maxlength?: number | null;
+  visible_required_marker?: string | null;
+  visible_optional_marker?: string | null;
+  group_level_required_state?: BrowserFormGroupRequiredState | null;
+  submit_required_error?: string | null;
   required?: boolean;
   disabled?: boolean;
   is_form_control?: boolean;
@@ -1152,6 +1157,20 @@ export interface BrowserLoadingState {
   aria_busy: boolean;
 }
 
+export type BrowserFormGroupRequiredState =
+  | "required"
+  | "optional"
+  | "mixed"
+  | "unknown";
+
+export interface BrowserRepeatedGenericLinkGroup {
+  link_text: string;
+  occurrence_count: number;
+  container_heading: string | null;
+  nearby_text: string[];
+  selectors: string[];
+}
+
 export interface BrowserStepIndicatorSignal {
   text: string;
   selector: string | null;
@@ -1173,20 +1192,31 @@ export interface BrowserAccordionState {
   trigger_text: string;
   trigger_selector: string | null;
   panel_selector: string | null;
+  panel_relationship: "aria_controls" | "details_summary" | "next_sibling" | "container" | "unknown";
   expanded: boolean;
   panel_text_sample: string[];
   hidden_panel_has_cta: boolean;
+  hidden_panel_has_required_info: boolean;
   bounds: InteractiveComponentBounds;
+}
+
+export interface BrowserFinalSubmitRelation {
+  related: boolean;
+  relation_type: "same_form" | "same_container" | "summary_before_submit" | "submit_without_summary" | "unknown";
+  summary_selector?: string | null;
+  submit_selector?: string | null;
 }
 
 export interface BrowserCheckoutContext {
   is_checkout_flow: boolean;
+  flow_subtype: "checkout" | "payment" | "booking" | "order" | "application" | "unknown";
   has_order_summary: boolean;
   has_editable_summary: boolean;
   has_final_submit: boolean;
   order_summary_text: string[];
   final_submit_text: string | null;
   checkout_keywords: string[];
+  final_submit_relation: BrowserFinalSubmitRelation | null;
 }
 
 export interface LoadingStateObservation {
@@ -1212,6 +1242,7 @@ export interface PathNavigationObservation {
   back_link_candidate: BrowserBackLinkCandidateSignal[];
   visited_url_count: number;
   browser_history_back_available: boolean;
+  flow_step_count: number | null;
 }
 
 export interface AccordionStateObservation {
@@ -1239,6 +1270,7 @@ export interface InteractiveComponentsObservation {
   source: ("dom" | "layout" | "screenshot")[];
   confidence: number;
   primary_like_component_count: number;
+  repeated_generic_link_grouping?: BrowserRepeatedGenericLinkGroup[];
   components: InteractiveComponentObservationItem[];
 }
 
