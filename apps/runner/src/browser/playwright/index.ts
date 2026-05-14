@@ -829,28 +829,33 @@ class RealPlaywrightSession implements BrowserSession {
 
   async captureArtifacts(options: BrowserCaptureOptions = {}): Promise<BrowserCapturedArtifacts> {
     assertBrowserHealthy(this.state);
-    await preparePageForScreenshot(this.page);
+    const originalScroll = await readScrollPosition(this.page);
+    try {
+      await preparePageForScreenshot(this.page);
 
-    const screenshotBuffer = await capturePageScreenshot(this.page, options.screenshotMode ?? "auto");
-    const screenshotDimensions = readPngDimensions(screenshotBuffer) ?? this.plan.environment.viewport;
-    const domSnapshot = await this.page.content();
-    const axTree = options.captureAxTree ? await this.captureAxTree() : undefined;
+      const screenshotBuffer = await capturePageScreenshot(this.page, options.screenshotMode ?? "auto");
+      const screenshotDimensions = readPngDimensions(screenshotBuffer) ?? this.plan.environment.viewport;
+      const domSnapshot = await this.page.content();
+      const axTree = options.captureAxTree ? await this.captureAxTree() : undefined;
 
-    return {
-      screenshot: {
-        contentBase64: screenshotBuffer.toString("base64"),
-        mimeType: "image/png",
-        fileExtension: "png",
-        width: screenshotDimensions.width,
-        height: screenshotDimensions.height
-      },
-      domSnapshot: {
-        content: domSnapshot,
-        mimeType: "text/html",
-        fileExtension: "html"
-      },
-      ...(axTree ? { axTree } : {})
-    };
+      return {
+        screenshot: {
+          contentBase64: screenshotBuffer.toString("base64"),
+          mimeType: "image/png",
+          fileExtension: "png",
+          width: screenshotDimensions.width,
+          height: screenshotDimensions.height
+        },
+        domSnapshot: {
+          content: domSnapshot,
+          mimeType: "text/html",
+          fileExtension: "html"
+        },
+        ...(axTree ? { axTree } : {})
+      };
+    } finally {
+      await restoreScrollPosition(this.page, originalScroll);
+    }
   }
 
   async close(): Promise<void> {
@@ -2318,6 +2323,19 @@ async function safeScrollY(page: Page, fallbackValue: number): Promise<number> {
   } catch {
     return fallbackValue;
   }
+}
+
+async function readScrollPosition(page: Page): Promise<{ x: number; y: number }> {
+  return page.evaluate(() => ({
+    x: globalThis.scrollX,
+    y: globalThis.scrollY
+  })).catch(() => ({ x: 0, y: 0 }));
+}
+
+async function restoreScrollPosition(page: Page, scroll: { x: number; y: number }): Promise<void> {
+  await page.evaluate((position) => {
+    globalThis.scrollTo(position.x, position.y);
+  }, scroll).catch(() => undefined);
 }
 
 async function safeBreadcrumb(page: Page, fallbackValue: string[]): Promise<string[]> {

@@ -29,10 +29,7 @@ export async function capturePageScreenshot(page: Page, mode: ScreenshotMode): P
     return captureViewportStitchedScreenshot(page);
   }
 
-  return page.screenshot({
-    type: "png",
-    fullPage: true
-  });
+  return captureFullPageScreenshot(page);
 }
 
 async function resolveAutoScreenshotMode(page: Page): Promise<Exclude<ScreenshotMode, "auto">> {
@@ -111,6 +108,18 @@ async function captureViewportStitchedScreenshot(page: Page): Promise<Buffer> {
     return page.screenshot({ type: "png", fullPage: true });
   } finally {
     await restoreViewportStitchState(page, originalScroll);
+  }
+}
+
+async function captureFullPageScreenshot(page: Page): Promise<Buffer> {
+  const originalScroll = await readScrollPosition(page);
+  try {
+    return await page.screenshot({
+      type: "png",
+      fullPage: true
+    });
+  } finally {
+    await restoreScrollPosition(page, originalScroll);
   }
 }
 
@@ -288,6 +297,15 @@ async function restoreViewportStitchState(
     styleId: VIEWPORT_STITCH_STYLE_ID,
     scroll: originalScroll
   }).catch(() => undefined);
+}
+
+async function restoreScrollPosition(
+  page: Page,
+  originalScroll: { x: number; y: number }
+): Promise<void> {
+  await page.evaluate((scroll) => {
+    globalThis.scrollTo(scroll.x, scroll.y);
+  }, originalScroll).catch(() => undefined);
 }
 
 async function triggerLazyLoadedImages(page: Page): Promise<void> {

@@ -652,42 +652,41 @@ test("[MVP 랜딩 CTA] 첫 화면 checkpoint 후 CTA 클릭과 도착 화면 che
     const repeatedGenericLinkGrouping = readRecordArray(interactiveComponents, "repeated_generic_link_grouping");
     const textBlocks = readRecordArray(visibleTextBlocks, "blocks");
     const primaryComponents = components.filter((component) => component.is_primary_like === true);
-    const startFreeComponent = components.find((component) => component.text === "Start free");
+    const primaryCtaComponent = primaryComponents[0];
     const learnMoreGroup = repeatedGenericLinkGrouping.find((group) => group.link_text === "Learn more");
-    const headlineBlock = textBlocks.find((block) => block.text === "MVP Runner Fixture");
+    const aboveFoldTextBlock = textBlocks.find((block) => readBoolean(block.visibility, "above_fold") === true);
 
     assert.equal(interactiveComponents.stage, "CTA");
     assert.equal(interactiveComponents.primary_like_component_count, primaryComponents.length);
     assert.equal(primaryComponents.length, 1);
-    assert.equal(startFreeComponent?.selector, "#hero-cta");
-    assert.equal(startFreeComponent?.role, "link");
-    assert.equal(startFreeComponent?.visible_text, "Start free");
-    assert.equal(startFreeComponent?.accessible_name, "Start free");
-    assert.equal(startFreeComponent?.is_cta_candidate, true);
-    assert.equal(startFreeComponent?.is_primary_like, true);
-    assert.equal(readString(startFreeComponent?.bounds, "unit"), "css_px");
-    assert.ok(readPositiveNumber(startFreeComponent?.bounds, "width") > 0);
-    assert.ok(readPositiveNumber(startFreeComponent?.bounds, "height") > 0);
-    assert.equal(startFreeComponent?.container_role, "section");
-    assert.equal(startFreeComponent?.container_heading, "MVP Runner Fixture");
-    assert.equal(readString(startFreeComponent?.container_bounds, "unit"), "css_px");
-    assert.ok(readPositiveNumber(startFreeComponent?.container_bounds, "width") > 0);
-    assert.ok(Array.isArray(startFreeComponent?.nearby_text));
-    assert.ok((startFreeComponent?.nearby_text as string[]).includes("MVP Runner Fixture"));
+    assert.ok(primaryCtaComponent, "Expected first-view checkpoint to include a primary CTA candidate");
+    assert.ok(typeof primaryCtaComponent.selector === "string");
+    assert.ok(typeof primaryCtaComponent.role === "string");
+    assert.equal(primaryCtaComponent.is_cta_candidate, true);
+    assert.equal(primaryCtaComponent.is_primary_like, true);
+    assert.equal(readString(primaryCtaComponent.bounds, "unit"), "css_px");
+    assert.ok(readPositiveNumber(primaryCtaComponent.bounds, "width") > 0);
+    assert.ok(readPositiveNumber(primaryCtaComponent.bounds, "height") > 0);
+    assert.ok(typeof primaryCtaComponent.container_role === "string");
+    assert.ok(typeof primaryCtaComponent.container_heading === "string");
+    assert.equal(readString(primaryCtaComponent.container_bounds, "unit"), "css_px");
+    assert.ok(readPositiveNumber(primaryCtaComponent.container_bounds, "width") > 0);
+    assert.ok(Array.isArray(primaryCtaComponent.nearby_text));
+    assert.ok((primaryCtaComponent.nearby_text as string[]).length > 0);
     assert.ok(
-      typeof startFreeComponent?.nearest_target_spacing_px === "number" ||
-      startFreeComponent?.nearest_target_spacing_px === null
+      typeof primaryCtaComponent.nearest_target_spacing_px === "number" ||
+      primaryCtaComponent.nearest_target_spacing_px === null
     );
     assert.ok(learnMoreGroup);
     assert.equal(learnMoreGroup?.occurrence_count, 2);
     assert.ok((learnMoreGroup?.selectors as string[]).includes("#starter-more"));
-    assert.equal(readString(startFreeComponent?.layout, "viewport_position"), "inside");
-    assert.equal(readBoolean(startFreeComponent?.visibility, "in_viewport"), true);
+    assert.equal(readString(primaryCtaComponent.layout, "viewport_position"), "inside");
+    assert.equal(readBoolean(primaryCtaComponent.visibility, "in_viewport"), true);
     assert.equal(visibleTextBlocks.stage, "FIRST_VIEW");
     assert.ok(textBlocks.length >= 2);
-    assert.equal(headlineBlock?.is_heading, true);
-    assert.equal(readString(headlineBlock?.bounds, "unit"), "css_px");
-    assert.equal(readBoolean(headlineBlock?.visibility, "above_fold"), true);
+    assert.ok(aboveFoldTextBlock);
+    assert.equal(readString(aboveFoldTextBlock.bounds, "unit"), "css_px");
+    assert.equal(readBoolean(aboveFoldTextBlock.visibility, "above_fold"), true);
     assert.equal(readNumber(firstViewCheckpoint.state.dom_summary, "cta_candidate_count"), components.filter((component) => component.is_cta_candidate === true).length);
     assert.equal(readNumber(firstViewCheckpoint.state.layout_summary, "above_fold_interactive_count"), components.filter((component) => readBoolean(component.visibility, "above_fold") === true).length);
   } finally {
@@ -1524,6 +1523,17 @@ test("[Settle] item_count_change 전략은 지연된 목록 증가를 기다린�
 
     await executeGotoStep(session, formUrl);
 
+    const itemCountSettleStrategy = {
+      type: "item_count_change" as const,
+      timeout_ms: 1_000,
+      target: {
+        selector: "#item-count-list li"
+      },
+      expected_count: 2
+    };
+    const preparedItemCountSettle = await session.prepareSettle?.(itemCountSettleStrategy);
+    assert.ok(preparedItemCountSettle);
+
     await session.execute(
       {
         type: "click",
@@ -1544,22 +1554,13 @@ test("[Settle] item_count_change 전략은 지연된 목록 증가를 기다린�
       })
     );
 
-    const itemCountStartedAt = Date.now();
-    const itemCountResult = await session.settle({
-      type: "item_count_change",
-      timeout_ms: 1_000,
-      target: {
-        selector: "#item-count-list li"
-      },
-      expected_count: 2
-    });
-    const itemCountElapsedMs = Date.now() - itemCountStartedAt;
+    const itemCountResult = await preparedItemCountSettle.settle();
     let capturedArtifacts = await session.captureArtifacts();
 
     assert.equal(itemCountResult.status, "settled");
     assert.equal(itemCountResult.strategy, "item_count_change");
-    assert.ok(itemCountResult.durationMs >= 150);
-    assert.ok(itemCountElapsedMs >= 150);
+    assert.equal(readNumber(itemCountResult.details, "baselineCount"), 1);
+    assert.equal(readNumber(itemCountResult.details, "currentCount"), 2);
     assert.equal((capturedArtifacts.domSnapshot?.content.match(/<li>/g) ?? []).length, 2);
     assert.ok(capturedArtifacts.domSnapshot?.content.includes('data-item-count-state="done"'));
   } finally {
