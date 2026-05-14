@@ -313,6 +313,8 @@ test('run report css keeps result-first content in the live simulation cockpit t
   assert.match(css, /\.run-report-evidence-preview\s*\{[\s\S]*?flex: 1[\s\S]*?background: #fff/);
   assert.match(css, /\.run-report-evidence-preview--image\s*\{[\s\S]*?overflow-y: auto/);
   assert.match(css, /\.run-report-evidence-preview__canvas\s*\{[\s\S]*?position: relative/);
+  assert.match(css, /\.run-report-evidence-preview__canvas\s*\{[\s\S]*?width: 100%/);
+  assert.doesNotMatch(css.match(/\.run-report-evidence-preview__canvas\s*\{[^}]*\}/)?.[0] ?? '', /min-height:\s*100%/);
   assert.match(css, /\.run-report-friction-marker\s*\{[\s\S]*?border: 0/);
   assert.match(css, /\.run-report-friction-marker::before\s*\{[\s\S]*?border-radius: 999px/);
   assert.match(css, /\.run-report-friction-marker::before\s*\{[\s\S]*?rgba\(245, 158, 11, 0\.72\)/);

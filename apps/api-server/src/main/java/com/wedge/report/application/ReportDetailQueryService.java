@@ -6,6 +6,8 @@ import com.wedge.analysis.infrastructure.AnalysisFindingMapper;
 import com.wedge.analysis.infrastructure.NudgeMapper;
 import com.wedge.common.error.BusinessException;
 import com.wedge.common.error.ErrorCode;
+import com.wedge.evidence.domain.Checkpoint;
+import com.wedge.evidence.infrastructure.CheckpointMapper;
 import com.wedge.report.api.dto.ReportDetailFindingResponse;
 import com.wedge.report.api.dto.ReportDetailNudgeResponse;
 import com.wedge.report.api.dto.ReportDetailResponse;
@@ -38,6 +40,7 @@ public class ReportDetailQueryService {
     private final ReportAccessGuard reportAccessGuard;
     private final ReportJsonReader reportJsonReader;
     private final ReportPreviewImageResolver previewImageResolver;
+    private final CheckpointMapper checkpointMapper;
 
     @Transactional(readOnly = true)
     public ReportDetailResponse getReportDetail(UUID reportId, UUID userId) {
@@ -92,8 +95,9 @@ public class ReportDetailQueryService {
     ) {
         Map<UUID, List<Nudge>> nudgesByFindingId = nudgesByFindingId(report.getAnalysisJobId());
         ReportPreviewImageResolver.DetailPreviewContext previewContext = previewImageResolver.detailContext(report);
+        Map<String, BigDecimal> scrollYByCheckpointKey = new LinkedHashMap<>();
         return findings.stream()
-                .map(finding -> toDetailFindingResponse(report, finding, nudgesByFindingId, previewContext))
+                .map(finding -> toDetailFindingResponse(report, finding, nudgesByFindingId, previewContext, scrollYByCheckpointKey))
                 .toList();
     }
 
@@ -113,11 +117,12 @@ public class ReportDetailQueryService {
             Report report,
             AnalysisFinding finding,
             Map<UUID, List<Nudge>> nudgesByFindingId,
-            ReportPreviewImageResolver.DetailPreviewContext previewContext
+            ReportPreviewImageResolver.DetailPreviewContext previewContext,
+            Map<String, BigDecimal> scrollYByCheckpointKey
     ) {
         List<Object> evidenceRefs = reportJsonReader.readArray(finding.getEvidenceRefsJsonb());
         List<Object> references = reportJsonReader.readArray(finding.getReferencesJsonb());
-        ReportFindingHighlightResponse highlight = highlight(evidenceRefs);
+        ReportFindingHighlightResponse highlight = highlight(report.getRunId(), evidenceRefs, scrollYByCheckpointKey);
         ReportPreviewImageResponse previewImage = previewImageResolver.resolve(
                 report,
                 finding,
@@ -157,7 +162,11 @@ public class ReportDetailQueryService {
                 && previewImage.artifact().id().toString().equals(highlight.screenshotArtifactId());
     }
 
-    private ReportFindingHighlightResponse highlight(List<Object> evidenceRefs) {
+    private ReportFindingHighlightResponse highlight(
+            UUID runId,
+            List<Object> evidenceRefs,
+            Map<String, BigDecimal> scrollYByCheckpointKey
+    ) {
         for (Object ref : evidenceRefs) {
             Map<String, Object> component = problemComponent(ref);
             if (component == null) {
@@ -169,14 +178,16 @@ public class ReportDetailQueryService {
             if (bounds == null || screenshotArtifactId == null) {
                 continue;
             }
+            String evidenceRef = readString(component, "evidence_ref", evidenceRefId(ref));
 
             return new ReportFindingHighlightResponse(
-                    readString(component, "evidence_ref", null),
+                    evidenceRef,
                     highlightLabel(component),
                     "artifact-coordinate",
                     readString(component, "coordinate_space", "viewport"),
                     bounds,
                     viewport(component),
+                    scrollY(component, runId, evidenceRef, scrollYByCheckpointKey),
                     screenshotArtifactId
             );
         }
@@ -202,6 +213,62 @@ public class ReportDetailQueryService {
 
         Map<String, Object> location = readMap(refMap, "evidenceLocation");
         return firstMap(readList(location, "problem_components"));
+    }
+
+    private BigDecimal scrollY(
+            Map<String, Object> component,
+            UUID runId,
+            String evidenceRef,
+            Map<String, BigDecimal> scrollYByCheckpointKey
+    ) {
+        BigDecimal directScrollY = readDecimal(component, "scrollY");
+        if (directScrollY == null) {
+            directScrollY = readDecimal(component, "scroll_y");
+        }
+        if (directScrollY != null) {
+            return directScrollY;
+        }
+
+        String checkpointKey = checkpointKey(evidenceRef);
+        if (checkpointKey == null) {
+            return null;
+        }
+        if (scrollYByCheckpointKey.containsKey(checkpointKey)) {
+            return scrollYByCheckpointKey.get(checkpointKey);
+        }
+
+        BigDecimal checkpointScrollY = checkpointMapper.findByRunIdAndCheckpointKey(runId, checkpointKey)
+                .map(Checkpoint::getStateJsonb)
+                .map(reportJsonReader::readObject)
+                .map(state -> readDecimal(state, "scrollY"))
+                .orElse(null);
+        scrollYByCheckpointKey.put(checkpointKey, checkpointScrollY);
+        return checkpointScrollY;
+    }
+
+    private String checkpointKey(String evidenceRef) {
+        if (evidenceRef == null || evidenceRef.isBlank()) {
+            return null;
+        }
+        int separator = evidenceRef.indexOf('.');
+        return separator > 0 ? evidenceRef.substring(0, separator) : null;
+    }
+
+    private String evidenceRefId(Object ref) {
+        if (ref instanceof String text && !text.isBlank()) {
+            return text;
+        }
+        Map<String, Object> refMap = asMap(ref);
+        if (refMap == null) {
+            return null;
+        }
+        for (String key : List.of("ref", "id", "reference", "observationId", "observation_id")) {
+            Object value = refMap.get(key);
+            if (value instanceof String text && !text.isBlank()) {
+                return text;
+            }
+        }
+        return null;
     }
 
     private String highlightLabel(Map<String, Object> target) {

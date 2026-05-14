@@ -5066,6 +5066,10 @@ components:
           example:
             width: 1440
             height: 900
+        scrollY:
+          type: number
+          nullable: true
+          description: Page scroll offset, in viewport CSS pixels, that must be added to viewport-space y coordinates when drawing on full-page or stitched screenshots.
         screenshotArtifactId:
           type: string
           description: Screenshot artifact id that the coordinate was captured against.

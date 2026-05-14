@@ -100,6 +100,7 @@ export interface ReportFindingHighlight {
   coordinateSpace?: ReportFindingHighlightCoordinateSpace | null;
   bounds: ReportFindingHighlightBounds;
   viewport?: ReportFindingHighlightViewport | null;
+  scrollY?: number | null;
   screenshotArtifactId: string;
 }
 

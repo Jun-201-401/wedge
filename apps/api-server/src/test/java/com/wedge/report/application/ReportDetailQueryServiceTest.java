@@ -14,7 +14,9 @@ import com.wedge.analysis.infrastructure.AnalysisFindingMapper;
 import com.wedge.analysis.infrastructure.NudgeMapper;
 import com.wedge.evidence.domain.Artifact;
 import com.wedge.evidence.domain.ArtifactType;
+import com.wedge.evidence.domain.Checkpoint;
 import com.wedge.evidence.infrastructure.ArtifactMapper;
+import com.wedge.evidence.infrastructure.CheckpointMapper;
 import com.wedge.project.application.ProjectAccessService;
 import com.wedge.report.api.dto.ReportDetailNudgeResponse;
 import com.wedge.report.api.dto.ReportDetailResponse;
@@ -49,6 +51,8 @@ class ReportDetailQueryServiceTest {
     private RunService runService;
     @Mock
     private ProjectAccessService projectAccessService;
+    @Mock
+    private CheckpointMapper checkpointMapper;
 
     private ReportDetailQueryService reportDetailQueryService;
 
@@ -62,7 +66,8 @@ class ReportDetailQueryServiceTest {
                 runService,
                 new ReportAccessGuard(projectAccessService, properties, new MockEnvironment()),
                 new ReportJsonReader(new ObjectMapper()),
-                new ReportPreviewImageResolver(artifactMapper)
+                new ReportPreviewImageResolver(artifactMapper),
+                checkpointMapper
         );
     }
 
@@ -92,6 +97,7 @@ class ReportDetailQueryServiceTest {
         when(artifactMapper.findByRunIdAndId(runId, highlightArtifactId))
                 .thenReturn(Optional.of(screenshot(runId, highlightArtifactId, "highlight.png")));
         when(artifactMapper.findLatestScreenshotByRunId(runId)).thenReturn(Optional.of(screenshot(runId)));
+        when(checkpointMapper.findByRunIdAndCheckpointKey(runId, "cp_001")).thenReturn(Optional.of(checkpoint("cp_001", 640)));
 
         ReportDetailResponse response = reportDetailQueryService.getReportDetail(report.getId(), userId);
 
@@ -111,6 +117,7 @@ class ReportDetailQueryServiceTest {
         assertThat(response.findings().get(0).highlight().label()).isEqualTo("Start free");
         assertThat(response.findings().get(0).highlight().coordinateSpace()).isEqualTo("viewport");
         assertThat(response.findings().get(0).highlight().bounds().x()).isEqualByComparingTo(new BigDecimal("520.0"));
+        assertThat(response.findings().get(0).highlight().scrollY()).isEqualByComparingTo(new BigDecimal("640"));
         assertThat(response.findings().get(0).previewImage().source()).isEqualTo("HIGHLIGHT_SCREENSHOT");
         assertThat(response.findings().get(0).previewImage().artifact().id()).isEqualTo(highlightArtifactId);
         assertThat(response.findings().get(0).highlight().screenshotArtifactId()).isEqualTo(highlightArtifactId.toString());
@@ -128,7 +135,7 @@ class ReportDetailQueryServiceTest {
                         assertThat(exception.errorCode()).isEqualTo(ErrorCode.REPORT_NOT_FOUND)
                 );
 
-        verifyNoInteractions(runService, projectAccessService, analysisFindingMapper, nudgeMapper, artifactMapper);
+        verifyNoInteractions(runService, projectAccessService, analysisFindingMapper, nudgeMapper, artifactMapper, checkpointMapper);
     }
 
     private Report report(UUID runId, UUID analysisJobId) {
@@ -209,6 +216,14 @@ class ReportDetailQueryServiceTest {
         artifact.setSizeBytes(1024);
         artifact.setCapturedAt(OffsetDateTime.parse("2026-04-29T12:00:00+09:00"));
         return artifact;
+    }
+
+    private Checkpoint checkpoint(String checkpointKey, int scrollY) {
+        Checkpoint checkpoint = new Checkpoint();
+        checkpoint.setId(UUID.randomUUID());
+        checkpoint.setCheckpointKey(checkpointKey);
+        checkpoint.setStateJsonb("{\"scrollY\":%d,\"viewport\":{\"width\":1440,\"height\":900}}".formatted(scrollY));
+        return checkpoint;
     }
 
     private com.wedge.run.api.dto.RunResponse runResponse(UUID runId, UUID projectId) {

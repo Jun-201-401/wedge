@@ -1077,7 +1077,7 @@
 
 .run-report-evidence-preview__canvas {
   position: relative;
-  min-height: 100%;
+  width: 100%;
 }
 
 .run-report-evidence-preview__image {

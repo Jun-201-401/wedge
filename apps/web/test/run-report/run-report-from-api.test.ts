@@ -315,6 +315,50 @@ test('buildRunReportFromApi projects viewport coordinates onto tall screenshot a
   assert.equal(report.findings[0].highlight?.height, '1.13%');
 });
 
+test('buildRunReportFromApi adds scroll offset when projecting viewport coordinates onto stitched screenshots', () => {
+  const stitchedScreenshotDetail: ReportDetail = {
+    ...reportDetail,
+    findings: [{
+      ...reportDetail.findings[0],
+      previewImage: {
+        ...reportDetail.findings[0].previewImage!,
+        artifact: {
+          ...reportDetail.findings[0].previewImage!.artifact,
+          width: 1440,
+          height: 8296,
+        },
+      },
+      highlight: {
+        ...reportDetail.findings[0].highlight!,
+        scrollY: 7396,
+        bounds: {
+          x: 519,
+          y: 231,
+          width: 204,
+          height: 36,
+          unit: 'css_px',
+        },
+        viewport: {
+          width: 1440,
+          height: 900,
+        },
+      },
+    }],
+  };
+
+  const report = buildRunReportFromApi({
+    run: completedRun,
+    report: readyReport,
+    detail: stitchedScreenshotDetail,
+    scenarioId: 'landing-cta',
+  });
+
+  assert.equal(report.findings[0].highlight?.left, '36.04%');
+  assert.equal(report.findings[0].highlight?.top, '91.94%');
+  assert.equal(report.findings[0].highlight?.width, '14.17%');
+  assert.equal(report.findings[0].highlight?.height, '0.43%');
+});
+
 test('buildRunReportFromApi ignores coordinate highlight when it targets another screenshot', () => {
   const mismatchedDetail: ReportDetail = {
     ...reportDetail,

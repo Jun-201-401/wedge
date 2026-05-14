@@ -308,6 +308,7 @@ function createArtifactHighlight(finding: ReportDetail['findings'][number]) {
     : readBound(viewport?.height) ?? readBound(finding.previewImage?.artifact.height);
   const artifactWidth = readBound(finding.previewImage?.artifact.width);
   const artifactHeight = readBound(finding.previewImage?.artifact.height);
+  const scrollY = readBound(finding.highlight?.scrollY) ?? 0;
 
   if (!scaleWidth || !scaleHeight) {
     return null;
@@ -319,7 +320,7 @@ function createArtifactHighlight(finding: ReportDetail['findings'][number]) {
     return {
       label: readString(finding.highlight?.label) ?? '근거 대상',
       source: 'artifact-coordinate' as const,
-      top: boundsToPercent(y * imageScale, artifactHeight),
+      top: boundsToPercent((y + scrollY) * imageScale, artifactHeight),
       left: boundsToPercent(x * imageScale, artifactWidth),
       width: boundsToPercent(width * imageScale, artifactWidth),
       height: boundsToPercent(height * imageScale, artifactHeight),

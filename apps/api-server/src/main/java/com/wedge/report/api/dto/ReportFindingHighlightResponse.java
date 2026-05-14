@@ -9,6 +9,7 @@ public record ReportFindingHighlightResponse(
         String coordinateSpace,
         Bounds bounds,
         Viewport viewport,
+        BigDecimal scrollY,
         String screenshotArtifactId
 ) {
     public record Bounds(
