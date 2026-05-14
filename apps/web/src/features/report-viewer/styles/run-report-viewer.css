@@ -584,14 +584,14 @@
 .run-report-recommendation-reference-badges {
   position: absolute;
   top: 0.72rem;
-  left: 2.6rem;
+  right: 0.72rem;
   z-index: 1;
   display: flex;
   min-width: 0;
   min-height: 1.5rem;
-  max-width: calc(100% - 3.2rem);
+  max-width: calc(100% - 3.4rem);
   align-items: center;
-  justify-content: flex-start;
+  justify-content: flex-end;
   gap: 0.28rem;
   pointer-events: none;
 }
