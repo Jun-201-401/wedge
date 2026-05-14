@@ -3564,7 +3564,30 @@ async function safePerformanceSummary(page: Page, fallbackValue: BrowserPerforma
       const paintEntries = performance.getEntriesByType("paint");
       const resources = performance.getEntriesByType("resource") as PerformanceResourceTiming[];
       const firstContentfulPaint = paintEntries.find((entry) => entry.name === "first-contentful-paint");
+      const largestContentfulPaintEntries = performance.getEntriesByType("largest-contentful-paint");
+      const largestContentfulPaint = largestContentfulPaintEntries[largestContentfulPaintEntries.length - 1];
+      const layoutShiftEntries = performance.getEntriesByType("layout-shift") as Array<PerformanceEntry & {
+        value?: number;
+        hadRecentInput?: boolean;
+      }>;
+      const eventEntries = performance.getEntriesByType("event") as Array<PerformanceEntry & {
+        processingStart?: number;
+        startTime: number;
+        duration?: number;
+      }>;
+      const longTasks = performance.getEntriesByType("longtask");
       const sum = (values: number[]) => values.reduce((total, value) => total + (Number.isFinite(value) ? value : 0), 0);
+      const cumulativeLayoutShift = sum(layoutShiftEntries
+        .filter((entry) => entry.hadRecentInput !== true)
+        .map((entry) => entry.value ?? 0));
+      const interactionToNextPaint = eventEntries.length > 0
+        ? Math.max(...eventEntries.map((entry) => Math.max(entry.duration ?? 0, (entry.processingStart ?? entry.startTime) - entry.startTime)))
+        : null;
+      const renderBlockingResourceCount = resources.filter((resource) =>
+        ["script", "link", "css"].some((token) => resource.initiatorType.toLowerCase().includes(token)) &&
+        resource.responseEnd > 0 &&
+        resource.startTime < (firstContentfulPaint?.startTime ?? 1_800)
+      ).length;
 
       return {
         navigation_type: navigation?.type ?? null,
@@ -3572,6 +3595,12 @@ async function safePerformanceSummary(page: Page, fallbackValue: BrowserPerforma
         dom_content_loaded_ms: navigation ? durationFromStart(navigation.domContentLoadedEventEnd, navigation.startTime) : null,
         load_event_ms: navigation ? durationFromStart(navigation.loadEventEnd, navigation.startTime) : null,
         first_contentful_paint_ms: firstContentfulPaint ? roundMetric(firstContentfulPaint.startTime) : null,
+        largest_contentful_paint_ms: largestContentfulPaint ? roundMetric(largestContentfulPaint.startTime) : null,
+        cumulative_layout_shift: roundMetric(cumulativeLayoutShift),
+        interaction_to_next_paint_ms: interactionToNextPaint === null ? null : roundMetric(interactionToNextPaint),
+        render_blocking_resource_count: renderBlockingResourceCount,
+        long_task_count: longTasks.length,
+        web_vitals_source: "browser_performance_api" as const,
         resource_count: resources.length,
         transfer_size_bytes: sum(resources.map((resource) => resource.transferSize)),
         encoded_body_size_bytes: sum(resources.map((resource) => resource.encodedBodySize)),

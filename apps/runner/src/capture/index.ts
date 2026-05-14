@@ -86,6 +86,7 @@ export function createCapturePipeline(): CapturePipeline {
       const consoleLogArtifact = createConsoleLogArtifact(step.step_id, pageSnapshot.consoleErrors);
       const axTreeArtifact = createAxTreeArtifact(step.step_id, capturedArtifacts);
       const harArtifact = createHarArtifact(step.step_id, pageSnapshot, plan);
+      const performanceArtifact = createPerformanceArtifact(step.step_id, pageSnapshot, plan);
       const runtimeTraceArtifact = createRuntimeTraceArtifact({
         step,
         stepOrder,
@@ -121,13 +122,14 @@ export function createCapturePipeline(): CapturePipeline {
             screenshotArtifactId: screenshotArtifact.artifactId,
             axTreeArtifactId: axTreeArtifact?.artifactId,
             harArtifactId: harArtifact?.artifactId,
+            performanceArtifactId: performanceArtifact?.artifactId,
             capturePerformance: plan.artifact_policy?.capture_performance === true,
             capturedArtifacts,
             journeyDepthContext
           }),
           deltas: createCheckpointDeltas(pageSnapshot)
         },
-        artifacts: buildCheckpointArtifacts(screenshotArtifact, domArtifact, consoleLogArtifact, axTreeArtifact, harArtifact, runtimeTraceArtifact)
+        artifacts: buildCheckpointArtifacts(screenshotArtifact, domArtifact, consoleLogArtifact, axTreeArtifact, harArtifact, performanceArtifact, runtimeTraceArtifact)
       };
     }
   };
@@ -139,6 +141,7 @@ function buildCheckpointArtifacts(
   consoleLogArtifact: ArtifactDraft | null,
   axTreeArtifact: ArtifactDraft | null,
   harArtifact: ArtifactDraft | null,
+  performanceArtifact: ArtifactDraft | null,
   runtimeTraceArtifact: ArtifactDraft | null
 ): ArtifactDraft[] {
   return [
@@ -147,6 +150,7 @@ function buildCheckpointArtifacts(
     ...(consoleLogArtifact ? [consoleLogArtifact] : []),
     ...(axTreeArtifact ? [axTreeArtifact] : []),
     ...(harArtifact ? [harArtifact] : []),
+    ...(performanceArtifact ? [performanceArtifact] : []),
     ...(runtimeTraceArtifact ? [runtimeTraceArtifact] : [])
   ];
 }
@@ -206,6 +210,39 @@ function createHarArtifact(
     mimeType: "application/json",
     fileExtension: "har.json",
     content: JSON.stringify(createHarPayload(pageSnapshot), null, 2)
+  };
+}
+
+function createPerformanceArtifact(
+  stepKey: string,
+  pageSnapshot: BrowserPageSnapshot,
+  plan: ScenarioPlan
+): ArtifactDraft | null {
+  if (plan.artifact_policy?.capture_performance !== true || !pageSnapshot.performanceSummary) {
+    return null;
+  }
+
+  return {
+    artifactId: randomUUID(),
+    artifactType: "OTHER",
+    stepKey,
+    mimeType: "application/json",
+    fileExtension: "web-vitals.json",
+    content: JSON.stringify({
+      schema_version: "0.1",
+      artifact_type: "web_vitals_json",
+      source: pageSnapshot.performanceSummary.web_vitals_source ?? "browser_performance_api",
+      url: pageSnapshot.finalUrl,
+      title: pageSnapshot.title,
+      summary: pageSnapshot.performanceSummary,
+      lighthouse_compatible_metrics: {
+        first_contentful_paint_ms: pageSnapshot.performanceSummary.first_contentful_paint_ms,
+        largest_contentful_paint_ms: pageSnapshot.performanceSummary.largest_contentful_paint_ms ?? null,
+        cumulative_layout_shift: pageSnapshot.performanceSummary.cumulative_layout_shift ?? null,
+        interaction_to_next_paint_ms: pageSnapshot.performanceSummary.interaction_to_next_paint_ms ?? null,
+        render_blocking_resource_count: pageSnapshot.performanceSummary.render_blocking_resource_count ?? 0
+      }
+    }, null, 2)
   };
 }
 
@@ -390,6 +427,7 @@ function createCheckpointObservations({
   screenshotArtifactId,
   axTreeArtifactId,
   harArtifactId,
+  performanceArtifactId,
   capturePerformance,
   capturedArtifacts,
   journeyDepthContext
@@ -403,6 +441,7 @@ function createCheckpointObservations({
   screenshotArtifactId: string;
   axTreeArtifactId?: string;
   harArtifactId?: string;
+  performanceArtifactId?: string;
   capturePerformance: boolean;
   capturedArtifacts?: BrowserCapturedArtifacts;
   journeyDepthContext?: JourneyDepthContext;
@@ -461,7 +500,7 @@ function createCheckpointObservations({
     ...createAxTreeObservations(step, capturedArtifacts, axTreeArtifactId).map((observation) => ({ ...observation })),
     ...createLayoutCollectorObservations(step, pageSnapshot).map((observation) => ({ ...observation })),
     ...createNetworkTimelineObservations(step, pageSnapshot, harArtifactId).map((observation) => ({ ...observation })),
-    ...(capturePerformance ? createPerformanceMetricObservations(step, pageSnapshot).map((observation) => ({ ...observation })) : []),
+    ...(capturePerformance ? createPerformanceMetricObservations(step, pageSnapshot, performanceArtifactId).map((observation) => ({ ...observation })) : []),
     ...createLoadingStateObservations({
       step,
       beforeSnapshot,
@@ -990,7 +1029,8 @@ function createNetworkTimelineObservations(
 
 function createPerformanceMetricObservations(
   step: ScenarioStep,
-  pageSnapshot: BrowserPageSnapshot
+  pageSnapshot: BrowserPageSnapshot,
+  performanceArtifactId?: string
 ): PerformanceMetricObservation[] {
   if (!pageSnapshot.performanceSummary) {
     return [];
@@ -1003,6 +1043,7 @@ function createPerformanceMetricObservations(
       stage: step.stage,
       source: ["performance"],
       confidence: 0.72,
+      web_vitals_artifact_id: performanceArtifactId ?? null,
       summary: pageSnapshot.performanceSummary
     }
   ];

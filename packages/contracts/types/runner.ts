@@ -1084,6 +1084,12 @@ export interface BrowserPerformanceSummary {
   dom_content_loaded_ms: number | null;
   load_event_ms: number | null;
   first_contentful_paint_ms: number | null;
+  largest_contentful_paint_ms?: number | null;
+  cumulative_layout_shift?: number | null;
+  interaction_to_next_paint_ms?: number | null;
+  render_blocking_resource_count?: number;
+  long_task_count?: number;
+  web_vitals_source?: "browser_performance_api" | "simulated" | "unavailable";
   resource_count: number;
   transfer_size_bytes: number;
   encoded_body_size_bytes: number;
@@ -1164,6 +1170,7 @@ export interface PerformanceMetricObservation {
   stage: ScenarioStage;
   source: ["performance"];
   confidence: number;
+  web_vitals_artifact_id?: string | null;
   summary: BrowserPerformanceSummary;
 }
 
