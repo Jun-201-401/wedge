@@ -6,7 +6,8 @@ import {
   handleRunExecuteMessage,
   startAgentExecuteQueueConsumer,
   startRunExecuteQueueConsumer,
-  startRunnerQueueConsumers
+  startRunnerQueueConsumers,
+  startScenarioAuthoringExecuteQueueConsumer
 } from "../src/messaging/rabbitmq/index.ts";
 
 test("[RabbitMQ consumer] run.execute 메시지 처리 성공 시 ack 한다", async () => {
@@ -238,7 +239,58 @@ test("[RabbitMQ consumer] agent.execute queue는 RUNNER_AGENT_CONCURRENCY 값을
   await consumer.close();
 });
 
-test("startRunnerQueueConsumers consumes run, agent, and discovery queues", async () => {
+test("[RabbitMQ consumer] scenario-authoring.execute queue를 설정한다", async () => {
+  const events: string[] = [];
+
+  const consumer = await startScenarioAuthoringExecuteQueueConsumer({
+    config: {
+      mqUrl: "amqp://localhost",
+      mqQueueScenarioAuthoringExecute: "scenario-authoring.execute.request",
+      mqPrefetch: 2,
+      mqRequeueOnFailure: false
+    },
+    processRawMessage: async () => {},
+    client: {
+      connect: async (url) => {
+        events.push(`connect:${url}`);
+
+        return {
+          createChannel: async () => ({
+            prefetch: async (count) => {
+              events.push(`prefetch:${count}`);
+            },
+            checkQueue: async (queue) => {
+              events.push(`checkQueue:${queue}`);
+            },
+            consume: async (queue) => {
+              events.push(`consume:${queue}`);
+              return { consumerTag: "consumer-tag" };
+            },
+            ack: () => {},
+            nack: () => {},
+            close: async () => {
+              events.push("channel:close");
+            }
+          }),
+          close: async () => {
+            events.push("connection:close");
+          }
+        };
+      }
+    }
+  });
+
+  assert.deepEqual(events.slice(0, 4), [
+    "connect:amqp://localhost",
+    "prefetch:2",
+    "checkQueue:scenario-authoring.execute.request",
+    "consume:scenario-authoring.execute.request"
+  ]);
+
+  await consumer.close();
+});
+
+test("startRunnerQueueConsumers consumes run, agent, discovery, and scenario authoring queues", async () => {
   const events: string[] = [];
   const handlers = new Map<string, (message: ConsumeMessage | null) => void | Promise<void>>();
 
@@ -248,6 +300,7 @@ test("startRunnerQueueConsumers consumes run, agent, and discovery queues", asyn
       mqQueueRunExecute: "run.execute.request",
       mqQueueAgentExecute: "agent.execute.request",
       mqQueueDiscoveryExecute: "discovery.execute.request",
+      mqQueueScenarioAuthoringExecute: "scenario-authoring.execute.request",
       mqPrefetch: 2,
       agentConcurrency: 1,
       mqRequeueOnFailure: false
@@ -260,6 +313,9 @@ test("startRunnerQueueConsumers consumes run, agent, and discovery queues", asyn
     },
     processRawDiscoveryMessage: async (rawMessage) => {
       events.push(`discovery:${rawMessage}`);
+    },
+    processRawScenarioAuthoringMessage: async (rawMessage) => {
+      events.push(`scenario-authoring:${rawMessage}`);
     },
     client: {
       connect: async (url) => {
@@ -297,17 +353,19 @@ test("startRunnerQueueConsumers consumes run, agent, and discovery queues", asyn
 
   assert.deepEqual(
     events.filter((event) => event.startsWith("prefetch:")),
-    ["prefetch:2", "prefetch:1", "prefetch:2"]
+    ["prefetch:2", "prefetch:1", "prefetch:2", "prefetch:2"]
   );
 
   await handlers.get("run.execute.request")?.(createMessage('{"messageType":"run.execute.request"}'));
   await handlers.get("agent.execute.request")?.(createMessage('{"messageType":"agent.execute.request"}'));
   await handlers.get("discovery.execute.request")?.(createMessage('{"messageType":"discovery.execute.request"}'));
+  await handlers.get("scenario-authoring.execute.request")?.(createMessage('{"messageType":"scenario-authoring.execute.request"}'));
 
   assert.ok(events.includes('run:{"messageType":"run.execute.request"}'));
   assert.ok(events.includes('agent:{"messageType":"agent.execute.request"}'));
   assert.ok(events.includes('discovery:{"messageType":"discovery.execute.request"}'));
-  assert.equal(events.filter((event) => event === "ack").length, 3);
+  assert.ok(events.includes('scenario-authoring:{"messageType":"scenario-authoring.execute.request"}'));
+  assert.equal(events.filter((event) => event === "ack").length, 4);
 
   await consumer.close();
   assert.ok(events.includes("channel:close"));
