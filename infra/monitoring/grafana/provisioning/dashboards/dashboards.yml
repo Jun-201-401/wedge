@@ -1,0 +1,14 @@
+apiVersion: 1
+
+providers:
+  - name: Wedge dashboards
+    orgId: 1
+    folder: Wedge
+    folderUid: wedge
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: false
+    options:
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: false
