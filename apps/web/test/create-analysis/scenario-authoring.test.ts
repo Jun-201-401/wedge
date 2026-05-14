@@ -100,18 +100,35 @@ test('scenario authoring helper turns dynamic ScenarioPlan steps into a user pre
         action: { type: 'goto' },
       },
       {
-        step_id: 'step_002_click',
+        step_id: 'step_002_checkpoint_first_view',
+        description: '첫 화면의 핵심 문맥과 진입점을 기록한다.',
+        action: { type: 'checkpoint' },
+      },
+      {
+        step_id: 'step_003_click',
         description: '추천 CTA를 클릭한다.',
         action: { type: 'click' },
+      },
+      {
+        step_id: 'step_004_checkpoint_landing',
+        description: '이동 후 도착 지점의 문맥을 기록한다.',
+        action: { type: 'checkpoint' },
       },
     ],
   });
 
   assert.equal(preview?.title, '랜딩 CTA 점검');
   assert.equal(preview?.startUrl, 'https://example.com');
-  assert.equal(preview?.stepCount, 2);
-  assert.equal(preview?.steps[0]?.label, '1. 페이지 진입');
-  assert.equal(preview?.steps[1]?.label, '2. 추천 요소 클릭');
+  assert.equal(preview?.stepCount, 4);
+  assert.equal(preview?.steps[0]?.label, '1. 시작 화면 열기');
+  assert.equal(preview?.steps[0]?.detail, '첫 화면을 엽니다');
+  assert.equal(preview?.steps[1]?.label, '2. 핵심 맥락 기록');
+  assert.equal(preview?.steps[1]?.detail, '첫 화면의 맥락을 기록합니다');
+  assert.equal(preview?.steps[2]?.label, '3. 진입점 따라가기');
+  assert.equal(preview?.steps[2]?.detail, '추천 진입점으로 이동합니다');
+  assert.equal(preview?.steps[3]?.label, '4. 도착 지점 기록');
+  assert.equal(preview?.steps[3]?.detail, '이동 후 화면을 기록합니다');
+  assert.notEqual(preview?.steps[0]?.detail, '추천 URL에 진입한다.');
   assert.match(preview?.safetyLabel ?? '', /결제/);
 });
 

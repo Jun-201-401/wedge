@@ -38,14 +38,13 @@ test('discovery recommendation mapper exposes canonical levels and CONTACT copy'
   assert.doesNotMatch(card.summary, /candidate was found/);
   assert.equal(card.confidence, 0.86);
   assert.equal(card.confidenceLabel, '높음');
-  assert.equal(card.evidence, 'aria-label: Book a demo');
-  assert.deepEqual(card.signalLabels, ['aria-label: Book a demo']);
-  assert.deepEqual(card.limitationLabels, ['이미지 안 텍스트는 OCR하지 않음']);
+  assert.equal(card.evidence, '문의나 신청으로 이어지는 링크를 발견했어요');
+  assert.deepEqual(card.signalLabels, ['문의나 신청으로 이어지는 링크를 발견했어요']);
   assert.equal(card.targetLabel, 'Book a demo');
   assert.deepEqual(card.previewSteps, [
-    '추천 시작 URL에서 첫 화면을 열어요',
-    '"Book a demo" 요소를 따라가요',
-    '위험 행동 전 멈추고 마찰 근거를 기록해요',
+    '추천 시작 화면을 열어요',
+    '"Book a demo" 버튼이나 링크를 따라가요',
+    '제출 직전까지 이동하며 막히는 지점을 기록해요',
   ]);
   assert.equal(card.isRunnable, true);
   assert.equal(card.actionLabel, '이 흐름으로 시작하기');
@@ -74,14 +73,64 @@ test('discovery recommendation mapper shortens long href labels for cards', () =
     },
   });
 
-  assert.match(card.signalLabels[0], /^href: in\.naver\.com\/pland\/contents\/.+\?…$/);
-  assert.ok(card.signalLabels[0].length <= 52);
+  assert.equal(card.signalLabels[0], '가격이나 요금제 관련 진입점을 발견했어요');
   assert.match(card.targetLabel ?? '', /^in\.naver\.com\/pland\/contents\/.+\?…$/);
   assert.ok((card.targetLabel ?? '').length <= 46);
   assert.deepEqual(card.previewSteps, [
-    '추천 시작 URL에서 첫 화면을 열어요',
-    `"${card.targetLabel}" 요소를 따라가요`,
-    '위험 행동 전 멈추고 마찰 근거를 기록해요',
+    '추천 시작 화면을 열어요',
+    '추천 링크를 따라가요',
+    '제출 직전까지 이동하며 막히는 지점을 기록해요',
+  ]);
+});
+
+test('discovery recommendation mapper shortens long text targets for preview copy', () => {
+  const card = toScenarioRecommendationViewModel({
+    ...contactRecommendation,
+    suggestedTarget: {
+      text: '2026 큰별쌤 최태성의 별별한국사 기출 500제 한국사능력검정시험 심화(1,2,3급) 최태성 이투스북',
+    },
+  });
+
+  assert.equal(card.targetLabel, '2026 큰별쌤 최태성의 별별한국사 기출 500제 한국사능력검…');
+  assert.ok((card.targetLabel ?? '').length <= 35);
+  assert.deepEqual(card.previewSteps, [
+    '추천 시작 화면을 열어요',
+    '"2026 큰별쌤 최태성의 별별한국사 기출 500제 한국사능력검…" 버튼이나 링크를 따라가요',
+    '제출 직전까지 이동하며 막히는 지점을 기록해요',
+  ]);
+});
+
+test('discovery recommendation mapper normalizes relative targets into concise labels', () => {
+  const renaultUrl = 'https://www.renault.co.kr/ko/event/260509K/testdrive/app_testdrive.jsp?bannerUrl=a_navertd_KOLEOS_ETECH_SALES_A_26-05_&bannerSeq=1&utm_medium=display&utm_source=navertd&utm_campaign=kr-r-l-newcar-koleos-etech-05-2026-os-naver-dis-na-26-05';
+  const card = toScenarioRecommendationViewModel({
+    ...contactRecommendation,
+    evidenceSummary: {
+      matched_signals: [{
+        signal_id: 'sig_relative_href',
+        source: 'href',
+        signal_type: 'contact_url',
+        value: '/ko/event/260509K/testdrive/app_testdrive.jsp?bannerUrl=a_navertd_KOLEOS_ETECH_SALES_A_26-05_&bannerSeq=1&utm_medium=display',
+        evidence_ref: 'cp_001.obs_005',
+        weight: 0.3,
+      }],
+      missing_signals: [],
+      limitations: ['image_text_ocr_not_performed', 'authenticated_pages_not_explored'],
+    },
+    suggestedStartUrl: renaultUrl,
+    suggestedTarget: {
+      href: '/ko/event/260509K/testdrive/app_testdrive.jsp?bannerUrl=a_navertd_KOLEOS_ETECH_SALES_A_26-05_&bannerSeq=1&utm_medium=display',
+    },
+  });
+
+  assert.equal(card.signalLabels[0], '문의나 신청으로 이어지는 링크를 발견했어요');
+  assert.match(card.targetLabel ?? '', /^renault\.co\.kr\/ko\/event\/260509K\//);
+  assert.match(card.targetLabel ?? '', /\?…$/);
+  assert.doesNotMatch(card.targetLabel ?? '', /utm_medium=display/);
+  assert.ok((card.targetLabel ?? '').length <= 46);
+  assert.deepEqual(card.previewSteps, [
+    '추천 시작 화면을 열어요',
+    '추천 링크를 따라가요',
+    '제출 직전까지 이동하며 막히는 지점을 기록해요',
   ]);
 });
 
@@ -161,6 +210,9 @@ test('discovery recommendation mapper hides unavailable flows and sorts detected
 
   assert.deepEqual(cards.map((card) => card.level), ['HIGH', 'LOW']);
   assert.deepEqual(cards.map((card) => card.id), ['landing-cta', 'pricing']);
+  assert.equal(cards[0].title, '랜딩 전환 버튼 점검');
+  assert.equal(cards[0].summary, '첫 화면의 가입, 체험, 문의 버튼 흐름을 확인해요.');
+  assert.doesNotMatch(cards[0].summary, /CTA/);
   assert.equal(cards.every((card) => card.isRunnable), true);
 });
 

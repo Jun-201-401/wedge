@@ -77,7 +77,7 @@ function createDiscoveryFailureMessage(error: unknown) {
 
   const validationFields = readApiValidationFields(error.details);
   if (error.status === 422 && validationFields.some((fieldError) => fieldError.field === 'projectId')) {
-    return 'Discovery API가 아직 projectId 필수 계약으로 동작 중입니다. API 서버를 최신 코드로 재시작한 뒤 다시 시도해주세요.';
+    return '사이트 확인 API가 아직 projectId 필수 계약으로 동작 중입니다. API 서버를 최신 코드로 재시작한 뒤 다시 시도해주세요.';
   }
 
   if (error.status === 422 && validationFields.some((fieldError) => fieldError.field === 'url')) {
@@ -85,7 +85,7 @@ function createDiscoveryFailureMessage(error: unknown) {
   }
 
   if (error.status === 400 && error.code === 'invalid_request') {
-    return '입력한 URL이 Discovery 검증을 통과하지 못했습니다. localhost, 사설망 주소가 아닌 공개 사이트 URL을 입력해주세요.';
+    return '입력한 URL이 사이트 확인 검증을 통과하지 못했습니다. localhost, 사설망 주소가 아닌 공개 사이트 URL을 입력해주세요.';
   }
 
   if (error.status === 401) {
@@ -149,17 +149,17 @@ const SCENARIO_DEPTH_OPTIONS: ScenarioDepthOption[] = [
   {
     id: 'hero-only',
     title: '첫 화면만 보기',
-    detail: 'CTA가 명확한지, 첫 행동이 바로 보이는지 빠르게 확인합니다',
+    detail: '첫 화면에서 다음 행동이 바로 보이는지 확인해요',
   },
   {
     id: 'next-screen',
     title: '다음 화면까지 보기',
-    detail: 'CTA 클릭 후 도착 화면의 맥락까지 확인합니다',
+    detail: '다음 화면의 맥락까지 이어서 확인해요',
   },
   {
     id: 'form-depth',
-    title: 'Form까지 보기',
-    detail: '입력 부담과 제출 전 신뢰 요소까지 확인합니다',
+    title: '입력 폼까지 보기',
+    detail: '입력 부담과 제출 전 신뢰 요소를 확인해요',
   },
 ];
 const SCENARIO_IDS = CREATE_ANALYSIS_SCENARIO_IDS;
@@ -466,6 +466,7 @@ function PreflightAgent({ submittedUrl, discoveryState, onRetry, onEditUrl }: Pr
 function RecommendationAgent({ submittedUrl, scenarios, emptyMessage, onChooseScenario, onOpenManualChoice }: RecommendationAgentProps) {
   const visibleScenarios = scenarios.filter((scenario) => scenario.isRunnable);
   const detectedScenarioCount = visibleScenarios.length;
+  const hasDetectedScenarios = detectedScenarioCount > 0;
   const hasManualScenarios = toManualScenarioRecommendationViewModels(visibleScenarios.map((scenario) => scenario.id)).length > 0;
   const submittedUrlLabel = formatDisplayUrl(submittedUrl);
 
@@ -476,7 +477,7 @@ function RecommendationAgent({ submittedUrl, scenarios, emptyMessage, onChooseSc
           <div className="recommendation-agent__header-main">
             <div className="recommendation-agent__header-copy">
               <p>진단 흐름 추천</p>
-              <h2 id="recommendations-title">이 사이트에서 점검해볼 만한 흐름을 찾았어요</h2>
+              <h2 id="recommendations-title">{hasDetectedScenarios ? '이 사이트에서 점검해볼 만한 흐름을 찾았어요' : '점검할 흐름을 직접 선택해주세요'}</h2>
             </div>
           </div>
 
@@ -488,14 +489,21 @@ function RecommendationAgent({ submittedUrl, scenarios, emptyMessage, onChooseSc
 
         <p className="recommendation-agent__url" title={submittedUrl}>{submittedUrlLabel}</p>
         <p className="recommendation-agent__limitation">
-          사이트 화면에서 확인한 버튼, 링크, 폼 신호를 기준으로 추천했어요. 이미지 텍스트, 숨겨진 메뉴, 로그인 뒤 화면은 제외될 수 있어요.
+          {hasDetectedScenarios
+            ? '사이트 화면에서 확인한 버튼, 링크, 폼 신호를 기준으로 추천했어요. 이미지 텍스트, 숨겨진 메뉴, 로그인 뒤 화면은 제외될 수 있어요.'
+            : '현재 화면에서 확인한 버튼, 링크, 폼 신호만으로는 바로 실행할 흐름을 고르기 어려워요.'}
         </p>
         <div className="recommendation-agent__divider" aria-hidden="true" />
 
         {visibleScenarios.length === 0 ? (
           <div className="recommendation-agent__empty" role="status">
-            <strong>추천 가능한 흐름을 찾지 못했어요</strong>
-            <p>{emptyMessage ?? '자동으로 찾은 흐름은 없지만, 직접 점검할 흐름을 선택할 수 있어요.'}</p>
+            <strong>가입, 로그인, 결제 같은 흐름을 직접 고를 수 있어요</strong>
+            <p>{emptyMessage ?? '다음 화면에서 점검할 흐름을 선택해 진단을 시작하세요.'}</p>
+            {hasManualScenarios ? (
+              <button className="create-analysis-secondary-action recommendation-agent__empty-action" type="button" onClick={onOpenManualChoice}>
+                직접 흐름 선택
+              </button>
+            ) : null}
           </div>
         ) : (
           <div className="scenario-grid">
@@ -520,11 +528,6 @@ function RecommendationAgent({ submittedUrl, scenarios, emptyMessage, onChooseSc
                       <li key={step}>{step}</li>
                     ))}
                   </ol>
-                  {scenario.limitationLabels.length > 0 ? (
-                    <p className="scenario-card__context-note">
-                      제한: {scenario.limitationLabels.join(', ')}
-                    </p>
-                  ) : null}
                 </div>
                 <button
                   type="button"
@@ -538,7 +541,7 @@ function RecommendationAgent({ submittedUrl, scenarios, emptyMessage, onChooseSc
           </div>
         )}
 
-        {hasManualScenarios ? (
+        {hasDetectedScenarios && hasManualScenarios ? (
           <div className="recommendation-agent__manual-entry">
             <div>
               <strong>원하는 흐름이 없나요?</strong>
@@ -663,13 +666,31 @@ function getAuthoringStatusText(state: ScenarioAuthoringUiState, isEnabled: bool
     case 'creating':
       return '사이트 맞춤 시나리오 생성 요청 중';
     case 'polling':
-      return `시나리오 생성 중 · ${state.status}`;
+      return getAuthoringPollingStatusText(state.status);
     case 'succeeded':
       return '사이트 맞춤 시나리오 준비 완료';
     case 'failed':
       return '기본 추천 흐름으로 시작 가능';
     default:
-      return isEnabled ? '사이트 맞춤 Scenario 생성 대기 중' : '기본 추천 흐름으로 시작 가능';
+      return isEnabled ? '사이트 맞춤 시나리오 생성 대기 중' : '기본 추천 흐름으로 시작 가능';
+  }
+}
+
+function getAuthoringPollingStatusText(status: string) {
+  switch (status) {
+    case 'CREATED':
+    case 'QUEUED':
+      return '사이트 맞춤 시나리오 생성 대기 중';
+    case 'RUNNING':
+      return '사이트 맞춤 시나리오 생성 중';
+    case 'SUCCEEDED':
+      return '사이트 맞춤 시나리오 준비 완료';
+    case 'FAILED':
+    case 'CANCELED':
+    case 'EXPIRED':
+      return '기본 추천 흐름으로 시작 가능';
+    default:
+      return '시나리오 생성 상태 확인 중';
   }
 }
 
@@ -727,10 +748,10 @@ function ReadyAgent({
           <div className="ready-agent__scenario-plan" aria-label="생성된 시나리오 단계 미리보기">
             <div className="ready-agent__scenario-plan-head">
               <div>
-                <span>생성된 Scenario</span>
+                <span>생성된 흐름</span>
                 <strong>{preview.title}</strong>
               </div>
-              <small>{preview.stepCount} steps</small>
+              <small>{preview.stepCount}단계</small>
             </div>
             {preview.startUrl ? <p className="ready-agent__scenario-plan-url" title={preview.startUrl}>{previewStartUrlLabel}</p> : null}
             <ol className="ready-agent__scenario-steps">
@@ -932,7 +953,7 @@ export function CreateAnalysisPage({ isAuthenticated = false, isAuthChecking = f
         setDiscoveryState({
           kind: 'empty',
           discoveryId,
-          message: 'Discovery는 완료됐지만 추천 가능한 시나리오 근거를 찾지 못했습니다.',
+          message: '현재 화면에서 바로 추천할 흐름을 고르기 어려워요. 다음 화면에서 직접 선택해 진단을 시작하세요.',
         });
       } else {
         setDiscoveryState({ kind: 'completed', discoveryId, scenarios });
@@ -962,7 +983,7 @@ export function CreateAnalysisPage({ isAuthenticated = false, isAuthChecking = f
       if (!isUuid(discovery.projectId)) {
         setDiscoveryState({
           kind: 'failed',
-          message: 'Discovery는 시작됐지만 연결된 프로젝트를 확인하지 못했습니다. 잠시 후 다시 시도해주세요.',
+          message: '사이트 확인은 시작됐지만 연결된 프로젝트를 확인하지 못했습니다. 잠시 후 다시 시도해주세요.',
         });
         return;
       }
@@ -985,7 +1006,7 @@ export function CreateAnalysisPage({ isAuthenticated = false, isAuthChecking = f
         if (isDiscoveryTerminalFailure(discovery.status)) {
           setDiscoveryState({
             kind: 'failed',
-            message: discovery.failureMessage ?? 'Discovery가 실패했습니다. URL을 확인한 뒤 다시 시도해주세요.',
+            message: discovery.failureMessage ?? '사이트 확인에 실패했습니다. URL을 확인한 뒤 다시 시도해주세요.',
           });
           return;
         }
@@ -1011,7 +1032,7 @@ export function CreateAnalysisPage({ isAuthenticated = false, isAuthChecking = f
 
       setDiscoveryState({
         kind: 'failed',
-        message: 'Discovery 응답 시간이 초과됐습니다. 잠시 후 다시 시도해주세요.',
+        message: '사이트 확인 응답 시간이 초과됐습니다. 잠시 후 다시 시도해주세요.',
       });
     } catch (error) {
       if (discoveryRequestSeq.current === requestSeq) {
