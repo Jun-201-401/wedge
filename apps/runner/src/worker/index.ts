@@ -4,15 +4,12 @@ import type { RunnerConfig } from "../config/index.ts";
 import type { CapturePipeline } from "../capture/index.ts";
 import { createDeliverySummary, mergeDeliveryIssues, type DeliverySummary } from "../delivery/index.ts";
 import { executeScenario, ScenarioExecutionError, type ScenarioExecutionSummary } from "../scenario/executor/index.ts";
-import {
-  normalizeMessageIdempotencyKey,
-  persistMessageIdempotencyResult,
-  readMessageIdempotencyResult
-} from "../runtime/message-idempotency.ts";
 import type { ArtifactStore } from "../storage/index.ts";
-import type { AgentArtifactPolicy, RunExecuteMessage, ScenarioPlan } from "../shared/contracts.ts";
+import type { RunExecuteMessage } from "../shared/contracts.ts";
 import { classifyRunnerFailure, errorMessage, logOperationalEvent, runnerFailureOutcome } from "../shared/utils.ts";
 import { emitAcceptedCallback, emitFailedCallback, emitFinishedCallback, resolveFailureResultCompleteness } from "./callback-policy.ts";
+import { applyRunArtifactPolicy } from "./run-artifact-policy.ts";
+import { executeRunMessageWithIdempotency } from "./run-idempotent-execution.ts";
 
 export interface RunnerExecutionResult {
   runId: string;
@@ -47,38 +44,11 @@ export function registerWorker({
   return {
     workerId: config.workerId,
     async handleMessage(message) {
-      const idempotencyKey = normalizeMessageIdempotencyKey(message.idempotencyKey);
-      if (idempotencyKey) {
-        const existingExecution = idempotentExecutions.get(idempotencyKey);
-        if (existingExecution) {
-          logOperationalEvent(
-            "worker",
-            "duplicate_message_suppressed",
-            {
-              runId: message.payload.runId,
-              idempotencyKey
-            },
-            "warn"
-          );
-          return existingExecution;
-        }
-
-        const persistedResult = await readMessageIdempotencyResult<RunnerExecutionResult>(config, "run", idempotencyKey);
-        if (persistedResult) {
-          logOperationalEvent(
-            "worker",
-            "duplicate_message_replayed",
-            {
-              runId: message.payload.runId,
-              idempotencyKey,
-              originalRunId: persistedResult.runId
-            },
-            "warn"
-          );
-          return persistedResult;
-        }
-
-        const execution = executeRunMessage({
+      return executeRunMessageWithIdempotency({
+        config,
+        message,
+        idempotentExecutions,
+        execute: () => executeRunMessage({
           message,
           config,
           browserFactory,
@@ -86,26 +56,6 @@ export function registerWorker({
           capturePipeline,
           artifactStore
         })
-          .then(async (result) => {
-            await persistMessageIdempotencyResult(config, "run", idempotencyKey, result);
-            idempotentExecutions.delete(idempotencyKey);
-            return result;
-          })
-          .catch((error) => {
-            idempotentExecutions.delete(idempotencyKey);
-            throw error;
-          });
-        idempotentExecutions.set(idempotencyKey, execution);
-        return execution;
-      }
-
-      return executeRunMessage({
-        message,
-        config,
-        browserFactory,
-        callbackClient,
-        capturePipeline,
-        artifactStore
       });
     }
   };
@@ -237,96 +187,5 @@ async function executeRunMessage({
     if (session) {
       await session.close();
     }
-  }
-}
-
-function applyRunArtifactPolicy(
-  scenarioPlan: ScenarioPlan,
-  artifactPolicy: RunExecuteMessage["payload"]["artifactPolicy"]
-): ScenarioPlan {
-  const normalizedPolicy = normalizeRunArtifactPolicy(artifactPolicy);
-  if (!normalizedPolicy) {
-    return scenarioPlan;
-  }
-
-  return {
-    ...scenarioPlan,
-    artifact_policy: {
-      ...scenarioPlan.artifact_policy,
-      ...normalizedPolicy
-    }
-  };
-}
-
-function normalizeRunArtifactPolicy(
-  artifactPolicy: RunExecuteMessage["payload"]["artifactPolicy"]
-): AgentArtifactPolicy | null {
-  if (!artifactPolicy) {
-    return null;
-  }
-
-  const normalized: AgentArtifactPolicy = {};
-  setOptionalBoolean(normalized, "capture_screenshots", readArtifactPolicyBoolean(artifactPolicy, "capture_screenshots", "captureScreenshot", "captureScreenshots"));
-  setOptionalString(normalized, "screenshot_mode", readArtifactPolicyString(artifactPolicy, "screenshot_mode", "screenshotMode"));
-  setOptionalBoolean(normalized, "capture_dom_snapshots", readArtifactPolicyBoolean(artifactPolicy, "capture_dom_snapshots", "captureDomSnapshot", "captureDomSnapshots"));
-  setOptionalBoolean(normalized, "capture_ax_tree", readArtifactPolicyBoolean(artifactPolicy, "capture_ax_tree", "captureAxTree"));
-  setOptionalBoolean(normalized, "capture_trace", readArtifactPolicyBoolean(artifactPolicy, "capture_trace", "captureTrace"));
-  setOptionalBoolean(normalized, "capture_har", readArtifactPolicyBoolean(artifactPolicy, "capture_har", "captureHar"));
-  setOptionalBoolean(normalized, "capture_performance", readArtifactPolicyBoolean(artifactPolicy, "capture_performance", "capturePerformance"));
-
-  return Object.keys(normalized).length > 0 ? normalized : null;
-}
-
-function readArtifactPolicyString(
-  artifactPolicy: RunExecuteMessage["payload"]["artifactPolicy"],
-  ...keys: string[]
-): string | undefined {
-  if (!artifactPolicy) {
-    return undefined;
-  }
-  const record = artifactPolicy as Record<string, unknown>;
-  for (const key of keys) {
-    const value = record[key];
-    if (typeof value === "string") {
-      return value;
-    }
-  }
-  return undefined;
-}
-
-function readArtifactPolicyBoolean(
-  artifactPolicy: RunExecuteMessage["payload"]["artifactPolicy"],
-  ...keys: string[]
-): boolean | undefined {
-  if (!artifactPolicy) {
-    return undefined;
-  }
-  const record = artifactPolicy as Record<string, unknown>;
-  for (const key of keys) {
-    const value = record[key];
-    if (typeof value === "boolean") {
-      return value;
-    }
-  }
-  return undefined;
-}
-
-function setOptionalBoolean<K extends keyof AgentArtifactPolicy>(
-  policy: AgentArtifactPolicy,
-  key: K,
-  value: boolean | undefined
-): void {
-  if (value !== undefined) {
-    policy[key] = value as never;
-  }
-}
-
-function setOptionalString<K extends keyof AgentArtifactPolicy>(
-  policy: AgentArtifactPolicy,
-  key: K,
-  value: string | undefined
-): void {
-  if (value !== undefined) {
-    policy[key] = value as never;
   }
 }
