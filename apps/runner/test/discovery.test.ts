@@ -138,6 +138,37 @@ test("[Discovery] DOM 앞쪽 노이즈가 많아도 보이는 CTA와 리드 form
   }
 });
 
+test("[Discovery] 배송/마감 안내 문구는 구매 진입점보다 낮게 취급한다", async () => {
+  const fixtureRoot = join(tmpdir(), `wedge-runner-discovery-checkout-noise-${process.pid}-${Date.now()}`);
+  await mkdir(fixtureRoot, { recursive: true });
+
+  try {
+    const fixturePath = join(fixtureRoot, "index.html");
+    await writeFile(fixturePath, createCheckoutNoiseDiscoveryFixtureHtml(), "utf8");
+    const fixtureUrl = pathToFileURL(fixturePath).toString();
+
+    const result = await executeDiscovery({
+      message: createDiscoveryExecuteMessage(fixtureUrl),
+      config: createRunnerTestConfig({
+        browserName: "chromium",
+        browserHeadless: true,
+        browserLaunchTimeoutMs: 30_000,
+        browserNavigationTimeoutMs: 30_000
+      })
+    });
+
+    const checkoutRecommendation = result.scenario_recommendations.find(
+      (recommendation) => recommendation.scenario_type === "PURCHASE_CHECKOUT"
+    );
+    assert.ok(checkoutRecommendation?.suggested_target);
+    assert.equal(checkoutRecommendation.suggested_target.selector, "#add-to-cart");
+    assert.equal(checkoutRecommendation.suggested_target.href_contains, "/cart");
+    assert.ok(!JSON.stringify(checkoutRecommendation.evidence_summary).includes("오전배송 주문 마감"));
+  } finally {
+    await rm(fixtureRoot, { recursive: true, force: true });
+  }
+});
+
 test("[Discovery] 입력 value는 추천 evidence나 observation에 저장하지 않는다", async () => {
   const fixtureRoot = join(tmpdir(), `wedge-runner-discovery-sensitive-${process.pid}-${Date.now()}`);
   await mkdir(fixtureRoot, { recursive: true });
@@ -361,6 +392,25 @@ function createSensitiveValueDiscoveryFixtureHtml(): string {
         <textarea id="company" name="company">email super-secret-user-value</textarea>
         <button type="submit" aria-labelledby="safe-form-label">Create account</button>
       </form>
+    </main>
+  </body>
+</html>`;
+}
+
+function createCheckoutNoiseDiscoveryFixtureHtml(): string {
+  return `<!doctype html>
+<html lang="ko">
+  <head><title>Checkout noise fixture</title></head>
+  <body>
+    <main>
+      <a id="delivery-deadline" href="/notice">
+        <img alt="12/21(월) 오전배송 주문 마감 안내" src="deadline.png" />
+      </a>
+      <a id="shipping-benefit" href="/shipping">무료배송 혜택 안내</a>
+      <section id="product-card">
+        <h2>딸기 선물세트</h2>
+        <a id="add-to-cart" href="/cart">장바구니 담기</a>
+      </section>
     </main>
   </body>
 </html>`;

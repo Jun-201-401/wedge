@@ -1301,7 +1301,7 @@ function keywordsFor(flowType: DiscoveryFlowType): string[] {
     case "PRICING":
       return ["pricing", "price", "plan", "starter", "요금", "가격", "플랜"];
     case "PURCHASE_CHECKOUT":
-      return ["checkout", "payment", "billing", "purchase", "cart", "결제", "구매", "장바구니"];
+      return checkoutActionKeywords();
     default:
       return [];
   }
@@ -1445,7 +1445,7 @@ function toDiscoveryCandidates(raw: RawDiscoveryElement): DiscoveryCandidate[] {
       entrypointType: "checkout",
       flowType: "PURCHASE_CHECKOUT",
       label,
-      confidence: searchable.includes("checkout") || searchable.includes("결제") || searchable.includes("payment") ? 0.8 : 0.66,
+      confidence: checkoutConfidence(raw, searchable),
       reason: "Checkout or payment entrypoint candidate was found.",
       observationType: "checkout_candidate",
       signals: matchedSignalsFor("PURCHASE_CHECKOUT", raw, searchable)
@@ -1813,8 +1813,88 @@ function isPricingCandidate(raw: RawDiscoveryElement, searchable: string): boole
 }
 
 function isCheckoutCandidate(raw: RawDiscoveryElement, searchable: string): boolean {
-  return hasAny(searchable, ["checkout", "payment", "billing", "purchase", "cart", "order", "결제", "구매", "장바구니", "주문"])
-    && isInteractive(raw);
+  if (!isInteractive(raw)) {
+    return false;
+  }
+
+  if (isPassiveCheckoutContext(searchable) && !hasStrongCheckoutAction(searchable)) {
+    return false;
+  }
+
+  return hasAny(searchable, checkoutActionKeywords());
+}
+
+function checkoutConfidence(raw: RawDiscoveryElement, searchable: string): number {
+  if (hasAny(searchable, ["checkout", "payment", "cart", "결제", "장바구니"])) {
+    return 0.82;
+  }
+
+  if (hasAny(searchable, ["buy now", "purchase", "바로구매", "구매하기", "주문하기"])) {
+    return 0.8;
+  }
+
+  if (raw.href && hasStrongCheckoutAction(searchable)) {
+    return 0.72;
+  }
+
+  return 0.62;
+}
+
+function hasStrongCheckoutAction(searchable: string): boolean {
+  return hasAny(searchable, [
+    "checkout",
+    "payment",
+    "billing",
+    "purchase",
+    "cart",
+    "buy now",
+    "add to cart",
+    "결제",
+    "구매하기",
+    "바로구매",
+    "장바구니",
+    "장바구니 담기",
+    "담기",
+    "주문하기"
+  ]);
+}
+
+function checkoutActionKeywords(): string[] {
+  return [
+    "checkout",
+    "payment",
+    "billing",
+    "purchase",
+    "cart",
+    "buy now",
+    "add to cart",
+    "결제",
+    "구매하기",
+    "바로구매",
+    "장바구니",
+    "장바구니 담기",
+    "담기",
+    "주문하기"
+  ];
+}
+
+function isPassiveCheckoutContext(searchable: string): boolean {
+  return hasAny(searchable, [
+    "배송",
+    "오전배송",
+    "무료배송",
+    "마감",
+    "주문 마감",
+    "배송 안내",
+    "배송비",
+    "주문 폭주",
+    "혜택",
+    "할인",
+    "쿠폰",
+    "카드 할인",
+    "적립",
+    "안내"
+  ]);
 }
 
 function isUnsafeNavigationText(text: string): boolean {
