@@ -416,14 +416,6 @@
   box-shadow: none;
 }
 
-.create-analysis-panel--ready {
-  width: min(100%, 48rem);
-  padding: 0;
-  border: 0;
-  background: transparent;
-  box-shadow: none;
-}
-
 .create-analysis-panel__eyebrow {
   margin: 0 0 0.7rem;
   color: #0ea5e9;
@@ -494,8 +486,7 @@
 .preflight-agent,
 .recommendation-agent,
 .manual-choice-agent,
-.scenario-setup-agent,
-.ready-agent {
+.scenario-setup-agent {
   box-sizing: border-box;
   width: 100%;
   min-width: 0;
@@ -511,8 +502,7 @@
 .preflight-agent__header,
 .recommendation-agent__header,
 .manual-choice-agent__header,
-.scenario-setup-agent__header,
-.ready-agent__header {
+.scenario-setup-agent__header {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -522,8 +512,7 @@
 .preflight-agent__header-main,
 .recommendation-agent__header-main,
 .manual-choice-agent__header-main,
-.scenario-setup-agent__header-main,
-.ready-agent__header-main {
+.scenario-setup-agent__header-main {
   display: flex;
   min-width: 0;
   align-items: center;
@@ -551,16 +540,14 @@
 .preflight-agent__header-copy,
 .recommendation-agent__header-copy,
 .manual-choice-agent__header-copy,
-.scenario-setup-agent__header-copy,
-.ready-agent__header-copy {
+.scenario-setup-agent__header-copy {
   min-width: 0;
 }
 
 .preflight-agent__header-copy p,
 .recommendation-agent__header-copy p,
 .manual-choice-agent__header-copy p,
-.scenario-setup-agent__header-copy p,
-.ready-agent__header-copy p {
+.scenario-setup-agent__header-copy p {
   margin: 0 0 0.24rem;
   color: #0ea5e9;
   font-size: 0.66rem;
@@ -572,8 +559,7 @@
 .preflight-agent__header-copy h2,
 .recommendation-agent__header-copy h2,
 .manual-choice-agent__header-copy h2,
-.scenario-setup-agent__header-copy h2,
-.ready-agent__header-copy h2 {
+.scenario-setup-agent__header-copy h2 {
   margin: 0;
   color: #1e293b;
   font-size: 1.125rem;
@@ -582,8 +568,7 @@
   letter-spacing: -0.03em;
 }
 
-.scenario-setup-agent__header-status,
-.ready-agent__header-status {
+.scenario-setup-agent__header-status {
   display: flex;
   align-items: center;
   gap: 0.42rem;
@@ -594,8 +579,7 @@
   letter-spacing: 0.01em;
 }
 
-.scenario-setup-agent__header-status-dot,
-.ready-agent__header-status-dot {
+.scenario-setup-agent__header-status-dot {
   position: relative;
   width: 0.38rem;
   height: 0.38rem;
@@ -603,8 +587,7 @@
   background: #7dd3fc;
 }
 
-.scenario-setup-agent__header-status-dot::after,
-.ready-agent__header-status-dot::after {
+.scenario-setup-agent__header-status-dot::after {
   content: '';
   position: absolute;
   inset: 0;
@@ -1149,8 +1132,35 @@
   overflow: hidden;
 }
 
+.scenario-card--recommended,
+.scenario-card--low,
+.scenario-card--unavailable {
+  background: #f8fafc;
+}
+
+.scenario-card--available {
+  background: rgba(248, 250, 252, 0.76);
+}
+
 .scenario-card__level {
   margin-bottom: 1rem;
+}
+
+.recommendation-agent .scenario-card--recommended:hover,
+.recommendation-agent .scenario-card--recommended:focus-within {
+  background: #f3f6fa;
+}
+
+.recommendation-agent .scenario-card--available:hover,
+.recommendation-agent .scenario-card--available:focus-within {
+  background: #f8fafc;
+}
+
+.recommendation-agent .scenario-card--low:hover,
+.recommendation-agent .scenario-card--low:focus-within,
+.recommendation-agent .scenario-card--unavailable:hover,
+.recommendation-agent .scenario-card--unavailable:focus-within {
+  background: #f4f7fb;
 }
 
 .scenario-card--low .scenario-card__level {
@@ -1183,7 +1193,7 @@
   padding: 0.88rem 0.92rem;
   border: 0;
   border-radius: 1rem;
-  background: #e8eef5;
+  background: #eef3f8;
 }
 
 .scenario-card__context-row {
@@ -1231,253 +1241,12 @@
   line-height: 1.5;
 }
 
-
-.ready-agent__badge {
-  display: inline-flex;
-  flex: 0 0 auto;
-  align-items: center;
-  justify-content: center;
-  padding: 0.48rem 0.72rem;
-  border-radius: 999px;
-  color: #0369a1;
-  background: rgba(224, 242, 254, 0.84);
-  font-size: 0.72rem;
-  font-weight: 900;
-}
-
-.ready-agent__url-card {
-  overflow: hidden;
-  margin: 1.25rem 0 0;
-  padding: 0.8rem 0.95rem;
-  border-radius: 1rem;
-  background: rgba(248, 250, 252, 0.78);
-}
-
-.ready-agent__url-card span,
-.ready-agent__summary-card span,
-.ready-agent__scenario-plan-head span,
-.ready-agent__notice span {
-  display: block;
-  margin-bottom: 0.34rem;
-  color: #0ea5e9;
-  font-size: 0.66rem;
-  font-weight: 900;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-}
-
-.ready-agent__url-card strong {
-  display: block;
-  overflow: hidden;
-  color: #334155;
-  font-size: 0.92rem;
-  font-weight: 800;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.ready-agent__summary-grid {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 0.85rem;
-  margin-top: 0.85rem;
-}
-
-.ready-agent__summary-card {
-  min-width: 0;
-  padding: 1rem;
-  border: 0;
-  border-radius: 1.15rem;
-  background: rgba(255, 255, 255, 0.96);
-}
-
-.ready-agent__summary-card strong {
-  display: block;
-  color: #1e293b;
-  font-size: 0.98rem;
-  font-weight: 800;
-  letter-spacing: -0.025em;
-}
-
-.ready-agent__summary-card p {
-  margin: 0.5rem 0 0;
-  color: #64748b;
-  font-size: 0.8rem;
-  font-weight: 500;
-  line-height: 1.48;
-}
-
-.ready-agent__launch-plan {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 0.7rem;
-  margin-top: 0.9rem;
-}
-
-.ready-agent__launch-plan div {
-  display: flex;
-  align-items: center;
-  gap: 0.55rem;
-  min-width: 0;
-  padding: 0.72rem 0.8rem;
-  border-radius: 1rem;
-  background: rgba(240, 249, 255, 0.58);
-}
-
-.ready-agent__launch-step {
-  display: inline-flex;
-  flex: 0 0 auto;
-  width: 1.45rem;
-  height: 1.45rem;
-  align-items: center;
-  justify-content: center;
-  border-radius: 999px;
-  color: #fff;
-  background: #7dd3fc;
-  font-size: 0.74rem;
-  font-weight: 900;
-}
-
-.ready-agent__launch-plan p {
-  overflow: hidden;
-  margin: 0;
-  color: #334155;
-  font-size: 0.82rem;
-  font-weight: 800;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.ready-agent__scenario-plan {
-  margin-top: 0.9rem;
-  padding: 1rem;
-  border: 0;
-  border-radius: 1.15rem;
-  background: rgba(240, 249, 255, 0.88);
-  box-shadow: 0 10px 24px rgba(14, 165, 233, 0.06);
-  transition: box-shadow 0.2s ease, transform 0.2s ease;
-}
-
-.ready-agent__scenario-plan:hover,
-.ready-agent__scenario-plan:focus-within {
-  box-shadow: 0 14px 28px rgba(14, 165, 233, 0.1);
-  transform: translateY(-1px);
-}
-
-.ready-agent__scenario-plan-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 0.8rem;
-}
-
-.ready-agent__scenario-plan-head strong {
-  display: block;
-  color: #1e293b;
-  font-size: 0.98rem;
-  font-weight: 800;
-  letter-spacing: -0.025em;
-}
-
-.ready-agent__scenario-plan-head small {
-  flex: 0 0 auto;
-  padding: 0.32rem 0.54rem;
-  border-radius: 999px;
-  color: #0369a1;
-  background: rgba(224, 242, 254, 0.9);
-  font-size: 0.68rem;
-  font-weight: 900;
-}
-
-.ready-agent__scenario-plan-url {
-  overflow: hidden;
-  margin: 0.72rem 0 0;
-  color: #64748b;
-  font-size: 0.78rem;
-  font-weight: 700;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.ready-agent__scenario-steps {
-  display: grid;
-  gap: 0.55rem;
-  margin: 0.85rem 0 0;
-  padding: 0;
-  list-style: none;
-}
-
-.ready-agent__scenario-steps li {
-  padding: 0.72rem 0.8rem;
-  border-radius: 0.9rem;
-  background: rgba(255, 255, 255, 0.82);
-}
-
-.ready-agent__scenario-steps strong {
-  display: block;
-  color: #334155;
-  font-size: 0.875rem;
-  font-weight: 900;
-}
-
-.ready-agent__scenario-steps p {
-  margin: 0.32rem 0 0;
-  color: #64748b;
-  font-size: 0.875rem;
-  font-weight: 500;
-  line-height: 1.5;
-}
-
-.ready-agent__notice {
-  margin-top: 0.9rem;
-  padding: 0.9rem 1rem;
-  border-radius: 1rem;
-  background: rgba(248, 250, 252, 0.76);
-}
-
-.ready-agent__notice strong {
-  display: block;
-  overflow: hidden;
-  color: #334155;
-  font-size: 0.98rem;
-  font-weight: 700;
-  letter-spacing: -0.025em;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.ready-agent__notice p {
-  margin: 0.48rem 0 0;
-  color: #64748b;
-  font-size: 0.8rem;
-  font-weight: 500;
-  line-height: 1.48;
-}
-
-.ready-agent__warning {
+.create-analysis-run-warning {
   margin: 0.9rem 0 0;
-  color: #64748b;
-  font-size: 0.84rem;
-  line-height: 1.55;
-}
-
-.ready-agent__warning {
   color: #0369a1;
+  font-size: 0.84rem;
   font-weight: 800;
-}
-
-.ready-agent__actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.75rem;
-  align-items: center;
-  margin-top: 1.35rem;
-}
-
-.ready-agent__primary-action {
-  margin-top: 0;
-  background: #334155;
-  box-shadow: 0 10px 22px rgba(51, 65, 85, 0.12);
+  line-height: 1.55;
 }
 
 @keyframes createAnalysisSearchAmbientGlow {
@@ -1603,16 +1372,14 @@
 
   .create-analysis-panel--recommendations,
   .create-analysis-panel--manual-choice,
-  .create-analysis-panel--onboarding,
-  .create-analysis-panel--ready {
+  .create-analysis-panel--onboarding {
     width: 100%;
   }
 
   .preflight-agent,
   .recommendation-agent,
   .manual-choice-agent,
-  .scenario-setup-agent,
-  .ready-agent {
+  .scenario-setup-agent {
     padding: 1.25rem;
     border-radius: 1.5rem;
   }
@@ -1620,8 +1387,7 @@
   .preflight-agent__header,
   .recommendation-agent__header,
   .manual-choice-agent__header,
-  .scenario-setup-agent__header,
-  .ready-agent__header {
+  .scenario-setup-agent__header {
     align-items: flex-start;
   }
 
@@ -1633,16 +1399,14 @@
   .preflight-agent__header-copy h2,
   .recommendation-agent__header-copy h2,
   .manual-choice-agent__header-copy h2,
-  .scenario-setup-agent__header-copy h2,
-  .ready-agent__header-copy h2 {
+  .scenario-setup-agent__header-copy h2 {
     font-size: 1rem;
   }
 
   .preflight-agent__url,
   .recommendation-agent__url,
   .manual-choice-agent__url,
-  .scenario-setup-agent__selected-flow,
-  .ready-agent__url-card {
+  .scenario-setup-agent__selected-flow {
     margin-top: 1rem;
   }
 
@@ -1690,15 +1454,8 @@
 
   .preflight-agent__detail,
   .preflight-agent__note,
-  .scenario-depth-option__copy span,
-  .ready-agent__summary-card p,
-  .ready-agent__notice p {
+  .scenario-depth-option__copy span {
     font-size: 0.78rem;
-  }
-
-  .ready-agent__summary-grid,
-  .ready-agent__launch-plan {
-    grid-template-columns: 1fr;
   }
 }
 
@@ -1709,8 +1466,6 @@
   .create-analysis-search__send,
   .create-analysis-search__status-dot,
   .scenario-setup-agent__header-status-dot::after,
-  .ready-agent__header-status-dot::after,
-  .ready-agent__scenario-plan,
   .preflight-agent__rail-stream,
   .preflight-agent__node-spinner,
   .preflight-agent__node-spinner-ring {
@@ -1803,10 +1558,6 @@
 .scenario-card--available .scenario-card__level {
   color: #047857;
   background: rgba(209, 250, 229, 0.86);
-}
-
-.scenario-card--unavailable {
-  background: rgba(248, 250, 252, 0.82);
 }
 
 .scenario-card--unavailable .scenario-card__level {

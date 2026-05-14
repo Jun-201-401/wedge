@@ -15,7 +15,6 @@ import {
   buildCreateAnalysisPath,
   createManualChoiceRouteState,
   createRecommendationChoiceRouteState,
-  createScenarioReadyRouteState,
   parseCreateAnalysisRouteState,
   readCreateRunContextFromEnv,
   type CreateAnalysisRouteOptions,
@@ -331,6 +330,8 @@ interface RecommendationAgentProps {
   submittedUrl: string;
   scenarios: ScenarioRecommendation[];
   emptyMessage?: string;
+  isStartingRun: boolean;
+  runStartError: string;
   onChooseScenario: (scenario: ScenarioRecommendation) => void;
   onOpenManualChoice: () => void;
 }
@@ -338,6 +339,8 @@ interface RecommendationAgentProps {
 interface ManualChoiceAgentProps {
   submittedUrl: string;
   scenarios: ScenarioRecommendation[];
+  isStartingRun: boolean;
+  runStartError: string;
   onChooseScenario: (scenario: ScenarioRecommendation) => void;
   onBackToRecommendations: () => void;
 }
@@ -346,19 +349,8 @@ interface ScenarioSetupAgentProps {
   selectedScenario: ScenarioRecommendation;
   selectedDepthId: ScenarioDepthId;
   onDepthChange: (depthId: ScenarioDepthId) => void;
-  onReady: () => void;
-}
-
-interface ReadyAgentProps {
-  submittedUrl: string;
-  selectedScenario: ScenarioRecommendation;
-  selectedDepth: ScenarioDepthOption;
-  scenarioAuthoringEnabled: boolean;
-  scenarioAuthoringState: ScenarioAuthoringUiState;
-  isCreatingRun: boolean;
-  runStartError: string;
-  onChooseDifferentScenario: () => void;
   onStartRun: () => void;
+  isStartingRun: boolean;
 }
 
 function PreflightNode({ status }: { status: DiscoveryStepStatus }) {
@@ -463,7 +455,15 @@ function PreflightAgent({ submittedUrl, discoveryState, onRetry, onEditUrl }: Pr
   );
 }
 
-function RecommendationAgent({ submittedUrl, scenarios, emptyMessage, onChooseScenario, onOpenManualChoice }: RecommendationAgentProps) {
+function RecommendationAgent({
+  submittedUrl,
+  scenarios,
+  emptyMessage,
+  isStartingRun,
+  runStartError,
+  onChooseScenario,
+  onOpenManualChoice,
+}: RecommendationAgentProps) {
   const visibleScenarios = scenarios.filter((scenario) => scenario.isRunnable);
   const detectedScenarioCount = visibleScenarios.length;
   const hasDetectedScenarios = detectedScenarioCount > 0;
@@ -533,13 +533,20 @@ function RecommendationAgent({ submittedUrl, scenarios, emptyMessage, onChooseSc
                   type="button"
                   aria-label={`${scenario.title} 흐름으로 진단`}
                   onClick={() => onChooseScenario(scenario)}
+                  disabled={isStartingRun}
                 >
-                  {scenario.actionLabel}
+                  {isStartingRun ? '분석 시작 중…' : scenario.actionLabel}
                 </button>
               </article>
             ))}
           </div>
         )}
+
+        {runStartError ? (
+          <p className="create-analysis-run-warning" role="status">
+            {runStartError}
+          </p>
+        ) : null}
 
         {hasDetectedScenarios && hasManualScenarios ? (
           <div className="recommendation-agent__manual-entry">
@@ -557,7 +564,14 @@ function RecommendationAgent({ submittedUrl, scenarios, emptyMessage, onChooseSc
   );
 }
 
-function ManualChoiceAgent({ submittedUrl, scenarios, onChooseScenario, onBackToRecommendations }: ManualChoiceAgentProps) {
+function ManualChoiceAgent({
+  submittedUrl,
+  scenarios,
+  isStartingRun,
+  runStartError,
+  onChooseScenario,
+  onBackToRecommendations,
+}: ManualChoiceAgentProps) {
   const submittedUrlLabel = formatDisplayUrl(submittedUrl);
 
   return (
@@ -583,6 +597,7 @@ function ManualChoiceAgent({ submittedUrl, scenarios, onChooseScenario, onBackTo
               className="manual-choice-agent__option"
               type="button"
               onClick={() => onChooseScenario(scenario)}
+              disabled={isStartingRun}
             >
               <span>{scenario.levelLabel}</span>
               <strong>{scenario.title}</strong>
@@ -591,7 +606,13 @@ function ManualChoiceAgent({ submittedUrl, scenarios, onChooseScenario, onBackTo
           ))}
         </div>
 
-        <button className="create-analysis-secondary-action manual-choice-agent__back" type="button" onClick={onBackToRecommendations}>
+        {runStartError ? (
+          <p className="create-analysis-run-warning" role="status">
+            {runStartError}
+          </p>
+        ) : null}
+
+        <button className="create-analysis-secondary-action manual-choice-agent__back" type="button" onClick={onBackToRecommendations} disabled={isStartingRun}>
           추천 흐름으로 돌아가기
         </button>
       </div>
@@ -599,7 +620,7 @@ function ManualChoiceAgent({ submittedUrl, scenarios, onChooseScenario, onBackTo
   );
 }
 
-function ScenarioSetupAgent({ selectedScenario, selectedDepthId, onDepthChange, onReady }: ScenarioSetupAgentProps) {
+function ScenarioSetupAgent({ selectedScenario, selectedDepthId, onDepthChange, onStartRun, isStartingRun }: ScenarioSetupAgentProps) {
   return (
     <section className="create-analysis-panel create-analysis-panel--onboarding" aria-labelledby="onboarding-title">
       <div className="scenario-setup-agent">
@@ -649,8 +670,8 @@ function ScenarioSetupAgent({ selectedScenario, selectedDepthId, onDepthChange, 
           })}
         </div>
 
-        <button className="create-analysis-panel__action scenario-setup-agent__action" type="button" onClick={onReady}>
-          진단 시작 준비
+        <button className="create-analysis-panel__action scenario-setup-agent__action" type="button" onClick={onStartRun} disabled={isStartingRun}>
+          {isStartingRun ? '분석 시작 중…' : '분석 시작하기'}
         </button>
       </div>
     </section>
@@ -659,156 +680,6 @@ function ScenarioSetupAgent({ selectedScenario, selectedDepthId, onDepthChange, 
 
 function isScenarioAuthoringBusy(state: ScenarioAuthoringUiState) {
   return state.kind === 'creating' || state.kind === 'polling';
-}
-
-function getAuthoringStatusText(state: ScenarioAuthoringUiState, isEnabled: boolean) {
-  switch (state.kind) {
-    case 'creating':
-      return '사이트 맞춤 시나리오 생성 요청 중';
-    case 'polling':
-      return getAuthoringPollingStatusText(state.status);
-    case 'succeeded':
-      return '사이트 맞춤 시나리오 준비 완료';
-    case 'failed':
-      return '기본 추천 흐름으로 시작 가능';
-    default:
-      return isEnabled ? '사이트 맞춤 시나리오 생성 대기 중' : '기본 추천 흐름으로 시작 가능';
-  }
-}
-
-function getAuthoringPollingStatusText(status: string) {
-  switch (status) {
-    case 'CREATED':
-    case 'QUEUED':
-      return '사이트 맞춤 시나리오 생성 대기 중';
-    case 'RUNNING':
-      return '사이트 맞춤 시나리오 생성 중';
-    case 'SUCCEEDED':
-      return '사이트 맞춤 시나리오 준비 완료';
-    case 'FAILED':
-    case 'CANCELED':
-    case 'EXPIRED':
-      return '기본 추천 흐름으로 시작 가능';
-    default:
-      return '시나리오 생성 상태 확인 중';
-  }
-}
-
-function ReadyAgent({
-  submittedUrl,
-  selectedScenario,
-  selectedDepth,
-  scenarioAuthoringEnabled,
-  scenarioAuthoringState,
-  isCreatingRun,
-  runStartError,
-  onChooseDifferentScenario,
-  onStartRun,
-}: ReadyAgentProps) {
-  const preview = scenarioAuthoringState.kind === 'succeeded' ? scenarioAuthoringState.preview : null;
-  const submittedUrlLabel = formatDisplayUrl(submittedUrl);
-  const previewStartUrlLabel = preview?.startUrl ? formatDisplayUrl(preview.startUrl) : '';
-
-  return (
-    <section className="create-analysis-panel create-analysis-panel--ready" aria-labelledby="ready-title">
-      <div className="ready-agent">
-        <div className="ready-agent__header">
-          <div className="ready-agent__header-main">
-            <div className="ready-agent__header-copy">
-              <h2 id="ready-title">분석 시작 준비 완료</h2>
-              <div className="ready-agent__header-status">
-                <span className="ready-agent__header-status-dot" aria-hidden="true" />
-                <span>{getAuthoringStatusText(scenarioAuthoringState, scenarioAuthoringEnabled)}</span>
-              </div>
-            </div>
-          </div>
-
-          <span className="ready-agent__badge">준비 완료</span>
-        </div>
-
-        <div className="ready-agent__url-card">
-          <span>대상 URL</span>
-          <strong title={submittedUrl}>{submittedUrlLabel}</strong>
-        </div>
-
-        <div className="ready-agent__summary-grid" aria-label="진단 시작 전 요약">
-          <article className="ready-agent__summary-card">
-            <span>진단 흐름</span>
-            <strong>{selectedScenario.title}</strong>
-            <p>{selectedScenario.summary}</p>
-          </article>
-          <article className="ready-agent__summary-card">
-            <span>확인 범위</span>
-            <strong>{selectedDepth.title}</strong>
-            <p>{selectedDepth.detail}</p>
-          </article>
-        </div>
-
-        {preview ? (
-          <div className="ready-agent__scenario-plan" aria-label="생성된 시나리오 단계 미리보기">
-            <div className="ready-agent__scenario-plan-head">
-              <div>
-                <span>생성된 흐름</span>
-                <strong>{preview.title}</strong>
-              </div>
-              <small>{preview.stepCount}단계</small>
-            </div>
-            {preview.startUrl ? <p className="ready-agent__scenario-plan-url" title={preview.startUrl}>{previewStartUrlLabel}</p> : null}
-            <ol className="ready-agent__scenario-steps">
-              {preview.steps.map((step) => (
-                <li key={step.id}>
-                  <strong>{step.label}</strong>
-                  <p>{step.detail}</p>
-                </li>
-              ))}
-            </ol>
-          </div>
-        ) : (
-          <div className="ready-agent__launch-plan" aria-label="분석 시작 후 진행 단계">
-            <div>
-              <span className="ready-agent__launch-step">1</span>
-              <p>시나리오 생성</p>
-            </div>
-            <div>
-              <span className="ready-agent__launch-step">2</span>
-              <p>마찰 기록</p>
-            </div>
-            <div>
-              <span className="ready-agent__launch-step">3</span>
-              <p>리포트 생성</p>
-            </div>
-          </div>
-        )}
-
-        <div className="ready-agent__notice">
-          <span>안전 설정</span>
-          <strong>안전하게 탐색합니다</strong>
-          <p>{preview?.safetyLabel ?? '실제 결제, 삭제, 변경 같은 위험 행동은 수행하지 않아요.'}</p>
-        </div>
-
-        {scenarioAuthoringState.kind === 'failed' ? (
-          <p className="ready-agent__warning" role="status">
-            {scenarioAuthoringState.message}
-          </p>
-        ) : null}
-
-        {runStartError && (
-          <p className="ready-agent__warning" role="status">
-            {runStartError}
-          </p>
-        )}
-
-        <div className="ready-agent__actions">
-          <button className="create-analysis-panel__action ready-agent__primary-action" type="button" onClick={onStartRun} disabled={isCreatingRun}>
-            {isCreatingRun ? '시나리오 준비 중…' : '분석 시작하기'}
-          </button>
-          <button className="create-analysis-secondary-action" type="button" onClick={onChooseDifferentScenario} disabled={isCreatingRun}>
-            다른 흐름 선택
-          </button>
-        </div>
-      </div>
-    </section>
-  );
 }
 
 export function CreateAnalysisPage({ isAuthenticated = false, isAuthChecking = false, onLogout }: CreateAnalysisPageProps) {
@@ -841,24 +712,7 @@ export function CreateAnalysisPage({ isAuthenticated = false, isAuthChecking = f
     [routeState.scenarioId, selectableScenarios],
   );
   const selectedDepthId = routeState.depthId ?? DEFAULT_SCENARIO_DEPTH_ID;
-  const selectedDepth = useMemo(() => findDepthById(selectedDepthId), [selectedDepthId]);
   const createRunIds = useMemo(() => getCreateRunIds(routeState), [routeState]);
-  const scenarioAuthoringRequestKey = useMemo(() => {
-    if (!selectedScenario || !createRunIds?.scenarioTemplateVersionId || !selectedScenario.sourceDiscoveryId) {
-      return null;
-    }
-
-    if (!isScenarioAuthoringSupportedType(selectedScenario.scenarioType)) {
-      return null;
-    }
-
-    return createScenarioAuthoringIdempotencyKey(
-      createRunIds.projectId,
-      selectedScenario.sourceDiscoveryId,
-      selectedScenario.scenarioType,
-      selectedDepthId,
-    );
-  }, [createRunIds, selectedDepthId, selectedScenario]);
   const scenarioAuthoringBusy = isScenarioAuthoringBusy(scenarioAuthoringState);
 
   useEffect(() => {
@@ -1107,11 +961,11 @@ export function CreateAnalysisPage({ isAuthenticated = false, isAuthChecking = f
   };
 
   const chooseScenario = (scenario: ScenarioRecommendation) => {
-    if (!submittedUrl || !scenario.isRunnable) {
+    if (!submittedUrl || !scenario.isRunnable || isCreatingRun || scenarioAuthoringBusy) {
       return;
     }
 
-    navigateToRouteState(createScenarioReadyRouteState(routeState, submittedUrl, scenario.id, DEFAULT_SCENARIO_DEPTH_ID));
+    void startAnalysisRun(scenario, DEFAULT_SCENARIO_DEPTH_ID);
   };
 
   const openManualChoice = () => {
@@ -1139,34 +993,22 @@ export function CreateAnalysisPage({ isAuthenticated = false, isAuthChecking = f
     );
   };
 
-  const showReady = () => {
-    if (!submittedUrl || !selectedScenario) {
+  const startSelectedScenarioRun = () => {
+    if (!submittedUrl || !selectedScenario || isCreatingRun || scenarioAuthoringBusy) {
       return;
     }
 
-    navigateToRouteState({
-      ...routeState,
-      stage: 'ready',
-      submittedUrl,
-      scenarioId: selectedScenario.id,
-      depthId: selectedDepthId,
-    });
+    void startAnalysisRun(selectedScenario, selectedDepthId);
   };
 
-  const chooseDifferentScenario = () => {
-    if (!submittedUrl || isCreatingRun || scenarioAuthoringBusy) {
-      return;
-    }
+  const createAndConfirmScenarioPlan = useCallback(async (scenario: ScenarioRecommendation, depthId: ScenarioDepthId) => {
+    const depth = findDepthById(depthId);
 
-    navigateToRouteState(createRecommendationChoiceRouteState(routeState, submittedUrl));
-  };
-
-  const createAndConfirmScenarioPlan = useCallback(async () => {
-    if (!selectedScenario || !createRunIds?.scenarioTemplateVersionId || !selectedScenario.sourceDiscoveryId) {
+    if (!createRunIds?.scenarioTemplateVersionId || !scenario.sourceDiscoveryId) {
       return null;
     }
 
-    if (!isScenarioAuthoringSupportedType(selectedScenario.scenarioType)) {
+    if (!isScenarioAuthoringSupportedType(scenario.scenarioType)) {
       return null;
     }
 
@@ -1175,23 +1017,23 @@ export function CreateAnalysisPage({ isAuthenticated = false, isAuthChecking = f
     setScenarioAuthoringState({ kind: 'creating' });
     const created = await createScenarioAuthoringJob({
       projectId: createRunIds.projectId,
-      sourceDiscoveryId: selectedScenario.sourceDiscoveryId,
-      selectedRecommendationId: selectedScenario.recommendationId ?? null,
-      requestedGoal: `${selectedScenario.title} · ${selectedDepth.title}`,
-      preferredScenarioType: selectedScenario.scenarioType,
-      selectedRecommendation: selectedScenario.recommendationId ? null : {
+      sourceDiscoveryId: scenario.sourceDiscoveryId,
+      selectedRecommendationId: scenario.recommendationId ?? null,
+      requestedGoal: `${scenario.title} · ${depth.title}`,
+      preferredScenarioType: scenario.scenarioType,
+      selectedRecommendation: scenario.recommendationId ? null : {
         recommendationId: null,
-        scenarioType: selectedScenario.scenarioType,
-        recommendationLevel: selectedScenario.level,
-        confidence: selectedScenario.confidence,
-        evidenceRefs: selectedScenario.evidenceRefs,
-        evidenceSummary: selectedScenario.evidenceSummary ?? null,
-        suggestedStartUrl: selectedScenario.suggestedStartUrl ?? null,
-        suggestedTarget: selectedScenario.suggestedTarget ?? null,
+        scenarioType: scenario.scenarioType,
+        recommendationLevel: scenario.level,
+        confidence: scenario.confidence,
+        evidenceRefs: scenario.evidenceRefs,
+        evidenceSummary: scenario.evidenceSummary ?? null,
+        suggestedStartUrl: scenario.suggestedStartUrl ?? null,
+        suggestedTarget: scenario.suggestedTarget ?? null,
       },
       constraints: {
-        depthId: selectedDepthId,
-        depthTitle: selectedDepth.title,
+        depthId,
+        depthTitle: depth.title,
       },
       providerPolicy: {
         providerOrder: ['RULE_BASED'],
@@ -1202,9 +1044,9 @@ export function CreateAnalysisPage({ isAuthenticated = false, isAuthChecking = f
     }, {
       idempotencyKey: createScenarioAuthoringIdempotencyKey(
         createRunIds.projectId,
-        selectedScenario.sourceDiscoveryId,
-        selectedScenario.scenarioType,
-        selectedDepthId,
+        scenario.sourceDiscoveryId,
+        scenario.scenarioType,
+        depthId,
       ),
     });
 
@@ -1265,25 +1107,10 @@ export function CreateAnalysisPage({ isAuthenticated = false, isAuthChecking = f
     }
 
     throw new Error('사이트 맞춤 시나리오 생성 시간이 초과됐습니다.');
-  }, [createRunIds, selectedDepth.title, selectedDepthId, selectedScenario]);
+  }, [createRunIds]);
 
-  useEffect(() => {
-    if (stage !== 'ready' || !scenarioAuthoringRequestKey || scenarioAuthoringState.kind !== 'idle') {
-      return;
-    }
-
-    void createAndConfirmScenarioPlan().catch((error) => {
-      setScenarioAuthoringState({
-        kind: 'failed',
-        message: error instanceof Error
-          ? `${error.message} 기본 추천 흐름으로 분석을 시작할 수 있어요.`
-          : '사이트 맞춤 시나리오 생성에 실패해 기본 추천 흐름으로 분석을 시작할 수 있어요.',
-      });
-    });
-  }, [createAndConfirmScenarioPlan, scenarioAuthoringRequestKey, scenarioAuthoringState.kind, stage]);
-
-  const startAnalysisRun = async () => {
-    if (!submittedUrl || !selectedScenario || isCreatingRun || scenarioAuthoringBusy) {
+  const startAnalysisRun = async (scenario: ScenarioRecommendation, depthId: ScenarioDepthId) => {
+    if (!submittedUrl || !scenario.isRunnable || isCreatingRun || scenarioAuthoringBusy) {
       return;
     }
 
@@ -1299,47 +1126,39 @@ export function CreateAnalysisPage({ isAuthenticated = false, isAuthChecking = f
     let createdRunId = '';
 
     try {
-      let authoredScenario = scenarioAuthoringState.kind === 'succeeded'
-        ? {
-          authoringJobId: scenarioAuthoringState.authoringJobId,
-          candidate: scenarioAuthoringState.candidate,
-          preview: scenarioAuthoringState.preview,
-        }
-        : null;
+      let authoredScenario = null;
 
-      if (!authoredScenario && scenarioAuthoringState.kind !== 'failed') {
-        try {
-          authoredScenario = await createAndConfirmScenarioPlan();
-        } catch (error) {
-          setScenarioAuthoringState({
-            kind: 'failed',
-            message: error instanceof Error
-              ? `${error.message} 기본 추천 흐름으로 분석을 시작합니다.`
-              : '사이트 맞춤 시나리오 생성에 실패해 기본 추천 흐름으로 분석을 시작합니다.',
-          });
-        }
+      try {
+        authoredScenario = await createAndConfirmScenarioPlan(scenario, depthId);
+      } catch (error) {
+        setScenarioAuthoringState({
+          kind: 'failed',
+          message: error instanceof Error
+            ? `${error.message} 기본 추천 흐름으로 분석을 시작합니다.`
+            : '사이트 맞춤 시나리오 생성에 실패해 기본 추천 흐름으로 분석을 시작합니다.',
+        });
       }
 
       const scenarioPlan = authoredScenario?.candidate.scenario_plan ?? null;
-      const runStartUrl = scenarioPlan ? requireConfirmedScenarioPlanStartUrl(scenarioPlan) : selectedScenario.suggestedStartUrl ?? submittedUrl;
-      const runGoal = scenarioPlan ? selectedScenario.title : selectedScenario.summary;
+      const runStartUrl = scenarioPlan ? requireConfirmedScenarioPlanStartUrl(scenarioPlan) : scenario.suggestedStartUrl ?? submittedUrl;
+      const runGoal = scenarioPlan ? scenario.title : scenario.summary;
       const scenarioOverrides: Record<string, unknown> = {
-        depthId: selectedDepthId,
-        source: 'create-analysis-agent-ready',
-        sourceDiscoveryId: selectedScenario.sourceDiscoveryId ?? null,
-        recommendationId: selectedScenario.recommendationId ?? null,
-        scenarioType: selectedScenario.scenarioType,
-        evidenceRefs: selectedScenario.evidenceRefs,
-        evidenceSummary: selectedScenario.evidenceSummary ?? null,
-        suggestedStartUrl: selectedScenario.suggestedStartUrl ?? null,
-        suggestedTarget: selectedScenario.suggestedTarget ?? null,
+        depthId,
+        source: 'create-analysis-agent-selection',
+        sourceDiscoveryId: scenario.sourceDiscoveryId ?? null,
+        recommendationId: scenario.recommendationId ?? null,
+        scenarioType: scenario.scenarioType,
+        evidenceRefs: scenario.evidenceRefs,
+        evidenceSummary: scenario.evidenceSummary ?? null,
+        suggestedStartUrl: scenario.suggestedStartUrl ?? null,
+        suggestedTarget: scenario.suggestedTarget ?? null,
         sourceAuthoringJobId: authoredScenario?.authoringJobId ?? null,
         sourceAuthoringCandidateId: authoredScenario?.candidate.candidate_id ?? null,
       };
 
       const response = await createRun({
         projectId: createRunIds.projectId,
-        name: selectedScenario.title,
+        name: scenario.title,
         startUrl: runStartUrl,
         goal: runGoal,
         devicePreset: 'desktop',
@@ -1361,11 +1180,13 @@ export function CreateAnalysisPage({ isAuthenticated = false, isAuthChecking = f
     } finally {
       pushAppPath(buildRunMonitorPath(createdRunId, {
         submittedUrl,
-        scenarioId: selectedScenario.id,
-        depthId: selectedDepthId,
+        scenarioId: scenario.id,
+        depthId,
       }));
     }
   };
+  const isStartingRun = isCreatingRun || scenarioAuthoringBusy;
+  const visibleRunStartError = runStartError || (scenarioAuthoringState.kind === 'failed' ? scenarioAuthoringState.message : '');
 
   return (
     <div className="create-analysis-page">
@@ -1470,6 +1291,8 @@ export function CreateAnalysisPage({ isAuthenticated = false, isAuthChecking = f
             submittedUrl={submittedUrl}
             scenarios={recommendationScenarios}
             emptyMessage={discoveryState.kind === 'empty' ? discoveryState.message : undefined}
+            isStartingRun={isStartingRun}
+            runStartError={visibleRunStartError}
             onChooseScenario={chooseScenario}
             onOpenManualChoice={openManualChoice}
           />
@@ -1479,26 +1302,20 @@ export function CreateAnalysisPage({ isAuthenticated = false, isAuthChecking = f
           <ManualChoiceAgent
             submittedUrl={submittedUrl}
             scenarios={manualChoiceScenarios}
+            isStartingRun={isStartingRun}
+            runStartError={visibleRunStartError}
             onChooseScenario={chooseScenario}
             onBackToRecommendations={() => navigateToRouteState(createRecommendationChoiceRouteState(routeState, submittedUrl))}
           />
         )}
 
         {stage === 'onboarding' && selectedScenario && (
-          <ScenarioSetupAgent selectedScenario={selectedScenario} selectedDepthId={selectedDepthId} onDepthChange={chooseDepth} onReady={showReady} />
-        )}
-
-        {stage === 'ready' && selectedScenario && (
-          <ReadyAgent
-            submittedUrl={submittedUrl}
+          <ScenarioSetupAgent
             selectedScenario={selectedScenario}
-            selectedDepth={selectedDepth}
-            scenarioAuthoringEnabled={scenarioAuthoringRequestKey !== null}
-            scenarioAuthoringState={scenarioAuthoringState}
-            isCreatingRun={isCreatingRun || scenarioAuthoringBusy}
-            runStartError={runStartError}
-            onChooseDifferentScenario={chooseDifferentScenario}
-            onStartRun={startAnalysisRun}
+            selectedDepthId={selectedDepthId}
+            onDepthChange={chooseDepth}
+            onStartRun={startSelectedScenarioRun}
+            isStartingRun={isStartingRun}
           />
         )}
       </main>

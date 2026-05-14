@@ -134,6 +134,33 @@ test('discovery recommendation mapper normalizes relative targets into concise l
   ]);
 });
 
+test('discovery recommendation mapper hides internal selectors and evidence ids from user copy', () => {
+  const card = toScenarioRecommendationViewModel({
+    ...contactRecommendation,
+    scenarioType: 'PURCHASE_CHECKOUT',
+    evidenceRefs: ['cp_001.obs_001', 'cp_001.obs_002', 'cp_001.obs_003'],
+    evidenceSummary: {
+      matched_signals: [],
+      missing_signals: [],
+      limitations: [],
+    },
+    suggestedTarget: {
+      selector: '.A8SBwf{margin:0 auto;max-width:58rem}',
+      text: '.A8SBwf{margin:0 auto;max-width:58rem}',
+    },
+  });
+
+  assert.equal(card.targetLabel, null);
+  assert.equal(card.evidence, '구매나 결제로 이어지는 진입점을 발견했어요');
+  assert.doesNotMatch(card.evidence, /cp_001/);
+  assert.deepEqual(card.previewSteps, [
+    '추천 시작 화면을 열어요',
+    '구매/결제 전 단계까지 확인',
+    '제출 직전까지 이동하며 막히는 지점을 기록해요',
+  ]);
+  assert.equal(card.previewSteps.some((step) => step.includes('.A8SBwf')), false);
+});
+
 test('discovery recommendation mapper keeps NOT_AVAILABLE non-runnable without a percentage confidence', () => {
   const card = toScenarioRecommendationViewModel({
     ...contactRecommendation,

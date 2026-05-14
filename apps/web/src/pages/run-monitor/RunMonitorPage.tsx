@@ -19,9 +19,7 @@ import type { RunReportProjection } from '../../entities/report';
 import type { EvidencePacket, RunEvidenceCounts } from '../../entities/run';
 import { RUN_STATUS_LABEL } from '../../entities/run';
 import {
-  buildApiEventLogs,
   buildApiEventTimeline,
-  buildApiSnapshotLogs,
   buildApiStepTimeline,
   buildMockRunMonitorData,
   canRequestRunDelete,
@@ -37,7 +35,6 @@ import {
   RUN_MONITOR_REFRESH_INTERVAL_MS,
   resolveRunMonitorReportCtaState,
   shouldRefreshRunReport,
-  type RunActionLog,
   type RunStatusTone,
   type StepStatus,
   useRunMonitorState,
@@ -108,14 +105,6 @@ function StepNode({ status }: { status: StepStatus }) {
   }
 
   return <span className="run-monitor-step__dot" aria-hidden="true" />;
-}
-
-function LogMarker({ tone }: { tone: RunActionLog['tone'] }) {
-  if (tone === 'success') {
-    return <CheckIcon className="run-monitor-log__check" />;
-  }
-
-  return <span className="run-monitor-log__dot" aria-hidden="true" />;
 }
 
 function RunMonitorTopbar() {
@@ -660,7 +649,6 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
       })
     : null;
   const visibleSteps = isApiFallback ? mockData.steps : buildApiEventTimeline(run, live, runEvents, runSteps);
-  const visibleLogs = isApiFallback ? mockData.logs : buildApiEventLogs(run, live, runEvents);
   const deviceLabel = getDevicePresetLabel(run.devicePreset);
   const evidenceStats = getEvidenceSummaryStats(evidencePacket, live.evidenceCounts);
   const timelineNote = isApiFallback
@@ -1001,20 +989,6 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
               </ol>
             </section>
 
-            <section className="run-monitor-log" aria-labelledby="action-log-title">
-              <h2 id="action-log-title">진행 요약</h2>
-              <ul className="run-monitor-log__list">
-                {visibleLogs.map((log) => (
-                  <li key={log.id} className={`run-monitor-log__item run-monitor-log__item--${log.tone}`}>
-                    <span className="run-monitor-log__marker" aria-hidden="true">
-                      <LogMarker tone={log.tone} />
-                    </span>
-                    <span className="run-monitor-log__message">{log.message}</span>
-                    <time>{log.time}</time>
-                  </li>
-                ))}
-              </ul>
-            </section>
           </div>
           </aside>
         </div>

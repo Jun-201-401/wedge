@@ -1,6 +1,6 @@
 import { normalizeAnalysisUrl } from './createAnalysisUrl';
 
-export type CreateAnalysisRouteStage = 'input' | 'discovering' | 'recommendations' | 'manual-choice' | 'onboarding' | 'ready';
+export type CreateAnalysisRouteStage = 'input' | 'discovering' | 'recommendations' | 'manual-choice' | 'onboarding';
 
 export interface CreateAnalysisRouteState<TScenarioId extends string = string, TDepthId extends string = string> {
   stage: CreateAnalysisRouteStage;
@@ -31,7 +31,7 @@ const STEP_TO_STAGE = {
   recommendations: 'recommendations',
   manual: 'manual-choice',
   setup: 'onboarding',
-  ready: 'ready',
+  ready: 'onboarding',
 } as const satisfies Record<string, Exclude<CreateAnalysisRouteStage, 'input'>>;
 
 const STAGE_TO_STEP = {
@@ -39,7 +39,6 @@ const STAGE_TO_STEP = {
   recommendations: 'recommendations',
   'manual-choice': 'manual',
   onboarding: 'setup',
-  ready: 'ready',
 } as const satisfies Record<Exclude<CreateAnalysisRouteStage, 'input'>, string>;
 
 function isOneOf<T extends string>(value: string | null, validValues: readonly T[]): value is T {
@@ -132,21 +131,6 @@ export function withoutCreateRunContext<TScenarioId extends string, TDepthId ext
   delete nextState.projectId;
   delete nextState.scenarioTemplateVersionId;
   return nextState;
-}
-
-export function createScenarioReadyRouteState<TScenarioId extends string, TDepthId extends string>(
-  currentState: CreateAnalysisRouteState<TScenarioId, TDepthId>,
-  submittedUrl: string,
-  scenarioId: TScenarioId,
-  defaultDepthId: TDepthId,
-): CreateAnalysisRouteState<TScenarioId, TDepthId> {
-  return {
-    ...currentState,
-    stage: 'ready',
-    submittedUrl,
-    scenarioId,
-    depthId: defaultDepthId,
-  };
 }
 
 export function createRecommendationChoiceRouteState<TScenarioId extends string, TDepthId extends string>(
@@ -254,7 +238,7 @@ export function buildCreateAnalysisPath<TScenarioId extends string, TDepthId ext
     return basePath;
   }
 
-  if ((state.stage === 'onboarding' || state.stage === 'ready') && !state.scenarioId) {
+  if (state.stage === 'onboarding' && !state.scenarioId) {
     return buildCreateAnalysisPath(
       {
         stage: 'recommendations',
@@ -273,7 +257,7 @@ export function buildCreateAnalysisPath<TScenarioId extends string, TDepthId ext
 
   params.set('url', state.submittedUrl);
 
-  if ((state.stage === 'onboarding' || state.stage === 'ready') && state.scenarioId) {
+  if (state.stage === 'onboarding' && state.scenarioId) {
     params.set('scenario', state.scenarioId);
     params.set('depth', state.depthId ?? options.defaultDepthId);
   }

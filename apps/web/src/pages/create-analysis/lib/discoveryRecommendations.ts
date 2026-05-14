@@ -94,7 +94,28 @@ function truncateTextLabel(value: string, maxLength = 34) {
   return `${characters.slice(0, maxLength).join('')}…`;
 }
 
+function isInternalDisplayValue(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return true;
+  }
+
+  if (/^[.#][\w-]+(?:\s*[,{:#.[>+~]|\{)/.test(trimmed)) {
+    return true;
+  }
+
+  if (trimmed.includes('{') || trimmed.includes('}') || trimmed.split(';').length > 2) {
+    return true;
+  }
+
+  return /^cp_\d+\.obs_\d+/i.test(trimmed);
+}
+
 function displayTargetValue(field: string, value: string, baseUrl?: string | null) {
+  if (isInternalDisplayValue(value)) {
+    return null;
+  }
+
   if (!isUrlLikeField(field)) {
     return truncateTextLabel(value);
   }
@@ -187,16 +208,15 @@ function evidenceLabel(recommendation: ApiScenarioRecommendation) {
     return signalLabels.slice(0, 2).join(', ');
   }
 
-  const refs = recommendation.evidenceRefs?.filter(Boolean) ?? [];
-  if (refs.length > 0) {
-    return refs.slice(0, 3).join(', ');
-  }
-
   const target = recommendation.suggestedTarget;
   const text = typeof target?.text === 'string' ? target.text : null;
-  const selector = typeof target?.selector === 'string' ? target.selector : null;
   const href = typeof target?.href_contains === 'string' ? target.href_contains : null;
-  return text ?? selector ?? href ?? '발견된 근거 없음';
+  const readableTarget = text && !isInternalDisplayValue(text)
+    ? text
+    : href && !isInternalDisplayValue(href)
+      ? href
+      : null;
+  return readableTarget ?? signalLabelForType('', recommendation.scenarioType);
 }
 
 function targetLabelFor(recommendation: ApiScenarioRecommendation) {
@@ -205,12 +225,15 @@ function targetLabelFor(recommendation: ApiScenarioRecommendation) {
     return null;
   }
 
-  const candidateKeys = ['text', 'aria_label', 'label', 'placeholder', 'name', 'href_contains', 'href', 'selector'];
+  const candidateKeys = ['text', 'aria_label', 'label', 'placeholder', 'name', 'href_contains', 'href'];
   for (const key of candidateKeys) {
     const value = target[key];
     if (typeof value === 'string' && value.trim().length > 0) {
       const trimmed = value.trim();
-      return displayTargetValue(key, trimmed, recommendation.suggestedStartUrl);
+      const displayValue = displayTargetValue(key, trimmed, recommendation.suggestedStartUrl);
+      if (displayValue) {
+        return displayValue;
+      }
     }
   }
 
