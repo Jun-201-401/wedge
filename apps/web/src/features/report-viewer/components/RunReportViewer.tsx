@@ -360,7 +360,7 @@ function ReferenceOverflowBadge({
         aria-pressed={isPinned}
         onClick={handleClick}
       >
-        <span className="run-report-reference-badge__label">더보기</span>
+        <span className="run-report-reference-badge__label">출처</span>
       </button>
       {isOpen ? (
         <span id={popoverId} className="run-report-reference-overflow__popover" role="tooltip">
