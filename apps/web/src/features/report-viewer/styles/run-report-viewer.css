@@ -252,7 +252,7 @@
 .run-report-hero h1 {
   margin: 0;
   color: #020617;
-  font-size: 0.92rem;
+  font-size: 0.82rem;
   font-weight: 900;
   line-height: 1.22;
   letter-spacing: -0.015em;
@@ -294,9 +294,9 @@
   overflow: hidden;
   max-width: min(27vw, 24rem);
   color: #020617;
-  font-size: 0.68rem;
+  font-size: 0.82rem;
   font-weight: 800;
-  line-height: 1.32;
+  line-height: 1.22;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -904,7 +904,7 @@
 }
 
 .run-report-selected-action__detail-card--primary {
-  background: #f1f5f9;
+  background: #f8fafc;
 }
 
 .run-report-selected-action__detail-card p {
@@ -1537,7 +1537,7 @@
 
   .run-report-hero h1 {
     overflow: hidden;
-    font-size: 0.95rem;
+    font-size: 0.82rem;
     text-overflow: ellipsis;
   }
 
