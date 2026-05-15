@@ -57,16 +57,24 @@ test('run report page follows the report.html result-first layout', () => {
   assert.match(source, /\[evidencePacket, isMockRun, reportDetail, reportLoadError, reportPreviewUrl, reportProjection, run, runId, scenarioId, targetUrl\]/);
   assert.match(source, /sourceNotice: reportLoadError/);
   assert.match(source, /fallbackPreviewUrl: reportPreviewUrl/);
-  assert.match(source, /useAuthenticatedResourceUrl\(selectedEvidencePreviewUrl\)/);
+  assert.match(source, /createAuthenticatedResourceCache/);
+  assert.match(source, /RUN_REPORT_PREVIEW_CACHE_MAX_ENTRIES/);
+  assert.match(source, /RUN_REPORT_PREVIEW_CACHE_MAX_BYTES/);
+  assert.match(source, /useAuthenticatedResourceUrl\(selectedEvidencePreviewUrl, reportPreviewImageCache\)/);
+  assert.match(source, /reportPreviewImageCache\.clear\(\)/);
+  assert.match(source, /topRecommendationPreviewCacheKeys/);
+  assert.match(source, /reportPreviewImageCache\.prefetch\(topRecommendationPreviewCacheKeys\)/);
   assert.match(viewer, /formatDisplayUrl/);
   assert.match(viewer, /const targetUrlLabel = formatDisplayUrl\(report\.targetUrl\)/);
   assert.match(viewer, /<dd title=\{report\.targetUrl\}>\{targetUrlLabel\}<\/dd>/);
-  assert.match(source, /const isEvidencePreviewResolving = Boolean\(selectedEvidencePreviewUrl && !evidencePreviewUrl\)/);
+  assert.match(source, /const selectedEvidencePreviewCacheKey = selectedEvidencePreviewUrl \? toSameOriginApiPath\(selectedEvidencePreviewUrl\) : null/);
+  assert.match(source, /const isEvidencePreviewResolving = Boolean\([\s\S]*selectedEvidencePreviewCacheKey[\s\S]*!reportPreviewImageCache\.peek\(selectedEvidencePreviewCacheKey\)/);
   assert.match(source, /useRef<HTMLDivElement \| null>\(null\)/);
   assert.match(source, /ref=\{evidencePreviewRef\}/);
   assert.match(source, /const \[loadedEvidencePreviewUrl, setLoadedEvidencePreviewUrl\] = useState<string \| null>\(null\)/);
   assert.match(source, /onLoad=\{handleEvidencePreviewImageLoad\}/);
   assert.match(source, /loadedEvidencePreviewUrl !== evidencePreviewUrl/);
+  assert.match(source, /isEvidencePreviewResolving/);
   assert.match(source, /preview\.scrollTo\(\{ top: targetScrollTop, behavior: 'smooth' \}\)/);
   assert.match(source, /run-report-evidence-preview__canvas/);
   assert.match(source, /run-report-evidence-preview--resolving/);
@@ -114,6 +122,8 @@ test('run report page follows the report.html result-first layout', () => {
   assert.match(source, /evidencePreviewUrl \? ' run-report-evidence-preview--image' : ''/);
   assert.match(source, /TOP_RECOMMENDATION_COUNT/);
   assert.match(source, /topRecommendations/);
+  assert.match(source, /topRecommendations[\s\S]*?\.map\(\(recommendation\) => linkedFinding\(report\.findings, recommendation\)\)/);
+  assert.match(source, /previewUrlForFinding\(finding, report\.evidencePreviewUrl\)/);
   assert.match(source, /전체 후보 \{recommendations\.length\}개 보기/);
   assert.match(source, /isAllRecommendationsOpen/);
   assert.match(source, /aria-expanded=\{isAllRecommendationsOpen\}/);
@@ -134,7 +144,7 @@ test('run report page follows the report.html result-first layout', () => {
   assert.doesNotMatch(viewer, /nextPinnedReferenceBadgeId/);
   assert.doesNotMatch(viewer, /nextPinnedReferenceOverflowId/);
   assert.match(source, /첫 화면/);
-  assert.match(source, /가치 판단/);
+  assert.match(source, /가치 이해/);
   assert.match(source, /행동 선택/);
   assert.match(source, /run-report-stage-chip--active/);
   assert.match(source, /aria-current=\{isActive \? 'step' : undefined\}/);
@@ -392,11 +402,17 @@ test('authenticated resource hook avoids raw api image urls and cleans blob urls
     'utf8',
   );
 
-  assert.match(source, /useState<string \\| null>\(null\)/);
+  assert.match(source, /useState<ResolvedResourceUrl \| null>\(null\)/);
   assert.doesNotMatch(source, /useState<string \\| null>\(resourceUrl \?\? null\)/);
+  assert.match(source, /key: apiPath, url: objectUrl/);
+  assert.match(source, /ownerCache\?: AuthenticatedResourceCache/);
+  assert.match(source, /ownerCache: cache/);
+  assert.match(source, /resolvedResource\?\.key !== resourceKey/);
+  assert.match(source, /current\?\.key === apiPath && current\.ownerCache === cache \? current : null/);
+  assert.match(source, /apiPath && resolvedResource\.ownerCache !== cache/);
   assert.match(source, /URL\.createObjectURL\(blob\)/);
   assert.match(source, /URL\.revokeObjectURL\(objectUrl\)/);
-  assert.match(source, /\.catch\(\(\) => \{[\s\S]*?setResolvedUrl\(null\)/);
+  assert.match(source, /\.catch\(\(\) => \{[\s\S]*?setResolvedResource\(null\)/);
 });
 
 test('run monitor exposes a report CTA into /runs/:runId/report', () => {
