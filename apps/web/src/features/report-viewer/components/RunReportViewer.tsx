@@ -64,9 +64,17 @@ const REPORT_FLOW_STAGES = [
 
 type ReportFlowStageId = (typeof REPORT_FLOW_STAGES)[number]['id'];
 
+interface ReportHelpReference {
+  label: string;
+  source: string;
+  summary: string;
+  url: string;
+}
+
 interface ReportFlowHelpTerm {
   label: string;
   description: string;
+  reference: ReportHelpReference;
 }
 
 const REPORT_FLOW_HELP_TERMS: ReportFlowHelpTerm[] = [
@@ -74,23 +82,49 @@ const REPORT_FLOW_HELP_TERMS: ReportFlowHelpTerm[] = [
     label: '전환 흐름',
     description:
       '페이지 방문부터 가입, 구매, 문의 같은 목표 행동까지 이어지는 전체 과정입니다.',
+    reference: {
+      label: 'Funnel exploration',
+      source: 'Google Analytics',
+      summary: '목표 행동까지 이어지는 단계를 나누어 봅니다.',
+      url: 'https://support.google.com/analytics/answer/9327974?hl=en-GB',
+    },
   },
   {
     label: '첫 화면',
     description:
-      '처음 보이는 화면에서 서비스의 목적, 필요성, 시작 지점을 알 수 있는지 봅니다.',
+      '서비스가 무엇인지, 어디서 시작해야 하는지 바로 보이는지 봅니다.',
+    reference: {
+      label: 'Start using a service',
+      source: 'GOV.UK',
+      summary: '서비스의 목적과 시작 지점이 바로 이해되는지 봅니다.',
+      url: 'https://design-system.service.gov.uk/patterns/start-using-a-service/',
+    },
   },
   {
     label: '가치 이해',
     description:
-      '혜택, 조건, 비용처럼 행동 전에 필요한 정보가 충분히 드러나는지 봅니다.',
+      '얻을 가치와 필요한 조건이 행동 전에 분명히 드러나는지 봅니다.',
+    reference: {
+      label: 'PR on Websites',
+      source: 'NN/g',
+      summary: '얻을 가치와 필요한 조건이 행동 전에 분명히 드러나는지 봅니다.',
+      url: 'https://media.nngroup.com/media/reports/free/PR_on_Websites_3rd_Edition.pdf',
+    },
   },
   {
     label: '다음 행동 선택',
     description:
-      '사용자가 다음에 눌러야 할 버튼이나 링크를 쉽게 고를 수 있는지 봅니다.',
+      '다음에 누를 버튼이나 링크를 헷갈리지 않고 고를 수 있는지 봅니다.',
+    reference: {
+      label: 'Button Design',
+      source: 'Baymard Institute',
+      summary: '다음에 누를 버튼이나 링크가 분명한지 봅니다.',
+      url: 'https://baymard.com/learn/button-design',
+    },
   },
 ];
+
+const REPORT_FLOW_HELP_STAGE_TERMS = REPORT_FLOW_HELP_TERMS.filter((item) => item.label !== '전환 흐름');
 
 const REPORT_FLOW_HELP_SUMMARY =
   'Wedge는 사용자가 페이지를 보고 행동을 결정하는 과정을 세 단계로 나누어 확인합니다.';
@@ -280,10 +314,14 @@ function JudgementBasisCard({
 
 function ReportFlowHelpButton() {
   const buttonRef = useRef<HTMLButtonElement | null>(null);
+  const closeTimerRef = useRef<number | null>(null);
   const [popoverPosition, setPopoverPosition] = useState<{ top: number; left: number } | null>(null);
+  const [isPopoverVisible, setIsPopoverVisible] = useState(false);
+  const [isReferencesOpen, setIsReferencesOpen] = useState(false);
   const isOpen = popoverPosition !== null;
   const instanceId = useId().replace(/[^a-zA-Z0-9_-]/g, '-');
   const popoverId = `run-report-flow-help-${instanceId}`;
+  const referencesPanelId = `${popoverId}-references`;
 
   const updatePopoverPosition = useCallback(() => {
     const buttonElement = buttonRef.current;
@@ -293,21 +331,37 @@ function ReportFlowHelpButton() {
 
     const rect = buttonElement.getBoundingClientRect();
     const popoverWidth = 360;
+    const estimatedPopoverHeight = 430;
     const viewportMargin = 14;
     const viewportWidth = window.innerWidth || document.documentElement.clientWidth;
+    const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
     const left = Math.min(
-      Math.max(rect.left + rect.width / 2 - popoverWidth / 2, viewportMargin),
+      Math.max(rect.right + 10, viewportMargin),
       Math.max(viewportMargin, viewportWidth - popoverWidth - viewportMargin),
+    );
+    const top = Math.min(
+      rect.top - 12,
+      Math.max(viewportMargin, viewportHeight - estimatedPopoverHeight - viewportMargin),
     );
 
     setPopoverPosition({
-      top: rect.bottom + 8,
+      top,
       left,
     });
   }, []);
 
   const closePopover = useCallback(() => {
-    setPopoverPosition(null);
+    setIsPopoverVisible(false);
+
+    if (closeTimerRef.current !== null) {
+      window.clearTimeout(closeTimerRef.current);
+    }
+
+    closeTimerRef.current = window.setTimeout(() => {
+      setPopoverPosition(null);
+      setIsReferencesOpen(false);
+      closeTimerRef.current = null;
+    }, 180);
   }, []);
 
   const togglePopover = useCallback((event: React.MouseEvent<HTMLButtonElement>) => {
@@ -315,6 +369,11 @@ function ReportFlowHelpButton() {
     if (isOpen) {
       closePopover();
       return;
+    }
+
+    if (closeTimerRef.current !== null) {
+      window.clearTimeout(closeTimerRef.current);
+      closeTimerRef.current = null;
     }
 
     updatePopoverPosition();
@@ -362,26 +421,95 @@ function ReportFlowHelpButton() {
     };
   }, [closePopover, isOpen, popoverId, updatePopoverPosition]);
 
+  useEffect(() => {
+    if (isOpen) {
+      updatePopoverPosition();
+    }
+  }, [isOpen, isReferencesOpen, updatePopoverPosition]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      setIsPopoverVisible(false);
+      return undefined;
+    }
+
+    const animationFrame = window.requestAnimationFrame(() => {
+      setIsPopoverVisible(true);
+    });
+
+    return () => window.cancelAnimationFrame(animationFrame);
+  }, [isOpen]);
+
+  useEffect(() => () => {
+    if (closeTimerRef.current !== null) {
+      window.clearTimeout(closeTimerRef.current);
+    }
+  }, []);
+
   const popover = popoverPosition && typeof document !== 'undefined'
     ? createPortal(
         <aside
           id={popoverId}
-          className="run-report-term-help__popover"
+          className={`run-report-term-help__popover${isPopoverVisible ? ' run-report-term-help__popover--visible' : ''}`}
           role="dialog"
-          aria-label="전환 흐름 용어 설명"
+          aria-label="단계별 판단 기준 설명"
           style={{ top: popoverPosition.top, left: popoverPosition.left }}
         >
           <div className="run-report-term-help__header">
+            <strong>단계별 판단 기준</strong>
             <p>{REPORT_FLOW_HELP_SUMMARY}</p>
           </div>
-          <ol className="run-report-term-help__terms" aria-label="전환 흐름 단계 설명">
-            {REPORT_FLOW_HELP_TERMS.map((item) => (
+          <ol className="run-report-term-help__terms" aria-label="단계별 판단 기준">
+            {REPORT_FLOW_HELP_STAGE_TERMS.map((item) => (
               <li key={item.label} className="run-report-term-help__term">
                 <span>{item.label}</span>
                 <p>{item.description}</p>
               </li>
             ))}
           </ol>
+          <div className={`run-report-term-help__references${isReferencesOpen ? ' run-report-term-help__references--open' : ''}`}>
+            <button
+              type="button"
+              className="run-report-term-help__references-trigger"
+              aria-expanded={isReferencesOpen}
+              aria-controls={referencesPanelId}
+              onClick={(event) => {
+                event.stopPropagation();
+                setIsReferencesOpen((current) => !current);
+              }}
+            >
+              <span className="run-report-term-help__references-label">기준 근거</span>
+              <span className="run-report-term-help__references-copy">{REPORT_FLOW_HELP_TERMS.length}개</span>
+              <span className="run-report-term-help__references-chevron" aria-hidden="true">
+                <svg className="run-report-term-help__references-chevron-icon" viewBox="0 0 20 20" focusable="false">
+                  <path d="M7.5 5L12.5 10L7.5 15" />
+                </svg>
+              </span>
+            </button>
+            <div
+              id={referencesPanelId}
+              className="run-report-term-help__references-panel"
+              aria-hidden={!isReferencesOpen}
+            >
+              <div className="run-report-term-help__references-panel-inner">
+                <div className="run-report-term-help__reference-list" aria-label="단계별 판단 기준 근거">
+                  {REPORT_FLOW_HELP_TERMS.map((item) => (
+                    <a
+                      key={item.reference.url}
+                      href={item.reference.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      onClick={(event) => event.stopPropagation()}
+                    >
+                      <strong>{item.label}</strong>
+                      <span>{item.reference.source} · {item.reference.label}</span>
+                      <p>{item.reference.summary}</p>
+                    </a>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
         </aside>,
         document.body,
       )
@@ -393,13 +521,13 @@ function ReportFlowHelpButton() {
         ref={buttonRef}
         type="button"
         className="run-report-term-help__button"
-        aria-label="전환 흐름 용어 설명 보기"
+        aria-label="단계별 판단 기준 설명 보기"
         aria-haspopup="dialog"
         aria-expanded={isOpen}
         aria-controls={isOpen ? popoverId : undefined}
         onClick={togglePopover}
       >
-        i
+        ?
       </button>
       {popover}
     </span>
