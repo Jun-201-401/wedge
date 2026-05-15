@@ -16,6 +16,12 @@ import type { RunActionLog, RunStepItem, StepStatus } from './runMonitorMock';
 export type RunStatusTone = 'complete' | 'failed' | 'queued' | 'running' | 'stopping';
 export type RunMonitorReportCtaKind = 'open' | 'generate' | 'request-analysis' | 'waiting' | 'failed' | 'loading' | 'error' | 'hidden';
 
+export interface RunCollectionSummaryStats {
+  visitedPageCount: number;
+  screenshotCount: number;
+  stepCount: number;
+}
+
 export interface RunMonitorReportCtaState {
   kind: RunMonitorReportCtaKind;
   canOpenReport: boolean;
@@ -119,6 +125,93 @@ function readPayloadString(payload: Record<string, unknown>, key: string) {
 
   const text = value.trim();
   return text || null;
+}
+
+function readRecord(value: unknown) {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+}
+
+function readEvidenceString(value: unknown) {
+  if (typeof value !== 'string') {
+    return null;
+  }
+
+  const text = value.trim();
+  return text || null;
+}
+
+function normalizeVisitedUrl(value: string) {
+  try {
+    const url = new URL(value);
+    url.hash = '';
+    return url.toString();
+  } catch {
+    return value;
+  }
+}
+
+function readCheckpointUrl(checkpoint: EvidenceCheckpoint) {
+  const state = checkpoint.state;
+  const page = readRecord(state.page);
+  return readEvidenceString(page?.url)
+    ?? readEvidenceString(state.finalUrl)
+    ?? readEvidenceString(state.final_url)
+    ?? readEvidenceString(state.url);
+}
+
+function countVisitedPages(evidencePacket: EvidencePacket) {
+  const urls = new Set<string>();
+
+  evidencePacket.checkpoints.forEach((checkpoint) => {
+    const url = readCheckpointUrl(checkpoint);
+    if (url) {
+      urls.add(normalizeVisitedUrl(url));
+    }
+  });
+
+  const fallbackUrl = evidencePacket.final_url ?? evidencePacket.url;
+  if (urls.size === 0 && fallbackUrl) {
+    urls.add(normalizeVisitedUrl(fallbackUrl));
+  }
+
+  return urls.size;
+}
+
+function countScreenshots(evidencePacket: EvidencePacket) {
+  return evidencePacket.artifacts.filter((artifact) => artifact.type.toLowerCase() === 'screenshot').length;
+}
+
+function countRunSteps(run: Run, live: RunLive, runSteps: RunStep[]) {
+  const currentStepOrder = Math.max(run.currentStepOrder ?? 0, live.currentStepOrder ?? 0);
+  if (currentStepOrder > 0) {
+    return currentStepOrder;
+  }
+
+  return runSteps.reduce((maxOrder, step) => Math.max(maxOrder, step.stepOrder), 0);
+}
+
+export function buildRunCollectionSummaryStats({
+  evidencePacket,
+  run,
+  live,
+  runSteps,
+}: {
+  evidencePacket: EvidencePacket | null;
+  run: Run;
+  live: RunLive;
+  runSteps: RunStep[];
+}): RunCollectionSummaryStats | null {
+  if (!evidencePacket) {
+    return null;
+  }
+
+  return {
+    visitedPageCount: countVisitedPages(evidencePacket),
+    screenshotCount: countScreenshots(evidencePacket),
+    stepCount: countRunSteps(run, live, runSteps),
+  };
 }
 
 function readPayloadRecord(payload: Record<string, unknown>, key: string) {

@@ -9,6 +9,7 @@ import {
   buildApiStepTimeline,
   buildApiSnapshotLogs,
   buildApiSnapshotSteps,
+  buildRunCollectionSummaryStats,
   canOpenRunReport,
   canRequestRunDelete,
   canRequestRunStop,
@@ -632,6 +633,118 @@ test('run monitor view model maps evidence packet artifacts and observations', (
     }),
     'fallback_type',
   );
+});
+
+test('run monitor view model summarizes URL visits, screenshots, and steps for the report CTA', () => {
+  const stats = buildRunCollectionSummaryStats({
+    evidencePacket: {
+      ...evidencePacket,
+      final_url: 'https://example.com/cart',
+      checkpoints: [
+        {
+          ...evidencePacket.checkpoints[0],
+          checkpoint_id: 'checkpoint-1',
+          state: { url: 'https://example.com/' },
+        },
+        {
+          ...evidencePacket.checkpoints[0],
+          checkpoint_id: 'checkpoint-2',
+          state: { url: 'https://example.com/raw-redirect', page: { url: 'https://example.com/cart' } },
+        },
+        {
+          ...evidencePacket.checkpoints[0],
+          checkpoint_id: 'checkpoint-3',
+          state: { url: 'https://example.com/cart#details' },
+        },
+      ],
+      artifacts: [
+        ...evidencePacket.artifacts,
+        {
+          artifact_id: 'screenshot-2',
+          type: 'screenshot',
+          uri: '/api/runs/111/artifacts/screenshot-2/content',
+          mime_type: 'image/png',
+          size_bytes: 2048,
+          metadata: {},
+        },
+      ],
+    },
+    run: baseRun,
+    live: baseLive,
+    runSteps: [
+      {
+        id: 'step-1',
+        runId: baseRun.id,
+        stepOrder: 1,
+        stepKey: 'step_001_goto',
+        stepName: '첫 화면 로드',
+        stepType: 'GOTO',
+        status: 'PASSED',
+        startedAt: null,
+        finishedAt: null,
+        errorCode: null,
+        errorMessage: null,
+      },
+      {
+        id: 'step-2',
+        runId: baseRun.id,
+        stepOrder: 2,
+        stepKey: 'step_002_capture',
+        stepName: '화면 수집',
+        stepType: 'ASSERT',
+        status: 'PASSED',
+        startedAt: null,
+        finishedAt: null,
+        errorCode: null,
+        errorMessage: null,
+      },
+      {
+        id: 'step-3',
+        runId: baseRun.id,
+        stepOrder: 3,
+        stepKey: 'step_003_click',
+        stepName: '진입점 확인',
+        stepType: 'CLICK',
+        status: 'PASSED',
+        startedAt: null,
+        finishedAt: null,
+        errorCode: null,
+        errorMessage: null,
+      },
+      {
+        id: 'step-4',
+        runId: baseRun.id,
+        stepOrder: 4,
+        stepKey: 'step_004_stop',
+        stepName: '안전 중단',
+        stepType: 'ASSERT',
+        status: 'PASSED',
+        startedAt: null,
+        finishedAt: null,
+        errorCode: null,
+        errorMessage: null,
+      },
+      {
+        id: 'step-5',
+        runId: baseRun.id,
+        stepOrder: 9,
+        stepKey: 'step_009_planned',
+        stepName: '誘몄떎??怨꾪쉷',
+        stepType: 'ASSERT',
+        status: 'PENDING',
+        startedAt: null,
+        finishedAt: null,
+        errorCode: null,
+        errorMessage: null,
+      },
+    ],
+  });
+
+  assert.deepEqual(stats, {
+    visitedPageCount: 2,
+    screenshotCount: 2,
+    stepCount: 4,
+  });
 });
 
 
