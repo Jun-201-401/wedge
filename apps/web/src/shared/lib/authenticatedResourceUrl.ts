@@ -7,6 +7,7 @@ import { toSameOriginApiPath } from './apiResourcePath';
 interface ResolvedResourceUrl {
   key: string;
   url: string;
+  ownerCache?: AuthenticatedResourceCache;
 }
 
 export function useAuthenticatedResourceUrl(
@@ -30,19 +31,21 @@ export function useAuthenticatedResourceUrl(
     let isActive = true;
     const cachedUrl = cache?.get(apiPath);
     if (cachedUrl) {
-      setResolvedResource({ key: apiPath, url: cachedUrl });
+      setResolvedResource({ key: apiPath, url: cachedUrl, ownerCache: cache });
       return () => {
         isActive = false;
       };
     }
 
-    setResolvedResource((current) => (current?.key === apiPath ? current : null));
+    setResolvedResource((current) => (
+      current?.key === apiPath && current.ownerCache === cache ? current : null
+    ));
 
     if (cache) {
       void cache.resolve(apiPath)
         .then((objectUrl) => {
           if (isActive) {
-            setResolvedResource({ key: apiPath, url: objectUrl });
+            setResolvedResource({ key: apiPath, url: objectUrl, ownerCache: cache });
           }
         })
         .catch(() => {
@@ -84,6 +87,11 @@ export function useAuthenticatedResourceUrl(
   const resourceKey = resourceUrl ? toSameOriginApiPath(resourceUrl) ?? resourceUrl : null;
 
   if (!resourceKey || resolvedResource?.key !== resourceKey) {
+    return null;
+  }
+
+  const apiPath = resourceUrl ? toSameOriginApiPath(resourceUrl) : null;
+  if (apiPath && resolvedResource.ownerCache !== cache) {
     return null;
   }
 

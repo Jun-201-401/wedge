@@ -405,8 +405,11 @@ test('authenticated resource hook avoids raw api image urls and cleans blob urls
   assert.match(source, /useState<ResolvedResourceUrl \| null>\(null\)/);
   assert.doesNotMatch(source, /useState<string \\| null>\(resourceUrl \?\? null\)/);
   assert.match(source, /key: apiPath, url: objectUrl/);
+  assert.match(source, /ownerCache\?: AuthenticatedResourceCache/);
+  assert.match(source, /ownerCache: cache/);
   assert.match(source, /resolvedResource\?\.key !== resourceKey/);
-  assert.match(source, /setResolvedResource\(\(current\) => \(current\?\.key === apiPath \? current : null\)\)/);
+  assert.match(source, /current\?\.key === apiPath && current\.ownerCache === cache \? current : null/);
+  assert.match(source, /apiPath && resolvedResource\.ownerCache !== cache/);
   assert.match(source, /URL\.createObjectURL\(blob\)/);
   assert.match(source, /URL\.revokeObjectURL\(objectUrl\)/);
   assert.match(source, /\.catch\(\(\) => \{[\s\S]*?setResolvedResource\(null\)/);
