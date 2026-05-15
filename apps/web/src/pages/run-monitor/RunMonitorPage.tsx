@@ -16,7 +16,7 @@ import { formatDisplayUrl } from '../../shared/lib/displayUrl';
 import { useResizableTrailingPanel } from '../../shared/lib/resizableTrailingPanel';
 import { deleteRun, requestRunAnalysis, stopRun } from '../../api/runs';
 import type { RunReportProjection } from '../../entities/report';
-import { RUN_STATUS_LABEL } from '../../entities/run';
+import { RUN_STATUS_LABEL, type RunStatus } from '../../entities/run';
 import {
   buildApiEventTimeline,
   buildRunCollectionSummaryStats,
@@ -70,6 +70,26 @@ const RUN_MONITOR_PANEL_MAX_WIDTH = 560;
 const RUN_MONITOR_CAPTURE_MIN_WIDTH = 560;
 const RUN_MONITOR_RESIZE_STEP = 24;
 const RUN_MONITOR_RESIZER_FALLBACK_WIDTH = 8;
+
+function getLiveInsightMessage(status: RunStatus) {
+  if (status === 'FAILED') {
+    return '실행 중 오류가 발생해 근거 수집이 중단됐습니다. 실패 원인을 확인한 뒤 다시 실행해 주세요.';
+  }
+
+  if (status === 'STOP_REQUESTED') {
+    return '중지 요청을 처리하고 있습니다. 진행 중인 수집을 정리하고 있어요.';
+  }
+
+  if (status === 'STOPPED') {
+    return '실행이 중지되어 근거 수집이 멈췄습니다. 필요하면 새 분석으로 다시 시작해 주세요.';
+  }
+
+  if (status === 'COMPLETED') {
+    return '근거 수집이 완료됐습니다. 리포트 준비 상태를 확인해 주세요.';
+  }
+
+  return '선택한 흐름을 준비하고 있습니다. 곧 근거 수집을 시작합니다.';
+}
 
 function readQueryParam(name: string) {
   if (typeof window === 'undefined') {
@@ -605,6 +625,7 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
   const statusLabel = RUN_STATUS_LABEL[live.status];
   const progressPercent = isApiFallback ? mockData.progressPercent : getApiProgressPercent(live);
   const currentCheckpoint = isApiFallback ? (live.currentAction ?? mockData.currentCheckpoint) : getApiCheckpoint(live);
+  const liveInsightMessage = getLiveInsightMessage(live.status);
   const traceModeLabel = isApiFallback ? '모의 실행' : '실제 실행 상태';
   const isCurrentRunSnapshot = run.id === runId && live.runId === runId;
   const currentRunEvidencePacket = isCurrentRunSnapshot && evidencePacket?.run_id === runId ? evidencePacket : null;
@@ -913,7 +934,7 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
             ) : (
               <div className="run-monitor-live-insight__card">
                 <strong>{currentCheckpoint}</strong>
-                <p>선택한 흐름을 준비하고 있습니다. 곧 근거 수집을 시작합니다.</p>
+                <p>{liveInsightMessage}</p>
                 <RunCollectionSummary
                   stats={collectionSummaryStats}
                   isLoading={isEvidenceLoading}

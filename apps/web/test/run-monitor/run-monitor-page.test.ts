@@ -41,6 +41,9 @@ test('run monitor page exposes Sprint 2 live cockpit essentials with Korean-faci
   assert.match(viewModel, /현재 체크포인트/);
   assert.match(viewModel, /리포트 준비 완료/);
   assert.match(source, /currentCheckpoint/);
+  assert.match(source, /getLiveInsightMessage/);
+  assert.match(source, /실행 중 오류가 발생해 근거 수집이 중단됐습니다/);
+  assert.doesNotMatch(source, /<p>선택한 흐름을 준비하고 있습니다\. 곧 근거 수집을 시작합니다\.<\/p>/);
   assert.doesNotMatch(source, /shouldShowSimulationCheckpoint/);
   assert.doesNotMatch(source, /run-monitor-simulation__header/);
   assert.match(source, /<section className="run-monitor-simulation" aria-label="최근 화면 캡처">/);
