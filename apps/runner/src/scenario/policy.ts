@@ -14,6 +14,12 @@ export type ScenarioSafetyRiskClass =
   | "DESTRUCTIVE_ACTION"
   | "EXTERNAL_NAVIGATION";
 
+export type ScenarioSafetyReasonCode =
+  | "POLICY_SYNTHETIC_INPUT_BLOCKED"
+  | "POLICY_EXTERNAL_NAVIGATION_BLOCKED"
+  | "POLICY_PAYMENT_COMMIT_BLOCKED"
+  | "POLICY_DESTRUCTIVE_ACTION_BLOCKED";
+
 export interface RunnerExecutionPolicyErrorInput {
   safetyCode: ScenarioSafetyBlockCode;
   riskClass: ScenarioSafetyRiskClass;
@@ -151,6 +157,20 @@ export function assertVisitedUrlAllowed(plan: ScenarioPlan, currentUrl: string):
         allowedExternalOrigins: [...allowedExternalOrigins]
       }
     });
+  }
+}
+
+export function reasonCodeFromScenarioSafetyBlock(safetyCode: ScenarioSafetyBlockCode): ScenarioSafetyReasonCode {
+  switch (safetyCode) {
+    case "SYNTHETIC_INPUT_BLOCKED":
+      return "POLICY_SYNTHETIC_INPUT_BLOCKED";
+    case "EXTERNAL_NAVIGATION_BLOCKED":
+    case "EXTERNAL_VISIT_BLOCKED":
+      return "POLICY_EXTERNAL_NAVIGATION_BLOCKED";
+    case "PAYMENT_COMMIT_BLOCKED":
+      return "POLICY_PAYMENT_COMMIT_BLOCKED";
+    case "DESTRUCTIVE_ACTION_BLOCKED":
+      return "POLICY_DESTRUCTIVE_ACTION_BLOCKED";
   }
 }
 
