@@ -17,13 +17,29 @@ from app.rule_engine.registry_loader import load_default_registry
 from app.rule_engine.scoring import friction_score, overall_risk, stage_scores_from_issues
 from app.stage.stage_context_builder import StageContext, StageContextBuilder
 
-RELIABILITY_ACTION_CONTEXT_CRITERION_IDS = {"RELIABILITY-TECH-001", "RELIABILITY-LOADING-STUCK-001"}
-RELIABILITY_LOCATION_TYPES = {"network_failure", "console_error", "loading_state", "page_ready_timing", "settle_response"}
-TOP_LEVEL_BOUNDS_COMPONENT_CRITERION_IDS = {"COPY-LABEL-INTEGRITY-001"}
+RELIABILITY_ACTION_CONTEXT_CRITERION_IDS = {
+    "RELIABILITY-TECH-001",
+    "RELIABILITY-LOADING-STUCK-001",
+    "FEEDBACK-ACTION-RESULT-001",
+    "FEEDBACK-SYSTEM-STATUS-001",
+}
+RELIABILITY_LOCATION_TYPES = {
+    "network_failure",
+    "console_error",
+    "loading_state",
+    "page_ready_timing",
+    "settle_response",
+    "goal_action_result",
+}
+TOP_LEVEL_BOUNDS_COMPONENT_CRITERION_IDS = {"COPY-LABEL-INTEGRITY-001", "FORM-REQUIRED-OPTIONAL-001"}
+PATH_CHOICE_OVERLOAD_CRITERION_IDS = {"PATH-CHOICE-OVERLOAD-001"}
+TARGET_SIZE_CRITERION_IDS = {"TECH-TARGET-SIZE-001"}
 COMPONENT_MARKER_CRITERION_IDS = {
     "PATH-CTA-002",
     *RELIABILITY_ACTION_CONTEXT_CRITERION_IDS,
     *TOP_LEVEL_BOUNDS_COMPONENT_CRITERION_IDS,
+    *PATH_CHOICE_OVERLOAD_CRITERION_IDS,
+    *TARGET_SIZE_CRITERION_IDS,
 }
 
 
@@ -100,6 +116,10 @@ def _attach_evidence_locations(
             locations = _with_related_action_locations(locations, action_locations_by_checkpoint)
         if criterion_id in TOP_LEVEL_BOUNDS_COMPONENT_CRITERION_IDS:
             locations = _with_top_level_bounds_problem_components(locations)
+        if criterion_id in PATH_CHOICE_OVERLOAD_CRITERION_IDS:
+            locations = _with_path_choice_overload_problem_components(issue, locations)
+        if criterion_id in TARGET_SIZE_CRITERION_IDS:
+            locations = _with_target_size_problem_components(issue, locations)
         if not supports_component_marker:
             locations = _without_problem_components(locations)
         problem_components = (
@@ -227,6 +247,149 @@ def _with_top_level_bounds_problem_components(locations: list[dict[str, Any]]) -
     return result
 
 
+def _with_path_choice_overload_problem_components(issue: dict[str, Any], locations: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    group_key = _choice_group_key_from_issue(issue)
+    result: list[dict[str, Any]] = []
+    for location in locations:
+        if location.get("type") != "interactive_components":
+            result.append(location)
+            continue
+        components = [
+            component
+            for component in location.get("components") or []
+            if isinstance(component, dict)
+            and isinstance(component.get("bounds"), dict)
+            and _component_matches_choice_group(component, group_key)
+        ]
+        if not components and group_key and group_key.startswith("layout:"):
+            components = [
+                component
+                for component in location.get("components") or []
+                if isinstance(component, dict) and isinstance(component.get("bounds"), dict)
+            ]
+        if components:
+            result.append({**location, "problem_components": components[:20]})
+        else:
+            result.append(location)
+    return result
+
+
+def _with_target_size_problem_components(issue: dict[str, Any], locations: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    selectors = _target_size_selectors_from_issue(issue)
+    result: list[dict[str, Any]] = []
+    for location in locations:
+        if location.get("type") != "interactive_components":
+            result.append(location)
+            continue
+        components = [
+            component
+            for component in location.get("components") or []
+            if isinstance(component, dict)
+            and isinstance(component.get("bounds"), dict)
+            and _component_matches_target_size_issue(component, selectors)
+        ]
+        if components:
+            result.append({**location, "problem_components": components[:20]})
+        else:
+            result.append(location)
+    return result
+
+
+def _target_size_selectors_from_issue(issue: dict[str, Any]) -> set[str]:
+    for signal in issue.get("signals") or []:
+        if not isinstance(signal, str) or not signal.startswith("target_size_problem_selectors="):
+            continue
+        raw_selectors = signal.split("=", 1)[1]
+        return {selector for selector in raw_selectors.split("|") if selector}
+    return set()
+
+
+def _component_matches_target_size_issue(component: dict[str, Any], selectors: set[str]) -> bool:
+    selector = component.get("selector")
+    if selectors and isinstance(selector, str):
+        return selector in selectors
+    bounds = _numeric_bounds(component.get("bounds"))
+    if bounds is None:
+        return False
+    min_dim = min(bounds["width"], bounds["height"])
+    spacing = _number(component.get("nearest_target_spacing_px"))
+    tight = spacing is not None and spacing < 8
+    return min_dim < 24 or (min_dim < 44 and tight)
+
+
+def _choice_group_key_from_issue(issue: dict[str, Any]) -> str | None:
+    for signal in issue.get("signals") or []:
+        if not isinstance(signal, str) or not signal.startswith("choice_group_key="):
+            continue
+        value = signal.split("=", 1)[1].strip()
+        return value or None
+    return None
+
+
+def _component_matches_choice_group(component: dict[str, Any], group_key: str | None) -> bool:
+    if not group_key:
+        return True
+    if group_key.startswith("container:"):
+        return _component_container_group_key(component) == group_key
+    if group_key.startswith("heading:"):
+        return _component_heading_group_key(component) == group_key
+    return True
+
+
+def _component_container_group_key(component: dict[str, Any]) -> str | None:
+    role = str(component.get("container_role") or component.get("decision_area_role") or "").strip().lower()
+    bounds = _numeric_bounds(component.get("container_bounds"))
+    if bounds is None:
+        return None
+    return "container:" + ":".join(
+        [
+            role,
+            _bucket(bounds["x"]),
+            _bucket(bounds["y"]),
+            _bucket(bounds["width"]),
+            _bucket(bounds["height"]),
+        ]
+    )
+
+
+def _component_heading_group_key(component: dict[str, Any]) -> str | None:
+    heading = component.get("container_heading")
+    if not isinstance(heading, str) or not heading.strip():
+        return None
+    bounds = _numeric_bounds(component.get("bounds"))
+    if bounds is None:
+        return None
+    return f"heading:{heading.strip().lower()}:{_bucket(bounds['y'])}"
+
+
+def _numeric_bounds(value: Any) -> dict[str, float] | None:
+    if not isinstance(value, dict):
+        return None
+    try:
+        x = float(value.get("x"))
+        y = float(value.get("y"))
+        width = float(value.get("width"))
+        height = float(value.get("height"))
+    except (TypeError, ValueError):
+        return None
+    if width <= 0 or height <= 0:
+        return None
+    return {"x": x, "y": y, "width": width, "height": height}
+
+
+def _number(value: Any) -> float | None:
+    if isinstance(value, bool):
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _bucket(value: float) -> str:
+    return str(round(value / 24))
+
+
 def _without_problem_components(locations: list[dict[str, Any]]) -> list[dict[str, Any]]:
     result: list[dict[str, Any]] = []
     for location in locations:
@@ -327,7 +490,7 @@ def _evidence_location_index(contexts: dict[DecisionStage, StageContext]) -> dic
 
 def _location_from_observation_record(record: Any, checkpoint: dict[str, Any] | None) -> dict[str, Any]:
     observation = record.observation
-    data = observation.get("data") if isinstance(observation.get("data"), dict) else {}
+    data = observation.get("data") if isinstance(observation.get("data"), dict) else observation
     location: dict[str, Any] = {
         "evidence_ref": record.ref,
         "checkpoint_id": record.checkpoint_id,
@@ -396,6 +559,13 @@ def _component_locations(value: Any) -> list[dict[str, Any]]:
                 "is_cta_candidate",
                 "is_primary_like",
                 "bounds",
+                "container_role",
+                "container_bounds",
+                "container_heading",
+                "nearest_target_spacing_px",
+                "visible",
+                "disabled",
+                "is_form_control",
             )
             if key in component
         }
@@ -488,7 +658,7 @@ def _stage_evidence_refs(context: StageContext, issues: list[dict[str, Any]]) ->
 def _warning_summary(stage: DecisionStage, issues: list[dict[str, Any]]) -> str:
     if len(issues) == 1:
         return str(issues[0].get("summary") or f"{DECISION_STAGE_DISPLAY_NAMES[stage]} 단계에서 개선 신호가 관찰되었습니다.")
-    return f"{DECISION_STAGE_DISPLAY_NAMES[stage]} 단계에서 {len(issues)}개 개선 신호가 관찰되었습니다."
+    return f"{DECISION_STAGE_DISPLAY_NAMES[stage]} 단계에서 {len(issues)}개의 개선 신호가 관찰되었습니다."
 
 
 def _stage_pass_summary(stage: DecisionStage) -> str:
@@ -502,7 +672,7 @@ def _stage_pass_summary(stage: DecisionStage) -> str:
 
 
 def _stage_not_applicable_summary(stage: DecisionStage) -> str:
-    return f"이 실행에서는 {DECISION_STAGE_DISPLAY_NAMES[stage]} 단계가 적용되지 않습니다."
+    return f"현재 실행에서는 {DECISION_STAGE_DISPLAY_NAMES[stage]} 단계가 적용되지 않습니다."
 
 
 def _scenario_mismatch_report(packet: dict[str, Any]) -> dict[str, Any] | None:

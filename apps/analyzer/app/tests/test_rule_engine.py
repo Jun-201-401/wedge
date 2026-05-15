@@ -483,11 +483,441 @@ class RuleEngineTest(unittest.TestCase):
         self.assertEqual(overload[0]["severity"], 2)
         self.assertEqual(overload[0]["confidence"], 0.86)
         self.assertEqual(overload[0]["evidence_refs"], ["cp_001.obs_many_choices"])
-        self.assertIn("viewport_interactive_choice_count=15", overload[0]["signals"])
+        self.assertIn("group_interactive_choice_count=15", overload[0]["signals"])
+        self.assertTrue(any(signal.startswith("choice_group_key=") for signal in overload[0]["signals"]))
         self.assertIn("evidence_locations", overload[0])
         self.assertIn("components", overload[0]["evidence_locations"][0])
-        self.assertNotIn("problem_components", overload[0])
-        self.assertNotIn("problem_components", overload[0]["evidence_locations"][0])
+        self.assertEqual(len(overload[0]["problem_components"]), 15)
+
+    def test_path_choice_overload_ignores_header_and_footer_utility_links(self) -> None:
+        packet = load_sample_packet()
+        packet["aggregate_signals"]["primary_cta_count_by_stage"] = {}
+        packet["checkpoints"][0]["observations"] = [
+            observation
+            for observation in packet["checkpoints"][0]["observations"]
+            if observation["type"] not in {"cta_cluster", "interactive_components"}
+        ]
+        utility_components = [
+            {
+                "text": f"Utility {index}",
+                "selector": f"a.utility-{index}",
+                "role": "link",
+                "clickable": True,
+                "visible": True,
+                "container_role": "banner" if index < 8 else "contentinfo",
+                "container_bounds": {"x": 0, "y": 0 if index < 8 else 700, "width": 1200, "height": 80},
+                "bounds": {"x": 20 + (index * 58), "y": 24 if index < 8 else 724, "width": 48, "height": 32},
+            }
+            for index in range(16)
+        ]
+        packet["checkpoints"][0]["observations"].append(
+            {
+                "observation_id": "obs_utility_choices",
+                "type": "interactive_components",
+                "stage": "FIRST_VIEW",
+                "source": ["dom", "layout"],
+                "confidence": 0.86,
+                "data": {"components": utility_components},
+            }
+        )
+
+        result = analyze_evidence_packet(packet)
+
+        criteria = [issue["criterion_id"] for issue in result["issues"]]
+        self.assertNotIn("PATH-CHOICE-OVERLOAD-001", criteria)
+
+    def test_path_choice_overload_emits_for_dense_group_even_below_count_threshold(self) -> None:
+        packet = load_sample_packet()
+        packet["aggregate_signals"]["primary_cta_count_by_stage"] = {}
+        packet["checkpoints"][0]["observations"] = [
+            observation
+            for observation in packet["checkpoints"][0]["observations"]
+            if observation["type"] not in {"cta_cluster", "interactive_components"}
+        ]
+        packet["checkpoints"][0]["observations"].append(
+            {
+                "observation_id": "obs_dense_choices",
+                "type": "interactive_components",
+                "stage": "CTA",
+                "source": ["dom", "layout"],
+                "confidence": 0.84,
+                "data": {
+                    "components": [
+                        {
+                            "text": f"Plan {index}",
+                            "selector": f"button.plan-{index}",
+                            "role": "button",
+                            "clickable": True,
+                            "visible": True,
+                            "container_role": "section",
+                            "container_heading": "요금제",
+                            "container_bounds": {"x": 100, "y": 320, "width": 760, "height": 180},
+                            "bounds": {"x": 112 + (index * 82), "y": 360, "width": 76, "height": 44},
+                            "nearest_target_spacing_px": 6,
+                        }
+                        for index in range(9)
+                    ]
+                },
+            }
+        )
+
+        result = analyze_evidence_packet(packet)
+
+        overload = [issue for issue in result["issues"] if issue["criterion_id"] == "PATH-CHOICE-OVERLOAD-001"]
+        self.assertEqual(len(overload), 1)
+        self.assertEqual(overload[0]["severity"], 2)
+        self.assertIn("group_interactive_choice_count=9", overload[0]["signals"])
+        self.assertIn("group_avg_spacing_px=6.0", overload[0]["signals"])
+
+    def test_path_back_link_emits_for_multistep_flow_without_back_affordance(self) -> None:
+        packet = load_sample_packet()
+        packet["aggregate_signals"]["primary_cta_count_by_stage"] = {"CTA": 1}
+        packet["checkpoints"][1]["observations"].append(
+            {
+                "observation_id": "obs_path_navigation",
+                "type": "path_navigation",
+                "stage": "INPUT",
+                "source": ["dom", "browser"],
+                "confidence": 0.82,
+                "data": {
+                    "step_indicator": [{"current_step": 2, "total_steps": 3, "text": "2 of 3"}],
+                    "back_link_candidate": [],
+                    "visited_url_count": 2,
+                    "browser_history_back_available": False,
+                    "flow_step_count": 3,
+                },
+            }
+        )
+
+        result = analyze_evidence_packet(packet)
+
+        back_link = [issue for issue in result["issues"] if issue["criterion_id"] == "PATH-BACK-LINK-001"]
+        self.assertEqual(len(back_link), 1)
+        self.assertEqual(back_link[0]["stage"], "INPUT")
+        self.assertEqual(back_link[0]["severity"], 2)
+        self.assertEqual(back_link[0]["evidence_refs"], ["cp_002.obs_path_navigation"])
+        self.assertIn("multi_step_flow=true", back_link[0]["signals"])
+        self.assertIn("back_link_candidate_count=0", back_link[0]["signals"])
+
+    def test_path_back_link_suppresses_when_explicit_back_affordance_exists(self) -> None:
+        packet = load_sample_packet()
+        packet["aggregate_signals"]["primary_cta_count_by_stage"] = {"CTA": 1}
+        packet["checkpoints"][1]["observations"].append(
+            {
+                "observation_id": "obs_path_navigation",
+                "type": "path_navigation",
+                "stage": "INPUT",
+                "source": ["dom", "browser"],
+                "confidence": 0.82,
+                "data": {
+                    "step_indicator": [{"current_step": 2, "total_steps": 3, "text": "2 of 3"}],
+                    "back_link_candidate": [{"text": "이전 단계", "selector": "a.back", "visible": True}],
+                    "visited_url_count": 2,
+                    "browser_history_back_available": True,
+                    "flow_step_count": 3,
+                },
+            }
+        )
+
+        result = analyze_evidence_packet(packet)
+
+        criteria = [issue["criterion_id"] for issue in result["issues"]]
+        self.assertNotIn("PATH-BACK-LINK-001", criteria)
+
+    def test_path_accordion_discoverability_emits_for_hidden_primary_like_cta(self) -> None:
+        packet = load_sample_packet()
+        packet["aggregate_signals"]["primary_cta_count_by_stage"] = {"CTA": 1}
+        packet["checkpoints"][0]["observations"].append(
+            {
+                "observation_id": "obs_accordion_state",
+                "type": "accordion_state",
+                "stage": "CTA",
+                "source": ["dom"],
+                "confidence": 0.83,
+                "data": {
+                    "accordions": [
+                        {
+                            "trigger_text": "Plan actions",
+                            "panel_relationship": "aria_controls",
+                            "expanded": False,
+                            "hidden_panel_has_cta": True,
+                            "hidden_panel_has_primary_like_cta": True,
+                            "hidden_panel_has_required_info": False,
+                        }
+                    ]
+                },
+            }
+        )
+
+        result = analyze_evidence_packet(packet)
+
+        accordion = [issue for issue in result["issues"] if issue["criterion_id"] == "PATH-ACCORDION-DISCOVERABILITY-001"]
+        self.assertEqual(len(accordion), 1)
+        self.assertEqual(accordion[0]["stage"], "CTA")
+        self.assertEqual(accordion[0]["severity"], 2)
+        self.assertEqual(accordion[0]["evidence_refs"], ["cp_001.obs_accordion_state"])
+        self.assertIn("hidden_panel_has_primary_like_cta=true", accordion[0]["signals"])
+
+    def test_path_accordion_discoverability_ignores_secondary_hidden_cta(self) -> None:
+        packet = load_sample_packet()
+        packet["aggregate_signals"]["primary_cta_count_by_stage"] = {"CTA": 1}
+        packet["checkpoints"][0]["observations"].append(
+            {
+                "observation_id": "obs_accordion_state",
+                "type": "accordion_state",
+                "stage": "CTA",
+                "source": ["dom"],
+                "confidence": 0.83,
+                "data": {
+                    "accordions": [
+                        {
+                            "trigger_text": "More details",
+                            "panel_relationship": "details_summary",
+                            "expanded": False,
+                            "hidden_panel_has_cta": True,
+                            "hidden_panel_has_primary_like_cta": False,
+                            "hidden_panel_has_required_info": True,
+                        }
+                    ]
+                },
+            }
+        )
+
+        result = analyze_evidence_packet(packet)
+
+        criteria = [issue["criterion_id"] for issue in result["issues"]]
+        self.assertNotIn("PATH-ACCORDION-DISCOVERABILITY-001", criteria)
+
+    def test_path_accordion_discoverability_ignores_expanded_primary_like_cta(self) -> None:
+        packet = load_sample_packet()
+        packet["aggregate_signals"]["primary_cta_count_by_stage"] = {"CTA": 1}
+        packet["checkpoints"][0]["observations"].append(
+            {
+                "observation_id": "obs_accordion_state",
+                "type": "accordion_state",
+                "stage": "CTA",
+                "source": ["dom"],
+                "confidence": 0.83,
+                "data": {
+                    "accordions": [
+                        {
+                            "trigger_text": "Plan actions",
+                            "panel_relationship": "aria_controls",
+                            "expanded": True,
+                            "hidden_panel_has_cta": False,
+                            "hidden_panel_has_primary_like_cta": False,
+                            "hidden_panel_has_required_info": False,
+                        }
+                    ]
+                },
+            }
+        )
+
+        result = analyze_evidence_packet(packet)
+
+        criteria = [issue["criterion_id"] for issue in result["issues"]]
+        self.assertNotIn("PATH-ACCORDION-DISCOVERABILITY-001", criteria)
+
+    def test_checkout_order_review_emits_when_final_submit_has_no_summary(self) -> None:
+        packet = load_sample_packet()
+        packet["checkpoints"][0]["observations"].append(
+            {
+                "observation_id": "obs_checkout_context",
+                "type": "checkout_context",
+                "stage": "COMMIT",
+                "source": ["dom", "browser"],
+                "confidence": 0.78,
+                "data": {
+                    "checkout_context": {
+                        "is_checkout_flow": True,
+                        "flow_subtype": "order",
+                        "has_order_summary": False,
+                        "has_editable_summary": False,
+                        "has_final_submit": True,
+                        "order_summary_text": [],
+                        "final_submit_text": "Place order",
+                        "checkout_keywords": ["checkout", "order"],
+                        "final_submit_relation": {
+                            "related": False,
+                            "relation_type": "submit_without_summary",
+                            "summary_selector": None,
+                            "submit_selector": "button.place-order",
+                        },
+                    }
+                },
+            }
+        )
+
+        result = analyze_evidence_packet(packet)
+
+        checkout = [issue for issue in result["issues"] if issue["criterion_id"] == "CHECKOUT-ORDER-REVIEW-001"]
+        self.assertEqual(len(checkout), 1)
+        self.assertEqual(checkout[0]["stage"], "COMMIT")
+        self.assertEqual(checkout[0]["severity"], 2)
+        self.assertEqual(checkout[0]["confidence"], 0.78)
+        self.assertEqual(checkout[0]["evidence_refs"], ["cp_001.obs_checkout_context"])
+        self.assertIn("has_final_submit=true", checkout[0]["signals"])
+        self.assertIn("has_order_summary=false", checkout[0]["signals"])
+
+    def test_checkout_order_review_ignores_final_submit_with_summary(self) -> None:
+        packet = load_sample_packet()
+        packet["checkpoints"][0]["observations"].append(
+            {
+                "observation_id": "obs_checkout_context",
+                "type": "checkout_context",
+                "stage": "COMMIT",
+                "source": ["dom", "browser"],
+                "confidence": 0.78,
+                "data": {
+                    "checkout_context": {
+                        "is_checkout_flow": True,
+                        "flow_subtype": "booking",
+                        "has_order_summary": True,
+                        "has_editable_summary": False,
+                        "has_final_submit": True,
+                        "order_summary_text": ["Room, date, guests, and total"],
+                        "final_submit_text": "Confirm booking",
+                        "checkout_keywords": ["checkout", "summary"],
+                        "final_submit_relation": {
+                            "related": True,
+                            "relation_type": "summary_before_submit",
+                            "summary_selector": "section.summary",
+                            "submit_selector": "button.confirm",
+                        },
+                    }
+                },
+            }
+        )
+
+        result = analyze_evidence_packet(packet)
+
+        criteria = [issue["criterion_id"] for issue in result["issues"]]
+        self.assertNotIn("CHECKOUT-ORDER-REVIEW-001", criteria)
+
+    def test_checkout_order_review_ignores_checkout_without_final_submit(self) -> None:
+        packet = load_sample_packet()
+        packet["checkpoints"][0]["observations"].append(
+            {
+                "observation_id": "obs_checkout_context",
+                "type": "checkout_context",
+                "stage": "COMMIT",
+                "source": ["dom", "browser"],
+                "confidence": 0.78,
+                "data": {
+                    "checkout_context": {
+                        "is_checkout_flow": True,
+                        "flow_subtype": "checkout",
+                        "has_order_summary": False,
+                        "has_editable_summary": False,
+                        "has_final_submit": False,
+                        "order_summary_text": [],
+                        "final_submit_text": None,
+                        "checkout_keywords": ["checkout"],
+                        "final_submit_relation": None,
+                    }
+                },
+            }
+        )
+
+        result = analyze_evidence_packet(packet)
+
+        criteria = [issue["criterion_id"] for issue in result["issues"]]
+        self.assertNotIn("CHECKOUT-ORDER-REVIEW-001", criteria)
+
+    def test_target_size_emits_for_small_tightly_spaced_target(self) -> None:
+        packet = load_sample_packet()
+        packet["aggregate_signals"]["primary_cta_count_by_stage"] = {}
+        packet["checkpoints"][0]["observations"] = [
+            observation
+            for observation in packet["checkpoints"][0]["observations"]
+            if observation["type"] not in {"cta_cluster", "interactive_components"}
+        ]
+        packet["checkpoints"][0]["observations"].append(
+            {
+                "observation_id": "obs_small_targets",
+                "type": "interactive_components",
+                "stage": "CTA",
+                "source": ["dom", "layout"],
+                "confidence": 0.88,
+                "data": {
+                    "components": [
+                        {
+                            "text": "Open",
+                            "selector": "button.icon-open",
+                            "role": "button",
+                            "tag": "button",
+                            "clickable": True,
+                            "visible": True,
+                            "bounds": {"x": 320, "y": 240, "width": 18, "height": 18},
+                            "nearest_target_spacing_px": 4,
+                        },
+                        {
+                            "text": "Secondary",
+                            "selector": "button.secondary",
+                            "role": "button",
+                            "tag": "button",
+                            "clickable": True,
+                            "visible": True,
+                            "bounds": {"x": 360, "y": 240, "width": 80, "height": 40},
+                            "nearest_target_spacing_px": 12,
+                        },
+                    ]
+                },
+            }
+        )
+
+        result = analyze_evidence_packet(packet)
+
+        target_size = [issue for issue in result["issues"] if issue["criterion_id"] == "TECH-TARGET-SIZE-001"]
+        self.assertEqual(len(target_size), 1)
+        issue = target_size[0]
+        self.assertEqual(issue["stage"], "CTA")
+        self.assertEqual(issue["severity"], 2)
+        self.assertEqual(issue["confidence"], 0.88)
+        self.assertIn("WCAG 2.5.8", [reference["label"] for reference in issue["references"]])
+        self.assertIn("min_target_size_px=24", issue["signals"])
+        self.assertIn("tight_spacing_px=8", issue["signals"])
+        self.assertIn("target_size_problem_selectors=button.icon-open", issue["signals"])
+        self.assertEqual(issue["problem_components"][0]["selector"], "button.icon-open")
+        self.assertEqual(issue["problem_components"][0]["bounding_box"], {"x": 320, "y": 240, "width": 18, "height": 18, "unit": "css_px"})
+
+    def test_target_size_does_not_emit_for_small_footer_legal_link(self) -> None:
+        packet = load_sample_packet()
+        packet["aggregate_signals"]["primary_cta_count_by_stage"] = {}
+        packet["checkpoints"][0]["observations"] = [
+            observation
+            for observation in packet["checkpoints"][0]["observations"]
+            if observation["type"] not in {"cta_cluster", "interactive_components"}
+        ]
+        packet["checkpoints"][0]["observations"].append(
+            {
+                "observation_id": "obs_footer_targets",
+                "type": "interactive_components",
+                "stage": "FIRST_VIEW",
+                "source": ["dom", "layout"],
+                "confidence": 0.84,
+                "data": {
+                    "components": [
+                        {
+                            "text": "Privacy",
+                            "selector": "a.privacy",
+                            "role": "link",
+                            "tag": "a",
+                            "clickable": True,
+                            "visible": True,
+                            "container_role": "contentinfo",
+                            "bounds": {"x": 24, "y": 780, "width": 20, "height": 18},
+                            "nearest_target_spacing_px": 4,
+                        }
+                    ]
+                },
+            }
+        )
+
+        result = analyze_evidence_packet(packet)
+
+        criteria = [issue["criterion_id"] for issue in result["issues"]]
+        self.assertNotIn("TECH-TARGET-SIZE-001", criteria)
 
     def test_missing_cta_evidence_is_not_user_facing_issue(self) -> None:
         packet = load_sample_packet()
@@ -589,6 +1019,119 @@ class RuleEngineTest(unittest.TestCase):
         self.assertEqual(len(form_issues), 1)
         self.assertEqual(form_issues[0]["severity"], 1)
 
+    def test_form_required_optional_emits_after_submit_error_without_prior_marker(self) -> None:
+        packet = load_sample_packet()
+        packet["aggregate_signals"]["primary_cta_count_by_stage"] = {"CTA": 1}
+        packet["checkpoints"][1]["observations"][0]["source"] = ["dom", "ax", "scenario_log"]
+        packet["checkpoints"][1]["observations"][0]["confidence"] = 0.89
+        packet["checkpoints"][1]["observations"][0]["data"].update(
+            {
+                "label_text": "Email",
+                "accessible_name": "Email",
+                "visible": True,
+                "required": True,
+                "submit_required_error": True,
+                "visible_required_marker": False,
+                "group_level_required_state": "unknown",
+                "bounds": {"x": 420, "y": 320, "width": 360, "height": 48},
+                "selector": "input.email",
+            }
+        )
+
+        result = analyze_evidence_packet(packet)
+
+        issues = [issue for issue in result["issues"] if issue["criterion_id"] == "FORM-REQUIRED-OPTIONAL-001"]
+        self.assertEqual(len(issues), 1)
+        issue = issues[0]
+        self.assertEqual(issue["stage"], "INPUT")
+        self.assertEqual(issue["axis"], "Clarity")
+        self.assertEqual(issue["severity"], 2)
+        self.assertEqual(issue["confidence"], 0.89)
+        self.assertIn("WCAG 3.3.2", [reference["label"] for reference in issue["references"]])
+        self.assertIn("submit_required_error=true", issue["signals"])
+        self.assertIn("visible_required_marker=false", issue["signals"])
+        self.assertEqual(issue["problem_components"][0]["selector"], "input.email")
+        self.assertEqual(issue["problem_components"][0]["bounding_box"], {"x": 420, "y": 320, "width": 360, "height": 48, "unit": "css_px"})
+
+    def test_form_required_optional_accepts_runner_string_submit_error(self) -> None:
+        packet = load_sample_packet()
+        packet["aggregate_signals"]["primary_cta_count_by_stage"] = {"CTA": 1}
+        packet["checkpoints"][1]["observations"][0]["source"] = ["dom", "ax", "scenario_log"]
+        packet["checkpoints"][1]["observations"][0]["confidence"] = 0.86
+        packet["checkpoints"][1]["observations"][0]["data"].update(
+            {
+                "label_text": "Email",
+                "accessible_name": "Email",
+                "visible": True,
+                "required": True,
+                "submit_required_error": "Email is required",
+                "visible_required_marker": None,
+                "group_level_required_state": "unknown",
+            }
+        )
+
+        result = analyze_evidence_packet(packet)
+
+        issues = [issue for issue in result["issues"] if issue["criterion_id"] == "FORM-REQUIRED-OPTIONAL-001"]
+        self.assertEqual(len(issues), 1)
+        self.assertEqual(issues[0]["confidence"], 0.86)
+
+    def test_form_required_optional_ignores_submit_error_with_visible_required_marker(self) -> None:
+        packet = load_sample_packet()
+        packet["aggregate_signals"]["primary_cta_count_by_stage"] = {"CTA": 1}
+        packet["checkpoints"][1]["observations"][0]["data"].update(
+            {
+                "label_text": "Email *",
+                "accessible_name": "Email required",
+                "visible": True,
+                "required": True,
+                "submit_required_error": True,
+                "visible_required_marker": True,
+            }
+        )
+
+        result = analyze_evidence_packet(packet)
+
+        criteria = [issue["criterion_id"] for issue in result["issues"]]
+        self.assertNotIn("FORM-REQUIRED-OPTIONAL-001", criteria)
+
+    def test_form_required_optional_ignores_runner_string_required_marker(self) -> None:
+        packet = load_sample_packet()
+        packet["aggregate_signals"]["primary_cta_count_by_stage"] = {"CTA": 1}
+        packet["checkpoints"][1]["observations"][0]["data"].update(
+            {
+                "label_text": "Email",
+                "accessible_name": "Email",
+                "visible": True,
+                "required": True,
+                "submit_required_error": "Email is required",
+                "visible_required_marker": "*",
+            }
+        )
+
+        result = analyze_evidence_packet(packet)
+
+        criteria = [issue["criterion_id"] for issue in result["issues"]]
+        self.assertNotIn("FORM-REQUIRED-OPTIONAL-001", criteria)
+
+    def test_form_required_optional_does_not_emit_from_required_dom_alone(self) -> None:
+        packet = load_sample_packet()
+        packet["aggregate_signals"]["primary_cta_count_by_stage"] = {"CTA": 1}
+        packet["checkpoints"][1]["observations"][0]["data"].update(
+            {
+                "label_text": "Email",
+                "accessible_name": "Email",
+                "visible": True,
+                "required": True,
+                "visible_required_marker": False,
+            }
+        )
+
+        result = analyze_evidence_packet(packet)
+
+        criteria = [issue["criterion_id"] for issue in result["issues"]]
+        self.assertNotIn("FORM-REQUIRED-OPTIONAL-001", criteria)
+
     def test_run_level_reliability_aggregate_is_not_stage_issue(self) -> None:
         packet = load_sample_packet()
         packet["aggregate_signals"]["primary_cta_count_by_stage"] = {"CTA": 1}
@@ -605,7 +1148,7 @@ class RuleEngineTest(unittest.TestCase):
         reliability = [issue for issue in result["issues"] if issue["criterion_id"] == "RELIABILITY-TECH-001"]
         self.assertEqual(len(reliability), 1)
         self.assertEqual(reliability[0]["stage"], "INPUT")
-        self.assertEqual(reliability[0]["references"][0]["label"], "Lighthouse")
+        self.assertEqual(reliability[0]["references"][0]["label"], "NN/g Heuristics")
         self.assertIn("cp_002.state.network_summary", reliability[0]["evidence_refs"])
 
     def test_loading_stuck_emits_from_general_page_ready_timing(self) -> None:
@@ -790,6 +1333,171 @@ class RuleEngineTest(unittest.TestCase):
         self.assertEqual(loading, [])
         self.assertEqual(len(reliability), 1)
 
+    def test_feedback_system_status_emits_when_processing_exceeds_three_seconds_without_feedback(self) -> None:
+        packet = load_sample_packet()
+        packet["aggregate_signals"]["primary_cta_count_by_stage"] = {"CTA": 1}
+        packet["checkpoints"][0]["observations"].append(
+            {
+                "observation_id": "obs_loading_state_no_feedback",
+                "type": "loading_state",
+                "stage": "CTA",
+                "source": ["dom", "browser"],
+                "confidence": 0.78,
+                "action_kind": "click",
+                "expected_outcome_hint": ["dom_change"],
+                "settle_status": "settled",
+                "duration_ms": 3_400,
+                "loading_state": {
+                    "has_spinner": False,
+                    "has_progressbar": False,
+                    "status_text": [],
+                    "clicked_submit_disabled": False,
+                    "aria_busy": False,
+                },
+            }
+        )
+
+        result = analyze_evidence_packet(packet)
+
+        feedback = [issue for issue in result["issues"] if issue["criterion_id"] == "FEEDBACK-SYSTEM-STATUS-001"]
+        self.assertEqual(len(feedback), 1)
+        self.assertEqual(feedback[0]["stage"], "CTA")
+        self.assertEqual(feedback[0]["severity"], 1)
+        self.assertEqual(feedback[0]["evidence_refs"], ["cp_001.obs_loading_state_no_feedback"])
+        self.assertIn("status_feedback_threshold_ms=3000", feedback[0]["signals"])
+        self.assertIn("duration_ms=3400", feedback[0]["signals"])
+
+    def test_feedback_system_status_ignores_processing_under_three_seconds(self) -> None:
+        packet = load_sample_packet()
+        packet["aggregate_signals"]["primary_cta_count_by_stage"] = {"CTA": 1}
+        packet["checkpoints"][0]["observations"].append(
+            {
+                "observation_id": "obs_loading_state_fast",
+                "type": "loading_state",
+                "stage": "CTA",
+                "source": ["dom", "browser"],
+                "confidence": 0.78,
+                "action_kind": "click",
+                "expected_outcome_hint": ["dom_change"],
+                "settle_status": "settled",
+                "duration_ms": 2_900,
+                "loading_state": {
+                    "has_spinner": False,
+                    "has_progressbar": False,
+                    "status_text": [],
+                    "clicked_submit_disabled": False,
+                    "aria_busy": False,
+                },
+            }
+        )
+
+        result = analyze_evidence_packet(packet)
+
+        feedback = [issue for issue in result["issues"] if issue["criterion_id"] == "FEEDBACK-SYSTEM-STATUS-001"]
+        self.assertEqual(feedback, [])
+
+    def test_feedback_system_status_suppresses_when_status_feedback_exists(self) -> None:
+        packet = load_sample_packet()
+        packet["aggregate_signals"]["primary_cta_count_by_stage"] = {"CTA": 1}
+        packet["checkpoints"][0]["observations"].append(
+            {
+                "observation_id": "obs_loading_state_with_feedback",
+                "type": "loading_state",
+                "stage": "CTA",
+                "source": ["dom", "browser"],
+                "confidence": 0.82,
+                "action_kind": "submit",
+                "expected_outcome_hint": ["form_submit"],
+                "settle_status": "settled",
+                "duration_ms": 6_200,
+                "loading_state": {
+                    "has_spinner": True,
+                    "has_progressbar": False,
+                    "status_text": ["Processing"],
+                    "clicked_submit_disabled": True,
+                    "aria_busy": False,
+                },
+            }
+        )
+
+        result = analyze_evidence_packet(packet)
+
+        feedback = [issue for issue in result["issues"] if issue["criterion_id"] == "FEEDBACK-SYSTEM-STATUS-001"]
+        self.assertEqual(feedback, [])
+
+    def test_feedback_system_status_suppresses_when_technical_failure_exists(self) -> None:
+        packet = load_sample_packet()
+        packet["aggregate_signals"]["primary_cta_count_by_stage"] = {"CTA": 1}
+        packet["checkpoints"][0]["observations"].extend(
+            [
+                {
+                    "observation_id": "obs_loading_state_no_feedback",
+                    "type": "loading_state",
+                    "stage": "CTA",
+                    "source": ["dom", "browser"],
+                    "confidence": 0.78,
+                    "action_kind": "submit",
+                    "expected_outcome_hint": ["form_submit"],
+                    "settle_status": "timeout",
+                    "duration_ms": 7_200,
+                    "loading_state": {
+                        "has_spinner": False,
+                        "has_progressbar": False,
+                        "status_text": [],
+                        "clicked_submit_disabled": True,
+                        "aria_busy": False,
+                    },
+                },
+                {
+                    "observation_id": "obs_network_failure",
+                    "type": "network_failure",
+                    "stage": "CTA",
+                    "source": ["network"],
+                    "data": {"url": "https://example.com/api/submit", "status": "failed"},
+                    "confidence": 0.9,
+                },
+            ]
+        )
+
+        result = analyze_evidence_packet(packet)
+
+        feedback = [issue for issue in result["issues"] if issue["criterion_id"] == "FEEDBACK-SYSTEM-STATUS-001"]
+        reliability = [issue for issue in result["issues"] if issue["criterion_id"] == "RELIABILITY-TECH-001"]
+        self.assertEqual(feedback, [])
+        self.assertEqual(len(reliability), 1)
+
+    def test_feedback_system_status_escalates_commit_timeout_without_feedback(self) -> None:
+        packet = load_sample_packet()
+        packet["aggregate_signals"]["primary_cta_count_by_stage"] = {"CTA": 1}
+        packet["checkpoints"][0]["observations"].append(
+            {
+                "observation_id": "obs_commit_loading_state_no_feedback",
+                "type": "loading_state",
+                "stage": "COMMIT",
+                "source": ["dom", "browser"],
+                "confidence": 0.78,
+                "action_kind": "payment_submit",
+                "expected_outcome_hint": ["checkout_processing"],
+                "settle_status": "timeout",
+                "duration_ms": 8_500,
+                "loading_state": {
+                    "has_spinner": False,
+                    "has_progressbar": False,
+                    "status_text": [],
+                    "clicked_submit_disabled": True,
+                    "aria_busy": False,
+                },
+            }
+        )
+
+        result = analyze_evidence_packet(packet)
+
+        feedback = [issue for issue in result["issues"] if issue["criterion_id"] == "FEEDBACK-SYSTEM-STATUS-001"]
+        self.assertEqual(len(feedback), 1)
+        self.assertEqual(feedback[0]["stage"], "COMMIT")
+        self.assertEqual(feedback[0]["severity"], 3)
+        self.assertIn("settle_status=timeout", feedback[0]["signals"])
+
     def test_reliability_issue_links_clicked_component_bounds(self) -> None:
         packet = load_sample_packet()
         packet["aggregate_signals"]["primary_cta_count_by_stage"] = {"CTA": 1}
@@ -939,6 +1647,235 @@ class RuleEngineTest(unittest.TestCase):
         self.assertEqual(len(reliability), 1)
         self.assertEqual(reliability[0]["stage"], "INPUT")
         self.assertEqual(reliability[0]["evidence_refs"], ["cp_002.state.network_summary"])
+
+    def test_feedback_action_result_emits_when_goal_action_has_no_visible_confirmation(self) -> None:
+        packet = load_sample_packet()
+        packet["aggregate_signals"]["primary_cta_count_by_stage"] = {"CTA": 1}
+        packet["checkpoints"][0]["observations"].append(
+            {
+                "observation_id": "obs_goal_action_result_missing_feedback",
+                "type": "goal_action_result",
+                "stage": "CTA",
+                "source": ["scenario_log", "dom", "browser", "network"],
+                "confidence": 0.82,
+                "data": {
+                    "step_order": 1,
+                    "step_key": "step_add_to_cart",
+                    "action_type": "click",
+                    "clicked_text": "Add to cart",
+                    "clicked_selector": "button.add-to-cart",
+                    "url_before": "https://example.com/product",
+                    "url_after": "https://example.com/product",
+                    "goal_action_like": True,
+                    "success_evidence": [],
+                    "result": {
+                        "action_attempted": True,
+                        "add_to_cart_like_button": True,
+                        "cart_count_delta": 0,
+                        "toast_present": False,
+                        "url_changed": False,
+                        "dom_changed": False,
+                        "network_success": False,
+                        "settle_status": "settled",
+                    },
+                },
+            }
+        )
+
+        result = analyze_evidence_packet(packet)
+
+        feedback = [issue for issue in result["issues"] if issue["criterion_id"] == "FEEDBACK-ACTION-RESULT-001"]
+        self.assertEqual(len(feedback), 1)
+        self.assertEqual(feedback[0]["stage"], "CTA")
+        self.assertEqual(feedback[0]["severity"], 2)
+        self.assertEqual(feedback[0]["evidence_refs"], ["cp_001.obs_goal_action_result_missing_feedback"])
+        self.assertIn("success_evidence=none", feedback[0]["signals"])
+
+    def test_feedback_action_result_suppresses_when_visible_confirmation_exists(self) -> None:
+        packet = load_sample_packet()
+        packet["aggregate_signals"]["primary_cta_count_by_stage"] = {"CTA": 1}
+        packet["checkpoints"][0]["observations"].append(
+            {
+                "observation_id": "obs_goal_action_result_confirmed",
+                "type": "goal_action_result",
+                "stage": "CTA",
+                "source": ["scenario_log", "dom", "browser", "network"],
+                "confidence": 0.84,
+                "data": {
+                    "step_order": 1,
+                    "step_key": "step_add_to_cart",
+                    "action_type": "click",
+                    "clicked_text": "Add to cart",
+                    "clicked_selector": "button.add-to-cart",
+                    "url_before": "https://example.com/product",
+                    "url_after": "https://example.com/product",
+                    "goal_action_like": True,
+                    "success_evidence": ["toast_present"],
+                    "result": {
+                        "action_attempted": True,
+                        "add_to_cart_like_button": True,
+                        "cart_count_delta": 0,
+                        "toast_present": True,
+                        "url_changed": False,
+                        "dom_changed": False,
+                        "network_success": True,
+                        "settle_status": "settled",
+                    },
+                },
+            }
+        )
+
+        result = analyze_evidence_packet(packet)
+
+        feedback = [issue for issue in result["issues"] if issue["criterion_id"] == "FEEDBACK-ACTION-RESULT-001"]
+        self.assertEqual(feedback, [])
+
+    def test_feedback_action_result_uses_same_checkpoint_count_change_as_confirmation(self) -> None:
+        packet = load_sample_packet()
+        packet["aggregate_signals"]["primary_cta_count_by_stage"] = {"CTA": 1}
+        packet["checkpoints"][0]["observations"].extend(
+            [
+                {
+                    "observation_id": "obs_goal_action_result_missing_feedback",
+                    "type": "goal_action_result",
+                    "stage": "CTA",
+                    "source": ["scenario_log", "dom", "browser", "network"],
+                    "confidence": 0.82,
+                    "data": {
+                        "step_order": 1,
+                        "step_key": "step_add_to_cart",
+                        "action_type": "click",
+                        "clicked_text": "Add to cart",
+                        "clicked_selector": "button.add-to-cart",
+                        "url_before": "https://example.com/product",
+                        "url_after": "https://example.com/product",
+                        "goal_action_like": True,
+                        "success_evidence": [],
+                        "result": {
+                            "action_attempted": True,
+                            "add_to_cart_like_button": True,
+                            "cart_count_delta": 0,
+                            "toast_present": False,
+                            "url_changed": False,
+                            "dom_changed": False,
+                            "network_success": False,
+                            "settle_status": "settled",
+                        },
+                    },
+                },
+                {
+                    "observation_id": "obs_count_change",
+                    "type": "settle_item_count_change",
+                    "stage": "VALUE",
+                    "source": ["dom", "scenario_log"],
+                    "confidence": 0.88,
+                    "data": {
+                        "settle_status": "settled",
+                        "target": "selector=.cart-item",
+                        "baseline_count": 0,
+                        "current_count": 1,
+                        "count_delta": 1,
+                    },
+                },
+            ]
+        )
+
+        result = analyze_evidence_packet(packet)
+
+        feedback = [issue for issue in result["issues"] if issue["criterion_id"] == "FEEDBACK-ACTION-RESULT-001"]
+        self.assertEqual(feedback, [])
+
+    def test_feedback_action_result_suppresses_when_reliability_failure_explains_action(self) -> None:
+        packet = load_sample_packet()
+        packet["aggregate_signals"]["primary_cta_count_by_stage"] = {"CTA": 1}
+        packet["checkpoints"][0]["observations"].extend(
+            [
+                {
+                    "observation_id": "obs_goal_action_result_missing_feedback",
+                    "type": "goal_action_result",
+                    "stage": "CTA",
+                    "source": ["scenario_log", "dom", "browser", "network"],
+                    "confidence": 0.82,
+                    "data": {
+                        "step_order": 1,
+                        "step_key": "step_add_to_cart",
+                        "action_type": "click",
+                        "clicked_text": "Add to cart",
+                        "clicked_selector": "button.add-to-cart",
+                        "url_before": "https://example.com/product",
+                        "url_after": "https://example.com/product",
+                        "goal_action_like": True,
+                        "success_evidence": [],
+                        "result": {
+                            "action_attempted": True,
+                            "add_to_cart_like_button": True,
+                            "cart_count_delta": 0,
+                            "toast_present": False,
+                            "url_changed": False,
+                            "dom_changed": False,
+                            "network_success": False,
+                            "settle_status": "failed",
+                        },
+                    },
+                },
+                {
+                    "observation_id": "obs_network_failure",
+                    "type": "network_failure",
+                    "stage": "CTA",
+                    "source": ["network"],
+                    "data": {"url": "https://example.com/api/cart", "status": "failed"},
+                    "confidence": 0.9,
+                },
+            ]
+        )
+
+        result = analyze_evidence_packet(packet)
+
+        feedback = [issue for issue in result["issues"] if issue["criterion_id"] == "FEEDBACK-ACTION-RESULT-001"]
+        reliability = [issue for issue in result["issues"] if issue["criterion_id"] == "RELIABILITY-TECH-001"]
+        self.assertEqual(feedback, [])
+        self.assertEqual(len(reliability), 1)
+
+    def test_feedback_action_result_warns_when_only_network_success_exists(self) -> None:
+        packet = load_sample_packet()
+        packet["aggregate_signals"]["primary_cta_count_by_stage"] = {"CTA": 1}
+        packet["checkpoints"][0]["observations"].append(
+            {
+                "observation_id": "obs_goal_action_result_network_only",
+                "type": "goal_action_result",
+                "stage": "CTA",
+                "source": ["scenario_log", "dom", "browser", "network"],
+                "confidence": 0.84,
+                "data": {
+                    "step_order": 1,
+                    "step_key": "step_add_to_cart",
+                    "action_type": "click",
+                    "clicked_text": "Add to cart",
+                    "clicked_selector": "button.add-to-cart",
+                    "url_before": "https://example.com/product",
+                    "url_after": "https://example.com/product",
+                    "goal_action_like": True,
+                    "success_evidence": ["network_success"],
+                    "result": {
+                        "action_attempted": True,
+                        "add_to_cart_like_button": True,
+                        "cart_count_delta": 0,
+                        "toast_present": False,
+                        "url_changed": False,
+                        "dom_changed": False,
+                        "network_success": True,
+                        "settle_status": "settled",
+                    },
+                },
+            }
+        )
+
+        result = analyze_evidence_packet(packet)
+
+        feedback = [issue for issue in result["issues"] if issue["criterion_id"] == "FEEDBACK-ACTION-RESULT-001"]
+        self.assertEqual(len(feedback), 1)
+        self.assertEqual(feedback[0]["severity"], 1)
+        self.assertIn("network_success_only=true", feedback[0]["signals"])
 
     def test_copy_flow_quality_ignores_direct_label_issue_type_without_gms_alignment(self) -> None:
         packet = load_sample_packet()
@@ -1151,7 +2088,7 @@ class ContractShapeTest(unittest.TestCase):
             self.assertTrue(issue["evidence_refs"])
             self.assertIn("references", issue)
         referenced_issue = next(issue for issue in result["issues"] if issue["criterion_id"] == "PATH-CTA-002")
-        self.assertEqual(referenced_issue["references"][0]["label"], "GOV.UK Buttons")
+        self.assertEqual(referenced_issue["references"][0]["label"], "USWDS Button Group")
         for item in result["decision_map"]:
             for field in ("stage", "displayName", "status", "issueIds", "summary", "evidenceRefs"):
                 self.assertIn(field, item)

@@ -20,7 +20,7 @@
       ],
       "confidence_rule": "High when DOM, AX, layout, and screenshot align; cap when semantic/provider confidence is low or visual-only evidence is present.",
       "fix_leverage_default": 1.0,
-      "output_template": "핵심 행동을 시작할 primary CTA가 충분히 드러나지 않아 다음 행동 선택이 어려울 수 있습니다.",
+      "output_template": "핵심 행동을 시작할 주요 행동 버튼이 충분히 드러나지 않아 다음 행동 선택이 어려울 수 있습니다.",
       "source_refs": ["docs/05_judge_scoring_validation.md#9-path-cta-001-상세"],
       "references": [
         {
@@ -34,7 +34,7 @@
           "label": "NN/g Heuristics",
           "publisher": "NN/g",
           "title": "Recognition rather than recall",
-          "basisSummary": "사용자가 다음 행동을 기억해내기보다 화면에서 인식할 수 있도록 명확한 선택지룰 보여주는 것이 좋습니다.",
+          "basisSummary": "사용자가 다음 행동을 기억해내기보다 화면에서 인식할 수 있도록 명확한 선택지를 보여주는 것이 좋습니다.",
           "url": "https://www.nngroup.com/articles/ten-usability-heuristics/"
         }
       ]
@@ -54,7 +54,7 @@
       ],
       "confidence_rule": "Use cluster observation confidence when present; otherwise use aggregate-signal medium confidence.",
       "fix_leverage_default": 1.0,
-      "output_template": "같은 결정 순간에서 여러 primary급 CTA가 경쟁해 사용자가 첫 행동을 고르기 어려울 수 있습니다.",
+      "output_template": "같은 결정 순간에서 여러 강조된 행동 버튼이 경쟁해 사용자가 첫 행동을 고르기 어려울 수 있습니다.",
       "source_refs": ["docs/05_judge_scoring_validation.md#11-나머지-p0-rule-최소-정책"],
       "references": [
         {
@@ -63,6 +63,63 @@
           "title": "Button group component",
           "basisSummary": "서로 관련된 버튼은 함께 배치하되, 사용자가 각 행동의 차이와 우선순위를 쉽게 이해할 수 있어야 합니다.",
           "url": "https://designsystem.digital.gov/components/button-group/"
+        }
+      ]
+    },
+    {
+      "criterion_id": "PATH-BACK-LINK-001",
+      "axis": "Path",
+      "applicableStages": ["VALUE", "CTA", "INPUT"],
+      "evidence_level": "Expert Guide",
+      "definition": "Multi-step flows should provide an explicit way to go back, edit, or change a prior step.",
+      "required_observations": ["path_navigation"],
+      "measurement_sources": ["dom", "layout", "scenario_log"],
+      "signal_rule": "A multi-step flow is detected but no visible back/edit/change affordance is present.",
+      "severity_rules": [
+        {"severity": 0, "condition": "explicit back, previous, edit, or change affordance is visible"},
+        {"severity": 1, "condition": "only browser history back appears available"},
+        {"severity": 2, "condition": "no explicit back affordance and browser history back is unavailable or unknown"}
+      ],
+      "exceptions": ["Suppress when the page is not confirmed to be part of a multi-step flow.", "Suppress when a visible previous/edit/change/cancel affordance is present."],
+      "confidence_rule": "Use path_navigation confidence; cap confidence when only browser history back is available.",
+      "fix_leverage_default": 0.9,
+      "output_template": "다단계 흐름에서 이전 단계로 돌아가거나 내용을 수정하는 방법이 명확하지 않습니다.",
+      "source_refs": ["docs/20_final_analyzer_rules.md#path-back-link-001"],
+      "references": [
+        {
+          "label": "GOV.UK Back link",
+          "publisher": "GOV.UK",
+          "title": "Back link component",
+          "basisSummary": "여러 단계로 이어지는 서비스에서는 흐름에 맞게 이전 단계로 돌아갈 수 있는 명확한 방법을 제공하는 것이 좋습니다.",
+          "url": "https://design-system.service.gov.uk/components/back-link/"
+        }
+      ]
+    },
+    {
+      "criterion_id": "PATH-ACCORDION-DISCOVERABILITY-001",
+      "axis": "Path",
+      "applicableStages": ["VALUE", "CTA"],
+      "evidence_level": "Operational",
+      "definition": "Primary-like CTA controls should not be hidden inside collapsed accordion panels during decision stages.",
+      "required_observations": ["accordion_state"],
+      "measurement_sources": ["dom", "layout"],
+      "signal_rule": "A collapsed accordion reports hidden_panel_has_primary_like_cta=true.",
+      "severity_rules": [
+        {"severity": 0, "condition": "no collapsed accordion hides a primary-like CTA"},
+        {"severity": 2, "condition": "a collapsed accordion hides a primary-like CTA in VALUE or CTA stage"}
+      ],
+      "exceptions": ["Suppress when the accordion is expanded.", "Suppress when the hidden panel contains only secondary links, required information, or non-primary actions."],
+      "confidence_rule": "Use accordion_state confidence; primary-like CTA detection is supplied by Runner DOM/layout heuristics.",
+      "fix_leverage_default": 0.9,
+      "output_template": "중요한 행동 버튼이 접힌 버튼 안에 숨겨져 있습니다.",
+      "source_refs": ["docs/20_final_analyzer_rules.md#path-accordion-discoverability-001"],
+      "references": [
+        {
+          "label": "GOV.UK Accordion",
+          "publisher": "GOV.UK",
+          "title": "Accordion component",
+          "basisSummary": "접힌 부분 밖에 사용자가 원하는 정보와 행동을 발견할 수 있도록 구성해야 합니다.",
+          "url": "https://design-system.service.gov.uk/components/accordion/"
         }
       ]
     },
@@ -83,7 +140,7 @@
       ],
       "confidence_rule": "Use observation confidence and cap confidence when viewport dimensions are missing.",
       "fix_leverage_default": 1.0,
-      "output_template": "Too many interactive choices are visible at once.",
+      "output_template": "한 화면에 클릭 가능한 선택지가 너무 많이 동시에 노출됩니다.",
       "source_refs": ["docs/12_analyzer_rule_catalog.md#path-choice-overload-001", "docs/13_analyzer_rule_required_data.md#path-choice-overload-001"],
       "references": [
         {
@@ -111,7 +168,7 @@
       ],
       "confidence_rule": "입력 필드에 목적을 알 수 있는 라벨이나 설명이 있는지 판단한다.",
       "fix_leverage_default": 1.0,
-      "output_template": "입력 필드의 목적을 알려주는 label 또는 지시사항이 부족해 입력 진행이 어려울 수 있습니다.",
+      "output_template": "입력 필드의 목적을 알려주는 라벨이나 안내가 부족해 입력 진행이 어려울 수 있습니다.",
       "source_refs": ["docs/05_judge_scoring_validation.md#10-friction-form-001-상세"],
       "references": [
         {
@@ -120,6 +177,42 @@
           "title": "Labels or Instructions",
           "basisSummary": "입력을 요구하는 화면에서는 사용자가 무엇을 입력해야 하는지 알 수 있는 라벨 또는 안내가 제공되어야 합니다.",
           "url": "https://www.w3.org/WAI/WCAG22/Understanding/labels-or-instructions.html"
+        }
+      ]
+    },
+    {
+      "criterion_id": "FORM-REQUIRED-OPTIONAL-001",
+      "axis": "Clarity",
+      "applicableStages": ["INPUT"],
+      "evidence_level": "Standard",
+      "definition": "Required fields should be communicated before submit, not only after a required-field validation error.",
+      "required_observations": ["form_field"],
+      "measurement_sources": ["dom", "ax", "scenario_log"],
+      "signal_rule": "A visible form_field has submit_required_error=true but no visible required marker, required text, or group-level required indication.",
+      "severity_rules": [
+        {"severity": 0, "condition": "required status is visible before submit, or no submit-time required error occurs"},
+        {"severity": 2, "condition": "a required-field error appears after submit without a prior required marker"},
+        {"severity": 3, "condition": "a required-field error appears without a prior required marker in a payment, order, or other sensitive flow"}
+      ],
+      "exceptions": ["Suppress hidden, disabled, submit, button, reset, and non-user-entered fields.", "Do not emit from DOM required alone; submit_required_error must be observed."],
+      "confidence_rule": "High when submit_required_error is paired with DOM/AX required state; cap confidence when only the submit error signal is available.",
+      "fix_leverage_default": 1.0,
+      "output_template": "필수 입력 여부가 제출 후 오류를 통해서만 전달됩니다.",
+      "source_refs": ["docs/20_final_analyzer_rules.md#form-required-optional-001"],
+      "references": [
+        {
+          "label": "WCAG 3.3.2",
+          "publisher": "W3C",
+          "title": "Labels or Instructions",
+          "basisSummary": "폼을 제출하기 전에 사용자가 어떤 입력이 필요한지 알 수 있도록 라벨이나 안내를 제공해야 합니다.",
+          "url": "https://www.w3.org/WAI/WCAG22/Understanding/labels-or-instructions.html"
+        },
+        {
+          "label": "GOV.UK Error Message",
+          "publisher": "GOV.UK",
+          "title": "Error message component",
+          "basisSummary": "폼 오류는 무엇이 잘못됐고 어떻게 고칠 수 있는지 알려줘야 하며, 필수 입력 기대값도 명확해야 합니다.",
+          "url": "https://design-system.service.gov.uk/components/error-message/"
         }
       ]
     },
@@ -140,14 +233,14 @@
       ],
       "confidence_rule": "Use sanitized GMS label-role confidence only; deterministic observation type or direct label_issue_type fields do not emit this rule.",
       "fix_leverage_default": 1.0,
-      "output_template": "A visible label does not match the element role or expected next action.",
+      "output_template": "화면에 보이는 라벨이 요소의 역할이나 예상되는 다음 행동과 맞지 않습니다.",
       "source_refs": ["docs/12_analyzer_rule_catalog.md#copy-flow-quality-001"],
       "references": [
         {
           "label": "WCAG 2.4.6",
           "publisher": "W3C",
           "title": "Headings and Labels",
-          "basisSummary": "버튼이나 라벨 문구는 주변 화면 흐름과 어울리고, 사용자가 기대하는 행동을 헷갈리지 않게 해야 합니다",
+          "basisSummary": "버튼이나 라벨 문구는 주변 화면 흐름과 어울리고, 사용자가 기대하는 행동을 헷갈리지 않게 해야 합니다.",
           "url": "https://www.w3.org/WAI/WCAG22/Understanding/headings-and-labels.html"
         }
       ]
@@ -169,7 +262,7 @@
       ],
       "confidence_rule": "Use sanitized label_integrity confidence when present; deterministic text corruption signals may also emit.",
       "fix_leverage_default": 1.0,
-      "output_template": "A visible label or short copy is difficult to read.",
+      "output_template": "화면에 보이는 라벨이나 짧은 문구를 읽기 어렵습니다.",
       "source_refs": ["docs/12_analyzer_rule_catalog.md#copy-label-integrity-001"],
       "references": [
         {
@@ -178,6 +271,36 @@
           "title": "Text Spacing",
           "basisSummary": "텍스트 간격이나 레이아웃 변화가 문구의 잘림, 겹침, 정보 손실을 만들지 않아야 합니다.",
           "url": "https://www.w3.org/WAI/WCAG22/Understanding/text-spacing.html"
+        }
+      ]
+    },
+    {
+      "criterion_id": "FEEDBACK-ACTION-RESULT-001",
+      "axis": "Reliability",
+      "applicableStages": ["CTA", "INPUT", "COMMIT"],
+      "evidence_level": "Operational",
+      "definition": "Meaningful user actions should produce a visible result confirmation when no technical failure explains the missing outcome.",
+      "required_observations": ["goal_action_result"],
+      "measurement_sources": ["scenario_log", "dom", "network"],
+      "signal_rule": "A goal-like action is attempted, no visible success/change evidence is present, and no same-stage network or console failure suppresses the feedback issue.",
+      "severity_rules": [
+        {"severity": 0, "condition": "visible result confirmation exists, such as toast, URL change, DOM change, or count increase"},
+        {"severity": 1, "condition": "only a network success signal exists after a non-commit action"},
+        {"severity": 2, "condition": "no visible result confirmation after CTA or INPUT action, or only network success after COMMIT action"},
+        {"severity": 3, "condition": "no visible result confirmation after COMMIT action, or settle_status is timeout/failed on COMMIT"}
+      ],
+      "exceptions": ["Suppress when the action is not goal-like or meaningful.", "Suppress when network or console failures are present, because RELIABILITY-TECH-001 should explain the primary technical failure.", "Suppress when visible result evidence is present in goal_action_result or same-checkpoint settle_item_count_change."],
+      "confidence_rule": "Use goal_action_result confidence; cap when only network_success exists because that is not directly user-visible feedback.",
+      "fix_leverage_default": 1.0,
+      "output_template": "사용자 행동 이후 결과가 화면에서 명확히 확인되지 않습니다.",
+      "source_refs": ["docs/20_final_analyzer_rules.md#feedback-action-result-001"],
+      "references": [
+        {
+          "label": "NN/g Heuristics",
+          "publisher": "NN/g",
+          "title": "Visibility of System Status",
+          "basisSummary": "시스템이 사용자의 행동을 받았고 처리했는지 사용자가 적절한 시간 안에 볼 수 있어야 합니다.",
+          "url": "https://www.nngroup.com/articles/ten-usability-heuristics/"
         }
       ]
     },
@@ -209,6 +332,40 @@
       ]
     },
     {
+      "criterion_id": "FEEDBACK-SYSTEM-STATUS-001",
+      "axis": "Reliability",
+      "applicableStages": ["CTA", "INPUT", "COMMIT"],
+      "evidence_level": "Operational",
+      "definition": "Long-running user actions should expose a visible processing state when no technical failure explains the delay.",
+      "required_observations": ["loading_state", "settle_response"],
+      "measurement_sources": ["dom", "network", "performance", "scenario_log"],
+      "signal_rule": "A loading_state or settle_response lasts at least 3000ms, no visible processing feedback is present, and same-stage technical failures are absent.",
+      "severity_rules": [
+        {"severity": 0, "condition": "duration is under 3000ms, or spinner/progress/status text/aria-busy feedback is present"},
+        {"severity": 1, "condition": "duration is 3000-4999ms and no visible processing feedback is present"},
+        {"severity": 2, "condition": "duration is 5000ms or more, or an important submit/save/checkout action lacks processing feedback"},
+        {"severity": 3, "condition": "COMMIT-stage timeout or 8000ms or more with no processing feedback"}
+      ],
+      "exceptions": [
+        "Suppress when network or console failures are present, because RELIABILITY-TECH-001 should explain the primary technical failure.",
+        "Suppress when duration is below 3000ms.",
+        "Suppress when spinner, progressbar, status text, aria-busy, or an equivalent visible loading message is present."
+      ],
+      "confidence_rule": "Use loading_state confidence when available; cap settle_response-only cases because absence of visible status is inferred.",
+      "fix_leverage_default": 1.0,
+      "output_template": "사용자가 기다리는 동안 처리 중 상태가 화면에 명확히 보이지 않습니다.",
+      "source_refs": ["docs/20_final_analyzer_rules.md#feedback-system-status-001"],
+      "references": [
+        {
+          "label": "NN/g Heuristics",
+          "publisher": "NN/g",
+          "title": "Visibility of System Status",
+          "basisSummary": "사용자는 특히 행동이 처리되는 동안 시스템이 무엇을 하고 있는지 적절한 시간 안에 피드백을 받아야 합니다.",
+          "url": "https://www.nngroup.com/articles/ten-usability-heuristics/"
+        }
+      ]
+    },
+    {
       "criterion_id": "RELIABILITY-LOADING-STUCK-001",
       "axis": "Reliability",
       "applicableStages": ["CTA", "INPUT", "COMMIT"],
@@ -222,14 +379,10 @@
         {"severity": 2, "condition": "normal navigation page ready duration is 5000ms or more"},
         {"severity": 3, "condition": "normal navigation page ready duration is 8000ms or more, or a commit-stage navigation is delayed"}
       ],
-      "exceptions": [
-        "Suppress when the action is not a normal navigation/link/menu/tab transition.",
-        "Suppress when target_page_signals has has_permission_prompt, has_streaming_response, has_map, has_payment_form, has_auth_redirect, or has_webgl set to true.",
-        "Suppress when network or console failures are present, because RELIABILITY-TECH-001 should explain the primary technical failure."
-      ],
+      "exceptions": ["Suppress when the action is not a normal navigation/link/menu/tab transition.", "Suppress when target_page_signals has has_permission_prompt, has_streaming_response, has_map, has_payment_form, has_auth_redirect, or has_webgl set to true.", "Suppress when network or console failures are present, because RELIABILITY-TECH-001 should explain the primary technical failure."],
       "confidence_rule": "High when direct page_ready_timing evidence exists; cap confidence when using loading_state or settle_response fallback only.",
       "fix_leverage_default": 1.0,
-      "output_template": "The next page or result view takes too long to become ready after a normal navigation action.",
+      "output_template": "일반적인 이동 행동 이후 다음 화면이나 결과 화면이 사용 가능한 상태가 되기까지 오래 걸립니다.",
       "source_refs": ["docs/12_analyzer_rule_catalog.md#reliability-loading-stuck-001", "docs/13_analyzer_rule_required_data.md#reliability-loading-stuck-001"],
       "references": [
         {
@@ -257,7 +410,7 @@
       ],
       "confidence_rule": "Use sanitized semantic provider confidence and do not emit an issue below the semantic confidence threshold.",
       "fix_leverage_default": 1.0,
-      "output_template": "The selected CTA appears weakly related to the scenario goal.",
+      "output_template": "선택된 행동 버튼이 시나리오 목표와 약하게 연결되어 보입니다.",
       "source_refs": ["docs/10_rule_journey_observation_strategy.md#raw-signal-and-derived-intent"],
       "references": [
         {
@@ -273,6 +426,72 @@
           "title": "Checkout usability research",
           "basisSummary": "목표 흐름의 단계와 행동 문구가 맞지 않으면 사용자가 다음 행동을 오해하거나 이탈할 수 있습니다.",
           "url": "https://baymard.com/research/checkout-usability"
+        }
+      ]
+    },
+    {
+      "criterion_id": "CHECKOUT-ORDER-REVIEW-001",
+      "axis": "Clarity",
+      "applicableStages": ["COMMIT"],
+      "evidence_level": "Operational",
+      "definition": "Checkout, booking, order, payment, or application flows should show a review summary before the final submit action.",
+      "required_observations": ["checkout_context"],
+      "measurement_sources": ["dom"],
+      "signal_rule": "A final checkout submit action is detected but checkout_context.has_order_summary is false.",
+      "severity_rules": [
+        {"severity": 0, "condition": "a review summary is present before or near the final submit action"},
+        {"severity": 2, "condition": "a non-payment final checkout, order, booking, or application submit action has no review summary"},
+        {"severity": 3, "condition": "a payment final submit action has no review summary"}
+      ],
+      "exceptions": ["Suppress when no final submit action is present.", "Do not require an edit/change affordance for this rule; only review-summary presence is evaluated."],
+      "confidence_rule": "Use checkout_context confidence and cap at 0.86 because checkout classification is heuristic.",
+      "fix_leverage_default": 1.0,
+      "output_template": "사용자가 주문 또는 예약 정보를 검토하기 전에 최종 제출 행동이 먼저 나타납니다.",
+      "source_refs": ["docs/20_final_analyzer_rules.md#checkout-order-review-001"],
+      "references": [
+        {
+          "label": "WCAG 3.3.4",
+          "publisher": "W3C",
+          "title": "Error Prevention (Legal, Financial, Data)",
+          "basisSummary": "중요한 제출에서는 사용자가 최종 확정 전에 정보를 검토, 확인, 수정할 기회를 가져야 합니다.",
+          "url": "https://www.w3.org/WAI/WCAG22/Understanding/error-prevention-legal-financial-data.html"
+        }
+      ]
+    },
+    {
+      "criterion_id": "TECH-TARGET-SIZE-001",
+      "axis": "Friction",
+      "applicableStages": ["FIRST_VIEW", "VALUE", "CTA", "INPUT"],
+      "evidence_level": "Standard",
+      "definition": "Interactive targets should be large enough and spaced enough for accurate pointer or touch activation.",
+      "required_observations": ["interactive_components"],
+      "measurement_sources": ["dom", "layout"],
+      "signal_rule": "Visible enabled interactive components with bounds smaller than 24 CSS px, or below 44 CSS px with tight neighboring target spacing, are flagged.",
+      "severity_rules": [
+        {"severity": 0, "condition": "all countable targets are at least 24 CSS px, or smaller targets have sufficient spacing/exception context"},
+        {"severity": 1, "condition": "a target is smaller than 24 CSS px but not tightly spaced, or a 24-44 CSS px target is tightly spaced"},
+        {"severity": 2, "condition": "a target is smaller than 24 CSS px and spacing is tight or unknown"},
+        {"severity": 3, "condition": "a target is smaller than 16 CSS px and spacing is tight or unknown"}
+      ],
+      "exceptions": ["Suppress hidden, disabled, aria-hidden, or off-viewport targets.", "Suppress header/footer utility and legal/help links.", "Treat 44 CSS px as an enhanced usability target, not a hard failure threshold."],
+      "confidence_rule": "Use interactive_components confidence and cap confidence when viewport dimensions are missing.",
+      "fix_leverage_default": 0.9,
+      "output_template": "일부 클릭 대상이 너무 작거나 서로 가까워 정확히 누르기 어렵습니다.",
+      "source_refs": ["docs/20_final_analyzer_rules.md#tech-target-size-001"],
+      "references": [
+        {
+          "label": "WCAG 2.5.8",
+          "publisher": "W3C",
+          "title": "Target Size (Minimum)",
+          "basisSummary": "예외가 적용되지 않는 한 포인터 대상은 일반적으로 최소 24 x 24 CSS 픽셀 이상이어야 합니다.",
+          "url": "https://www.w3.org/WAI/WCAG22/Understanding/target-size-minimum.html"
+        },
+        {
+          "label": "Lighthouse",
+          "publisher": "Chrome",
+          "title": "Tap targets are not sized appropriately",
+          "basisSummary": "탭 대상이 너무 작거나 서로 가까우면 모바일 환경에서 조작이 어려워질 수 있습니다.",
+          "url": "https://developer.chrome.com/docs/lighthouse/seo/tap-targets"
         }
       ]
     }
