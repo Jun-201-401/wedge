@@ -40,10 +40,10 @@ function ProtectedRouteLoadingPage() {
       <section className="app-route-loading__card" role="status" aria-live="polite">
         <span className="app-route-loading__eyebrow">
           <span className="app-route-loading__dot" aria-hidden="true" />
-          Session check
+          세션 확인
         </span>
         <h1 id="app-route-loading-title">접근 권한을 확인하고 있습니다</h1>
-        <p>Run 화면을 열기 전에 로그인 세션을 확인하는 중입니다.</p>
+        <p>실행 화면을 열기 전에 로그인 세션을 확인하는 중입니다.</p>
       </section>
     </main>
   );

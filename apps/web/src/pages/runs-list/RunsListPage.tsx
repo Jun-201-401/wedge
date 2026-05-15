@@ -20,7 +20,7 @@ type RunsListState =
 
 type RunStatusFilter = 'ALL' | 'ACTIVE' | 'COMPLETED' | 'FAILED';
 
-const RUNS_LOAD_ERROR_MESSAGE = 'Run 목록을 불러오지 못했습니다. 로그인 상태와 API 서버 연결을 확인해주세요.';
+const RUNS_LOAD_ERROR_MESSAGE = '실행 목록을 불러오지 못했습니다. 로그인 상태와 서버 연결을 확인해주세요.';
 const STATUS_FILTERS: Array<{ value: RunStatusFilter; label: string }> = [
   { value: 'ALL', label: '전체' },
   { value: 'ACTIVE', label: '실행 중' },
@@ -263,7 +263,7 @@ export function RunsListPage({ currentUser, onLogout }: RunsListPageProps) {
             ) : null}
           </div>
 
-          {state.kind === 'loading' ? <p className="runs-list-state">Run 목록을 불러오는 중입니다.</p> : null}
+          {state.kind === 'loading' ? <p className="runs-list-state">실행 목록을 불러오는 중입니다.</p> : null}
           {state.kind === 'error' ? <p className="runs-list-state runs-list-state--error" role="alert">{state.message}</p> : null}
           {state.kind === 'ready' && visibleRuns.length === 0 ? (
             <p className="runs-list-state">표시할 실행이 없습니다. 새 분석을 시작하거나 다른 상태 필터를 선택해주세요.</p>

@@ -76,11 +76,11 @@ function createDiscoveryFailureMessage(error: unknown) {
 
   const validationFields = readApiValidationFields(error.details);
   if (error.status === 422 && validationFields.some((fieldError) => fieldError.field === 'projectId')) {
-    return '사이트 확인 API가 아직 projectId 필수 계약으로 동작 중입니다. API 서버를 최신 코드로 재시작한 뒤 다시 시도해주세요.';
+    return '사이트 확인 기능이 아직 이전 서버 계약으로 응답하고 있습니다. 서버를 최신 코드로 재시작한 뒤 다시 시도해주세요.';
   }
 
   if (error.status === 422 && validationFields.some((fieldError) => fieldError.field === 'url')) {
-    return '입력한 URL 형식이 API 검증을 통과하지 못했습니다. http 또는 https로 열 수 있는 공개 사이트 URL을 입력해주세요.';
+    return '입력한 URL 형식이 올바르지 않습니다. http 또는 https로 열 수 있는 공개 사이트 URL을 입력해주세요.';
   }
 
   if (error.status === 400 && error.code === 'invalid_request') {
@@ -157,7 +157,7 @@ const SCENARIO_DEPTH_OPTIONS: ScenarioDepthOption[] = [
   },
   {
     id: 'form-depth',
-    title: '입력 폼까지 보기',
+    title: '입력 양식까지 보기',
     detail: '입력 부담과 제출 전 신뢰 요소를 확인해요',
   },
 ];
@@ -402,7 +402,7 @@ function PreflightAgent({ submittedUrl, discoveryState, onRetry, onEditUrl }: Pr
         <p className="preflight-agent__url" title={submittedUrl}>{submittedUrlLabel}</p>
         <div className="preflight-agent__divider" aria-hidden="true" />
 
-        <ol className="preflight-agent__timeline" aria-label="Discovery 진행 상태">
+        <ol className="preflight-agent__timeline" aria-label="사이트 확인 진행 상태">
           {steps.map((step, stepIndex) => (
             <li
               key={step.label}
@@ -634,11 +634,11 @@ function ScenarioSetupAgent({ selectedScenario, selectedDepthId, onDepthChange, 
             </div>
 
             <div className="scenario-setup-agent__header-copy">
-              <p>Scenario Setup</p>
+              <p>흐름 설정</p>
               <h2 id="onboarding-title">확인할 범위를 정해주세요</h2>
               <div className="scenario-setup-agent__header-status">
                 <span className="scenario-setup-agent__header-status-dot" aria-hidden="true" />
-                <span>Scope selection</span>
+                <span>범위 선택 중</span>
               </div>
             </div>
           </div>
@@ -1176,7 +1176,7 @@ export function CreateAnalysisPage({ isAuthenticated = false, isAuthChecking = f
     try {
       await startRun(createdRunId);
     } catch {
-      setRunStartError('분석 준비는 완료됐지만 시작 요청에 실패했습니다. 실시간 Trace에서 현재 상태를 확인합니다.');
+      setRunStartError('분석 준비는 완료됐지만 실행 시작 요청에 실패했습니다. 실시간 상태 화면에서 현재 상태를 확인합니다.');
     } finally {
       pushAppPath(buildRunMonitorPath(createdRunId, {
         submittedUrl,

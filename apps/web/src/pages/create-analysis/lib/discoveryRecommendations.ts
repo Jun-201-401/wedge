@@ -40,9 +40,9 @@ const SCENARIO_COPY = {
   },
   SIGNUP_LEAD_FORM: {
     id: 'signup-form',
-    title: '가입 / 리드 Form 점검',
-    availableSummary: '가입 또는 리드 Form 후보를 발견했어요. 입력 부담과 제출 전 신뢰 요소를 확인할 수 있습니다.',
-    unavailableSummary: '가입 또는 리드 Form 진입점을 찾지 못했어요.',
+    title: '가입 / 리드 양식 점검',
+    availableSummary: '가입 또는 리드 입력 양식 후보를 발견했어요. 입력 부담과 제출 전 신뢰 요소를 확인할 수 있습니다.',
+    unavailableSummary: '가입 또는 리드 입력 양식 진입점을 찾지 못했어요.',
   },
   CONTACT: {
     id: 'contact',
@@ -65,7 +65,7 @@ const SCENARIO_COPY = {
   CONTENT_ONLY: {
     id: 'landing-cta',
     title: '콘텐츠 이해 / 정보 탐색 흐름 점검',
-    availableSummary: '명확한 전환 CTA보다는 정보 탐색형 콘텐츠가 중심인 사이트로 보여요.',
+    availableSummary: '명확한 전환 버튼보다는 정보 탐색형 콘텐츠가 중심인 사이트로 보여요.',
     unavailableSummary: '콘텐츠 탐색 흐름으로 추천할 만한 근거가 부족해요.',
   },
   CUSTOM_GUIDED: {
@@ -289,7 +289,7 @@ function signalLabelForType(signalType: string, scenarioType: DiscoveryScenarioT
   }
 
   if (signalType.includes('form')) {
-    return '입력 폼으로 이어지는 흐름을 발견했어요';
+    return '입력 양식으로 이어지는 흐름을 발견했어요';
   }
 
   if (signalType.includes('landing') || signalType.includes('cta')) {
@@ -304,7 +304,7 @@ function signalLabelForType(signalType: string, scenarioType: DiscoveryScenarioT
     case 'PURCHASE_CHECKOUT':
       return '구매나 결제로 이어지는 진입점을 발견했어요';
     case 'SIGNUP_LEAD_FORM':
-      return '입력 폼으로 이어지는 흐름을 발견했어요';
+      return '입력 양식으로 이어지는 흐름을 발견했어요';
     default:
       return '전환 행동으로 이어지는 링크를 발견했어요';
   }
@@ -322,7 +322,7 @@ function manualSummaryFor(scenarioType: DiscoveryScenarioType) {
     case 'LANDING_CTA':
       return '첫 화면에서 사용자가 다음 행동을 바로 이해하고 이동할 수 있는지 직접 확인합니다.';
     case 'SIGNUP_LEAD_FORM':
-      return '가입 또는 리드 Form까지 이동하며 입력 부담과 제출 전 신뢰 요소를 확인합니다.';
+      return '가입 또는 리드 입력 양식까지 이동하며 입력 부담과 제출 전 신뢰 요소를 확인합니다.';
     case 'CONTACT':
       return '문의, 상담, 데모 신청으로 이어지는 흐름을 사용자가 지정한 목표 기준으로 확인합니다.';
     case 'PRICING':

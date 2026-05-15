@@ -5,20 +5,20 @@ import '../styles/vision-results.css';
 const RESULT_CARDS = [
   {
     key: 'evidence',
-    label: 'Evidence',
+    label: '근거',
     option: '행동 신호',
-    frontTitle: 'Evidence',
+    frontTitle: '근거',
     frontSubtitle: '행동 전 멈칫 신호 감지',
     backTitle: '근거 신호',
     backSummary:
-      'CTA 대비, 가격 구간 체류, 신뢰 신호 도착 시점에서 전환 저항이 함께 관찰됩니다.',
+      '버튼 대비, 가격 구간 체류, 신뢰 신호 도착 시점에서 전환 저항이 함께 관찰됩니다.',
     cta: '근거 보기',
   },
   {
     key: 'why',
-    label: 'Why',
+    label: '원인',
     option: '원인 해석',
-    frontTitle: 'Why',
+    frontTitle: '원인',
     frontSubtitle: '확신 전에 행동을 요구받음',
     backTitle: '왜 멈췄는가',
     backSummary:
@@ -27,9 +27,9 @@ const RESULT_CARDS = [
   },
   {
     key: 'nudge',
-    label: 'Nudge',
+    label: '개선',
     option: '우선순위',
-    frontTitle: 'Nudge',
+    frontTitle: '개선',
     frontSubtitle: '영향 큰 개선부터 제안',
     backTitle: '먼저 바꿀 것',
     backSummary:

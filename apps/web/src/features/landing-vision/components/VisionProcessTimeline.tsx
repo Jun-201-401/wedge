@@ -72,10 +72,10 @@ function VisionProcessTimeline({ isVisible, currentStepIndex }: VisionProcessTim
               <StepIcon type="cube" />
             </div>
             <div className="vision-process__header-copy">
-              <h2>Processing Flow</h2>
+              <h2>분석 흐름</h2>
               <div className="vision-process__header-status">
                 <span className="vision-process__header-status-dot" />
-                <span>Agent trace active</span>
+                <span>실시간 검토 중</span>
               </div>
             </div>
           </div>

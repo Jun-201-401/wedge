@@ -252,12 +252,12 @@ test('create analysis scenario setup uses agent card and accessible depth choice
   assert.match(source, /function ScenarioSetupAgent/);
   assert.match(source, /className="create-analysis-panel create-analysis-panel--onboarding"/);
   assert.match(source, /className="scenario-setup-agent"/);
-  assert.match(source, /Scope selection/);
+  assert.match(source, /범위 선택 중/);
   assert.match(source, /className="scenario-setup-agent__selected-flow"/);
   assert.match(source, /SCENARIO_DEPTH_OPTIONS\.map/);
   assert.match(source, /첫 화면에서 다음 행동이 바로 보이는지 확인해요/);
   assert.match(source, /다음 화면의 맥락까지 이어서 확인해요/);
-  assert.match(source, /입력 폼까지 보기/);
+  assert.match(source, /입력 양식까지 보기/);
   assert.doesNotMatch(source, /CTA가 명확한지, 첫 행동이 바로 보이는지 빠르게 확인합니다/);
   assert.doesNotMatch(source, /Form까지 보기/);
   assert.match(source, /role="radiogroup"/);
@@ -321,7 +321,7 @@ test('create analysis selection starts a run without a ready screen', () => {
   assert.match(source, /await getDiscovery\(discoveryId\)/);
   assert.match(source, /createdRunId = response\.data\.id/);
   assert.match(source, /await startRun\(createdRunId\)/);
-  assert.match(source, /분석 준비는 완료됐지만 시작 요청에 실패했습니다/);
+  assert.match(source, /분석 준비는 완료됐지만 실행 시작 요청에 실패했습니다/);
   assert.match(source, /pushAppPath\(buildRunMonitorPath\(createdRunId/);
   assert.doesNotMatch(source, /window\.location\.assign/);
   assert.match(source, /void startAnalysisRun\(scenario, DEFAULT_SCENARIO_DEPTH_ID\)/);
