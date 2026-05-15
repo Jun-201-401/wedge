@@ -3,10 +3,13 @@ from __future__ import annotations
 import copy
 import json
 import unittest
+from contextlib import redirect_stdout
+from io import StringIO
 from pathlib import Path
 
 from app.contracts import semantic_enum, semantic_label_keys, semantic_response_properties, semantic_schema_version, semantic_task_type, semantic_task_types
 from app.normalization import SemanticLabelResolver
+from app.observability.phase_timing import PhaseTimingContext
 from app.providers import (
     ACTION_SPECIFICITY_LABELS,
     PAGE_TYPE_LABELS,
@@ -54,6 +57,17 @@ def load_semantic_fixture(fixture_name: str) -> list[dict]:
     fixture_path = Path(__file__).resolve().parent / "fixtures/semantic_normalization" / fixture_name
     with fixture_path.open(encoding="utf-8") as file:
         return json.load(file)
+
+
+def phase_events(output: str) -> list[dict]:
+    events: list[dict] = []
+    for line in output.splitlines():
+        if not line.strip():
+            continue
+        event = json.loads(line)
+        if event.get("event") == "analyzer_phase_timing":
+            events.append(event)
+    return events
 
 
 class StagePipelineTest(unittest.TestCase):
@@ -210,6 +224,78 @@ class RuleEngineTest(unittest.TestCase):
         self.assertEqual(decision_by_stage["FIRST_VIEW"]["status"], "PASS")
         self.assertEqual(decision_by_stage["COMMIT"]["status"], "NOT_APPLICABLE")
         self.assertEqual(result["summary"]["task_success"], "partial")
+
+    def test_analysis_phase_timing_logs_core_boundaries_when_context_is_provided(self) -> None:
+        class SemanticProvider:
+            def classify_cta(self, *, text: str, scenario_goal: str, target_ref: str):
+                return SemanticLabelResult(
+                    target_observation_ref=target_ref,
+                    provider_type="test",
+                    provider_name="semantic_provider",
+                    labels={
+                        "scenario_relevance_label": "RELEVANT_ACTION",
+                        "action_specificity_label": "SPECIFIC_ACTION",
+                    },
+                    confidence=0.9,
+                )
+
+        class LabelIntegrityProvider:
+            def classify_label_integrity(
+                self,
+                *,
+                scenario_goal: str,
+                stage: str,
+                checkpoint_id: str,
+                screenshot_url: str,
+                candidates: list[dict],
+            ):
+                return []
+
+        class LabelRoleProvider:
+            def classify_label_roles(
+                self,
+                *,
+                scenario_goal: str,
+                stage: str,
+                checkpoint_id: str,
+                screenshot_url: str,
+                candidates: list[dict],
+            ):
+                return []
+
+        packet = load_sample_packet()
+        packet["artifacts"][0]["signed_url"] = "https://example.com/cp_001.png"
+        stdout = StringIO()
+
+        with redirect_stdout(stdout):
+            analyze_evidence_packet(
+                packet,
+                semantic_provider=SemanticProvider(),
+                label_integrity_provider=LabelIntegrityProvider(),
+                label_role_provider=LabelRoleProvider(),
+                timing_context=PhaseTimingContext(
+                    run_id="run-1",
+                    analysis_job_id="job-1",
+                    evidence_packet_id="packet-1",
+                ),
+            )
+
+        events = phase_events(stdout.getvalue())
+        phases = [event["phase"] for event in events]
+        self.assertEqual(
+            phases,
+            ["label_integrity", "label_role", "stage_context_build", "semantic_cta", "rule_engine_eval"],
+        )
+        for event in events:
+            self.assertEqual(event["runId"], "run-1")
+            self.assertEqual(event["analysisJobId"], "job-1")
+            self.assertEqual(event["evidencePacketId"], "packet-1")
+            self.assertGreaterEqual(event["durationMs"], 0)
+        label_role_event = next(event for event in events if event["phase"] == "label_role")
+        self.assertGreaterEqual(label_role_event["gmsCallCount"], 1)
+        self.assertGreaterEqual(label_role_event["candidateCount"], 1)
+        semantic_event = next(event for event in events if event["phase"] == "semantic_cta")
+        self.assertGreaterEqual(semantic_event["gmsCallCount"], 1)
 
     def test_journey_goal_cta_mismatch_uses_semantic_label(self) -> None:
         class IrrelevantCtaProvider:
