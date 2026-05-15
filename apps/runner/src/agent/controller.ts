@@ -10,6 +10,7 @@ import {
 import type { ArtifactStore } from "../storage/index.ts";
 import type { AgentTask, Artifact, ScenarioPlan, ScenarioStep } from "../shared/contracts.ts";
 import { classifyRunnerFailure, errorMessage, logOperationalEvent, type RunnerFailureCode } from "../shared/utils.ts";
+import { RunnerExecutionPolicyError } from "../scenario/policy.ts";
 import { persistAgentScenarioPlanExportArtifact, persistAgentTraceArtifact } from "./trace/artifacts.ts";
 import { emitAgentEventBestEffort, emitAgentTraceBestEffort } from "./callbacks.ts";
 import { AgentBudgetExceededError, assertAgentDeadline, createAgentDeadline, remainingAgentBudgetMs, runSideEffectWithDeadlineCleanup, runWithinAgentDeadline } from "./deadline.ts";
@@ -19,6 +20,7 @@ import { evaluateAgentPolicy } from "./policy.ts";
 import { decideFromReplayHints } from "./replay-hint-planner.ts";
 import { createInitialAgentState } from "./state.ts";
 import {
+  createSafetyBlockedOutcome,
   createTraceOutcome,
   reasonCodeFromPolicy,
   reasonCodeFromVerification,
@@ -254,6 +256,46 @@ export async function executeAgentRun(input: AgentExecutorInput): Promise<AgentE
         stopRequested = stepResult.stopRequested;
       } catch (error) {
         if (markBudgetExceeded(trace, error)) {
+          break;
+        }
+
+        if (error instanceof RunnerExecutionPolicyError) {
+          const safetyOutcome = createSafetyBlockedOutcome(error.safetyCode, error.message);
+          trace.outcome = safetyOutcome;
+          postActionSnapshot = input.session.snapshot();
+          turnTrace.actionResult = {
+            actionType: decision.action.type,
+            finalUrl: postActionSnapshot.finalUrl,
+            completed: false
+          };
+
+          logOperationalEvent(
+            "agent-executor",
+            "scenario_safety_blocked",
+            {
+              runId: input.runId,
+              turn,
+              stepKey: step.step_id,
+              actionType: step.action.type,
+              safetyCode: error.safetyCode,
+              riskClass: error.riskClass,
+              reasonCode: safetyOutcome.reason_code,
+              reason: error.message,
+              details: error.details
+            },
+            "warn"
+          );
+
+          deliveryIssues.push(...(await emitAgentEventBestEffort(input.callbackClient, input.runId, input.task, "POLICY_CHECKED", {
+            allowed: false,
+            source: "scenario_safety",
+            safetyCode: error.safetyCode,
+            riskClass: error.riskClass,
+            reason: error.message,
+            outcomeReasonCode: safetyOutcome.reason_code,
+            details: error.details
+          }, turn)));
+
           break;
         }
 
