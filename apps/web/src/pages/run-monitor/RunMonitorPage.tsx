@@ -61,7 +61,7 @@ const GENERATE_REPORT_SUCCESS_MESSAGE = '리포트 준비가 완료됐습니다.
 const GENERATE_REPORT_ERROR_MESSAGE = '리포트를 준비하지 못했습니다. 잠시 후 다시 시도해주세요.';
 const REQUEST_ANALYSIS_PENDING_MESSAGE = '분석 요청 중입니다.';
 const REQUEST_ANALYSIS_SUCCESS_MESSAGE = '분석 요청이 접수됐습니다. 분석이 완료되면 리포트를 자동으로 준비합니다.';
-const REQUEST_ANALYSIS_ERROR_MESSAGE = '분석 요청에 실패했습니다. Run 상태 또는 접근 권한을 확인해주세요.';
+const REQUEST_ANALYSIS_ERROR_MESSAGE = '분석 요청에 실패했습니다. 실행 상태 또는 접근 권한을 확인해주세요.';
 const PREPARE_REPORT_PENDING_LABEL = '리포트 준비 중';
 const RUN_MONITOR_PANEL_DEFAULT_WIDTH = 448;
 const RUN_MONITOR_PANEL_DEFAULT_RATIO = 0.4;
@@ -137,7 +137,7 @@ function RunContextBar({ runId, targetUrl, statusTone, statusLabel, deviceLabel,
   const targetUrlLabel = formatDisplayUrl(targetUrl);
 
   return (
-    <section className="run-monitor-run-context" aria-label="현재 Run 정보">
+    <section className="run-monitor-run-context" aria-label="현재 실행 정보">
       <div className="run-monitor-run-context__meta">
         <div className="run-monitor-target-inline run-monitor-target-inline--target">
           <span>대상</span>
@@ -184,7 +184,7 @@ function RunLifecycleActions({
   }
 
   return (
-    <div className="run-monitor-lifecycle-actions" aria-label="Run 제어">
+    <div className="run-monitor-lifecycle-actions" aria-label="실행 제어">
       {canStop ? (
         <button className="run-monitor-lifecycle-actions__stop" type="button" onClick={onStop} disabled={isPending}>
           {isPending ? '요청 중' : '중지'}
@@ -207,7 +207,7 @@ function RunMonitorStatePage({ title, message }: { title: string; message: strin
 
       <main className="run-monitor-state-screen" aria-labelledby="run-monitor-state-title">
         <section className="run-monitor-state-card">
-          <span className="run-monitor-state-card__badge">실시간 Trace</span>
+          <span className="run-monitor-state-card__badge">실시간 확인</span>
           <h1 id="run-monitor-state-title">{title}</h1>
           <p>{message}</p>
           <a href={CREATE_ANALYSIS_PATH}>새 분석 만들기</a>

@@ -76,13 +76,13 @@ test('run monitor page exposes Sprint 2 live cockpit essentials with Korean-faci
   assert.match(source, /useAuthenticatedResourceUrl\(snapshotUrl\)/);
   assert.match(source, /const authenticatedSnapshotUrl = useAuthenticatedResourceUrl\(snapshotUrl\);[\s\S]*?if \(isRealRunLoading\)/);
   assert.match(source, /src=\{authenticatedSnapshotUrl\}/);
-  assert.match(stateHook, /Run 상태를 불러오지 못했습니다/);
+  assert.match(stateHook, /실행 상태를 불러오지 못했습니다/);
   assert.match(source, /RunMonitorStatePage/);
   assert.match(source, /function RunMonitorLoadingShell/);
   assert.match(source, /if \(isRealRunLoading\) \{[\s\S]*?<RunMonitorLoadingShell runId=\{runId\} targetUrl=\{fallbackUrl\} \/>/);
   assert.match(source, /run-monitor-page run-monitor-page--loading/);
   assert.match(source, /role="status">실제 실행 데이터를 연결하고 있습니다\./);
-  assert.doesNotMatch(source, /title="Run 상태를 불러오는 중입니다"/);
+  assert.doesNotMatch(source, /title="실행 상태를 불러오는 중입니다"/);
   assert.match(source, /role="progressbar"/);
   assert.match(source, /aria-valuenow=\{progressPercent\}/);
   assert.match(source, /run-monitor-agent-pointer/);

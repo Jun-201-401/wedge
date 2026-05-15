@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import type { RunReportProjection } from '../../src/entities/report';
-import type { EvidencePacket, Run, RunEvent, RunLive } from '../../src/entities/run';
+import type { EvidencePacket, Run, RunEvent, RunLive, RunStep } from '../../src/entities/run';
 import {
   buildApiEventLogs,
   buildApiEventTimeline,
@@ -233,26 +233,185 @@ test('run monitor view model prefers API run events for timeline and logs', () =
       eventSource: 'RUNNER',
       payload: {
         actionType: 'click',
+        target: 'selector=#primary-cta',
+        details: {
+          clickedText: '무료로 시작하기',
+        },
       },
       occurredAt: '2026-04-27T01:00:30.000Z',
     },
   ];
+  const steps: RunStep[] = [
+    {
+      id: 'step-1',
+      runId: baseRun.id,
+      stepOrder: 1,
+      stepKey: 'step_001_goto',
+      stepName: '첫 화면 로드',
+      stepType: 'GOTO',
+      status: 'RUNNING',
+      startedAt: '2026-04-27T01:00:00.000Z',
+      finishedAt: null,
+      errorCode: null,
+      errorMessage: null,
+    },
+  ];
 
-  const timeline = buildApiEventTimeline(baseRun, baseLive, events, []);
+  const timeline = buildApiEventTimeline(baseRun, baseLive, events, steps);
   const logs = buildApiEventLogs(baseRun, baseLive, events);
 
   assert.deepEqual(timeline.map((step) => step.id), ['event-1', 'event-3', 'event-2']);
-  assert.equal(timeline[0].label, '화면 흐름 확인 중');
+  assert.equal(timeline[0].label, '첫 화면 로드');
   assert.equal(timeline[0].status, 'complete');
   assert.equal(timeline[1].label, '화면 동작 확인');
+  assert.equal(timeline[1].detail, '무료로 시작하기 버튼을 클릭했습니다');
   assert.equal(timeline[2].label, '확인 막힘');
   assert.equal(timeline[2].status, 'failed');
   assert.equal(timeline[2].detail, '응답이 지연되어 확인이 막혔습니다');
-  assert.equal(logs[0].message, '다음 화면 흐름을 확인하고 있습니다');
-  assert.equal(logs[1].message, '버튼이나 링크 반응을 확인했습니다');
+  assert.equal(logs[0].message, '첫 화면 로드 확인 중입니다');
+  assert.equal(logs[1].message, '무료로 시작하기 버튼을 클릭했습니다');
   assert.equal(logs[2].message, '응답이 지연되어 확인이 막혔습니다');
   assert.equal(logs[2].tone, 'warning');
   assert.doesNotMatch(logs[2].message, /step_002_submit|STEP_FAILED|locator/);
+});
+
+test('run monitor view model turns event payload details into readable path entries', () => {
+  const events: RunEvent[] = [
+    {
+      id: 'event-click-target',
+      runId: baseRun.id,
+      stepId: 'step-click',
+      stepKey: 'step_click_cta',
+      eventType: 'ACTION_EXECUTED',
+      eventSource: 'RUNNER',
+      payload: {
+        actionType: 'click',
+        target: 'label=Start free trial',
+        details: {},
+      },
+      occurredAt: '2026-04-27T01:00:10.000Z',
+    },
+    {
+      id: 'event-completed-url',
+      runId: baseRun.id,
+      stepId: 'step-click',
+      stepKey: 'step_click_cta',
+      eventType: 'STEP_COMPLETED',
+      eventSource: 'RUNNER',
+      payload: {
+        finalUrl: 'https://example.com/signup?plan=starter',
+        settle: {
+          durationMs: 1420,
+          status: 'settled',
+        },
+      },
+      occurredAt: '2026-04-27T01:00:12.000Z',
+    },
+    {
+      id: 'event-completed-duration',
+      runId: baseRun.id,
+      stepId: 'step-wait',
+      stepKey: 'step_wait_response',
+      eventType: 'STEP_COMPLETED',
+      eventSource: 'RUNNER',
+      payload: {
+        settle: {
+          durationMs: 850,
+          status: 'settled',
+        },
+      },
+      occurredAt: '2026-04-27T01:00:13.000Z',
+    },
+    {
+      id: 'event-timeout-click',
+      runId: baseRun.id,
+      stepId: 'step-click',
+      stepKey: 'step_click_cta',
+      eventType: 'STEP_FAILED',
+      eventSource: 'RUNNER',
+      payload: {
+        actionType: 'click',
+        failureCode: 'RUNNER_TIMEOUT',
+        failureMessage: 'locator click timed out',
+      },
+      occurredAt: '2026-04-27T01:00:14.000Z',
+    },
+  ];
+
+  const timeline = buildApiEventTimeline(baseRun, baseLive, events, []);
+
+  assert.equal(timeline[0].detail, 'Start free trial 버튼을 클릭했습니다');
+  assert.equal(timeline[1].detail, '도착 화면 /signup을 확인했습니다');
+  assert.equal(timeline[2].detail, '응답 대기 850ms 후 화면 변화를 확인했습니다');
+  assert.equal(timeline[3].detail, '버튼 클릭 후 응답이 지연되어 확인이 막혔습니다');
+  assert.doesNotMatch(timeline.map((step) => step.detail).join('\n'), /selector|locator|RUNNER_TIMEOUT/);
+});
+
+test('run monitor view model keeps selector-like action payloads readable but not raw', () => {
+  const selectorLikeTargets = [
+    'selector=#hero .primary-cta',
+    'role=button, selector=#primary-cta',
+    'role=button',
+    'selector_any=#hero .primary-cta|button.primary',
+    'button.primary',
+    'main > button',
+    'main nav a',
+    'button:nth-child(2)',
+    '[data-testid="primary-cta"]',
+    '//button[@id="submit"]',
+  ];
+
+  const selectorEvents: RunEvent[] = selectorLikeTargets.map((target, index) => ({
+    id: `event-selector-like-${index}`,
+    runId: baseRun.id,
+    stepId: 'step-click',
+    stepKey: 'step_click_cta',
+    eventType: 'ACTION_EXECUTED',
+    eventSource: 'RUNNER',
+    payload: {
+      actionType: 'click',
+      target,
+      details: {},
+    },
+    occurredAt: '2026-04-27T01:00:10.000Z',
+  }));
+  const timeline = buildApiEventTimeline(baseRun, baseLive, selectorEvents, []);
+
+  assert.equal(timeline.every((step) => step.detail === '버튼이나 링크를 클릭했습니다'), true);
+  assert.doesNotMatch(timeline.map((step) => step.detail).join('\n'), /selector|#hero|primary-cta|data-testid|xpath|button\.primary|submit|role=|nth-child|main nav|main > button/);
+});
+
+test('run monitor view model strips query strings from displayed final urls', () => {
+  const timeline = buildApiEventTimeline(baseRun, baseLive, [
+    {
+      id: 'event-sensitive-url',
+      runId: baseRun.id,
+      stepId: 'step-callback',
+      stepKey: 'step_callback',
+      eventType: 'STEP_COMPLETED',
+      eventSource: 'RUNNER',
+      payload: {
+        finalUrl: 'https://example.com/callback?token=secret&email=user@example.com',
+      },
+      occurredAt: '2026-04-27T01:00:10.000Z',
+    },
+    {
+      id: 'event-relative-sensitive-url',
+      runId: baseRun.id,
+      stepId: 'step-relative-callback',
+      stepKey: 'step_relative_callback',
+      eventType: 'STEP_COMPLETED',
+      eventSource: 'RUNNER',
+      payload: {
+        finalUrl: '/relative-callback?code=secret-code',
+      },
+      occurredAt: '2026-04-27T01:00:11.000Z',
+    },
+  ], []);
+
+  assert.equal(timeline[0].detail, '도착 화면 /callback을 확인했습니다');
+  assert.equal(timeline[1].detail, '도착 화면 /relative-callback을 확인했습니다');
+  assert.doesNotMatch(timeline.map((step) => step.detail).join('\n'), /token|secret|email|user@example\.com|code|\?/);
 });
 
 test('run monitor view model keeps unknown event logs generic', () => {

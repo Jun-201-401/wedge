@@ -83,6 +83,11 @@ const RUN_STEP_TYPE_DETAILS: Record<string, string> = {
   WAIT: '화면 응답을 기다리고 있습니다',
 };
 
+interface RunEventTimelineText {
+  label: string;
+  detail: string;
+}
+
 function getRunEventStatus(eventType: string): StepStatus {
   if (eventType === 'STEP_FAILED' || eventType === 'STEP_BLOCKED' || eventType === 'CONSOLE_ERROR' || eventType === 'NETWORK_ERROR' || eventType === 'AGENT_ACTION_FAILED') {
     return 'failed';
@@ -116,23 +121,188 @@ function readPayloadString(payload: Record<string, unknown>, key: string) {
   return text || null;
 }
 
-function getRunEventUserSummary(event: RunEvent) {
+function readPayloadRecord(payload: Record<string, unknown>, key: string) {
+  const value = payload[key];
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return null;
+  }
+
+  return value as Record<string, unknown>;
+}
+
+function readPayloadNumber(payload: Record<string, unknown>, key: string) {
+  const value = payload[key];
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+function truncateReadableText(text: string, maxLength = 64) {
+  return text.length > maxLength ? `${text.slice(0, maxLength - 1)}...` : text;
+}
+
+function sanitizeTargetText(value: string | null) {
+  if (!value) {
+    return null;
+  }
+
+  const text = value.replace(/\s+/g, ' ').trim();
+  if (!text || text.length > 120) {
+    return null;
+  }
+
+  const labelMatch = text.match(/^(label|text|name|aria-label)=["']?(.+?)["']?$/i);
+  if (labelMatch?.[2]) {
+    return truncateReadableText(labelMatch[2].trim());
+  }
+
+  if (
+    /\b[a-z][\w-]*\s*=/i.test(text)
+    || /(^|[\s,|])(?:[#.][\w-]+|\[[^\]]+\]|\/\/\S+|[a-z][\w-]*[#.:][\w-]+|[a-z][\w-]*(?:\s*[>+~]\s*|\s+)[a-z][\w-]*)/i.test(text)
+  ) {
+    return null;
+  }
+
+  return truncateReadableText(text);
+}
+
+function readActionTarget(event: RunEvent) {
+  const details = readPayloadRecord(event.payload, 'details');
+  const detailTarget = details
+    ? readPayloadString(details, 'clickedText')
+      ?? readPayloadString(details, 'elementText')
+      ?? readPayloadString(details, 'ariaLabel')
+      ?? readPayloadString(details, 'fieldLabel')
+    : null;
+
+  return sanitizeTargetText(detailTarget ?? readPayloadString(event.payload, 'target'));
+}
+
+function formatUrlPath(value: string | null) {
+  if (!value) {
+    return null;
+  }
+
+  try {
+    const url = value.startsWith('/') ? new URL(value, 'https://wedge.local') : new URL(value);
+    const path = url.pathname.replace(/\/$/, '') || '/';
+    return truncateReadableText(path, 72);
+  } catch {
+    return null;
+  }
+}
+
+function formatDuration(durationMs: number | null) {
+  if (durationMs === null) {
+    return null;
+  }
+
+  if (durationMs < 1000) {
+    return `${Math.round(durationMs)}ms`;
+  }
+
+  return `${(durationMs / 1000).toFixed(1)}초`;
+}
+
+function buildStepByKey(steps: RunStep[]) {
+  return new Map(steps.map((step) => [step.stepKey, step]));
+}
+
+function describeActionEvent(event: RunEvent) {
+  const actionType = readPayloadString(event.payload, 'actionType')?.toLowerCase();
+  const target = readActionTarget(event);
+  const details = readPayloadRecord(event.payload, 'details');
+  const finalPath = formatUrlPath(details ? readPayloadString(details, 'finalUrl') : null);
+
+  if ((actionType === 'goto' || actionType === 'navigate') && finalPath) {
+    return `도착 화면 ${finalPath}으로 이동했습니다`;
+  }
+
+  if (actionType === 'click') {
+    return target ? `${target} 버튼을 클릭했습니다` : '버튼이나 링크를 클릭했습니다';
+  }
+
+  if (actionType === 'fill') {
+    return target ? `${target} 입력란에 값을 입력했습니다` : '입력 흐름을 확인했습니다';
+  }
+
+  if (actionType && RUN_EVENT_ACTION_SUMMARIES[actionType]) {
+    return RUN_EVENT_ACTION_SUMMARIES[actionType];
+  }
+
+  return RUN_EVENT_USER_SUMMARIES.ACTION_EXECUTED;
+}
+
+function describeStepStartedEvent(event: RunEvent, step?: RunStep) {
+  const description = readPayloadString(event.payload, 'description') ?? step?.stepName ?? null;
+  return description ? `${description} 확인 중입니다` : RUN_EVENT_USER_SUMMARIES.STEP_STARTED;
+}
+
+function describeStepCompletedEvent(event: RunEvent) {
+  const settle = readPayloadRecord(event.payload, 'settle');
+  const finalPath = formatUrlPath(readPayloadString(event.payload, 'finalUrl'));
+  const duration = settle ? formatDuration(readPayloadNumber(settle, 'durationMs')) : null;
+
+  if (finalPath) {
+    return `도착 화면 ${finalPath}을 확인했습니다`;
+  }
+
+  if (duration) {
+    return `응답 대기 ${duration} 후 화면 변화를 확인했습니다`;
+  }
+
+  return RUN_EVENT_USER_SUMMARIES.STEP_COMPLETED;
+}
+
+function describeStepFailedEvent(event: RunEvent) {
   const failureCode = readPayloadString(event.payload, 'failureCode');
   const actionType = readPayloadString(event.payload, 'actionType')?.toLowerCase();
 
+  if (failureCode === 'RUNNER_TIMEOUT') {
+    if (actionType === 'click') {
+      return '버튼 클릭 후 응답이 지연되어 확인이 막혔습니다';
+    }
+
+    return '응답이 지연되어 확인이 막혔습니다';
+  }
+
+  return RUN_EVENT_USER_SUMMARIES.STEP_FAILED;
+}
+
+function getRunEventUserSummary(event: RunEvent, step?: RunStep) {
   if (event.eventType === 'STEP_BLOCKED') {
     return '위험하거나 범위를 벗어난 이동이라 안전하게 멈췄습니다';
   }
 
-  if (event.eventType === 'STEP_FAILED' && failureCode === 'RUNNER_TIMEOUT') {
-    return '응답이 지연되어 확인이 막혔습니다';
+  if (event.eventType === 'STEP_STARTED') {
+    return describeStepStartedEvent(event, step);
   }
 
-  if (event.eventType === 'ACTION_EXECUTED' && actionType && RUN_EVENT_ACTION_SUMMARIES[actionType]) {
-    return RUN_EVENT_ACTION_SUMMARIES[actionType];
+  if (event.eventType === 'ACTION_EXECUTED') {
+    return describeActionEvent(event);
+  }
+
+  if (event.eventType === 'STEP_COMPLETED') {
+    return describeStepCompletedEvent(event);
+  }
+
+  if (event.eventType === 'STEP_FAILED') {
+    return describeStepFailedEvent(event);
   }
 
   return RUN_EVENT_USER_SUMMARIES[event.eventType] ?? '실행 상태가 업데이트되었습니다';
+}
+
+function getRunEventTimelineText(event: RunEvent, step?: RunStep): RunEventTimelineText {
+  if (event.eventType === 'STEP_STARTED' && step?.stepName) {
+    return {
+      label: step.stepName,
+      detail: getRunEventUserSummary(event, step),
+    };
+  }
+
+  return {
+    label: getRunEventTimelineLabel(event),
+    detail: getRunEventUserSummary(event, step),
+  };
 }
 
 function getRunEventTimelineLabel(event: RunEvent) {
@@ -158,7 +328,7 @@ export function getDepthLabel(depth: string | null) {
   }
 
   if (depth === 'form-depth') {
-    return 'Form까지 보기';
+    return '입력 양식까지 보기';
   }
 
   return '첫 화면만 보기';
@@ -404,13 +574,19 @@ export function buildApiEventTimeline(run: Run, live: RunLive, events: RunEvent[
     return buildApiStepTimeline(run, live, steps);
   }
 
-  return sortRunEvents(events).map((event) => ({
-    id: event.id,
-    label: getRunEventTimelineLabel(event),
-    detail: getRunEventUserSummary(event),
-    status: getRunEventStatus(event.eventType),
-    timestamp: getRunEventTimestamp(event),
-  }));
+  const stepByKey = buildStepByKey(steps);
+
+  return sortRunEvents(events).map((event) => {
+    const timelineText = getRunEventTimelineText(event, event.stepKey ? stepByKey.get(event.stepKey) : undefined);
+
+    return {
+      id: event.id,
+      label: timelineText.label,
+      detail: timelineText.detail,
+      status: getRunEventStatus(event.eventType),
+      timestamp: getRunEventTimestamp(event),
+    };
+  });
 }
 
 export function buildApiEventLogs(run: Run, live: RunLive, events: RunEvent[]): RunActionLog[] {
@@ -448,7 +624,7 @@ export function buildApiSnapshotLogs(run: Run, live: RunLive): RunActionLog[] {
       time: run.finishedAt ? formatRunStartedAt(run.finishedAt) : '현재',
       message: run.failureMessage
         ? `${getFailureCodeLabel(run.failureCode)}: ${run.failureMessage}`
-        : `${getFailureCodeLabel(run.failureCode)}로 Run이 실패했습니다.`,
+        : `${getFailureCodeLabel(run.failureCode)}로 실행이 실패했습니다.`,
       tone: 'warning',
     });
   }

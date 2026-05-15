@@ -5,9 +5,9 @@ import type { EvidencePacket, Run, RunEvent, RunLive, RunStep } from '../../../e
 import type { MockRunMonitorData } from './runMonitorMock';
 import { RUN_MONITOR_REFRESH_INTERVAL_MS, shouldRefreshRunLive } from './runMonitorViewModel';
 
-const EVIDENCE_LOAD_ERROR_MESSAGE = 'Evidence packet을 아직 불러오지 못했습니다. Runner callback 저장이 완료되면 표시됩니다.';
-const STEP_LOAD_ERROR_MESSAGE = 'Step 목록을 아직 불러오지 못했습니다. Run 상태 스냅샷으로 대신 표시합니다.';
-const EVENT_LOAD_ERROR_MESSAGE = 'Event timeline을 아직 불러오지 못했습니다. Step 상태로 대신 표시합니다.';
+const EVIDENCE_LOAD_ERROR_MESSAGE = '수집 근거를 아직 불러오지 못했습니다. 실행 결과 저장이 완료되면 표시됩니다.';
+const STEP_LOAD_ERROR_MESSAGE = '확인 단계 목록을 아직 불러오지 못했습니다. 현재 실행 상태로 대신 표시합니다.';
+const EVENT_LOAD_ERROR_MESSAGE = '확인 경로를 아직 불러오지 못했습니다. 저장된 단계 상태로 대신 표시합니다.';
 
 export interface RunMonitorState {
   run: Run;
@@ -164,7 +164,7 @@ export function useRunMonitorState(runId: string, mockData: MockRunMonitorData, 
         }
 
         setIsApiFallback(false);
-        setApiLoadError('Run 상태를 불러오지 못했습니다. URL 또는 접근 권한을 확인한 뒤 다시 시도해주세요.');
+        setApiLoadError('실행 상태를 불러오지 못했습니다. URL 또는 접근 권한을 확인한 뒤 다시 시도해주세요.');
         setIsRealRunLoading(false);
         setRunSteps([]);
         setIsStepLoading(false);
