@@ -295,6 +295,14 @@ function formatDuration(durationMs: number | null) {
   return `${(durationMs / 1000).toFixed(1)}초`;
 }
 
+function describeDestinationMove(finalPath: string) {
+  return finalPath === '/' ? '첫 화면으로 이동했습니다' : `도착 화면 ${finalPath}으로 이동했습니다`;
+}
+
+function describeDestinationCheck(finalPath: string) {
+  return finalPath === '/' ? '첫 화면을 확인했습니다' : `도착 화면 ${finalPath}을 확인했습니다`;
+}
+
 function buildStepByKey(steps: RunStep[]) {
   return new Map(steps.map((step) => [step.stepKey, step]));
 }
@@ -306,7 +314,7 @@ function describeActionEvent(event: RunEvent) {
   const finalPath = formatUrlPath(details ? readPayloadString(details, 'finalUrl') : null);
 
   if ((actionType === 'goto' || actionType === 'navigate') && finalPath) {
-    return `도착 화면 ${finalPath}으로 이동했습니다`;
+    return describeDestinationMove(finalPath);
   }
 
   if (actionType === 'click') {
@@ -325,8 +333,66 @@ function describeActionEvent(event: RunEvent) {
 }
 
 function describeStepStartedEvent(event: RunEvent, step?: RunStep) {
-  const description = readPayloadString(event.payload, 'description') ?? step?.stepName ?? null;
-  return description ? `${description} 확인 중입니다` : RUN_EVENT_USER_SUMMARIES.STEP_STARTED;
+  const description = readableStepProgressMessage(readPayloadString(event.payload, 'description') ?? step?.stepName ?? null);
+  return description ?? RUN_EVENT_USER_SUMMARIES.STEP_STARTED;
+}
+
+function readableStepProgressMessage(description: string | null) {
+  if (!description) {
+    return null;
+  }
+
+  const normalized = description.trim();
+  const messagesByDescription: Record<string, string> = {
+    'Discovery 추천 URL에 진입한다.': '추천된 시작 화면을 열고 있습니다',
+    '추천 URL에 진입한다.': '추천된 시작 화면을 열고 있습니다',
+    '추천된 시작 화면을 연다.': '추천된 시작 화면을 열고 있습니다',
+    '추천된 시작 화면을 열어 첫 화면을 확인한다.': '추천된 시작 화면을 열고 있습니다',
+    '첫 화면의 핵심 문맥과 진입점을 기록한다.': '첫 화면의 핵심 맥락과 주요 진입점을 확인 중입니다',
+    '첫 화면의 핵심 맥락과 주요 진입점을 기록한다.': '첫 화면의 핵심 맥락과 주요 진입점을 확인 중입니다',
+    '첫 화면에서 핵심 맥락과 주요 진입점을 기록한다.': '첫 화면의 핵심 맥락과 주요 진입점을 확인 중입니다',
+    '추천된 진입점을 클릭해 다음 의사결정 지점으로 이동한다.': '추천 진입점의 다음 화면 이동을 확인 중입니다',
+    '추천된 진입점을 선택해 다음 화면으로 이동한다.': '추천 진입점의 다음 화면 이동을 확인 중입니다',
+    '추천된 진입점으로 다음 화면 이동 가능성을 확인한다.': '추천 진입점의 다음 화면 이동을 확인 중입니다',
+    '이동 후 도착 지점의 문맥을 기록한다.': '도착 화면의 맥락과 다음 행동을 확인 중입니다',
+    '이동 후 도착 화면의 맥락을 기록한다.': '도착 화면의 맥락과 다음 행동을 확인 중입니다',
+    '이동 후 도착 화면의 맥락과 다음 행동을 기록한다.': '도착 화면의 맥락과 다음 행동을 확인 중입니다',
+    '추천된 민감 진입점은 자동 클릭하지 않고 대상 근거만 기록한다.': '민감한 진입점의 대상 근거를 확인 중입니다',
+    '민감한 진입점은 자동 선택하지 않고 대상 근거만 기록한다.': '민감한 진입점의 대상 근거를 확인 중입니다',
+    '추천 흐름을 실행하기 전 현재 문맥을 기록한다.': '현재 화면의 맥락을 확인 중입니다',
+    '추천 흐름 실행 전 현재 화면 맥락을 기록한다.': '현재 화면의 맥락을 확인 중입니다',
+  };
+
+  return messagesByDescription[normalized] ?? `${normalized} 확인 중입니다`;
+}
+
+function readableStepTimelineLabel(description: string | null) {
+  if (!description) {
+    return null;
+  }
+
+  const normalized = description.trim();
+  const labelsByDescription: Record<string, string> = {
+    'Discovery 추천 URL에 진입한다.': '추천 시작 화면',
+    '추천 URL에 진입한다.': '추천 시작 화면',
+    '추천된 시작 화면을 연다.': '추천 시작 화면',
+    '추천된 시작 화면을 열어 첫 화면을 확인한다.': '추천 시작 화면',
+    '첫 화면의 핵심 문맥과 진입점을 기록한다.': '첫 화면 맥락',
+    '첫 화면의 핵심 맥락과 주요 진입점을 기록한다.': '첫 화면 맥락',
+    '첫 화면에서 핵심 맥락과 주요 진입점을 기록한다.': '첫 화면 맥락',
+    '추천된 진입점을 클릭해 다음 의사결정 지점으로 이동한다.': '추천 진입점 이동',
+    '추천된 진입점을 선택해 다음 화면으로 이동한다.': '추천 진입점 이동',
+    '추천된 진입점으로 다음 화면 이동 가능성을 확인한다.': '추천 진입점 이동',
+    '이동 후 도착 지점의 문맥을 기록한다.': '도착 화면 확인',
+    '이동 후 도착 화면의 맥락을 기록한다.': '도착 화면 확인',
+    '이동 후 도착 화면의 맥락과 다음 행동을 기록한다.': '도착 화면 확인',
+    '추천된 민감 진입점은 자동 클릭하지 않고 대상 근거만 기록한다.': '민감 진입점 근거',
+    '민감한 진입점은 자동 선택하지 않고 대상 근거만 기록한다.': '민감 진입점 근거',
+    '추천 흐름을 실행하기 전 현재 문맥을 기록한다.': '현재 화면 맥락',
+    '추천 흐름 실행 전 현재 화면 맥락을 기록한다.': '현재 화면 맥락',
+  };
+
+  return labelsByDescription[normalized] ?? normalized;
 }
 
 function describeStepCompletedEvent(event: RunEvent) {
@@ -335,7 +401,7 @@ function describeStepCompletedEvent(event: RunEvent) {
   const duration = settle ? formatDuration(readPayloadNumber(settle, 'durationMs')) : null;
 
   if (finalPath) {
-    return `도착 화면 ${finalPath}을 확인했습니다`;
+    return describeDestinationCheck(finalPath);
   }
 
   if (duration) {
@@ -387,7 +453,7 @@ function getRunEventUserSummary(event: RunEvent, step?: RunStep) {
 function getRunEventTimelineText(event: RunEvent, step?: RunStep): RunEventTimelineText {
   if (event.eventType === 'STEP_STARTED' && step?.stepName) {
     return {
-      label: step.stepName,
+      label: readableStepTimelineLabel(step.stepName) ?? step.stepName,
       detail: getRunEventUserSummary(event, step),
     };
   }
@@ -655,7 +721,7 @@ export function buildApiStepTimeline(run: Run, live: RunLive, steps: RunStep[]):
     .sort((left, right) => left.stepOrder - right.stepOrder)
     .map((step) => ({
       id: step.id,
-      label: step.stepName,
+      label: readableStepTimelineLabel(step.stepName) ?? step.stepName,
       detail: getRunStepDetail(step),
       status: getRunStepStatus(step.status),
       timestamp: getRunStepTimestamp(step),

@@ -248,7 +248,7 @@ function FindingReferenceSummary({
                 <span>{reference.publisher}</span>
                 <strong>{reference.title}</strong>
                 <p>{reference.basisSummary}</p>
-                <a href={reference.url} target="_blank" rel="noreferrer"># 원문</a>
+                <a href={reference.url} target="_blank" rel="noreferrer">근거 보기</a>
               </li>
             ))}
           </ul>
@@ -814,7 +814,7 @@ export function RunReportViewer({
                 <dd title={report.targetUrl}>{targetUrlLabel}</dd>
               </div>
               <div>
-                <dt>점검 시나리오</dt>
+                <dt>점검 흐름</dt>
                 <dd>{report.scenarioLabel}</dd>
               </div>
             </dl>

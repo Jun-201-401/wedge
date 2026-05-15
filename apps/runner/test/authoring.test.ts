@@ -21,6 +21,16 @@ test("Runner ScenarioAuthoring compiles Discovery recommendation into custom Sce
   assert.equal(result.candidates[0]?.scenario_plan.scenario_type, "custom_compiled");
   assert.equal(result.candidates[0]?.scenario_plan.source_discovery_id, "40000000-0000-4000-8000-000000000003");
   assert.equal(result.candidates[0]?.scenario_plan.steps[2]?.action.type, "click");
+  assert.deepEqual(result.candidates[0]?.scenario_plan.steps.map((step) => step.description), [
+    "추천된 시작 화면을 열어 첫 화면을 확인한다.",
+    "첫 화면에서 핵심 맥락과 주요 진입점을 기록한다.",
+    "추천된 진입점으로 다음 화면 이동 가능성을 확인한다.",
+    "이동 후 도착 화면의 맥락과 다음 행동을 기록한다."
+  ]);
+  assert.doesNotMatch(
+    result.candidates[0]?.scenario_plan.steps.map((step) => step.description).join("\n") ?? "",
+    /Discovery|의사결정/
+  );
 });
 
 test("createRunnerApp processes scenario-authoring message files and sends callbacks", async () => {
