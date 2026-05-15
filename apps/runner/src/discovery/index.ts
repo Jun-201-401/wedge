@@ -39,6 +39,7 @@ export {
 const DEFAULT_DISCOVERY_LOCALE = "ko-KR";
 const DEFAULT_DISCOVERY_TIMEZONE = "Asia/Seoul";
 const POST_LOAD_SETTLE_MS = 150;
+const DOM_COLLECTION_NAVIGATION_RETRY_COUNT = 2;
 const MAX_SHALLOW_NAVIGATION_CANDIDATES = 6;
 const SHALLOW_NAVIGATION_TIMEOUT_MS = 1_500;
 const MAX_RAW_DISCOVERY_ELEMENTS = 1_500;
@@ -155,22 +156,22 @@ async function executeDiscoveryForPersistence({
     await settleWithinBudget(page, discoveryDeadlineMs);
 
     const candidatesByKey = new Map<string, DiscoveryCandidate>();
-    collectUniqueCandidates(candidatesByKey, await collectCandidatesFromPage(page));
+    collectUniqueCandidates(candidatesByKey, await collectCandidatesFromStablePage(page, discoveryDeadlineMs));
 
     for (let index = 0; index < payload.maxScrollCount; index += 1) {
       if (remainingBudgetMs(discoveryDeadlineMs) < POST_LOAD_SETTLE_MS) {
         break;
       }
 
-      await page.evaluate(() => {
+      await evaluateWithNavigationRetry(page, discoveryDeadlineMs, () => page.evaluate(() => {
         const scope = globalThis as typeof globalThis & {
           innerHeight?: number;
           scrollBy?: (x: number, y: number) => void;
         };
         scope.scrollBy?.(0, Math.max(scope.innerHeight ?? 900, 600));
-      });
+      }));
       await page.waitForTimeout(POST_LOAD_SETTLE_MS);
-      collectUniqueCandidates(candidatesByKey, await collectCandidatesFromPage(page));
+      collectUniqueCandidates(candidatesByKey, await collectCandidatesFromStablePage(page, discoveryDeadlineMs));
     }
 
     const shallowNavigationNotes = await verifyCandidatesWithShallowNavigation(
@@ -293,6 +294,45 @@ async function createDiscoveryArtifactDrafts(
       content: domSnapshot
     }
   ];
+}
+
+async function collectCandidatesFromStablePage(page: Page, deadlineMs: number): Promise<DiscoveryCandidate[]> {
+  return evaluateWithNavigationRetry(page, deadlineMs, () => collectCandidatesFromPage(page));
+}
+
+async function evaluateWithNavigationRetry<T>(
+  page: Page,
+  deadlineMs: number,
+  operation: () => Promise<T>
+): Promise<T> {
+  let lastNavigationError: unknown;
+
+  for (let attempt = 0; attempt <= DOM_COLLECTION_NAVIGATION_RETRY_COUNT; attempt += 1) {
+    try {
+      return await operation();
+    } catch (error) {
+      if (!isNavigationInterruptedEvaluateError(error) || attempt === DOM_COLLECTION_NAVIGATION_RETRY_COUNT) {
+        throw error;
+      }
+
+      lastNavigationError = error;
+      if (remainingBudgetMs(deadlineMs) < POST_LOAD_SETTLE_MS) {
+        throw error;
+      }
+
+      await settleWithinBudget(page, deadlineMs);
+      await page.waitForTimeout(Math.min(POST_LOAD_SETTLE_MS, remainingBudgetMs(deadlineMs)));
+    }
+  }
+
+  throw lastNavigationError instanceof Error ? lastNavigationError : new Error(String(lastNavigationError));
+}
+
+function isNavigationInterruptedEvaluateError(error: unknown): boolean {
+  const message = errorMessage(error).toLowerCase();
+  return message.includes("execution context was destroyed")
+    || message.includes("most likely because of a navigation")
+    || message.includes("cannot find context with specified id");
 }
 
 async function collectCandidatesFromPage(page: Page): Promise<DiscoveryCandidate[]> {
@@ -912,7 +952,7 @@ async function verifyCandidatesWithShallowNavigation(
         continue;
       }
 
-      const destinationCandidates = await collectCandidatesFromPage(page);
+      const destinationCandidates = await collectCandidatesFromStablePage(page, deadlineMs);
       const verified = isFlowVerifiedByDestination(candidate.flowType, destinationCandidates, finalUrl);
       if (verified) {
         markCandidateShallowVerified(candidate, finalUrl, await page.title().catch(() => ""));

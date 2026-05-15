@@ -1,10 +1,37 @@
 import type { ScenarioAction, ScenarioPlan } from "../shared/contracts.ts";
 import { describeTarget } from "../shared/utils.ts";
 
+export type ScenarioSafetyBlockCode =
+  | "SYNTHETIC_INPUT_BLOCKED"
+  | "PAYMENT_COMMIT_BLOCKED"
+  | "DESTRUCTIVE_ACTION_BLOCKED"
+  | "EXTERNAL_NAVIGATION_BLOCKED"
+  | "EXTERNAL_VISIT_BLOCKED";
+
+export type ScenarioSafetyRiskClass =
+  | "SYNTHETIC_INPUT"
+  | "PAYMENT_COMMIT"
+  | "DESTRUCTIVE_ACTION"
+  | "EXTERNAL_NAVIGATION";
+
+export interface RunnerExecutionPolicyErrorInput {
+  safetyCode: ScenarioSafetyBlockCode;
+  riskClass: ScenarioSafetyRiskClass;
+  message: string;
+  details?: Record<string, unknown>;
+}
+
 export class RunnerExecutionPolicyError extends Error {
-  constructor(message: string) {
-    super(message);
+  readonly safetyCode: ScenarioSafetyBlockCode;
+  readonly riskClass: ScenarioSafetyRiskClass;
+  readonly details: Record<string, unknown>;
+
+  constructor(input: RunnerExecutionPolicyErrorInput) {
+    super(input.message);
     this.name = "RunnerExecutionPolicyError";
+    this.safetyCode = input.safetyCode;
+    this.riskClass = input.riskClass;
+    this.details = input.details ?? {};
   }
 }
 
@@ -15,20 +42,45 @@ export function assertScenarioActionAllowed(
   resolvedNavigationUrl?: string | null
 ): void {
   if ((action.type === "fill" || action.type === "select") && !plan.safety.use_synthetic_inputs) {
-    throw new RunnerExecutionPolicyError(
-      `Scenario safety forbids synthetic ${action.type} actions when use_synthetic_inputs=false`
-    );
+    throw new RunnerExecutionPolicyError({
+      safetyCode: "SYNTHETIC_INPUT_BLOCKED",
+      riskClass: "SYNTHETIC_INPUT",
+      message: `Scenario safety forbids synthetic ${action.type} actions when use_synthetic_inputs=false`,
+      details: {
+        actionType: action.type,
+        useSyntheticInputs: plan.safety.use_synthetic_inputs
+      }
+    });
   }
 
   const targetSummary = describeTarget(action.target)?.toLowerCase() ?? "";
 
   if (action.type === "click") {
     if (looksLikePaymentTarget(targetSummary) && (plan.safety.stop_before_real_payment || !plan.safety.allow_payment_commit)) {
-      throw new RunnerExecutionPolicyError("Scenario safety forbids payment-commit click targets");
+      throw new RunnerExecutionPolicyError({
+        safetyCode: "PAYMENT_COMMIT_BLOCKED",
+        riskClass: "PAYMENT_COMMIT",
+        message: "Scenario safety forbids payment-commit click targets",
+        details: {
+          actionType: action.type,
+          targetSummary,
+          allowPaymentCommit: plan.safety.allow_payment_commit,
+          stopBeforeRealPayment: plan.safety.stop_before_real_payment ?? false
+        }
+      });
     }
 
     if (looksLikeDestructiveTarget(targetSummary) && !plan.safety.allow_destructive_action) {
-      throw new RunnerExecutionPolicyError("Scenario safety forbids destructive click targets");
+      throw new RunnerExecutionPolicyError({
+        safetyCode: "DESTRUCTIVE_ACTION_BLOCKED",
+        riskClass: "DESTRUCTIVE_ACTION",
+        message: "Scenario safety forbids destructive click targets",
+        details: {
+          actionType: action.type,
+          targetSummary,
+          allowDestructiveAction: plan.safety.allow_destructive_action
+        }
+      });
     }
   }
 
@@ -60,9 +112,16 @@ export function assertNavigationAllowed(plan: ScenarioPlan, currentUrl: string, 
       return;
     }
 
-    throw new RunnerExecutionPolicyError(
-      `Scenario safety forbids external navigation from ${currentOrigin} to ${nextOrigin}`
-    );
+    throw new RunnerExecutionPolicyError({
+      safetyCode: "EXTERNAL_NAVIGATION_BLOCKED",
+      riskClass: "EXTERNAL_NAVIGATION",
+      message: `Scenario safety forbids external navigation from ${currentOrigin} to ${nextOrigin}`,
+      details: {
+        currentOrigin,
+        nextOrigin,
+        allowedExternalOrigins: [...allowedExternalOrigins]
+      }
+    });
   }
 }
 
@@ -82,9 +141,16 @@ export function assertVisitedUrlAllowed(plan: ScenarioPlan, currentUrl: string):
       return;
     }
 
-    throw new RunnerExecutionPolicyError(
-      `Scenario safety forbids visiting external origin ${currentOrigin} from start origin ${allowedOrigin}`
-    );
+    throw new RunnerExecutionPolicyError({
+      safetyCode: "EXTERNAL_VISIT_BLOCKED",
+      riskClass: "EXTERNAL_NAVIGATION",
+      message: `Scenario safety forbids visiting external origin ${currentOrigin} from start origin ${allowedOrigin}`,
+      details: {
+        allowedOrigin,
+        currentOrigin,
+        allowedExternalOrigins: [...allowedExternalOrigins]
+      }
+    });
   }
 }
 

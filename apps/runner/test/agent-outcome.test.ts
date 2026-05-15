@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { reasonCodeFromPolicy, reasonCodeFromVerification } from "../src/agent/outcome.ts";
+import {
+  createScenarioSafetyBlock,
+  createSafetyBlockedOutcome,
+  reasonCodeFromPolicy,
+  reasonCodeFromScenarioSafetyBlock,
+  reasonCodeFromVerification
+} from "../src/agent/outcome.ts";
 import type { AgentPolicyResult } from "../src/agent/policy.ts";
 
 test("[Agent Outcome] blocker verification outcomes map to stable reason codes", () => {
@@ -25,4 +31,42 @@ test("[Agent Outcome] policy risk classes map to stable blocked reason codes", (
   for (const [riskClass, reasonCode] of cases) {
     assert.equal(reasonCodeFromPolicy({ allowed: false, riskClass, reason: "blocked" }), reasonCode);
   }
+});
+
+test("[Agent Outcome] scenario safety block codes map to policy-blocked reason codes", () => {
+  assert.equal(reasonCodeFromScenarioSafetyBlock("SYNTHETIC_INPUT_BLOCKED"), "POLICY_SYNTHETIC_INPUT_BLOCKED");
+  assert.equal(reasonCodeFromScenarioSafetyBlock("EXTERNAL_NAVIGATION_BLOCKED"), "POLICY_EXTERNAL_NAVIGATION_BLOCKED");
+  assert.equal(reasonCodeFromScenarioSafetyBlock("EXTERNAL_VISIT_BLOCKED"), "POLICY_EXTERNAL_NAVIGATION_BLOCKED");
+  assert.equal(reasonCodeFromScenarioSafetyBlock("PAYMENT_COMMIT_BLOCKED"), "POLICY_PAYMENT_COMMIT_BLOCKED");
+  assert.equal(reasonCodeFromScenarioSafetyBlock("DESTRUCTIVE_ACTION_BLOCKED"), "POLICY_DESTRUCTIVE_ACTION_BLOCKED");
+});
+
+test("[Agent Outcome] scenario safety block creates a policy-blocked trace outcome", () => {
+  const outcome = createSafetyBlockedOutcome(
+    "SYNTHETIC_INPUT_BLOCKED",
+    "Scenario safety forbids synthetic fill actions when use_synthetic_inputs=false"
+  );
+
+  assert.equal(outcome.status, "POLICY_BLOCKED");
+  assert.equal(outcome.reason_code, "POLICY_SYNTHETIC_INPUT_BLOCKED");
+  assert.match(outcome.reason, /use_synthetic_inputs=false/);
+});
+
+test("[Agent Outcome] scenario safety block trace payload keeps stable source and reason code", () => {
+  const safetyBlock = createScenarioSafetyBlock({
+    safetyCode: "PAYMENT_COMMIT_BLOCKED",
+    riskClass: "PAYMENT_COMMIT",
+    reason: "Scenario safety forbids payment-commit click targets",
+    details: {
+      actionType: "click"
+    }
+  });
+
+  assert.equal(safetyBlock.source, "scenario_safety");
+  assert.equal(safetyBlock.safetyCode, "PAYMENT_COMMIT_BLOCKED");
+  assert.equal(safetyBlock.riskClass, "PAYMENT_COMMIT");
+  assert.equal(safetyBlock.reasonCode, "POLICY_PAYMENT_COMMIT_BLOCKED");
+  assert.deepEqual(safetyBlock.details, {
+    actionType: "click"
+  });
 });

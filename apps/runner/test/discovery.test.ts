@@ -270,6 +270,33 @@ test("[Discovery] shallow navigation skips checkout aliases without requesting t
   }
 });
 
+test("[Discovery] 초기 화면이 client-side navigation 중이어도 후보 수집을 재시도한다", async () => {
+  const requestedPaths = new Map<string, number>();
+  const server = await startFixtureServer(requestedPaths, {
+    rootClientRedirectToStable: true
+  });
+
+  try {
+    const address = server.address();
+    assert.ok(address && typeof address === "object");
+    const result = await executeDiscovery({
+      message: createDiscoveryExecuteMessage(`http://127.0.0.1:${address.port}/`),
+      config: createRunnerTestConfig({
+        browserName: "chromium",
+        browserHeadless: true,
+        browserLaunchTimeoutMs: 30_000,
+        browserNavigationTimeoutMs: 30_000
+      })
+    });
+
+    assert.ok((requestedPaths.get("/stable") ?? 0) >= 1);
+    assert.ok(result.final_url.endsWith("/stable"));
+    assertFlowDetected(result.detected_flow_types, "LANDING_CTA");
+  } finally {
+    await closeServer(server);
+  }
+});
+
 test("[Discovery] shallow navigation blocks unsafe redirects before checkout is requested", async () => {
   const requestedPaths = new Map<string, number>();
   const server = await startFixtureServer(requestedPaths, {
@@ -544,6 +571,7 @@ interface FixtureServerOptions {
   extraRootLinks?: string;
   pricingPath?: string;
   pricingRedirectToCheckout?: boolean;
+  rootClientRedirectToStable?: boolean;
 }
 
 async function startFixtureServer(
@@ -582,6 +610,35 @@ async function startFixtureServer(
 
     if (path === "/cart") {
       response.end(createCheckoutFixtureHtml());
+      return;
+    }
+
+    if (path === "/stable") {
+      response.end(`<!doctype html>
+<html lang="en">
+  <head><title>Stable redirected discovery fixture</title></head>
+  <body>
+    <main>
+      <a href="/signup">Start free</a>
+    </main>
+  </body>
+</html>`);
+      return;
+    }
+
+    if (options.rootClientRedirectToStable) {
+      response.end(`<!doctype html>
+<html lang="en">
+  <head>
+    <title>Redirecting Discovery Fixture</title>
+    <script>setTimeout(() => { window.location.replace('/stable'); }, 0);</script>
+  </head>
+  <body>
+    <main>
+      <a href="/pending">Preparing discovery</a>
+    </main>
+  </body>
+</html>`);
       return;
     }
 

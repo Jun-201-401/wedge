@@ -57,6 +57,9 @@
         "policy": {
           "$ref": "agent-policy-result.schema.json"
         },
+        "safetyBlock": {
+          "$ref": "#/$defs/AgentSafetyBlock"
+        },
         "actionResult": {
           "type": "object",
           "additionalProperties": false,
@@ -79,6 +82,47 @@
         }
       },
       "required": ["turn", "observation", "preDecisionVerification"]
+    },
+    "AgentSafetyBlock": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "source": {
+          "type": "string",
+          "enum": ["scenario_safety"]
+        },
+        "safetyCode": {
+          "type": "string",
+          "enum": [
+            "SYNTHETIC_INPUT_BLOCKED",
+            "PAYMENT_COMMIT_BLOCKED",
+            "DESTRUCTIVE_ACTION_BLOCKED",
+            "EXTERNAL_NAVIGATION_BLOCKED",
+            "EXTERNAL_VISIT_BLOCKED"
+          ]
+        },
+        "riskClass": {
+          "type": "string",
+          "enum": [
+            "SYNTHETIC_INPUT",
+            "PAYMENT_COMMIT",
+            "DESTRUCTIVE_ACTION",
+            "EXTERNAL_NAVIGATION"
+          ]
+        },
+        "reasonCode": {
+          "$ref": "agent-outcome.schema.json#/properties/reason_code"
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "details": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "required": ["source", "safetyCode", "riskClass", "reasonCode", "reason"]
     }
   }
 }
