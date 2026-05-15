@@ -125,7 +125,7 @@ def phase_timer(
             duration_ms=(time.perf_counter() - started_at) * 1000,
             status="error",
             error_type=type(exc).__name__,
-            extra=_resolve_extra(extra),
+            extra=extra,
             sink=sink,
         )
         raise
@@ -134,7 +134,7 @@ def phase_timer(
         phase=phase,
         duration_ms=(time.perf_counter() - started_at) * 1000,
         status="success",
-        extra=_resolve_extra(extra),
+        extra=extra,
         sink=sink,
     )
 

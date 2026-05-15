@@ -111,6 +111,13 @@ class PhaseTimingTest(unittest.TestCase):
         ):
             _ = sum([1, 2, 3])
 
+        with phase_timer(
+            context=PhaseTimingContext(run_id="run-1"),
+            phase="analysis_core_total",
+            extra=lambda: (_ for _ in ()).throw(RuntimeError("extra failed")),
+        ):
+            _ = sum([1, 2, 3])
+
     def test_phase_timer_preserves_original_exception_when_telemetry_fails(self) -> None:
         def failing_sink(_line: str) -> None:
             raise OSError("stdout closed")
@@ -121,6 +128,14 @@ class PhaseTimingTest(unittest.TestCase):
                 phase="analysis_core_total",
                 extra=lambda: {"checkpointCount": 1},
                 sink=failing_sink,
+            ):
+                raise ValueError("business failure")
+
+        with self.assertRaisesRegex(ValueError, "business failure"):
+            with phase_timer(
+                context=PhaseTimingContext(run_id="run-1"),
+                phase="analysis_core_total",
+                extra=lambda: (_ for _ in ()).throw(RuntimeError("extra failed")),
             ):
                 raise ValueError("business failure")
 
