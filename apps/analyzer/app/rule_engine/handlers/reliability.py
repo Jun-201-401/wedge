@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import re
 from typing import Any
+from urllib.parse import urlparse
 
 from app.rule_engine.handler_utils import base_hit, checkpoint_primary_stage, observations_of_type
 from app.rule_engine.models import RuleHit
@@ -17,12 +19,36 @@ HEAVY_TARGET_SIGNAL_KEYS = {
     "has_streaming_response",
     "has_webgl",
 }
+URL_PATTERN = re.compile(r"https?://[^\s\"'<>]+")
+TRACKING_HOST_EXACT = {
+    "bc.ad.daum.net",
+    "act.ds.kakao.com",
+    "cm.g.doubleclick.net",
+    "cdn.megadata.co.kr",
+}
+TRACKING_HOST_SUFFIXES = (
+    ".doubleclick.net",
+    ".googlesyndication.com",
+    ".google-analytics.com",
+    ".googletagmanager.com",
+    ".facebook.com",
+)
+TRACKING_PATH_HINTS = (
+    "/adfit/",
+    "/pixel",
+    "/collect",
+    "/pagead/",
+)
+
+
 def evaluate_reliability(rule: dict[str, Any], context: StageContext) -> RuleHit | None:
     refs: list[str] = []
     failed_count = 0
     console_count = 0
 
     for record in observations_of_type(context, "network_failure", "console_error"):
+        if _is_ignored_technical_observation(record.observation):
+            continue
         if record.observation.get("type") == "network_failure":
             failed_count += 1
         if record.observation.get("type") == "console_error":
@@ -40,12 +66,12 @@ def evaluate_reliability(rule: dict[str, Any], context: StageContext) -> RuleHit
         state = checkpoint.get("state") or {}
         network = state.get("network_summary") or {}
         console = state.get("console_summary") or {}
-        checkpoint_failed = int(network.get("failed_request_count") or 0)
+        checkpoint_failed = _actionable_network_failure_count(network, checkpoint)
         checkpoint_console = int(console.get("error_count") or 0)
         if checkpoint_failed:
             failed_count += checkpoint_failed
             refs.append(f"{checkpoint_id}.state.network_summary")
-        if checkpoint_console:
+        if checkpoint_console and not _checkpoint_has_only_ignored_technical_observations(checkpoint):
             console_count += checkpoint_console
             refs.append(f"{checkpoint_id}.state.console_summary")
 
@@ -157,7 +183,10 @@ def _has_exception_context(data: dict[str, Any]) -> bool:
 
 
 def _has_technical_failure(context: StageContext) -> bool:
-    if observations_of_type(context, "network_failure", "console_error"):
+    if any(
+        not _is_ignored_technical_observation(record.observation)
+        for record in observations_of_type(context, "network_failure", "console_error")
+    ):
         return True
     for checkpoint in context.checkpoints:
         if checkpoint_primary_stage(checkpoint) != context.stage:
@@ -165,11 +194,85 @@ def _has_technical_failure(context: StageContext) -> bool:
         state = checkpoint.get("state") or {}
         network = state.get("network_summary") or {}
         console = state.get("console_summary") or {}
-        if int(network.get("failed_request_count") or 0) > 0:
+        if _actionable_network_failure_count(network, checkpoint) > 0:
             return True
-        if int(console.get("error_count") or 0) > 0:
+        if int(console.get("error_count") or 0) > 0 and not _checkpoint_has_only_ignored_technical_observations(checkpoint):
             return True
     return False
+
+
+def _actionable_network_failure_count(network: dict[str, Any], checkpoint: dict[str, Any]) -> int:
+    failed_count = int(network.get("failed_request_count") or 0)
+    if failed_count <= 0:
+        return 0
+
+    urls = _extract_urls(network)
+    if urls:
+        actionable_urls = [url for url in urls if not _is_tracking_url(url)]
+        return min(failed_count, len(actionable_urls)) if actionable_urls else 0
+
+    if _checkpoint_has_only_ignored_technical_observations(checkpoint):
+        return 0
+    return failed_count
+
+
+def _checkpoint_has_only_ignored_technical_observations(checkpoint: dict[str, Any]) -> bool:
+    observations = checkpoint.get("observations")
+    if not isinstance(observations, list):
+        return False
+    technical = [
+        observation
+        for observation in observations
+        if isinstance(observation, dict) and observation.get("type") in {"network_failure", "console_error"}
+    ]
+    return bool(technical) and all(_is_ignored_technical_observation(observation) for observation in technical)
+
+
+def _is_ignored_technical_observation(observation: dict[str, Any]) -> bool:
+    urls = _extract_urls(observation)
+    if urls and all(_is_tracking_url(url) for url in urls):
+        return True
+    return _is_generic_resource_console_error(observation)
+
+
+def _is_generic_resource_console_error(observation: dict[str, Any]) -> bool:
+    if observation.get("type") != "console_error":
+        return False
+    if _extract_urls(observation):
+        return False
+    message = str(_record_data_from_observation(observation).get("message") or observation.get("message") or "")
+    return message.startswith("Failed to load resource:")
+
+
+def _is_tracking_url(url: str) -> bool:
+    parsed = urlparse(url)
+    host = parsed.hostname or ""
+    path = parsed.path or ""
+    if host in TRACKING_HOST_EXACT:
+        return True
+    if any(host.endswith(suffix) for suffix in TRACKING_HOST_SUFFIXES):
+        return True
+    return any(hint in path for hint in TRACKING_PATH_HINTS) and any(
+        marker in host for marker in ("daumcdn.net", "kakao.com", "google", "facebook", "megadata")
+    )
+
+
+def _extract_urls(value: Any) -> list[str]:
+    urls: list[str] = []
+    if isinstance(value, str):
+        urls.extend(match.rstrip("),.;") for match in URL_PATTERN.findall(value))
+    elif isinstance(value, dict):
+        for nested in value.values():
+            urls.extend(_extract_urls(nested))
+    elif isinstance(value, list):
+        for nested in value:
+            urls.extend(_extract_urls(nested))
+    return list(dict.fromkeys(urls))
+
+
+def _record_data_from_observation(observation: dict[str, Any]) -> dict[str, Any]:
+    data = observation.get("data")
+    return data if isinstance(data, dict) else observation
 
 
 def _duration_ms(context: StageContext, record: ObservationRecord) -> int | None:

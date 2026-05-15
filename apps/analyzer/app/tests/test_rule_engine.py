@@ -919,6 +919,80 @@ class RuleEngineTest(unittest.TestCase):
         criteria = [issue["criterion_id"] for issue in result["issues"]]
         self.assertNotIn("TECH-TARGET-SIZE-001", criteria)
 
+    def test_target_size_ignores_link_role_without_actionable_target(self) -> None:
+        packet = load_sample_packet()
+        packet["aggregate_signals"]["primary_cta_count_by_stage"] = {}
+        packet["checkpoints"][0]["observations"] = [
+            observation
+            for observation in packet["checkpoints"][0]["observations"]
+            if observation["type"] not in {"cta_cluster", "interactive_components"}
+        ]
+        packet["checkpoints"][0]["observations"].append(
+            {
+                "observation_id": "obs_static_notice_text",
+                "type": "interactive_components",
+                "stage": "CTA",
+                "source": ["dom", "layout"],
+                "confidence": 0.84,
+                "data": {
+                    "components": [
+                        {
+                            "text": "지역별 배송 확인 필수",
+                            "selector": "div.notice span.keyword",
+                            "role": "link",
+                            "tag": "span",
+                            "visible": True,
+                            "bounds": {"x": 96, "y": 350, "width": 180, "height": 18},
+                            "nearest_target_spacing_px": 0,
+                        }
+                    ]
+                },
+            }
+        )
+
+        result = analyze_evidence_packet(packet)
+
+        criteria = [issue["criterion_id"] for issue in result["issues"]]
+        self.assertNotIn("TECH-TARGET-SIZE-001", criteria)
+
+    def test_target_size_counts_small_link_when_href_is_present(self) -> None:
+        packet = load_sample_packet()
+        packet["aggregate_signals"]["primary_cta_count_by_stage"] = {}
+        packet["checkpoints"][0]["observations"] = [
+            observation
+            for observation in packet["checkpoints"][0]["observations"]
+            if observation["type"] not in {"cta_cluster", "interactive_components"}
+        ]
+        packet["checkpoints"][0]["observations"].append(
+            {
+                "observation_id": "obs_small_link",
+                "type": "interactive_components",
+                "stage": "CTA",
+                "source": ["dom", "layout"],
+                "confidence": 0.84,
+                "data": {
+                    "components": [
+                        {
+                            "text": "자세히",
+                            "selector": "a.more",
+                            "role": "link",
+                            "tag": "a",
+                            "href": "/notice/1",
+                            "visible": True,
+                            "bounds": {"x": 96, "y": 350, "width": 20, "height": 18},
+                            "nearest_target_spacing_px": 4,
+                        }
+                    ]
+                },
+            }
+        )
+
+        result = analyze_evidence_packet(packet)
+
+        target_size = [issue for issue in result["issues"] if issue["criterion_id"] == "TECH-TARGET-SIZE-001"]
+        self.assertEqual(len(target_size), 1)
+        self.assertEqual(target_size[0]["problem_components"][0]["selector"], "a.more")
+
     def test_missing_cta_evidence_is_not_user_facing_issue(self) -> None:
         packet = load_sample_packet()
         packet["aggregate_signals"]["primary_cta_count_by_stage"] = {"CTA": 0}
@@ -1150,6 +1224,49 @@ class RuleEngineTest(unittest.TestCase):
         self.assertEqual(reliability[0]["stage"], "INPUT")
         self.assertEqual(reliability[0]["references"][0]["label"], "NN/g Heuristics")
         self.assertIn("cp_002.state.network_summary", reliability[0]["evidence_refs"])
+
+    def test_reliability_ignores_tracking_network_failure(self) -> None:
+        packet = load_sample_packet()
+        packet["aggregate_signals"]["primary_cta_count_by_stage"] = {"CTA": 1}
+        packet["checkpoints"][0]["observations"].append(
+            {
+                "observation_id": "obs_tracking_network_failure",
+                "type": "network_failure",
+                "stage": "CTA",
+                "source": ["network"],
+                "data": {
+                    "url": "https://cm.g.doubleclick.net/pixel?google_nid=enliple_tw",
+                    "status": 403,
+                    "failure": "Forbidden",
+                },
+                "confidence": 0.9,
+            }
+        )
+
+        result = analyze_evidence_packet(packet)
+
+        reliability = [issue for issue in result["issues"] if issue["criterion_id"] == "RELIABILITY-TECH-001"]
+        self.assertEqual(reliability, [])
+
+    def test_reliability_ignores_generic_resource_console_error_with_summary_count(self) -> None:
+        packet = load_sample_packet()
+        packet["aggregate_signals"]["primary_cta_count_by_stage"] = {"CTA": 1}
+        packet["checkpoints"][0]["state"]["network_summary"]["failed_request_count"] = 1
+        packet["checkpoints"][0]["observations"].append(
+            {
+                "observation_id": "obs_tracking_console_error",
+                "type": "console_error",
+                "stage": "CTA",
+                "source": ["console"],
+                "data": {"message": "Failed to load resource: the server responded with a status of 403 ()"},
+                "confidence": 0.9,
+            }
+        )
+
+        result = analyze_evidence_packet(packet)
+
+        reliability = [issue for issue in result["issues"] if issue["criterion_id"] == "RELIABILITY-TECH-001"]
+        self.assertEqual(reliability, [])
 
     def test_loading_stuck_emits_from_general_page_ready_timing(self) -> None:
         packet = load_sample_packet()
