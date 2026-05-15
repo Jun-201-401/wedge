@@ -20,6 +20,7 @@ import { evaluateAgentPolicy } from "./policy.ts";
 import { decideFromReplayHints } from "./replay-hint-planner.ts";
 import { createInitialAgentState } from "./state.ts";
 import {
+  createScenarioSafetyBlock,
   createSafetyBlockedOutcome,
   createTraceOutcome,
   reasonCodeFromPolicy,
@@ -260,8 +261,15 @@ export async function executeAgentRun(input: AgentExecutorInput): Promise<AgentE
         }
 
         if (error instanceof RunnerExecutionPolicyError) {
-          const safetyOutcome = createSafetyBlockedOutcome(error.safetyCode, error.message);
+          const safetyBlock = createScenarioSafetyBlock({
+            safetyCode: error.safetyCode,
+            riskClass: error.riskClass,
+            reason: error.message,
+            details: error.details
+          });
+          const safetyOutcome = createSafetyBlockedOutcome(safetyBlock.safetyCode, safetyBlock.reason);
           trace.outcome = safetyOutcome;
+          turnTrace.safetyBlock = safetyBlock;
           postActionSnapshot = input.session.snapshot();
           turnTrace.actionResult = {
             actionType: decision.action.type,
@@ -277,23 +285,19 @@ export async function executeAgentRun(input: AgentExecutorInput): Promise<AgentE
               turn,
               stepKey: step.step_id,
               actionType: step.action.type,
-              safetyCode: error.safetyCode,
-              riskClass: error.riskClass,
+              safetyCode: safetyBlock.safetyCode,
+              riskClass: safetyBlock.riskClass,
               reasonCode: safetyOutcome.reason_code,
-              reason: error.message,
-              details: error.details
+              reason: safetyBlock.reason,
+              details: safetyBlock.details
             },
             "warn"
           );
 
           deliveryIssues.push(...(await emitAgentEventBestEffort(input.callbackClient, input.runId, input.task, "POLICY_CHECKED", {
             allowed: false,
-            source: "scenario_safety",
-            safetyCode: error.safetyCode,
-            riskClass: error.riskClass,
-            reason: error.message,
-            outcomeReasonCode: safetyOutcome.reason_code,
-            details: error.details
+            ...safetyBlock,
+            outcomeReasonCode: safetyOutcome.reason_code
           }, turn)));
 
           break;

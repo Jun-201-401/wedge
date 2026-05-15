@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  createScenarioSafetyBlock,
   createSafetyBlockedOutcome,
   reasonCodeFromPolicy,
   reasonCodeFromScenarioSafetyBlock,
@@ -49,4 +50,23 @@ test("[Agent Outcome] scenario safety block creates a policy-blocked trace outco
   assert.equal(outcome.status, "POLICY_BLOCKED");
   assert.equal(outcome.reason_code, "POLICY_SYNTHETIC_INPUT_BLOCKED");
   assert.match(outcome.reason, /use_synthetic_inputs=false/);
+});
+
+test("[Agent Outcome] scenario safety block trace payload keeps stable source and reason code", () => {
+  const safetyBlock = createScenarioSafetyBlock({
+    safetyCode: "PAYMENT_COMMIT_BLOCKED",
+    riskClass: "PAYMENT_COMMIT",
+    reason: "Scenario safety forbids payment-commit click targets",
+    details: {
+      actionType: "click"
+    }
+  });
+
+  assert.equal(safetyBlock.source, "scenario_safety");
+  assert.equal(safetyBlock.safetyCode, "PAYMENT_COMMIT_BLOCKED");
+  assert.equal(safetyBlock.riskClass, "PAYMENT_COMMIT");
+  assert.equal(safetyBlock.reasonCode, "POLICY_PAYMENT_COMMIT_BLOCKED");
+  assert.deepEqual(safetyBlock.details, {
+    actionType: "click"
+  });
 });

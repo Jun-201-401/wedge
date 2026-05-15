@@ -251,6 +251,29 @@ export interface AgentOutcome {
   reason: string;
 }
 
+export type AgentSafetyBlockSource = "scenario_safety";
+export type AgentSafetyBlockCode =
+  | "SYNTHETIC_INPUT_BLOCKED"
+  | "PAYMENT_COMMIT_BLOCKED"
+  | "DESTRUCTIVE_ACTION_BLOCKED"
+  | "EXTERNAL_NAVIGATION_BLOCKED"
+  | "EXTERNAL_VISIT_BLOCKED";
+
+export type AgentSafetyRiskClass =
+  | "SYNTHETIC_INPUT"
+  | "PAYMENT_COMMIT"
+  | "DESTRUCTIVE_ACTION"
+  | "EXTERNAL_NAVIGATION";
+
+export interface AgentSafetyBlock {
+  source: AgentSafetyBlockSource;
+  safetyCode: AgentSafetyBlockCode;
+  riskClass: AgentSafetyRiskClass;
+  reasonCode: AgentOutcomeReasonCode;
+  reason: string;
+  details?: Record<string, unknown>;
+}
+
 export type AgentVerificationOutcome =
   | "CONTINUE"
   | "SUCCESS"
@@ -369,6 +392,7 @@ export interface AgentTurnTrace {
   preDecisionVerification: AgentVerificationResult;
   decision?: AgentDecision;
   policy?: AgentPolicyResult;
+  safetyBlock?: AgentSafetyBlock;
   actionResult?: {
     actionType: ScenarioAction["type"];
     finalUrl: string;

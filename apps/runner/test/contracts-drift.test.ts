@@ -159,6 +159,7 @@ test("[계약 동기화] AgentTrace TS mirror가 packages/contracts trace schema
   const callbackSchema = await readJson(resolve(repoRoot, "packages/contracts/internal/runner-callback.schema.json"));
   const outcomeSchema = await readJson(resolve(repoRoot, "packages/contracts/schemas/agent-outcome.schema.json"));
   const policySchema = await readJson(resolve(repoRoot, "packages/contracts/schemas/agent-policy-result.schema.json"));
+  const traceSchema = await readJson(resolve(repoRoot, "packages/contracts/schemas/agent-trace.schema.json"));
   const traceExample = await readJson(resolve(repoRoot, "packages/contracts/examples/sample-agent-trace-checkout-entry.json"));
 
   assertTypeAliasMatchesSchemaEnum(
@@ -178,6 +179,24 @@ test("[계약 동기화] AgentTrace TS mirror가 packages/contracts trace schema
     "AgentOutcomeReasonCode",
     outcomeSchema,
     outcomeSchema.properties.reason_code
+  );
+  assertTypeAliasMatchesSchemaEnum(
+    runnerTypesSource,
+    "AgentSafetyBlockSource",
+    traceSchema,
+    traceSchema.$defs.AgentSafetyBlock.properties.source
+  );
+  assertTypeAliasMatchesSchemaEnum(
+    runnerTypesSource,
+    "AgentSafetyBlockCode",
+    traceSchema,
+    traceSchema.$defs.AgentSafetyBlock.properties.safetyCode
+  );
+  assertTypeAliasMatchesSchemaEnum(
+    runnerTypesSource,
+    "AgentSafetyRiskClass",
+    traceSchema,
+    traceSchema.$defs.AgentSafetyBlock.properties.riskClass
   );
   assertTypeAliasMatchesSchemaEnum(
     runnerTypesSource,

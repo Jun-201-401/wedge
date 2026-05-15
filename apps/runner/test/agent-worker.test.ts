@@ -825,6 +825,17 @@ test("[Agent Worker] scenario safety block은 실패가 아니라 POLICY_BLOCKED
   assert.equal(result.summary.stopped, true);
   assert.equal(result.trace.outcome.status, "POLICY_BLOCKED");
   assert.equal(result.trace.outcome.reason_code, "POLICY_SYNTHETIC_INPUT_BLOCKED");
+  assert.deepEqual(result.trace.turns[0].safetyBlock, {
+    source: "scenario_safety",
+    safetyCode: "SYNTHETIC_INPUT_BLOCKED",
+    riskClass: "SYNTHETIC_INPUT",
+    reasonCode: "POLICY_SYNTHETIC_INPUT_BLOCKED",
+    reason: "Scenario safety forbids synthetic fill actions when use_synthetic_inputs=false",
+    details: {
+      actionType: "fill",
+      useSyntheticInputs: false
+    }
+  });
   assert.equal(result.trace.turns[0].actionResult?.completed, false);
   assert.equal(result.trace.turns[0].actionResult?.actionType, "fill");
   assert.equal(agentEvents.some((event) => event.eventType === "ACTION_FAILED"), false);

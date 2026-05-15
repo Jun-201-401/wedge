@@ -7,6 +7,7 @@ import type {
   AgentObservationFormControlSummary,
   AgentObservationPageSignals,
   AgentOutcomeReasonCode,
+  AgentSafetyBlock,
   AgentTask,
   ArtifactDraft,
   ScenarioAction
@@ -24,6 +25,7 @@ export interface AgentTurnTrace {
   preDecisionVerification: AgentVerificationResult;
   decision?: AgentDecision;
   policy?: AgentPolicyResult;
+  safetyBlock?: AgentSafetyBlock;
   actionResult?: {
     actionType: ScenarioAction["type"];
     finalUrl: string;
