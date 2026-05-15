@@ -303,7 +303,11 @@ test("[복구 실행] policy error는 안전을 위해 retry하지 않는다", a
       session: createSimulatedSession(plan, {
         execute: async () => {
           executeCount += 1;
-          throw new RunnerExecutionPolicyError("Scenario safety forbids payment-commit click targets");
+          throw new RunnerExecutionPolicyError({
+            safetyCode: "PAYMENT_COMMIT_BLOCKED",
+            riskClass: "PAYMENT_COMMIT",
+            message: "Scenario safety forbids payment-commit click targets"
+          });
         }
       }),
       callbackClient: createStubCallbackClient(),
