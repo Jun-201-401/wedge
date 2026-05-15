@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from typing import Any, Callable, Iterator
 
 PhaseTimingSink = Callable[[str], None]
+PhaseTimingExtra = dict[str, Any] | Callable[[], dict[str, Any]]
 
 _SENSITIVE_KEY_PATTERN = re.compile(
     r"(api[_-]?key|authorization|callback[_-]?token|secret|token|prompt|raw[_-]?response|"
@@ -73,7 +74,7 @@ def phase_timer(
     *,
     context: PhaseTimingContext,
     phase: str,
-    extra: dict[str, Any] | None = None,
+    extra: PhaseTimingExtra | None = None,
     sink: PhaseTimingSink | None = None,
 ) -> Iterator[None]:
     started_at = time.perf_counter()
@@ -86,7 +87,7 @@ def phase_timer(
             duration_ms=(time.perf_counter() - started_at) * 1000,
             status="error",
             error_type=type(exc).__name__,
-            extra=extra,
+            extra=_resolve_extra(extra),
             sink=sink,
         )
         raise
@@ -95,9 +96,32 @@ def phase_timer(
         phase=phase,
         duration_ms=(time.perf_counter() - started_at) * 1000,
         status="success",
-        extra=extra,
+        extra=_resolve_extra(extra),
         sink=sink,
     )
+
+
+def packet_timing_summary(packet: dict[str, Any]) -> dict[str, int]:
+    checkpoints = [checkpoint for checkpoint in packet.get("checkpoints") or [] if isinstance(checkpoint, dict)]
+    observations = [
+        observation
+        for checkpoint in checkpoints
+        for observation in checkpoint.get("observations") or []
+        if isinstance(observation, dict)
+    ]
+    return {
+        "checkpointCount": len(checkpoints),
+        "observationCount": len(observations),
+        "artifactCount": len([artifact for artifact in packet.get("artifacts") or [] if isinstance(artifact, dict)]),
+    }
+
+
+def _resolve_extra(extra: PhaseTimingExtra | None) -> dict[str, Any] | None:
+    if extra is None:
+        return None
+    if callable(extra):
+        return extra()
+    return extra
 
 
 def _safe_extra_items(extra: dict[str, Any] | None) -> dict[str, Any]:

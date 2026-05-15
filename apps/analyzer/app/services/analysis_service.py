@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from app.clients import SpringCallbackClient, SpringCallbackError, SpringCallbackResponse
-from app.observability.phase_timing import PhaseTimingContext, phase_timer
+from app.observability.phase_timing import PhaseTimingContext, packet_timing_summary, phase_timer
 from app.providers import GMSSemanticProvider
 from app.providers.label_integrity import GMSLabelIntegrityProvider
 from app.providers.label_role import GMSLabelRoleProvider
@@ -28,13 +28,25 @@ def analyze_packet(
     *,
     timing_context: PhaseTimingContext | None = None,
 ) -> dict[str, Any]:
-    judge_result = analyze_evidence_packet(
-        evidence_packet,
-        semantic_provider=GMSSemanticProvider.from_env(),
-        label_integrity_provider=GMSLabelIntegrityProvider.from_env(),
-        label_role_provider=GMSLabelRoleProvider.from_env(),
-    )
-    return GMSReportExplainer.from_env().explain(judge_result)
+    timing_context = timing_context or _packet_timing_context(evidence_packet)
+    with phase_timer(
+        context=timing_context,
+        phase="analysis_core_total",
+        extra=lambda: packet_timing_summary(evidence_packet),
+    ):
+        judge_result = analyze_evidence_packet(
+            evidence_packet,
+            semantic_provider=GMSSemanticProvider.from_env(),
+            label_integrity_provider=GMSLabelIntegrityProvider.from_env(),
+            label_role_provider=GMSLabelRoleProvider.from_env(),
+            timing_context=timing_context,
+        )
+        with phase_timer(
+            context=timing_context,
+            phase="report_explainer",
+            extra=lambda: {"issueCount": len(judge_result.get("issues") or [])},
+        ):
+            return GMSReportExplainer.from_env().explain(judge_result)
 
 
 def analyze_packet_and_callback(
@@ -252,3 +264,10 @@ def _format_instant(value: datetime) -> str:
     if value.tzinfo is None:
         value = value.replace(tzinfo=UTC)
     return value.astimezone(UTC).isoformat().replace("+00:00", "Z")
+
+
+def _packet_timing_context(evidence_packet: dict[str, Any]) -> PhaseTimingContext:
+    return PhaseTimingContext(
+        run_id=str(evidence_packet.get("run_id") or evidence_packet.get("runId") or ""),
+        evidence_packet_id=str(evidence_packet.get("evidence_packet_id") or evidence_packet.get("evidencePacketId") or ""),
+    )

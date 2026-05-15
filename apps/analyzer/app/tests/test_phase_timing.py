@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import unittest
 
-from app.observability.phase_timing import PhaseTimingContext, emit_phase_timing, phase_timer
+from app.observability.phase_timing import PhaseTimingContext, emit_phase_timing, packet_timing_summary, phase_timer
 
 
 class PhaseTimingTest(unittest.TestCase):
@@ -67,14 +67,22 @@ class PhaseTimingTest(unittest.TestCase):
 
     def test_phase_timer_emits_success_duration(self) -> None:
         lines: list[str] = []
+        dynamic_extra = {"gmsCallCount": 0}
 
-        with phase_timer(context=PhaseTimingContext(run_id="run-1"), phase="analysis_core_total", sink=lines.append):
+        with phase_timer(
+            context=PhaseTimingContext(run_id="run-1"),
+            phase="analysis_core_total",
+            extra=lambda: dynamic_extra,
+            sink=lines.append,
+        ):
+            dynamic_extra["gmsCallCount"] = 2
             _ = sum([1, 2, 3])
 
         event = json.loads(lines[0])
         self.assertEqual(event["phase"], "analysis_core_total")
         self.assertEqual(event["status"], "success")
         self.assertGreaterEqual(event["durationMs"], 0)
+        self.assertEqual(event["gmsCallCount"], 2)
 
     def test_phase_timer_logs_error_and_reraises(self) -> None:
         lines: list[str] = []
@@ -87,6 +95,21 @@ class PhaseTimingTest(unittest.TestCase):
         self.assertEqual(event["phase"], "report_explainer")
         self.assertEqual(event["status"], "error")
         self.assertEqual(event["errorType"], "RuntimeError")
+
+    def test_packet_timing_summary_counts_safe_packet_metadata(self) -> None:
+        summary = packet_timing_summary(
+            {
+                "checkpoints": [
+                    {"observations": [{"type": "cta_candidate"}, {"type": "form_field"}]},
+                    {"observations": [{"type": "cta_candidate"}]},
+                ],
+                "artifacts": [{"type": "screenshot"}, {"type": "trace"}],
+            }
+        )
+
+        self.assertEqual(summary["checkpointCount"], 2)
+        self.assertEqual(summary["observationCount"], 3)
+        self.assertEqual(summary["artifactCount"], 2)
 
 
 if __name__ == "__main__":

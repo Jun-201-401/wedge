@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from contextlib import nullcontext
 from typing import Any
 
 from app.contracts.stages import DECISION_STAGE_DISPLAY_NAMES, DECISION_STAGES, DecisionStage
+from app.observability.phase_timing import PhaseTimingContext, packet_timing_summary, phase_timer
 from app.providers import SemanticProviderPort
 from app.providers.label_integrity import LabelIntegrityProviderPort
 from app.providers.label_role import LabelRoleProviderPort
@@ -49,16 +51,60 @@ def analyze_evidence_packet(
     semantic_provider: SemanticProviderPort | None = None,
     label_role_provider: LabelRoleProviderPort | None = None,
     label_integrity_provider: LabelIntegrityProviderPort | None = None,
+    timing_context: PhaseTimingContext | None = None,
 ) -> dict[str, Any]:
     registry = registry or load_default_registry()
     if label_integrity_provider is not None:
-        packet = LabelIntegrityResolver(label_integrity_provider).enrich_packet(packet)
+        counting_provider = _CountingLabelIntegrityProvider(label_integrity_provider)
+        with _phase_timer(
+            timing_context=timing_context,
+            phase="label_integrity",
+            extra=lambda: {
+                **packet_timing_summary(packet),
+                "gmsCallCount": counting_provider.call_count,
+                "candidateCount": counting_provider.candidate_count,
+            },
+        ):
+            packet = LabelIntegrityResolver(counting_provider).enrich_packet(packet)
     if label_role_provider is not None:
-        packet = LabelRoleResolver(label_role_provider).enrich_packet(packet)
-    contexts = StageContextBuilder().build(packet)
+        counting_provider = _CountingLabelRoleProvider(label_role_provider)
+        with _phase_timer(
+            timing_context=timing_context,
+            phase="label_role",
+            extra=lambda: {
+                **packet_timing_summary(packet),
+                "gmsCallCount": counting_provider.call_count,
+                "candidateCount": counting_provider.candidate_count,
+            },
+        ):
+            packet = LabelRoleResolver(counting_provider).enrich_packet(packet)
+    with _phase_timer(
+        timing_context=timing_context,
+        phase="stage_context_build",
+        extra=lambda: packet_timing_summary(packet),
+    ):
+        contexts = StageContextBuilder().build(packet)
     if semantic_provider is not None:
-        contexts = SemanticLabelResolver(semantic_provider).enrich(contexts)
-    hits = RuleEngine().evaluate(contexts=contexts, registry=registry)
+        counting_provider = _CountingSemanticProvider(semantic_provider)
+        with _phase_timer(
+            timing_context=timing_context,
+            phase="semantic_cta",
+            extra=lambda: {
+                "stageCount": len(contexts),
+                "gmsCallCount": counting_provider.call_count,
+                "candidateCount": counting_provider.call_count,
+            },
+        ):
+            contexts = SemanticLabelResolver(counting_provider).enrich(contexts)
+    with _phase_timer(
+        timing_context=timing_context,
+        phase="rule_engine_eval",
+        extra=lambda: {
+            "stageCount": len(contexts),
+            "ruleCount": len(registry.get("rules") or []),
+        },
+    ):
+        hits = RuleEngine().evaluate(contexts=contexts, registry=registry)
     issues = _issues_from_hits(hits)
     issues = _attach_evidence_locations(issues, contexts, _screenshot_artifact_ids(packet))
     observation_priorities = stage_observation_priorities(contexts, issues)
@@ -89,6 +135,79 @@ def analyze_evidence_packet(
         ],
     }
     return result
+
+
+class _CountingLabelIntegrityProvider:
+    def __init__(self, delegate: LabelIntegrityProviderPort) -> None:
+        self._delegate = delegate
+        self.call_count = 0
+        self.candidate_count = 0
+
+    def classify_label_integrity(
+        self,
+        *,
+        scenario_goal: str,
+        stage: str,
+        checkpoint_id: str,
+        screenshot_url: str,
+        candidates: list[dict[str, Any]],
+    ):
+        self.call_count += 1
+        self.candidate_count += len(candidates)
+        return self._delegate.classify_label_integrity(
+            scenario_goal=scenario_goal,
+            stage=stage,
+            checkpoint_id=checkpoint_id,
+            screenshot_url=screenshot_url,
+            candidates=candidates,
+        )
+
+
+class _CountingLabelRoleProvider:
+    def __init__(self, delegate: LabelRoleProviderPort) -> None:
+        self._delegate = delegate
+        self.call_count = 0
+        self.candidate_count = 0
+
+    def classify_label_roles(
+        self,
+        *,
+        scenario_goal: str,
+        stage: str,
+        checkpoint_id: str,
+        screenshot_url: str,
+        candidates: list[dict[str, Any]],
+    ):
+        self.call_count += 1
+        self.candidate_count += len(candidates)
+        return self._delegate.classify_label_roles(
+            scenario_goal=scenario_goal,
+            stage=stage,
+            checkpoint_id=checkpoint_id,
+            screenshot_url=screenshot_url,
+            candidates=candidates,
+        )
+
+
+class _CountingSemanticProvider:
+    def __init__(self, delegate: SemanticProviderPort) -> None:
+        self._delegate = delegate
+        self.call_count = 0
+
+    def classify_cta(self, *, text: str, scenario_goal: str, target_ref: str):
+        self.call_count += 1
+        return self._delegate.classify_cta(text=text, scenario_goal=scenario_goal, target_ref=target_ref)
+
+
+def _phase_timer(
+    *,
+    timing_context: PhaseTimingContext | None,
+    phase: str,
+    extra: Any = None,
+):
+    if timing_context is None:
+        return nullcontext()
+    return phase_timer(context=timing_context, phase=phase, extra=extra)
 
 
 def _issues_from_hits(hits: list[RuleHit]) -> list[dict[str, Any]]:
