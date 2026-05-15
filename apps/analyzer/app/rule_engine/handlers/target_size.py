@@ -151,10 +151,7 @@ def _is_countable_target(component: Any, *, viewport: dict[str, float] | None) -
     if _truthy(component.get("aria_hidden")) or _truthy(component.get("aria-hidden")):
         return False
 
-    role = str(component.get("role") or "").lower()
-    tag = str(component.get("tag") or "").lower()
-    is_interactive = component.get("clickable") is True or role in INTERACTIVE_ROLES or tag in {"button", "a", "input", "select"}
-    if not is_interactive:
+    if not _has_interactive_affordance(component):
         return False
     if _is_excluded_target(component):
         return False
@@ -165,6 +162,27 @@ def _is_countable_target(component: Any, *, viewport: dict[str, float] | None) -
     if viewport is not None and not _intersects_viewport(bounds, viewport):
         return False
     return True
+
+
+def _has_interactive_affordance(component: dict[str, Any]) -> bool:
+    role = str(component.get("role") or "").lower()
+    tag = str(component.get("tag") or "").lower()
+    if component.get("clickable") is True:
+        return True
+    if tag in {"button", "input", "select"}:
+        return True
+    if role in INTERACTIVE_ROLES - {"link"}:
+        return True
+    if role == "link" or tag == "a":
+        return _has_link_target(component)
+    return False
+
+
+def _has_link_target(component: dict[str, Any]) -> bool:
+    return any(
+        _text(component.get(key))
+        for key in ("href", "url", "target_url")
+    )
 
 
 def _is_excluded_target(component: dict[str, Any]) -> bool:
