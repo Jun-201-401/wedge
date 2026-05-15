@@ -146,6 +146,165 @@ class AnalysisCallbackPayloadTest(unittest.TestCase):
             ],
         )
 
+    def test_completed_payload_carries_choice_overload_group_signals_to_spring_callback(self) -> None:
+        payload = build_completed_callback_payload(
+            analysis_job_id="22222222-2222-2222-2222-222222222222",
+            run_id="11111111-1111-1111-1111-111111111111",
+            judge_result={
+                "schema_version": "0.5",
+                "run_id": "11111111-1111-1111-1111-111111111111",
+                "rule_registry_id": "registry_p0_v0_1",
+                "summary": {"friction_score": 68.0},
+                "issues": [
+                    {
+                        "issue_id": "issue_001",
+                        "criterion_id": "PATH-CHOICE-OVERLOAD-001",
+                        "stage": "CTA",
+                        "axis": "Path",
+                        "severity": 2,
+                        "confidence": 0.84,
+                        "priority_score": 2.1,
+                        "evidence_refs": ["cp_001.obs_many_choices"],
+                        "signals": [
+                            "choice_group_key=container:section:4:13:32:8",
+                            "group_interactive_choice_count=15",
+                            "group_avg_spacing_px=12.0",
+                        ],
+                        "summary": "같은 선택 영역 안에 비슷한 행동 선택지가 많이 모여 있습니다.",
+                        "impact_hypothesis": "사용자가 다음 행동을 고르기 어려울 수 있습니다.",
+                        "problem_components": [
+                            {
+                                "component_id": "cp_001.obs_many_choices.component_001",
+                                "evidence_ref": "cp_001.obs_many_choices",
+                                "coordinate_space": "viewport",
+                                "bounding_box": {"x": 120, "y": 360, "width": 80, "height": 40, "unit": "css_px"},
+                                "text": "Plan A",
+                                "selector": "button.plan-a",
+                            }
+                        ],
+                    }
+                ],
+                "decision_map": [],
+                "nudges": [],
+            },
+            completed_at=datetime(2026, 4, 29, 1, 2, 3, tzinfo=UTC),
+        )
+
+        issue = payload["judgeResult"]["issues"][0]
+        self.assertIn("choice_group_key=container:section:4:13:32:8", issue["signals"])
+        self.assertEqual(issue["problem_components"][0]["selector"], "button.plan-a")
+
+    def test_completed_payload_carries_target_size_problem_components_to_spring_callback(self) -> None:
+        payload = build_completed_callback_payload(
+            analysis_job_id="22222222-2222-2222-2222-222222222222",
+            run_id="11111111-1111-1111-1111-111111111111",
+            judge_result={
+                "schema_version": "0.5",
+                "run_id": "11111111-1111-1111-1111-111111111111",
+                "rule_registry_id": "registry_p0_v0_1",
+                "summary": {"friction_score": 61.0},
+                "issues": [
+                    {
+                        "issue_id": "issue_001",
+                        "criterion_id": "TECH-TARGET-SIZE-001",
+                        "stage": "CTA",
+                        "axis": "Friction",
+                        "severity": 2,
+                        "confidence": 0.88,
+                        "priority_score": 1.9,
+                        "evidence_refs": ["cp_001.obs_small_targets"],
+                        "references": [
+                            {
+                                "label": "WCAG 2.5.8",
+                                "publisher": "W3C",
+                                "title": "Target Size (Minimum)",
+                                "basisSummary": "Pointer targets should generally be at least 24 by 24 CSS pixels unless an exception applies.",
+                                "url": "https://www.w3.org/WAI/WCAG22/Understanding/target-size-minimum.html",
+                            }
+                        ],
+                        "signals": [
+                            "min_target_size_px=24",
+                            "target_size_problem_selectors=button.icon-open",
+                        ],
+                        "summary": "일부 클릭 대상이 작거나 가까이 배치되어 사용자가 정확히 누르기 어려울 수 있습니다.",
+                        "impact_hypothesis": "작은 버튼은 잘못 누를 가능성이 커집니다.",
+                        "problem_components": [
+                            {
+                                "component_id": "cp_001.obs_small_targets.component_001",
+                                "evidence_ref": "cp_001.obs_small_targets",
+                                "coordinate_space": "viewport",
+                                "bounding_box": {"x": 320, "y": 240, "width": 18, "height": 18, "unit": "css_px"},
+                                "text": "Open",
+                                "selector": "button.icon-open",
+                            }
+                        ],
+                    }
+                ],
+                "decision_map": [],
+                "nudges": [],
+            },
+            completed_at=datetime(2026, 4, 29, 1, 2, 3, tzinfo=UTC),
+        )
+
+        issue = payload["judgeResult"]["issues"][0]
+        self.assertEqual(issue["criterion_id"], "TECH-TARGET-SIZE-001")
+        self.assertEqual(issue["references"][0]["label"], "WCAG 2.5.8")
+        self.assertEqual(issue["problem_components"][0]["selector"], "button.icon-open")
+
+    def test_completed_payload_carries_required_optional_references_to_spring_callback(self) -> None:
+        payload = build_completed_callback_payload(
+            analysis_job_id="22222222-2222-2222-2222-222222222222",
+            run_id="11111111-1111-1111-1111-111111111111",
+            judge_result={
+                "schema_version": "0.5",
+                "run_id": "11111111-1111-1111-1111-111111111111",
+                "rule_registry_id": "registry_p0_v0_1",
+                "summary": {"friction_score": 59.0},
+                "issues": [
+                    {
+                        "issue_id": "issue_001",
+                        "criterion_id": "FORM-REQUIRED-OPTIONAL-001",
+                        "stage": "INPUT",
+                        "axis": "Clarity",
+                        "severity": 2,
+                        "confidence": 0.89,
+                        "priority_score": 2.0,
+                        "evidence_refs": ["cp_002.obs_form_field"],
+                        "references": [
+                            {
+                                "label": "WCAG 3.3.2",
+                                "publisher": "W3C",
+                                "title": "Labels or Instructions",
+                                "basisSummary": "Users should receive labels or instructions that explain what input is required before they submit a form.",
+                                "url": "https://www.w3.org/WAI/WCAG22/Understanding/labels-or-instructions.html",
+                            }
+                        ],
+                        "signals": ["submit_required_error=true", "visible_required_marker=false"],
+                        "summary": "필수 입력 항목이 사전에 명확히 표시되지 않아 사용자가 제출 후 오류를 통해서야 필요한 정보를 알게 됩니다.",
+                        "impact_hypothesis": "사용자는 어떤 항목이 반드시 필요한지 제출 전에는 알기 어렵습니다.",
+                        "problem_components": [
+                            {
+                                "component_id": "cp_002.obs_form_field.component_001",
+                                "evidence_ref": "cp_002.obs_form_field",
+                                "coordinate_space": "viewport",
+                                "bounding_box": {"x": 420, "y": 320, "width": 360, "height": 48, "unit": "css_px"},
+                                "text": "Email",
+                                "selector": "input.email",
+                            }
+                        ],
+                    }
+                ],
+                "decision_map": [],
+                "nudges": [],
+            },
+            completed_at=datetime(2026, 4, 29, 1, 2, 3, tzinfo=UTC),
+        )
+
+        issue = payload["judgeResult"]["issues"][0]
+        self.assertEqual(issue["criterion_id"], "FORM-REQUIRED-OPTIONAL-001")
+        self.assertEqual(issue["references"][0]["label"], "WCAG 3.3.2")
+        self.assertEqual(issue["problem_components"][0]["selector"], "input.email")
+
 
 class SpringCallbackClientTest(unittest.TestCase):
     def test_send_started_posts_to_spring_internal_endpoint(self) -> None:
