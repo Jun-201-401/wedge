@@ -114,7 +114,7 @@ class PhaseTimingTest(unittest.TestCase):
         with phase_timer(
             context=PhaseTimingContext(run_id="run-1"),
             phase="analysis_core_total",
-            extra=lambda: (_ for _ in ()).throw(RuntimeError("extra failed")),
+            extra=_raise_extra_error,
         ):
             _ = sum([1, 2, 3])
 
@@ -135,7 +135,7 @@ class PhaseTimingTest(unittest.TestCase):
             with phase_timer(
                 context=PhaseTimingContext(run_id="run-1"),
                 phase="analysis_core_total",
-                extra=lambda: (_ for _ in ()).throw(RuntimeError("extra failed")),
+                extra=_raise_extra_error,
             ):
                 raise ValueError("business failure")
 
@@ -153,6 +153,9 @@ class PhaseTimingTest(unittest.TestCase):
         self.assertEqual(summary["checkpointCount"], 2)
         self.assertEqual(summary["observationCount"], 3)
         self.assertEqual(summary["artifactCount"], 2)
+
+def _raise_extra_error() -> dict:
+    raise RuntimeError("extra failed")
 
 
 if __name__ == "__main__":

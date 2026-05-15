@@ -5,7 +5,12 @@ from datetime import UTC, datetime
 from typing import Any
 
 from app.clients import SpringCallbackClient, SpringCallbackError, SpringCallbackResponse
-from app.observability.phase_timing import PhaseTimingContext, packet_timing_summary, phase_timer, safe_emit_phase_timing
+from app.observability.phase_timing import (
+    PhaseTimingContext,
+    packet_timing_summary,
+    phase_timer,
+    safe_emit_phase_timing,
+)
 from app.providers import GMSSemanticProvider
 from app.providers.label_integrity import GMSLabelIntegrityProvider
 from app.providers.label_role import GMSLabelRoleProvider
