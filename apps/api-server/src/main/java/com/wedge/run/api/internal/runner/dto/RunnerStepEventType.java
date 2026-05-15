@@ -4,6 +4,7 @@ public enum RunnerStepEventType {
     STEP_STARTED,
     ACTION_EXECUTED,
     STEP_COMPLETED,
+    STEP_BLOCKED,
     STEP_FAILED,
     CONSOLE_ERROR,
     NETWORK_ERROR,
