@@ -47,6 +47,7 @@ class PhaseTimingTest(unittest.TestCase):
                 "rawResponse": "secret response",
                 "evidencePacket": {"full": "payload"},
                 "checkpointCount": 1,
+                "detail": "should be omitted",
             },
             sink=lines.append,
         )
@@ -57,6 +58,7 @@ class PhaseTimingTest(unittest.TestCase):
         self.assertNotIn("private.png", raw_line)
         self.assertNotIn("secret response", raw_line)
         self.assertNotIn("payload", raw_line)
+        self.assertNotIn("should be omitted", raw_line)
         event = json.loads(raw_line)
         self.assertEqual(event["prompt"], "[REDACTED]")
         self.assertEqual(event["apiKey"], "[REDACTED]")
@@ -64,6 +66,7 @@ class PhaseTimingTest(unittest.TestCase):
         self.assertEqual(event["rawResponse"], "[REDACTED]")
         self.assertEqual(event["evidencePacket"], "[REDACTED]")
         self.assertEqual(event["checkpointCount"], 1)
+        self.assertNotIn("detail", event)
 
     def test_phase_timer_emits_success_duration(self) -> None:
         lines: list[str] = []
@@ -95,6 +98,31 @@ class PhaseTimingTest(unittest.TestCase):
         self.assertEqual(event["phase"], "report_explainer")
         self.assertEqual(event["status"], "error")
         self.assertEqual(event["errorType"], "RuntimeError")
+
+    def test_phase_timer_never_lets_telemetry_failure_break_successful_work(self) -> None:
+        def failing_sink(_line: str) -> None:
+            raise OSError("stdout closed")
+
+        with phase_timer(
+            context=PhaseTimingContext(run_id="run-1"),
+            phase="analysis_core_total",
+            extra=lambda: {"checkpointCount": 1},
+            sink=failing_sink,
+        ):
+            _ = sum([1, 2, 3])
+
+    def test_phase_timer_preserves_original_exception_when_telemetry_fails(self) -> None:
+        def failing_sink(_line: str) -> None:
+            raise OSError("stdout closed")
+
+        with self.assertRaisesRegex(ValueError, "business failure"):
+            with phase_timer(
+                context=PhaseTimingContext(run_id="run-1"),
+                phase="analysis_core_total",
+                extra=lambda: {"checkpointCount": 1},
+                sink=failing_sink,
+            ):
+                raise ValueError("business failure")
 
     def test_packet_timing_summary_counts_safe_packet_metadata(self) -> None:
         summary = packet_timing_summary(

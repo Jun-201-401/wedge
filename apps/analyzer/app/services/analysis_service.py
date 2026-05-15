@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import time
 from datetime import UTC, datetime
 from typing import Any
 
 from app.clients import SpringCallbackClient, SpringCallbackError, SpringCallbackResponse
-from app.observability.phase_timing import PhaseTimingContext, packet_timing_summary, phase_timer
+from app.observability.phase_timing import PhaseTimingContext, packet_timing_summary, phase_timer, safe_emit_phase_timing
 from app.providers import GMSSemanticProvider
 from app.providers.label_integrity import GMSLabelIntegrityProvider
 from app.providers.label_role import GMSLabelRoleProvider
@@ -66,13 +67,21 @@ def analyze_packet_and_callback(
         analysis_job_id=analysis_job_id,
         run_id=run_id,
     )
-    with phase_timer(context=timing_context, phase="started_callback"):
-        started_response, started_error = _try_send_started_callback(
-            callback_client=callback_client,
-            analysis_job_id=analysis_job_id,
-            payload=started_payload,
-            event_id=f"{event_id}.started",
-        )
+    started_at = time.perf_counter()
+    started_response, started_error = _try_send_started_callback(
+        callback_client=callback_client,
+        analysis_job_id=analysis_job_id,
+        payload=started_payload,
+        event_id=f"{event_id}.started",
+    )
+    safe_emit_phase_timing(
+        context=timing_context,
+        phase="started_callback",
+        duration_ms=(time.perf_counter() - started_at) * 1000,
+        status="error" if started_error else "success",
+        error_type="SpringCallbackError" if started_error else None,
+        extra={"callbackStatusCode": started_response.status_code if started_response else None},
+    )
     judge_result = analyze_packet(evidence_packet, timing_context=timing_context)
     payload = build_completed_callback_payload(
         analysis_job_id=analysis_job_id,

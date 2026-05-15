@@ -203,7 +203,8 @@ class AnalysisRequestConsumerTest(unittest.TestCase):
         self.assertEqual(len(callback_client.completed), 1)
         self.assertEqual(len(callback_client.failed), 0)
         started_event = next(event for event in _phase_events(stdout.getvalue()) if event["phase"] == "started_callback")
-        self.assertEqual(started_event["status"], "success")
+        self.assertEqual(started_event["status"], "error")
+        self.assertEqual(started_event["errorType"], "SpringCallbackError")
 
     def test_inline_evidence_packet_without_id_is_rejected(self) -> None:
         raw_message = json.dumps(

@@ -16,6 +16,18 @@ _SENSITIVE_KEY_PATTERN = re.compile(
     re.IGNORECASE,
 )
 _ALLOWED_EXTRA_VALUE_TYPES = (str, int, float, bool, type(None))
+_ALLOWED_EXTRA_KEYS = {
+    "messageType",
+    "callbackStatusCode",
+    "checkpointCount",
+    "observationCount",
+    "artifactCount",
+    "gmsCallCount",
+    "candidateCount",
+    "stageCount",
+    "ruleCount",
+    "issueCount",
+}
 
 
 @dataclass(frozen=True)
@@ -69,6 +81,32 @@ def emit_phase_timing(
     print(line, flush=True)
 
 
+def safe_emit_phase_timing(
+    *,
+    context: PhaseTimingContext,
+    phase: str,
+    duration_ms: float | int,
+    status: str = "success",
+    error_type: str | None = None,
+    extra: PhaseTimingExtra | None = None,
+    sink: PhaseTimingSink | None = None,
+) -> None:
+    """Best-effort telemetry wrapper that never affects analyzer behavior."""
+
+    try:
+        emit_phase_timing(
+            context=context,
+            phase=phase,
+            duration_ms=duration_ms,
+            status=status,
+            error_type=error_type,
+            extra=_resolve_extra(extra),
+            sink=sink,
+        )
+    except Exception:
+        return
+
+
 @contextmanager
 def phase_timer(
     *,
@@ -81,7 +119,7 @@ def phase_timer(
     try:
         yield
     except Exception as exc:
-        emit_phase_timing(
+        safe_emit_phase_timing(
             context=context,
             phase=phase,
             duration_ms=(time.perf_counter() - started_at) * 1000,
@@ -91,7 +129,7 @@ def phase_timer(
             sink=sink,
         )
         raise
-    emit_phase_timing(
+    safe_emit_phase_timing(
         context=context,
         phase=phase,
         duration_ms=(time.perf_counter() - started_at) * 1000,
@@ -133,6 +171,8 @@ def _safe_extra_items(extra: dict[str, Any] | None) -> dict[str, Any]:
         normalized_key = str(key)
         if _is_sensitive_key(normalized_key):
             safe[normalized_key] = "[REDACTED]"
+            continue
+        if normalized_key not in _ALLOWED_EXTRA_KEYS:
             continue
         if isinstance(value, _ALLOWED_EXTRA_VALUE_TYPES):
             safe[normalized_key] = value
