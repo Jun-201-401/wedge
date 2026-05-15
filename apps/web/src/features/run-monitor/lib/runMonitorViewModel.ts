@@ -36,6 +36,7 @@ const RUN_EVENT_USER_SUMMARIES: Record<string, string> = {
   STEP_STARTED: '다음 화면 흐름을 확인하고 있습니다',
   ACTION_EXECUTED: '화면에서 필요한 동작을 실행했습니다',
   STEP_COMPLETED: '확인을 마쳤습니다',
+  STEP_BLOCKED: '안전 조건에 따라 여기서 멈췄습니다',
   STEP_FAILED: '확인이 막혔습니다',
   CONSOLE_ERROR: '페이지 스크립트 오류를 감지했습니다',
   NETWORK_ERROR: '페이지 요청 실패를 감지했습니다',
@@ -60,6 +61,7 @@ const RUN_EVENT_TIMELINE_LABELS: Record<string, string> = {
   STEP_STARTED: '화면 흐름 확인 중',
   ACTION_EXECUTED: '화면 동작 확인',
   STEP_COMPLETED: '확인 완료',
+  STEP_BLOCKED: '안전 중단',
   STEP_FAILED: '확인 막힘',
   CONSOLE_ERROR: '스크립트 오류 감지',
   NETWORK_ERROR: '요청 실패 감지',
@@ -82,7 +84,7 @@ const RUN_STEP_TYPE_DETAILS: Record<string, string> = {
 };
 
 function getRunEventStatus(eventType: string): StepStatus {
-  if (eventType === 'STEP_FAILED' || eventType === 'CONSOLE_ERROR' || eventType === 'NETWORK_ERROR' || eventType === 'AGENT_ACTION_FAILED') {
+  if (eventType === 'STEP_FAILED' || eventType === 'STEP_BLOCKED' || eventType === 'CONSOLE_ERROR' || eventType === 'NETWORK_ERROR' || eventType === 'AGENT_ACTION_FAILED') {
     return 'failed';
   }
 
@@ -117,6 +119,10 @@ function readPayloadString(payload: Record<string, unknown>, key: string) {
 function getRunEventUserSummary(event: RunEvent) {
   const failureCode = readPayloadString(event.payload, 'failureCode');
   const actionType = readPayloadString(event.payload, 'actionType')?.toLowerCase();
+
+  if (event.eventType === 'STEP_BLOCKED') {
+    return '위험하거나 범위를 벗어난 이동이라 안전하게 멈췄습니다';
+  }
 
   if (event.eventType === 'STEP_FAILED' && failureCode === 'RUNNER_TIMEOUT') {
     return '응답이 지연되어 확인이 막혔습니다';

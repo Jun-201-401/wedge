@@ -15,6 +15,7 @@ import {
   logOperationalEvent,
   type RunnerFailureCode
 } from "../../shared/utils.ts";
+import { reasonCodeFromScenarioSafetyBlock, RunnerExecutionPolicyError } from "../policy.ts";
 import { emitFailureCheckpointArtifactsAndCallbacks } from "./checkpoint-emitter.ts";
 import { executeScenarioStep } from "./step-executor.ts";
 import { emitStepEventBestEffort } from "./step-events.ts";
@@ -117,6 +118,69 @@ export async function executeScenario({
         journeyDepthContext
       });
     } catch (error) {
+      if (error instanceof RunnerExecutionPolicyError) {
+        const reasonCode = reasonCodeFromScenarioSafetyBlock(error.safetyCode);
+        const failureMessage = errorMessage(error);
+
+        logOperationalEvent(
+          "scenario-executor",
+          "scenario_safety_blocked",
+          {
+            runId,
+            stepOrder,
+            stepKey: step.step_id,
+            stage: step.stage,
+            actionType: step.action.type,
+            safetyCode: error.safetyCode,
+            riskClass: error.riskClass,
+            reasonCode,
+            reason: failureMessage,
+            details: error.details
+          },
+          "warn"
+        );
+
+        deliveryIssues.push(
+          ...(
+            await emitStepEventBestEffort(callbackClient, runId, stepOrder, step.step_id, "STEP_BLOCKED", {
+              description: step.description,
+              stage: step.stage,
+              actionType: step.action.type,
+              safetyCode: error.safetyCode,
+              riskClass: error.riskClass,
+              reasonCode,
+              reason: failureMessage,
+              details: error.details
+            })
+          )
+        );
+
+        const blockEvidence = await emitFailureCheckpointArtifactsAndCallbacks({
+          runId,
+          stepOrder,
+          step,
+          plan,
+          failureCode: reasonCode,
+          failureMessage,
+          session,
+          callbackClient,
+          capturePipeline,
+          artifactStore
+        });
+        deliveryIssues.push(...blockEvidence.deliveryIssues);
+        collectorStatus = mergeCollectorStatusSummaries(collectorStatus, blockEvidence.collectorStatus);
+
+        return {
+          summary: {
+            completedStepCount,
+            failedStepCount: 0,
+            stopped: true,
+            collectorStatus
+          },
+          delivery: createDeliverySummary(mergeDeliveryIssues(deliveryIssues))
+        };
+      }
+
       const failureDetails = classifyRunnerFailureDetails(error, { timeoutPhase: "action" });
       const failureCode = failureDetails.failureCode;
       const failureMessage = errorMessage(error);

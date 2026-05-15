@@ -205,8 +205,8 @@ public class RunnerCallbackService {
                     step.id(),
                     nextStatus,
                     event.occurredAt(),
-                    nextStatus == StepStatus.FAILED ? stringPayloadValue(event.payload(), "failureCode") : null,
-                    nextStatus == StepStatus.FAILED ? stringPayloadValue(event.payload(), "failureMessage") : null
+                    hasStepIssue(nextStatus) ? stepIssueCode(event.payload()) : null,
+                    hasStepIssue(nextStatus) ? stepIssueMessage(event.payload()) : null
             );
         }
     }
@@ -225,6 +225,26 @@ public class RunnerCallbackService {
     private String stringPayloadValue(Map<String, Object> payload, String key) {
         Object value = payload == null ? null : payload.get(key);
         return value instanceof String text && !text.isBlank() ? text : null;
+    }
+
+    private boolean hasStepIssue(StepStatus status) {
+        return status == StepStatus.FAILED || status == StepStatus.BLOCKED;
+    }
+
+    private String stepIssueCode(Map<String, Object> payload) {
+        String failureCode = stringPayloadValue(payload, "failureCode");
+        if (failureCode != null) {
+            return failureCode;
+        }
+        return stringPayloadValue(payload, "reasonCode");
+    }
+
+    private String stepIssueMessage(Map<String, Object> payload) {
+        String failureMessage = stringPayloadValue(payload, "failureMessage");
+        if (failureMessage != null) {
+            return failureMessage;
+        }
+        return stringPayloadValue(payload, "reason");
     }
 
     private SaveRunCheckpointsCommand toSaveRunCheckpointsCommand(RunnerCheckpointsCommand command) {
@@ -302,6 +322,7 @@ public class RunnerCallbackService {
         return switch (eventType) {
             case "STEP_STARTED" -> StepStatus.RUNNING;
             case "STEP_COMPLETED" -> StepStatus.PASSED;
+            case "STEP_BLOCKED" -> StepStatus.BLOCKED;
             case "STEP_FAILED" -> StepStatus.FAILED;
             default -> null;
         };

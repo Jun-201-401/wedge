@@ -1,6 +1,10 @@
 import type { AgentOutcomeReasonCode, AgentSafetyBlock } from "../shared/contracts.ts";
 import type { AgentPolicyResult } from "./policy.ts";
-import type { ScenarioSafetyBlockCode, ScenarioSafetyRiskClass } from "../scenario/policy.ts";
+import {
+  reasonCodeFromScenarioSafetyBlock as scenarioSafetyReasonCode,
+  type ScenarioSafetyBlockCode,
+  type ScenarioSafetyRiskClass
+} from "../scenario/policy.ts";
 import type { AgentTrace } from "./trace/index.ts";
 import type { AgentVerificationOutcome } from "./verifier.ts";
 
@@ -80,17 +84,7 @@ export function reasonCodeFromPolicy(policy: AgentPolicyResult): AgentOutcomeRea
 export function reasonCodeFromScenarioSafetyBlock(
   safetyCode: ScenarioSafetyBlockCode
 ): AgentSafetyBlockedReasonCode {
-  switch (safetyCode) {
-    case "SYNTHETIC_INPUT_BLOCKED":
-      return "POLICY_SYNTHETIC_INPUT_BLOCKED";
-    case "EXTERNAL_NAVIGATION_BLOCKED":
-    case "EXTERNAL_VISIT_BLOCKED":
-      return "POLICY_EXTERNAL_NAVIGATION_BLOCKED";
-    case "PAYMENT_COMMIT_BLOCKED":
-      return "POLICY_PAYMENT_COMMIT_BLOCKED";
-    case "DESTRUCTIVE_ACTION_BLOCKED":
-      return "POLICY_DESTRUCTIVE_ACTION_BLOCKED";
-  }
+  return scenarioSafetyReasonCode(safetyCode);
 }
 
 export function createSafetyBlockedOutcome(

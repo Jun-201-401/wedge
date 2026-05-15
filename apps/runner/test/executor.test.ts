@@ -14,7 +14,7 @@ import {
   createSimulatedSession,
   createStubCallbackClient
 } from "./support.ts";
-import type { Artifact, ArtifactDraft, Checkpoint, ScenarioStep } from "../src/shared/contracts.ts";
+import type { Artifact, ArtifactDraft, Checkpoint, RunnerCheckpointsRequest, ScenarioStep } from "../src/shared/contracts.ts";
 
 test("[증거 전달] checkpoint step은 artifact 저장/콜백을 먼저 보낸 뒤 checkpoint callback을 보낸다", async () => {
   const events: string[] = [];
@@ -492,6 +492,121 @@ test("[실패 요약] step 실행 실패 시 STEP_FAILED 이벤트와 부분 요
   }
 
   assert.ok(emittedEventTypes.includes("STEP_FAILED"));
+});
+
+test("[정책 차단] scenario safety block은 실패가 아니라 stopped 실행 결과로 종료한다", async () => {
+  const plan = createMinimalPlan();
+  plan.steps = [
+    {
+      step_id: "step_001_done",
+      stage: "FIRST_VIEW",
+      description: "completed before policy block",
+      action: {
+        type: "goto",
+        target: {
+          url: plan.start_url
+        }
+      },
+      settle_strategy: {
+        type: "fixed_short",
+        timeout_ms: 1
+      },
+      checkpoint: false
+    },
+    {
+      step_id: "step_002_external_login",
+      stage: "CTA",
+      description: "external navigation is blocked",
+      action: {
+        type: "click",
+        target: {
+          text: "로그인"
+        }
+      },
+      settle_strategy: {
+        type: "fixed_short",
+        timeout_ms: 1
+      },
+      checkpoint: true
+    }
+  ];
+  const emittedEventTypes: string[] = [];
+  const checkpointRequests: RunnerCheckpointsRequest[] = [];
+
+  const result = await executeScenario({
+    runId: "run-policy-block",
+    plan,
+    session: createSimulatedSession(plan, {
+      execute: async (action, step) => {
+        if (step.step_id === "step_002_external_login") {
+          throw new RunnerExecutionPolicyError({
+            safetyCode: "EXTERNAL_VISIT_BLOCKED",
+            riskClass: "EXTERNAL_NAVIGATION",
+            message: "Scenario safety forbids visiting external origin https://nid.naver.com from start origin https://www.naver.com",
+            details: {
+              allowedOrigin: "https://www.naver.com",
+              currentOrigin: "https://nid.naver.com"
+            }
+          });
+        }
+
+        return {
+          actionType: action.type,
+          targetSummary: "url=https://example.com",
+          stopRequested: false,
+          details: {}
+        };
+      },
+      settle: async () => createSettledResult({ strategy: "fixed_short", durationMs: 1 })
+    }),
+    callbackClient: createStubCallbackClient({
+      sendStepEvents: async (_runId, payload) => {
+        emittedEventTypes.push(...payload.events.map((event) => event.eventType));
+      },
+      sendCheckpoints: async (_runId, payload) => {
+        checkpointRequests.push(payload);
+      }
+    }),
+    capturePipeline: {
+      collectCheckpoint: async ({ step, stepOrder, settleResult }) => ({
+        checkpoint: {
+          checkpointId: "checkpoint-policy-block",
+          stepKey: step.step_id,
+          stage: step.stage,
+          trigger: {
+            stepOrder
+          },
+          settle: {
+            strategy: settleResult.strategy,
+            durationMs: settleResult.durationMs,
+            status: settleResult.status
+          },
+          state: {},
+          observations: [],
+          deltas: []
+        },
+        artifacts: []
+      })
+    },
+    artifactStore: {
+      persistArtifacts: async () => []
+    }
+  });
+
+  assert.deepEqual(result.summary, {
+    completedStepCount: 1,
+    failedStepCount: 0,
+    stopped: true,
+    collectorStatus: result.summary.collectorStatus
+  });
+  assert.equal(result.delivery.status, "DELIVERY_COMPLETE");
+  assert.ok(emittedEventTypes.includes("STEP_BLOCKED"));
+  assert.equal(emittedEventTypes.includes("STEP_FAILED"), false);
+  assert.equal(checkpointRequests.length, 1);
+  assert.equal(
+    checkpointRequests[0]?.checkpoints[0]?.observations[0]?.failure_code,
+    "POLICY_EXTERNAL_NAVIGATION_BLOCKED"
+  );
 });
 
 test("[증거 payload] checkpoint callback payload는 artifact 원본 metadata와 artifactRefs를 보존한다", () => {
