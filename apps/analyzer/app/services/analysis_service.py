@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from app.clients import SpringCallbackClient, SpringCallbackError, SpringCallbackResponse
+from app.observability.phase_timing import PhaseTimingContext, phase_timer
 from app.providers import GMSSemanticProvider
 from app.providers.label_integrity import GMSLabelIntegrityProvider
 from app.providers.label_role import GMSLabelRoleProvider
@@ -22,7 +23,11 @@ def analyzer_health() -> dict[str, str]:
     }
 
 
-def analyze_packet(evidence_packet: dict[str, Any]) -> dict[str, Any]:
+def analyze_packet(
+    evidence_packet: dict[str, Any],
+    *,
+    timing_context: PhaseTimingContext | None = None,
+) -> dict[str, Any]:
     judge_result = analyze_evidence_packet(
         evidence_packet,
         semantic_provider=GMSSemanticProvider.from_env(),
@@ -39,28 +44,35 @@ def analyze_packet_and_callback(
     evidence_packet: dict[str, Any],
     callback_client: SpringCallbackClient,
     event_id: str,
+    timing_context: PhaseTimingContext | None = None,
 ) -> dict[str, Any]:
+    timing_context = timing_context or PhaseTimingContext(
+        run_id=run_id,
+        analysis_job_id=analysis_job_id,
+    )
     started_payload = build_started_callback_payload(
         analysis_job_id=analysis_job_id,
         run_id=run_id,
     )
-    started_response, started_error = _try_send_started_callback(
-        callback_client=callback_client,
-        analysis_job_id=analysis_job_id,
-        payload=started_payload,
-        event_id=f"{event_id}.started",
-    )
-    judge_result = analyze_packet(evidence_packet)
+    with phase_timer(context=timing_context, phase="started_callback"):
+        started_response, started_error = _try_send_started_callback(
+            callback_client=callback_client,
+            analysis_job_id=analysis_job_id,
+            payload=started_payload,
+            event_id=f"{event_id}.started",
+        )
+    judge_result = analyze_packet(evidence_packet, timing_context=timing_context)
     payload = build_completed_callback_payload(
         analysis_job_id=analysis_job_id,
         run_id=run_id,
         judge_result=judge_result,
     )
-    response = callback_client.send_completed(
-        analysis_job_id=analysis_job_id,
-        payload=payload,
-        event_id=event_id,
-    )
+    with phase_timer(context=timing_context, phase="completed_callback"):
+        response = callback_client.send_completed(
+            analysis_job_id=analysis_job_id,
+            payload=payload,
+            event_id=event_id,
+        )
     return {
         "analysisJobId": analysis_job_id,
         "runId": run_id,

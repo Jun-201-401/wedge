@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import unittest
+from contextlib import redirect_stdout
+from io import StringIO
 from pathlib import Path
 from typing import Any
 
@@ -138,7 +140,9 @@ class AnalysisRequestConsumerTest(unittest.TestCase):
             }
         )
 
-        result = consumer.process_raw_message(raw_message)
+        stdout = StringIO()
+        with redirect_stdout(stdout):
+            result = consumer.process_raw_message(raw_message)
 
         self.assertEqual(result["startedCallbackStatusCode"], 200)
         self.assertIsNone(result["startedCallbackError"])
@@ -155,6 +159,15 @@ class AnalysisRequestConsumerTest(unittest.TestCase):
             [issue["criterion_id"] for issue in payload["judgeResult"]["issues"]],
             ["PATH-CTA-002"],
         )
+        phases = _phase_names(stdout.getvalue())
+        self.assertLess(phases.index("fetch_evidence_packet"), phases.index("started_callback"))
+        self.assertLess(phases.index("started_callback"), phases.index("completed_callback"))
+        self.assertIn("process_message_total", phases)
+        timing_events = _phase_events(stdout.getvalue())
+        for event in timing_events:
+            self.assertEqual(event["runId"], "11111111-1111-1111-1111-111111111111")
+            self.assertEqual(event["analysisJobId"], "22222222-2222-2222-2222-222222222222")
+            self.assertEqual(event["evidencePacketId"], "44444444-4444-4444-4444-444444444444")
 
     def test_started_callback_failure_does_not_block_completed_callback(self) -> None:
         packet = load_sample_packet()
@@ -176,7 +189,9 @@ class AnalysisRequestConsumerTest(unittest.TestCase):
             }
         )
 
-        result = consumer.process_raw_message(raw_message)
+        stdout = StringIO()
+        with redirect_stdout(stdout):
+            result = consumer.process_raw_message(raw_message)
 
         self.assertIsNone(result["startedCallbackStatusCode"])
         self.assertIn("HTTP 404", result["startedCallbackError"])
@@ -184,6 +199,8 @@ class AnalysisRequestConsumerTest(unittest.TestCase):
         self.assertEqual(len(callback_client.started), 1)
         self.assertEqual(len(callback_client.completed), 1)
         self.assertEqual(len(callback_client.failed), 0)
+        started_event = next(event for event in _phase_events(stdout.getvalue()) if event["phase"] == "started_callback")
+        self.assertEqual(started_event["status"], "success")
 
     def test_inline_evidence_packet_without_id_is_rejected(self) -> None:
         raw_message = json.dumps(
@@ -211,3 +228,18 @@ def _config():
         evidence_base_url="http://127.0.0.1:8080",
         evidence_auth_token="local-token",
     )
+
+
+def _phase_events(output: str) -> list[dict[str, Any]]:
+    events: list[dict[str, Any]] = []
+    for line in output.splitlines():
+        if not line.strip():
+            continue
+        event = json.loads(line)
+        if event.get("event") == "analyzer_phase_timing":
+            events.append(event)
+    return events
+
+
+def _phase_names(output: str) -> list[str]:
+    return [str(event["phase"]) for event in _phase_events(output)]
