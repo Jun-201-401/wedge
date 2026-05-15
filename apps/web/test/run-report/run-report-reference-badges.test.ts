@@ -1,10 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import {
-  referenceBadgesForFinding,
-  splitReferenceBadges,
-} from '../../src/features/report-viewer/lib/runReportReferences';
+import { referenceBadgesForFinding } from '../../src/features/report-viewer/lib/runReportReferences';
 import type { ReportFinding } from '../../src/features/report-viewer/lib/runReportViewModel';
 
 function findingWithReferences(references: ReportFinding['references']): ReportFinding {
@@ -48,31 +45,28 @@ test('reference badges expose Analyzer provided reference labels and tooltip cop
 
   assert.deepEqual(badges, [{
     key: 'WCAG 3.3.2:https://www.w3.org/WAI/WCAG22/Understanding/labels-or-instructions.html',
-    label: 'W3C',
+    label: 'WCAG 3.3.2',
     publisher: 'W3C',
     title: 'Labels or Instructions',
     basisSummary: 'Inputs need labels or instructions.',
+    url: 'https://www.w3.org/WAI/WCAG22/Understanding/labels-or-instructions.html',
     ariaLabel: 'WCAG 3.3.2 기준 근거: W3C Labels or Instructions. Inputs need labels or instructions.',
   }]);
 });
 
-test('reference badges show five preview source labels when a rule has no external reference yet', () => {
+test('reference badges stay empty when a rule has no external reference yet', () => {
   const badges = referenceBadgesForFinding(findingWithReferences([]));
-  const split = splitReferenceBadges(badges);
 
-  assert.deepEqual(split.visible.map((badge) => badge.label), []);
-  assert.deepEqual(split.overflow.map((badge) => badge.label), ['출처1', '출처2', '출처3', '출처4', '출처5']);
+  assert.deepEqual(badges.map((badge) => badge.label), []);
 });
 
-test('reference badges show five preview source labels when the recommendation is not linked to a finding', () => {
+test('reference badges stay empty when the recommendation is not linked to a finding', () => {
   const badges = referenceBadgesForFinding(null);
-  const split = splitReferenceBadges(badges);
 
-  assert.deepEqual(split.visible.map((badge) => badge.label), []);
-  assert.deepEqual(split.overflow.map((badge) => badge.label), ['출처1', '출처2', '출처3', '출처4', '출처5']);
+  assert.deepEqual(badges.map((badge) => badge.label), []);
 });
 
-test('reference badges keep all publishers inside the overflow references list', () => {
+test('reference badges keep all publishers from analyzer references', () => {
   const badges = referenceBadgesForFinding(findingWithReferences([
     reference('WCAG 3.3.2', 'W3C'),
     reference('GOV.UK Buttons', 'GOV.UK'),
@@ -81,10 +75,7 @@ test('reference badges keep all publishers inside the overflow references list',
     reference('ISO 9241', 'ISO'),
   ]));
 
-  const split = splitReferenceBadges(badges);
-
-  assert.deepEqual(split.visible.map((badge) => badge.publisher), []);
-  assert.deepEqual(split.overflow.map((badge) => badge.publisher), ['W3C', 'GOV.UK', 'NN/g', 'Apple', 'ISO']);
+  assert.deepEqual(badges.map((badge) => badge.publisher), ['W3C', 'GOV.UK', 'NN/g', 'Apple', 'ISO']);
 });
 
 test('reference badges use numbered source labels when publisher is missing', () => {
@@ -96,8 +87,6 @@ test('reference badges use numbered source labels when publisher is missing', ()
     reference('Reference 5', ''),
   ]));
 
-  const split = splitReferenceBadges(badges);
-
-  assert.deepEqual(split.visible.map((badge) => badge.label), []);
-  assert.deepEqual(split.overflow.map((badge) => badge.label), ['출처1', '출처2', '출처3', '출처4', '출처5']);
+  assert.deepEqual(badges.map((badge) => badge.label), ['Reference 1', 'Reference 2', 'Reference 3', 'Reference 4', 'Reference 5']);
+  assert.deepEqual(badges.map((badge) => badge.publisher), ['출처1', '출처2', '출처3', '출처4', '출처5']);
 });

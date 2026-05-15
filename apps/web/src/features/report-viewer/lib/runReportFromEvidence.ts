@@ -85,7 +85,7 @@ function getDurationLabel(run: Run, evidencePacket: EvidencePacket) {
     if (Number.isFinite(durationMs) && durationMs > 0) {
       const seconds = Math.round(durationMs / 1000);
       if (seconds >= 60) {
-    return `${Math.floor(seconds / 60)}분 ${seconds % 60}초`;
+        return `${Math.floor(seconds / 60)}분 ${seconds % 60}초`;
       }
 
       return `${seconds}초`;
@@ -147,7 +147,7 @@ function titleFromObservation(observation: EvidenceObservation) {
 
 function recommendationFromObservation(observation: EvidenceObservation) {
   if (observation.type.includes('cta')) {
-    return 'CTA 주변의 가치 문구, 버튼 대비, 다음 행동 설명을 함께 확인해 전환 마찰을 줄이세요.';
+    return '주요 버튼 주변의 가치 문구, 버튼 대비, 다음 행동 설명을 함께 확인해 전환 마찰을 줄이세요.';
   }
 
   if (observation.type.includes('form')) {
@@ -230,11 +230,11 @@ function buildDecisionNodes(evidencePacket: EvidencePacket, findings: ReportFind
       id: 'see-primary-cta',
       code: '보기',
       tone: ctaCount > 0 ? 'neutral' : 'friction',
-      title: '사용자가 CTA를 발견했는가',
+      title: '사용자가 주요 버튼을 발견했는가',
       summary: ctaCount > 0
-        ? `실행 중 CTA 후보 ${ctaCount}개가 관찰되었습니다.`
-        : 'CTA 후보 관찰이 부족해 첫 행동 발견성을 추가 확인해야 합니다.',
-      tags: ctaCount > 0 ? [`CTA ${ctaCount}개`] : ['근거 부족'],
+        ? `실행 중 주요 버튼 후보 ${ctaCount}개가 관찰되었습니다.`
+        : '주요 버튼 후보 관찰이 부족해 첫 행동 발견성을 추가 확인해야 합니다.',
+      tags: ctaCount > 0 ? [`주요 버튼 ${ctaCount}개`] : ['근거 부족'],
     },
     {
       id: 'technical-stability',

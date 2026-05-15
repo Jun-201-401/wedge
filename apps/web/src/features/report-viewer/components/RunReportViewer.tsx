@@ -6,8 +6,6 @@ import {
   useRef,
   useState,
   type CSSProperties,
-  type FocusEvent,
-  type MouseEvent,
 } from 'react';
 import { createPortal } from 'react-dom';
 
@@ -19,11 +17,7 @@ import { HOME_PATH, RUNS_PATH } from '../../../shared/lib/appPaths';
 import { formatDisplayUrl } from '../../../shared/lib/displayUrl';
 import { useResizableTrailingPanel } from '../../../shared/lib/resizableTrailingPanel';
 import { resolveActiveFinding, resolveLinkedFindingId } from '../lib/runReportInteractions';
-import {
-  referenceBadgesForFinding,
-  splitReferenceBadges,
-  type ReferenceBadgeViewModel,
-} from '../lib/runReportReferences';
+import { referenceBadgesForFinding, type ReferenceBadgeViewModel } from '../lib/runReportReferences';
 import type { ReportFinding, ReportRecommendation, RunReportViewModel } from '../lib/runReportViewModel';
 import '../styles/run-report-viewer.css';
 
@@ -70,19 +64,9 @@ const REPORT_FLOW_STAGES = [
 
 type ReportFlowStageId = (typeof REPORT_FLOW_STAGES)[number]['id'];
 
-interface ReportHelpReference {
-  title: string;
-  label: string;
-  source: string;
-  summary: string;
-  url: string;
-  quote: string;
-}
-
 interface ReportFlowHelpTerm {
   label: string;
   description: string;
-  reference: ReportHelpReference;
 }
 
 const REPORT_FLOW_HELP_TERMS: ReportFlowHelpTerm[] = [
@@ -90,53 +74,21 @@ const REPORT_FLOW_HELP_TERMS: ReportFlowHelpTerm[] = [
     label: '전환 흐름',
     description:
       '페이지 방문부터 가입, 구매, 문의 같은 목표 행동까지 이어지는 전체 과정입니다.',
-    reference: {
-      title: '왜 단계로 나눠 보나요?',
-      label: 'Funnel exploration',
-      source: 'Google Analytics',
-      summary: '사용자는 목표 행동까지 한 번에 이동하지 않고 여러 단계를 거쳐 판단합니다.\nWedge는 이 과정을 전환 흐름으로 나누어 봅니다.',
-      quote: 'steps your users take to complete a task',
-      url: 'https://support.google.com/analytics/answer/9327974?hl=en-GB',
-    },
   },
   {
     label: '첫 화면',
     description:
       '처음 보이는 화면에서 서비스의 목적, 필요성, 시작 지점을 알 수 있는지 봅니다.',
-    reference: {
-      title: '왜 첫 화면을 보나요?',
-      label: 'Start using a service',
-      source: 'GOV.UK Design System',
-      summary: '사용자가 첫 화면에서 서비스의 목적과 시작 지점을 판단하기 때문에 첫 화면을 따로 봅니다.',
-      quote: 'what the service does',
-      url: 'https://design-system.service.gov.uk/patterns/start-using-a-service/',
-    },
   },
   {
     label: '가치 이해',
     description:
       '혜택, 조건, 비용처럼 행동 전에 필요한 정보가 충분히 드러나는지 봅니다.',
-    reference: {
-      title: '왜 가치 이해를 보나요?',
-      label: 'PR on Websites',
-      source: 'Nielsen Norman Group',
-      summary: '사용자는 행동하기 전에 이 페이지에서 무엇을 얻을 수 있는지 이해해야 합니다.',
-      quote: 'what the site is about and what visitors can get from it',
-      url: 'https://media.nngroup.com/media/reports/free/PR_on_Websites_3rd_Edition.pdf',
-    },
   },
   {
     label: '다음 행동 선택',
     description:
       '사용자가 다음에 눌러야 할 버튼이나 링크를 쉽게 고를 수 있는지 봅니다.',
-    reference: {
-      title: '왜 다음 행동 선택을 보나요?',
-      label: 'Button Design',
-      source: 'Baymard Institute',
-      summary: '사용자는 목표 행동으로 이어질 수 있는 명확한 다음 경로가 필요합니다.',
-      quote: 'a clear path forward',
-      url: 'https://baymard.com/learn/button-design',
-    },
   },
 ];
 
@@ -203,212 +155,126 @@ function recommendationReason(recommendation: ReportRecommendation, finding: Rep
   return recommendation.rationale ?? finding?.summary ?? recommendation.expectedImpact;
 }
 
-function recommendationMeta(recommendation: ReportRecommendation, finding: ReportFinding | null) {
-  const stage = finding ? reportFlowStageLabel(finding.stage) : '분석 결과';
-  let signal = '판단 보강';
-
-  if (finding?.severity === 'high') {
-    signal = '전환 영향 큼';
-  } else if (recommendation.effort.toLowerCase() === 'low' || recommendation.effort === '낮음') {
-    signal = '빠른 수정';
-  }
-
-  return `${stage} · ${signal}`;
-}
-
-function ReferenceBadge({
-  badge,
-  badgeId,
-}: {
-  badge: ReferenceBadgeViewModel;
-  badgeId: string;
-}) {
-  const badgeRef = useRef<HTMLButtonElement | null>(null);
-  const [tooltipPosition, setTooltipPosition] = useState<{ top: number; left: number } | null>(null);
-  const [isHoveringOrFocused, setIsHoveringOrFocused] = useState(false);
-  const isTooltipVisible = isHoveringOrFocused;
-  const tooltipId = `run-report-reference-tooltip-${badgeId.replace(/[^a-zA-Z0-9_-]/g, '-')}`;
-
-  const updateTooltipPosition = useCallback(() => {
-    const badgeElement = badgeRef.current;
-    if (!badgeElement) {
-      return;
-    }
-
-    const rect = badgeElement.getBoundingClientRect();
-    const tooltipHalfWidth = 128;
-    const viewportMargin = 16;
-    const viewportWidth = window.innerWidth || document.documentElement.clientWidth;
-    const left = Math.min(
-      Math.max(rect.left + rect.width / 2, tooltipHalfWidth + viewportMargin),
-      Math.max(tooltipHalfWidth + viewportMargin, viewportWidth - tooltipHalfWidth - viewportMargin),
-    );
-
-    setTooltipPosition({
-      top: rect.top - 8,
-      left,
-    });
-  }, []);
-
-  useEffect(() => {
-    if (!isTooltipVisible) {
-      setTooltipPosition(null);
-      return;
-    }
-
-    updateTooltipPosition();
-  }, [isTooltipVisible, updateTooltipPosition]);
-
-  const handleMouseEnter = useCallback(() => {
-    setIsHoveringOrFocused(true);
-    updateTooltipPosition();
-  }, [updateTooltipPosition]);
-
-  const handleMouseLeave = useCallback(() => {
-    setIsHoveringOrFocused(false);
-  }, []);
-
-  const handleFocus = useCallback(() => {
-    setIsHoveringOrFocused(true);
-    updateTooltipPosition();
-  }, [updateTooltipPosition]);
-
-  const handleBlur = useCallback(() => {
-    setIsHoveringOrFocused(false);
-  }, []);
-
-  const handleClick = useCallback((event: MouseEvent<HTMLButtonElement>) => {
-    event.stopPropagation();
-  }, []);
-
-  const tooltip = tooltipPosition && typeof document !== 'undefined'
-    ? createPortal(
-        <span
-          id={tooltipId}
-          className="run-report-reference-badge__tooltip run-report-reference-badge__tooltip--portal"
-          role="tooltip"
-          style={{ top: tooltipPosition.top, left: tooltipPosition.left }}
-        >
-          <strong>{badge.publisher}</strong>
-          <span>{badge.title}</span>
-          <small>{badge.basisSummary}</small>
-        </span>,
-        document.body,
-      )
-    : null;
-
+function ReferenceChevronIcon() {
   return (
-    <button
-      type="button"
-      ref={badgeRef}
-      className="run-report-reference-badge"
-      aria-label={badge.ariaLabel}
-      aria-describedby={tooltipPosition ? tooltipId : undefined}
-      onClick={handleClick}
-      onMouseEnter={handleMouseEnter}
-      onMouseLeave={handleMouseLeave}
-      onFocus={handleFocus}
-      onBlur={handleBlur}
-    >
-      <span className="run-report-reference-badge__label">{badge.label}</span>
-      {tooltip}
-    </button>
+    <svg className="run-report-reference-summary__chevron-icon" viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+      <path d="M7.5 5L12.5 10L7.5 15" />
+    </svg>
   );
 }
 
-function RecommendationReferenceBadges({
+function FindingReferenceSummary({
+  references,
+  summaryId,
+  isOpen,
+  onOpen,
+}: {
+  references: ReferenceBadgeViewModel[];
+  summaryId: string;
+  isOpen: boolean;
+  onOpen: () => void;
+}) {
+  const panelId = `run-report-reference-detail-${summaryId.replace(/[^a-zA-Z0-9_-]/g, '-')}`;
+  const visibleReferences = references.slice(0, 2);
+  const hiddenReferenceCount = references.length - visibleReferences.length;
+
+  if (references.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className={`run-report-reference-summary${isOpen ? ' run-report-reference-summary--open' : ''}`}>
+      <button
+        type="button"
+        className="run-report-reference-summary__trigger"
+        aria-expanded={isOpen}
+        aria-controls={panelId}
+        onClick={(event) => {
+          event.stopPropagation();
+          onOpen();
+        }}
+      >
+        <span className="run-report-reference-summary__label">참고 기준</span>
+        <span className="run-report-reference-summary__copy">
+          {references.length}개
+        </span>
+        <span className="run-report-reference-summary__chevron" aria-hidden="true">
+          <ReferenceChevronIcon />
+        </span>
+      </button>
+      <div
+        id={panelId}
+        className="run-report-reference-summary__panel"
+        aria-hidden={!isOpen}
+      >
+        <div className="run-report-reference-summary__panel-inner">
+          <ul>
+            {visibleReferences.map((reference) => (
+              <li key={reference.key}>
+                <span>{reference.publisher}</span>
+                <strong>{reference.title}</strong>
+                <p>{reference.basisSummary}</p>
+                <a href={reference.url} target="_blank" rel="noreferrer"># 원문</a>
+              </li>
+            ))}
+          </ul>
+          {hiddenReferenceCount > 0 ? (
+            <p className="run-report-reference-summary__more">외 {hiddenReferenceCount}개 기준은 리포트 원문에서 확인할 수 있습니다.</p>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function JudgementBasisCard({
   recommendation,
   finding,
 }: {
   recommendation: ReportRecommendation;
   finding: ReportFinding | null;
 }) {
-  const badges = referenceBadgesForFinding(finding);
-  const { visible, overflow } = splitReferenceBadges(badges);
-
-  if (badges.length === 0) {
-    return null;
-  }
-
-  return (
-    <span className="run-report-recommendation-reference-badges" aria-label="기준 근거 배지">
-      {visible.map((badge) => {
-        const badgeId = `${recommendation.id}:${badge.key}`;
-
-        return (
-          <ReferenceBadge key={badge.key} badge={badge} badgeId={badgeId} />
-        );
-      })}
-      {overflow.length > 0 ? (
-        <ReferenceOverflowBadge
-          recommendation={recommendation}
-          overflowId={`${recommendation.id}:references-overflow`}
-          badges={overflow}
-        />
-      ) : null}
-    </span>
-  );
-}
-
-function ReferenceOverflowBadge({
-  recommendation,
-  overflowId,
-  badges,
-}: {
-  recommendation: ReportRecommendation;
-  overflowId: string;
-  badges: ReferenceBadgeViewModel[];
-}) {
-  const overflowRef = useRef<HTMLSpanElement | null>(null);
-  const [isHoveringOrFocused, setIsHoveringOrFocused] = useState(false);
-  const isOpen = isHoveringOrFocused;
-  const popoverId = `run-report-reference-overflow-${overflowId.replace(/[^a-zA-Z0-9_-]/g, '-')}`;
-
-  const handleClick = useCallback((event: MouseEvent<HTMLButtonElement>) => {
-    event.stopPropagation();
+  const references = referenceBadgesForFinding(finding);
+  const [isOpen, setIsOpen] = useState(false);
+  const hasReferences = references.length > 0;
+  const openReferences = useCallback(() => {
+    setIsOpen(true);
   }, []);
-
-  const handleBlur = useCallback((event: FocusEvent<HTMLSpanElement>) => {
-    const nextFocusedElement = event.relatedTarget;
-
-    if (nextFocusedElement instanceof Node && event.currentTarget.contains(nextFocusedElement)) {
-      return;
-    }
-
-    setIsHoveringOrFocused(false);
+  const toggleReferencesFromJudgement = useCallback(() => {
+    setIsOpen((current) => !current);
   }, []);
 
   return (
-    <span
-      ref={overflowRef}
-      className="run-report-reference-overflow"
-      onMouseEnter={() => setIsHoveringOrFocused(true)}
-      onMouseLeave={() => setIsHoveringOrFocused(false)}
-      onFocus={() => setIsHoveringOrFocused(true)}
-      onBlur={handleBlur}
+    <article
+      className={`run-report-selected-action__detail-card${
+        hasReferences ? ' run-report-selected-action__detail-card--reference' : ''
+      }${isOpen ? ' run-report-selected-action__detail-card--reference-open' : ''}`}
+      onClick={(event) => {
+        if (!hasReferences) {
+          return;
+        }
+
+        const target = event.target as HTMLElement;
+        if (target.closest('a, button')) {
+          return;
+        }
+
+        if (target.closest('.run-report-reference-summary')) {
+          return;
+        }
+
+        toggleReferencesFromJudgement();
+      }}
     >
-      <button
-        type="button"
-        className="run-report-reference-badge run-report-reference-badge--overflow"
-        aria-label={`숨겨진 기준 근거 ${badges.length}개 더 보기`}
-        aria-describedby={isOpen ? popoverId : undefined}
-        aria-expanded={isOpen}
-        onClick={handleClick}
-      >
-        <span className="run-report-reference-badge__label">출처</span>
-      </button>
-      {isOpen ? (
-        <span id={popoverId} className="run-report-reference-overflow__popover" role="tooltip">
-          {badges.map((badge) => {
-            const badgeId = `${recommendation.id}:${badge.key}`;
-
-            return (
-              <ReferenceBadge key={badge.key} badge={badge} badgeId={badgeId} />
-            );
-          })}
-        </span>
-      ) : null}
-    </span>
+      <span>판단 근거</span>
+      <p>{recommendationReason(recommendation, finding)}</p>
+      <FindingReferenceSummary
+        references={references}
+        summaryId={recommendation.id}
+        isOpen={isOpen}
+        onOpen={openReferences}
+      />
+    </article>
   );
 }
 
@@ -516,25 +382,6 @@ function ReportFlowHelpButton() {
               </li>
             ))}
           </ol>
-          <details className="run-report-term-help__references">
-            <summary>참고 자료</summary>
-            <div className="run-report-term-help__reference-list" aria-label="전환 흐름 설명 참고 자료">
-              {REPORT_FLOW_HELP_TERMS.map((item) => (
-                <a
-                  key={item.reference.url}
-                  href={item.reference.url}
-                  target="_blank"
-                  rel="noreferrer"
-                  onClick={(event) => event.stopPropagation()}
-                >
-                  <em>{item.reference.title}</em>
-                  <p>{item.reference.summary}</p>
-                  <small>원문: <q>{item.reference.quote}</q></small>
-                  <span>{item.reference.source} · {item.reference.label}</span>
-                </a>
-              ))}
-            </div>
-          </details>
         </aside>,
         document.body,
       )
@@ -552,7 +399,7 @@ function ReportFlowHelpButton() {
         aria-controls={isOpen ? popoverId : undefined}
         onClick={togglePopover}
       >
-        ?
+        i
       </button>
       {popover}
     </span>
@@ -939,10 +786,6 @@ export function RunReportViewer({
 
                       return (
                         <li key={recommendation.id} className="run-report-recommendation-tab-shell">
-                          <RecommendationReferenceBadges
-                            recommendation={recommendation}
-                            finding={relatedFinding}
-                          />
                           <button
                             type="button"
                             className={`run-report-recommendation-tab${isSelected ? ' run-report-recommendation-tab--active' : ''}${isHinted ? ' run-report-recommendation-tab--hinted' : ''}`}
@@ -955,9 +798,6 @@ export function RunReportViewer({
                             <span className="run-report-recommendation-tab__copy">
                               <strong>{recommendation.title}</strong>
                               <small>{recommendationReason(recommendation, relatedFinding)}</small>
-                            </span>
-                            <span className="run-report-recommendation-tab__meta">
-                              {recommendationMeta(recommendation, relatedFinding)}
                             </span>
                           </button>
                         </li>
@@ -986,7 +826,6 @@ export function RunReportViewer({
                           const relatedFindingId = relatedFinding?.id ?? null;
                           const isSelected = selectedRecommendationId === recommendation.id;
                           const isHinted = !isSelected && hintedRecommendationId === recommendation.id;
-                          const metaParts = recommendationMeta(recommendation, relatedFinding).split(' · ');
 
                           return (
                             <button
@@ -1000,7 +839,6 @@ export function RunReportViewer({
                             >
                               <span>{index + 1}</span>
                               <strong>{recommendation.title}</strong>
-                              <small>{metaParts[1] ?? metaParts[0]}</small>
                             </button>
                           );
                         })}
@@ -1054,10 +892,10 @@ export function RunReportViewer({
                         <span>개선 방향</span>
                         <p>{selectedRecommendation.detail}</p>
                       </article>
-                      <article className="run-report-selected-action__detail-card">
-                        <span>판단 근거</span>
-                        <p>{recommendationReason(selectedRecommendation, selectedRecommendationFinding)}</p>
-                      </article>
+                      <JudgementBasisCard
+                        recommendation={selectedRecommendation}
+                        finding={selectedRecommendationFinding}
+                      />
                     </div>
                   </div>
                 </div>
