@@ -23,6 +23,7 @@ export function createAuthenticatedResourceCache({
 }: AuthenticatedResourceCacheOptions): AuthenticatedResourceCache {
   const readyEntries = new Map<string, ReadyCacheEntry>();
   const pendingEntries = new Map<string, Promise<string>>();
+  let cacheGeneration = 0;
 
   function touch(resourceUrl: string, entry: ReadyCacheEntry) {
     readyEntries.delete(resourceUrl);
@@ -86,8 +87,13 @@ export function createAuthenticatedResourceCache({
       return pendingObjectUrl;
     }
 
+    const requestGeneration = cacheGeneration;
     const pending = fetchBlob(resourceUrl)
       .then((blob) => {
+        if (requestGeneration !== cacheGeneration) {
+          throw new Error('authenticated resource cache was cleared before the request completed');
+        }
+
         const entry = {
           objectUrl: URL.createObjectURL(blob),
           sizeBytes: blob.size,
@@ -114,6 +120,8 @@ export function createAuthenticatedResourceCache({
   }
 
   function clear() {
+    cacheGeneration += 1;
+
     for (const entry of readyEntries.values()) {
       revoke(entry);
     }

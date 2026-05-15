@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 
 import { createAuthenticatedResourceCache } from '../../src/shared/lib/authenticatedResourceCache';
 
@@ -158,4 +159,50 @@ test('authenticated resource cache does not keep failed requests', async () => {
   await assert.rejects(() => cache.resolve('/runs/run-1/artifacts/a/content'), /network failed/);
 
   assert.equal(cache.get('/runs/run-1/artifacts/a/content'), null);
+});
+
+test('authenticated resource cache drops pending results after clear', async () => {
+  const originalCreateObjectURL = URL.createObjectURL;
+  const originalRevokeObjectURL = URL.revokeObjectURL;
+  let createObjectUrlCalls = 0;
+  let resolveBlob: ((blob: Blob) => void) | null = null;
+
+  URL.createObjectURL = (() => {
+    createObjectUrlCalls += 1;
+    return 'blob:stale';
+  }) as typeof URL.createObjectURL;
+  URL.revokeObjectURL = (() => undefined) as typeof URL.revokeObjectURL;
+
+  const cache = createAuthenticatedResourceCache({
+    maxEntries: 3,
+    maxBytes: 10_000,
+    fetchBlob: () => new Promise<Blob>((resolve) => {
+      resolveBlob = resolve;
+    }),
+  });
+
+  try {
+    const pending = cache.resolve('/runs/run-1/artifacts/a/content');
+    cache.clear();
+    resolveBlob?.(imageBlob(100));
+
+    await assert.rejects(() => pending, /cleared/);
+    assert.equal(createObjectUrlCalls, 0);
+    assert.equal(cache.get('/runs/run-1/artifacts/a/content'), null);
+  } finally {
+    URL.createObjectURL = originalCreateObjectURL;
+    URL.revokeObjectURL = originalRevokeObjectURL;
+  }
+});
+
+test('authenticated resource hook can resolve protected image urls through a scoped cache', () => {
+  const source = fs.readFileSync(
+    new URL('../../src/shared/lib/authenticatedResourceUrl.ts', import.meta.url),
+    'utf8',
+  );
+
+  assert.match(source, /AuthenticatedResourceCache/);
+  assert.match(source, /cache\?\.get\(apiPath\)/);
+  assert.match(source, /cache\.resolve\(apiPath\)/);
+  assert.match(source, /const cachedUrl = cache\?\.get\(apiPath\)/);
 });
