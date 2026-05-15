@@ -347,6 +347,41 @@ test('run monitor view model turns event payload details into readable path entr
   assert.doesNotMatch(timeline.map((step) => step.detail).join('\n'), /selector|locator|RUNNER_TIMEOUT/);
 });
 
+test('run monitor view model keeps generated scenario step logs readable', () => {
+  const events: RunEvent[] = [
+    {
+      id: 'event-start-legacy-discovery',
+      runId: baseRun.id,
+      stepId: 'step-start',
+      stepKey: 'step_001_goto',
+      eventType: 'STEP_STARTED',
+      eventSource: 'RUNNER',
+      payload: {
+        description: 'Discovery 추천 URL에 진입한다.',
+      },
+      occurredAt: '2026-04-27T01:00:00.000Z',
+    },
+    {
+      id: 'event-start-next-screen',
+      runId: baseRun.id,
+      stepId: 'step-click',
+      stepKey: 'step_003_probe_recommended_target',
+      eventType: 'STEP_STARTED',
+      eventSource: 'RUNNER',
+      payload: {
+        description: '추천된 진입점으로 다음 화면 이동 가능성을 확인한다.',
+      },
+      occurredAt: '2026-04-27T01:00:10.000Z',
+    },
+  ];
+
+  const logs = buildApiEventLogs(baseRun, baseLive, events);
+
+  assert.equal(logs[0].message, '추천된 시작 화면을 열고 있습니다');
+  assert.equal(logs[1].message, '추천 진입점의 다음 화면 이동을 확인 중입니다');
+  assert.doesNotMatch(logs.map((log) => log.message).join('\n'), /Discovery|진입한다 확인|의사결정/);
+});
+
 test('run monitor view model keeps selector-like action payloads readable but not raw', () => {
   const selectorLikeTargets = [
     'selector=#hero .primary-cta',

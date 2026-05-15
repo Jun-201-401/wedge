@@ -232,8 +232,37 @@ function describeActionEvent(event: RunEvent) {
 }
 
 function describeStepStartedEvent(event: RunEvent, step?: RunStep) {
-  const description = readPayloadString(event.payload, 'description') ?? step?.stepName ?? null;
-  return description ? `${description} 확인 중입니다` : RUN_EVENT_USER_SUMMARIES.STEP_STARTED;
+  const description = readableStepProgressMessage(readPayloadString(event.payload, 'description') ?? step?.stepName ?? null);
+  return description ?? RUN_EVENT_USER_SUMMARIES.STEP_STARTED;
+}
+
+function readableStepProgressMessage(description: string | null) {
+  if (!description) {
+    return null;
+  }
+
+  const normalized = description.trim();
+  const messagesByDescription: Record<string, string> = {
+    'Discovery 추천 URL에 진입한다.': '추천된 시작 화면을 열고 있습니다',
+    '추천 URL에 진입한다.': '추천된 시작 화면을 열고 있습니다',
+    '추천된 시작 화면을 연다.': '추천된 시작 화면을 열고 있습니다',
+    '추천된 시작 화면을 열어 첫 화면을 확인한다.': '추천된 시작 화면을 열고 있습니다',
+    '첫 화면의 핵심 문맥과 진입점을 기록한다.': '첫 화면의 핵심 맥락과 주요 진입점을 확인 중입니다',
+    '첫 화면의 핵심 맥락과 주요 진입점을 기록한다.': '첫 화면의 핵심 맥락과 주요 진입점을 확인 중입니다',
+    '첫 화면에서 핵심 맥락과 주요 진입점을 기록한다.': '첫 화면의 핵심 맥락과 주요 진입점을 확인 중입니다',
+    '추천된 진입점을 클릭해 다음 의사결정 지점으로 이동한다.': '추천 진입점의 다음 화면 이동을 확인 중입니다',
+    '추천된 진입점을 선택해 다음 화면으로 이동한다.': '추천 진입점의 다음 화면 이동을 확인 중입니다',
+    '추천된 진입점으로 다음 화면 이동 가능성을 확인한다.': '추천 진입점의 다음 화면 이동을 확인 중입니다',
+    '이동 후 도착 지점의 문맥을 기록한다.': '도착 화면의 맥락과 다음 행동을 확인 중입니다',
+    '이동 후 도착 화면의 맥락을 기록한다.': '도착 화면의 맥락과 다음 행동을 확인 중입니다',
+    '이동 후 도착 화면의 맥락과 다음 행동을 기록한다.': '도착 화면의 맥락과 다음 행동을 확인 중입니다',
+    '추천된 민감 진입점은 자동 클릭하지 않고 대상 근거만 기록한다.': '민감한 진입점의 대상 근거를 확인 중입니다',
+    '민감한 진입점은 자동 선택하지 않고 대상 근거만 기록한다.': '민감한 진입점의 대상 근거를 확인 중입니다',
+    '추천 흐름을 실행하기 전 현재 문맥을 기록한다.': '현재 화면의 맥락을 확인 중입니다',
+    '추천 흐름 실행 전 현재 화면 맥락을 기록한다.': '현재 화면의 맥락을 확인 중입니다',
+  };
+
+  return messagesByDescription[normalized] ?? `${normalized} 확인 중입니다`;
 }
 
 function describeStepCompletedEvent(event: RunEvent) {
