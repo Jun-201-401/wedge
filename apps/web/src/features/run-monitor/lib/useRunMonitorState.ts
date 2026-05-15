@@ -75,6 +75,14 @@ export function useRunMonitorState(runId: string, mockData: MockRunMonitorData, 
       return;
     }
 
+    clearEvidenceState();
+    setRunSteps([]);
+    setIsStepLoading(false);
+    setStepLoadError('');
+    setRunEvents([]);
+    setIsEventLoading(false);
+    setEventLoadError('');
+
     let isActive = true;
     let refreshTimerId = 0;
 

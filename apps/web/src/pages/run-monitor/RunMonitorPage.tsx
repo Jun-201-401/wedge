@@ -16,11 +16,10 @@ import { formatDisplayUrl } from '../../shared/lib/displayUrl';
 import { useResizableTrailingPanel } from '../../shared/lib/resizableTrailingPanel';
 import { deleteRun, requestRunAnalysis, stopRun } from '../../api/runs';
 import type { RunReportProjection } from '../../entities/report';
-import type { EvidencePacket, RunEvidenceCounts } from '../../entities/run';
 import { RUN_STATUS_LABEL } from '../../entities/run';
 import {
   buildApiEventTimeline,
-  buildApiStepTimeline,
+  buildRunCollectionSummaryStats,
   buildMockRunMonitorData,
   canRequestRunDelete,
   canRequestRunStop,
@@ -35,6 +34,7 @@ import {
   RUN_MONITOR_REFRESH_INTERVAL_MS,
   resolveRunMonitorReportCtaState,
   shouldRefreshRunReport,
+  type RunCollectionSummaryStats,
   type RunStatusTone,
   type StepStatus,
   useRunMonitorState,
@@ -307,41 +307,12 @@ function RunMonitorLoadingShell({ runId, targetUrl }: { runId: string; targetUrl
   );
 }
 
-interface EvidenceSummaryStats {
-  checkpointCount: number;
-  observationCount: number;
-  artifactCount: number;
-}
-
-function getEvidenceSummaryStats(
-  evidencePacket: EvidencePacket | null,
-  liveCounts: RunEvidenceCounts | null | undefined,
-): EvidenceSummaryStats | null {
-  if (evidencePacket) {
-    return {
-      checkpointCount: evidencePacket.checkpoints.length,
-      observationCount: evidencePacket.checkpoints.reduce((count, checkpoint) => count + checkpoint.observations.length, 0),
-      artifactCount: evidencePacket.artifacts.length,
-    };
-  }
-
-  if (liveCounts) {
-    return {
-      checkpointCount: liveCounts.checkpointCount,
-      observationCount: liveCounts.observationCount,
-      artifactCount: liveCounts.artifactCount,
-    };
-  }
-
-  return null;
-}
-
-function EvidenceCollectionSummary({
+function RunCollectionSummary({
   stats,
   isLoading,
   errorMessage,
 }: {
-  stats: EvidenceSummaryStats | null;
+  stats: RunCollectionSummaryStats | null;
   isLoading: boolean;
   errorMessage: string;
 }) {
@@ -350,25 +321,25 @@ function EvidenceCollectionSummary({
   }
 
   return (
-    <div className="run-monitor-evidence-summary" aria-label="수집 상태 요약">
-      <span>수집</span>
+    <div className="run-monitor-collection-summary" aria-label="수집 요약">
+      <span>수집 요약</span>
       {stats ? (
         <dl>
           <div>
-            <dt>체크</dt>
-            <dd>{stats.checkpointCount}</dd>
+            <dt>URL 기준 방문</dt>
+            <dd>{stats.visitedPageCount}개</dd>
           </div>
           <div>
-            <dt>신호</dt>
-            <dd>{stats.observationCount}</dd>
+            <dt>스크린샷</dt>
+            <dd>{stats.screenshotCount}장</dd>
           </div>
           <div>
-            <dt>자료</dt>
-            <dd>{stats.artifactCount}</dd>
+            <dt>실행 step</dt>
+            <dd>{stats.stepCount}개</dd>
           </div>
         </dl>
       ) : (
-        <p>{isLoading ? '수집 상태 확인 중' : errorMessage}</p>
+        <p>{isLoading ? '수집 요약 확인 중' : errorMessage}</p>
       )}
     </div>
   );
@@ -635,6 +606,10 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
   const progressPercent = isApiFallback ? mockData.progressPercent : getApiProgressPercent(live);
   const currentCheckpoint = isApiFallback ? (live.currentAction ?? mockData.currentCheckpoint) : getApiCheckpoint(live);
   const traceModeLabel = isApiFallback ? '모의 실행' : '실제 실행 상태';
+  const isCurrentRunSnapshot = run.id === runId && live.runId === runId;
+  const currentRunEvidencePacket = isCurrentRunSnapshot && evidencePacket?.run_id === runId ? evidencePacket : null;
+  const currentRunSteps = isCurrentRunSnapshot ? runSteps.filter((step) => step.runId === runId) : [];
+  const currentRunEvents = isCurrentRunSnapshot ? runEvents.filter((event) => event.runId === runId) : [];
   const reportCtaState = resolveRunMonitorReportCtaState({
     isMockRun,
     report: currentReportProjection,
@@ -648,16 +623,21 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
         depthId: readQueryParam('depth') ?? 'hero-only',
       })
     : null;
-  const visibleSteps = isApiFallback ? mockData.steps : buildApiEventTimeline(run, live, runEvents, runSteps);
+  const visibleSteps = isApiFallback ? mockData.steps : buildApiEventTimeline(run, live, currentRunEvents, currentRunSteps);
   const deviceLabel = getDevicePresetLabel(run.devicePreset);
-  const evidenceStats = getEvidenceSummaryStats(evidencePacket, live.evidenceCounts);
+  const collectionSummaryStats = buildRunCollectionSummaryStats({
+    evidencePacket: currentRunEvidencePacket,
+    run,
+    live,
+    runSteps: currentRunSteps,
+  });
   const timelineNote = isApiFallback
     ? '예시 실행 경로입니다. 실제 실행이 시작되면 수집한 단계로 교체됩니다.'
-    : eventLoadError || (isEventLoading && runEvents.length === 0)
+    : eventLoadError || (isEventLoading && currentRunEvents.length === 0)
       ? (eventLoadError || '확인 경로를 불러오는 중입니다.')
-      : runEvents.length > 0
+      : currentRunEvents.length > 0
         ? '실제 실행 이벤트를 바탕으로 확인한 경로입니다.'
-        : stepLoadError || (isStepLoading && runSteps.length === 0)
+        : stepLoadError || (isStepLoading && currentRunSteps.length === 0)
           ? (stepLoadError || '확인 단계를 불러오는 중입니다.')
           : '실제 실행 단계 상태를 바탕으로 확인한 경로입니다.';
   const isRunActionPending = runActionState.kind === 'pending';
@@ -762,12 +742,12 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
       </div>
       <strong>분석 결과 리포트</strong>
       <p>{reportCtaState.message}</p>
+      <RunCollectionSummary
+        stats={collectionSummaryStats}
+        isLoading={isEvidenceLoading}
+        errorMessage={evidenceLoadError}
+      />
       <div className="run-monitor-report-cta__footer">
-        <EvidenceCollectionSummary
-          stats={evidenceStats}
-          isLoading={isEvidenceLoading}
-          errorMessage={evidenceLoadError}
-        />
         {reportActionMessage}
         <div className="run-monitor-report-cta__actions">
           {reportCtaAction}
@@ -934,8 +914,8 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
               <div className="run-monitor-live-insight__card">
                 <strong>{currentCheckpoint}</strong>
                 <p>선택한 흐름을 준비하고 있습니다. 곧 근거 수집을 시작합니다.</p>
-                <EvidenceCollectionSummary
-                  stats={evidenceStats}
+                <RunCollectionSummary
+                  stats={collectionSummaryStats}
                   isLoading={isEvidenceLoading}
                   errorMessage={evidenceLoadError}
                 />
