@@ -8,10 +8,10 @@ const completedRun: Run = {
   id: '11111111-1111-4111-8111-111111111111',
   type: 'run',
   projectId: '22222222-2222-4222-8222-222222222222',
-  name: '랜딩 전환 CTA 점검',
+  name: '랜딩 전환 행동 점검',
   triggerSource: 'WEB',
   startUrl: 'https://example.com/',
-  goal: '랜딩 전환 CTA 점검',
+  goal: '랜딩 전환 행동 점검',
   devicePreset: 'desktop',
   scenarioTemplateVersionId: '33333333-3333-4333-8333-333333333333',
   status: 'COMPLETED',
@@ -92,7 +92,7 @@ test('buildRunReportFromEvidence projects persisted evidence into report view mo
   assert.equal(report.runId, completedRun.id);
   assert.equal(report.reportId, 'WDG-11111111');
   assert.equal(report.targetUrl, completedRun.startUrl);
-  assert.equal(report.scenarioLabel, '랜딩 전환 CTA 점검');
+  assert.equal(report.scenarioLabel, '랜딩 전환 행동 점검');
   assert.equal(report.totalSteps, 2);
   assert.equal(report.durationLabel, '1분 24초');
   assert.equal(report.evidencePreviewUrl, '/api/runs/111/artifacts/screenshot-1/content');

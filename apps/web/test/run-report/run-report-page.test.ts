@@ -105,6 +105,8 @@ test('run report page follows the report.html result-first layout', () => {
   assert.match(source, /총 단계/);
   assert.match(source, /마찰 지점/);
   assert.match(source, /소요 시간/);
+  assert.match(source, /점검 흐름/);
+  assert.doesNotMatch(source, /점검 시나리오/);
   assert.match(source, /run-report-insight-summary/);
   assert.match(source, /run-report-insight-summary__label/);
   assert.match(source, /먼저 고칠 항목/);
@@ -325,7 +327,9 @@ test('run report css keeps result-first content in the live simulation cockpit t
   assert.doesNotMatch(css, /\.run-report-reference-overflow__popover/);
   assert.match(viewer, /function FindingReferenceSummary/);
   assert.match(viewer, /참고 기준/);
-  assert.match(viewer, /# 원문/);
+  assert.match(viewer, /근거 보기/);
+  assert.doesNotMatch(viewer, /원문 보기/);
+  assert.doesNotMatch(viewer, /# 원문/);
   assert.doesNotMatch(viewer, /참고 자료/);
   assert.doesNotMatch(viewer, /원문: <q>/);
   assert.match(viewer, /단계별 판단 기준/);
@@ -461,6 +465,8 @@ test('run report css keeps result-first content in the live simulation cockpit t
   assert.match(css, /\.run-report-friction-marker::before\s*\{[\s\S]*?report-friction-marker\.png/);
   assert.match(css, /\.run-report-friction-marker::before\s*\{[\s\S]*?background: url\('\/report-friction-marker\.png'\) center \/ 100% 100% no-repeat/);
   assert.match(css, /\.run-report-friction-marker--active::before\s*\{[\s\S]*?opacity: 1/);
+  assert.doesNotMatch(css.match(/\.run-report-friction-marker--active\s*\{[^}]*\}/)?.[0] ?? '', /box-shadow/);
+  assert.doesNotMatch(css.match(/\.run-report-friction-marker\s*\{[^}]*\}/)?.[0] ?? '', /box-shadow/);
   assert.match(css, /\.run-report-friction-marker span\s*\{[\s\S]*?background: #7f1d1d/);
   assert.match(css, /\.run-report-friction-marker span\s*\{[\s\S]*?font-size: 0\.62rem/);
   assert.match(css, /\.run-report-friction-marker span\s*\{[\s\S]*?text-transform: none/);
@@ -475,7 +481,9 @@ test('run report css keeps result-first content in the live simulation cockpit t
   assert.match(css, /\.run-report-state-card__header\s*\{[\s\S]*?margin-bottom: 1rem/);
   assert.doesNotMatch(css, /\.run-report-state-card::before/);
   assert.doesNotMatch(css, /\.run-report-state-card > span/);
+  assert.match(css, /\.run-report-state-card__actions a\s*\{[\s\S]*?border: 0/);
   assert.match(css, /\.run-report-state-card__actions a\s*\{[\s\S]*?background: rgba\(240, 249, 255, 0\.88\)/);
+  assert.doesNotMatch(css.match(/\.run-report-state-card__actions a:hover\s*\{[^}]*\}/)?.[0] ?? '', /border-color/);
   assert.match(css, /\.run-report-state-card__meta\s*\{[\s\S]*?border-top: 1px solid #f1f5f9/);
   assert.doesNotMatch(css, /\.run-report-loading-status/);
   assert.doesNotMatch(css, /\.run-report-skeleton-line/);
