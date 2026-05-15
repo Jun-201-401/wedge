@@ -15,7 +15,13 @@ import {
   logOperationalEvent,
   type RunnerFailureCode
 } from "../../shared/utils.ts";
-import { reasonCodeFromScenarioSafetyBlock, RunnerExecutionPolicyError } from "../policy.ts";
+import {
+  createScenarioSafetyRecoveryState,
+  evaluateScenarioSafetyRecovery,
+  recordScenarioSafetyRecoveryAttempt,
+  reasonCodeFromScenarioSafetyBlock,
+  RunnerExecutionPolicyError
+} from "../policy.ts";
 import { emitFailureCheckpointArtifactsAndCallbacks } from "./checkpoint-emitter.ts";
 import { executeScenarioStep } from "./step-executor.ts";
 import { emitStepEventBestEffort } from "./step-events.ts";
@@ -96,6 +102,7 @@ export async function executeScenario({
   const deliveryIssues: DeliveryIssue[] = [];
   const journeyDepthContext: JourneyDepthContext = {};
   let collectorStatus = createEmptyCollectorStatusSummary(plan);
+  let safetyRecoveryState = createScenarioSafetyRecoveryState();
 
   for (const [index, step] of plan.steps.entries()) {
     const stepOrder = index + 1;
@@ -121,6 +128,12 @@ export async function executeScenario({
       if (error instanceof RunnerExecutionPolicyError) {
         const reasonCode = reasonCodeFromScenarioSafetyBlock(error.safetyCode);
         const failureMessage = errorMessage(error);
+        const recoveryDecision = evaluateScenarioSafetyRecovery({
+          safetyCode: error.safetyCode,
+          stepKey: step.step_id,
+          details: error.details,
+          state: safetyRecoveryState
+        });
 
         logOperationalEvent(
           "scenario-executor",
@@ -135,6 +148,7 @@ export async function executeScenario({
             riskClass: error.riskClass,
             reasonCode,
             reason: failureMessage,
+            recovery: recoveryDecision,
             details: error.details
           },
           "warn"
@@ -150,6 +164,7 @@ export async function executeScenario({
               riskClass: error.riskClass,
               reasonCode,
               reason: failureMessage,
+              recovery: recoveryDecision,
               details: error.details
             })
           )
@@ -169,6 +184,42 @@ export async function executeScenario({
         });
         deliveryIssues.push(...blockEvidence.deliveryIssues);
         collectorStatus = mergeCollectorStatusSummaries(collectorStatus, blockEvidence.collectorStatus);
+
+        if (recoveryDecision.recoverable) {
+          safetyRecoveryState = recordScenarioSafetyRecoveryAttempt(safetyRecoveryState, {
+            stepKey: step.step_id,
+            fingerprint: recoveryDecision.fingerprint
+          });
+
+          const recoveryResult = await session.recoverToSafeUrl({
+            safeUrl: plan.start_url
+          });
+
+          logOperationalEvent(
+            "scenario-executor",
+            recoveryResult.recovered ? "scenario_safety_recovered" : "scenario_safety_recovery_failed",
+            {
+              runId,
+              stepOrder,
+              stepKey: step.step_id,
+              stage: step.stage,
+              actionType: step.action.type,
+              safetyCode: error.safetyCode,
+              riskClass: error.riskClass,
+              recoveryReason: recoveryDecision.reason,
+              recoveryStrategy: recoveryDecision.strategy,
+              recoveryMethod: recoveryResult.method,
+              recoveryUrlBefore: recoveryResult.urlBefore,
+              recoveryUrlAfter: recoveryResult.urlAfter,
+              recoveryFailureMessage: recoveryResult.failureMessage
+            },
+            recoveryResult.recovered ? "info" : "warn"
+          );
+
+          if (recoveryResult.recovered) {
+            continue;
+          }
+        }
 
         return {
           summary: {
