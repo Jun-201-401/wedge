@@ -175,6 +175,12 @@ test("[계약 동기화] AgentTrace TS mirror가 packages/contracts trace schema
   );
   assertTypeAliasMatchesSchemaEnum(
     runnerTypesSource,
+    "AgentOutcomeReasonCode",
+    outcomeSchema,
+    outcomeSchema.properties.reason_code
+  );
+  assertTypeAliasMatchesSchemaEnum(
+    runnerTypesSource,
     "AgentRiskClass",
     policySchema,
     policySchema.properties.riskClass
