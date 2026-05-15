@@ -11,7 +11,10 @@ import {
 } from 'react';
 import { createPortal } from 'react-dom';
 
+import { requestBlob } from '../../../api/http';
+import { createAuthenticatedResourceCache } from '../../../shared/lib/authenticatedResourceCache';
 import { useAuthenticatedResourceUrl } from '../../../shared/lib/authenticatedResourceUrl';
+import { toSameOriginApiPath } from '../../../shared/lib/apiResourcePath';
 import { HOME_PATH, RUNS_PATH } from '../../../shared/lib/appPaths';
 import { formatDisplayUrl } from '../../../shared/lib/displayUrl';
 import { useResizableTrailingPanel } from '../../../shared/lib/resizableTrailingPanel';
@@ -56,6 +59,8 @@ const RUN_REPORT_INSIGHT_PANEL_MAX_WIDTH = 704;
 const RUN_REPORT_VISUAL_MIN_WIDTH = 560;
 const RUN_REPORT_RESIZE_STEP = 24;
 const RUN_REPORT_RESIZER_FALLBACK_WIDTH = 8;
+const RUN_REPORT_PREVIEW_CACHE_MAX_ENTRIES = 4;
+const RUN_REPORT_PREVIEW_CACHE_MAX_BYTES = 50 * 1024 * 1024;
 
 const REPORT_FLOW_STAGES = [
   { id: 'first', label: '첫 화면', shortLabel: '첫 화면' },
@@ -593,8 +598,16 @@ export function RunReportViewer({
   const [selectedRecommendationId, setSelectedRecommendationId] = useState<string | null>(report.recommendations[0]?.id ?? null);
   const [isAllRecommendationsOpen, setIsAllRecommendationsOpen] = useState(false);
   const [loadedEvidencePreviewUrl, setLoadedEvidencePreviewUrl] = useState<string | null>(null);
+  const reportPreviewImageCache = useMemo(() => createAuthenticatedResourceCache({
+    maxEntries: RUN_REPORT_PREVIEW_CACHE_MAX_ENTRIES,
+    maxBytes: RUN_REPORT_PREVIEW_CACHE_MAX_BYTES,
+    fetchBlob: requestBlob,
+  }), [report.reportId]);
   const recommendations = report.recommendations;
-  const topRecommendations = recommendations.slice(0, TOP_RECOMMENDATION_COUNT);
+  const topRecommendations = useMemo(
+    () => recommendations.slice(0, TOP_RECOMMENDATION_COUNT),
+    [recommendations],
+  );
   const hasMoreRecommendations = recommendations.length > TOP_RECOMMENDATION_COUNT;
   const selectedRecommendation = recommendations.find((recommendation) => recommendation.id === selectedRecommendationId) ?? recommendations[0] ?? null;
   const selectedRecommendationFinding = linkedFinding(report.findings, selectedRecommendation);
@@ -628,6 +641,23 @@ export function RunReportViewer({
   }, [hoveredFindingId, recommendationByFindingId]);
 
   const selectedEvidencePreviewUrl = activeFinding?.previewImageUrl ?? report.evidencePreviewUrl;
+  const selectedEvidencePreviewCacheKey = selectedEvidencePreviewUrl ? toSameOriginApiPath(selectedEvidencePreviewUrl) : null;
+
+  const topRecommendationPreviewCacheKeys = useMemo(() => {
+    const urls = topRecommendations
+      .map((recommendation) => linkedFinding(report.findings, recommendation))
+      .flatMap((finding) => {
+        if (!finding) {
+          return [];
+        }
+
+        const previewUrl = previewUrlForFinding(finding, report.evidencePreviewUrl);
+        const apiPath = previewUrl ? toSameOriginApiPath(previewUrl) : null;
+        return apiPath ? [apiPath] : [];
+      });
+
+    return [...new Set(urls)];
+  }, [report.evidencePreviewUrl, report.findings, topRecommendations]);
 
   const markerCandidates = useMemo(() => {
     if (!selectedEvidencePreviewUrl) {
@@ -654,12 +684,24 @@ export function RunReportViewer({
     [recommendationByFindingId],
   );
 
-  const evidencePreviewUrl = useAuthenticatedResourceUrl(selectedEvidencePreviewUrl);
-  const isEvidencePreviewResolving = Boolean(selectedEvidencePreviewUrl && !evidencePreviewUrl);
+  const evidencePreviewUrl = useAuthenticatedResourceUrl(selectedEvidencePreviewUrl, reportPreviewImageCache);
+  const isEvidencePreviewResolving = Boolean(
+    selectedEvidencePreviewUrl &&
+    selectedEvidencePreviewCacheKey &&
+    !reportPreviewImageCache.peek(selectedEvidencePreviewCacheKey),
+  );
+
+  useEffect(() => () => {
+    reportPreviewImageCache.clear();
+  }, [reportPreviewImageCache]);
+
+  useEffect(() => {
+    void reportPreviewImageCache.prefetch(topRecommendationPreviewCacheKeys);
+  }, [reportPreviewImageCache, topRecommendationPreviewCacheKeys]);
 
   useEffect(() => {
     setLoadedEvidencePreviewUrl(null);
-  }, [evidencePreviewUrl]);
+  }, [evidencePreviewUrl, selectedEvidencePreviewUrl]);
 
   const handleEvidencePreviewImageLoad = useCallback(() => {
     setLoadedEvidencePreviewUrl(evidencePreviewUrl);
@@ -668,7 +710,7 @@ export function RunReportViewer({
   useEffect(() => {
     const preview = evidencePreviewRef.current;
     const markerTop = activeFinding?.highlight?.top;
-    if (!preview || !markerTop || !evidencePreviewUrl || loadedEvidencePreviewUrl !== evidencePreviewUrl) {
+    if (!preview || !markerTop || !evidencePreviewUrl || isEvidencePreviewResolving || loadedEvidencePreviewUrl !== evidencePreviewUrl) {
       return;
     }
 
@@ -687,7 +729,7 @@ export function RunReportViewer({
       Math.min(maxScrollTop, preview.scrollHeight * topRatio - preview.clientHeight * 0.35),
     );
     preview.scrollTo({ top: targetScrollTop, behavior: 'smooth' });
-  }, [activeFinding?.id, activeFinding?.highlight?.top, evidencePreviewUrl, loadedEvidencePreviewUrl]);
+  }, [activeFinding?.id, activeFinding?.highlight?.top, evidencePreviewUrl, isEvidencePreviewResolving, loadedEvidencePreviewUrl]);
 
   useEffect(() => {
     if (recommendations.length === 0) {

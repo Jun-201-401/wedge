@@ -165,7 +165,7 @@ test('authenticated resource cache drops pending results after clear', async () 
   const originalCreateObjectURL = URL.createObjectURL;
   const originalRevokeObjectURL = URL.revokeObjectURL;
   let createObjectUrlCalls = 0;
-  let resolveBlob: ((blob: Blob) => void) | null = null;
+  let resolveBlob!: (blob: Blob) => void;
 
   URL.createObjectURL = (() => {
     createObjectUrlCalls += 1;
@@ -184,7 +184,7 @@ test('authenticated resource cache drops pending results after clear', async () 
   try {
     const pending = cache.resolve('/runs/run-1/artifacts/a/content');
     cache.clear();
-    resolveBlob?.(imageBlob(100));
+    resolveBlob(imageBlob(100));
 
     await assert.rejects(() => pending, /cleared/);
     assert.equal(createObjectUrlCalls, 0);

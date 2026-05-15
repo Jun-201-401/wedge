@@ -11,6 +11,7 @@ interface ReadyCacheEntry {
 
 export interface AuthenticatedResourceCache {
   get: (resourceUrl: string) => string | null;
+  peek: (resourceUrl: string) => string | null;
   resolve: (resourceUrl: string) => Promise<string>;
   prefetch: (resourceUrls: string[]) => Promise<void>;
   clear: () => void;
@@ -76,6 +77,10 @@ export function createAuthenticatedResourceCache({
     return entry.objectUrl;
   }
 
+  function peek(resourceUrl: string) {
+    return readyEntries.get(resourceUrl)?.objectUrl ?? null;
+  }
+
   function resolve(resourceUrl: string) {
     const cachedObjectUrl = get(resourceUrl);
     if (cachedObjectUrl) {
@@ -132,6 +137,7 @@ export function createAuthenticatedResourceCache({
 
   return {
     get,
+    peek,
     resolve,
     prefetch,
     clear,

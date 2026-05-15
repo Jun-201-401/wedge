@@ -32,7 +32,6 @@ export function useAuthenticatedResourceUrl(
     }
 
     if (cache) {
-      setResolvedUrl(null);
       void cache.resolve(apiPath)
         .then((objectUrl) => {
           if (isActive) {
