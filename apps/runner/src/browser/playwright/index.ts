@@ -42,7 +42,7 @@ import {
   assertScenarioActionAllowed,
   assertVisitedUrlAllowed
 } from "../../scenario/policy.ts";
-import { describeTarget, sleep, toIsoTimestamp } from "../../shared/utils.ts";
+import { describeTarget, errorMessage, sleep, toIsoTimestamp } from "../../shared/utils.ts";
 import { capturePageScreenshot, preparePageForScreenshot } from "./screenshot.ts";
 import { inferFieldKey, inferGotoUrl, inferNavigationUrl } from "./action-targets.ts";
 
@@ -186,10 +186,26 @@ export interface PreparedBrowserSettle {
   cancel: () => Promise<void>;
 }
 
+export type BrowserSafetyRecoveryMethod = "none" | "history_back" | "safe_url";
+
+export interface BrowserSafetyRecoveryRequest {
+  safeUrl: string;
+  timeoutMs?: number;
+}
+
+export interface BrowserSafetyRecoveryResult {
+  recovered: boolean;
+  method: BrowserSafetyRecoveryMethod;
+  urlBefore: string;
+  urlAfter: string;
+  failureMessage?: string;
+}
+
 export interface BrowserSession {
   id: string;
   plan: ScenarioPlan;
   execute: (action: ScenarioAction, step: ScenarioStep) => Promise<BrowserActionResult>;
+  recoverToSafeUrl: (request: BrowserSafetyRecoveryRequest) => Promise<BrowserSafetyRecoveryResult>;
   prepareSettle?: (strategy: SettleStrategy) => Promise<PreparedBrowserSettle | null>;
   settle: (strategy: SettleStrategy) => Promise<BrowserSettleResult>;
   snapshot: () => BrowserPageSnapshot;
@@ -205,6 +221,7 @@ export interface BrowserSessionFactory {
 const DEFAULT_LOCATOR_TIMEOUT_MS = 1_500;
 const DEFAULT_LOCATOR_METADATA_TIMEOUT_MS = 100;
 const DEFAULT_WAIT_FOR_TIMEOUT_MS = 1_500;
+const DEFAULT_SAFE_RECOVERY_TIMEOUT_MS = 1_500;
 const ITEM_COUNT_POLL_INTERVAL_MS = 50;
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
@@ -508,6 +525,51 @@ class SimulatedPlaywrightSession implements BrowserSession {
     };
   }
 
+  async recoverToSafeUrl(request: BrowserSafetyRecoveryRequest): Promise<BrowserSafetyRecoveryResult> {
+    const urlBefore = this.state.currentUrl;
+    if (isVisitedUrlSafe(this.plan, urlBefore)) {
+      return {
+        recovered: true,
+        method: "none",
+        urlBefore,
+        urlAfter: urlBefore
+      };
+    }
+
+    const previousSafeUrl = [...this.state.visitedUrls]
+      .slice(0, -1)
+      .reverse()
+      .find((visitedUrl) => isVisitedUrlSafe(this.plan, visitedUrl));
+    if (previousSafeUrl) {
+      this.navigate(previousSafeUrl);
+      return {
+        recovered: true,
+        method: "history_back",
+        urlBefore,
+        urlAfter: this.state.currentUrl
+      };
+    }
+
+    const safeUrlCheck = checkVisitedUrlSafety(this.plan, request.safeUrl);
+    if (!safeUrlCheck.safe) {
+      return {
+        recovered: false,
+        method: "safe_url",
+        urlBefore,
+        urlAfter: this.state.currentUrl,
+        failureMessage: safeUrlCheck.failureMessage
+      };
+    }
+
+    this.navigate(request.safeUrl);
+    return {
+      recovered: true,
+      method: "safe_url",
+      urlBefore,
+      urlAfter: this.state.currentUrl
+    };
+  }
+
   snapshot(): BrowserPageSnapshot {
     return createBrowserPageSnapshot(this.plan, this.state, this.cdpSession);
   }
@@ -705,6 +767,39 @@ class RealPlaywrightSession implements BrowserSession {
         ...(action.type === "click" ? readLastClickedDetails(this.state) : {}),
         executionMode: "playwright"
       }
+    };
+  }
+
+  async recoverToSafeUrl(request: BrowserSafetyRecoveryRequest): Promise<BrowserSafetyRecoveryResult> {
+    assertBrowserHealthy(this.state);
+
+    const timeoutMs = request.timeoutMs ?? DEFAULT_SAFE_RECOVERY_TIMEOUT_MS;
+    const urlBefore = this.state.currentUrl;
+    if (isVisitedUrlSafe(this.plan, urlBefore)) {
+      return {
+        recovered: true,
+        method: "none",
+        urlBefore,
+        urlAfter: urlBefore
+      };
+    }
+
+    const historyResult = await this.tryRecoverByHistoryBack(urlBefore, timeoutMs);
+    if (historyResult.recovered) {
+      return historyResult;
+    }
+
+    const safeUrlResult = await this.tryRecoverBySafeUrl(request.safeUrl, urlBefore, timeoutMs);
+    if (safeUrlResult.recovered) {
+      return safeUrlResult;
+    }
+
+    return {
+      recovered: false,
+      method: safeUrlResult.method,
+      urlBefore,
+      urlAfter: safeUrlResult.urlAfter,
+      failureMessage: safeUrlResult.failureMessage ?? historyResult.failureMessage
     };
   }
 
@@ -1249,6 +1344,98 @@ class RealPlaywrightSession implements BrowserSession {
     appendVisitedUrl(this.state.visitedUrls, currentUrl);
   }
 
+  private async tryRecoverByHistoryBack(
+    urlBefore: string,
+    timeoutMs: number
+  ): Promise<BrowserSafetyRecoveryResult> {
+    try {
+      const response = await this.page.goBack({
+        waitUntil: "domcontentloaded",
+        timeout: timeoutMs
+      });
+      await this.refreshPageState();
+
+      if (response === null) {
+        return {
+          recovered: false,
+          method: "history_back",
+          urlBefore,
+          urlAfter: this.state.currentUrl,
+          failureMessage: "Browser history has no previous entry."
+        };
+      }
+
+      const safetyCheck = checkVisitedUrlSafety(this.plan, this.state.currentUrl);
+      return {
+        recovered: safetyCheck.safe,
+        method: "history_back",
+        urlBefore,
+        urlAfter: this.state.currentUrl,
+        ...(safetyCheck.safe ? {} : { failureMessage: safetyCheck.failureMessage })
+      };
+    } catch (error) {
+      await this.refreshPageStateIfPossible();
+      return {
+        recovered: false,
+        method: "history_back",
+        urlBefore,
+        urlAfter: this.state.currentUrl,
+        failureMessage: errorMessage(error)
+      };
+    }
+  }
+
+  private async tryRecoverBySafeUrl(
+    safeUrl: string,
+    urlBefore: string,
+    timeoutMs: number
+  ): Promise<BrowserSafetyRecoveryResult> {
+    const safeUrlCheck = checkVisitedUrlSafety(this.plan, safeUrl);
+    if (!safeUrlCheck.safe) {
+      return {
+        recovered: false,
+        method: "safe_url",
+        urlBefore,
+        urlAfter: this.state.currentUrl,
+        failureMessage: safeUrlCheck.failureMessage
+      };
+    }
+
+    try {
+      await this.page.goto(safeUrl, {
+        waitUntil: "domcontentloaded",
+        timeout: timeoutMs
+      });
+      await this.refreshPageState();
+
+      const finalUrlCheck = checkVisitedUrlSafety(this.plan, this.state.currentUrl);
+      return {
+        recovered: finalUrlCheck.safe,
+        method: "safe_url",
+        urlBefore,
+        urlAfter: this.state.currentUrl,
+        ...(finalUrlCheck.safe ? {} : { failureMessage: finalUrlCheck.failureMessage })
+      };
+    } catch (error) {
+      await this.refreshPageStateIfPossible();
+      return {
+        recovered: false,
+        method: "safe_url",
+        urlBefore,
+        urlAfter: this.state.currentUrl,
+        failureMessage: errorMessage(error)
+      };
+    }
+  }
+
+  private async refreshPageStateIfPossible(): Promise<void> {
+    try {
+      await this.refreshPageState();
+    } catch {
+      // Preserve the original recovery failure as the result reason.
+    }
+  }
+
   private createSettleResult(
     strategy: string,
     startedAt: number,
@@ -1692,6 +1879,25 @@ function networkTimingDetails(request: Request): Pick<
 
 function normalizeTimingValue(value: number): number | null {
   return Number.isFinite(value) && value >= 0 ? Math.round(value * 100) / 100 : null;
+}
+
+function checkVisitedUrlSafety(
+  plan: ScenarioPlan,
+  url: string
+): { safe: true } | { safe: false; failureMessage: string } {
+  try {
+    assertVisitedUrlAllowed(plan, url);
+    return { safe: true };
+  } catch (error) {
+    return {
+      safe: false,
+      failureMessage: errorMessage(error)
+    };
+  }
+}
+
+function isVisitedUrlSafe(plan: ScenarioPlan, url: string): boolean {
+  return checkVisitedUrlSafety(plan, url).safe;
 }
 
 function appendVisitedUrl(visitedUrls: string[], url: string): void {

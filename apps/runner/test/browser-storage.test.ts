@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createPlaywrightSessionFactory } from "../src/browser/playwright/index.ts";
 import { createArtifactStore } from "../src/storage/index.ts";
-import { createRunnerTestConfig, loadExampleMessage } from "./support.ts";
+import { createMinimalPlan, createRunnerTestConfig, loadExampleMessage } from "./support.ts";
 
 test("[브라우저 어댑터] simulated goto는 target.url 객체 값을 실제 이동 URL로 사용한다", async () => {
   const message = await loadExampleMessage();
@@ -43,6 +43,73 @@ test("[브라우저 어댑터] simulated goto는 target.url 객체 값을 실제
   );
 
   assert.equal(session.snapshot().finalUrl, "https://example.com/signup");
+  await session.close();
+});
+
+test("[브라우저 어댑터] safety recovery는 현재 URL이 이미 안전하면 이동하지 않는다", async () => {
+  const plan = createMinimalPlan();
+  const browserFactory = createPlaywrightSessionFactory(createRunnerTestConfig());
+  const session = await browserFactory.createSession({
+    runId: "run-safe-recovery-noop",
+    plan
+  });
+
+  const result = await session.recoverToSafeUrl({
+    safeUrl: plan.start_url
+  });
+
+  assert.equal(result.recovered, true);
+  assert.equal(result.method, "none");
+  assert.equal(result.urlBefore, plan.start_url);
+  assert.equal(result.urlAfter, plan.start_url);
+  assert.equal(session.snapshot().currentUrl, plan.start_url);
+  await session.close();
+});
+
+test("[브라우저 어댑터] safety recovery는 외부 URL에서 최근 안전 URL로 복귀한다", async () => {
+  const plan = createMinimalPlan();
+  const browserFactory = createPlaywrightSessionFactory(createRunnerTestConfig());
+  const session = await browserFactory.createSession({
+    runId: "run-safe-recovery-history",
+    plan
+  });
+
+  plan.safety.allow_external_navigation = true;
+  await session.execute(
+    {
+      type: "goto",
+      target: {
+        url: "https://external.example/login"
+      }
+    },
+    {
+      step_id: "step_external_visit",
+      stage: "CTA",
+      description: "visit external page for recovery test",
+      action: {
+        type: "goto",
+        target: {
+          url: "https://external.example/login"
+        }
+      },
+      settle_strategy: {
+        type: "none",
+        timeout_ms: 0
+      },
+      checkpoint: false
+    }
+  );
+  plan.safety.allow_external_navigation = false;
+
+  const result = await session.recoverToSafeUrl({
+    safeUrl: plan.start_url
+  });
+
+  assert.equal(result.recovered, true);
+  assert.equal(result.method, "history_back");
+  assert.equal(result.urlBefore, "https://external.example/login");
+  assert.equal(result.urlAfter, plan.start_url);
+  assert.equal(session.snapshot().currentUrl, plan.start_url);
   await session.close();
 });
 
