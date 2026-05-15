@@ -195,6 +195,46 @@ test('authenticated resource cache drops pending results after clear', async () 
   }
 });
 
+test('authenticated resource cache does not let a cleared pending request remove a newer same-url request', async () => {
+  const originalCreateObjectURL = URL.createObjectURL;
+  const originalRevokeObjectURL = URL.revokeObjectURL;
+  const resolvers: Array<(blob: Blob) => void> = [];
+  let objectUrlIndex = 0;
+
+  URL.createObjectURL = (() => `blob:current-${++objectUrlIndex}`) as typeof URL.createObjectURL;
+  URL.revokeObjectURL = (() => undefined) as typeof URL.revokeObjectURL;
+
+  const cache = createAuthenticatedResourceCache({
+    maxEntries: 3,
+    maxBytes: 10_000,
+    fetchBlob: () => new Promise<Blob>((resolve) => {
+      resolvers.push(resolve);
+    }),
+  });
+
+  try {
+    const firstPending = cache.resolve('/runs/run-1/artifacts/a/content');
+    cache.clear();
+
+    const secondPending = cache.resolve('/runs/run-1/artifacts/a/content');
+    assert.equal(resolvers.length, 2);
+
+    resolvers[0](imageBlob(100));
+    await assert.rejects(() => firstPending, /cleared/);
+
+    assert.equal(cache.resolve('/runs/run-1/artifacts/a/content'), secondPending);
+    resolvers[1](imageBlob(200));
+
+    assert.equal(await secondPending, 'blob:current-1');
+    assert.equal(cache.get('/runs/run-1/artifacts/a/content'), 'blob:current-1');
+    assert.equal(resolvers.length, 2);
+  } finally {
+    cache.clear();
+    URL.createObjectURL = originalCreateObjectURL;
+    URL.revokeObjectURL = originalRevokeObjectURL;
+  }
+});
+
 test('authenticated resource hook can resolve protected image urls through a scoped cache', () => {
   const source = fs.readFileSync(
     new URL('../../src/shared/lib/authenticatedResourceUrl.ts', import.meta.url),

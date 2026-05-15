@@ -4,43 +4,50 @@ import { requestBlob } from '../../api/http';
 import type { AuthenticatedResourceCache } from './authenticatedResourceCache';
 import { toSameOriginApiPath } from './apiResourcePath';
 
+interface ResolvedResourceUrl {
+  key: string;
+  url: string;
+}
+
 export function useAuthenticatedResourceUrl(
   resourceUrl: string | null | undefined,
   cache?: AuthenticatedResourceCache,
 ) {
-  const [resolvedUrl, setResolvedUrl] = useState<string | null>(null);
+  const [resolvedResource, setResolvedResource] = useState<ResolvedResourceUrl | null>(null);
 
   useEffect(() => {
     if (!resourceUrl) {
-      setResolvedUrl(null);
+      setResolvedResource(null);
       return undefined;
     }
 
     const apiPath = toSameOriginApiPath(resourceUrl);
     if (!apiPath) {
-      setResolvedUrl(resourceUrl);
+      setResolvedResource({ key: resourceUrl, url: resourceUrl });
       return undefined;
     }
 
     let isActive = true;
     const cachedUrl = cache?.get(apiPath);
     if (cachedUrl) {
-      setResolvedUrl(cachedUrl);
+      setResolvedResource({ key: apiPath, url: cachedUrl });
       return () => {
         isActive = false;
       };
     }
 
+    setResolvedResource((current) => (current?.key === apiPath ? current : null));
+
     if (cache) {
       void cache.resolve(apiPath)
         .then((objectUrl) => {
           if (isActive) {
-            setResolvedUrl(objectUrl);
+            setResolvedResource({ key: apiPath, url: objectUrl });
           }
         })
         .catch(() => {
           if (isActive) {
-            setResolvedUrl(null);
+            setResolvedResource(null);
           }
         });
 
@@ -50,7 +57,6 @@ export function useAuthenticatedResourceUrl(
     }
 
     let objectUrl: string | null = null;
-    setResolvedUrl(null);
 
     void requestBlob(apiPath)
       .then((blob) => {
@@ -59,11 +65,11 @@ export function useAuthenticatedResourceUrl(
         }
 
         objectUrl = URL.createObjectURL(blob);
-        setResolvedUrl(objectUrl);
+        setResolvedResource({ key: apiPath, url: objectUrl });
       })
       .catch(() => {
         if (isActive) {
-          setResolvedUrl(null);
+          setResolvedResource(null);
         }
       });
 
@@ -75,5 +81,11 @@ export function useAuthenticatedResourceUrl(
     };
   }, [cache, resourceUrl]);
 
-  return resolvedUrl;
+  const resourceKey = resourceUrl ? toSameOriginApiPath(resourceUrl) ?? resourceUrl : null;
+
+  if (!resourceKey || resolvedResource?.key !== resourceKey) {
+    return null;
+  }
+
+  return resolvedResource.url;
 }

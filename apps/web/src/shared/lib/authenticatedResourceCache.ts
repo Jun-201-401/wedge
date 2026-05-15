@@ -93,7 +93,7 @@ export function createAuthenticatedResourceCache({
     }
 
     const requestGeneration = cacheGeneration;
-    const pending = fetchBlob(resourceUrl)
+    const resolvedObjectUrl = fetchBlob(resourceUrl)
       .then((blob) => {
         if (requestGeneration !== cacheGeneration) {
           throw new Error('authenticated resource cache was cleared before the request completed');
@@ -109,10 +109,12 @@ export function createAuthenticatedResourceCache({
 
         const retainedEntry = readyEntries.get(resourceUrl);
         return retainedEntry?.objectUrl ?? entry.objectUrl;
-      })
-      .finally(() => {
-        pendingEntries.delete(resourceUrl);
       });
+    const pending = resolvedObjectUrl.finally(() => {
+      if (pendingEntries.get(resourceUrl) === pending) {
+        pendingEntries.delete(resourceUrl);
+      }
+    });
 
     pendingEntries.set(resourceUrl, pending);
     return pending;

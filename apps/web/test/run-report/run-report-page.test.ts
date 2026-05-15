@@ -402,11 +402,14 @@ test('authenticated resource hook avoids raw api image urls and cleans blob urls
     'utf8',
   );
 
-  assert.match(source, /useState<string \\| null>\(null\)/);
+  assert.match(source, /useState<ResolvedResourceUrl \| null>\(null\)/);
   assert.doesNotMatch(source, /useState<string \\| null>\(resourceUrl \?\? null\)/);
+  assert.match(source, /key: apiPath, url: objectUrl/);
+  assert.match(source, /resolvedResource\?\.key !== resourceKey/);
+  assert.match(source, /setResolvedResource\(\(current\) => \(current\?\.key === apiPath \? current : null\)\)/);
   assert.match(source, /URL\.createObjectURL\(blob\)/);
   assert.match(source, /URL\.revokeObjectURL\(objectUrl\)/);
-  assert.match(source, /\.catch\(\(\) => \{[\s\S]*?setResolvedUrl\(null\)/);
+  assert.match(source, /\.catch\(\(\) => \{[\s\S]*?setResolvedResource\(null\)/);
 });
 
 test('run monitor exposes a report CTA into /runs/:runId/report', () => {
