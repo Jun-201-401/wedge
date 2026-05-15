@@ -846,6 +846,114 @@ test("[Agent Worker] scenario safety block은 실패가 아니라 POLICY_BLOCKED
   ));
 });
 
+test("[Agent Worker] scenario safety block은 trace callback과 artifact에 기록된다", async () => {
+  const message = await loadAgentExampleMessage();
+  const task = message.payload.agentTask;
+  task.budget.max_steps = 1;
+  task.artifact_policy = {
+    capture_screenshots: false,
+    capture_dom_snapshots: false,
+    capture_ax_tree: false,
+    capture_trace: true
+  };
+
+  const runtimePlan = createAgentRuntimePlan(task);
+  runtimePlan.safety.use_synthetic_inputs = false;
+  const persistedArtifacts: ArtifactDraft[] = [];
+  const agentEvents: AgentEvent[] = [];
+  const agentTraces: AgentTraceCallbackPayload[] = [];
+  const decisionClient: AgentDecisionClient = {
+    decide: () => ({
+      kind: "act",
+      description: "Try a synthetic input that scenario safety forbids.",
+      reason: "Exercise scenario safety block trace persistence.",
+      confidence: 0.8,
+      action: {
+        type: "fill",
+        target: {
+          placeholder: "이메일"
+        },
+        value: "test@example.com"
+      },
+      settleStrategy: {
+        type: "none",
+        timeout_ms: 0
+      },
+      stage: "INPUT",
+      targetKey: "candidate_email"
+    })
+  };
+
+  const result = await executeAgentRunWithScenarioRuntime({
+    runId: task.run_id,
+    task,
+    runtimePlan,
+    session: createSimulatedSession(runtimePlan, {
+      execute: async (action) => {
+        throw new RunnerExecutionPolicyError({
+          safetyCode: "SYNTHETIC_INPUT_BLOCKED",
+          riskClass: "SYNTHETIC_INPUT",
+          message: `Scenario safety forbids synthetic ${action.type} actions when use_synthetic_inputs=false`,
+          details: {
+            actionType: action.type,
+            useSyntheticInputs: runtimePlan.safety.use_synthetic_inputs
+          }
+        });
+      },
+      settle: async () => createSettledResult(),
+      snapshot: () => createSimulatedPageSnapshot(runtimePlan, {
+        finalUrl: task.start_url
+      })
+    }),
+    callbackClient: createStubCallbackClient({
+      sendAgentEvents: async (_runId, payload) => {
+        agentEvents.push(...payload.events);
+      },
+      sendAgentTrace: async (_runId, payload) => {
+        agentTraces.push(payload);
+      }
+    }),
+    capturePipeline: {
+      collectCheckpoint: async () => {
+        throw new Error("scenario safety block should not collect failure checkpoint artifacts");
+      }
+    },
+    artifactStore: {
+      persistArtifacts: async ({ artifacts }) => {
+        persistedArtifacts.push(...artifacts);
+        return artifacts.map((artifact) => ({
+          artifactId: artifact.artifactId,
+          artifactType: artifact.artifactType,
+          bucket: "local-runner",
+          key: `runs/${task.run_id}/${artifact.stepKey}/${artifact.artifactId}-${artifact.artifactType.toLowerCase()}.${artifact.fileExtension}`,
+          mimeType: artifact.mimeType,
+          sizeBytes: artifact.content.length,
+          sha256: "trace-sha",
+          createdAt: "2026-05-15T00:00:00.000Z",
+          stepKey: artifact.stepKey
+        }));
+      }
+    },
+    decisionClient
+  });
+
+  const traceArtifact = persistedArtifacts.find((artifact) => artifact.artifactType === "TRACE");
+  assert.ok(traceArtifact);
+  const traceJson = JSON.parse(traceArtifact.content);
+
+  assert.equal(result.trace.outcome.status, "POLICY_BLOCKED");
+  assert.equal(traceJson.turns[0].safetyBlock.source, "scenario_safety");
+  assert.equal(traceJson.turns[0].safetyBlock.safetyCode, "SYNTHETIC_INPUT_BLOCKED");
+  assert.equal(traceJson.turns[0].safetyBlock.reasonCode, "POLICY_SYNTHETIC_INPUT_BLOCKED");
+  assert.equal(agentTraces.length, 1);
+  assert.equal((agentTraces[0].trace.turns as any[])[0].safetyBlock.safetyCode, "SYNTHETIC_INPUT_BLOCKED");
+  assert.ok(agentEvents.some((event) =>
+    event.eventType === "TRACE_PERSISTED" &&
+    event.payload.outcomeReasonCode === "POLICY_SYNTHETIC_INPUT_BLOCKED" &&
+    event.payload.traceArtifactId === result.traceArtifact?.artifactId
+  ));
+});
+
 test("[Agent Worker] max_duration_ms를 넘긴 decision은 action 전에 EXHAUSTED로 종료한다", async () => {
   const message = await loadAgentExampleMessage();
   const task = message.payload.agentTask;
