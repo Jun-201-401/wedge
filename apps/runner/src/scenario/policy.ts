@@ -20,6 +20,54 @@ export type ScenarioSafetyReasonCode =
   | "POLICY_PAYMENT_COMMIT_BLOCKED"
   | "POLICY_DESTRUCTIVE_ACTION_BLOCKED";
 
+export type ScenarioSafetyRecoveryBlockReason =
+  | "RECOVERABLE_EXTERNAL_NAVIGATION"
+  | "NON_RECOVERABLE_SAFETY_BLOCK"
+  | "STEP_RECOVERY_LIMIT_REACHED"
+  | "RUN_RECOVERY_LIMIT_REACHED"
+  | "DUPLICATE_SAFETY_BLOCK";
+
+export type ScenarioSafetyRecoveryStrategy = "RETURN_TO_SAFE_ANCHOR";
+
+export interface ScenarioSafetyRecoveryLimits {
+  maxAttemptsPerStep: number;
+  maxAttemptsPerRun: number;
+}
+
+export interface ScenarioSafetyRecoveryState {
+  totalAttempts: number;
+  attemptsByStepKey: Record<string, number>;
+  blockedFingerprints: string[];
+}
+
+export interface ScenarioSafetyRecoveryDecisionInput {
+  safetyCode: ScenarioSafetyBlockCode;
+  stepKey: string;
+  details?: Record<string, unknown>;
+  state: ScenarioSafetyRecoveryState;
+  limits?: Partial<ScenarioSafetyRecoveryLimits>;
+}
+
+export type ScenarioSafetyRecoveryDecision =
+  | {
+      recoverable: true;
+      strategy: ScenarioSafetyRecoveryStrategy;
+      reason: "RECOVERABLE_EXTERNAL_NAVIGATION";
+      fingerprint: string;
+      limits: ScenarioSafetyRecoveryLimits;
+    }
+  | {
+      recoverable: false;
+      reason: Exclude<ScenarioSafetyRecoveryBlockReason, "RECOVERABLE_EXTERNAL_NAVIGATION">;
+      fingerprint: string;
+      limits: ScenarioSafetyRecoveryLimits;
+    };
+
+export const DEFAULT_SCENARIO_SAFETY_RECOVERY_LIMITS: ScenarioSafetyRecoveryLimits = {
+  maxAttemptsPerStep: 1,
+  maxAttemptsPerRun: 3
+};
+
 export interface RunnerExecutionPolicyErrorInput {
   safetyCode: ScenarioSafetyBlockCode;
   riskClass: ScenarioSafetyRiskClass;
@@ -172,6 +220,124 @@ export function reasonCodeFromScenarioSafetyBlock(safetyCode: ScenarioSafetyBloc
     case "DESTRUCTIVE_ACTION_BLOCKED":
       return "POLICY_DESTRUCTIVE_ACTION_BLOCKED";
   }
+}
+
+export function createScenarioSafetyRecoveryState(): ScenarioSafetyRecoveryState {
+  return {
+    totalAttempts: 0,
+    attemptsByStepKey: {},
+    blockedFingerprints: []
+  };
+}
+
+export function evaluateScenarioSafetyRecovery(
+  input: ScenarioSafetyRecoveryDecisionInput
+): ScenarioSafetyRecoveryDecision {
+  const limits = scenarioSafetyRecoveryLimits(input.limits);
+  const fingerprint = scenarioSafetyBlockFingerprint({
+    safetyCode: input.safetyCode,
+    stepKey: input.stepKey,
+    details: input.details
+  });
+
+  if (!isRecoverableScenarioSafetyBlock(input.safetyCode)) {
+    return {
+      recoverable: false,
+      reason: "NON_RECOVERABLE_SAFETY_BLOCK",
+      fingerprint,
+      limits
+    };
+  }
+
+  if (input.state.totalAttempts >= limits.maxAttemptsPerRun) {
+    return {
+      recoverable: false,
+      reason: "RUN_RECOVERY_LIMIT_REACHED",
+      fingerprint,
+      limits
+    };
+  }
+
+  if ((input.state.attemptsByStepKey[input.stepKey] ?? 0) >= limits.maxAttemptsPerStep) {
+    return {
+      recoverable: false,
+      reason: "STEP_RECOVERY_LIMIT_REACHED",
+      fingerprint,
+      limits
+    };
+  }
+
+  if (input.state.blockedFingerprints.includes(fingerprint)) {
+    return {
+      recoverable: false,
+      reason: "DUPLICATE_SAFETY_BLOCK",
+      fingerprint,
+      limits
+    };
+  }
+
+  return {
+    recoverable: true,
+    strategy: "RETURN_TO_SAFE_ANCHOR",
+    reason: "RECOVERABLE_EXTERNAL_NAVIGATION",
+    fingerprint,
+    limits
+  };
+}
+
+export function recordScenarioSafetyRecoveryAttempt(
+  state: ScenarioSafetyRecoveryState,
+  input: {
+    stepKey: string;
+    fingerprint: string;
+  }
+): ScenarioSafetyRecoveryState {
+  return {
+    totalAttempts: state.totalAttempts + 1,
+    attemptsByStepKey: {
+      ...state.attemptsByStepKey,
+      [input.stepKey]: (state.attemptsByStepKey[input.stepKey] ?? 0) + 1
+    },
+    blockedFingerprints: [...state.blockedFingerprints, input.fingerprint]
+  };
+}
+
+export function isRecoverableScenarioSafetyBlock(safetyCode: ScenarioSafetyBlockCode): boolean {
+  return safetyCode === "EXTERNAL_NAVIGATION_BLOCKED" || safetyCode === "EXTERNAL_VISIT_BLOCKED";
+}
+
+export function scenarioSafetyBlockFingerprint(input: {
+  safetyCode: ScenarioSafetyBlockCode;
+  stepKey: string;
+  details?: Record<string, unknown>;
+}): string {
+  const details = input.details ?? {};
+  const fromOrigin = stringDetail(details, "currentOrigin") ?? stringDetail(details, "allowedOrigin") ?? "";
+  const toOrigin = stringDetail(details, "nextOrigin") ?? stringDetail(details, "currentOrigin") ?? "";
+  const targetSummary = stringDetail(details, "targetSummary") ?? "";
+  return [input.stepKey, input.safetyCode, fromOrigin, toOrigin, targetSummary].join("|");
+}
+
+function scenarioSafetyRecoveryLimits(limits?: Partial<ScenarioSafetyRecoveryLimits>): ScenarioSafetyRecoveryLimits {
+  return {
+    maxAttemptsPerStep: positiveIntegerOrDefault(
+      limits?.maxAttemptsPerStep,
+      DEFAULT_SCENARIO_SAFETY_RECOVERY_LIMITS.maxAttemptsPerStep
+    ),
+    maxAttemptsPerRun: positiveIntegerOrDefault(
+      limits?.maxAttemptsPerRun,
+      DEFAULT_SCENARIO_SAFETY_RECOVERY_LIMITS.maxAttemptsPerRun
+    )
+  };
+}
+
+function positiveIntegerOrDefault(value: unknown, fallback: number): number {
+  return Number.isInteger(value) && Number(value) > 0 ? Number(value) : fallback;
+}
+
+function stringDetail(details: Record<string, unknown>, key: string): string | null {
+  const value = details[key];
+  return typeof value === "string" && value.trim() ? value : null;
 }
 
 function resolveOrigin(candidateUrl: string, baseUrl: string): string | null {
