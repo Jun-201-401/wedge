@@ -123,6 +123,8 @@ node infra/scripts/real-agent-run-e2e-smoke.mjs
 | `artifact_manifest` | checkpoint별 artifact 요청/저장/collector 상태 요약 | `storedCount`, `collectorStatus`, `deliveryIssueScopes` |
 | `run_finished` | normal finish 또는 stop finish | `terminalOutcome`, `deliveryStatus`, `deliveryIssueScopes` |
 | `run_failed` | browser/action/callback fatal 실패 | `failureCode`, `failedStepKey`, `timeoutPhase`, `resultCompleteness` |
+| `scenario_safety_blocked` | Scenario safety가 위험 action을 의도적으로 차단 | `safetyCode`, `riskClass`, `reasonCode`, `details` |
+| `TRACE_PERSISTED` | AgentTrace artifact 저장 완료 | `outcomeStatus`, `outcomeReasonCode`, `traceArtifactId` |
 | `step_settle_timeout` | settle timeout을 step 완료 상태로 계속 진행 | `timeoutPolicy=continue_with_timeout_settle_status` |
 | `duplicate_message_replayed` | idempotency record 기반 재실행 방지 | `idempotencyKey`, `originalRunId` |
 | `retry_sequence_exhausted` | callback retry 실패 후 outbox 기록 시도 | `callbackType`, `terminalAction`, `httpStatus` |
@@ -135,8 +137,34 @@ node infra/scripts/real-agent-run-e2e-smoke.mjs
 - Timeout failure: action timeout은 `RUNNER_TIMEOUT`, `timeoutPhase=action`, `timeoutPolicy=fail_step_and_run`이어야 한다.
 - Settle timeout: `step_settle_timeout`과 `STEP_COMPLETED.payload.settle.status=timeout`으로 남고 run 실패로 보지 않는다.
 - Browser crash: `RUNNER_BROWSER_CRASH`가 원인 실패이며, crash 이후 screenshot/DOM capture 실패가 원인 실패를 덮으면 안 된다.
+- Agent policy blocked: Scenario safety가 action을 막은 경우 `run_finished`와 AgentTrace `outcome.status=POLICY_BLOCKED`가 기준이다. 이는 browser/action fatal 실패가 아니므로 `run_failed`로 분류하지 않는다.
 - Callback partial failure: `step-events`, `artifact-storage`, `artifacts-callback`, `checkpoints-callback`, `agent-events-callback`, `agent-trace-callback`, `failure-capture`는 `DELIVERY_PARTIAL`이다.
 - Finished callback failure: 실행 결과는 보존하지만 `deliveryStatus=DELIVERY_FAILED`로 본다.
+
+## 5.1 Agent safety block 확인 기준
+
+Scenario safety block은 Runner가 위험 action을 허용하지 않기 위해 의도적으로 멈춘 결과다. 운영자는 이를 "러너가 터졌다"가 아니라 "정책상 중단했다"로 먼저 분류한다.
+
+확인 순서:
+
+1. `scenario_safety_blocked` 로그의 `safetyCode`와 `riskClass`를 확인한다.
+2. 같은 run의 `run_finished.agentOutcome=POLICY_BLOCKED` 또는 AgentTrace `outcome.status=POLICY_BLOCKED`를 확인한다.
+3. `TRACE_PERSISTED` event의 `outcomeReasonCode`와 `traceArtifactId`를 확인한다.
+4. API에 저장된 AgentTrace의 마지막 turn에 `safetyBlock.source=scenario_safety`가 있는지 확인한다.
+
+대표 reason code:
+
+| reason code | 의미 | 운영 판단 |
+| --- | --- | --- |
+| `POLICY_SYNTHETIC_INPUT_BLOCKED` | 테스트 데이터 없는 입력/선택 action 차단 | 시나리오에 안전한 테스트 입력이 필요한지 확인 |
+| `POLICY_EXTERNAL_NAVIGATION_BLOCKED` | 허용되지 않은 외부 origin 이동 차단 | checkout provider 등 allowlist 필요 여부 확인 |
+| `POLICY_PAYMENT_COMMIT_BLOCKED` | 실제 결제/주문 확정 가능 action 차단 | 정상 차단. checkout 진입 버튼까지 너무 일찍 막았는지는 별도 policy 개선 검토 |
+| `POLICY_DESTRUCTIVE_ACTION_BLOCKED` | 삭제/탈퇴 등 파괴적 action 차단 | 정상 차단 |
+
+주의:
+- `POLICY_BLOCKED`는 분석 실패(`FAILED`)와 다르다.
+- 실제 결제/주문 확정 action을 허용했다는 뜻이 아니다.
+- 구매/결제 시나리오에서 checkout 진입 전 너무 일찍 멈추면 `safetyCode=PAYMENT_COMMIT_BLOCKED`의 `details.targetSummary`를 확인한다. `구매하기`, `바로구매`, `주문하기`가 checkout 진입 버튼인지 최종 확정 버튼인지 분리하는 개선은 policy 판단 영역이다.
 
 ## 6. 빠른 복구 체크리스트
 
@@ -145,3 +173,4 @@ node infra/scripts/real-agent-run-e2e-smoke.mjs
 3. idempotency 중복이면 API `/internal/runner/message-idempotency/{scope}/{sha256}` 또는 agent idempotency record를 확인한다.
 4. artifact 누락이면 `artifact_manifest`의 `requestedTypes`, `storedTypes`, `collectorStatus`를 비교한다.
 5. browser crash/timeout이면 `failureCode`, `timeoutPhase`, `browser_health` observation을 함께 본다.
+6. Agent 실행이 정책 차단이면 `run_failed`보다 `scenario_safety_blocked`, `TRACE_PERSISTED`, AgentTrace `safetyBlock`을 먼저 확인한다.

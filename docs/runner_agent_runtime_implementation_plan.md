@@ -874,6 +874,15 @@ Use FAILED when the agent/runtime could not complete the task for technical or s
 Use SUCCESS_* only when verifier has structured evidence.
 ```
 
+Current safety-block handling:
+
+```text
+Scenario safety failures are modeled as POLICY_BLOCKED terminal outcomes, not as runner fatal failures.
+RunnerExecutionPolicyError is reserved for policy decisions such as synthetic input, external navigation, destructive action, or payment/order commit blocks.
+When a scenario safety block occurs, the runner records the block in AgentTrace.turns[].safetyBlock and emits a scenario_safety_blocked event.
+The final AgentTrace outcome reason_code must stay aligned with the safety block reasonCode.
+```
+
 # 7. Risk Taxonomy
 
 Replace broad payment keyword blocking in agent policy with explicit risk classes.
@@ -1770,9 +1779,12 @@ Completed:
 - API server exposes DB-backed Agent idempotency records, and Runner can use them with `RUNNER_AGENT_IDEMPOTENCY_STORE_MODE=api`.
 - API-backed Agent idempotency uses a `CLAIMED` lease before browser execution, so concurrent duplicate deliveries on different Runner replicas do not start parallel browser sessions.
 - API-backed Agent idempotency renews owned leases during long execution and releases owned claims when execution fails before a terminal idempotency record is stored.
+- Scenario safety blocks are converted to `POLICY_BLOCKED` Agent outcomes instead of `FAILED` runner errors.
+- Scenario safety block details are recorded in `AgentTrace.turns[].safetyBlock`, TRACE artifacts, agent trace callbacks, and `TRACE_PERSISTED` event metadata.
 
 Remaining:
 - Continue collecting staging load evidence for lease TTL / renewal interval defaults as Agent execution duration changes.
+- Refine checkout-entry vs final payment/order commit classification so checkout navigation is not blocked by broad purchase/order keywords.
 ```
 
 ## Phase 7: LLM Decision Client
