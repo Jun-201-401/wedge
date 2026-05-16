@@ -201,12 +201,12 @@ function FindingReferenceSummary({
   references,
   summaryId,
   isOpen,
-  onOpen,
+  onToggle,
 }: {
   references: ReferenceBadgeViewModel[];
   summaryId: string;
   isOpen: boolean;
-  onOpen: () => void;
+  onToggle: () => void;
 }) {
   const panelId = `run-report-reference-detail-${summaryId.replace(/[^a-zA-Z0-9_-]/g, '-')}`;
   const visibleReferences = references.slice(0, 2);
@@ -225,7 +225,7 @@ function FindingReferenceSummary({
         aria-controls={panelId}
         onClick={(event) => {
           event.stopPropagation();
-          onOpen();
+          onToggle();
         }}
       >
         <span className="run-report-reference-summary__label">참고 기준</span>
@@ -271,8 +271,8 @@ function JudgementBasisCard({
   const references = referenceBadgesForFinding(finding);
   const [isOpen, setIsOpen] = useState(false);
   const hasReferences = references.length > 0;
-  const openReferences = useCallback(() => {
-    setIsOpen(true);
+  const toggleReferenceSummary = useCallback(() => {
+    setIsOpen((current) => !current);
   }, []);
   const toggleReferencesFromJudgement = useCallback(() => {
     setIsOpen((current) => !current);
@@ -306,7 +306,7 @@ function JudgementBasisCard({
         references={references}
         summaryId={recommendation.id}
         isOpen={isOpen}
-        onOpen={openReferences}
+        onToggle={toggleReferenceSummary}
       />
     </article>
   );

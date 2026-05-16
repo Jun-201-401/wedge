@@ -802,7 +802,15 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
   }
 
   const reportCtaAction = reportPath ? (
-    <span className="run-monitor-report-cta__open-label">{reportCtaActionLabel}</span>
+    <span className="run-monitor-report-cta__open-label">
+      <span className="run-monitor-report-cta__open-icon" aria-hidden="true">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width={18} height={18}>
+          <path fill="none" d="M0 0h24v24H0z" />
+          <path fill="currentColor" d="M1.946 9.315c-.522-.174-.527-.455.01-.634l19.087-6.362c.529-.176.832.12.684.638l-5.454 19.086c-.15.529-.455.547-.679.045L12 14l6-8-8 6-8.054-2.685z" />
+        </svg>
+      </span>
+      <span className="run-monitor-report-cta__open-text">{reportCtaActionLabel}</span>
+    </span>
   ) : canGenerateReport && reportActionState.kind === 'error' ? (
     <button type="button" onClick={retryGenerateReport} disabled={isReportActionPending}>
       {reportCtaActionLabel}
@@ -831,7 +839,14 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
   const shouldShowReportCollectionSummary = reportCtaState.kind === 'open';
   const reportCtaContent = (
     <>
-      <strong>분석 결과 리포트</strong>
+      <div className="run-monitor-report-cta__heading">
+        <strong>분석 결과 리포트</strong>
+        {shouldShowReportCollectionSummary ? (
+          <span className="run-monitor-report-cta__complete-mark" aria-hidden="true">
+            <CheckIcon className="run-monitor-report-cta__complete-check" />
+          </span>
+        ) : null}
+      </div>
       <p>{reportCtaState.message}</p>
       {shouldShowReportLoader ? (
         <div className="run-monitor-report-cta__activity">

@@ -1329,10 +1329,6 @@
   outline-offset: 2px;
 }
 
-.run-report-reference-summary--open .run-report-reference-summary__trigger {
-  cursor: default;
-}
-
 .run-report-reference-summary__trigger .run-report-reference-summary__label {
   color: #64748b;
   font-size: 0.58rem;

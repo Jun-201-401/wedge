@@ -147,7 +147,7 @@ test('run report page follows the report.html result-first layout', () => {
   assert.doesNotMatch(viewer, /빠른 수정/);
   assert.doesNotMatch(viewer, /run-report-recommendation-tab__meta/);
   assert.match(viewer, /const \[isOpen, setIsOpen\] = useState\(false\)/);
-  assert.match(viewer, /const openReferences = useCallback\(\(\) => \{\s*setIsOpen\(true\);/);
+  assert.match(viewer, /const toggleReferenceSummary = useCallback\(\(\) => \{\s*setIsOpen\(\(current\) => !current\);/);
   assert.match(viewer, /const toggleReferencesFromJudgement = useCallback\(\(\) => \{\s*setIsOpen\(\(current\) => !current\);/);
   assert.match(viewer, /target\.closest\('a, button'\)/);
   assert.match(viewer, /target\.closest\('\.run-report-reference-summary'\)/);
@@ -351,8 +351,8 @@ test('run report css keeps result-first content in the live simulation cockpit t
   assert.match(viewer, /<path d="M7\.5 5L12\.5 10L7\.5 15"/);
   assert.match(viewer, /function JudgementBasisCard/);
   assert.match(viewer, /run-report-selected-action__detail-card--reference/);
-  assert.match(viewer, /onOpen=\{openReferences\}/);
-  assert.doesNotMatch(viewer, /onToggle/);
+  assert.match(viewer, /onToggle=\{toggleReferenceSummary\}/);
+  assert.doesNotMatch(viewer, /onOpen/);
   assert.match(viewer, /target\.closest\('a, button'\)/);
   assert.match(viewer, /toggleReferencesFromJudgement\(\);/);
   assert.match(css, /\.run-report-selected-action__detail-card--reference:hover\s*\{[\s\S]*?background: #f1f5f9/);
@@ -370,7 +370,7 @@ test('run report css keeps result-first content in the live simulation cockpit t
   assert.match(css, /\.run-report-reference-summary__trigger\s*\{[\s\S]*?padding: 0\.36rem 0\.46rem 0\.26rem/);
   assert.doesNotMatch(css, /\.run-report-reference-summary__trigger:hover\s*\{[\s\S]*?background:/);
   assert.doesNotMatch(css, /\.run-report-reference-summary__trigger\[aria-expanded="true"\]\s*\{[\s\S]*?background:/);
-  assert.match(css, /\.run-report-reference-summary--open \.run-report-reference-summary__trigger\s*\{[\s\S]*?cursor: default/);
+  assert.doesNotMatch(css, /\.run-report-reference-summary--open \.run-report-reference-summary__trigger\s*\{[\s\S]*?cursor: default/);
   assert.doesNotMatch(css.match(/\.run-report-reference-summary__chevron\s*\{[^}]*\}/)?.[0] ?? '', /border-right/);
   assert.match(css, /\.run-report-reference-summary__chevron-icon path\s*\{[\s\S]*?stroke: currentColor/);
   assert.match(css, /\.run-report-reference-summary__chevron-icon path\s*\{[\s\S]*?stroke-width: 2\.25/);
@@ -553,7 +553,10 @@ test('run monitor exposes a report CTA into /runs/:runId/report', () => {
   assert.match(css, /\.run-monitor-report-cta\s*\{[\s\S]*?background: #fff/);
   assert.match(css, /\.run-monitor-report-cta\s*\{[\s\S]*?text-decoration: none/);
   assert.match(css, /\.run-monitor-report-cta--clickable\s*\{[\s\S]*?cursor: pointer/);
-  assert.match(css, /\.run-monitor-report-cta__open-label::after\s*\{[\s\S]*?content: '→'/);
+  assert.match(source, /run-monitor-report-cta__open-icon/);
+  assert.match(css, /\.run-monitor-report-cta--clickable:hover \.run-monitor-report-cta__open-icon svg,\s*\n\.run-monitor-report-cta--clickable:focus-visible \.run-monitor-report-cta__open-icon svg\s*\{[\s\S]*?transform: translateX\(2\.8em\) rotate\(45deg\) scale\(1\.1\)/);
+  assert.match(css, /\.run-monitor-report-cta--clickable:hover \.run-monitor-report-cta__open-text,\s*\n\.run-monitor-report-cta--clickable:focus-visible \.run-monitor-report-cta__open-text\s*\{[\s\S]*?opacity: 0/);
+  assert.match(css, /\.run-monitor-report-cta--clickable:hover \.run-monitor-report-cta__open-text,\s*\n\.run-monitor-report-cta--clickable:focus-visible \.run-monitor-report-cta__open-text\s*\{[\s\S]*?transform: translateX\(6\.4em\)/);
   assert.doesNotMatch(css, /\.run-monitor-report-cta__passive-label/);
   assert.doesNotMatch(css, /\.run-monitor-report-cta__actions a:hover/);
   assert.match(css, /\.run-monitor-report-cta__actions button\s*\{[\s\S]*?background: #475569/);
