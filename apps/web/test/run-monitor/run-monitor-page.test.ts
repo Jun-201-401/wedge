@@ -156,8 +156,12 @@ test('run monitor page exposes Sprint 2 live cockpit essentials with Korean-faci
   assert.match(source, /run-monitor-report-cta__open-label/);
   assert.doesNotMatch(source, /run-monitor-report-cta__passive-label/);
   assert.match(source, /RunMonitorGooLoader/);
+  assert.match(source, /RunMonitorShapeLoader/);
   assert.match(source, /run-monitor-browser__loading-state/);
   assert.match(source, /화면 캡처를 기다리고 있습니다/);
+  assert.match(source, /분석 결과를 확인 중입니다/);
+  assert.match(source, /리포트를 준비 중입니다/);
+  assert.match(source, /상태를 확인 중입니다/);
   assert.match(source, /리포트 열기/);
   assert.doesNotMatch(source, /리포트 보기/);
   assert.match(source, /RUN_MONITOR_PANEL_DEFAULT_WIDTH/);
@@ -266,9 +270,12 @@ test('run monitor css follows the live cockpit visual language', () => {
   assert.match(css, /\.run-monitor-report-cta--clickable\s*\{[\s\S]*?cursor: pointer/);
   assert.match(css, /\.run-monitor-report-cta--clickable:hover\s*\{[\s\S]*?background: #f8fafc/);
   assert.match(css, /\.run-monitor-report-cta--clickable:focus-visible\s*\{[\s\S]*?outline: 2px solid rgba\(14, 165, 233, 0\.42\)/);
-  assert.match(css, /\.run-monitor-report-cta__state\s*\{[\s\S]*?justify-content: flex-start/);
-  assert.doesNotMatch(css, /\.run-monitor-report-cta__state b/);
+  assert.doesNotMatch(css, /\.run-monitor-report-cta__state/);
   assert.match(css, /\.run-monitor-report-cta > p\s*\{[\s\S]*?min-height: 0/);
+  assert.match(cssRule(css, '.run-monitor-report-cta__activity'), /display: flex/);
+  assert.match(cssRule(css, '.run-monitor-report-cta__activity'), /background: #f8fafc/);
+  assert.match(cssRule(css, '.run-monitor-shape-loader__shape'), /linear-gradient\(-45deg, #7dd3fc 0%, #e0f2fe 48%, #0ea5e9 100%\)/);
+  assert.match(cssRule(css, '.run-monitor-shape-loader__shape'), /animation: run-monitor-shape-loader-spin 3s infinite/);
   assert.match(css, /\.run-monitor-report-cta__footer\s*\{[\s\S]*?display: grid/);
   assert.match(css, /\.run-monitor-report-cta__footer\s*\{[\s\S]*?border-top: 0/);
   assert.match(css, /\.run-monitor-report-cta__actions\s*\{[\s\S]*?width: 100%/);

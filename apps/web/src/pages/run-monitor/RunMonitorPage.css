@@ -1028,8 +1028,8 @@
 
 .run-monitor-context dt {
   margin: 0;
-  color: #94a3b8;
-  font-size: 0.54rem;
+  color: #64748b;
+  font-size: 0.66rem;
   font-weight: 900;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -1292,37 +1292,6 @@
   outline-offset: 3px;
 }
 
-.run-monitor-report-cta__state {
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
-  gap: 0.7rem;
-  margin-bottom: 0;
-}
-
-.run-monitor-report-cta__state > span {
-  display: inline-flex;
-  min-height: 1.18rem;
-  align-items: center;
-  gap: 0;
-  border-radius: 999px;
-  background: #e0f2fe;
-  padding: 0 0.44rem;
-  color: #0369a1;
-  font-size: 0.54rem;
-  font-weight: 900;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.run-monitor-report-cta__state > span::before {
-  content: none;
-}
-
-.run-monitor-report-cta--open .run-monitor-report-cta__state > span {
-  animation: none;
-}
-
 .run-monitor-report-cta strong {
   display: block;
   color: #020617;
@@ -1345,6 +1314,29 @@
   gap: 0.48rem;
   padding-top: 0.14rem;
   border-top: 0;
+}
+
+.run-monitor-report-cta__activity {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 1rem;
+  border-radius: 0.72rem;
+  background: #f8fafc;
+  padding: 0.58rem 0.68rem;
+}
+
+.run-monitor-report-cta__activity-copy {
+  display: grid;
+  min-width: 0;
+  gap: 0.24rem;
+}
+
+.run-monitor-report-cta__activity-copy span {
+  color: #475569;
+  font-size: 0.78rem;
+  font-weight: 900;
+  letter-spacing: -0.015em;
 }
 
 .run-monitor-goo-loader {
@@ -1400,6 +1392,34 @@
   width: 0;
   height: 0;
   overflow: hidden;
+}
+
+.run-monitor-shape-loader {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 1.24rem;
+  height: 1.24rem;
+  isolation: isolate;
+}
+
+.run-monitor-shape-loader__shape {
+  position: relative;
+  width: 1.24rem;
+  height: 1.24rem;
+  background: linear-gradient(-45deg, #7dd3fc 0%, #e0f2fe 48%, #0ea5e9 100%);
+  animation: run-monitor-shape-loader-spin 3s infinite;
+}
+
+.run-monitor-shape-loader__shape::before {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  background: linear-gradient(-45deg, #7dd3fc 0%, #e0f2fe 48%, #0ea5e9 100%);
+  filter: blur(7px);
+  transform: translate3d(0, 0, 0) scale(0.95);
 }
 
 .run-monitor-collection-summary {
@@ -1627,6 +1647,21 @@
 
   66.6% {
     z-index: 1;
+  }
+}
+
+@keyframes run-monitor-shape-loader-spin {
+  0% {
+    transform: rotate(-45deg);
+  }
+
+  50% {
+    border-radius: 50%;
+    transform: rotate(-360deg);
+  }
+
+  100% {
+    transform: rotate(-45deg);
   }
 }
 
@@ -1864,11 +1899,10 @@
   .run-monitor-browser__stage--skeleton,
   .run-monitor-skeleton-line,
   .run-monitor-progress__track--skeleton span,
-  .run-monitor-report-cta__state > span,
-  .run-monitor-report-cta__state > span::before,
   .run-monitor-report-cta__open-label,
   .run-monitor-goo-loader__dots,
-  .run-monitor-goo-loader__dot {
+  .run-monitor-goo-loader__dot,
+  .run-monitor-shape-loader__shape {
     animation: none;
   }
 }

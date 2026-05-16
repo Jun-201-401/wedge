@@ -820,7 +820,7 @@ export function resolveRunMonitorReportCtaState({
       canOpenReport: true,
       titleLabel: '리포트 준비 완료',
       eyebrow: '다음 화면',
-      message: '수집된 근거를 바탕으로 발견된 신호와 개선안을 확인합니다.',
+      message: '수집된 근거와 개선안을 한눈에 정리했습니다.',
     };
   }
 

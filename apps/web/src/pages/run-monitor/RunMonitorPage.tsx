@@ -268,6 +268,16 @@ function RunMonitorGooLoader({ label, className = '' }: { label: string; classNa
   );
 }
 
+function RunMonitorShapeLoader({ label, className = '' }: { label: string; className?: string }) {
+  const loaderClassName = className ? `run-monitor-shape-loader ${className}` : 'run-monitor-shape-loader';
+
+  return (
+    <div className={loaderClassName} role="status" aria-label={label}>
+      <div className="run-monitor-shape-loader__shape" aria-hidden="true" />
+    </div>
+  );
+}
+
 function RunMonitorLoadingShell({ runId, targetUrl }: { runId: string; targetUrl: string }) {
   return (
     <div className="run-monitor-page run-monitor-page--loading" aria-busy="true">
@@ -765,13 +775,30 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
       {reportActionState.message}
     </p>
   ) : null;
-  let reportCtaActionLabel = '대기 중';
+  let reportCtaActionLabel = '';
   if (reportPath) {
     reportCtaActionLabel = '리포트 열기';
   } else if (canGenerateReport) {
     reportCtaActionLabel = reportActionState.kind === 'error' ? '다시 시도' : PREPARE_REPORT_PENDING_LABEL;
   } else if (canRequestAnalysis) {
     reportCtaActionLabel = reportActionState.kind === 'error' ? '다시 시도' : PREPARE_REPORT_PENDING_LABEL;
+  }
+  const shouldShowReportLoader = !reportPath && reportActionState.kind !== 'error' && (
+    isReportActionPending ||
+    reportCtaState.kind === 'loading' ||
+    reportCtaState.kind === 'generate' ||
+    reportCtaState.kind === 'request-analysis' ||
+    reportCtaState.kind === 'waiting'
+  );
+  let reportLoaderLabel = PREPARE_REPORT_PENDING_LABEL;
+  let reportLoaderMessage = '분석 결과를 확인 중입니다';
+  if (reportCtaState.kind === 'loading') {
+    reportLoaderLabel = '리포트 상태를 확인하고 있습니다';
+    reportLoaderMessage = '상태를 확인 중입니다';
+  } else if (reportCtaState.kind === 'generate') {
+    reportLoaderMessage = '리포트를 준비 중입니다';
+  } else if (reportCtaState.kind === 'waiting') {
+    reportLoaderLabel = '분석 결과를 기다리고 있습니다';
   }
 
   const reportCtaAction = reportPath ? (
@@ -785,9 +812,10 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
       {reportCtaActionLabel}
     </button>
   ) : null;
-  const reportCtaFooter = reportActionMessage || reportCtaAction ? (
+  const shouldShowReportActionMessageInFooter = Boolean(reportActionMessage) && (!shouldShowReportLoader || reportActionState.kind === 'error');
+  const reportCtaFooter = shouldShowReportActionMessageInFooter || reportCtaAction ? (
     <div className="run-monitor-report-cta__footer">
-      {reportActionMessage}
+      {shouldShowReportActionMessageInFooter ? reportActionMessage : null}
       {reportCtaAction ? (
         <div className="run-monitor-report-cta__actions">
           {reportCtaAction}
@@ -803,11 +831,16 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
   const shouldShowReportCollectionSummary = reportCtaState.kind === 'open';
   const reportCtaContent = (
     <>
-      <div className="run-monitor-report-cta__state">
-        <span>{reportCtaState.eyebrow}</span>
-      </div>
       <strong>분석 결과 리포트</strong>
       <p>{reportCtaState.message}</p>
+      {shouldShowReportLoader ? (
+        <div className="run-monitor-report-cta__activity">
+          <RunMonitorShapeLoader label={reportLoaderLabel} />
+          <div className="run-monitor-report-cta__activity-copy">
+            <span>{reportLoaderMessage}</span>
+          </div>
+        </div>
+      ) : null}
       {shouldShowReportCollectionSummary ? (
         <RunCollectionSummary
           stats={collectionSummaryStats}
