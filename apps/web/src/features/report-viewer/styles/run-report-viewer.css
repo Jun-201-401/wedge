@@ -946,7 +946,7 @@
 }
 
 .run-report-recommendation-tab--active {
-  background: #f0f9ff;
+  background: #e0f2fe;
   box-shadow: none;
 }
 
@@ -1215,11 +1215,18 @@
 .run-report-selected-action__summary span,
 .run-report-selected-action__detail-card span {
   display: block;
-  color: #94a3b8;
   font-size: 0.58rem;
   font-weight: 900;
   letter-spacing: 0.12em;
   text-transform: uppercase;
+}
+
+.run-report-selected-action__summary span {
+  color: #94a3b8;
+}
+
+.run-report-selected-action__detail-card span {
+  color: #020617;
 }
 
 .run-report-selected-action h2 {

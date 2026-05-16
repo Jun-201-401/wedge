@@ -3,7 +3,7 @@
   --run-monitor-complete-sky-soft: #e0f2fe;
   --run-monitor-complete-blue: #0284c7;
   --run-monitor-complete-sky-shadow: rgba(186, 230, 253, 0.28);
-  --run-monitor-report-cta-bg: #bae6fd;
+  --run-monitor-report-cta-bg: #e0f2fe;
   --run-monitor-report-cta-label: #334155;
 
   position: relative;
@@ -1370,7 +1370,7 @@
   min-height: 0;
   margin: 0.08rem 0 0.2rem;
   color: #64748b;
-  font-size: 0.66rem;
+  font-size: 0.7rem;
   font-weight: 600;
   line-height: 1.48;
 }
@@ -1387,9 +1387,7 @@
   min-width: 0;
   align-items: center;
   gap: 1rem;
-  border-radius: 0.72rem;
-  background: #f8fafc;
-  padding: 0.58rem 0.68rem;
+  padding: 0.2rem 0;
 }
 
 .run-monitor-report-cta__activity-copy {
@@ -1465,15 +1463,15 @@
   flex: 0 0 auto;
   align-items: center;
   justify-content: center;
-  width: 1.24rem;
-  height: 1.24rem;
+  width: 1.08rem;
+  height: 1.08rem;
   isolation: isolate;
 }
 
 .run-monitor-shape-loader__shape {
   position: relative;
-  width: 1.24rem;
-  height: 1.24rem;
+  width: 1.08rem;
+  height: 1.08rem;
   background: linear-gradient(-45deg, var(--run-monitor-complete-sky) 0%, var(--run-monitor-complete-sky-soft) 48%, #0ea5e9 100%);
   animation: run-monitor-shape-loader-spin 3s infinite;
 }
@@ -1519,7 +1517,7 @@
   gap: 0.26rem;
   border-radius: 0.64rem;
   background: #f1f5f9;
-  padding: 0.6rem 0.44rem 0.64rem;
+  padding: 0.46rem 0.38rem 0.5rem;
 }
 
 .run-monitor-collection-summary div + div {

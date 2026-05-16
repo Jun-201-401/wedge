@@ -226,7 +226,7 @@ test('run monitor css follows the live cockpit visual language', () => {
   assert.match(cssRule(css, '.run-monitor-page'), /--run-monitor-complete-sky: #bae6fd/);
   assert.match(cssRule(css, '.run-monitor-page'), /--run-monitor-complete-sky-soft: #e0f2fe/);
   assert.match(cssRule(css, '.run-monitor-page'), /--run-monitor-complete-blue: #0284c7/);
-  assert.match(cssRule(css, '.run-monitor-page'), /--run-monitor-report-cta-bg: #bae6fd/);
+  assert.match(cssRule(css, '.run-monitor-page'), /--run-monitor-report-cta-bg: #e0f2fe/);
   assert.match(cssRule(css, '.run-monitor-page'), /--run-monitor-report-cta-label: #334155/);
   assert.match(css, /\.run-monitor-status--complete,\s*\n\.run-monitor-status--queued\s*\{[\s\S]*?border-color: transparent/);
   assert.match(css, /\.run-monitor-status--complete,\s*\n\.run-monitor-status--queued\s*\{[\s\S]*?background: transparent/);
@@ -296,7 +296,7 @@ test('run monitor css follows the live cockpit visual language', () => {
   assert.doesNotMatch(css, /\.run-monitor-report-cta__state/);
   assert.match(css, /\.run-monitor-report-cta > p\s*\{[\s\S]*?min-height: 0/);
   assert.match(cssRule(css, '.run-monitor-report-cta__activity'), /display: flex/);
-  assert.match(cssRule(css, '.run-monitor-report-cta__activity'), /background: #f8fafc/);
+  assert.doesNotMatch(cssRule(css, '.run-monitor-report-cta__activity'), /background:/);
   assert.match(cssRule(css, '.run-monitor-shape-loader__shape'), /linear-gradient\(-45deg, var\(--run-monitor-complete-sky\) 0%, var\(--run-monitor-complete-sky-soft\) 48%, #0ea5e9 100%\)/);
   assert.match(cssRule(css, '.run-monitor-shape-loader__shape'), /animation: run-monitor-shape-loader-spin 3s infinite/);
   assert.match(css, /\.run-monitor-report-cta__footer\s*\{[\s\S]*?display: grid/);

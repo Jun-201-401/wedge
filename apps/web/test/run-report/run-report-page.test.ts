@@ -426,7 +426,7 @@ test('run report css keeps result-first content in the live simulation cockpit t
   assert.match(css, /\.run-report-reference-summary__panel a:hover\s*\{[\s\S]*?background: rgba\(186, 230, 253, 0\.76\)/);
   assert.match(css.match(/\.run-report-recommendation-tab\s*\{[^}]*\}/)?.[0] ?? '', /background: transparent/);
   assert.match(css.match(/\.run-report-recommendation-tab:hover\s*\{[^}]*\}/)?.[0] ?? '', /background: #f1f5f9/);
-  assert.match(css.match(/\.run-report-recommendation-tab--active\s*\{[^}]*\}/)?.[0] ?? '', /background: #f0f9ff/);
+  assert.match(css.match(/\.run-report-recommendation-tab--active\s*\{[^}]*\}/)?.[0] ?? '', /background: #e0f2fe/);
   assert.match(css.match(/\.run-report-recommendation-tab--active\s*\{[^}]*\}/)?.[0] ?? '', /box-shadow: none/);
   assert.match(css, /\.run-report-all-recommendations__toggle\s*\{[\s\S]*?border-radius: 999px/);
   assert.match(css, /\.run-report-all-recommendations__panel\s*\{[\s\S]*?max-height: 0/);

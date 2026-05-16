@@ -57,7 +57,6 @@ type MonitorActionState = {
 const IDLE_MONITOR_ACTION_STATE: MonitorActionState = { kind: 'idle', message: '' };
 const REPORT_STATUS_LOAD_ERROR_MESSAGE = '리포트 상태를 불러오지 못했습니다. 잠시 후 다시 시도해주세요.';
 const GENERATE_REPORT_PENDING_MESSAGE = '리포트 준비 중입니다.';
-const GENERATE_REPORT_SUCCESS_MESSAGE = '리포트 준비가 완료됐습니다.';
 const GENERATE_REPORT_ERROR_MESSAGE = '리포트를 준비하지 못했습니다. 잠시 후 다시 시도해주세요.';
 const REQUEST_ANALYSIS_PENDING_MESSAGE = '분석 요청 중입니다.';
 const REQUEST_ANALYSIS_SUCCESS_MESSAGE = '분석 요청이 접수됐습니다. 분석이 완료되면 리포트를 자동으로 준비합니다.';
@@ -499,7 +498,7 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
 
         setReportProjection(response.data);
         setReportStatusError('');
-        setReportActionState({ kind: 'success', message: GENERATE_REPORT_SUCCESS_MESSAGE });
+        setReportActionState({ kind: 'success', message: '' });
       })
       .catch(() => {
         if (!canApplyReportResponse(requestedRunId)) {
