@@ -242,6 +242,32 @@ function RunMonitorSkeletonLine({ className = '' }: { className?: string }) {
   return <span className={skeletonClassName} aria-hidden="true" />;
 }
 
+function RunMonitorGooLoader({ label, className = '' }: { label: string; className?: string }) {
+  const loaderClassName = className ? `run-monitor-goo-loader ${className}` : 'run-monitor-goo-loader';
+
+  return (
+    <div className={loaderClassName} role="status" aria-label={label}>
+      <div className="run-monitor-goo-loader__dots" aria-hidden="true">
+        <span className="run-monitor-goo-loader__dot run-monitor-goo-loader__dot--one" />
+        <span className="run-monitor-goo-loader__dot run-monitor-goo-loader__dot--two" />
+        <span className="run-monitor-goo-loader__dot run-monitor-goo-loader__dot--three" />
+      </div>
+      <svg className="run-monitor-goo-loader__filter" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
+        <defs>
+          <filter id="run-monitor-goo-filter">
+            <feGaussianBlur in="SourceGraphic" result="blur" stdDeviation="5" />
+            <feColorMatrix
+              in="blur"
+              mode="matrix"
+              values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 21 -7"
+            />
+          </filter>
+        </defs>
+      </svg>
+    </div>
+  );
+}
+
 function RunMonitorLoadingShell({ runId, targetUrl }: { runId: string; targetUrl: string }) {
   return (
     <div className="run-monitor-page run-monitor-page--loading" aria-busy="true">
@@ -266,7 +292,13 @@ function RunMonitorLoadingShell({ runId, targetUrl }: { runId: string; targetUrl
                 <span />
                 <span />
               </div>
-              <div className="run-monitor-browser__stage run-monitor-browser__stage--skeleton" />
+              <div className="run-monitor-browser__stage run-monitor-browser__stage--skeleton run-monitor-browser__stage--loading-skeleton">
+                <div className="run-monitor-browser__loading-state">
+                  <RunMonitorGooLoader label="분석 화면을 준비하고 있습니다" />
+                  <strong>분석 화면 준비 중</strong>
+                  <p>실행 데이터를 연결하고 있습니다.</p>
+                </div>
+              </div>
             </div>
           </section>
 
@@ -752,10 +784,23 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
     <button type="button" onClick={retryRequestAnalysisForReport} disabled={isReportActionPending}>
       {reportCtaActionLabel}
     </button>
-  ) : (
-    <span className="run-monitor-report-cta__passive-label">{reportCtaActionLabel}</span>
-  );
-  const reportCtaCardClassName = 'run-monitor-live-insight__card run-monitor-live-insight__card--report run-monitor-report-cta';
+  ) : null;
+  const reportCtaFooter = reportActionMessage || reportCtaAction ? (
+    <div className="run-monitor-report-cta__footer">
+      {reportActionMessage}
+      {reportCtaAction ? (
+        <div className="run-monitor-report-cta__actions">
+          {reportCtaAction}
+        </div>
+      ) : null}
+    </div>
+  ) : null;
+  const reportCtaCardClassName = [
+    'run-monitor-live-insight__card run-monitor-live-insight__card--report run-monitor-report-cta',
+    `run-monitor-report-cta--${reportCtaState.kind}`,
+    isReportActionPending ? 'run-monitor-report-cta--pending' : '',
+  ].filter(Boolean).join(' ');
+  const shouldShowReportCollectionSummary = reportCtaState.kind === 'open';
   const reportCtaContent = (
     <>
       <div className="run-monitor-report-cta__state">
@@ -763,17 +808,14 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
       </div>
       <strong>분석 결과 리포트</strong>
       <p>{reportCtaState.message}</p>
-      <RunCollectionSummary
-        stats={collectionSummaryStats}
-        isLoading={isEvidenceLoading}
-        errorMessage={evidenceLoadError}
-      />
-      <div className="run-monitor-report-cta__footer">
-        {reportActionMessage}
-        <div className="run-monitor-report-cta__actions">
-          {reportCtaAction}
-        </div>
-      </div>
+      {shouldShowReportCollectionSummary ? (
+        <RunCollectionSummary
+          stats={collectionSummaryStats}
+          isLoading={isEvidenceLoading}
+          errorMessage={evidenceLoadError}
+        />
+      ) : null}
+      {reportCtaFooter}
     </>
   );
 
@@ -874,7 +916,7 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
                   </div>
                 ) : (
                   <div className="run-monitor-browser__empty-state">
-                    <span aria-hidden="true" />
+                    <RunMonitorGooLoader label="화면 캡처를 기다리고 있습니다" />
                     <strong>화면 캡처 대기 중</strong>
                     <p>분석 화면이 준비되면 이 영역에서 바로 확인할 수 있습니다.</p>
                   </div>

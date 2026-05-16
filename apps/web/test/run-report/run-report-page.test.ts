@@ -550,12 +550,11 @@ test('run monitor exposes a report CTA into /runs/:runId/report', () => {
   assert.doesNotMatch(source, /'리포트 생성'/);
   assert.doesNotMatch(source, /'분석 시작'/);
   assert.doesNotMatch(source, /모의 리포트 보기/);
-  assert.match(css, /\.run-monitor-report-cta\s*\{[\s\S]*?background: rgba\(240, 249, 255, 0\.58\)/);
+  assert.match(css, /\.run-monitor-report-cta\s*\{[\s\S]*?background: #fff/);
   assert.match(css, /\.run-monitor-report-cta\s*\{[\s\S]*?text-decoration: none/);
   assert.match(css, /\.run-monitor-report-cta--clickable\s*\{[\s\S]*?cursor: pointer/);
   assert.match(css, /\.run-monitor-report-cta__open-label::after\s*\{[\s\S]*?content: '→'/);
-  assert.match(css, /\.run-monitor-report-cta__passive-label\s*\{[\s\S]*?color: #94a3b8/);
-  assert.doesNotMatch(css, /\.run-monitor-report-cta__passive-label::after/);
+  assert.doesNotMatch(css, /\.run-monitor-report-cta__passive-label/);
   assert.doesNotMatch(css, /\.run-monitor-report-cta__actions a:hover/);
   assert.match(css, /\.run-monitor-report-cta__actions button\s*\{[\s\S]*?background: #475569/);
   assert.match(css, /\.run-monitor-report-cta__actions button\s*\{[\s\S]*?width: 100%/);
