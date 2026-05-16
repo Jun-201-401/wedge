@@ -841,11 +841,6 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
     <>
       <div className="run-monitor-report-cta__heading">
         <strong>분석 결과 리포트</strong>
-        {shouldShowReportCollectionSummary ? (
-          <span className="run-monitor-report-cta__complete-mark" aria-hidden="true">
-            <CheckIcon className="run-monitor-report-cta__complete-check" />
-          </span>
-        ) : null}
       </div>
       <p>{reportCtaState.message}</p>
       {shouldShowReportLoader ? (

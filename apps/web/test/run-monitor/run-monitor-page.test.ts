@@ -158,7 +158,7 @@ test('run monitor page exposes Sprint 2 live cockpit essentials with Korean-faci
   assert.match(source, /run-monitor-report-cta__open-icon/);
   assert.match(source, /width=\{18\} height=\{18\}/);
   assert.match(source, /M1\.946 9\.315/);
-  assert.match(source, /run-monitor-report-cta__complete-mark/);
+  assert.doesNotMatch(source, /run-monitor-report-cta__complete-mark/);
   assert.doesNotMatch(source, /run-monitor-report-cta__passive-label/);
   assert.match(source, /RunMonitorGooLoader/);
   assert.match(source, /RunMonitorShapeLoader/);
@@ -226,6 +226,7 @@ test('run monitor css follows the live cockpit visual language', () => {
   assert.match(cssRule(css, '.run-monitor-page'), /--run-monitor-complete-sky: #bae6fd/);
   assert.match(cssRule(css, '.run-monitor-page'), /--run-monitor-complete-sky-soft: #e0f2fe/);
   assert.match(cssRule(css, '.run-monitor-page'), /--run-monitor-complete-blue: #0284c7/);
+  assert.match(cssRule(css, '.run-monitor-page'), /--run-monitor-report-cta-bg: #bae6fd/);
   assert.match(cssRule(css, '.run-monitor-page'), /--run-monitor-report-cta-label: #334155/);
   assert.match(css, /\.run-monitor-status--complete,\s*\n\.run-monitor-status--queued\s*\{[\s\S]*?border-color: transparent/);
   assert.match(css, /\.run-monitor-status--complete,\s*\n\.run-monitor-status--queued\s*\{[\s\S]*?background: transparent/);
@@ -282,15 +283,16 @@ test('run monitor css follows the live cockpit visual language', () => {
   assert.match(cssRule(css, '.run-monitor-report-cta--clickable::after'), /bottom: 0\.86rem/);
   assert.match(cssRule(css, '.run-monitor-report-cta--clickable::after'), /width: 6\.1rem/);
   assert.match(cssRule(css, '.run-monitor-report-cta--clickable::after'), /height: 1\.82rem/);
-  assert.match(cssRule(css, '.run-monitor-report-cta--clickable::after'), /background: var\(--run-monitor-complete-sky\)/);
+  assert.match(cssRule(css, '.run-monitor-report-cta--clickable::after'), /background: var\(--run-monitor-report-cta-bg\)/);
   assert.match(cssRule(css, '.run-monitor-report-cta--clickable::after'), /transform: scale\(1\)/);
   assert.match(cssRule(css, '.run-monitor-report-cta--clickable:hover::after,\n.run-monitor-report-cta--clickable:focus-visible::after'), /opacity: 1/);
   assert.match(cssRule(css, '.run-monitor-report-cta--clickable:hover::after,\n.run-monitor-report-cta--clickable:focus-visible::after'), /transform: scale\(16\)/);
   assert.match(css, /\.run-monitor-report-cta--clickable:focus-visible\s*\{[\s\S]*?outline: 2px solid rgba\(14, 165, 233, 0\.42\)/);
   assert.match(cssRule(css, '.run-monitor-report-cta--open::before'), /animation: run-monitor-report-diagonal-glass-sheen 3\.2s ease-in-out infinite/);
   assert.match(cssRule(css, '.run-monitor-report-cta--clickable:hover::before,\n.run-monitor-report-cta--clickable:focus-visible::before'), /animation: none/);
-  assert.match(cssRule(css, '.run-monitor-report-cta__complete-mark'), /animation: run-monitor-report-check-pop 560ms/);
-  assert.match(cssRule(css, '.run-monitor-report-cta__complete-check path'), /animation: run-monitor-report-check-draw 420ms ease-out 240ms forwards/);
+  assert.doesNotMatch(css, /run-monitor-report-cta__complete-mark/);
+  assert.doesNotMatch(css, /run-monitor-report-check-pop/);
+  assert.doesNotMatch(css, /run-monitor-report-check-draw/);
   assert.doesNotMatch(css, /\.run-monitor-report-cta__state/);
   assert.match(css, /\.run-monitor-report-cta > p\s*\{[\s\S]*?min-height: 0/);
   assert.match(cssRule(css, '.run-monitor-report-cta__activity'), /display: flex/);
@@ -302,7 +304,7 @@ test('run monitor css follows the live cockpit visual language', () => {
   assert.match(css, /\.run-monitor-report-cta__actions\s*\{[\s\S]*?width: 100%/);
   assert.match(css, /\.run-monitor-report-cta__actions\s*\{[\s\S]*?justify-content: flex-end/);
   assert.match(css, /\.run-monitor-report-cta__open-label\s*\{[\s\S]*?color: var\(--run-monitor-report-cta-label\)/);
-  assert.match(cssRule(css, '.run-monitor-report-cta__open-label'), /background: var\(--run-monitor-complete-sky\)/);
+  assert.match(cssRule(css, '.run-monitor-report-cta__open-label'), /background: var\(--run-monitor-report-cta-bg\)/);
   assert.match(cssRule(css, '.run-monitor-report-cta__open-label'), /overflow: hidden/);
   assert.match(cssRule(css, '.run-monitor-report-cta__open-label'), /transition: transform 200ms ease/);
   assert.match(cssRule(css, '.run-monitor-report-cta__open-text'), /color: var\(--run-monitor-report-cta-label\)/);
