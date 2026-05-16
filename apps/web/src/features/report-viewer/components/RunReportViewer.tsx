@@ -770,7 +770,14 @@ export function RunReportViewer({
             aria-label={`마찰 지점: ${finding.title}`}
             aria-pressed={isActive}
           >
-            {isActive ? <span>{markerLabel(highlight.label)}</span> : null}
+            {isActive ? (
+              <span className="run-report-friction-marker__badge">
+                <span className="run-report-friction-marker__badge-text">{markerLabel(highlight.label)}</span>
+                <span className="run-report-friction-marker__hover-effect" aria-hidden="true">
+                  <span />
+                </span>
+              </span>
+            ) : null}
           </button>
         );
       });
@@ -922,10 +929,11 @@ export function RunReportViewer({
                             onFocus={() => setHoveredFindingId(relatedFindingId)}
                             onMouseEnter={() => setHoveredFindingId(relatedFindingId)}
                           >
-                            <span className="run-report-recommendation-tab__rank">{index + 1}</span>
+                            <span className="run-report-recommendation-tab__label">
+                              Nudge {String(index + 1).padStart(2, '0')}
+                            </span>
                             <span className="run-report-recommendation-tab__copy">
                               <strong>{recommendation.title}</strong>
-                              <small>{recommendationReason(recommendation, relatedFinding)}</small>
                             </span>
                           </button>
                         </li>
