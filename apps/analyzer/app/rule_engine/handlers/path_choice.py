@@ -15,9 +15,31 @@ DENSE_WARNING_SPACING_PX = 8
 DENSE_OVERLOAD_SPACING_PX = 16
 CONTAINER_BUCKET_PX = 24
 LAYOUT_CLUSTER_DISTANCE_PX = 96
+SIMILAR_SIZE_RATIO = 0.45
+REPEATED_ROW_Y_TOLERANCE_PX = 28
+REPEATED_GRID_X_OVERLAP_RATIO = 0.35
+MAX_GROUP_SELECTOR_SIGNAL = 40
 
 UTILITY_CONTAINER_ROLES = {"banner", "header", "contentinfo", "footer"}
 BROAD_CONTAINER_ROLES = {"", "main", "document", "body"}
+NON_CHOICE_TAGS = {"iframe"}
+FORM_OR_INPUT_ROLES = {"checkbox", "radio", "switch", "option", "textbox", "combobox", "listbox", "searchbox"}
+AD_OR_TRACKING_PATTERN = (
+    " ad",
+    "ad_",
+    "_ad",
+    "advert",
+    "banner",
+    "iframe",
+    "tgtlrec",
+    "doubleclick",
+    "googlesyndication",
+    "googlead",
+    "kakao_ad",
+    "ac_banner",
+    "right-ad",
+    "광고",
+)
 LEGAL_OR_HELP_PATTERN = (
     "privacy",
     "terms",
@@ -63,6 +85,7 @@ def evaluate_path_choice_overload(rule: dict[str, Any], context: StageContext) -
     spacing = candidate["avg_spacing_px"]
     group_label = candidate["group_label"]
     density_signal = f"group_avg_spacing_px={spacing}" if spacing is not None else "group_avg_spacing_px=unknown"
+    selector_signal = _choice_group_selectors_signal(candidate["components"])
     return base_hit(
         rule=rule,
         context=context,
@@ -79,6 +102,7 @@ def evaluate_path_choice_overload(rule: dict[str, Any], context: StageContext) -
             f"overload_threshold={OVERLOAD_GROUP_CHOICE_COUNT}",
             f"dense_warning_threshold={DENSE_WARNING_CHOICE_COUNT}@{DENSE_WARNING_SPACING_PX}px",
             f"dense_overload_threshold={DENSE_OVERLOAD_CHOICE_COUNT}@{DENSE_OVERLOAD_SPACING_PX}px",
+            selector_signal,
         ],
         summary="같은 선택 영역 안에 비슷한 행동 선택지가 많이 모여 있어 사용자가 다음 행동을 고르기 어려울 수 있습니다.",
         impact_hypothesis="사용자는 화면 전체의 모든 링크가 아니라 같은 영역 안의 선택지를 비교합니다. 같은 그룹 안에 선택지가 많거나 좁은 간격으로 모이면 목표 행동을 찾기 전에 비교와 탐색 부담이 커질 수 있습니다.",
@@ -120,6 +144,7 @@ def _choice_count_candidates(record: ObservationRecord, context: StageContext) -
                 "avg_spacing_px": avg_spacing,
                 "severity": severity,
                 "confidence": _confidence(record, viewport=viewport),
+                "components": group["components"],
             }
         )
     return candidates
@@ -150,10 +175,19 @@ def _is_countable_choice(component: Any, *, viewport: dict[str, float] | None) -
         return False
     if _truthy(component.get("aria_hidden")) or _truthy(component.get("aria-hidden")):
         return False
+    tag = str(component.get("tag") or "").strip().lower()
+    if tag in NON_CHOICE_TAGS:
+        return False
     role = str(component.get("role") or "").lower()
-    if component.get("clickable") is False and role not in {"button", "link", "menuitem", "tab", "checkbox", "radio"}:
+    if role in FORM_OR_INPUT_ROLES:
+        return False
+    if component.get("clickable") is False and role not in {"button", "link", "menuitem", "tab"}:
         return False
     if _is_utility_or_legal_choice(component):
+        return False
+    if _is_ad_or_tracking_choice(component):
+        return False
+    if _is_empty_image_or_banner_link(component):
         return False
 
     bounds = component.get("bounds")
@@ -208,27 +242,62 @@ def _container_group_key(component: dict[str, Any]) -> str | None:
 
 
 def _layout_cluster_groups(components: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    row_candidates = [
+        component
+        for component in components
+        if _bounds(component.get("bounds")) is not None and _has_choice_label(component)
+    ]
+    rows = _repeated_row_groups(row_candidates)
+    return [
+        {
+            "key": f"layout:{index}",
+            "label": "repeated choice row",
+            "components": row,
+        }
+        for index, row in enumerate(rows, start=1)
+    ]
+
+
+def _repeated_row_groups(components: list[dict[str, Any]]) -> list[list[dict[str, Any]]]:
     groups: list[dict[str, Any]] = []
-    for component in components:
+    for component in sorted(components, key=lambda item: (_bounds(item.get("bounds")) or {"y": 0, "x": 0})["x"]):
         bounds = _bounds(component.get("bounds"))
         if bounds is None:
             continue
         matched: dict[str, Any] | None = None
         for group in groups:
-            if _near_group(bounds, group["bounds"]):
+            if _same_repeated_choice_row(component, bounds, group):
                 matched = group
                 break
         if matched is None:
             matched = {
-                "key": f"layout:{len(groups) + 1}",
-                "label": "layout cluster",
-                "components": [],
+                "role": _choice_role(component),
                 "bounds": bounds.copy(),
+                "components": [],
+                "width": bounds["width"],
+                "height": bounds["height"],
+                "center_y": bounds["y"] + bounds["height"] / 2,
             }
             groups.append(matched)
         matched["components"].append(component)
         matched["bounds"] = _union_bounds(matched["bounds"], bounds)
-    return [{"key": group["key"], "label": group["label"], "components": group["components"]} for group in groups]
+        count = len(matched["components"])
+        matched["center_y"] = ((matched["center_y"] * (count - 1)) + bounds["y"] + bounds["height"] / 2) / count
+        matched["width"] = ((matched["width"] * (count - 1)) + bounds["width"]) / count
+        matched["height"] = ((matched["height"] * (count - 1)) + bounds["height"]) / count
+    return [group["components"] for group in groups if len(group["components"]) >= DENSE_WARNING_CHOICE_COUNT]
+
+
+def _same_repeated_choice_row(component: dict[str, Any], bounds: dict[str, float], group: dict[str, Any]) -> bool:
+    if _choice_role(component) != group["role"]:
+        return False
+    center_y = bounds["y"] + bounds["height"] / 2
+    if abs(center_y - group["center_y"]) > REPEATED_ROW_Y_TOLERANCE_PX:
+        return False
+    if not _similar_dimension(bounds["width"], group["width"]) or not _similar_dimension(bounds["height"], group["height"]):
+        return False
+    group_bounds = group["bounds"]
+    return _horizontal_overlap(bounds, group_bounds) > 0 or _bounds_distance(bounds, group_bounds) <= LAYOUT_CLUSTER_DISTANCE_PX
 
 
 def _near_group(bounds: dict[str, float], group_bounds: dict[str, float]) -> bool:
@@ -280,6 +349,84 @@ def _is_utility_or_legal_choice(component: dict[str, Any]) -> bool:
     if not has_readable_label and bounds is not None and max(bounds["width"], bounds["height"]) <= 48:
         return True
     return False
+
+
+def _is_ad_or_tracking_choice(component: dict[str, Any]) -> bool:
+    text = " ".join(
+        value
+        for value in (
+            _text(component.get("text")),
+            _text(component.get("visible_text")),
+            _text(component.get("accessible_name")),
+            _text(component.get("href")),
+            _text(component.get("selector")),
+            _text(component.get("container_heading")),
+        )
+        if value
+    ).lower()
+    return any(pattern in text for pattern in AD_OR_TRACKING_PATTERN)
+
+
+def _is_empty_image_or_banner_link(component: dict[str, Any]) -> bool:
+    role = str(component.get("role") or "").strip().lower()
+    tag = str(component.get("tag") or "").strip().lower()
+    if role != "link" and tag != "a":
+        return False
+    if _has_choice_label(component):
+        return False
+    selector = _text(component.get("selector")).lower()
+    if "image" in selector or "banner" in selector or "ad" in selector:
+        return True
+    bounds = _bounds(component.get("bounds"))
+    return bounds is not None and (bounds["width"] >= 180 or bounds["height"] >= 80)
+
+
+def _has_choice_label(component: dict[str, Any]) -> bool:
+    return bool(
+        _text(component.get("text"))
+        or _text(component.get("visible_text"))
+        or _text(component.get("accessible_name"))
+    )
+
+
+def _choice_role(component: dict[str, Any]) -> str:
+    role = str(component.get("role") or "").strip().lower()
+    if role:
+        return role
+    return str(component.get("tag") or "").strip().lower()
+
+
+def _similar_dimension(value: float, baseline: float) -> bool:
+    larger = max(value, baseline)
+    if larger <= 0:
+        return False
+    return abs(value - baseline) / larger <= SIMILAR_SIZE_RATIO
+
+
+def _choice_group_selectors_signal(components: list[dict[str, Any]]) -> str:
+    keys = [
+        key
+        for component in components[:MAX_GROUP_SELECTOR_SIGNAL]
+        for key in [_component_match_key(component)]
+        if key
+    ]
+    return "choice_group_component_keys=" + "|".join(keys)
+
+
+def _component_match_key(component: dict[str, Any]) -> str | None:
+    selector = _text(component.get("selector"))
+    bounds = _bounds(component.get("bounds"))
+    if not selector or bounds is None:
+        return None
+    return "@".join(
+        [
+            selector.replace("|", "").replace("@", ""),
+            str(round(bounds["x"])),
+            str(round(bounds["y"])),
+            str(round(bounds["width"])),
+            str(round(bounds["height"])),
+        ]
+    )
 
 
 def _observation_payload(observation: dict[str, Any]) -> dict[str, Any]:
@@ -386,6 +533,10 @@ def _union_bounds(left: dict[str, float], right: dict[str, float]) -> dict[str, 
 
 def _vertical_overlap(left: dict[str, float], right: dict[str, float]) -> float:
     return max(0.0, min(left["y"] + left["height"], right["y"] + right["height"]) - max(left["y"], right["y"]))
+
+
+def _horizontal_overlap(left: dict[str, float], right: dict[str, float]) -> float:
+    return max(0.0, min(left["x"] + left["width"], right["x"] + right["width"]) - max(left["x"], right["x"]))
 
 
 def _bounds_distance(left: dict[str, float], right: dict[str, float]) -> float:
