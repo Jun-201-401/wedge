@@ -147,7 +147,7 @@
           "label": "GOV.UK Components",
           "publisher": "GOV.UK",
           "title": "Components",
-          "basisSummary": "버튼이나 링크가 많을 때는 사용자가 무엇을 눌러야 할지 쉽게 알 수 있도록 묶음과 구분이 명확해야 합니다.",
+          "basisSummary": "같은 선택 영역 안에 클릭 가능한 항목이 너무 많거나 촘촘하게 배치되면, 사용자가 다음 행동을 고르기 어려워질 수 있습니다.",
           "url": "https://design-system.service.gov.uk/components/"
         }
       ]
@@ -309,10 +309,10 @@
       "axis": "Reliability",
       "applicableStages": ["CTA", "INPUT", "COMMIT"],
       "evidence_level": "Technical",
-      "definition": "Failed requests or console/page errors immediately after user actions should be surfaced as reliability risk.",
-      "required_observations": ["network_failure", "console_error"],
+      "definition": "Technical failures should be surfaced only when they block or plausibly break the next result of a user action or a core page resource.",
+      "required_observations": ["network_failure", "console_error", "network_timeline"],
       "measurement_sources": ["network", "console", "scenario_log"],
-      "signal_rule": "failed request count or console error count is greater than zero in stage-attributed action context evidence.",
+      "signal_rule": "User-impacting failed requests or console errors are present in stage-attributed action context evidence.",
       "severity_rules": [
         {"severity": 0, "condition": "no failed request or console error evidence"},
         {"severity": 2, "condition": "one or more failed requests or console errors after action"}
@@ -459,38 +459,51 @@
       ]
     },
     {
+      "criterion_id": "TECH-PRODUCT-IMAGE-LOAD-001",
+      "axis": "Visual Integrity",
+      "applicableStages": ["VALUE"],
+      "evidence_level": "Technical",
+      "definition": "Product cards should not appear without visible product imagery when image resource failures are observed in the same checkpoint.",
+      "required_observations": ["product_card", "network_timeline"],
+      "measurement_sources": ["dom", "layout", "screenshot", "network"],
+      "signal_rule": "A product_card has visible_product_image=false with product evidence such as price, and the same checkpoint has failed image network evidence.",
+      "severity_rules": [
+        {"severity": 0, "condition": "product cards have visible images, or no image resource failure is observed"},
+        {"severity": 2, "condition": "one to three product cards have no visible image with same-checkpoint image resource failure"},
+        {"severity": 3, "condition": "four or more product cards have no visible image with same-checkpoint image resource failure"}
+      ],
+      "exceptions": ["Suppress when no same-checkpoint image network failure is observed.", "Suppress cards without price or equivalent product evidence."],
+      "confidence_rule": "Use product_card layout confidence and raise confidence only when image network failure evidence is present in the same checkpoint.",
+      "fix_leverage_default": 1.0,
+      "output_template": "상품 카드에서 상품 이미지가 보이지 않아 상품 확인과 비교가 어려울 수 있습니다."
+    },
+    {
       "criterion_id": "TECH-TARGET-SIZE-001",
       "axis": "Friction",
       "applicableStages": ["FIRST_VIEW", "VALUE", "CTA", "INPUT"],
       "evidence_level": "Standard",
-      "definition": "Interactive targets should be large enough and spaced enough for accurate pointer or touch activation.",
+      "definition": "Goal-relevant interactive targets should be large enough and spaced enough for accurate pointer or touch activation.",
       "required_observations": ["interactive_components"],
       "measurement_sources": ["dom", "layout"],
-      "signal_rule": "Visible enabled interactive components with bounds smaller than 24 CSS px, or below 44 CSS px with tight neighboring target spacing, are flagged.",
+      "signal_rule": "Visible enabled interactive components are evaluated only when they were used in the scenario, are CTA candidates, are form/required controls, or match core action keywords; goal-relevant targets with bounds smaller than 24 CSS px, or below 44 CSS px with tight neighboring target spacing, are flagged.",
       "severity_rules": [
         {"severity": 0, "condition": "all countable targets are at least 24 CSS px, or smaller targets have sufficient spacing/exception context"},
         {"severity": 1, "condition": "a target is smaller than 24 CSS px but not tightly spaced, or a 24-44 CSS px target is tightly spaced"},
         {"severity": 2, "condition": "a target is smaller than 24 CSS px and spacing is tight or unknown"},
         {"severity": 3, "condition": "a target is smaller than 16 CSS px and spacing is tight or unknown"}
       ],
-      "exceptions": ["Suppress hidden, disabled, aria-hidden, or off-viewport targets.", "Suppress header/footer utility and legal/help links.", "Treat 44 CSS px as an enhanced usability target, not a hard failure threshold."],
+      "exceptions": ["Suppress hidden, disabled, aria-hidden, or off-viewport targets.", "Suppress header/footer utility and legal/help links.", "Suppress targets that are merely clickable but not scenario-used, CTA-like, form/required, or matched to core action keywords.", "Treat 44 CSS px as an enhanced usability target, not a hard failure threshold."],
       "confidence_rule": "Use interactive_components confidence and cap confidence when viewport dimensions are missing.",
       "fix_leverage_default": 0.9,
       "output_template": "일부 클릭 대상이 너무 작거나 서로 가까워 정확히 누르기 어렵습니다.",
       "source_refs": ["docs/20_final_analyzer_rules.md#tech-target-size-001"],
       "references": [
-        {
-          "label": "WCAG 2.5.8",
-          "publisher": "W3C",
-          "title": "Target Size (Minimum)",
-          "basisSummary": "예외가 적용되지 않는 한 포인터 대상은 일반적으로 최소 24 x 24 CSS 픽셀 이상이어야 합니다.",
-          "url": "https://www.w3.org/WAI/WCAG22/Understanding/target-size-minimum.html"
-        },
+   
         {
           "label": "Lighthouse",
           "publisher": "Chrome",
           "title": "Tap targets are not sized appropriately",
-          "basisSummary": "탭 대상이 너무 작거나 서로 가까우면 모바일 환경에서 조작이 어려워질 수 있습니다.",
+          "basisSummary": "클릭 대상이 작으면 사용자가 원하는 대상을 정확히 선택하기 어려울 수 있습니다.",
           "url": "https://developer.chrome.com/docs/lighthouse/seo/tap-targets"
         }
       ]

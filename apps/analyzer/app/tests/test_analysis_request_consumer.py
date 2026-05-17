@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import sys
+import types
 import unittest
 from contextlib import redirect_stdout
 from io import StringIO
@@ -21,6 +23,63 @@ SAMPLE_EVIDENCE_PATH = REPO_ROOT / "packages/contracts/examples/sample-evidence-
 
 def load_sample_packet() -> dict[str, Any]:
     return json.loads(SAMPLE_EVIDENCE_PATH.read_text(encoding="utf-8"))
+
+
+def load_choice_overload_packet() -> dict[str, Any]:
+    packet = load_sample_packet()
+    packet["aggregate_signals"]["primary_cta_count_by_stage"] = {}
+    packet["checkpoints"][0]["observations"] = [
+        observation
+        for observation in packet["checkpoints"][0]["observations"]
+        if observation["type"] not in {"cta_cluster", "interactive_components"}
+    ]
+    packet["checkpoints"][0]["observations"].append(
+        {
+            "observation_id": "obs_shortcut_choices",
+            "type": "interactive_components",
+            "stage": "CTA",
+            "source": ["dom", "layout"],
+            "confidence": 0.86,
+            "data": {
+                "components": [
+                    {
+                        "text": "검색어를 입력해 주세요.",
+                        "selector": "#query",
+                        "role": "combobox",
+                        "tag": "input",
+                        "clickable": True,
+                        "visible": True,
+                        "bounds": {"x": 330, "y": 92, "width": 480, "height": 58},
+                    },
+                    {
+                        "text": "AD",
+                        "selector": "#right-ad-1_tgtLREC",
+                        "role": "",
+                        "tag": "iframe",
+                        "clickable": True,
+                        "visible": True,
+                        "bounds": {"x": 940, "y": 436, "width": 420, "height": 240},
+                    },
+                    *[
+                        {
+                            "text": label,
+                            "selector": f"a.shortcut-{index}",
+                            "role": "link",
+                            "tag": "a",
+                            "clickable": True,
+                            "visible": True,
+                            "bounds": {"x": 320 + (index * 52), "y": 150, "width": 44, "height": 52},
+                            "container_role": "list",
+                            "container_bounds": {"x": 360, "y": 140, "width": 500, "height": 72},
+                            "nearest_target_spacing_px": 4,
+                        }
+                        for index, label in enumerate(["메일", "카페", "블로그", "쇼핑", "뉴스", "증권", "부동산", "지도", "웹툰"], start=1)
+                    ],
+                ],
+            },
+        }
+    )
+    return packet
 
 
 class FakeCallbackClient:
@@ -80,6 +139,51 @@ class FakeEvidenceClient:
     def fetch_by_packet_id(self, evidence_packet_id: str) -> dict[str, Any]:
         self.packet_ids.append(evidence_packet_id)
         return self.packet
+
+
+class FakeMethod:
+    delivery_tag = 7
+
+
+class FakePikaChannel:
+    def __init__(self, body: bytes) -> None:
+        self.body = body
+        self.prefetch_count: int | None = None
+        self.queue_name: str | None = None
+        self.queue_arguments: dict[str, Any] | None = None
+        self.callback: Any = None
+        self.acks: list[int] = []
+        self.nacks: list[dict[str, Any]] = []
+
+    def basic_qos(self, *, prefetch_count: int) -> None:
+        self.prefetch_count = prefetch_count
+
+    def queue_declare(self, *, queue: str, durable: bool, arguments: dict[str, Any]) -> None:
+        self.queue_name = queue
+        self.queue_arguments = arguments
+        self.durable = durable
+
+    def basic_consume(self, *, queue: str, on_message_callback: Any, auto_ack: bool) -> None:
+        self.queue_name = queue
+        self.callback = on_message_callback
+        self.auto_ack = auto_ack
+
+    def start_consuming(self) -> None:
+        self.callback(self, FakeMethod(), None, self.body)
+
+    def basic_ack(self, *, delivery_tag: int) -> None:
+        self.acks.append(delivery_tag)
+
+    def basic_nack(self, *, delivery_tag: int, requeue: bool) -> None:
+        self.nacks.append({"delivery_tag": delivery_tag, "requeue": requeue})
+
+
+class FakePikaConnection:
+    def __init__(self, channel: FakePikaChannel) -> None:
+        self._channel = channel
+
+    def channel(self) -> FakePikaChannel:
+        return self._channel
 
 
 class AnalysisRequestConsumerTest(unittest.TestCase):
@@ -171,6 +275,90 @@ class AnalysisRequestConsumerTest(unittest.TestCase):
             self.assertEqual(event["runId"], "11111111-1111-1111-1111-111111111111")
             self.assertEqual(event["analysisJobId"], "22222222-2222-2222-2222-222222222222")
             self.assertEqual(event["evidencePacketId"], "44444444-4444-4444-4444-444444444444")
+
+    def test_process_message_delivers_choice_overload_issue_to_completed_callback(self) -> None:
+        packet = load_choice_overload_packet()
+        callback_client = FakeCallbackClient()
+        evidence_client = FakeEvidenceClient(packet)
+        consumer = AnalysisRequestConsumer(
+            config=_config(),
+            callback_client=callback_client,  # type: ignore[arg-type]
+            evidence_client=evidence_client,  # type: ignore[arg-type]
+        )
+        raw_message = json.dumps(
+            {
+                "messageType": "analysis.request",
+                "payload": {
+                    "analysisJobId": "22222222-2222-2222-2222-222222222222",
+                    "runId": "11111111-1111-1111-1111-111111111111",
+                    "evidencePacketId": "44444444-4444-4444-4444-444444444444",
+                },
+            }
+        )
+
+        result = consumer.process_raw_message(raw_message)
+
+        self.assertEqual(result["startedCallbackStatusCode"], 200)
+        self.assertEqual(result["callbackStatusCode"], 200)
+        payload = callback_client.completed[0]["payload"]
+        issues = payload["judgeResult"]["issues"]
+        overload = [issue for issue in issues if issue["criterion_id"] == "PATH-CHOICE-OVERLOAD-001"]
+        self.assertEqual(len(overload), 1)
+        problem_components = overload[0]["problem_components"]
+        self.assertEqual(len(problem_components), 1)
+        self.assertEqual(problem_components[0]["role"], "group")
+        self.assertEqual(
+            problem_components[0]["bounding_box"],
+            {"x": 360.0, "y": 140.0, "width": 500.0, "height": 72.0, "unit": "css_px"},
+        )
+        component_key_signal = next(signal for signal in overload[0]["signals"] if signal.startswith("choice_group_component_keys="))
+        self.assertIn("a.shortcut-1@", component_key_signal)
+        self.assertNotIn("#query", component_key_signal)
+        self.assertNotIn("#right-ad-1_tgtLREC", component_key_signal)
+
+    def test_start_consumes_mq_message_sends_completed_callback_and_acks(self) -> None:
+        packet = load_choice_overload_packet()
+        callback_client = FakeCallbackClient()
+        evidence_client = FakeEvidenceClient(packet)
+        raw_message = json.dumps(
+            {
+                "messageType": "analysis.request",
+                "payload": {
+                    "analysisJobId": "22222222-2222-2222-2222-222222222222",
+                    "runId": "11111111-1111-1111-1111-111111111111",
+                    "evidencePacketId": "44444444-4444-4444-4444-444444444444",
+                },
+            }
+        ).encode("utf-8")
+        fake_channel = FakePikaChannel(raw_message)
+        fake_pika = types.SimpleNamespace(
+            URLParameters=lambda url: {"url": url},
+            BlockingConnection=lambda _params: FakePikaConnection(fake_channel),
+        )
+        previous_pika = sys.modules.get("pika")
+        sys.modules["pika"] = fake_pika  # type: ignore[assignment]
+        try:
+            consumer = AnalysisRequestConsumer(
+                config=_config(),
+                callback_client=callback_client,  # type: ignore[arg-type]
+                evidence_client=evidence_client,  # type: ignore[arg-type]
+            )
+            consumer.start()
+        finally:
+            if previous_pika is None:
+                sys.modules.pop("pika", None)
+            else:
+                sys.modules["pika"] = previous_pika
+
+        self.assertEqual(fake_channel.prefetch_count, 1)
+        self.assertEqual(fake_channel.queue_name, "analysis.request")
+        self.assertEqual(fake_channel.acks, [7])
+        self.assertEqual(fake_channel.nacks, [])
+        self.assertEqual(evidence_client.packet_ids, ["44444444-4444-4444-4444-444444444444"])
+        self.assertEqual(len(callback_client.started), 1)
+        self.assertEqual(len(callback_client.completed), 1)
+        issues = callback_client.completed[0]["payload"]["judgeResult"]["issues"]
+        self.assertIn("PATH-CHOICE-OVERLOAD-001", [issue["criterion_id"] for issue in issues])
 
     def test_started_callback_failure_does_not_block_completed_callback(self) -> None:
         packet = load_sample_packet()

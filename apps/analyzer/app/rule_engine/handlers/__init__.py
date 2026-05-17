@@ -15,6 +15,7 @@ from app.rule_engine.handlers.path_accordion import evaluate_path_accordion_disc
 from app.rule_engine.handlers.path_back import evaluate_path_back_link
 from app.rule_engine.handlers.path_choice import evaluate_path_choice_overload
 from app.rule_engine.handlers.path_cta import evaluate_path_cta_competition, evaluate_path_cta_presence
+from app.rule_engine.handlers.product_image import evaluate_product_image_load
 from app.rule_engine.handlers.reliability import evaluate_loading_stuck, evaluate_reliability
 from app.rule_engine.handlers.target_size import evaluate_target_size
 from app.rule_engine.models import RuleHit
@@ -38,5 +39,6 @@ DEFAULT_RULE_HANDLERS: dict[str, RuleHandler] = {
     "RELIABILITY-TECH-001": evaluate_reliability,
     "RELIABILITY-LOADING-STUCK-001": evaluate_loading_stuck,
     "JOURNEY-GOAL-CTA-MISMATCH-001": evaluate_journey_goal_cta_mismatch,
+    "TECH-PRODUCT-IMAGE-LOAD-001": evaluate_product_image_load,
     "TECH-TARGET-SIZE-001": evaluate_target_size,
 }
