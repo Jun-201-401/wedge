@@ -1551,6 +1551,81 @@ class RuleEngineTest(unittest.TestCase):
         reliability = [issue for issue in result["issues"] if issue["criterion_id"] == "RELIABILITY-TECH-001"]
         self.assertEqual(reliability, [])
 
+    def test_safety_block_observation_emits_path_boundary_issue(self) -> None:
+        packet = load_sample_packet()
+        packet["aggregate_signals"]["primary_cta_count_by_stage"] = {"CTA": 1}
+        packet["aggregate_signals"]["safety_block_count"] = 1
+        packet["aggregate_signals"]["safety_block_reasons"] = ["POLICY_EXTERNAL_NAVIGATION_BLOCKED"]
+        packet["aggregate_signals"]["safety_block_count_by_stage"] = {"CTA": 1}
+        packet["checkpoints"][0]["observations"].append(
+            {
+                "observation_id": "obs_runner_failure",
+                "type": "runner_failure",
+                "stage": "CTA",
+                "source": ["scenario_log", "browser"],
+                "data": {
+                    "failure_code": "POLICY_EXTERNAL_NAVIGATION_BLOCKED",
+                    "failure_message": "Scenario safety forbids visiting external origin.",
+                    "failed_step_key": "step_002_external_login",
+                },
+                "confidence": 0.95,
+            }
+        )
+
+        result = analyze_evidence_packet(packet)
+
+        safety = [issue for issue in result["issues"] if issue["criterion_id"] == "PATH-SAFETY-BOUNDARY-001"]
+        reliability = [issue for issue in result["issues"] if issue["criterion_id"] == "RELIABILITY-TECH-001"]
+        self.assertEqual(len(safety), 1)
+        self.assertEqual(safety[0]["stage"], "CTA")
+        self.assertEqual(safety[0]["severity"], 2)
+        self.assertEqual(safety[0]["evidence_refs"], ["cp_001.obs_runner_failure"])
+        self.assertIn("safety_block_reason=POLICY_EXTERNAL_NAVIGATION_BLOCKED", safety[0]["signals"])
+        self.assertIn("외부 사이트", safety[0]["summary"])
+        self.assertEqual(safety[0]["references"][0]["label"], "NN/g Heuristics")
+        self.assertEqual(reliability, [])
+
+    def test_safety_block_aggregate_without_observation_does_not_emit_issue(self) -> None:
+        packet = load_sample_packet()
+        packet["aggregate_signals"]["primary_cta_count_by_stage"] = {"CTA": 1}
+        packet["aggregate_signals"]["safety_block_count"] = 1
+        packet["aggregate_signals"]["safety_block_reasons"] = ["POLICY_EXTERNAL_NAVIGATION_BLOCKED"]
+        packet["aggregate_signals"]["safety_block_count_by_stage"] = {"CTA": 1}
+
+        result = analyze_evidence_packet(packet)
+
+        safety = [issue for issue in result["issues"] if issue["criterion_id"] == "PATH-SAFETY-BOUNDARY-001"]
+        self.assertEqual(safety, [])
+
+    def test_safety_block_payment_commit_emits_high_severity_boundary_issue(self) -> None:
+        packet = load_sample_packet()
+        packet["aggregate_signals"]["primary_cta_count_by_stage"] = {"CTA": 1}
+        packet["checkpoints"][1]["primaryStage"] = "COMMIT"
+        packet["checkpoints"][1]["observations"] = [
+            {
+                "observation_id": "obs_payment_commit_block",
+                "type": "runner_failure",
+                "stage": "COMMIT",
+                "source": ["scenario_log", "browser"],
+                "data": {
+                    "failure_code": "POLICY_PAYMENT_COMMIT_BLOCKED",
+                    "failure_message": "Scenario safety forbids payment commit.",
+                    "failed_step_key": "step_002_final_payment",
+                },
+                "confidence": 0.95,
+            }
+        ]
+
+        result = analyze_evidence_packet(packet)
+
+        safety = [issue for issue in result["issues"] if issue["criterion_id"] == "PATH-SAFETY-BOUNDARY-001"]
+        self.assertEqual(len(safety), 1)
+        self.assertEqual(safety[0]["stage"], "COMMIT")
+        self.assertEqual(safety[0]["severity"], 3)
+        self.assertEqual(safety[0]["evidence_refs"], ["cp_002.obs_payment_commit_block"])
+        self.assertIn("safety_block_reason=POLICY_PAYMENT_COMMIT_BLOCKED", safety[0]["signals"])
+        self.assertIn("실제 확정", safety[0]["summary"])
+
     def test_checkpoint_reliability_summary_without_action_is_not_stage_issue(self) -> None:
         packet = load_sample_packet()
         packet["aggregate_signals"]["primary_cta_count_by_stage"] = {"CTA": 1}
