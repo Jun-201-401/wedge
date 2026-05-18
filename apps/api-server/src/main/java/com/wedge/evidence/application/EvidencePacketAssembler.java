@@ -149,6 +149,12 @@ public class EvidencePacketAssembler {
         signals.put("console_error_count", consoleErrorCount(checkpoints, observations));
         signals.put("failed_request_count", failedRequestCount(checkpoints, observations));
         signals.put("network_failure_count", countObservations(observations, "network_failure"));
+        SafetyBlockSummary safetyBlockSummary = createSafetyBlockSummary(observations);
+        signals.put("safety_block_count", safetyBlockSummary.count());
+        signals.put("safety_block_reasons", safetyBlockSummary.reasons());
+        if (!safetyBlockSummary.countByStage().isEmpty()) {
+            signals.put("safety_block_count_by_stage", safetyBlockSummary.countByStage());
+        }
         Map<String, Long> primaryCtaCountByStage = primaryCtaCountByStage(observations);
         if (!primaryCtaCountByStage.isEmpty()) {
             signals.put("primary_cta_count_by_stage", primaryCtaCountByStage);
@@ -203,12 +209,36 @@ public class EvidencePacketAssembler {
         return counts;
     }
 
+    private SafetyBlockSummary createSafetyBlockSummary(List<Observation> observations) {
+        List<String> reasons = new ArrayList<>();
+        Map<String, Long> countByStage = new LinkedHashMap<>();
+        long count = 0;
+
+        for (Observation observation : observations) {
+            String failureCode = readFailureCode(observation);
+            if (!isScenarioSafetyBlockCode(failureCode)) {
+                continue;
+            }
+
+            count += 1;
+            if (!reasons.contains(failureCode)) {
+                reasons.add(failureCode);
+            }
+            if (observation.getStage() != null && !observation.getStage().isBlank()) {
+                countByStage.merge(observation.getStage(), 1L, Long::sum);
+            }
+        }
+
+        return new SafetyBlockSummary(count, reasons, countByStage);
+    }
+
     private long readLong(Object value) {
         return value instanceof Number number ? number.longValue() : 0L;
     }
 
     private Map<String, Object> createDecisionStageSummary(List<Checkpoint> checkpoints, List<Observation> observations) {
         Map<String, Object> summary = new LinkedHashMap<>();
+        Map<String, Long> safetyBlockCountByStage = createSafetyBlockSummary(observations).countByStage();
         for (String stage : List.of("FIRST_VIEW", "VALUE", "CTA", "INPUT", "COMMIT")) {
             List<String> checkpointIds = checkpoints.stream()
                     .filter(checkpoint -> stage.equals(checkpoint.getStage()))
@@ -217,8 +247,9 @@ public class EvidencePacketAssembler {
             long observationCount = observations.stream()
                     .filter(observation -> stage.equals(observation.getStage()))
                     .count();
+            long safetyBlockCount = safetyBlockCountByStage.getOrDefault(stage, 0L);
             summary.put(stage, Map.of(
-                    "status", checkpointIds.isEmpty() && observationCount == 0 ? "NOT_OBSERVED" : "OBSERVED",
+                    "status", safetyBlockCount > 0 ? "BLOCKED" : checkpointIds.isEmpty() && observationCount == 0 ? "NOT_OBSERVED" : "OBSERVED",
                     "checkpointIds", checkpointIds,
                     "observationCount", observationCount
             ));
@@ -230,6 +261,19 @@ public class EvidencePacketAssembler {
         return observations.stream()
                 .filter(observation -> observationType.equals(observation.getObservationType()))
                 .count();
+    }
+
+    private String readFailureCode(Observation observation) {
+        if (!"runner_failure".equals(observation.getObservationType())) {
+            return null;
+        }
+
+        Object failureCode = readJsonMap(observation.getDataJsonb()).get("failure_code");
+        return failureCode instanceof String value ? value : null;
+    }
+
+    private boolean isScenarioSafetyBlockCode(String failureCode) {
+        return failureCode != null && failureCode.startsWith("POLICY_") && failureCode.endsWith("_BLOCKED");
     }
 
     private Map<String, Object> toEvidenceArtifact(Artifact artifact) {
@@ -284,5 +328,8 @@ public class EvidencePacketAssembler {
         } catch (JsonProcessingException exception) {
             throw new IllegalStateException("Stored JSON array is invalid", exception);
         }
+    }
+
+    private record SafetyBlockSummary(long count, List<String> reasons, Map<String, Long> countByStage) {
     }
 }

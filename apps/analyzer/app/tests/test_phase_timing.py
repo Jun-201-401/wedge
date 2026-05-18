@@ -18,7 +18,13 @@ class PhaseTimingTest(unittest.TestCase):
             ),
             phase="fetch_evidence_packet",
             duration_ms=12.7,
-            extra={"checkpointCount": 3, "candidateCount": 9},
+            extra={
+                "checkpointCount": 3,
+                "candidateCount": 9,
+                "parallelEnabled": True,
+                "maxConcurrency": 2,
+                "unexpectedExceptionCount": 0,
+            },
             sink=lines.append,
         )
 
@@ -32,6 +38,9 @@ class PhaseTimingTest(unittest.TestCase):
         self.assertEqual(event["evidencePacketId"], "packet-1")
         self.assertEqual(event["checkpointCount"], 3)
         self.assertEqual(event["candidateCount"], 9)
+        self.assertTrue(event["parallelEnabled"])
+        self.assertEqual(event["maxConcurrency"], 2)
+        self.assertEqual(event["unexpectedExceptionCount"], 0)
 
     def test_emit_phase_timing_redacts_sensitive_extra_values(self) -> None:
         lines: list[str] = []
@@ -67,6 +76,42 @@ class PhaseTimingTest(unittest.TestCase):
         self.assertEqual(event["evidencePacket"], "[REDACTED]")
         self.assertEqual(event["checkpointCount"], 1)
         self.assertNotIn("detail", event)
+
+    def test_emit_phase_timing_allows_safe_report_explainer_summary_counts(self) -> None:
+        lines: list[str] = []
+
+        emit_phase_timing(
+            context=PhaseTimingContext(run_id="run-1"),
+            phase="report_explainer",
+            duration_ms=1,
+            extra={
+                "promptCharCount": 1234,
+                "fullPromptCharCount": 4321,
+                "responseCharCount": 234,
+                "attemptCount": 2,
+                "fallbackUsed": False,
+                "compactPromptEnabled": False,
+                "gmsEnabled": True,
+                "clientConfigured": True,
+                "lastErrorType": "GMSClientError",
+                "prompt": "raw prompt must still be redacted",
+            },
+            sink=lines.append,
+        )
+
+        raw_line = lines[0]
+        self.assertNotIn("raw prompt must still be redacted", raw_line)
+        event = json.loads(raw_line)
+        self.assertEqual(event["promptCharCount"], 1234)
+        self.assertEqual(event["fullPromptCharCount"], 4321)
+        self.assertEqual(event["responseCharCount"], 234)
+        self.assertEqual(event["attemptCount"], 2)
+        self.assertFalse(event["fallbackUsed"])
+        self.assertFalse(event["compactPromptEnabled"])
+        self.assertTrue(event["gmsEnabled"])
+        self.assertTrue(event["clientConfigured"])
+        self.assertEqual(event["lastErrorType"], "GMSClientError")
+        self.assertEqual(event["prompt"], "[REDACTED]")
 
     def test_phase_timer_emits_success_duration(self) -> None:
         lines: list[str] = []

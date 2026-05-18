@@ -459,6 +459,35 @@
       ]
     },
     {
+      "criterion_id": "PATH-SAFETY-BOUNDARY-001",
+      "axis": "Path",
+      "applicableStages": ["FIRST_VIEW", "VALUE", "CTA", "INPUT", "COMMIT"],
+      "evidence_level": "Operational",
+      "definition": "Scenario safety blocks should be surfaced as a journey boundary rather than a generic analysis failure.",
+      "required_observations": ["runner_failure"],
+      "measurement_sources": ["scenario_log"],
+      "signal_rule": "A runner_failure observation has a POLICY_*_BLOCKED failure_code in the stage context.",
+      "severity_rules": [
+        {"severity": 0, "condition": "no scenario safety block is observed"},
+        {"severity": 2, "condition": "external, synthetic input, or other recoverable/non-commit safety boundary is observed"},
+        {"severity": 3, "condition": "payment commit, destructive action, or COMMIT-stage safety boundary is observed"}
+      ],
+      "exceptions": ["Do not emit from aggregate counters alone; the issue must reference a runner_failure observation.", "Do not classify the block as a technical page failure unless separate network or console evidence exists."],
+      "confidence_rule": "High when Runner supplies a stage-attributed runner_failure observation with a POLICY_*_BLOCKED failure_code.",
+      "fix_leverage_default": 0.8,
+      "output_template": "선택한 흐름이 안전 정책 경계에 닿아 자동 실행이 안전하게 멈췄습니다.",
+      "source_refs": ["docs/runner_operational_runbook.md#scenario-safety-block"],
+      "references": [
+        {
+          "label": "NN/g Heuristics",
+          "publisher": "NN/g",
+          "title": "Visibility of system status",
+          "basisSummary": "사용자는 현재 흐름이 멈춘 이유와 다음에 무엇을 해야 하는지 이해할 수 있어야 합니다.",
+          "url": "https://www.nngroup.com/articles/ten-usability-heuristics/"
+        }
+      ]
+    },
+    {
       "criterion_id": "TECH-PRODUCT-IMAGE-LOAD-001",
       "axis": "Visual Integrity",
       "applicableStages": ["VALUE"],

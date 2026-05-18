@@ -274,6 +274,12 @@ export function createSimulatedSession(
       stopRequested: false,
       details: {}
     }),
+    recoverToSafeUrl: async () => ({
+      recovered: true,
+      method: "none",
+      urlBefore: pageSnapshot.currentUrl,
+      urlAfter: pageSnapshot.currentUrl
+    }),
     settle: async () => createSettledResult(),
     snapshot: () => pageSnapshot,
     captureArtifacts: async (): Promise<BrowserCapturedArtifacts> => ({}),

@@ -24,9 +24,28 @@ _ALLOWED_EXTRA_KEYS = {
     "artifactCount",
     "gmsCallCount",
     "candidateCount",
+    "parallelEnabled",
+    "maxConcurrency",
+    "unexpectedExceptionCount",
+    "resultCount",
+    "checkpointId",
     "stageCount",
     "ruleCount",
     "issueCount",
+    "gmsEnabled",
+    "clientConfigured",
+    "compactPromptEnabled",
+    "promptCharCount",
+    "fullPromptCharCount",
+    "responseCharCount",
+    "attemptCount",
+    "fallbackUsed",
+    "lastErrorType",
+}
+_SAFE_SENSITIVE_SUMMARY_KEYS = {
+    "compactPromptEnabled",
+    "promptCharCount",
+    "fullPromptCharCount",
 }
 
 
@@ -180,4 +199,6 @@ def _safe_extra_items(extra: dict[str, Any] | None) -> dict[str, Any]:
 
 
 def _is_sensitive_key(key: str) -> bool:
+    if key in _SAFE_SENSITIVE_SUMMARY_KEYS:
+        return False
     return bool(_SENSITIVE_KEY_PATTERN.search(key))

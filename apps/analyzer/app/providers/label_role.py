@@ -53,6 +53,11 @@ class LabelRoleIssueResult:
 
 
 class LabelRoleProviderPort(Protocol):
+    """Provider contract for label GMS enrichment.
+
+    Implementations used with checkpoint parallelism must be safe for concurrent
+    calls on the same provider instance or keep parallelism disabled.
+    """
     def classify_label_roles(
         self,
         *,

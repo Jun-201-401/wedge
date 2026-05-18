@@ -557,7 +557,14 @@ test("[정책 차단] scenario safety block은 실패가 아니라 stopped 실�
           details: {}
         };
       },
-      settle: async () => createSettledResult({ strategy: "fixed_short", durationMs: 1 })
+      settle: async () => createSettledResult({ strategy: "fixed_short", durationMs: 1 }),
+      recoverToSafeUrl: async () => ({
+        recovered: false,
+        method: "safe_url",
+        urlBefore: "https://nid.naver.com",
+        urlAfter: "https://nid.naver.com",
+        failureMessage: "recovery failed"
+      })
     }),
     callbackClient: createStubCallbackClient({
       sendStepEvents: async (_runId, payload) => {
@@ -606,6 +613,288 @@ test("[정책 차단] scenario safety block은 실패가 아니라 stopped 실�
   assert.equal(
     checkpointRequests[0]?.checkpoints[0]?.observations[0]?.failure_code,
     "POLICY_EXTERNAL_NAVIGATION_BLOCKED"
+  );
+});
+
+test("[정책 차단] recoverable safety block은 복귀 성공 후 다음 step으로 진행한다", async () => {
+  const plan = createMinimalPlan();
+  plan.start_url = "https://www.naver.com";
+  plan.steps = [
+    {
+      step_id: "step_001_first_view",
+      stage: "FIRST_VIEW",
+      description: "first view",
+      action: {
+        type: "goto",
+        target: {
+          url: plan.start_url
+        }
+      },
+      settle_strategy: {
+        type: "fixed_short",
+        timeout_ms: 1
+      },
+      checkpoint: false
+    },
+    {
+      step_id: "step_002_external_login",
+      stage: "CTA",
+      description: "external login is blocked",
+      action: {
+        type: "click",
+        target: {
+          text: "로그인"
+        }
+      },
+      settle_strategy: {
+        type: "fixed_short",
+        timeout_ms: 1
+      },
+      checkpoint: true
+    },
+    {
+      step_id: "step_003_finish_observation",
+      stage: "COMMIT",
+      description: "continue after recovery",
+      action: {
+        type: "checkpoint"
+      },
+      settle_strategy: {
+        type: "fixed_short",
+        timeout_ms: 1
+      },
+      checkpoint: false
+    }
+  ];
+  const executedStepKeys: string[] = [];
+  let recoveryAttemptCount = 0;
+  const emittedEventTypes: string[] = [];
+  const checkpointRequests: RunnerCheckpointsRequest[] = [];
+
+  const result = await executeScenario({
+    runId: "run-policy-recovered",
+    plan,
+    session: createSimulatedSession(plan, {
+      execute: async (action, step) => {
+        executedStepKeys.push(step.step_id);
+        if (step.step_id === "step_002_external_login") {
+          throw new RunnerExecutionPolicyError({
+            safetyCode: "EXTERNAL_VISIT_BLOCKED",
+            riskClass: "EXTERNAL_NAVIGATION",
+            message: "Scenario safety forbids visiting external origin https://nid.naver.com from start origin https://www.naver.com",
+            details: {
+              allowedOrigin: "https://www.naver.com",
+              currentOrigin: "https://nid.naver.com"
+            }
+          });
+        }
+
+        return {
+          actionType: action.type,
+          targetSummary: "checkpoint",
+          stopRequested: false,
+          details: {}
+        };
+      },
+      settle: async () => createSettledResult({ strategy: "fixed_short", durationMs: 1 }),
+      recoverToSafeUrl: async () => {
+        recoveryAttemptCount += 1;
+        return {
+          recovered: true,
+          method: "history_back",
+          urlBefore: "https://nid.naver.com",
+          urlAfter: plan.start_url
+        };
+      }
+    }),
+    callbackClient: createStubCallbackClient({
+      sendStepEvents: async (_runId, payload) => {
+        emittedEventTypes.push(...payload.events.map((event) => event.eventType));
+      },
+      sendCheckpoints: async (_runId, payload) => {
+        checkpointRequests.push(payload);
+      }
+    }),
+    capturePipeline: {
+      collectCheckpoint: async ({ step, stepOrder, settleResult }) => ({
+        checkpoint: {
+          checkpointId: "checkpoint-policy-recovered",
+          stepKey: step.step_id,
+          stage: step.stage,
+          trigger: {
+            stepOrder
+          },
+          settle: {
+            strategy: settleResult.strategy,
+            durationMs: settleResult.durationMs,
+            status: settleResult.status
+          },
+          state: {},
+          observations: [],
+          deltas: []
+        },
+        artifacts: []
+      })
+    },
+    artifactStore: {
+      persistArtifacts: async () => []
+    }
+  });
+
+  assert.deepEqual(executedStepKeys, [
+    "step_001_first_view",
+    "step_002_external_login",
+    "step_003_finish_observation"
+  ]);
+  assert.equal(recoveryAttemptCount, 1);
+  assert.equal(result.summary.completedStepCount, 2);
+  assert.equal(result.summary.failedStepCount, 0);
+  assert.equal(result.summary.stopped, false);
+  assert.equal(result.delivery.status, "DELIVERY_COMPLETE");
+  assert.ok(emittedEventTypes.includes("STEP_BLOCKED"));
+  assert.equal(emittedEventTypes.includes("STEP_FAILED"), false);
+  assert.equal(checkpointRequests.length, 1);
+  assert.equal(
+    checkpointRequests[0]?.checkpoints[0]?.observations[0]?.failure_code,
+    "POLICY_EXTERNAL_NAVIGATION_BLOCKED"
+  );
+});
+
+test("[정책 차단] non-recoverable safety block은 복귀를 시도하지 않고 안전 중단한다", async () => {
+  const plan = createMinimalPlan();
+  plan.steps = [
+    {
+      step_id: "step_001_first_view",
+      stage: "FIRST_VIEW",
+      description: "first view",
+      action: {
+        type: "goto",
+        target: {
+          url: plan.start_url
+        }
+      },
+      settle_strategy: {
+        type: "fixed_short",
+        timeout_ms: 1
+      },
+      checkpoint: false
+    },
+    {
+      step_id: "step_002_final_payment",
+      stage: "COMMIT",
+      description: "final payment action is blocked",
+      action: {
+        type: "click",
+        target: {
+          text: "결제하기"
+        }
+      },
+      settle_strategy: {
+        type: "fixed_short",
+        timeout_ms: 1
+      },
+      checkpoint: true
+    },
+    {
+      step_id: "step_003_should_not_run",
+      stage: "COMMIT",
+      description: "must not continue after non-recoverable block",
+      action: {
+        type: "checkpoint"
+      },
+      settle_strategy: {
+        type: "fixed_short",
+        timeout_ms: 1
+      },
+      checkpoint: false
+    }
+  ];
+  const executedStepKeys: string[] = [];
+  let recoveryAttemptCount = 0;
+  const emittedEventTypes: string[] = [];
+  const checkpointRequests: RunnerCheckpointsRequest[] = [];
+
+  const result = await executeScenario({
+    runId: "run-policy-non-recoverable",
+    plan,
+    session: createSimulatedSession(plan, {
+      execute: async (action, step) => {
+        executedStepKeys.push(step.step_id);
+        if (step.step_id === "step_002_final_payment") {
+          throw new RunnerExecutionPolicyError({
+            safetyCode: "PAYMENT_COMMIT_BLOCKED",
+            riskClass: "PAYMENT_COMMIT",
+            message: "Scenario safety forbids payment-commit target text=결제하기",
+            details: {
+              targetSummary: "text=결제하기"
+            }
+          });
+        }
+
+        return {
+          actionType: action.type,
+          targetSummary: "checkpoint",
+          stopRequested: false,
+          details: {}
+        };
+      },
+      settle: async () => createSettledResult({ strategy: "fixed_short", durationMs: 1 }),
+      recoverToSafeUrl: async () => {
+        recoveryAttemptCount += 1;
+        return {
+          recovered: true,
+          method: "history_back",
+          urlBefore: "https://example.com/checkout",
+          urlAfter: plan.start_url
+        };
+      }
+    }),
+    callbackClient: createStubCallbackClient({
+      sendStepEvents: async (_runId, payload) => {
+        emittedEventTypes.push(...payload.events.map((event) => event.eventType));
+      },
+      sendCheckpoints: async (_runId, payload) => {
+        checkpointRequests.push(payload);
+      }
+    }),
+    capturePipeline: {
+      collectCheckpoint: async ({ step, stepOrder, settleResult }) => ({
+        checkpoint: {
+          checkpointId: "checkpoint-policy-non-recoverable",
+          stepKey: step.step_id,
+          stage: step.stage,
+          trigger: {
+            stepOrder
+          },
+          settle: {
+            strategy: settleResult.strategy,
+            durationMs: settleResult.durationMs,
+            status: settleResult.status
+          },
+          state: {},
+          observations: [],
+          deltas: []
+        },
+        artifacts: []
+      })
+    },
+    artifactStore: {
+      persistArtifacts: async () => []
+    }
+  });
+
+  assert.deepEqual(executedStepKeys, ["step_001_first_view", "step_002_final_payment"]);
+  assert.equal(recoveryAttemptCount, 0);
+  assert.equal(result.summary.completedStepCount, 1);
+  assert.equal(result.summary.failedStepCount, 0);
+  assert.equal(result.summary.stopped, true);
+  assert.equal(result.delivery.status, "DELIVERY_COMPLETE");
+  assert.ok(emittedEventTypes.includes("STEP_BLOCKED"));
+  assert.equal(emittedEventTypes.includes("STEP_FAILED"), false);
+  assert.equal(checkpointRequests.length, 1);
+  assert.equal(
+    checkpointRequests[0]?.checkpoints[0]?.observations[0]?.failure_code,
+    "POLICY_PAYMENT_COMMIT_BLOCKED"
   );
 });
 

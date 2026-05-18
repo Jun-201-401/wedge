@@ -1,23 +1,49 @@
 from __future__ import annotations
 
 import copy
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
 from typing import Any
 
+from app.normalization.gms_checkpoint_parallel import GMSCheckpointParallelConfig
 from app.providers.label_role import LabelRoleIssueResult, LabelRoleProviderPort
 from app.stage.stage_resolver import StageResolver
+
+
+@dataclass(frozen=True)
+class _LabelRoleGMSJob:
+    checkpoint_id: str
+    stage: str
+    screenshot_url: str
+    candidates: list[dict[str, Any]]
+    target_index: dict[str, dict[str, Any]]
+
+
+@dataclass(frozen=True)
+class _LabelRoleGMSJobResult:
+    target_index: dict[str, dict[str, Any]]
+    results: list[LabelRoleIssueResult]
 
 
 class LabelRoleResolver:
     """Enrich EvidencePacket observations with GMS label-role alignment signals."""
 
-    def __init__(self, provider: LabelRoleProviderPort, resolver: StageResolver | None = None) -> None:
+    def __init__(
+        self,
+        provider: LabelRoleProviderPort,
+        resolver: StageResolver | None = None,
+        *,
+        parallel_config: GMSCheckpointParallelConfig | None = None,
+    ) -> None:
         self._provider = provider
         self._resolver = resolver or StageResolver()
+        self._parallel_config = parallel_config or GMSCheckpointParallelConfig()
 
     def enrich_packet(self, packet: dict[str, Any]) -> dict[str, Any]:
         enriched = copy.deepcopy(packet)
         artifacts_by_id = _artifacts_by_id(enriched.get("artifacts"))
         scenario_goal = _scenario_goal(enriched)
+        gms_jobs: list[_LabelRoleGMSJob] = []
 
         for checkpoint in enriched.get("checkpoints") or []:
             if not isinstance(checkpoint, dict):
@@ -32,15 +58,50 @@ class LabelRoleResolver:
             if not candidates:
                 continue
 
-            results = self._provider.classify_label_roles(
-                scenario_goal=scenario_goal,
-                stage=stage,
-                checkpoint_id=checkpoint_id,
-                screenshot_url=screenshot_url,
-                candidates=candidates,
+            gms_jobs.append(
+                _LabelRoleGMSJob(
+                    checkpoint_id=checkpoint_id,
+                    stage=stage,
+                    screenshot_url=screenshot_url,
+                    candidates=candidates,
+                    target_index=target_index,
+                )
             )
-            self._apply_results(results, target_index)
+
+        for job_result in self._run_gms_jobs(scenario_goal=scenario_goal, jobs=gms_jobs):
+            self._apply_results(job_result.results, job_result.target_index)
         return enriched
+
+    def _run_gms_jobs(
+        self,
+        *,
+        scenario_goal: str,
+        jobs: list[_LabelRoleGMSJob],
+    ) -> list[_LabelRoleGMSJobResult]:
+        if not jobs:
+            return []
+        if not self._parallel_config.should_parallelize(len(jobs)):
+            return [self._run_gms_job(scenario_goal=scenario_goal, job=job) for job in jobs]
+
+        max_workers = min(self._parallel_config.max_concurrency, len(jobs))
+        with ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="label-role-gms") as executor:
+            futures = [executor.submit(self._run_gms_job, scenario_goal=scenario_goal, job=job) for job in jobs]
+            return [future.result() for future in futures]
+
+    def _run_gms_job(
+        self,
+        *,
+        scenario_goal: str,
+        job: _LabelRoleGMSJob,
+    ) -> _LabelRoleGMSJobResult:
+        results = self._provider.classify_label_roles(
+            scenario_goal=scenario_goal,
+            stage=job.stage,
+            checkpoint_id=job.checkpoint_id,
+            screenshot_url=job.screenshot_url,
+            candidates=job.candidates,
+        )
+        return _LabelRoleGMSJobResult(target_index=job.target_index, results=results)
 
     def _candidates_for_checkpoint(
         self,
