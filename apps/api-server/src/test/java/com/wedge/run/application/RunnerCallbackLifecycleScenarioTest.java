@@ -88,7 +88,7 @@ class RunnerCallbackLifecycleScenarioTest {
                 checkpointPersistenceService
         );
 
-        when(processedMessagePersistenceAdapter.tryMarkProcessed(anyString(), anyString())).thenReturn(true);
+        when(processedMessagePersistenceAdapter.tryMarkProcessed(anyString(), anyString(), any())).thenReturn(true);
         when(outboxMessagePersistenceAdapter.appendRunExecuteMessage(any(RunExecuteRequestMessage.class)))
                 .thenReturn(UUID.randomUUID());
     }

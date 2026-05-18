@@ -4,11 +4,20 @@
     <insert id="insertIgnoreDuplicate">
         INSERT INTO processed_message (
             consumer_name,
-            message_id
+            message_id,
+            payload_hash
         ) VALUES (
             #{consumerName},
-            #{messageId}
+            #{messageId},
+            #{payloadHash}
         )
         ON CONFLICT (consumer_name, message_id) DO NOTHING
     </insert>
+
+    <select id="findPayloadHash" resultType="string">
+        SELECT payload_hash
+        FROM processed_message
+        WHERE consumer_name = #{consumerName}
+          AND message_id = #{messageId}
+    </select>
 </mapper>

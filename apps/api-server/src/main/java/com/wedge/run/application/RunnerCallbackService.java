@@ -65,7 +65,7 @@ public class RunnerCallbackService {
         context.validateRequired();
         context.validateWorkerMatches(command.workerId());
 
-        RunnerCallbackAckResponse duplicateResponse = duplicateStatusResponse(ACCEPTED_CONSUMER, context.eventId(), runId);
+        RunnerCallbackAckResponse duplicateResponse = duplicateStatusResponse(ACCEPTED_CONSUMER, context.eventId(), runId, command);
         if (duplicateResponse != null) {
             return duplicateResponse;
         }
@@ -78,7 +78,7 @@ public class RunnerCallbackService {
     public RunnerCallbackAckResponse handleStepEvents(UUID runId, RunnerStepEventsCommand command, InternalCallbackContext context) {
         context.validateRequired();
 
-        RunnerCallbackAckResponse duplicateResponse = duplicateStatusResponse(STEP_EVENTS_CONSUMER, context.eventId(), runId);
+        RunnerCallbackAckResponse duplicateResponse = duplicateStatusResponse(STEP_EVENTS_CONSUMER, context.eventId(), runId, command);
         if (duplicateResponse != null) {
             return duplicateResponse.withEventCount(command.events().size());
         }
@@ -94,7 +94,7 @@ public class RunnerCallbackService {
     public RunnerCallbackAckResponse handleCheckpoints(UUID runId, RunnerCheckpointsCommand command, InternalCallbackContext context) {
         context.validateRequired();
 
-        if (isDuplicate(CHECKPOINTS_CONSUMER, context.eventId())) {
+        if (isDuplicate(CHECKPOINTS_CONSUMER, context.eventId(), runId, command)) {
             runService.getRun(runId);
             return RunnerCallbackAckResponse.duplicateCheckpoints(runId, command.checkpoints().size());
         }
@@ -113,7 +113,7 @@ public class RunnerCallbackService {
     public RunnerCallbackAckResponse handleArtifacts(UUID runId, RunnerArtifactsCommand command, InternalCallbackContext context) {
         context.validateRequired();
 
-        if (isDuplicate(ARTIFACTS_CONSUMER, context.eventId())) {
+        if (isDuplicate(ARTIFACTS_CONSUMER, context.eventId(), runId, command)) {
             runService.getRun(runId);
             return RunnerCallbackAckResponse.duplicateArtifacts(runId, command.artifacts().size());
         }
@@ -135,7 +135,7 @@ public class RunnerCallbackService {
         context.validateRequired();
         context.validateWorkerMatches(command.workerId());
 
-        RunnerCallbackAckResponse duplicateResponse = duplicateStatusResponse(FINISHED_CONSUMER, context.eventId(), runId);
+        RunnerCallbackAckResponse duplicateResponse = duplicateStatusResponse(FINISHED_CONSUMER, context.eventId(), runId, command);
         if (duplicateResponse != null) {
             return duplicateResponse;
         }
@@ -150,7 +150,7 @@ public class RunnerCallbackService {
         context.validateRequired();
         context.validateWorkerMatches(command.workerId());
 
-        RunnerCallbackAckResponse duplicateResponse = duplicateStatusResponse(FAILED_CONSUMER, context.eventId(), runId);
+        RunnerCallbackAckResponse duplicateResponse = duplicateStatusResponse(FAILED_CONSUMER, context.eventId(), runId, command);
         if (duplicateResponse != null) {
             return duplicateResponse;
         }
@@ -163,7 +163,7 @@ public class RunnerCallbackService {
     public RunnerCallbackAckResponse handleAgentEvents(UUID runId, RunnerAgentEventsCommand command, InternalCallbackContext context) {
         context.validateRequired();
 
-        if (isDuplicate(AGENT_EVENTS_CONSUMER, context.eventId())) {
+        if (isDuplicate(AGENT_EVENTS_CONSUMER, context.eventId(), runId, command)) {
             RunResponse run = runService.getRun(runId);
             return RunnerCallbackAckResponse.stepEvents(run, command.events().size()).withEventCount(command.events().size());
         }
@@ -178,7 +178,7 @@ public class RunnerCallbackService {
     public RunnerCallbackAckResponse handleAgentTrace(UUID runId, RunnerAgentTraceCommand command, InternalCallbackContext context) {
         context.validateRequired();
 
-        if (isDuplicate(AGENT_TRACES_CONSUMER, context.eventId())) {
+        if (isDuplicate(AGENT_TRACES_CONSUMER, context.eventId(), runId, command)) {
             return RunnerCallbackAckResponse.duplicateStatus(runService.getRun(runId));
         }
 
@@ -342,15 +342,22 @@ public class RunnerCallbackService {
         }
     }
 
-    private boolean isDuplicate(String consumerName, String eventId) {
-        return !processedMessagePersistenceAdapter.tryMarkProcessed(consumerName, eventId);
+    private boolean isDuplicate(String consumerName, String eventId, UUID runId, Object command) {
+        return !processedMessagePersistenceAdapter.tryMarkProcessed(consumerName, eventId, idempotencyPayload(runId, command));
     }
 
-    private RunnerCallbackAckResponse duplicateStatusResponse(String consumerName, String eventId, UUID runId) {
-        if (!isDuplicate(consumerName, eventId)) {
+    private RunnerCallbackAckResponse duplicateStatusResponse(String consumerName, String eventId, UUID runId, Object command) {
+        if (!isDuplicate(consumerName, eventId, runId, command)) {
             return null;
         }
 
         return RunnerCallbackAckResponse.duplicateStatus(runService.getRun(runId));
+    }
+
+    private Map<String, Object> idempotencyPayload(UUID runId, Object command) {
+        return Map.of(
+                "runId", runId.toString(),
+                "payload", command
+        );
     }
 }

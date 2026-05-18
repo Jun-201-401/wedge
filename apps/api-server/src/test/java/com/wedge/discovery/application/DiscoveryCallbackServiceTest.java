@@ -2,6 +2,8 @@ package com.wedge.discovery.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -73,7 +75,7 @@ class DiscoveryCallbackServiceTest {
         UUID discoveryId = UUID.randomUUID();
         SiteDiscovery discovery = discovery(discoveryId, DiscoveryStatus.QUEUED);
         OffsetDateTime acceptedAt = OffsetDateTime.parse("2026-04-21T10:00:00+09:00");
-        when(processedMessagePersistenceAdapter.tryMarkProcessed("runner.discovery.accepted", "evt_accepted_001")).thenReturn(true);
+        when(processedMessagePersistenceAdapter.tryMarkProcessed(eq("runner.discovery.accepted"), eq("evt_accepted_001"), any())).thenReturn(true);
         when(discoveryService.findDiscovery(discoveryId)).thenReturn(discovery);
         when(siteDiscoveryMapper.markRunning(discoveryId, acceptedAt)).thenReturn(1);
 
@@ -91,7 +93,7 @@ class DiscoveryCallbackServiceTest {
     void acceptedCallbackDoesNotRegressCompletedDiscoveryToRunning() {
         UUID discoveryId = UUID.randomUUID();
         OffsetDateTime acceptedAt = OffsetDateTime.parse("2026-04-21T10:00:00+09:00");
-        when(processedMessagePersistenceAdapter.tryMarkProcessed("runner.discovery.accepted", "evt_accepted_001")).thenReturn(true);
+        when(processedMessagePersistenceAdapter.tryMarkProcessed(eq("runner.discovery.accepted"), eq("evt_accepted_001"), any())).thenReturn(true);
         when(discoveryService.findDiscovery(discoveryId)).thenReturn(discovery(discoveryId, DiscoveryStatus.COMPLETED));
 
         assertThatThrownBy(() -> discoveryCallbackService.handleAccepted(
@@ -119,7 +121,7 @@ class DiscoveryCallbackServiceTest {
                 List.of(),
                 List.of()
         )));
-        when(processedMessagePersistenceAdapter.tryMarkProcessed("runner.discovery.checkpoints", "evt_checkpoint_001")).thenReturn(true);
+        when(processedMessagePersistenceAdapter.tryMarkProcessed(eq("runner.discovery.checkpoints"), eq("evt_checkpoint_001"), any())).thenReturn(true);
         when(discoveryService.findDiscovery(discoveryId)).thenReturn(discovery(discoveryId, DiscoveryStatus.RUNNING));
         when(checkpointPersistenceService.saveDiscoveryCheckpoints(discoveryId, command)).thenReturn(1);
 
@@ -149,7 +151,7 @@ class DiscoveryCallbackServiceTest {
                 List.of(),
                 List.of()
         )));
-        when(processedMessagePersistenceAdapter.tryMarkProcessed("runner.discovery.checkpoints", "evt_late_checkpoint_001")).thenReturn(true);
+        when(processedMessagePersistenceAdapter.tryMarkProcessed(eq("runner.discovery.checkpoints"), eq("evt_late_checkpoint_001"), any())).thenReturn(true);
         when(discoveryService.findDiscovery(discoveryId)).thenReturn(discovery(discoveryId, DiscoveryStatus.COMPLETED));
 
         assertThatThrownBy(() -> discoveryCallbackService.handleCheckpoints(
@@ -202,7 +204,7 @@ class DiscoveryCallbackServiceTest {
                         ))
                 )
         );
-        when(processedMessagePersistenceAdapter.tryMarkProcessed("runner.discovery.finished", "evt_finished_001")).thenReturn(true);
+        when(processedMessagePersistenceAdapter.tryMarkProcessed(eq("runner.discovery.finished"), eq("evt_finished_001"), any())).thenReturn(true);
         when(discoveryService.findDiscovery(discoveryId)).thenReturn(discovery(discoveryId, DiscoveryStatus.RUNNING));
         when(siteDiscoveryMapper.markCompleted(discoveryId, "https://example.com", "{\"detectedFlowTypes\":[\"CONTACT\"],\"missingFlowTypes\":[],\"primaryCtaCount\":0,\"formCandidateCount\":0,\"pricingEntrypointCount\":0,\"checkoutEntrypointCount\":0}", command.finishedAt())).thenReturn(1);
 
@@ -217,7 +219,7 @@ class DiscoveryCallbackServiceTest {
     void duplicateAcceptedCallbackDoesNotTransitionDiscoveryAgain() {
         UUID discoveryId = UUID.randomUUID();
         OffsetDateTime acceptedAt = OffsetDateTime.parse("2026-04-21T10:00:00+09:00");
-        when(processedMessagePersistenceAdapter.tryMarkProcessed("runner.discovery.accepted", "evt_accepted_001")).thenReturn(false);
+        when(processedMessagePersistenceAdapter.tryMarkProcessed(eq("runner.discovery.accepted"), eq("evt_accepted_001"), any())).thenReturn(false);
         when(discoveryService.findDiscovery(discoveryId)).thenReturn(discovery(discoveryId, DiscoveryStatus.RUNNING));
 
         DiscoveryCallbackAckResponse response = discoveryCallbackService.handleAccepted(
@@ -246,7 +248,7 @@ class DiscoveryCallbackServiceTest {
                 List.of(),
                 List.of()
         )));
-        when(processedMessagePersistenceAdapter.tryMarkProcessed("runner.discovery.checkpoints", "evt_checkpoint_001")).thenReturn(false);
+        when(processedMessagePersistenceAdapter.tryMarkProcessed(eq("runner.discovery.checkpoints"), eq("evt_checkpoint_001"), any())).thenReturn(false);
         when(discoveryService.findDiscovery(discoveryId)).thenReturn(discovery(discoveryId, DiscoveryStatus.RUNNING));
 
         DiscoveryCallbackAckResponse response = discoveryCallbackService.handleCheckpoints(
@@ -266,7 +268,7 @@ class DiscoveryCallbackServiceTest {
         UUID discoveryId = UUID.randomUUID();
         OffsetDateTime finishedAt = OffsetDateTime.parse("2026-04-21T10:05:00+09:00");
         DiscoverySummaryCommand summary = new DiscoverySummaryCommand(List.of(), List.of(), 0, 0, 0, 0, List.of());
-        when(processedMessagePersistenceAdapter.tryMarkProcessed("runner.discovery.finished", "evt_finished_001")).thenReturn(false);
+        when(processedMessagePersistenceAdapter.tryMarkProcessed(eq("runner.discovery.finished"), eq("evt_finished_001"), any())).thenReturn(false);
         when(discoveryService.findDiscovery(discoveryId)).thenReturn(discovery(discoveryId, DiscoveryStatus.COMPLETED));
 
         DiscoveryCallbackAckResponse response = discoveryCallbackService.handleFinished(
@@ -285,7 +287,7 @@ class DiscoveryCallbackServiceTest {
     void duplicateFailedCallbackDoesNotFailDiscoveryAgain() {
         UUID discoveryId = UUID.randomUUID();
         OffsetDateTime failedAt = OffsetDateTime.parse("2026-04-21T10:05:00+09:00");
-        when(processedMessagePersistenceAdapter.tryMarkProcessed("runner.discovery.failed", "evt_failed_001")).thenReturn(false);
+        when(processedMessagePersistenceAdapter.tryMarkProcessed(eq("runner.discovery.failed"), eq("evt_failed_001"), any())).thenReturn(false);
         when(discoveryService.findDiscovery(discoveryId)).thenReturn(discovery(discoveryId, DiscoveryStatus.FAILED));
 
         DiscoveryCallbackAckResponse response = discoveryCallbackService.handleFailed(

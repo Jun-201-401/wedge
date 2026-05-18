@@ -37,7 +37,7 @@ public class AnalyzerCallbackService {
     ) {
         headers.validateRequired();
         validateAnalysisJobId(analysisJobId, request.analysisJobId());
-        if (isDuplicate(STARTED_CONSUMER, headers.eventId())) {
+        if (isDuplicate(STARTED_CONSUMER, headers.eventId(), request)) {
             return duplicateResponse(analysisJobId, request.runId(), "RUNNING");
         }
         return judgeResultPersistenceService.saveStarted(request);
@@ -51,7 +51,7 @@ public class AnalyzerCallbackService {
     ) {
         headers.validateRequired();
         validateAnalysisJobId(analysisJobId, request.analysisJobId());
-        if (isDuplicate(COMPLETED_CONSUMER, headers.eventId())) {
+        if (isDuplicate(COMPLETED_CONSUMER, headers.eventId(), request)) {
             return duplicateResponse(analysisJobId, request.runId(), "COMPLETED");
         }
         return judgeResultPersistenceService.saveCompleted(request);
@@ -61,7 +61,7 @@ public class AnalyzerCallbackService {
     public Map<String, Object> handleFailed(UUID analysisJobId, AnalyzerFailedRequest request, AnalyzerCallbackHeaders headers) {
         headers.validateRequired();
         validateAnalysisJobId(analysisJobId, request.analysisJobId());
-        if (isDuplicate(FAILED_CONSUMER, headers.eventId())) {
+        if (isDuplicate(FAILED_CONSUMER, headers.eventId(), request)) {
             return duplicateResponse(analysisJobId, request.runId(), "FAILED");
         }
         return judgeResultPersistenceService.saveFailed(request);
@@ -73,8 +73,8 @@ public class AnalyzerCallbackService {
         }
     }
 
-    private boolean isDuplicate(String consumerName, String eventId) {
-        return !processedMessagePersistenceAdapter.tryMarkProcessed(consumerName, eventId);
+    private boolean isDuplicate(String consumerName, String eventId, Object request) {
+        return !processedMessagePersistenceAdapter.tryMarkProcessed(consumerName, eventId, request);
     }
 
     private Map<String, Object> duplicateResponse(UUID analysisJobId, UUID runId, String status) {

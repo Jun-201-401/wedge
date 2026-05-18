@@ -45,7 +45,7 @@ public class DiscoveryCallbackService {
     public DiscoveryCallbackAckResponse handleAccepted(UUID discoveryId, DiscoveryAcceptedCommand command, InternalCallbackContext context) {
         context.validateRequired();
         context.validateWorkerMatches(command.workerId());
-        DiscoveryCallbackAckResponse duplicateResponse = duplicateStatusResponse(ACCEPTED_CONSUMER, context.eventId(), discoveryId);
+        DiscoveryCallbackAckResponse duplicateResponse = duplicateStatusResponse(ACCEPTED_CONSUMER, context.eventId(), discoveryId, command);
         if (duplicateResponse != null) {
             return duplicateResponse;
         }
@@ -69,7 +69,7 @@ public class DiscoveryCallbackService {
         context.validateRequired();
         context.validateWorkerMatches(workerId);
 
-        if (isDuplicate(CHECKPOINTS_CONSUMER, context.eventId())) {
+        if (isDuplicate(CHECKPOINTS_CONSUMER, context.eventId(), discoveryId, command)) {
             discoveryService.findDiscovery(discoveryId);
             return DiscoveryCallbackAckResponse.duplicateCheckpoints(discoveryId, command.checkpoints().size());
         }
@@ -84,7 +84,7 @@ public class DiscoveryCallbackService {
     public DiscoveryCallbackAckResponse handleFinished(UUID discoveryId, DiscoveryFinishedCommand command, InternalCallbackContext context) {
         context.validateRequired();
         context.validateWorkerMatches(command.workerId());
-        DiscoveryCallbackAckResponse duplicateResponse = duplicateStatusResponse(FINISHED_CONSUMER, context.eventId(), discoveryId);
+        DiscoveryCallbackAckResponse duplicateResponse = duplicateStatusResponse(FINISHED_CONSUMER, context.eventId(), discoveryId, command);
         if (duplicateResponse != null) {
             return duplicateResponse;
         }
@@ -110,7 +110,7 @@ public class DiscoveryCallbackService {
     public DiscoveryCallbackAckResponse handleFailed(UUID discoveryId, DiscoveryFailedCommand command, InternalCallbackContext context) {
         context.validateRequired();
         context.validateWorkerMatches(command.workerId());
-        DiscoveryCallbackAckResponse duplicateResponse = duplicateStatusResponse(FAILED_CONSUMER, context.eventId(), discoveryId);
+        DiscoveryCallbackAckResponse duplicateResponse = duplicateStatusResponse(FAILED_CONSUMER, context.eventId(), discoveryId, command);
         if (duplicateResponse != null) {
             return duplicateResponse;
         }
@@ -123,15 +123,22 @@ public class DiscoveryCallbackService {
         return DiscoveryCallbackAckResponse.status(discoveryId, DiscoveryStatus.FAILED);
     }
 
-    private DiscoveryCallbackAckResponse duplicateStatusResponse(String consumerName, String eventId, UUID discoveryId) {
-        if (!isDuplicate(consumerName, eventId)) {
+    private DiscoveryCallbackAckResponse duplicateStatusResponse(String consumerName, String eventId, UUID discoveryId, Object command) {
+        if (!isDuplicate(consumerName, eventId, discoveryId, command)) {
             return null;
         }
         return DiscoveryCallbackAckResponse.duplicate(discoveryId, discoveryService.findDiscovery(discoveryId).getStatus());
     }
 
-    private boolean isDuplicate(String consumerName, String eventId) {
-        return !processedMessagePersistenceAdapter.tryMarkProcessed(consumerName, eventId);
+    private boolean isDuplicate(String consumerName, String eventId, UUID discoveryId, Object command) {
+        return !processedMessagePersistenceAdapter.tryMarkProcessed(consumerName, eventId, idempotencyPayload(discoveryId, command));
+    }
+
+    private Map<String, Object> idempotencyPayload(UUID discoveryId, Object command) {
+        return Map.of(
+                "discoveryId", discoveryId.toString(),
+                "payload", command
+        );
     }
 
     private void rejectTerminalEvidence(SiteDiscovery discovery) {

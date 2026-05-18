@@ -32,7 +32,12 @@ public class ScenarioAuthoringCallbackService {
     public ScenarioAuthoringCallbackAckResponse handleAccepted(UUID authoringJobId, String workerId, InternalCallbackContext context) {
         context.validateRequired();
         context.validateWorkerMatches(workerId);
-        ScenarioAuthoringCallbackAckResponse duplicate = duplicateStatusResponse(ACCEPTED_CONSUMER, context.eventId(), authoringJobId);
+        ScenarioAuthoringCallbackAckResponse duplicate = duplicateStatusResponse(
+                ACCEPTED_CONSUMER,
+                context.eventId(),
+                authoringJobId,
+                Map.of("workerId", workerId)
+        );
         if (duplicate != null) {
             return duplicate;
         }
@@ -54,7 +59,7 @@ public class ScenarioAuthoringCallbackService {
     public ScenarioAuthoringCallbackAckResponse handleFinished(UUID authoringJobId, Map<String, Object> payload, InternalCallbackContext context) {
         context.validateRequired();
         context.validateWorkerMatches(String.valueOf(payload.get("workerId")));
-        ScenarioAuthoringCallbackAckResponse duplicate = duplicateStatusResponse(FINISHED_CONSUMER, context.eventId(), authoringJobId);
+        ScenarioAuthoringCallbackAckResponse duplicate = duplicateStatusResponse(FINISHED_CONSUMER, context.eventId(), authoringJobId, payload);
         if (duplicate != null) {
             return duplicate;
         }
@@ -83,7 +88,7 @@ public class ScenarioAuthoringCallbackService {
     public ScenarioAuthoringCallbackAckResponse handleFailed(UUID authoringJobId, Map<String, Object> payload, InternalCallbackContext context) {
         context.validateRequired();
         context.validateWorkerMatches(String.valueOf(payload.get("workerId")));
-        ScenarioAuthoringCallbackAckResponse duplicate = duplicateStatusResponse(FAILED_CONSUMER, context.eventId(), authoringJobId);
+        ScenarioAuthoringCallbackAckResponse duplicate = duplicateStatusResponse(FAILED_CONSUMER, context.eventId(), authoringJobId, payload);
         if (duplicate != null) {
             return duplicate;
         }
@@ -129,11 +134,23 @@ public class ScenarioAuthoringCallbackService {
                 || status == ScenarioAuthoringStatus.QUEUED;
     }
 
-    private ScenarioAuthoringCallbackAckResponse duplicateStatusResponse(String consumerName, String eventId, UUID authoringJobId) {
-        if (processedMessagePersistenceAdapter.tryMarkProcessed(consumerName, eventId)) {
+    private ScenarioAuthoringCallbackAckResponse duplicateStatusResponse(
+            String consumerName,
+            String eventId,
+            UUID authoringJobId,
+            Object payload
+    ) {
+        if (processedMessagePersistenceAdapter.tryMarkProcessed(consumerName, eventId, idempotencyPayload(authoringJobId, payload))) {
             return null;
         }
         return ScenarioAuthoringCallbackAckResponse.duplicate(authoringJobId, findJob(authoringJobId).getStatus());
+    }
+
+    private Map<String, Object> idempotencyPayload(UUID authoringJobId, Object payload) {
+        return Map.of(
+                "authoringJobId", authoringJobId.toString(),
+                "payload", payload
+        );
     }
 
     private ScenarioAuthoringJob findJob(UUID authoringJobId) {
