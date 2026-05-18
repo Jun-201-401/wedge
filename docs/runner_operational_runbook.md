@@ -46,6 +46,18 @@ Agent API idempotency lease는 운영 기본값으로 5분 TTL, 60초 renewal을
 
 Runner replica 수는 운영 `.env.prod`의 `RUNNER_REPLICAS`로 관리한다. Jenkins 배포는 이 값을 읽어 `docker compose up --scale runner=<RUNNER_REPLICAS>`를 적용하고, 실행 중인 runner replica 수와 image tag를 검증한다.
 
+로컬 dev의 기본 `compose.dev.yaml`은 단일 runner metrics 확인을 위해 `127.0.0.1:9101:9101`을 publish한다. 같은 service를 여러 replica로 scale하면 host port가 충돌하므로, 로컬 병렬 검증은 scale 전용 override를 함께 사용한다. 이 override는 runner metrics host port publish를 제거하고 API-backed idempotency mode를 켠다.
+
+```bash
+docker compose --env-file .env -f compose.dev.yaml -f infra/compose/compose.dev.runner-scale.yaml up -d --scale runner=3 runner
+```
+
+scale 검증 후 단일 runner 개발 모드로 되돌릴 때는 override 없이 runner를 다시 생성한다.
+
+```bash
+docker compose --env-file .env -f compose.dev.yaml up -d --force-recreate runner
+```
+
 ## 3. Real smoke / E2E 절차
 
 ### 3.0 Runner smoke suite gate
