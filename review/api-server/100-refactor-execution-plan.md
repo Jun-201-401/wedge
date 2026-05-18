@@ -4,6 +4,10 @@
 
 Created before source edits on branch `refactor/api-server-hardening`.
 
+Execution update on 2026-05-18: Slices A through D were implemented and verified on branch
+`refactor/api-server-hardening`. Slices E and F remain planned follow-up work unless a later
+commit addresses them.
+
 This file is the tracked handoff copy of the executable Ralph plan. The runtime PRD and test spec also exist under `.omx/plans`, but `.omx/` is ignored by git.
 
 Runtime artifacts:
@@ -11,6 +15,26 @@ Runtime artifacts:
 - `.omx/plans/prd-api-server-hardening-2026-05-18.md`
 - `.omx/plans/test-spec-api-server-hardening-2026-05-18.md`
 - `.omx/context/api-server-hardening-20260518T040646Z.md`
+
+Implemented commits:
+
+- `884309c` - run command project boundary hardening
+- `a4ab8db` - analysis callback terminal boundary hardening
+- `f4fdab9` - analyzer callback signature verification
+- `e05aea7` - immutable evidence packets per analysis
+- `a9c5f92` - evidence callback boundary hardening
+- `5f5649d` - evidence packet and artifact read bounds
+- `5cf8d36` - confirmed outbox publishes
+- `a243e4f` - async DLQ settlement
+- `8f85575` - callback event payload drift rejection
+- `420bc0d` - run create idempotency keys
+- `b5c9783` - async idempotency race window closure
+
+Final verification for the implemented scope:
+
+- `cd apps/api-server && gradle test --tests com.wedge.discovery.application.DiscoveryServiceTest --tests com.wedge.discovery.infrastructure.SiteDiscoveryMapperSqlTest --tests com.wedge.scenarioauthoring.application.ScenarioAuthoringCallbackServiceTest --tests com.wedge.scenarioauthoring.infrastructure.ScenarioAuthoringJobMapperSqlTest --tests com.wedge.analysis.application.AnalysisRequestServiceTest --tests com.wedge.analysis.infrastructure.AnalysisJobMapperSqlTest --tests com.wedge.run.application.RunServiceTest --tests com.wedge.run.infrastructure.RunPersistenceAdapterTest --tests com.wedge.run.infrastructure.RunMapperSqlTest --tests com.wedge.run.api.RunControllerTest --tests com.wedge.run.application.RunnerCallbackLifecycleScenarioTest` - passed
+- `cd apps/api-server && gradle test` - passed in 4m 35s
+- `git diff --check` - passed
 
 ## Why This Plan Exists
 
@@ -152,4 +176,3 @@ Completion requires:
 - no uncommitted source changes except intentionally ignored Ralph runtime artifacts;
 - architect/verifier review of changed files;
 - ai-slop-cleaner pass scoped to changed files and regression re-run.
-
