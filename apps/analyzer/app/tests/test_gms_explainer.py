@@ -135,6 +135,58 @@ class GMSReportExplainerTest(unittest.TestCase):
         self.assertNotIn('"selector"', compact_prompt)
         self.assertNotIn('"bounds"', compact_prompt)
 
+    def test_compact_prompt_summarizes_non_component_evidence_shapes(self) -> None:
+        original = sample_judge_result()
+        original["issues"][0]["evidence_locations"] = [
+            {
+                "evidence_ref": "cp_001.obs_loading",
+                "type": "loading_state",
+                "visible_text": "로딩 중",
+                "role": "status",
+                "bounds": {"x": 20, "y": 40, "width": 180, "height": 32},
+                "problem_components": [
+                    {
+                        "text": "로딩 중",
+                        "role": "status",
+                        "bounds": {"x": 20, "y": 40, "width": 180, "height": 32},
+                    }
+                ],
+            },
+            {
+                "evidence_ref": "cp_001.obs_cards",
+                "type": "product_card",
+                "product_cards": [
+                    {
+                        "text": "초코칩 쿠키",
+                        "role": "product_card",
+                        "bounds": {"x": 170, "y": 395, "width": 285, "height": 281},
+                    }
+                ],
+            },
+            {
+                "evidence_ref": "cp_001.obs_items",
+                "type": "choice_list",
+                "items": [
+                    {
+                        "label": "방문 포장",
+                        "role": "option",
+                        "bounds": {"x": 80, "y": 200, "width": 200, "height": 44},
+                    }
+                ],
+            },
+        ]
+
+        compact_prompt = _build_prompt(original, compact_prompt_enabled=True)
+
+        self.assertIn("로딩 중", compact_prompt)
+        self.assertIn("초코칩 쿠키", compact_prompt)
+        self.assertIn("방문 포장", compact_prompt)
+        self.assertIn("status", compact_prompt)
+        self.assertIn("product_card", compact_prompt)
+        self.assertIn("option", compact_prompt)
+        self.assertIn('"hasBounds": true', compact_prompt)
+        self.assertNotIn('"bounds"', compact_prompt)
+
     def test_compact_prompt_records_compact_and_full_prompt_sizes(self) -> None:
         original = sample_judge_result()
         original["issues"][0]["evidence_locations"][0]["components"][0]["text"] = "무료 체험 시작"

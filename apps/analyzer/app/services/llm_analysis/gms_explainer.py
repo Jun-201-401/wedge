@@ -294,17 +294,32 @@ def _summarize_evidence_locations(evidence_locations: Any) -> dict[str, Any]:
         if not isinstance(location, dict):
             continue
         _append_unique(types, _non_empty_string(location.get("type")), limit=8)
-        components = location.get("components")
-        if not isinstance(components, list):
-            continue
-        for component in components:
-            if not isinstance(component, dict):
+        top_level_had_context = _summarize_evidence_context(
+            location,
+            visible_texts=visible_texts,
+            roles=roles,
+        )
+        has_bounds = has_bounds or isinstance(location.get("bounds"), dict)
+
+        child_count = 0
+        for child_key in ("components", "problem_components", "items", "product_cards"):
+            children = location.get(child_key)
+            if not isinstance(children, list):
                 continue
+            for child in children:
+                if not isinstance(child, dict):
+                    continue
+                child_count += 1
+                has_bounds = has_bounds or isinstance(child.get("bounds"), dict)
+                _summarize_evidence_context(
+                    child,
+                    visible_texts=visible_texts,
+                    roles=roles,
+                )
+
+        component_count += child_count
+        if child_count == 0 and top_level_had_context:
             component_count += 1
-            has_bounds = has_bounds or isinstance(component.get("bounds"), dict)
-            _append_unique(roles, _non_empty_string(component.get("role")), limit=8)
-            for key in ("text", "label", "name", "accessible_name", "aria_label", "title"):
-                _append_unique(visible_texts, _non_empty_string(component.get(key)), limit=12)
 
     return {
         "count": len([location for location in evidence_locations if isinstance(location, dict)]),
@@ -314,6 +329,34 @@ def _summarize_evidence_locations(evidence_locations: Any) -> dict[str, Any]:
         "roles": roles,
         "hasBounds": has_bounds,
     }
+
+
+def _summarize_evidence_context(
+    payload: dict[str, Any],
+    *,
+    visible_texts: list[str],
+    roles: list[str],
+) -> bool:
+    """Collect compact, non-coordinate context from one evidence-like payload."""
+
+    has_context = False
+    role = _non_empty_string(payload.get("role"))
+    _append_unique(roles, role, limit=8)
+    if role:
+        has_context = True
+    for key in (
+        "text",
+        "visible_text",
+        "label",
+        "name",
+        "accessible_name",
+        "aria_label",
+        "title",
+    ):
+        value = _non_empty_string(payload.get(key))
+        _append_unique(visible_texts, value, limit=12)
+        has_context = has_context or value is not None
+    return has_context or isinstance(payload.get("bounds"), dict)
 
 
 def _parse_json_object(text: str) -> dict[str, Any]:
