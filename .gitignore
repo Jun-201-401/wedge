@@ -8,6 +8,7 @@ Thumbs.db
 
 # Env / local overrides
 .env
+.env.docker
 .env.*
 env.prod
 !.env.example
