@@ -1074,7 +1074,7 @@
     },
     "DecisionStage": {
       "type": "string",
-      "description": "Operational decision moment label. Runner passes ScenarioStep.stage as checkpoint primaryStage; LLM does not infer it.",
+      "description": "Operational decision moment label. Runner passes ScenarioStep.stage as callback checkpoint stage; Spring may normalize it to EvidencePacket primaryStage. LLM does not infer it.",
       "enum": [
         "FIRST_VIEW",
         "VALUE",

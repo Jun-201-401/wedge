@@ -735,7 +735,7 @@ paths:
       - Runs
       operationId: createRun
       summary: 실행 생성
-      description: 분석 실행 단위를 생성한다. scenarioPlan을 생략하면 기본 사용자 실행으로 agent.execute.request를 발행하고, scenarioPlan을 포함하면 scripted/replay 실행으로 run.execute.request를 발행한다. Swagger의 replay 예시는 projectId와 scenarioTemplateVersionId를 로컬 DB/seed 값으로 교체해야 실제 테스트가 가능하다.
+      description: 분석 실행 단위를 생성한다. 생성 자체는 실행 MQ를 발행하지 않는다. 기본 사용자 시작 경로인 /api/runs/{runId}/start는 Agent 실행(agent.execute.request)을 발행하며, 고정 ScenarioPlan 재생이 필요한 내부/고급 경로는 /api/runs/{runId}/scripted/start로 run.execute.request를 발행한다. Swagger의 replay 예시는 projectId와 scenarioTemplateVersionId를 로컬 DB/seed 값으로 교체해야 실제 테스트가 가능하다.
       security:
       - HumanBearer: []
       parameters:
@@ -896,8 +896,8 @@ paths:
       tags:
       - Runs
       operationId: startRun
-      summary: 실행 시작
-      description: CREATED 상태의 Run을 QUEUED로 전환하고 Runner 실행 요청 outbox 발행을 확인한다. createRun 응답의 data.id로 호출한다.
+      summary: 기본 Agent 실행 시작
+      description: 제품 기본 시작 경로다. scenarioPlan 없이 생성된 CREATED Run을 QUEUED로 전환하고 AgentTask 기반 Runner Agent 실행 요청(agent.execute.request) outbox를 발행한다. createRun 응답의 data.id로 호출한다. 이전 성공 AgentTrace가 있으면 replay_hints로 주입한다. materialized scenarioPlan이 있는 Run은 /api/runs/{runId}/scripted/start를 사용한다.
       security:
       - HumanBearer: []
       parameters:
@@ -929,8 +929,8 @@ paths:
       tags:
       - Runs
       operationId: startAgentRun
-      summary: Agent 실행 시작
-      description: CREATED 상태의 Run을 QUEUED로 전환하고 AgentTask 기반 Runner Agent 실행 요청 outbox를 발행한다. 이전 성공 AgentTrace가 있으면 replay_hints로 주입한다.
+      summary: Agent 실행 시작(호환 alias)
+      description: /api/runs/{runId}/start와 같은 Agent 실행 호환 alias다. scenarioPlan 없이 생성된 CREATED Run을 QUEUED로 전환하고 AgentTask 기반 Runner Agent 실행 요청(agent.execute.request) outbox를 발행한다. 이전 성공 AgentTrace가 있으면 replay_hints로 주입한다. materialized scenarioPlan이 있는 Run은 /api/runs/{runId}/scripted/start를 사용한다.
       security:
       - HumanBearer: []
       parameters:
@@ -943,6 +943,39 @@ paths:
       responses:
         '202':
           description: Agent run start accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AckResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /api/runs/{runId}/scripted/start:
+    post:
+      tags:
+      - Runs
+      operationId: startScriptedRun
+      summary: Scripted/replay 실행 시작
+      description: 고정 ScenarioPlan replay를 위한 내부/고급 시작 경로다. CREATED 상태의 Run을 QUEUED로 전환하고 run.execute.request outbox를 발행한다. 일반 제품 UI는 기본 /api/runs/{runId}/start Agent 경로를 사용한다.
+      security:
+      - HumanBearer: []
+      parameters:
+      - $ref: '#/components/parameters/RunId'
+      - name: Idempotency-Key
+        in: header
+        required: false
+        schema:
+          type: string
+      responses:
+        '202':
+          description: Scripted run start accepted
           content:
             application/json:
               schema:

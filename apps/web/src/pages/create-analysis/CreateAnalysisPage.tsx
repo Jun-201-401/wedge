@@ -1232,7 +1232,7 @@ export function CreateAnalysisPage({ isAuthenticated = false, isAuthChecking = f
       const runGoal = scenarioPlan ? scenario.title : scenario.summary;
       const scenarioOverrides: Record<string, unknown> = {
         depthId,
-        source: scenarioPlan ? 'create-analysis-scenario-plan-selection' : 'create-analysis-agent-selection',
+        source: scenarioPlan ? 'create-analysis-authored-agent-selection' : 'create-analysis-agent-selection',
         sourceDiscoveryId: scenario.sourceDiscoveryId ?? null,
         recommendationId: scenario.recommendationId ?? null,
         scenarioType: scenario.scenarioType,
@@ -1242,9 +1242,8 @@ export function CreateAnalysisPage({ isAuthenticated = false, isAuthChecking = f
         suggestedTarget: scenario.suggestedTarget ?? null,
         sourceAuthoringJobId: authoredScenario?.authoringJobId ?? null,
         sourceAuthoringCandidateId: authoredScenario?.candidate.candidate_id ?? null,
-        executionMode: scenarioPlan
-          ? authoredScenario?.candidate.candidate_id?.startsWith('rule_based') ? 'RULE_BASED_PLAN' : 'GMS_PLAN'
-          : 'AGENT_FALLBACK',
+        hasAuthoredScenarioPlan: Boolean(scenarioPlan),
+        executionMode: 'AGENT',
       };
 
       const response = await createRun({
@@ -1253,9 +1252,9 @@ export function CreateAnalysisPage({ isAuthenticated = false, isAuthChecking = f
         startUrl: runStartUrl,
         goal: runGoal,
         devicePreset: 'desktop',
-        scenarioTemplateVersionId: scenarioPlan ? createRunIds.scenarioTemplateVersionId : undefined,
+        scenarioTemplateVersionId: undefined,
         scenarioOverrides,
-        scenarioPlan: scenarioPlan ?? undefined,
+        scenarioPlan: undefined,
       });
       createdRunId = response.data.id;
     } catch {
@@ -1265,6 +1264,7 @@ export function CreateAnalysisPage({ isAuthenticated = false, isAuthChecking = f
     }
 
     try {
+      // Product-default start path: Agent execution. Scripted replay uses /scripted/start explicitly.
       await startRun(createdRunId);
     } catch {
       setRunStartError('분석 준비는 완료됐지만 실행 시작 요청에 실패했습니다. 실시간 상태 화면에서 현재 상태를 확인합니다.');

@@ -310,9 +310,9 @@ test('create analysis selection opens setup and starts a run without a ready scr
   assert.match(source, /withoutCreateRunContext/);
   assert.match(source, /function clearCreateRunContext/);
   assert.match(source, /projectId: createRunIds\.projectId/);
-  assert.match(source, /scenarioTemplateVersionId: scenarioPlan \? createRunIds\.scenarioTemplateVersionId : undefined/);
+  assert.match(source, /scenarioTemplateVersionId: undefined/);
   assert.doesNotMatch(source, /import \{ buildPrototypeScenarioPlan \}/);
-  assert.match(source, /scenarioPlan: scenarioPlan \?\? undefined/);
+  assert.match(source, /scenarioPlan: undefined/);
   assert.match(source, /sourceAuthoringJobId/);
   assert.match(source, /createAndConfirmScenarioPlan/);
   assert.match(source, /createScenarioAuthoringJob/);
@@ -325,11 +325,10 @@ test('create analysis selection opens setup and starts a run without a ready scr
   assert.match(source, /scenarioType === 'PURCHASE_CHECKOUT'[\s\S]*?return 'form-depth'/);
   assert.match(source, /scenarioType === 'SIGNUP_LEAD_FORM' \|\| scenarioType === 'CONTACT'[\s\S]*?return 'form-depth'/);
   assert.match(source, /scenarioType === 'LANDING_CTA' \|\| scenarioType === 'PRICING'[\s\S]*?return 'next-screen'/);
-  assert.match(source, /source: scenarioPlan \? 'create-analysis-scenario-plan-selection' : 'create-analysis-agent-selection'/);
+  assert.match(source, /source: scenarioPlan \? 'create-analysis-authored-agent-selection' : 'create-analysis-agent-selection'/);
   assert.match(source, /executionMode:/);
-  assert.match(source, /RULE_BASED_PLAN/);
-  assert.match(source, /GMS_PLAN/);
-  assert.match(source, /AGENT_FALLBACK/);
+  assert.match(source, /executionMode: 'AGENT'/);
+  assert.match(source, /hasAuthoredScenarioPlan: Boolean\(scenarioPlan\)/);
   assert.match(source, /const runStartUrl = scenarioPlan \? requireConfirmedScenarioPlanStartUrl\(scenarioPlan\) : scenario\.suggestedStartUrl \?\? submittedUrl/);
   assert.match(source, /sourceDiscoveryId: scenario\.sourceDiscoveryId/);
   assert.match(source, /suggestedTarget: scenario\.suggestedTarget/);

@@ -74,6 +74,13 @@ export function startRun(runId: string, options?: RequestOptions) {
   });
 }
 
+export function startScriptedRun(runId: string, options?: RequestOptions) {
+  return requestJson<AckResponse>(`/runs/${runId}/scripted/start`, {
+    ...options,
+    method: 'POST',
+  });
+}
+
 export function stopRun(runId: string, request?: RunActionRequest, options?: RequestOptions) {
   return requestJson<AckResponse>(`/runs/${runId}/stop`, {
     ...options,
@@ -115,6 +122,7 @@ export const runsApi = {
   getRun,
   deleteRun,
   startRun,
+  startScriptedRun,
   stopRun,
   getRunLive,
   getRunEvidencePacket,

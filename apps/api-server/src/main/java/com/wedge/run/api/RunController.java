@@ -113,6 +113,17 @@ public class RunController {
         return ApiResponse.accepted(RunActionResponse.from(run));
     }
 
+    @PostMapping("/{runId}/scripted/start")
+    public ResponseEntity<ApiResponse<RunActionResponse>> startScriptedRun(
+            @PathVariable UUID runId,
+            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
+            Authentication authentication
+    ) {
+        ensureRunAccessible(runId, authentication);
+        RunResponse run = runService.startScriptedRun(runId);
+        return ApiResponse.accepted(RunActionResponse.from(run));
+    }
+
     @PostMapping("/{runId}/stop")
     public ResponseEntity<ApiResponse<RunActionResponse>> stopRun(
             @PathVariable UUID runId,

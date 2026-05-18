@@ -299,6 +299,26 @@ class RunControllerTest {
     }
 
     @Test
+    void startQueuesDefaultRun() throws Exception {
+        UUID runId = UUID.randomUUID();
+        UUID projectId = UUID.randomUUID();
+        when(runService.getRun(runId)).thenReturn(sampleRun(runId, projectId, RunStatus.CREATED));
+        RunResponse queued = sampleRun(runId, RunStatus.QUEUED);
+        when(runService.startRun(runId)).thenReturn(queued);
+
+        mockMvc.perform(post("/api/runs/{runId}/start", runId)
+                        .principal(authentication())
+                        .header("X-Request-Id", "req_start"))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.data.runId").value(runId.toString()))
+                .andExpect(jsonPath("$.data.status").value("QUEUED"))
+                .andExpect(jsonPath("$.meta.requestId").value("req_start"));
+
+        verify(projectAccessService).ensureProjectAccessible(projectId, USER_ID);
+        verify(runService).startRun(runId);
+    }
+
+    @Test
     void agentStartQueuesAgentRun() throws Exception {
         UUID runId = UUID.randomUUID();
         UUID projectId = UUID.randomUUID();
@@ -316,6 +336,26 @@ class RunControllerTest {
 
         verify(projectAccessService).ensureProjectAccessible(projectId, USER_ID);
         verify(runService).startAgentRun(runId);
+    }
+
+    @Test
+    void scriptedStartQueuesScriptedRun() throws Exception {
+        UUID runId = UUID.randomUUID();
+        UUID projectId = UUID.randomUUID();
+        when(runService.getRun(runId)).thenReturn(sampleRun(runId, projectId, RunStatus.CREATED));
+        RunResponse queued = sampleRun(runId, RunStatus.QUEUED);
+        when(runService.startScriptedRun(runId)).thenReturn(queued);
+
+        mockMvc.perform(post("/api/runs/{runId}/scripted/start", runId)
+                        .principal(authentication())
+                        .header("X-Request-Id", "req_scripted_start"))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.data.runId").value(runId.toString()))
+                .andExpect(jsonPath("$.data.status").value("QUEUED"))
+                .andExpect(jsonPath("$.meta.requestId").value("req_scripted_start"));
+
+        verify(projectAccessService).ensureProjectAccessible(projectId, USER_ID);
+        verify(runService).startScriptedRun(runId);
     }
 
     @Test

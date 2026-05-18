@@ -29,7 +29,7 @@ Implemented contracts:
 | RuleRegistry | `packages/contracts/schemas/rule-registry.schema.json` |
 | JudgeResult | `packages/contracts/schemas/judge-result.schema.json` |
 
-Runner Agent Runtime contracts are planned and must be added contract-first before implementation. The implementation plan currently reserves the following schema names:
+Runner Agent Runtime contracts are implemented contract-first under `packages/contracts`. Keep schema, MQ envelope, callback, and trace changes in contracts before app-specific wiring. Core schema names:
 
 ```text
 packages/contracts/schemas/agent-task.schema.json
@@ -41,13 +41,14 @@ packages/contracts/schemas/agent-event.schema.json
 packages/contracts/schemas/agent-outcome.schema.json
 packages/contracts/schemas/agent-trace.schema.json
 packages/contracts/mq/agent.execute.request.schema.json
+packages/contracts/internal/runner-callback.schema.json
 ```
 
 Agent event consistency rule:
 
 - `AgentEvent` is the canonical event record for both agent callbacks and `AgentTrace.events[]`.
-- Agent event records use `event_type` with `AGENT_*` enum values.
-- `AgentTrace.events[]` must not introduce a separate trace-local `type` enum.
+- Current callback/trace records use camelCase `eventType` with MVP enum values: `PRE_DECISION_VERIFIED`, `DECISION_MADE`, `POLICY_CHECKED`, `ACTION_COMPLETED`, `ACTION_FAILED`, `GOAL_VERIFIED`, `TRACE_PERSISTED`.
+- `AgentTrace.events[]` must not introduce a separate trace-local `type` enum. If a future `AGENT_*` naming scheme is desired, change `agent-event.schema.json`, `runner-callback.schema.json`, Runner emitters, and consumers contract-first in one migration.
 
 ## 3. SiteDiscoveryResult
 
@@ -107,8 +108,8 @@ Agent event consistency rule:
 경계:
 
 - `ScenarioAuthoringResult`는 별도 실행 DSL이 아니다. Candidate는 반드시 기존 `ScenarioPlan` schema를 만족해야 한다.
-- `ScenarioPlan`은 materialization 이후 fixed executable plan이다. ScenarioAuthoring 기반 Run 경로에서 Runner는 이 fixed `ScenarioPlan`만 실행한다.
-- Runner는 authoring job/result를 생성, 수정, 해석하지 않는다.
+- Runner는 별도 `scenario-authoring.execute.request` worker에서 authoring input을 받아 검증 가능한 candidate를 생성할 수 있다.
+- `ScenarioPlan`은 materialization 이후 fixed executable plan이다. Scripted Run 경로에서 Runner는 이 fixed `ScenarioPlan`만 실행하고 authoring job/result를 실행 중 재해석하지 않는다.
 - Runner Agent Runtime은 ScenarioAuthoring provider가 아니다. Agent Runtime은 별도 `AgentTask` 실행 경로이며, 성공한 `AgentTrace`를 검증된 `ScenarioPlan` candidate로 export하는 후속 기능만 가질 수 있다.
 - MCP tool이나 UI가 authoring job/result를 다룰 수는 있지만, 이는 Wedge API/tool 호출이며 browser-control이 아니다.
 - Codex/Claude Code/Internal LLM/Rule-based provider는 final Judge stage, severity, scoring truth를 생성하지 않는다.
@@ -219,9 +220,9 @@ Top-level fields:
 
 ## 7. Checkpoint
 
-Checkpoint는 의미 있는 상태 전이 이후 생성된다.
+Checkpoint는 의미 있는 상태 전이 이후 생성된다. 이 절의 field 이름은 Spring이 materialize하는 `EvidencePacket.checkpoints[]`의 normalized domain shape다. Runner callback transport는 같은 의미를 camelCase로 전달한다(`checkpointId`, `stepKey`, `stage`, `artifactRefs`). Spring은 callback `stage`를 EvidencePacket `primaryStage`로 정규화하고, `stepKey`를 DB step UUID와 domain `step_id` 경계에 맞게 resolve한다.
 
-각 checkpoint는 다음 값을 포함한다.
+각 EvidencePacket checkpoint는 다음 값을 포함한다.
 
 - `checkpoint_id`
 - `step_id`
@@ -233,7 +234,7 @@ Checkpoint는 의미 있는 상태 전이 이후 생성된다.
 - `deltas`
 - `artifact_refs`
 
-`checkpoint.primaryStage`는 checkpoint의 기본 decision moment다. 일반적으로 `ScenarioStep.stage` 또는 trigger/action context에서 결정된다. 기존 `stage` 필드는 migration 기간 동안 deprecated alias로만 사용할 수 있으며, 신규 producer는 `primaryStage`를 사용한다.
+`checkpoint.primaryStage`는 checkpoint의 기본 decision moment다. 일반적으로 `ScenarioStep.stage` 또는 trigger/action context에서 결정된다. EvidencePacket 신규 producer는 `primaryStage`를 사용한다. Runner callback producer는 `packages/contracts/internal/runner-callback.schema.json`에 맞춰 `stage`를 보내며, Spring materializer가 EvidencePacket `primaryStage`로 변환한다.
 
 Checkpoint 안의 모든 observation이 반드시 같은 stage일 필요는 없다. 예를 들어 `FIRST_VIEW` checkpoint 안에서 `heading_structure.stage = FIRST_VIEW`, `first_view_message.stage = VALUE`, `cta_cluster.stage = CTA`가 동시에 존재할 수 있다.
 

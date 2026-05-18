@@ -226,7 +226,7 @@ POST   /api/scenario-authoring-jobs/{authoringJobId}/confirm
 
 ScenarioAuthoring은 Discovery recommendation과 Run 생성 사이의 계약 단계다. API shape는 V1 계약 방향을 고정하기 위한 문서 기준이며, MVP 이후 provider 순서는 `INTERNAL_LLM`(GMS) 우선, `RULE_BASED` fallback을 기본으로 한다.
 
-Authoring job/result는 별도 실행 DSL이 아니다. Provider는 기존 `ScenarioPlan` schema를 만족하는 candidate만 제출하며, Spring은 confirmed candidate를 입력으로 `POST /api/runs` 또는 내부 materializer에서 ScenarioPlan + fit requirements를 고정한다. ScenarioAuthoring 기반 run path에서 Runner는 authoring job/result를 받지 않고, 고정된 ScenarioPlan만 실행한다. Runner Agent Runtime은 별도 `agent.execute.request` / agent callback stream(`agent-events`, `agent-traces`) 경로이며, 상세 contract-first 기준은 `docs/runner_agent_runtime_implementation_plan.md`를 따른다.
+Authoring job/result는 별도 실행 DSL이 아니다. Provider는 기존 `ScenarioPlan` schema를 만족하는 candidate만 제출한다. Runner는 별도 `scenario-authoring.execute.request` worker에서 authoring input을 받아 candidate를 생성할 수 있지만, scripted run path에서는 Spring이 고정한 `ScenarioPlan`만 실행하고 authoring job/result를 재해석하지 않는다. Runner Agent Runtime은 별도 `agent.execute.request` / agent callback stream(`agent-events`, `agent-traces`) 경로이며, 상세 contract-first 기준은 `docs/runner_agent_runtime_implementation_plan.md`를 따른다.
 
 ### Runs
 
@@ -237,6 +237,7 @@ GET    /api/runs/{runId}
 DELETE /api/runs/{runId}
 POST   /api/runs/{runId}/start
 POST   /api/runs/{runId}/agent/start
+POST   /api/runs/{runId}/scripted/start
 POST   /api/runs/{runId}/stop
 GET    /api/runs/{runId}/live
 GET    /api/runs/{runId}/steps
@@ -494,12 +495,19 @@ Idempotency-Key: idem_create_run_001
 }
 ```
 
-### Run 시작
+### Run 시작(제품 기본 Agent 경로)
 
 ```http
 POST /api/runs/{runId}/start
 Idempotency-Key: idem_start_run_001
 ```
+
+동작:
+
+- CREATED 상태의 Run을 QUEUED로 전환한다.
+- 제품 기본 실행으로 `agent.execute.request` outbox/MQ 메시지를 발행한다.
+- 이 경로의 Run은 executable `scenarioPlan` 없이 생성해야 한다. materialized `ScenarioPlan` replay는 `/api/runs/{runId}/scripted/start`를 사용한다.
+- 같은 project/startUrl/goal의 이전 성공 AgentTrace가 있으면 `AgentTask.replay_hints`로 주입한다.
 
 Response:
 
@@ -515,18 +523,23 @@ Response:
 }
 ```
 
-### Agent Run 시작
+### Agent Run 시작 호환 alias
 
 ```http
 POST /api/runs/{runId}/agent/start
 Idempotency-Key: idem_start_agent_run_001
 ```
 
-동작:
+`POST /api/runs/{runId}/start`와 같은 Agent 실행 경로다. 기존 클라이언트 호환을 위해 유지한다. executable `scenarioPlan`이 있는 Run은 이 alias가 아니라 scripted 시작 경로를 사용한다.
 
-- CREATED 상태의 Run을 QUEUED로 전환한다.
-- `agent.execute.request` outbox/MQ 메시지를 발행한다.
-- 같은 project/startUrl/goal의 이전 성공 AgentTrace가 있으면 `AgentTask.replay_hints`로 주입한다.
+### Scripted/replay Run 시작
+
+```http
+POST /api/runs/{runId}/scripted/start
+Idempotency-Key: idem_start_scripted_run_001
+```
+
+고정 `ScenarioPlan` replay를 위한 내부/고급 경로다. CREATED 상태의 Run을 QUEUED로 전환하고 `run.execute.request` outbox/MQ 메시지를 발행한다. 일반 제품 UI는 기본 Agent 시작 경로를 사용한다.
 
 Response는 일반 Run 시작과 같은 `AckResponse` shape를 사용한다.
 
@@ -768,7 +781,7 @@ X-Worker-Id: runner_001
 X-Signature: hmac-sha256=...
 ```
 
-Payload shape is `AgentEventBatch` in `packages/contracts/internal/runner-callback.schema.json`; each event uses `packages/contracts/schemas/agent-event.schema.json`.
+Payload shape is `AgentEventBatch` in `packages/contracts/internal/runner-callback.schema.json`; each event uses the current `AgentEvent` `eventType` field and enum in `packages/contracts/schemas/agent-event.schema.json`.
 
 #### Agent trace callback
 

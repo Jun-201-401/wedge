@@ -98,7 +98,7 @@ class RunnerCallbackLifecycleScenarioTest {
     @Test
     void runnerCallbacksDriveRunAndStepLifecycleToCompleted() {
         RunResponse created = runService.createRun(sampleRequest());
-        RunResponse queued = runService.startRun(created.id());
+        RunResponse queued = runService.startScriptedRun(created.id());
 
         assertThat(queued.status()).isEqualTo(RunStatus.QUEUED);
         assertThat(runMapper.stepsForRun(created.id()))
@@ -186,7 +186,7 @@ class RunnerCallbackLifecycleScenarioTest {
     @Test
     void failedCallbackEndsRunAndLateStepEventsDoNotMutateTerminalRun() {
         RunResponse created = runService.createRun(sampleRequest());
-        runService.startRun(created.id());
+        runService.startScriptedRun(created.id());
         runnerCallbackService.handleAccepted(
                 created.id(),
                 new RunnerAcceptedCommand(WORKER_ID, at("2026-04-21T10:00:00+09:00"), "browser-1"),

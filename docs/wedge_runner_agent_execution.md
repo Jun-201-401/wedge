@@ -249,7 +249,7 @@ Validation rule:
 
 ```text
 agent.execute.request → agentTask required
-AgentTask.goal_type initially supports CHECKOUT_ENTRY_VERIFICATION
+AgentTask.goal_type supports: LANDING_CTA_VERIFICATION, SIGNUP_LEAD_FORM_VERIFICATION, PRICING_FLOW_VERIFICATION, CHECKOUT_ENTRY_VERIFICATION, CONTACT_FLOW_VERIFICATION, CONTENT_ONLY_REVIEW
 AgentTask.start_url, environment, budget, allowed_navigation, risk_policy required
 LLM/provider config does not belong in the message; it stays Runner runtime config
 ```

@@ -301,7 +301,7 @@ verification_status
 goal_progress
 final_outcome
 page_kind
-agent_event_type
+AgentEvent.eventType
 ```
 
 Update existing contract files:
@@ -689,7 +689,7 @@ Initial schema:
       "attempt_id": "attempt-uuid",
       "run_id": "run-uuid",
       "step_index": 1,
-      "event_type": "AGENT_OBSERVATION_CAPTURED",
+      "eventType": "PRE_DECISION_VERIFIED",
       "occurred_at": "2026-05-06T00:00:01.000Z",
       "payload": {
         "observation_id": "obs-1"
@@ -701,7 +701,7 @@ Initial schema:
       "attempt_id": "attempt-uuid",
       "run_id": "run-uuid",
       "step_index": 1,
-      "event_type": "AGENT_DECISION_RECEIVED",
+      "eventType": "DECISION_MADE",
       "occurred_at": "2026-05-06T00:00:02.000Z",
       "payload": {
         "decision_id": "decision-1"
@@ -713,7 +713,7 @@ Initial schema:
       "attempt_id": "attempt-uuid",
       "run_id": "run-uuid",
       "step_index": 1,
-      "event_type": "AGENT_POLICY_ALLOWED",
+      "eventType": "POLICY_CHECKED",
       "occurred_at": "2026-05-06T00:00:02.100Z",
       "payload": {
         "policy_result_id": "policy-1"
@@ -725,7 +725,7 @@ Initial schema:
       "attempt_id": "attempt-uuid",
       "run_id": "run-uuid",
       "step_index": 1,
-      "event_type": "AGENT_ACTION_COMPLETED",
+      "eventType": "ACTION_COMPLETED",
       "occurred_at": "2026-05-06T00:00:03.000Z",
       "payload": {
         "tool": "click",
@@ -738,7 +738,7 @@ Initial schema:
       "attempt_id": "attempt-uuid",
       "run_id": "run-uuid",
       "step_index": 1,
-      "event_type": "AGENT_VERIFICATION_COMPLETED",
+      "eventType": "GOAL_VERIFIED",
       "occurred_at": "2026-05-06T00:00:04.000Z",
       "payload": {
         "verification_id": "verification-1"
@@ -753,25 +753,16 @@ Initial schema:
 }
 ```
 
-Trace event types:
+Current trace event types:
 
 ```text
-AGENT_OBSERVATION_CAPTURED
-AGENT_CANDIDATES_EXTRACTED
-AGENT_DECISION_REQUESTED
-AGENT_DECISION_RECEIVED
-AGENT_DECISION_VALIDATED
-AGENT_POLICY_ALLOWED
-AGENT_POLICY_BLOCKED
-AGENT_ACTION_STARTED
-AGENT_ACTION_COMPLETED
-AGENT_ACTION_FAILED
-AGENT_SETTLE_COMPLETED
-AGENT_VERIFICATION_COMPLETED
-AGENT_RECOVERY_ATTEMPTED
-AGENT_TRACE_EXPORTED_TO_SCENARIO_PLAN
-AGENT_STOPPED
-AGENT_FAILED
+PRE_DECISION_VERIFIED
+DECISION_MADE
+POLICY_CHECKED
+ACTION_COMPLETED
+ACTION_FAILED
+GOAL_VERIFIED
+TRACE_PERSISTED
 ```
 
 ## 5.8 AgentEvent
@@ -788,7 +779,7 @@ Initial schema:
   "attempt_id": "attempt-uuid",
   "run_id": "run-uuid",
   "step_index": 3,
-  "event_type": "AGENT_OBSERVATION_CAPTURED",
+  "eventType": "PRE_DECISION_VERIFIED",
   "occurred_at": "2026-05-06T00:00:04.000Z",
   "payload": {
     "observation_id": "obs-uuid"
@@ -808,7 +799,7 @@ Canonical rule:
 
 ```text
 AgentTrace.events[] contains AgentEvent objects.
-Use event_type with AGENT_* enum values everywhere.
+Use `eventType` with the current MVP enum values everywhere. If `AGENT_*` names are introduced later, migrate schemas, callbacks, traces, and consumers contract-first together.
 Do not introduce a second trace-local event field named type.
 ```
 
@@ -1436,7 +1427,7 @@ Use agent-specific endpoints only for agent loop detail:
 Fallback only if API changes must be minimized:
 
 ```text
-Reuse step-events endpoint but add distinct AGENT_* event types.
+Reuse step-events endpoint only with a contract-first event naming migration. Current implementation uses dedicated agent endpoints and `eventType` MVP enum values.
 ```
 
 Fallback rule:
@@ -1446,17 +1437,16 @@ If step-events are reused, stepOrder = agent step index and stepKey = agent:{tas
 Agent event types must not be disguised as STEP_STARTED or STEP_COMPLETED.
 ```
 
-Minimum AGENT event types:
+Current minimum Agent `eventType` values:
 
 ```text
-AGENT_OBSERVATION_CAPTURED
-AGENT_DECISION_RECEIVED
-AGENT_POLICY_ALLOWED
-AGENT_POLICY_BLOCKED
-AGENT_ACTION_COMPLETED
-AGENT_VERIFICATION_COMPLETED
-AGENT_STOPPED
-AGENT_FAILED
+PRE_DECISION_VERIFIED
+DECISION_MADE
+POLICY_CHECKED
+ACTION_COMPLETED
+ACTION_FAILED
+GOAL_VERIFIED
+TRACE_PERSISTED
 ```
 
 EvidencePacket guidance:

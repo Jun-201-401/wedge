@@ -18,6 +18,7 @@ import java.security.NoSuchAlgorithmException;
 import java.util.EnumSet;
 import java.util.HexFormat;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
@@ -212,6 +213,16 @@ public class RunService {
 
     @Transactional
     public RunResponse startRun(UUID runId) {
+        return startAgentExecution(runId);
+    }
+
+    @Transactional
+    public RunResponse startAgentRun(UUID runId) {
+        return startAgentExecution(runId);
+    }
+
+    @Transactional
+    public RunResponse startScriptedRun(UUID runId) {
         RunResponse current = getRun(runId);
         RunExecutionRequestSource executionRequestSource = runPersistenceAdapter.findExecutionRequestSource(runId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.RUN_NOT_FOUND));
@@ -224,11 +235,11 @@ public class RunService {
         return queued;
     }
 
-    @Transactional
-    public RunResponse startAgentRun(UUID runId) {
+    private RunResponse startAgentExecution(UUID runId) {
         RunResponse current = getRun(runId);
         RunExecutionRequestSource executionRequestSource = runPersistenceAdapter.findExecutionRequestSource(runId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.RUN_NOT_FOUND));
+        rejectScriptedScenarioPlanForAgentStart(executionRequestSource);
         RunStatusTransitionPolicy.validateTransition(current.status(), RunStatus.QUEUED);
 
         RunResponse queued = runPersistenceAdapter.updateExecutionState(current, RunStatus.QUEUED, ResultCompleteness.NONE);
@@ -240,6 +251,16 @@ public class RunService {
         UUID outboxMessageId = outboxMessagePersistenceAdapter.appendAgentExecuteMessage(message);
         applicationEventPublisher.publishEvent(new AgentExecuteOutboxEnqueuedEvent(outboxMessageId));
         return queued;
+    }
+
+    private void rejectScriptedScenarioPlanForAgentStart(RunExecutionRequestSource executionRequestSource) {
+        Map<String, Object> scenarioPlan = executionRequestSource.scenarioPlan();
+        if (scenarioPlan != null && !scenarioPlan.isEmpty()) {
+            throw new BusinessException(
+                    ErrorCode.INVALID_REQUEST,
+                    "Agent start does not accept a materialized scenarioPlan. Create the run without scenarioPlan or use scripted start."
+            );
+        }
     }
 
     @Transactional

@@ -72,20 +72,22 @@ class RunServiceTest {
     }
 
     @Test
-    void createdRunCanBeRetrievedAndStarted() {
+    void createdRunCanBeRetrievedAndStartedWithDefaultAgentExecution() {
         RunCreateRequest request = sampleRequest();
         RunResponse created = sampleRun(RunStatus.CREATED, ResultCompleteness.NONE);
         RunResponse queued = sampleRun(created.id(), RunStatus.QUEUED, ResultCompleteness.NONE);
-        RunExecuteRequestMessage message = sampleMessage(created.id());
+        AgentExecuteRequestMessage message = sampleAgentMessage(created.id());
         UUID outboxMessageId = UUID.randomUUID();
-        RunExecutionRequestSource executionRequestSource = sampleExecutionRequestSource(created.id());
+        RunExecutionRequestSource executionRequestSource = sampleAgentExecutionRequestSource(created.id());
 
         when(runPersistenceAdapter.createRun(request)).thenReturn(created);
         when(runPersistenceAdapter.findRun(created.id())).thenReturn(Optional.of(created));
         when(runPersistenceAdapter.findExecutionRequestSource(created.id())).thenReturn(Optional.of(executionRequestSource));
         when(runPersistenceAdapter.updateExecutionState(created, RunStatus.QUEUED, ResultCompleteness.NONE)).thenReturn(queued);
-        when(runExecuteRequestMessageFactory.create(executionRequestSource)).thenReturn(message);
-        when(outboxMessagePersistenceAdapter.appendRunExecuteMessage(message)).thenReturn(outboxMessageId);
+        when(runPersistenceAdapter.findLatestSuccessfulAgentTraceForReplay(executionRequestSource)).thenReturn(Optional.empty());
+        when(runPersistenceAdapter.nextAgentAttemptIndex(created.id())).thenReturn(1);
+        when(agentExecuteRequestMessageFactory.create(executionRequestSource, Optional.empty(), 1)).thenReturn(message);
+        when(outboxMessagePersistenceAdapter.appendAgentExecuteMessage(message)).thenReturn(outboxMessageId);
 
         RunResponse persisted = runService.createRun(request);
         assertThat(persisted.status()).isEqualTo(RunStatus.CREATED);
@@ -95,6 +97,29 @@ class RunServiceTest {
 
         assertThat(started.status()).isEqualTo(RunStatus.QUEUED);
         assertThat(started.resultCompleteness()).isEqualTo(ResultCompleteness.NONE);
+        verify(outboxMessagePersistenceAdapter).appendAgentExecuteMessage(message);
+        ArgumentCaptor<AgentExecuteOutboxEnqueuedEvent> eventCaptor = ArgumentCaptor.forClass(AgentExecuteOutboxEnqueuedEvent.class);
+        verify(applicationEventPublisher).publishEvent(eventCaptor.capture());
+        assertThat(eventCaptor.getValue().outboxMessageId()).isEqualTo(outboxMessageId);
+    }
+
+    @Test
+    void createdRunCanBeStartedWithScriptedReplayExecution() {
+        RunResponse created = sampleRun(RunStatus.CREATED, ResultCompleteness.NONE);
+        RunResponse queued = sampleRun(created.id(), RunStatus.QUEUED, ResultCompleteness.NONE);
+        RunExecuteRequestMessage message = sampleMessage(created.id());
+        UUID outboxMessageId = UUID.randomUUID();
+        RunExecutionRequestSource executionRequestSource = sampleAgentExecutionRequestSource(created.id());
+
+        when(runPersistenceAdapter.findRun(created.id())).thenReturn(Optional.of(created));
+        when(runPersistenceAdapter.findExecutionRequestSource(created.id())).thenReturn(Optional.of(executionRequestSource));
+        when(runPersistenceAdapter.updateExecutionState(created, RunStatus.QUEUED, ResultCompleteness.NONE)).thenReturn(queued);
+        when(runExecuteRequestMessageFactory.create(executionRequestSource)).thenReturn(message);
+        when(outboxMessagePersistenceAdapter.appendRunExecuteMessage(message)).thenReturn(outboxMessageId);
+
+        RunResponse started = runService.startScriptedRun(created.id());
+
+        assertThat(started.status()).isEqualTo(RunStatus.QUEUED);
         verify(outboxMessagePersistenceAdapter).appendRunExecuteMessage(message);
         ArgumentCaptor<RunExecuteOutboxEnqueuedEvent> eventCaptor = ArgumentCaptor.forClass(RunExecuteOutboxEnqueuedEvent.class);
         verify(applicationEventPublisher).publishEvent(eventCaptor.capture());
@@ -105,7 +130,7 @@ class RunServiceTest {
     void createdRunCanBeStartedAsAgentWithReplayHints() {
         RunResponse created = sampleRun(RunStatus.CREATED, ResultCompleteness.NONE);
         RunResponse queued = sampleRun(created.id(), RunStatus.QUEUED, ResultCompleteness.NONE);
-        RunExecutionRequestSource executionRequestSource = sampleExecutionRequestSource(created.id());
+        RunExecutionRequestSource executionRequestSource = sampleAgentExecutionRequestSource(created.id());
         Map<String, Object> replayTrace = Map.of("trace_id", UUID.randomUUID().toString());
         AgentExecuteRequestMessage message = sampleAgentMessage(created.id());
         UUID outboxMessageId = UUID.randomUUID();
@@ -125,6 +150,21 @@ class RunServiceTest {
         ArgumentCaptor<AgentExecuteOutboxEnqueuedEvent> eventCaptor = ArgumentCaptor.forClass(AgentExecuteOutboxEnqueuedEvent.class);
         verify(applicationEventPublisher).publishEvent(eventCaptor.capture());
         assertThat(eventCaptor.getValue().outboxMessageId()).isEqualTo(outboxMessageId);
+    }
+
+    @Test
+    void agentStartRejectsMaterializedScenarioPlanRuns() {
+        RunResponse created = sampleRun(RunStatus.CREATED, ResultCompleteness.NONE);
+        RunExecutionRequestSource executionRequestSource = sampleExecutionRequestSource(created.id());
+
+        when(runPersistenceAdapter.findRun(created.id())).thenReturn(Optional.of(created));
+        when(runPersistenceAdapter.findExecutionRequestSource(created.id())).thenReturn(Optional.of(executionRequestSource));
+
+        assertThatThrownBy(() -> runService.startRun(created.id()))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Agent start does not accept a materialized scenarioPlan. Create the run without scenarioPlan or use scripted start.");
+
+        verify(outboxMessagePersistenceAdapter, never()).appendAgentExecuteMessage(any());
     }
 
     @Test
@@ -333,28 +373,21 @@ class RunServiceTest {
                 null,
                 Map.of()
         );
-        RunExecuteRequestMessage message = new RunExecuteRequestMessage(
-                UUID.randomUUID().toString(),
-                "agent.execute.request",
-                "0.1",
-                "2026-05-08T00:00:00Z",
-                "spring-api",
-                created.id().toString(),
-                "agent:" + created.id(),
-                Map.of("agentTask", Map.of("run_id", created.id().toString()))
-        );
+        AgentExecuteRequestMessage message = sampleAgentMessage(created.id());
         UUID outboxMessageId = UUID.randomUUID();
 
         when(runPersistenceAdapter.findRun(created.id())).thenReturn(Optional.of(created));
         when(runPersistenceAdapter.findExecutionRequestSource(created.id())).thenReturn(Optional.of(executionRequestSource));
         when(runPersistenceAdapter.updateExecutionState(created, RunStatus.QUEUED, ResultCompleteness.NONE)).thenReturn(queued);
-        when(runExecuteRequestMessageFactory.create(executionRequestSource)).thenReturn(message);
-        when(outboxMessagePersistenceAdapter.appendRunExecuteMessage(message)).thenReturn(outboxMessageId);
+        when(runPersistenceAdapter.findLatestSuccessfulAgentTraceForReplay(executionRequestSource)).thenReturn(Optional.empty());
+        when(runPersistenceAdapter.nextAgentAttemptIndex(created.id())).thenReturn(1);
+        when(agentExecuteRequestMessageFactory.create(executionRequestSource, Optional.empty(), 1)).thenReturn(message);
+        when(outboxMessagePersistenceAdapter.appendAgentExecuteMessage(message)).thenReturn(outboxMessageId);
 
         RunResponse started = runService.startRun(created.id());
 
         assertThat(started.status()).isEqualTo(RunStatus.QUEUED);
-        verify(outboxMessagePersistenceAdapter).appendRunExecuteMessage(message);
+        verify(outboxMessagePersistenceAdapter).appendAgentExecuteMessage(message);
     }
 
     @Test
@@ -710,6 +743,19 @@ class RunServiceTest {
                                 )
                         )
                 )
+        );
+    }
+
+    private RunExecutionRequestSource sampleAgentExecutionRequestSource(UUID runId) {
+        return new RunExecutionRequestSource(
+                runId,
+                UUID.randomUUID(),
+                "WEB",
+                URI.create("https://example.com"),
+                "무료 체험 CTA까지의 흐름 점검",
+                "desktop",
+                null,
+                Map.of()
         );
     }
 }
