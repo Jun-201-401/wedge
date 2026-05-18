@@ -1,10 +1,9 @@
-package com.wedge.analysis.api.internal;
+package com.wedge.analysis.application;
 
 import com.wedge.analysis.api.internal.dto.AnalyzerCallbackHeaders;
 import com.wedge.analysis.api.internal.dto.AnalyzerCompletedRequest;
 import com.wedge.analysis.api.internal.dto.AnalyzerFailedRequest;
 import com.wedge.analysis.api.internal.dto.AnalyzerStartedRequest;
-import com.wedge.analysis.application.JudgeResultPersistenceService;
 import com.wedge.common.error.BusinessException;
 import com.wedge.common.error.ErrorCode;
 import com.wedge.common.infrastructure.ProcessedMessagePersistenceAdapter;

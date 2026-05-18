@@ -207,6 +207,16 @@ function selectActionCandidate(input: AgentDecisionInput): ActionCandidate | und
     component.clickable && !component.shadow_root && !input.state.clickedTargetKeys.has(targetKey(component))
   );
 
+  const consentAction = selectConsentAction(untriedComponents, input.observation.snapshot.viewport);
+  if (consentAction) {
+    return consentAction;
+  }
+
+  const noticePopupAction = selectNoticePopupDismissAction(untriedComponents);
+  if (noticePopupAction) {
+    return noticePopupAction;
+  }
+
   const cookieAction = selectCookieAction(untriedComponents);
   if (cookieAction) {
     return cookieAction;
@@ -220,6 +230,50 @@ function selectActionCandidate(input: AgentDecisionInput): ActionCandidate | und
   }
 
   return selectPrimaryAction(untriedComponents);
+}
+
+function selectConsentAction(
+  components: InteractiveComponentObservationItem[],
+  viewport: AgentDecisionInput["observation"]["snapshot"]["viewport"]
+): ActionCandidate | undefined {
+  const component = components.find((candidate) => {
+    const actionText = candidateText(candidate);
+    const contextText = consentContextText(candidate);
+    return !isDialogBackdropLike(candidate, viewport) &&
+      isConsentModalCandidate(candidate, contextText) &&
+      plannerSemantics.consentAccept.test(actionText) &&
+      !plannerSemantics.consentDeferOrReject.test(actionText) &&
+      !isMarketingOnlyConsent(contextText);
+  });
+
+  return component
+    ? {
+        component,
+        reason: "A consent or analytics dialog is blocking the page, so the agent accepts the non-sensitive service consent before continuing.",
+        confidence: 0.8,
+        stage: "FIRST_VIEW"
+      }
+    : undefined;
+}
+
+function selectNoticePopupDismissAction(components: InteractiveComponentObservationItem[]): ActionCandidate | undefined {
+  const component = components.find((candidate) => {
+    const actionText = candidateText(candidate);
+    const contextText = popupContextText(candidate);
+    return isPopupContained(candidate) &&
+      plannerSemantics.popupDismiss.test(actionText) &&
+      !plannerSemantics.consentAccept.test(actionText) &&
+      plannerSemantics.popupContext.test(contextText);
+  });
+
+  return component
+    ? {
+        component,
+        reason: "A notice or layer popup is blocking the page, so the agent dismisses it before selecting page CTAs.",
+        confidence: 0.78,
+        stage: "FIRST_VIEW"
+      }
+    : undefined;
 }
 
 function selectCookieAction(components: InteractiveComponentObservationItem[]): ActionCandidate | undefined {
@@ -255,9 +309,11 @@ function selectCheckoutAction(components: InteractiveComponentObservationItem[])
 }
 
 function selectPrimaryAction(components: InteractiveComponentObservationItem[]): ActionCandidate | undefined {
-  const component = components.find((candidate) =>
+  const actionableComponents = components.filter((component) => !isDialogBackdropLike(component));
+  const candidates = actionableComponents.length > 0 ? actionableComponents : components;
+  const component = candidates.find((candidate) =>
     candidate.is_primary_like || candidate.is_cta_candidate
-  ) ?? components[0];
+  ) ?? candidates[0];
 
   if (!component) {
     return undefined;
@@ -292,4 +348,63 @@ function componentToDecision(candidate: ActionCandidate): AgentDecision {
     targetKey: targetKey(candidate.component),
     replayHint: replayHintFromComponent(candidate.component)
   };
+}
+
+function isConsentModalCandidate(component: InteractiveComponentObservationItem, contextText: string): boolean {
+  return isModalContained(component) && plannerSemantics.consentContext.test(contextText);
+}
+
+function isPopupContained(component: InteractiveComponentObservationItem): boolean {
+  const role = component.container_role?.toLowerCase() ?? "";
+  const selector = component.selector ?? "";
+  return isModalContained(component) ||
+    role === "popup" ||
+    role === "notice" ||
+    /popup|pop|layer|notice|modal|dialog|sys_pop/i.test(selector);
+}
+
+function isModalContained(component: InteractiveComponentObservationItem): boolean {
+  const role = component.container_role?.toLowerCase() ?? "";
+  return role === "dialog" || role === "modal" || role.includes("dialog") || role.includes("modal") || role === "popup";
+}
+
+function isMarketingOnlyConsent(contextText: string): boolean {
+  return plannerSemantics.marketingConsentContext.test(contextText) &&
+    !/analytics|tracking|telemetry|usage|statistics|통계|사용 기록|서비스 개선|개인정보|privacy|cookie|쿠키/i.test(contextText);
+}
+
+function consentContextText(component: InteractiveComponentObservationItem): string {
+  return [
+    candidateText(component),
+    component.container_role ?? "",
+    component.container_heading ?? "",
+    ...(component.nearby_text ?? [])
+  ].join(" ");
+}
+
+function popupContextText(component: InteractiveComponentObservationItem): string {
+  return [
+    consentContextText(component),
+    component.selector ?? ""
+  ].join(" ");
+}
+
+function isDialogBackdropLike(
+  component: InteractiveComponentObservationItem,
+  viewport?: AgentDecisionInput["observation"]["snapshot"]["viewport"]
+): boolean {
+  if (!isModalContained(component)) {
+    return false;
+  }
+
+  const viewportArea = Math.max(1, (viewport?.width ?? 0) * (viewport?.height ?? 0));
+  const componentArea = component.bounds.width * component.bounds.height;
+  const viewportCoverage = component.visibility?.viewport_coverage_ratio ??
+    (viewportArea > 1 ? componentArea / viewportArea : 0);
+  const text = candidateText(component);
+  const selector = component.selector ?? "";
+
+  return viewportCoverage >= 0.75 &&
+    !component.visible_text &&
+    (plannerSemantics.consentDeferOrReject.test(text) || /backdrop|overlay|inset-0|absolute|fixed/i.test(selector));
 }

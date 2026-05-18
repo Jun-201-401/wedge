@@ -8,6 +8,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.wedge.analysis.application.AnalyzerCallbackService;
 import com.wedge.common.error.GlobalExceptionHandler;
 import com.wedge.common.web.RequestIdFilter;
 import java.util.List;

@@ -4,6 +4,7 @@ import com.wedge.analysis.api.internal.dto.AnalyzerCallbackHeaders;
 import com.wedge.analysis.api.internal.dto.AnalyzerCompletedRequest;
 import com.wedge.analysis.api.internal.dto.AnalyzerFailedRequest;
 import com.wedge.analysis.api.internal.dto.AnalyzerStartedRequest;
+import com.wedge.analysis.application.AnalyzerCallbackService;
 import com.wedge.common.response.ApiResponse;
 import jakarta.validation.Valid;
 import java.util.Map;

@@ -4,6 +4,12 @@ export const plannerSemantics = {
   checkoutGoal: CHECKOUT_GOAL_PATTERN,
   cookieAccept: /accept|agree|allow all|confirm|동의|허용|확인/i,
   cookieContext: /cookie|cookies|쿠키|개인정보|privacy/i,
+  consentAccept: /accept|agree|allow|confirm|ok|동의|허용|확인/i,
+  consentContext: /consent|privacy|analytics|tracking|telemetry|usage|statistics|cookie|cookies|동의|개인정보|통계|수집|사용 기록|기능 사용|서비스 개선|개인 식별|철회|쿠키/i,
+  consentDeferOrReject: /later|not now|decline|reject|deny|dismiss|cancel|close|나중|거부|동의 안|취소|닫기/i,
+  marketingConsentContext: /marketing|advertising|promotion|newsletter|마케팅|광고|프로모션|혜택|뉴스레터|메일 수신/i,
+  popupDismiss: /close|dismiss|닫기|확인|오늘 하루 보이지 않음|오늘 하루 보지 않기|하루 보이지 않음|하루 보지 않기/i,
+  popupContext: /popup|pop|layer|notice|modal|dialog|banner|공지|이벤트|팝업|레이어/i,
   addToCart: /add to cart|add to basket|장바구니 담기|카트 담기|담기/i,
   cartNavigation: /view cart|go to cart|cart|basket|장바구니|카트/i,
   checkoutNavigation: /checkout|proceed to checkout|payment|billing|shipping|order|결제|배송|주문서|주문하기/i
