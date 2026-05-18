@@ -20,6 +20,79 @@ HEAVY_TARGET_SIGNAL_KEYS = {
     "has_webgl",
 }
 URL_PATTERN = re.compile(r"https?://[^\s\"'<>]+")
+ACTION_KEYWORDS = (
+    "login",
+    "signin",
+    "sign-in",
+    "signup",
+    "sign-up",
+    "auth",
+    "oauth",
+    "token",
+    "session",
+    "cart",
+    "checkout",
+    "payment",
+    "pay",
+    "order",
+    "submit",
+    "save",
+    "search",
+    "filter",
+    "address",
+    "postcode",
+    "verify",
+    "verification",
+    "kakao",
+    "naver",
+    "로그인",
+    "회원가입",
+    "인증",
+    "결제",
+    "주문",
+    "장바구니",
+    "담기",
+    "저장",
+    "제출",
+    "검색",
+    "주소",
+)
+CORE_URL_PATH_HINTS = (
+    "/api/",
+    "/auth",
+    "/oauth",
+    "/token",
+    "/session",
+    "/login",
+    "/signin",
+    "/signup",
+    "/cart",
+    "/checkout",
+    "/payment",
+    "/pay",
+    "/order",
+    "/submit",
+    "/save",
+    "/search",
+    "/product",
+    "/products",
+    "/item",
+    "/items",
+    "/address",
+    "/postcode",
+    "/verify",
+)
+NON_USER_IMPACT_EXTENSIONS = (
+    ".css.map",
+    ".js.map",
+    ".map",
+    ".ico",
+    ".woff",
+    ".woff2",
+    ".ttf",
+    ".otf",
+)
+IMAGE_EXTENSIONS = (".png", ".jpg", ".jpeg", ".webp", ".gif", ".svg", ".avif")
 TRACKING_HOST_EXACT = {
     "bc.ad.daum.net",
     "act.ds.kakao.com",
@@ -42,44 +115,10 @@ TRACKING_PATH_HINTS = (
 
 
 def evaluate_reliability(rule: dict[str, Any], context: StageContext) -> RuleHit | None:
-    refs: list[str] = []
-    failed_count = 0
-    console_count = 0
-
-    for record in observations_of_type(context, "network_failure", "console_error"):
-        if _is_ignored_technical_observation(record.observation):
-            continue
-        if record.observation.get("type") == "network_failure":
-            failed_count += 1
-        if record.observation.get("type") == "console_error":
-            console_count += 1
-        refs.append(record.ref)
-
-    for checkpoint in context.checkpoints:
-        # Checkpoint-level state belongs to the checkpoint primary stage. A
-        # checkpoint can appear in additional StageContexts because it contains
-        # cross-stage observations; do not treat the same state summary as
-        # evidence for those derived observation stages.
-        if checkpoint_primary_stage(checkpoint) != context.stage:
-            continue
-        checkpoint_id = str(checkpoint.get("checkpoint_id") or "unknown_checkpoint")
-        state = checkpoint.get("state") or {}
-        network = state.get("network_summary") or {}
-        console = state.get("console_summary") or {}
-        checkpoint_failed = _actionable_network_failure_count(network, checkpoint)
-        checkpoint_console = int(console.get("error_count") or 0)
-        if checkpoint_failed:
-            failed_count += checkpoint_failed
-            refs.append(f"{checkpoint_id}.state.network_summary")
-        if checkpoint_console and not _checkpoint_has_only_ignored_technical_observations(checkpoint):
-            console_count += checkpoint_console
-            refs.append(f"{checkpoint_id}.state.console_summary")
-
-    # Run-level aggregate reliability counters are not stage-attributed
-    # evidence. They remain diagnostic until an upstream producer supplies
-    # stage-specific observations or checkpoint state.
-
-    refs = list(dict.fromkeys(refs))
+    evidence = _user_impacting_technical_evidence(context)
+    refs = list(dict.fromkeys(str(item["ref"]) for item in evidence))
+    failed_count = sum(1 for item in evidence if item.get("kind") == "network")
+    console_count = sum(1 for item in evidence if item.get("kind") == "console")
     if failed_count == 0 and console_count == 0:
         return None
     return base_hit(
@@ -89,7 +128,7 @@ def evaluate_reliability(rule: dict[str, Any], context: StageContext) -> RuleHit
         confidence=0.86 if any(not ref.startswith("aggregate.") for ref in refs) else 0.72,
         evidence_refs=refs,
         observations=[f"사용자 행동 직후 요청 실패 {failed_count}건, 화면 스크립트 오류 {console_count}건이 관찰됨"],
-        signals=["failed_request_count>0" if failed_count else "console_error_count>0"],
+        signals=_reliability_signals(evidence, failed_count, console_count),
         summary="사용자 행동 직후 기술 오류가 관찰되어 진행 신뢰성이 낮아질 수 있습니다.",
         impact_hypothesis="오류가 행동 결과 피드백을 방해해 사용자가 흐름을 재시도하거나 중단할 수 있습니다.",
         recommendations=["행동 직후 발생한 기술 오류를 우선 재현하고, 실패 상황에서도 사용자가 볼 수 있는 안내와 재시도 방법을 제공하기"],
@@ -183,22 +222,422 @@ def _has_exception_context(data: dict[str, Any]) -> bool:
 
 
 def _has_technical_failure(context: StageContext) -> bool:
-    if any(
-        not _is_ignored_technical_observation(record.observation)
-        for record in observations_of_type(context, "network_failure", "console_error")
-    ):
-        return True
+    return bool(_user_impacting_technical_evidence(context))
+
+
+def _user_impacting_technical_evidence(context: StageContext) -> list[dict[str, Any]]:
+    evidence: list[dict[str, Any]] = []
+    action_context_by_checkpoint = _action_context_by_checkpoint(context)
+
+    for record in observations_of_type(context, "network_failure", "console_error", "network_timeline"):
+        action_context = action_context_by_checkpoint.get(record.checkpoint_id, {})
+        evidence.extend(_technical_evidence_from_record(record, action_context))
+
     for checkpoint in context.checkpoints:
         if checkpoint_primary_stage(checkpoint) != context.stage:
             continue
+        checkpoint_id = str(checkpoint.get("checkpoint_id") or "unknown_checkpoint")
+        action_context = action_context_by_checkpoint.get(checkpoint_id, {})
         state = checkpoint.get("state") or {}
         network = state.get("network_summary") or {}
         console = state.get("console_summary") or {}
-        if _actionable_network_failure_count(network, checkpoint) > 0:
-            return True
-        if int(console.get("error_count") or 0) > 0 and not _checkpoint_has_only_ignored_technical_observations(checkpoint):
-            return True
+        checkpoint_failed = _actionable_network_failure_count(network, checkpoint)
+        if checkpoint_failed and _summary_failure_has_user_impact(action_context):
+            evidence.append({"ref": f"{checkpoint_id}.state.network_summary", "kind": "network", "reason": "action_result_failure"})
+        checkpoint_console = int(console.get("error_count") or 0)
+        if (
+            checkpoint_console
+            and not _checkpoint_has_only_ignored_technical_observations(checkpoint)
+            and _summary_failure_has_user_impact(action_context)
+        ):
+            evidence.append({"ref": f"{checkpoint_id}.state.console_summary", "kind": "console", "reason": "action_result_failure"})
+
+    deduped: list[dict[str, Any]] = []
+    seen_refs: set[str] = set()
+    for item in evidence:
+        ref = str(item.get("ref") or "")
+        if not ref or ref in seen_refs:
+            continue
+        deduped.append(item)
+        seen_refs.add(ref)
+    return deduped
+
+
+def _technical_evidence_from_record(record: ObservationRecord, action_context: dict[str, Any]) -> list[dict[str, Any]]:
+    observation_type = record.observation.get("type")
+    if observation_type in {"network_failure", "console_error"}:
+        if _is_ignored_technical_observation(record.observation):
+            return []
+        kind = "network" if observation_type == "network_failure" else "console"
+        if _technical_record_has_user_impact(record.observation, action_context):
+            return [{"ref": record.ref, "kind": kind, "reason": _impact_reason(record.observation, action_context)}]
+        return []
+
+    if observation_type != "network_timeline":
+        return []
+
+    data = _record_data(record)
+    events = data.get("events")
+    if not isinstance(events, list):
+        return []
+    actionable_events = [
+        event
+        for event in events
+        if isinstance(event, dict)
+        and _is_failed_network_event(event)
+        and not _is_ignored_network_event(event)
+        and _network_event_has_user_impact(event, action_context)
+    ]
+    if not actionable_events:
+        return []
+    return [{"ref": record.ref, "kind": "network", "reason": _event_impact_reason(actionable_events[0], action_context)}]
+
+
+def _technical_record_has_user_impact(observation: dict[str, Any], action_context: dict[str, Any]) -> bool:
+    if observation.get("type") == "network_failure":
+        data = _record_data_from_observation(observation)
+        event = {
+            "url": data.get("url") or observation.get("url") or _first_url(observation),
+            "status": data.get("status") or observation.get("status"),
+            "failed": True,
+            "resourceType": data.get("resourceType") or data.get("resource_type") or observation.get("resourceType"),
+        }
+        return _network_event_has_user_impact(event, action_context)
+
+    if observation.get("type") == "console_error":
+        return _console_error_has_user_impact(observation, action_context)
+
     return False
+
+
+def _network_event_has_user_impact(event: dict[str, Any], action_context: dict[str, Any]) -> bool:
+    if _is_core_resource_failure(event):
+        return True
+    if not _has_action_attempt(action_context):
+        return False
+    if _summary_failure_has_user_impact(action_context):
+        return True
+    if _is_core_action_failure_url(event.get("url")):
+        return True
+    if _action_context_is_critical(action_context) and _is_interactive_request(event):
+        return True
+    return False
+
+
+def _console_error_has_user_impact(observation: dict[str, Any], action_context: dict[str, Any]) -> bool:
+    if not _has_action_attempt(action_context):
+        return False
+    message = _technical_message(observation).lower()
+    if _summary_failure_has_user_impact(action_context) and _message_mentions_action_context(message, action_context):
+        return True
+    if _action_context_is_critical(action_context) and _message_mentions_core_failure(message):
+        return True
+    return False
+
+
+def _action_context_by_checkpoint(context: StageContext) -> dict[str, dict[str, Any]]:
+    contexts: dict[str, dict[str, Any]] = {}
+    for checkpoint in context.checkpoints:
+        checkpoint_id = str(checkpoint.get("checkpoint_id") or "")
+        if not checkpoint_id:
+            continue
+        action_context: dict[str, Any] = {
+            "has_action_attempt": False,
+            "clicked_in_scenario": False,
+            "critical_action": False,
+            "result_missing": False,
+            "settle_failed": False,
+            "keywords": set(),
+        }
+        for observation in checkpoint.get("observations") or []:
+            if isinstance(observation, dict):
+                _merge_action_context(action_context, observation)
+        contexts[checkpoint_id] = action_context
+    return contexts
+
+
+def _merge_action_context(action_context: dict[str, Any], observation: dict[str, Any]) -> None:
+    observation_type = observation.get("type")
+    data = _record_data_from_observation(observation)
+
+    if observation_type == "interactive_components":
+        for component in _components_from_data(data):
+            if component.get("clicked_in_scenario") is True:
+                action_context["has_action_attempt"] = True
+                action_context["clicked_in_scenario"] = True
+                _add_keywords(action_context, component.get("text"), component.get("selector"), component.get("role"))
+                if _contains_action_keyword(
+                    " ".join(str(value) for value in (component.get("text"), component.get("selector")) if value)
+                ):
+                    action_context["critical_action"] = True
+        return
+
+    if observation_type == "journey_action_raw":
+        action_type = str(data.get("action_type") or "").lower()
+        if action_type != "checkpoint":
+            action_context["has_action_attempt"] = True
+        _add_keywords(
+            action_context,
+            data.get("action_kind"),
+            data.get("clicked_text"),
+            data.get("clicked_selector"),
+            data.get("element_role"),
+            data.get("element_text"),
+            data.get("expected_outcome_hint"),
+            data.get("url_after"),
+        )
+        if _journey_action_is_critical(data):
+            action_context["critical_action"] = True
+        if _journey_result_missing(data):
+            action_context["result_missing"] = True
+        if str(data.get("settle_status") or "").lower() in {"failed", "timeout"}:
+            action_context["settle_failed"] = True
+        return
+
+    if observation_type == "goal_action_result":
+        action_context["has_action_attempt"] = True
+        _add_keywords(action_context, data.get("clicked_text"), data.get("clicked_selector"), data.get("action_type"))
+        result = data.get("result") if isinstance(data.get("result"), dict) else {}
+        if data.get("goal_action_like") is True or _goal_result_is_critical(data):
+            action_context["critical_action"] = True
+        if _goal_result_missing(data):
+            action_context["result_missing"] = True
+        if str(result.get("settle_status") or "").lower() in {"failed", "timeout"}:
+            action_context["settle_failed"] = True
+
+
+def _components_from_data(data: dict[str, Any]) -> list[dict[str, Any]]:
+    components = data.get("components")
+    if not isinstance(components, list):
+        return []
+    return [component for component in components if isinstance(component, dict)]
+
+
+def _has_action_attempt(action_context: dict[str, Any]) -> bool:
+    return bool(action_context.get("has_action_attempt") or action_context.get("clicked_in_scenario"))
+
+
+def _summary_failure_has_user_impact(action_context: dict[str, Any]) -> bool:
+    return _has_action_attempt(action_context) and bool(
+        action_context.get("result_missing")
+        or action_context.get("settle_failed")
+        or action_context.get("critical_action")
+    )
+
+
+def _action_context_is_critical(action_context: dict[str, Any]) -> bool:
+    if action_context.get("critical_action") is True:
+        return True
+    keywords = action_context.get("keywords")
+    return isinstance(keywords, set) and any(_contains_action_keyword(keyword) for keyword in keywords)
+
+
+def _journey_action_is_critical(data: dict[str, Any]) -> bool:
+    action_kind = str(data.get("action_kind") or "").lower()
+    if action_kind in {"submit", "checkout_submit", "payment_submit"}:
+        return True
+    return _contains_action_keyword(
+        " ".join(
+            str(value)
+            for value in (
+                data.get("clicked_text"),
+                data.get("clicked_selector"),
+                data.get("element_text"),
+                data.get("url_after"),
+            )
+            if value
+        )
+    )
+
+
+def _journey_result_missing(data: dict[str, Any]) -> bool:
+    if str(data.get("settle_status") or "").lower() in {"failed", "timeout"}:
+        return True
+    has_visible_result = _bool_value(data.get("dom_changed")) is True
+    has_visible_result = has_visible_result or str(data.get("url_before") or "") != str(data.get("url_after") or "")
+    toast_text = data.get("toast_text")
+    if isinstance(toast_text, list) and toast_text:
+        has_visible_result = True
+    cart_before = data.get("cart_count_before")
+    cart_after = data.get("cart_count_after")
+    if isinstance(cart_before, int) and isinstance(cart_after, int) and cart_after != cart_before:
+        has_visible_result = True
+    expected = data.get("expected_outcome_hint")
+    expects_change = isinstance(expected, list) and any(
+        value in {"url_change", "modal_open", "toast_show", "form_submit", "item_count_change", "checkout_processing", "dom_change"}
+        for value in expected
+    )
+    return expects_change and not has_visible_result
+
+
+def _goal_result_is_critical(data: dict[str, Any]) -> bool:
+    return _contains_action_keyword(
+        " ".join(
+            str(value)
+            for value in (data.get("clicked_text"), data.get("clicked_selector"), data.get("action_type"))
+            if value
+        )
+    )
+
+
+def _goal_result_missing(data: dict[str, Any]) -> bool:
+    result = data.get("result") if isinstance(data.get("result"), dict) else {}
+    if str(result.get("settle_status") or "").lower() in {"failed", "timeout"}:
+        return True
+    success_evidence = data.get("success_evidence")
+    if isinstance(success_evidence, list) and success_evidence:
+        return False
+    cart_delta = result.get("cart_count_delta") if isinstance(result.get("cart_count_delta"), (int, float)) else 0
+    return data.get("goal_action_like") is True and not any(
+        _bool_value(result.get(key)) is True
+        for key in ("toast_present", "url_changed", "dom_changed", "network_success")
+    ) and cart_delta <= 0
+
+
+def _add_keywords(action_context: dict[str, Any], *values: Any) -> None:
+    keywords = action_context.setdefault("keywords", set())
+    if not isinstance(keywords, set):
+        return
+    for value in values:
+        if isinstance(value, list):
+            for item in value:
+                _add_keywords(action_context, item)
+            continue
+        if isinstance(value, str) and value:
+            keywords.add(value.lower())
+
+
+def _contains_action_keyword(text: Any) -> bool:
+    if not isinstance(text, str):
+        return False
+    lowered = text.lower()
+    return any(keyword in lowered for keyword in ACTION_KEYWORDS)
+
+
+def _is_failed_network_event(event: dict[str, Any]) -> bool:
+    if event.get("failed") is True:
+        return True
+    status = _to_int(event.get("status"))
+    return status is not None and status >= 400
+
+
+def _is_ignored_network_event(event: dict[str, Any]) -> bool:
+    url = str(event.get("url") or "")
+    resource_type = str(event.get("resourceType") or event.get("resource_type") or "").lower()
+    if url and _is_tracking_url(url):
+        return True
+    if _is_non_user_impact_url(url):
+        return True
+    if resource_type in {"font", "stylesheet", "image", "media"}:
+        return True
+    if _is_image_url(url):
+        return True
+    return False
+
+
+def _is_core_resource_failure(event: dict[str, Any]) -> bool:
+    if _is_ignored_network_event(event):
+        return False
+    url = str(event.get("url") or "")
+    resource_type = str(event.get("resourceType") or event.get("resource_type") or "").lower()
+    if resource_type == "document":
+        return True
+    if resource_type in {"xhr", "fetch"}:
+        return _is_core_action_failure_url(url)
+    if resource_type == "script":
+        return _is_same_origin_or_core_url(url) or _contains_action_keyword(url)
+    return _is_core_action_failure_url(url)
+
+
+def _is_core_action_failure_url(url: Any) -> bool:
+    if not isinstance(url, str) or not url:
+        return False
+    if _is_tracking_url(url) or _is_non_user_impact_url(url) or _is_image_url(url):
+        return False
+    lowered = url.lower()
+    parsed = urlparse(lowered)
+    if any(hint in (parsed.path or lowered) for hint in CORE_URL_PATH_HINTS):
+        return True
+    return not parsed.hostname and _contains_action_keyword(lowered)
+
+
+def _is_same_origin_or_core_url(url: str) -> bool:
+    if not url:
+        return False
+    parsed = urlparse(url)
+    host = parsed.hostname or ""
+    path = parsed.path.lower()
+    return not host or any(hint in path for hint in CORE_URL_PATH_HINTS)
+
+
+def _is_interactive_request(event: dict[str, Any]) -> bool:
+    resource_type = str(event.get("resourceType") or event.get("resource_type") or "").lower()
+    if resource_type in {"xhr", "fetch", "document"}:
+        return True
+    method = str(event.get("method") or "GET").upper()
+    return method not in {"", "GET", "HEAD"}
+
+
+def _message_mentions_action_context(message: str, action_context: dict[str, Any]) -> bool:
+    if _message_mentions_core_failure(message):
+        return True
+    keywords = action_context.get("keywords")
+    if not isinstance(keywords, set):
+        return False
+    return any(keyword and keyword in message for keyword in keywords)
+
+
+def _message_mentions_core_failure(message: str) -> bool:
+    if not message:
+        return False
+    return any(
+        marker in message
+        for marker in (
+            "is not defined",
+            "referenceerror",
+            "typeerror",
+            "failed to fetch",
+            "networkerror",
+            "payment",
+            "checkout",
+            "login",
+            "auth",
+            "kakao",
+            "naver",
+        )
+    )
+
+
+def _impact_reason(observation: dict[str, Any], action_context: dict[str, Any]) -> str:
+    if observation.get("type") == "console_error":
+        return "action_related_console_error"
+    data = _record_data_from_observation(observation)
+    event = {
+        "url": data.get("url") or observation.get("url") or _first_url(observation),
+        "resourceType": data.get("resourceType") or data.get("resource_type"),
+    }
+    return _event_impact_reason(event, action_context)
+
+
+def _event_impact_reason(event: dict[str, Any], action_context: dict[str, Any]) -> str:
+    if _is_core_resource_failure(event):
+        return "core_resource_failure"
+    if action_context.get("result_missing") or action_context.get("settle_failed"):
+        return "action_result_failure"
+    if _action_context_is_critical(action_context):
+        return "critical_action_failure"
+    return "action_request_failure"
+
+
+def _reliability_signals(evidence: list[dict[str, Any]], failed_count: int, console_count: int) -> list[str]:
+    signals: list[str] = []
+    if failed_count:
+        signals.append("user_impacting_failed_request_count>0")
+    if console_count:
+        signals.append("user_impacting_console_error_count>0")
+    reasons = sorted({str(item.get("reason")) for item in evidence if item.get("reason")})
+    signals.extend(f"impact_reason={reason}" for reason in reasons)
+    return signals
 
 
 def _actionable_network_failure_count(network: dict[str, Any], checkpoint: dict[str, Any]) -> int:
@@ -208,7 +647,11 @@ def _actionable_network_failure_count(network: dict[str, Any], checkpoint: dict[
 
     urls = _extract_urls(network)
     if urls:
-        actionable_urls = [url for url in urls if not _is_tracking_url(url)]
+        actionable_urls = [
+            url
+            for url in urls
+            if not _is_tracking_url(url) and not _is_non_user_impact_url(url) and not _is_image_url(url)
+        ]
         return min(failed_count, len(actionable_urls)) if actionable_urls else 0
 
     if _checkpoint_has_only_ignored_technical_observations(checkpoint):
@@ -230,7 +673,10 @@ def _checkpoint_has_only_ignored_technical_observations(checkpoint: dict[str, An
 
 def _is_ignored_technical_observation(observation: dict[str, Any]) -> bool:
     urls = _extract_urls(observation)
-    if urls and all(_is_tracking_url(url) for url in urls):
+    if urls and all(_is_tracking_url(url) or _is_non_user_impact_url(url) or _is_image_url(url) for url in urls):
+        return True
+    message = _technical_message(observation).lower()
+    if "slow network is detected" in message or "fallback font" in message or message.startswith("[intervention]"):
         return True
     return _is_generic_resource_console_error(observation)
 
@@ -268,6 +714,34 @@ def _extract_urls(value: Any) -> list[str]:
         for nested in value:
             urls.extend(_extract_urls(nested))
     return list(dict.fromkeys(urls))
+
+
+def _first_url(value: Any) -> str | None:
+    urls = _extract_urls(value)
+    return urls[0] if urls else None
+
+
+def _technical_message(observation: dict[str, Any]) -> str:
+    data = _record_data_from_observation(observation)
+    for key in ("message", "error", "text", "description"):
+        value = data.get(key) or observation.get(key)
+        if isinstance(value, str) and value:
+            return value
+    return ""
+
+
+def _is_non_user_impact_url(url: str) -> bool:
+    if not url:
+        return False
+    path = urlparse(url).path.lower()
+    return path.endswith(NON_USER_IMPACT_EXTENSIONS) or "/favicon" in path
+
+
+def _is_image_url(url: str) -> bool:
+    if not url:
+        return False
+    path = urlparse(url).path.lower()
+    return path.endswith(IMAGE_EXTENSIONS)
 
 
 def _record_data_from_observation(observation: dict[str, Any]) -> dict[str, Any]:
@@ -347,6 +821,22 @@ def _number(value: Any) -> float | None:
     if isinstance(value, str):
         try:
             return float(value)
+        except ValueError:
+            return None
+    return None
+
+
+def _to_int(value: Any) -> int | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float) and value.is_integer():
+        return int(value)
+    if isinstance(value, str):
+        text = value.strip()
+        try:
+            return int(text)
         except ValueError:
             return None
     return None

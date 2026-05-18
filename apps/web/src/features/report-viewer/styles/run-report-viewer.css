@@ -138,7 +138,7 @@
   height: 2.25rem;
   border: 0;
   border-radius: 0.55rem;
-  background: transparent;
+  background: #f8fafc;
   padding: 0 0.85rem;
   color: #475569;
   font-size: 0.76rem;
@@ -154,7 +154,7 @@
 .run-report-topbar__ghost,
 .run-report-topbar__export {
   border: 0;
-  background: transparent;
+  background: #f8fafc;
 }
 
 .run-report-topbar__ghost:disabled,
@@ -258,7 +258,7 @@
   overflow: hidden;
   max-width: 16rem;
   color: #94a3b8;
-  font-size: 0.58rem;
+  font-size: 0.66rem;
   font-weight: 900;
   letter-spacing: 0.12em;
   text-overflow: ellipsis;
@@ -549,7 +549,7 @@
 .run-report-insight-summary p {
   margin: 0.42rem 0 0;
   color: #64748b;
-  font-size: 0.72rem;
+  font-size: 0.68rem;
   font-weight: 700;
   line-height: 1.55;
 }
@@ -671,7 +671,7 @@
   border-radius: 0.72rem;
   background: rgba(255, 255, 255, 0.98);
   padding: 0.78rem 0.86rem;
-  color: #334155;
+  color: #9f1239;
   opacity: 0;
   box-shadow: 0 18px 42px rgba(15, 23, 42, 0.16);
   transform: translateY(0.42rem) scale(0.985);
@@ -921,14 +921,14 @@
 .run-report-recommendation-tab {
   display: grid;
   width: 100%;
-  min-height: 6.05rem;
+  min-height: 5.08rem;
   grid-template-rows: auto auto;
-  gap: 0.48rem;
+  gap: 1rem;
   align-content: start;
   border: 0;
   border-radius: 0.72rem;
   background: transparent;
-  padding: 0.78rem 0.76rem 0.82rem;
+  padding: 0.78rem 0.76rem;
   color: inherit;
   cursor: pointer;
   font: inherit;
@@ -937,7 +937,7 @@
 }
 
 .run-report-recommendation-tab:hover {
-  background: #f8fafc;
+  background: #f1f5f9;
 }
 
 .run-report-recommendation-tab:focus-visible {
@@ -946,7 +946,7 @@
 }
 
 .run-report-recommendation-tab--active {
-  background: #f0f9ff;
+  background: #e0f2fe;
   box-shadow: none;
 }
 
@@ -955,49 +955,33 @@
   box-shadow: none;
 }
 
-.run-report-recommendation-tab__rank {
-  display: grid;
-  flex: 0 0 auto;
-  width: 1.5rem;
-  height: 1.5rem;
-  place-items: center;
-  border-radius: 999px;
-  background: #f8fafc;
+.run-report-recommendation-tab__label {
+  display: inline-flex;
+  align-items: center;
   color: #64748b;
-  font-size: 0.62rem;
-  font-weight: 900;
+  font-size: 0.68rem;
+  font-weight: 850;
+  line-height: 1;
 }
 
-.run-report-recommendation-tab--active .run-report-recommendation-tab__rank {
-  background: rgba(255, 255, 255, 0.72);
+.run-report-recommendation-tab--active .run-report-recommendation-tab__label {
   box-shadow: none;
-  color: #334155;
+  color: #0284c7;
 }
 
 .run-report-recommendation-tab__copy {
   display: grid;
   min-width: 0;
-  gap: 0.26rem;
 }
 
 .run-report-recommendation-tab__copy strong {
-  display: block;
+  display: -webkit-box;
   overflow: hidden;
   margin: 0;
   color: #020617;
-  font-size: 0.72rem;
+  font-size: 0.8rem;
   font-weight: 900;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.run-report-recommendation-tab__copy small {
-  display: -webkit-box;
-  overflow: hidden;
-  color: #334155;
-  font-size: 0.66rem;
-  font-weight: 700;
-  line-height: 1.35;
+  line-height: 1.36;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
 }
@@ -1231,11 +1215,18 @@
 .run-report-selected-action__summary span,
 .run-report-selected-action__detail-card span {
   display: block;
-  color: #94a3b8;
   font-size: 0.58rem;
   font-weight: 900;
   letter-spacing: 0.12em;
   text-transform: uppercase;
+}
+
+.run-report-selected-action__summary span {
+  color: #94a3b8;
+}
+
+.run-report-selected-action__detail-card span {
+  color: #020617;
 }
 
 .run-report-selected-action h2 {
@@ -1327,10 +1318,6 @@
 .run-report-reference-summary__trigger:focus-visible {
   outline: 3px solid rgba(14, 165, 233, 0.18);
   outline-offset: 2px;
-}
-
-.run-report-reference-summary--open .run-report-reference-summary__trigger {
-  cursor: default;
 }
 
 .run-report-reference-summary__trigger .run-report-reference-summary__label {
@@ -1702,7 +1689,6 @@
 .run-report-friction-marker:focus-visible {
   outline: 3px solid rgba(239, 68, 68, 0.35);
   outline-offset: 0.5rem;
-  border-radius: 1rem;
 }
 
 .run-report-friction-marker::before {
@@ -1746,22 +1732,59 @@
   filter: drop-shadow(0 0 0.9rem rgba(239, 68, 68, 0.54));
 }
 
-.run-report-friction-marker span {
+.run-report-friction-marker__badge {
   position: absolute;
   top: 50%;
   left: calc(50% + max(1.9rem, 38%));
-  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
   transform: translateY(-50%);
-  border-radius: 999px;
-  background: #7f1d1d;
-  padding: 0.22rem 0.52rem;
-  color: #fff;
+  border: 0;
+  border-radius: 10rem;
+  background: rgba(255, 255, 255, 0.76);
+  box-shadow: 0 16px 44px rgba(248, 113, 113, 0.14);
+  padding: 0.42rem 0.86rem;
+  color: #9f1239;
   font-size: 0.62rem;
-  font-weight: 900;
+  font-weight: bold;
   letter-spacing: 0;
+  line-height: 1;
   text-transform: none;
   white-space: nowrap;
+  z-index: 0;
   animation: runReportMarkerLabelIn 220ms cubic-bezier(0.2, 0.65, 0.3, 1) both;
+  transition: background 20ms linear, color 20ms linear;
+}
+
+.run-report-friction-marker__badge-text {
+  position: relative;
+  z-index: 2;
+}
+
+.run-report-friction-marker__hover-effect {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.run-report-friction-marker__hover-effect span {
+  width: 5.8rem;
+  height: 5.8rem;
+  border-radius: 40rem;
+  background: rgb(248, 113, 113);
+  background: linear-gradient(90deg, rgba(248, 113, 113, 0.96) 0%, rgba(253, 164, 175, 0.9) 48%, rgba(186, 230, 253, 0.72) 100%);
+  opacity: 0.42;
+  filter: blur(24px);
+  animation: runReportBadgeGlowSpin 3s linear infinite;
+  transition: width 400ms ease, height 400ms ease;
 }
 
 @keyframes runReportMarkerLabelIn {
@@ -1772,6 +1795,26 @@
   to {
     opacity: 1;
     transform: translate(0, -50%);
+  }
+}
+
+.run-report-friction-marker__badge:hover {
+  background: rgb(255, 241, 242);
+  color: #881337;
+}
+
+.run-report-friction-marker__badge:hover .run-report-friction-marker__hover-effect span {
+  width: 4.9rem;
+  height: 4.9rem;
+}
+
+@keyframes runReportBadgeGlowSpin {
+  0% {
+    transform: rotate(0deg);
+  }
+
+  100% {
+    transform: rotate(360deg);
   }
 }
 

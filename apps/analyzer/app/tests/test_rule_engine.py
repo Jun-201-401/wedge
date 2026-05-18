@@ -3,10 +3,13 @@ from __future__ import annotations
 import copy
 import json
 import unittest
+from contextlib import redirect_stdout
+from io import StringIO
 from pathlib import Path
 
 from app.contracts import semantic_enum, semantic_label_keys, semantic_response_properties, semantic_schema_version, semantic_task_type, semantic_task_types
 from app.normalization import SemanticLabelResolver
+from app.observability.phase_timing import PhaseTimingContext
 from app.providers import (
     ACTION_SPECIFICITY_LABELS,
     PAGE_TYPE_LABELS,
@@ -54,6 +57,76 @@ def load_semantic_fixture(fixture_name: str) -> list[dict]:
     fixture_path = Path(__file__).resolve().parent / "fixtures/semantic_normalization" / fixture_name
     with fixture_path.open(encoding="utf-8") as file:
         return json.load(file)
+
+
+def phase_events(output: str) -> list[dict]:
+    events: list[dict] = []
+    for line in output.splitlines():
+        if not line.strip():
+            continue
+        event = json.loads(line)
+        if event.get("event") == "analyzer_phase_timing":
+            events.append(event)
+    return events
+
+
+def product_image_packet(*, include_image_failure: bool = True, visible_product_image: bool = False) -> dict:
+    observations = [
+        {
+            "observation_id": "obs_product_cards",
+            "type": "product_card",
+            "stage": "VALUE",
+            "source": ["dom", "layout", "screenshot"],
+            "confidence": 0.66,
+            "cards": [
+                {
+                    "element_text": "Chocolate Chip Cookies $10.99 Add to cart",
+                    "clicked_selector": "article.cookie-card",
+                    "visible_price": "$10.99",
+                    "visible_product_image": visible_product_image,
+                    "bbox": {"x": 170, "y": 395, "width": 285, "height": 281},
+                    "screenshot_artifact_id": "screenshot_cp_001",
+                }
+            ],
+        }
+    ]
+    if include_image_failure:
+        observations.append(
+            {
+                "observation_id": "obs_network_timeline",
+                "type": "network_timeline",
+                "stage": "VALUE",
+                "source": ["network"],
+                "confidence": 0.78,
+                "event_count": 1,
+                "failed_request_count": 1,
+                "status_code_counts": {},
+                "events": [
+                    {
+                        "method": "GET",
+                        "url": "https://snipcart.com/media/10107/chocolate-chips-cookies.png",
+                        "failed": True,
+                        "errorText": "net::ERR_BLOCKED_BY_ORB",
+                        "resourceType": "image",
+                    }
+                ],
+            }
+        )
+    return {
+        "schema_version": "0.5",
+        "run_id": "run_product_image",
+        "aggregate_signals": {},
+        "artifacts": [{"artifact_id": "screenshot_cp_001", "type": "screenshot"}],
+        "checkpoints": [
+            {
+                "checkpoint_id": "cp_001",
+                "primaryStage": "VALUE",
+                "state": {"viewport": {"width": 1280, "height": 720}},
+                "artifact_refs": ["artifact:screenshot_cp_001"],
+                "observations": observations,
+            }
+        ],
+    }
 
 
 class StagePipelineTest(unittest.TestCase):
@@ -210,6 +283,108 @@ class RuleEngineTest(unittest.TestCase):
         self.assertEqual(decision_by_stage["FIRST_VIEW"]["status"], "PASS")
         self.assertEqual(decision_by_stage["COMMIT"]["status"], "NOT_APPLICABLE")
         self.assertEqual(result["summary"]["task_success"], "partial")
+
+    def test_analysis_phase_timing_logs_core_boundaries_when_context_is_provided(self) -> None:
+        class SemanticProvider:
+            def classify_cta(self, *, text: str, scenario_goal: str, target_ref: str):
+                return SemanticLabelResult(
+                    target_observation_ref=target_ref,
+                    provider_type="test",
+                    provider_name="semantic_provider",
+                    labels={
+                        "scenario_relevance_label": "RELEVANT_ACTION",
+                        "action_specificity_label": "SPECIFIC_ACTION",
+                    },
+                    confidence=0.9,
+                )
+
+        class LabelIntegrityProvider:
+            def classify_label_integrity(
+                self,
+                *,
+                scenario_goal: str,
+                stage: str,
+                checkpoint_id: str,
+                screenshot_url: str,
+                candidates: list[dict],
+            ):
+                return []
+
+        class LabelRoleProvider:
+            def classify_label_roles(
+                self,
+                *,
+                scenario_goal: str,
+                stage: str,
+                checkpoint_id: str,
+                screenshot_url: str,
+                candidates: list[dict],
+            ):
+                return []
+
+        packet = load_sample_packet()
+        packet["artifacts"][0]["signed_url"] = "https://example.com/cp_001.png"
+        stdout = StringIO()
+
+        with redirect_stdout(stdout):
+            analyze_evidence_packet(
+                packet,
+                semantic_provider=SemanticProvider(),
+                label_integrity_provider=LabelIntegrityProvider(),
+                label_role_provider=LabelRoleProvider(),
+                timing_context=PhaseTimingContext(
+                    run_id="run-1",
+                    analysis_job_id="job-1",
+                    evidence_packet_id="packet-1",
+                ),
+            )
+
+        events = phase_events(stdout.getvalue())
+        phases = [event["phase"] for event in events]
+        self.assertEqual(
+            phases,
+            ["label_integrity", "label_role", "stage_context_build", "semantic_cta", "rule_engine_eval"],
+        )
+        for event in events:
+            self.assertEqual(event["runId"], "run-1")
+            self.assertEqual(event["analysisJobId"], "job-1")
+            self.assertEqual(event["evidencePacketId"], "packet-1")
+            self.assertGreaterEqual(event["durationMs"], 0)
+        label_role_event = next(event for event in events if event["phase"] == "label_role")
+        self.assertGreaterEqual(label_role_event["gmsCallCount"], 1)
+        self.assertGreaterEqual(label_role_event["candidateCount"], 1)
+        semantic_event = next(event for event in events if event["phase"] == "semantic_cta")
+        self.assertGreaterEqual(semantic_event["gmsCallCount"], 1)
+
+    def test_product_image_load_emits_missing_image_card_with_bounds(self) -> None:
+        result = analyze_evidence_packet(product_image_packet())
+
+        criteria = [issue["criterion_id"] for issue in result["issues"]]
+        self.assertNotIn("RELIABILITY-TECH-001", criteria)
+        issue = [issue for issue in result["issues"] if issue["criterion_id"] == "TECH-PRODUCT-IMAGE-LOAD-001"][0]
+        self.assertEqual(issue["stage"], "VALUE")
+        self.assertEqual(issue["evidence_refs"], ["cp_001.obs_product_cards", "cp_001.obs_network_timeline"])
+        self.assertEqual(issue["evidence_locations"][0]["type"], "product_card")
+        self.assertEqual(issue["problem_components"][0]["evidence_ref"], "cp_001.obs_product_cards")
+        self.assertEqual(issue["problem_components"][0]["role"], "product_card")
+        self.assertEqual(issue["problem_components"][0]["selector"], "article.cookie-card")
+        self.assertEqual(
+            issue["problem_components"][0]["bounding_box"],
+            {"x": 170, "y": 395, "width": 285, "height": 281, "unit": "css_px"},
+        )
+        self.assertEqual(issue["problem_components"][0]["screenshot_artifact_id"], "screenshot_cp_001")
+
+    def test_product_image_load_requires_same_checkpoint_image_failure(self) -> None:
+        result = analyze_evidence_packet(product_image_packet(include_image_failure=False))
+
+        criteria = [issue["criterion_id"] for issue in result["issues"]]
+        self.assertNotIn("TECH-PRODUCT-IMAGE-LOAD-001", criteria)
+
+    def test_product_image_load_does_not_emit_when_card_image_is_visible(self) -> None:
+        result = analyze_evidence_packet(product_image_packet(visible_product_image=True))
+
+        criteria = [issue["criterion_id"] for issue in result["issues"]]
+        self.assertNotIn("TECH-PRODUCT-IMAGE-LOAD-001", criteria)
 
     def test_journey_goal_cta_mismatch_uses_semantic_label(self) -> None:
         class IrrelevantCtaProvider:
@@ -487,7 +662,94 @@ class RuleEngineTest(unittest.TestCase):
         self.assertTrue(any(signal.startswith("choice_group_key=") for signal in overload[0]["signals"]))
         self.assertIn("evidence_locations", overload[0])
         self.assertIn("components", overload[0]["evidence_locations"][0])
-        self.assertEqual(len(overload[0]["problem_components"]), 15)
+        self.assertEqual(len(overload[0]["problem_components"]), 1)
+        self.assertEqual(overload[0]["problem_components"][0]["role"], "group")
+        self.assertEqual(
+            overload[0]["problem_components"][0]["bounding_box"],
+            {"x": 20.0, "y": 80.0, "width": 952.0, "height": 40.0, "unit": "css_px"},
+        )
+
+    def test_path_choice_overload_targets_repeated_shortcut_group_without_search_or_ads(self) -> None:
+        packet = load_sample_packet()
+        packet["aggregate_signals"]["primary_cta_count_by_stage"] = {}
+        packet["checkpoints"][0]["observations"] = [
+            observation
+            for observation in packet["checkpoints"][0]["observations"]
+            if observation["type"] not in {"cta_cluster", "interactive_components"}
+        ]
+        shortcuts = [
+            {
+                "text": label,
+                "selector": f"a.shortcut-{index}",
+                "role": "link",
+                "tag": "a",
+                "clickable": True,
+                "visible": True,
+                "bounds": {"x": 320 + (index * 52), "y": 150, "width": 44, "height": 52},
+                "container_role": "list",
+                "container_bounds": {"x": 360, "y": 140, "width": 500, "height": 72},
+                "nearest_target_spacing_px": 4,
+            }
+            for index, label in enumerate(["메일", "카페", "블로그", "쇼핑", "뉴스", "증권", "부동산", "지도", "웹툰"], start=1)
+        ]
+        noisy_components = [
+            {
+                "text": "검색어를 입력해 주세요.",
+                "selector": "#query",
+                "role": "combobox",
+                "tag": "input",
+                "clickable": True,
+                "visible": True,
+                "bounds": {"x": 330, "y": 92, "width": 480, "height": 58},
+            },
+            {
+                "text": "AD",
+                "selector": "#right-ad-1_tgtLREC",
+                "role": "",
+                "tag": "iframe",
+                "clickable": True,
+                "visible": True,
+                "bounds": {"x": 940, "y": 436, "width": 420, "height": 240},
+            },
+            {
+                "text": "",
+                "selector": "a.image_link",
+                "role": "link",
+                "tag": "a",
+                "clickable": True,
+                "visible": True,
+                "bounds": {"x": 80, "y": 256, "width": 830, "height": 134},
+            },
+        ]
+        packet["checkpoints"][0]["observations"].append(
+            {
+                "observation_id": "obs_shortcuts",
+                "type": "interactive_components",
+                "stage": "CTA",
+                "source": ["dom", "layout"],
+                "confidence": 0.86,
+                "data": {"components": noisy_components + shortcuts},
+            }
+        )
+
+        result = analyze_evidence_packet(packet)
+
+        overload = [issue for issue in result["issues"] if issue["criterion_id"] == "PATH-CHOICE-OVERLOAD-001"]
+        self.assertEqual(len(overload), 1)
+        self.assertIn("group_interactive_choice_count=9", overload[0]["signals"])
+        self.assertTrue(any(signal.startswith("choice_group_component_keys=") for signal in overload[0]["signals"]))
+        component_key_signal = next(signal for signal in overload[0]["signals"] if signal.startswith("choice_group_component_keys="))
+        self.assertIn("a.shortcut-1@", component_key_signal)
+        self.assertIn("a.shortcut-9@", component_key_signal)
+        self.assertNotIn("#query", component_key_signal)
+        self.assertNotIn("#right-ad-1_tgtLREC", component_key_signal)
+        self.assertNotIn("a.image_link", component_key_signal)
+        self.assertEqual(len(overload[0]["problem_components"]), 1)
+        self.assertEqual(overload[0]["problem_components"][0]["role"], "group")
+        self.assertEqual(
+            overload[0]["problem_components"][0]["bounding_box"],
+            {"x": 360.0, "y": 140.0, "width": 500.0, "height": 72.0, "unit": "css_px"},
+        )
 
     def test_path_choice_overload_ignores_header_and_footer_utility_links(self) -> None:
         packet = load_sample_packet()
@@ -848,6 +1110,7 @@ class RuleEngineTest(unittest.TestCase):
                             "tag": "button",
                             "clickable": True,
                             "visible": True,
+                            "is_cta_candidate": True,
                             "bounds": {"x": 320, "y": 240, "width": 18, "height": 18},
                             "nearest_target_spacing_px": 4,
                         },
@@ -874,7 +1137,7 @@ class RuleEngineTest(unittest.TestCase):
         self.assertEqual(issue["stage"], "CTA")
         self.assertEqual(issue["severity"], 2)
         self.assertEqual(issue["confidence"], 0.88)
-        self.assertIn("WCAG 2.5.8", [reference["label"] for reference in issue["references"]])
+        self.assertIn("Lighthouse", [reference["label"] for reference in issue["references"]])
         self.assertIn("min_target_size_px=24", issue["signals"])
         self.assertIn("tight_spacing_px=8", issue["signals"])
         self.assertIn("target_size_problem_selectors=button.icon-open", issue["signals"])
@@ -955,7 +1218,7 @@ class RuleEngineTest(unittest.TestCase):
         criteria = [issue["criterion_id"] for issue in result["issues"]]
         self.assertNotIn("TECH-TARGET-SIZE-001", criteria)
 
-    def test_target_size_counts_small_link_when_href_is_present(self) -> None:
+    def test_target_size_ignores_small_link_without_goal_relevance(self) -> None:
         packet = load_sample_packet()
         packet["aggregate_signals"]["primary_cta_count_by_stage"] = {}
         packet["checkpoints"][0]["observations"] = [
@@ -990,8 +1253,82 @@ class RuleEngineTest(unittest.TestCase):
         result = analyze_evidence_packet(packet)
 
         target_size = [issue for issue in result["issues"] if issue["criterion_id"] == "TECH-TARGET-SIZE-001"]
+        self.assertEqual(target_size, [])
+
+    def test_target_size_ignores_auxiliary_sound_toggle_without_goal_relevance(self) -> None:
+        packet = load_sample_packet()
+        packet["aggregate_signals"]["primary_cta_count_by_stage"] = {}
+        packet["checkpoints"][0]["observations"] = [
+            observation
+            for observation in packet["checkpoints"][0]["observations"]
+            if observation["type"] not in {"cta_cluster", "interactive_components"}
+        ]
+        packet["checkpoints"][0]["observations"].append(
+            {
+                "observation_id": "obs_sound_toggle",
+                "type": "interactive_components",
+                "stage": "CTA",
+                "source": ["dom", "layout"],
+                "confidence": 0.84,
+                "data": {
+                    "components": [
+                        {
+                            "text": "사운드 off",
+                            "selector": "button.ad-sound-toggle",
+                            "role": "button",
+                            "tag": "button",
+                            "clickable": True,
+                            "visible": True,
+                            "bounds": {"x": 104, "y": 462, "width": 68, "height": 20},
+                            "nearest_target_spacing_px": 4,
+                        }
+                    ]
+                },
+            }
+        )
+
+        result = analyze_evidence_packet(packet)
+
+        criteria = [issue["criterion_id"] for issue in result["issues"]]
+        self.assertNotIn("TECH-TARGET-SIZE-001", criteria)
+
+    def test_target_size_emits_for_small_goal_keyword_link(self) -> None:
+        packet = load_sample_packet()
+        packet["aggregate_signals"]["primary_cta_count_by_stage"] = {}
+        packet["checkpoints"][0]["observations"] = [
+            observation
+            for observation in packet["checkpoints"][0]["observations"]
+            if observation["type"] not in {"cta_cluster", "interactive_components"}
+        ]
+        packet["checkpoints"][0]["observations"].append(
+            {
+                "observation_id": "obs_small_search_link",
+                "type": "interactive_components",
+                "stage": "CTA",
+                "source": ["dom", "layout"],
+                "confidence": 0.84,
+                "data": {
+                    "components": [
+                        {
+                            "text": "검색",
+                            "selector": "a.search",
+                            "role": "link",
+                            "tag": "a",
+                            "href": "/search",
+                            "visible": True,
+                            "bounds": {"x": 96, "y": 350, "width": 20, "height": 18},
+                            "nearest_target_spacing_px": 4,
+                        }
+                    ]
+                },
+            }
+        )
+
+        result = analyze_evidence_packet(packet)
+
+        target_size = [issue for issue in result["issues"] if issue["criterion_id"] == "TECH-TARGET-SIZE-001"]
         self.assertEqual(len(target_size), 1)
-        self.assertEqual(target_size[0]["problem_components"][0]["selector"], "a.more")
+        self.assertEqual(target_size[0]["problem_components"][0]["selector"], "a.search")
 
     def test_missing_cta_evidence_is_not_user_facing_issue(self) -> None:
         packet = load_sample_packet()
@@ -1214,16 +1551,13 @@ class RuleEngineTest(unittest.TestCase):
         reliability = [issue for issue in result["issues"] if issue["criterion_id"] == "RELIABILITY-TECH-001"]
         self.assertEqual(reliability, [])
 
-    def test_checkpoint_reliability_failure_emits_stage_issue(self) -> None:
+    def test_checkpoint_reliability_summary_without_action_is_not_stage_issue(self) -> None:
         packet = load_sample_packet()
         packet["aggregate_signals"]["primary_cta_count_by_stage"] = {"CTA": 1}
         packet["checkpoints"][1]["state"]["network_summary"]["failed_request_count"] = 1
         result = analyze_evidence_packet(packet)
         reliability = [issue for issue in result["issues"] if issue["criterion_id"] == "RELIABILITY-TECH-001"]
-        self.assertEqual(len(reliability), 1)
-        self.assertEqual(reliability[0]["stage"], "INPUT")
-        self.assertEqual(reliability[0]["references"][0]["label"], "NN/g Heuristics")
-        self.assertIn("cp_002.state.network_summary", reliability[0]["evidence_refs"])
+        self.assertEqual(reliability, [])
 
     def test_reliability_ignores_tracking_network_failure(self) -> None:
         packet = load_sample_packet()
@@ -1267,6 +1601,72 @@ class RuleEngineTest(unittest.TestCase):
 
         reliability = [issue for issue in result["issues"] if issue["criterion_id"] == "RELIABILITY-TECH-001"]
         self.assertEqual(reliability, [])
+
+    def test_reliability_ignores_optional_sdk_console_error_without_action(self) -> None:
+        packet = load_sample_packet()
+        packet["aggregate_signals"]["primary_cta_count_by_stage"] = {"CTA": 1}
+        packet["checkpoints"][0]["observations"].extend(
+            [
+                {
+                    "observation_id": "obs_kakao_cdn_failure",
+                    "type": "network_failure",
+                    "stage": "CTA",
+                    "source": ["network"],
+                    "data": {"url": "https://t1.kakaocdn.net/kakao_js_sdk/v1/kakao.min.js", "status": "failed"},
+                    "confidence": 0.9,
+                },
+                {
+                    "observation_id": "obs_kakao_reference_error",
+                    "type": "console_error",
+                    "stage": "CTA",
+                    "source": ["console"],
+                    "data": {"message": "Uncaught ReferenceError: Kakao is not defined"},
+                    "confidence": 0.9,
+                },
+            ]
+        )
+
+        result = analyze_evidence_packet(packet)
+
+        reliability = [issue for issue in result["issues"] if issue["criterion_id"] == "RELIABILITY-TECH-001"]
+        self.assertEqual(reliability, [])
+
+    def test_reliability_emits_sdk_error_after_related_action(self) -> None:
+        packet = load_sample_packet()
+        packet["aggregate_signals"]["primary_cta_count_by_stage"] = {"CTA": 1}
+        packet["checkpoints"][0]["observations"].extend(
+            [
+                {
+                    "observation_id": "obs_kakao_login_action",
+                    "type": "journey_action_raw",
+                    "stage": "CTA",
+                    "source": ["scenario_log", "dom", "network"],
+                    "data": {
+                        "action_type": "click",
+                        "action_kind": "login",
+                        "clicked_text": "카카오 로그인",
+                        "clicked_selector": "button.kakao-login",
+                        "expected_outcome_hint": ["url_change"],
+                        "settle_status": "failed",
+                    },
+                    "confidence": 0.85,
+                },
+                {
+                    "observation_id": "obs_kakao_reference_error",
+                    "type": "console_error",
+                    "stage": "CTA",
+                    "source": ["console"],
+                    "data": {"message": "Uncaught ReferenceError: Kakao is not defined"},
+                    "confidence": 0.9,
+                },
+            ]
+        )
+
+        result = analyze_evidence_packet(packet)
+
+        reliability = [issue for issue in result["issues"] if issue["criterion_id"] == "RELIABILITY-TECH-001"]
+        self.assertEqual(len(reliability), 1)
+        self.assertEqual(reliability[0]["evidence_refs"], ["cp_001.obs_kakao_reference_error"])
 
     def test_loading_stuck_emits_from_general_page_ready_timing(self) -> None:
         packet = load_sample_packet()
@@ -1747,15 +2147,32 @@ class RuleEngineTest(unittest.TestCase):
         packet = load_sample_packet()
         packet["aggregate_signals"]["primary_cta_count_by_stage"] = {"CTA": 1}
         packet["checkpoints"][1]["state"]["network_summary"]["failed_request_count"] = 1
-        packet["checkpoints"][1]["observations"].append(
-            {
-                "observation_id": "obs_cross_stage_cta",
-                "type": "cta_candidate",
-                "stage": "CTA",
-                "source": ["dom"],
-                "data": {"visible_text": "무료로 시작하기"},
-                "confidence": 0.8,
-            }
+        packet["checkpoints"][1]["observations"].extend(
+            [
+                {
+                    "observation_id": "obs_cross_stage_cta",
+                    "type": "cta_candidate",
+                    "stage": "CTA",
+                    "source": ["dom"],
+                    "data": {"visible_text": "무료로 시작하기"},
+                    "confidence": 0.8,
+                },
+                {
+                    "observation_id": "obs_submit_action",
+                    "type": "journey_action_raw",
+                    "stage": "INPUT",
+                    "source": ["scenario_log", "dom", "network"],
+                    "data": {
+                        "action_type": "click",
+                        "action_kind": "submit",
+                        "clicked_text": "Submit",
+                        "clicked_selector": "button.submit",
+                        "expected_outcome_hint": ["form_submit"],
+                        "settle_status": "failed",
+                    },
+                    "confidence": 0.85,
+                },
+            ]
         )
 
         result = analyze_evidence_packet(packet)

@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Any, Protocol
 
 from app.clients import EvidencePacketClient, SpringCallbackClient
+from app.observability.phase_timing import PhaseTimingContext, phase_timer
 from app.services.analysis_service import analyze_packet_and_callback, build_failed_callback_payload
 
 
@@ -102,15 +103,27 @@ class AnalysisRequestConsumer:
 
     def process_raw_message(self, raw_message: str) -> dict[str, Any]:
         request = parse_analysis_request_message(raw_message)
+        timing_context = PhaseTimingContext(
+            run_id=request.run_id,
+            analysis_job_id=request.analysis_job_id,
+            evidence_packet_id=request.evidence_packet_id,
+        )
         try:
-            evidence_packet = self._fetch_evidence_packet(request)
-            return analyze_packet_and_callback(
-                analysis_job_id=request.analysis_job_id,
-                run_id=request.run_id,
-                evidence_packet=evidence_packet,
-                callback_client=self._callback_client,
-                event_id=request.event_id,
-            )
+            with phase_timer(
+                context=timing_context,
+                phase="process_message_total",
+                extra={"messageType": "analysis.request"},
+            ):
+                with phase_timer(context=timing_context, phase="fetch_evidence_packet"):
+                    evidence_packet = self._fetch_evidence_packet(request)
+                return analyze_packet_and_callback(
+                    analysis_job_id=request.analysis_job_id,
+                    run_id=request.run_id,
+                    evidence_packet=evidence_packet,
+                    callback_client=self._callback_client,
+                    event_id=request.event_id,
+                    timing_context=timing_context,
+                )
         except Exception as exc:
             failed_payload = build_failed_callback_payload(
                 analysis_job_id=request.analysis_job_id,

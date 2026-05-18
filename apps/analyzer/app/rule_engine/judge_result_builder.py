@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from contextlib import nullcontext
 from typing import Any
 
 from app.contracts.stages import DECISION_STAGE_DISPLAY_NAMES, DECISION_STAGES, DecisionStage
+from app.observability.phase_timing import PhaseTimingContext, packet_timing_summary, phase_timer
 from app.providers import SemanticProviderPort
 from app.providers.label_integrity import LabelIntegrityProviderPort
 from app.providers.label_role import LabelRoleProviderPort
@@ -34,12 +36,14 @@ RELIABILITY_LOCATION_TYPES = {
 TOP_LEVEL_BOUNDS_COMPONENT_CRITERION_IDS = {"COPY-LABEL-INTEGRITY-001", "FORM-REQUIRED-OPTIONAL-001"}
 PATH_CHOICE_OVERLOAD_CRITERION_IDS = {"PATH-CHOICE-OVERLOAD-001"}
 TARGET_SIZE_CRITERION_IDS = {"TECH-TARGET-SIZE-001"}
+PRODUCT_IMAGE_LOAD_CRITERION_IDS = {"TECH-PRODUCT-IMAGE-LOAD-001"}
 COMPONENT_MARKER_CRITERION_IDS = {
     "PATH-CTA-002",
     *RELIABILITY_ACTION_CONTEXT_CRITERION_IDS,
     *TOP_LEVEL_BOUNDS_COMPONENT_CRITERION_IDS,
     *PATH_CHOICE_OVERLOAD_CRITERION_IDS,
     *TARGET_SIZE_CRITERION_IDS,
+    *PRODUCT_IMAGE_LOAD_CRITERION_IDS,
 }
 
 
@@ -49,16 +53,60 @@ def analyze_evidence_packet(
     semantic_provider: SemanticProviderPort | None = None,
     label_role_provider: LabelRoleProviderPort | None = None,
     label_integrity_provider: LabelIntegrityProviderPort | None = None,
+    timing_context: PhaseTimingContext | None = None,
 ) -> dict[str, Any]:
     registry = registry or load_default_registry()
     if label_integrity_provider is not None:
-        packet = LabelIntegrityResolver(label_integrity_provider).enrich_packet(packet)
+        counting_provider = _CountingLabelIntegrityProvider(label_integrity_provider)
+        with _phase_timer(
+            timing_context=timing_context,
+            phase="label_integrity",
+            extra=lambda: {
+                **packet_timing_summary(packet),
+                "gmsCallCount": counting_provider.call_count,
+                "candidateCount": counting_provider.candidate_count,
+            },
+        ):
+            packet = LabelIntegrityResolver(counting_provider).enrich_packet(packet)
     if label_role_provider is not None:
-        packet = LabelRoleResolver(label_role_provider).enrich_packet(packet)
-    contexts = StageContextBuilder().build(packet)
+        counting_provider = _CountingLabelRoleProvider(label_role_provider)
+        with _phase_timer(
+            timing_context=timing_context,
+            phase="label_role",
+            extra=lambda: {
+                **packet_timing_summary(packet),
+                "gmsCallCount": counting_provider.call_count,
+                "candidateCount": counting_provider.candidate_count,
+            },
+        ):
+            packet = LabelRoleResolver(counting_provider).enrich_packet(packet)
+    with _phase_timer(
+        timing_context=timing_context,
+        phase="stage_context_build",
+        extra=lambda: packet_timing_summary(packet),
+    ):
+        contexts = StageContextBuilder().build(packet)
     if semantic_provider is not None:
-        contexts = SemanticLabelResolver(semantic_provider).enrich(contexts)
-    hits = RuleEngine().evaluate(contexts=contexts, registry=registry)
+        counting_provider = _CountingSemanticProvider(semantic_provider)
+        with _phase_timer(
+            timing_context=timing_context,
+            phase="semantic_cta",
+            extra=lambda: {
+                "stageCount": len(contexts),
+                "gmsCallCount": counting_provider.call_count,
+                "candidateCount": counting_provider.call_count,
+            },
+        ):
+            contexts = SemanticLabelResolver(counting_provider).enrich(contexts)
+    with _phase_timer(
+        timing_context=timing_context,
+        phase="rule_engine_eval",
+        extra=lambda: {
+            "stageCount": len(contexts),
+            "ruleCount": len(registry.get("rules") or []),
+        },
+    ):
+        hits = RuleEngine().evaluate(contexts=contexts, registry=registry)
     issues = _issues_from_hits(hits)
     issues = _attach_evidence_locations(issues, contexts, _screenshot_artifact_ids(packet))
     observation_priorities = stage_observation_priorities(contexts, issues)
@@ -91,6 +139,79 @@ def analyze_evidence_packet(
     return result
 
 
+class _CountingLabelIntegrityProvider:
+    def __init__(self, delegate: LabelIntegrityProviderPort) -> None:
+        self._delegate = delegate
+        self.call_count = 0
+        self.candidate_count = 0
+
+    def classify_label_integrity(
+        self,
+        *,
+        scenario_goal: str,
+        stage: str,
+        checkpoint_id: str,
+        screenshot_url: str,
+        candidates: list[dict[str, Any]],
+    ):
+        self.call_count += 1
+        self.candidate_count += len(candidates)
+        return self._delegate.classify_label_integrity(
+            scenario_goal=scenario_goal,
+            stage=stage,
+            checkpoint_id=checkpoint_id,
+            screenshot_url=screenshot_url,
+            candidates=candidates,
+        )
+
+
+class _CountingLabelRoleProvider:
+    def __init__(self, delegate: LabelRoleProviderPort) -> None:
+        self._delegate = delegate
+        self.call_count = 0
+        self.candidate_count = 0
+
+    def classify_label_roles(
+        self,
+        *,
+        scenario_goal: str,
+        stage: str,
+        checkpoint_id: str,
+        screenshot_url: str,
+        candidates: list[dict[str, Any]],
+    ):
+        self.call_count += 1
+        self.candidate_count += len(candidates)
+        return self._delegate.classify_label_roles(
+            scenario_goal=scenario_goal,
+            stage=stage,
+            checkpoint_id=checkpoint_id,
+            screenshot_url=screenshot_url,
+            candidates=candidates,
+        )
+
+
+class _CountingSemanticProvider:
+    def __init__(self, delegate: SemanticProviderPort) -> None:
+        self._delegate = delegate
+        self.call_count = 0
+
+    def classify_cta(self, *, text: str, scenario_goal: str, target_ref: str):
+        self.call_count += 1
+        return self._delegate.classify_cta(text=text, scenario_goal=scenario_goal, target_ref=target_ref)
+
+
+def _phase_timer(
+    *,
+    timing_context: PhaseTimingContext | None,
+    phase: str,
+    extra: Any = None,
+):
+    if timing_context is None:
+        return nullcontext()
+    return phase_timer(context=timing_context, phase=phase, extra=extra)
+
+
 def _issues_from_hits(hits: list[RuleHit]) -> list[dict[str, Any]]:
     return [hit.to_issue(f"issue_{index:03d}") for index, hit in enumerate(hits, start=1)]
 
@@ -120,6 +241,8 @@ def _attach_evidence_locations(
             locations = _with_path_choice_overload_problem_components(issue, locations)
         if criterion_id in TARGET_SIZE_CRITERION_IDS:
             locations = _with_target_size_problem_components(issue, locations)
+        if criterion_id in PRODUCT_IMAGE_LOAD_CRITERION_IDS:
+            locations = _with_product_image_problem_components(locations)
         if not supports_component_marker:
             locations = _without_problem_components(locations)
         problem_components = (
@@ -249,6 +372,7 @@ def _with_top_level_bounds_problem_components(locations: list[dict[str, Any]]) -
 
 def _with_path_choice_overload_problem_components(issue: dict[str, Any], locations: list[dict[str, Any]]) -> list[dict[str, Any]]:
     group_key = _choice_group_key_from_issue(issue)
+    component_keys = _choice_group_component_keys_from_issue(issue)
     result: list[dict[str, Any]] = []
     for location in locations:
         if location.get("type") != "interactive_components":
@@ -259,19 +383,73 @@ def _with_path_choice_overload_problem_components(issue: dict[str, Any], locatio
             for component in location.get("components") or []
             if isinstance(component, dict)
             and isinstance(component.get("bounds"), dict)
-            and _component_matches_choice_group(component, group_key)
+            and (
+                _component_matches_choice_key(component, component_keys)
+                if component_keys
+                else _component_matches_choice_group(component, group_key)
+            )
         ]
-        if not components and group_key and group_key.startswith("layout:"):
+        if not components and not component_keys and group_key and group_key.startswith("layout:"):
             components = [
                 component
                 for component in location.get("components") or []
                 if isinstance(component, dict) and isinstance(component.get("bounds"), dict)
             ]
         if components:
-            result.append({**location, "problem_components": components[:20]})
+            result.append({**location, "problem_components": [_path_choice_group_component(components, group_key)]})
         else:
             result.append(location)
     return result
+
+
+def _path_choice_group_component(components: list[dict[str, Any]], group_key: str | None) -> dict[str, Any]:
+    container_component = _path_choice_container_component(components, group_key)
+    if container_component is not None:
+        return container_component
+
+    union_bounds = _union_component_bounds(components)
+    if union_bounds is not None:
+        return {
+            "label": "choice group",
+            "role": "group",
+            "text": "choice group",
+            "bounds": union_bounds,
+        }
+    return components[0]
+
+
+def _path_choice_container_component(components: list[dict[str, Any]], group_key: str | None) -> dict[str, Any] | None:
+    for component in components:
+        container_bounds = _bounds_with_unit(component.get("container_bounds"))
+        if container_bounds is None:
+            continue
+        if group_key and group_key.startswith("container:") and _component_container_group_key(component) != group_key:
+            continue
+        label = component.get("container_heading")
+        label_text = label.strip() if isinstance(label, str) and label.strip() else "choice group"
+        return {
+            "label": label_text,
+            "role": "group",
+            "text": label_text,
+            "bounds": container_bounds,
+        }
+    return None
+
+
+def _union_component_bounds(components: list[dict[str, Any]]) -> dict[str, Any] | None:
+    bounds_values = [
+        bounds
+        for component in components
+        for bounds in [_numeric_bounds(component.get("bounds"))]
+        if bounds is not None
+    ]
+    if not bounds_values:
+        return None
+    x1 = min(bounds["x"] for bounds in bounds_values)
+    y1 = min(bounds["y"] for bounds in bounds_values)
+    x2 = max(bounds["x"] + bounds["width"] for bounds in bounds_values)
+    y2 = max(bounds["y"] + bounds["height"] for bounds in bounds_values)
+    return {"x": x1, "y": y1, "width": x2 - x1, "height": y2 - y1, "unit": "css_px"}
 
 
 def _with_target_size_problem_components(issue: dict[str, Any], locations: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -287,6 +465,26 @@ def _with_target_size_problem_components(issue: dict[str, Any], locations: list[
             if isinstance(component, dict)
             and isinstance(component.get("bounds"), dict)
             and _component_matches_target_size_issue(component, selectors)
+        ]
+        if components:
+            result.append({**location, "problem_components": components[:20]})
+        else:
+            result.append(location)
+    return result
+
+
+def _with_product_image_problem_components(locations: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    result: list[dict[str, Any]] = []
+    for location in locations:
+        if location.get("type") != "product_card":
+            result.append(location)
+            continue
+        components = [
+            component
+            for component in location.get("product_cards") or []
+            if isinstance(component, dict)
+            and component.get("visible_product_image") is False
+            and isinstance(component.get("bounds"), dict)
         ]
         if components:
             result.append({**location, "problem_components": components[:20]})
@@ -326,6 +524,19 @@ def _choice_group_key_from_issue(issue: dict[str, Any]) -> str | None:
     return None
 
 
+def _choice_group_component_keys_from_issue(issue: dict[str, Any]) -> set[str]:
+    for signal in issue.get("signals") or []:
+        if not isinstance(signal, str) or not signal.startswith("choice_group_component_keys="):
+            continue
+        raw_keys = signal.split("=", 1)[1]
+        return {key for key in raw_keys.split("|") if key}
+    return set()
+
+
+def _component_matches_choice_key(component: dict[str, Any], keys: set[str]) -> bool:
+    return _component_choice_match_key(component) in keys
+
+
 def _component_matches_choice_group(component: dict[str, Any], group_key: str | None) -> bool:
     if not group_key:
         return True
@@ -334,6 +545,22 @@ def _component_matches_choice_group(component: dict[str, Any], group_key: str | 
     if group_key.startswith("heading:"):
         return _component_heading_group_key(component) == group_key
     return True
+
+
+def _component_choice_match_key(component: dict[str, Any]) -> str | None:
+    selector = component.get("selector")
+    bounds = _numeric_bounds(component.get("bounds"))
+    if not isinstance(selector, str) or not selector or bounds is None:
+        return None
+    return "@".join(
+        [
+            selector.replace("|", "").replace("@", ""),
+            str(round(bounds["x"])),
+            str(round(bounds["y"])),
+            str(round(bounds["width"])),
+            str(round(bounds["height"])),
+        ]
+    )
 
 
 def _component_container_group_key(component: dict[str, Any]) -> str | None:
@@ -375,6 +602,14 @@ def _numeric_bounds(value: Any) -> dict[str, float] | None:
     if width <= 0 or height <= 0:
         return None
     return {"x": x, "y": y, "width": width, "height": height}
+
+
+def _bounds_with_unit(value: Any) -> dict[str, Any] | None:
+    bounds = _numeric_bounds(value)
+    if bounds is None:
+        return None
+    unit = value.get("unit") if isinstance(value, dict) else None
+    return {**bounds, "unit": unit if isinstance(unit, str) and unit else "css_px"}
 
 
 def _number(value: Any) -> float | None:
@@ -537,7 +772,56 @@ def _location_from_observation_record(record: Any, checkpoint: dict[str, Any] | 
     items = _component_locations(data.get("items"))
     if items:
         location["items"] = items
+    product_cards = _product_card_locations(data.get("cards"))
+    if product_cards:
+        location["product_cards"] = product_cards
+        screenshot_artifact_id = _first_product_card_screenshot_id(data.get("cards"))
+        if screenshot_artifact_id:
+            location["screenshot_artifact_id"] = screenshot_artifact_id
     return location
+
+
+def _product_card_locations(value: Any) -> list[dict[str, Any]]:
+    if not isinstance(value, list):
+        return []
+    cards: list[dict[str, Any]] = []
+    for index, card in enumerate(value, start=1):
+        if not isinstance(card, dict):
+            continue
+        bounds = card.get("bbox")
+        if not isinstance(bounds, dict):
+            continue
+        item: dict[str, Any] = {
+            "card_index": index,
+            "role": "product_card",
+            "bounds": bounds,
+        }
+        text = card.get("element_text")
+        if isinstance(text, str) and text:
+            item["text"] = text
+            item["label"] = text
+        selector = card.get("clicked_selector")
+        if isinstance(selector, str) and selector:
+            item["selector"] = selector
+        visible_price = card.get("visible_price")
+        if isinstance(visible_price, str) and visible_price:
+            item["visible_price"] = visible_price
+        if "visible_product_image" in card:
+            item["visible_product_image"] = card.get("visible_product_image")
+        cards.append(item)
+    return cards
+
+
+def _first_product_card_screenshot_id(value: Any) -> str | None:
+    if not isinstance(value, list):
+        return None
+    for card in value:
+        if not isinstance(card, dict):
+            continue
+        screenshot_artifact_id = _normalize_artifact_ref(card.get("screenshot_artifact_id"))
+        if screenshot_artifact_id:
+            return screenshot_artifact_id
+    return None
 
 
 def _component_locations(value: Any) -> list[dict[str, Any]]:
