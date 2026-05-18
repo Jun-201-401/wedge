@@ -16,6 +16,7 @@ from app.rule_engine.handlers.path_back import evaluate_path_back_link
 from app.rule_engine.handlers.path_choice import evaluate_path_choice_overload
 from app.rule_engine.handlers.path_cta import evaluate_path_cta_competition, evaluate_path_cta_presence
 from app.rule_engine.handlers.reliability import evaluate_loading_stuck, evaluate_reliability
+from app.rule_engine.handlers.safety_block import evaluate_safety_block
 from app.rule_engine.handlers.target_size import evaluate_target_size
 from app.rule_engine.models import RuleHit
 from app.stage.stage_context_builder import StageContext
@@ -38,5 +39,6 @@ DEFAULT_RULE_HANDLERS: dict[str, RuleHandler] = {
     "RELIABILITY-TECH-001": evaluate_reliability,
     "RELIABILITY-LOADING-STUCK-001": evaluate_loading_stuck,
     "JOURNEY-GOAL-CTA-MISMATCH-001": evaluate_journey_goal_cta_mismatch,
+    "PATH-SAFETY-BOUNDARY-001": evaluate_safety_block,
     "TECH-TARGET-SIZE-001": evaluate_target_size,
 }
