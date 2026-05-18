@@ -9,6 +9,7 @@ from app.normalization.label_integrity_resolver import LabelIntegrityResolver
 from app.normalization.label_role_resolver import LabelRoleResolver
 from app.providers.label_integrity import LabelIntegrityIssueResult
 from app.providers.label_role import LabelRoleIssueResult
+from app.rule_engine import analyze_evidence_packet
 
 
 class RecordingIntegrityProvider:
@@ -170,6 +171,28 @@ class GMSCheckpointParallelResolverTest(unittest.TestCase):
                 FailingRoleProvider(),
                 parallel_config=GMSCheckpointParallelConfig(enabled=True, max_concurrency=2),
             ).enrich_packet(multi_checkpoint_packet(3))
+
+
+    def test_analyzer_final_judge_result_matches_between_serial_and_parallel_label_gms(self) -> None:
+        packet = multi_checkpoint_packet(3)
+        serial = analyze_evidence_packet(
+            copy.deepcopy(packet),
+            label_integrity_provider=RecordingIntegrityProvider(),
+            label_role_provider=RecordingRoleProvider(),
+            gms_checkpoint_parallel_config=GMSCheckpointParallelConfig(enabled=False, max_concurrency=2),
+        )
+        parallel_integrity_provider = RecordingIntegrityProvider(block_first_until_second_enters=True)
+        parallel_role_provider = RecordingRoleProvider(block_first_until_second_enters=True)
+        parallel = analyze_evidence_packet(
+            copy.deepcopy(packet),
+            label_integrity_provider=parallel_integrity_provider,
+            label_role_provider=parallel_role_provider,
+            gms_checkpoint_parallel_config=GMSCheckpointParallelConfig(enabled=True, max_concurrency=2),
+        )
+
+        self.assertEqual(parallel, serial)
+        self.assertEqual(parallel_integrity_provider.max_active, 2)
+        self.assertEqual(parallel_role_provider.max_active, 2)
 
 
 def multi_checkpoint_packet(count: int) -> dict:

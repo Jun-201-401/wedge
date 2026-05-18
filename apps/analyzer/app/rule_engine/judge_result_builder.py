@@ -2,13 +2,16 @@ from __future__ import annotations
 
 from collections import defaultdict
 from contextlib import nullcontext
+import time
+from threading import Lock
 from typing import Any
 
 from app.contracts.stages import DECISION_STAGE_DISPLAY_NAMES, DECISION_STAGES, DecisionStage
-from app.observability.phase_timing import PhaseTimingContext, packet_timing_summary, phase_timer
+from app.observability.phase_timing import PhaseTimingContext, packet_timing_summary, phase_timer, safe_emit_phase_timing
 from app.providers import SemanticProviderPort
 from app.providers.label_integrity import LabelIntegrityProviderPort
 from app.providers.label_role import LabelRoleProviderPort
+from app.normalization.gms_checkpoint_parallel import GMSCheckpointParallelConfig
 from app.normalization.label_integrity_resolver import LabelIntegrityResolver
 from app.normalization.label_role_resolver import LabelRoleResolver
 from app.normalization import SemanticLabelResolver
@@ -54,10 +57,16 @@ def analyze_evidence_packet(
     label_role_provider: LabelRoleProviderPort | None = None,
     label_integrity_provider: LabelIntegrityProviderPort | None = None,
     timing_context: PhaseTimingContext | None = None,
+    gms_checkpoint_parallel_config: GMSCheckpointParallelConfig | None = None,
 ) -> dict[str, Any]:
     registry = registry or load_default_registry()
+    gms_parallel_config = gms_checkpoint_parallel_config or GMSCheckpointParallelConfig.from_env()
     if label_integrity_provider is not None:
-        counting_provider = _CountingLabelIntegrityProvider(label_integrity_provider)
+        counting_provider = _CountingLabelIntegrityProvider(
+            label_integrity_provider,
+            timing_context=timing_context,
+            parallel_config=gms_parallel_config,
+        )
         with _phase_timer(
             timing_context=timing_context,
             phase="label_integrity",
@@ -65,11 +74,18 @@ def analyze_evidence_packet(
                 **packet_timing_summary(packet),
                 "gmsCallCount": counting_provider.call_count,
                 "candidateCount": counting_provider.candidate_count,
+                "parallelEnabled": gms_parallel_config.enabled,
+                "maxConcurrency": gms_parallel_config.max_concurrency,
+                "failedCallCount": counting_provider.failed_call_count,
             },
         ):
-            packet = LabelIntegrityResolver(counting_provider).enrich_packet(packet)
+            packet = LabelIntegrityResolver(counting_provider, parallel_config=gms_parallel_config).enrich_packet(packet)
     if label_role_provider is not None:
-        counting_provider = _CountingLabelRoleProvider(label_role_provider)
+        counting_provider = _CountingLabelRoleProvider(
+            label_role_provider,
+            timing_context=timing_context,
+            parallel_config=gms_parallel_config,
+        )
         with _phase_timer(
             timing_context=timing_context,
             phase="label_role",
@@ -77,9 +93,12 @@ def analyze_evidence_packet(
                 **packet_timing_summary(packet),
                 "gmsCallCount": counting_provider.call_count,
                 "candidateCount": counting_provider.candidate_count,
+                "parallelEnabled": gms_parallel_config.enabled,
+                "maxConcurrency": gms_parallel_config.max_concurrency,
+                "failedCallCount": counting_provider.failed_call_count,
             },
         ):
-            packet = LabelRoleResolver(counting_provider).enrich_packet(packet)
+            packet = LabelRoleResolver(counting_provider, parallel_config=gms_parallel_config).enrich_packet(packet)
     with _phase_timer(
         timing_context=timing_context,
         phase="stage_context_build",
@@ -140,10 +159,20 @@ def analyze_evidence_packet(
 
 
 class _CountingLabelIntegrityProvider:
-    def __init__(self, delegate: LabelIntegrityProviderPort) -> None:
+    def __init__(
+        self,
+        delegate: LabelIntegrityProviderPort,
+        *,
+        timing_context: PhaseTimingContext | None = None,
+        parallel_config: GMSCheckpointParallelConfig | None = None,
+    ) -> None:
         self._delegate = delegate
+        self._timing_context = timing_context
+        self._parallel_config = parallel_config or GMSCheckpointParallelConfig()
+        self._lock = Lock()
         self.call_count = 0
         self.candidate_count = 0
+        self.failed_call_count = 0
 
     def classify_label_integrity(
         self,
@@ -154,22 +183,80 @@ class _CountingLabelIntegrityProvider:
         screenshot_url: str,
         candidates: list[dict[str, Any]],
     ):
-        self.call_count += 1
-        self.candidate_count += len(candidates)
-        return self._delegate.classify_label_integrity(
-            scenario_goal=scenario_goal,
-            stage=stage,
+        with self._lock:
+            self.call_count += 1
+            self.candidate_count += len(candidates)
+        started_at = time.perf_counter()
+        try:
+            results = self._delegate.classify_label_integrity(
+                scenario_goal=scenario_goal,
+                stage=stage,
+                checkpoint_id=checkpoint_id,
+                screenshot_url=screenshot_url,
+                candidates=candidates,
+            )
+        except Exception as exc:
+            with self._lock:
+                self.failed_call_count += 1
+            self._emit_checkpoint_timing(
+                checkpoint_id=checkpoint_id,
+                candidate_count=len(candidates),
+                duration_ms=(time.perf_counter() - started_at) * 1000,
+                status="error",
+                error_type=type(exc).__name__,
+            )
+            raise
+        self._emit_checkpoint_timing(
             checkpoint_id=checkpoint_id,
-            screenshot_url=screenshot_url,
-            candidates=candidates,
+            candidate_count=len(candidates),
+            duration_ms=(time.perf_counter() - started_at) * 1000,
+            result_count=len(results),
+        )
+        return results
+
+    def _emit_checkpoint_timing(
+        self,
+        *,
+        checkpoint_id: str,
+        candidate_count: int,
+        duration_ms: float,
+        status: str = "success",
+        error_type: str | None = None,
+        result_count: int = 0,
+    ) -> None:
+        if self._timing_context is None:
+            return
+        safe_emit_phase_timing(
+            context=self._timing_context,
+            phase="label_integrity_gms_checkpoint",
+            duration_ms=duration_ms,
+            status=status,
+            error_type=error_type,
+            extra={
+                "checkpointId": checkpoint_id,
+                "candidateCount": candidate_count,
+                "resultCount": result_count,
+                "parallelEnabled": self._parallel_config.enabled,
+                "maxConcurrency": self._parallel_config.max_concurrency,
+            },
         )
 
 
 class _CountingLabelRoleProvider:
-    def __init__(self, delegate: LabelRoleProviderPort) -> None:
+    def __init__(
+        self,
+        delegate: LabelRoleProviderPort,
+        *,
+        timing_context: PhaseTimingContext | None = None,
+        parallel_config: GMSCheckpointParallelConfig | None = None,
+    ) -> None:
         self._delegate = delegate
+        self._timing_context = timing_context
+        self._parallel_config = parallel_config or GMSCheckpointParallelConfig()
+        self._lock = Lock()
         self.call_count = 0
         self.candidate_count = 0
+        self.failed_call_count = 0
 
     def classify_label_roles(
         self,
@@ -180,14 +267,62 @@ class _CountingLabelRoleProvider:
         screenshot_url: str,
         candidates: list[dict[str, Any]],
     ):
-        self.call_count += 1
-        self.candidate_count += len(candidates)
-        return self._delegate.classify_label_roles(
-            scenario_goal=scenario_goal,
-            stage=stage,
+        with self._lock:
+            self.call_count += 1
+            self.candidate_count += len(candidates)
+        started_at = time.perf_counter()
+        try:
+            results = self._delegate.classify_label_roles(
+                scenario_goal=scenario_goal,
+                stage=stage,
+                checkpoint_id=checkpoint_id,
+                screenshot_url=screenshot_url,
+                candidates=candidates,
+            )
+        except Exception as exc:
+            with self._lock:
+                self.failed_call_count += 1
+            self._emit_checkpoint_timing(
+                checkpoint_id=checkpoint_id,
+                candidate_count=len(candidates),
+                duration_ms=(time.perf_counter() - started_at) * 1000,
+                status="error",
+                error_type=type(exc).__name__,
+            )
+            raise
+        self._emit_checkpoint_timing(
             checkpoint_id=checkpoint_id,
-            screenshot_url=screenshot_url,
-            candidates=candidates,
+            candidate_count=len(candidates),
+            duration_ms=(time.perf_counter() - started_at) * 1000,
+            result_count=len(results),
+        )
+        return results
+
+    def _emit_checkpoint_timing(
+        self,
+        *,
+        checkpoint_id: str,
+        candidate_count: int,
+        duration_ms: float,
+        status: str = "success",
+        error_type: str | None = None,
+        result_count: int = 0,
+    ) -> None:
+        if self._timing_context is None:
+            return
+        safe_emit_phase_timing(
+            context=self._timing_context,
+            phase="label_role_gms_checkpoint",
+            duration_ms=duration_ms,
+            status=status,
+            error_type=error_type,
+            extra={
+                "checkpointId": checkpoint_id,
+                "candidateCount": candidate_count,
+                "resultCount": result_count,
+                "parallelEnabled": self._parallel_config.enabled,
+                "maxConcurrency": self._parallel_config.max_concurrency,
+            },
         )
 
 

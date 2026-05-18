@@ -27,6 +27,8 @@ _ALLOWED_EXTRA_KEYS = {
     "parallelEnabled",
     "maxConcurrency",
     "failedCallCount",
+    "resultCount",
+    "checkpointId",
     "stageCount",
     "ruleCount",
     "issueCount",

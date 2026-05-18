@@ -341,18 +341,34 @@ class RuleEngineTest(unittest.TestCase):
 
         events = phase_events(stdout.getvalue())
         phases = [event["phase"] for event in events]
+        core_phases = [
+            phase
+            for phase in phases
+            if not phase.endswith("_gms_checkpoint")
+        ]
         self.assertEqual(
-            phases,
+            core_phases,
             ["label_integrity", "label_role", "stage_context_build", "semantic_cta", "rule_engine_eval"],
         )
+        checkpoint_events = [event for event in events if event["phase"].endswith("_gms_checkpoint")]
+        self.assertGreaterEqual(len(checkpoint_events), 1)
+        self.assertIn("checkpointId", checkpoint_events[0])
+        self.assertIn("resultCount", checkpoint_events[0])
         for event in events:
             self.assertEqual(event["runId"], "run-1")
             self.assertEqual(event["analysisJobId"], "job-1")
             self.assertEqual(event["evidencePacketId"], "packet-1")
             self.assertGreaterEqual(event["durationMs"], 0)
+        label_integrity_event = next(event for event in events if event["phase"] == "label_integrity")
+        self.assertFalse(label_integrity_event["parallelEnabled"])
+        self.assertEqual(label_integrity_event["maxConcurrency"], 2)
+        self.assertEqual(label_integrity_event["failedCallCount"], 0)
         label_role_event = next(event for event in events if event["phase"] == "label_role")
         self.assertGreaterEqual(label_role_event["gmsCallCount"], 1)
         self.assertGreaterEqual(label_role_event["candidateCount"], 1)
+        self.assertFalse(label_role_event["parallelEnabled"])
+        self.assertEqual(label_role_event["maxConcurrency"], 2)
+        self.assertEqual(label_role_event["failedCallCount"], 0)
         semantic_event = next(event for event in events if event["phase"] == "semantic_cta")
         self.assertGreaterEqual(semantic_event["gmsCallCount"], 1)
 
