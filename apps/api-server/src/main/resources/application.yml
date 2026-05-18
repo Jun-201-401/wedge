@@ -40,6 +40,7 @@ wedge:
       secure: ${WEDGE_REFRESH_COOKIE_SECURE:true}
   internal:
     runner-callback-signature-secret: ${INTERNAL_RUNNER_CALLBACK_SIGNATURE_SECRET:${RUNNER_CALLBACK_SIGNATURE_SECRET:}}
+    analyzer-callback-signature-secret: ${INTERNAL_ANALYZER_CALLBACK_SIGNATURE_SECRET:${ANALYZER_CALLBACK_SIGNATURE_SECRET:}}
   report:
     share-default-expiration-minutes: ${WEDGE_REPORT_SHARE_DEFAULT_EXPIRATION_MINUTES:10}
     public-base-url: ${WEDGE_PUBLIC_BASE_URL:http://localhost:8080}
