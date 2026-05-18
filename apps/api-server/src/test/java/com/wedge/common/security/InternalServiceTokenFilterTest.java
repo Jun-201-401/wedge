@@ -133,6 +133,25 @@ class InternalServiceTokenFilterTest {
     }
 
     @Test
+    void evidencePacketFetchAcceptsInternalTokenWithoutAnalyzerSignature() throws Exception {
+        MockHttpServletRequest request = new MockHttpServletRequest(
+                "GET",
+                "/internal/analysis/evidence-packets/packet-id"
+        );
+        request.addHeader("Authorization", "Bearer internal-token");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        AtomicBoolean chainCalled = new AtomicBoolean(false);
+
+        filter.doFilter(request, response, (servletRequest, servletResponse) -> chainCalled.set(true));
+
+        assertThat(response.getStatus()).isEqualTo(200);
+        assertThat(chainCalled.get()).isTrue();
+        assertThat(SecurityContextHolder.getContext().getAuthentication().getAuthorities())
+                .extracting("authority")
+                .containsExactly("ROLE_INTERNAL_RUNNER");
+    }
+
+    @Test
     void internalAgentGatewayDoesNotUseRunnerSignatureSecret() throws Exception {
         MockHttpServletRequest request = new MockHttpServletRequest("POST", "/internal/agent/mcp/decision");
         request.addHeader("Authorization", "Bearer internal-token");

@@ -2006,7 +2006,7 @@ async function safeLocatorElementDetails(locator: Locator): Promise<Record<strin
           unit: "css_px" as const
         }
       };
-    }, {
+    }, undefined, {
       timeout: DEFAULT_LOCATOR_METADATA_TIMEOUT_MS
     });
   } catch {

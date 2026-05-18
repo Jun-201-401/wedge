@@ -39,7 +39,7 @@ public class InternalServiceTokenFilter extends OncePerRequestFilter {
     private static final List<String> INTERNAL_CALLBACK_PATHS = List.of("/internal/runner/**", "/internal/analysis/**", "/internal/agent/**");
     private static final List<String> MCP_PATHS = List.of("/mcp", "/mcp/**");
     private static final String INTERNAL_RUNNER_CALLBACK_PATH = "/internal/runner/**";
-    private static final String INTERNAL_ANALYSIS_CALLBACK_PATH = "/internal/analysis/**";
+    private static final String INTERNAL_ANALYSIS_CALLBACK_PATH = "/internal/analysis/jobs/**";
 
     private final JsonAuthenticationEntryPoint authenticationEntryPoint;
     private final AntPathMatcher pathMatcher = new AntPathMatcher();
