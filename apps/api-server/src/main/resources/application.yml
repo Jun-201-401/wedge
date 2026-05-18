@@ -1,6 +1,11 @@
 spring:
   application:
     name: wedge-api-server
+  rabbitmq:
+    publisher-confirm-type: correlated
+    publisher-returns: true
+    template:
+      mandatory: true
   ai:
     mcp:
       server:
@@ -55,6 +60,8 @@ wedge:
     project-access-check-enabled: ${WEDGE_REPORT_PROJECT_ACCESS_CHECK_ENABLED:true}
   analysis:
     project-access-check-enabled: ${WEDGE_ANALYSIS_PROJECT_ACCESS_CHECK_ENABLED:true}
+  rabbitmq:
+    publisher-confirm-timeout-ms: ${WEDGE_RABBITMQ_PUBLISHER_CONFIRM_TIMEOUT_MS:5000}
   mcp:
     service-token: ${WEDGE_MCP_SERVICE_TOKEN:}
 

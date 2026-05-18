@@ -519,11 +519,13 @@ CREATE TABLE outbox_message (
     aggregate_id        UUID NOT NULL,
     event_type          VARCHAR(120) NOT NULL,
     payload_jsonb       JSONB NOT NULL,
-    status              VARCHAR(32) NOT NULL DEFAULT 'PENDING' CHECK (status IN ('PENDING','PUBLISHED','FAILED')),
+    status              VARCHAR(32) NOT NULL DEFAULT 'PENDING' CHECK (status IN ('PENDING','PUBLISHED','FAILED','EXHAUSTED')),
     attempt_count       INTEGER NOT NULL DEFAULT 0,
     next_attempt_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    published_at        TIMESTAMPTZ
+    published_at        TIMESTAMPTZ,
+    last_error          TEXT,
+    exhausted_at        TIMESTAMPTZ
 );
 
 CREATE TABLE processed_message (
@@ -619,6 +621,7 @@ CREATE UNIQUE INDEX ux_report_active_analysis_job ON report(analysis_job_id) WHE
 
 CREATE INDEX idx_mcp_invocation_started ON mcp_invocation_log(started_at DESC);
 CREATE INDEX idx_outbox_pending ON outbox_message(status, next_attempt_at);
+CREATE INDEX idx_outbox_exhausted ON outbox_message(status, exhausted_at) WHERE status = 'EXHAUSTED';
 CREATE INDEX idx_runner_message_idempotency_run ON runner_message_idempotency_record(scope, run_id, completed_at DESC);
 CREATE INDEX idx_agent_idempotency_run ON agent_idempotency_record(run_id, completed_at DESC);
 CREATE INDEX idx_agent_idempotency_lease ON agent_idempotency_record(status, lease_expires_at);

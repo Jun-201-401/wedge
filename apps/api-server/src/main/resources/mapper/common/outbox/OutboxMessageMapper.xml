@@ -62,17 +62,26 @@
         UPDATE outbox_message
         SET status = 'PUBLISHED',
             attempt_count = attempt_count + 1,
-            published_at = #{publishedAt}
+            published_at = #{publishedAt},
+            last_error = NULL
         WHERE id = #{outboxMessageId}
-          AND status != 'PUBLISHED'
+          AND status NOT IN ('PUBLISHED', 'EXHAUSTED')
     </update>
 
     <update id="markFailed">
         UPDATE outbox_message
-        SET status = 'FAILED',
+        SET status = CASE
+                WHEN attempt_count + 1 &gt;= #{maxAttempts} THEN 'EXHAUSTED'
+                ELSE 'FAILED'
+            END,
             attempt_count = attempt_count + 1,
-            next_attempt_at = #{nextAttemptAt}
+            next_attempt_at = #{nextAttemptAt},
+            last_error = #{lastError},
+            exhausted_at = CASE
+                WHEN attempt_count + 1 &gt;= #{maxAttempts} THEN #{failedAt}
+                ELSE exhausted_at
+            END
         WHERE id = #{outboxMessageId}
-          AND status != 'PUBLISHED'
+          AND status NOT IN ('PUBLISHED', 'EXHAUSTED')
     </update>
 </mapper>
