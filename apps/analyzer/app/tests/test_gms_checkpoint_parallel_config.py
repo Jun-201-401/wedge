@@ -35,7 +35,7 @@ class GMSCheckpointParallelConfigTest(unittest.TestCase):
             ("0", 1),
             ("-5", 1),
             ("abc", 1),
-            ("3", MAX_GMS_LABEL_MAX_CONCURRENCY),
+            ("3", 3),
             ("999", MAX_GMS_LABEL_MAX_CONCURRENCY),
         ]
         for raw_value, expected in cases:
@@ -49,8 +49,8 @@ class GMSCheckpointParallelConfigTest(unittest.TestCase):
         self.assertFalse(GMSCheckpointParallelConfig(enabled=True, max_concurrency=2).should_parallelize(1))
         self.assertTrue(GMSCheckpointParallelConfig(enabled=True, max_concurrency=2).should_parallelize(2))
 
-    def test_hard_cap_stays_at_two_to_bound_per_phase_fanout(self) -> None:
-        self.assertEqual(MAX_GMS_LABEL_MAX_CONCURRENCY, 2)
+    def test_hard_cap_allows_three_checkpoint_images_per_phase(self) -> None:
+        self.assertEqual(MAX_GMS_LABEL_MAX_CONCURRENCY, 3)
 
 
 if __name__ == "__main__":

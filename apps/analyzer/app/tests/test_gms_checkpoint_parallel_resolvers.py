@@ -13,13 +13,14 @@ from app.rule_engine import analyze_evidence_packet
 
 
 class RecordingIntegrityProvider:
-    def __init__(self, *, block_first_until_second_enters: bool = False) -> None:
+    def __init__(self, *, block_first_until_second_enters: bool = False, barrier_parties: int | None = None) -> None:
         self.calls: list[dict] = []
         self.active = 0
         self.max_active = 0
         self._lock = threading.Lock()
         self._second_entered = threading.Event()
         self._block_first_until_second_enters = block_first_until_second_enters
+        self._barrier = threading.Barrier(barrier_parties) if barrier_parties else None
 
     def classify_label_integrity(self, *, scenario_goal: str, stage: str, checkpoint_id: str, screenshot_url: str, candidates: list[dict]):
         candidate_ids = [candidate["candidate_id"] for candidate in candidates]
@@ -28,6 +29,8 @@ class RecordingIntegrityProvider:
             self.active += 1
             self.max_active = max(self.max_active, self.active)
         try:
+            if self._barrier is not None:
+                self._barrier.wait(timeout=2)
             if self._block_first_until_second_enters:
                 if checkpoint_id == "cp_001":
                     self._second_entered.wait(timeout=2)
@@ -51,13 +54,14 @@ class RecordingIntegrityProvider:
 
 
 class RecordingRoleProvider:
-    def __init__(self, *, block_first_until_second_enters: bool = False) -> None:
+    def __init__(self, *, block_first_until_second_enters: bool = False, barrier_parties: int | None = None) -> None:
         self.calls: list[dict] = []
         self.active = 0
         self.max_active = 0
         self._lock = threading.Lock()
         self._second_entered = threading.Event()
         self._block_first_until_second_enters = block_first_until_second_enters
+        self._barrier = threading.Barrier(barrier_parties) if barrier_parties else None
 
     def classify_label_roles(self, *, scenario_goal: str, stage: str, checkpoint_id: str, screenshot_url: str, candidates: list[dict]):
         candidate_ids = [candidate["candidate_id"] for candidate in candidates]
@@ -66,6 +70,8 @@ class RecordingRoleProvider:
             self.active += 1
             self.max_active = max(self.max_active, self.active)
         try:
+            if self._barrier is not None:
+                self._barrier.wait(timeout=2)
             if self._block_first_until_second_enters:
                 if checkpoint_id == "cp_001":
                     self._second_entered.wait(timeout=2)
@@ -119,6 +125,16 @@ class GMSCheckpointParallelResolverTest(unittest.TestCase):
         self.assertGreaterEqual(parallel_provider.max_active, 2)
         self.assertLessEqual(parallel_provider.max_active, 2)
 
+    def test_label_integrity_parallel_can_use_three_checkpoint_workers(self) -> None:
+        provider = RecordingIntegrityProvider(barrier_parties=3)
+
+        LabelIntegrityResolver(
+            provider,
+            parallel_config=GMSCheckpointParallelConfig(enabled=True, max_concurrency=3),
+        ).enrich_packet(multi_checkpoint_packet(3))
+
+        self.assertEqual(provider.max_active, 3)
+
     def test_label_integrity_disabled_mode_preserves_serial_call_order(self) -> None:
         provider = RecordingIntegrityProvider()
 
@@ -153,6 +169,16 @@ class GMSCheckpointParallelResolverTest(unittest.TestCase):
         self.assertEqual(parallel, serial)
         self.assertGreaterEqual(parallel_provider.max_active, 2)
         self.assertLessEqual(parallel_provider.max_active, 2)
+
+    def test_label_role_parallel_can_use_three_checkpoint_workers(self) -> None:
+        provider = RecordingRoleProvider(barrier_parties=3)
+
+        LabelRoleResolver(
+            provider,
+            parallel_config=GMSCheckpointParallelConfig(enabled=True, max_concurrency=3),
+        ).enrich_packet(multi_checkpoint_packet(3))
+
+        self.assertEqual(provider.max_active, 3)
 
     def test_label_role_disabled_mode_preserves_serial_call_order(self) -> None:
         provider = RecordingRoleProvider()
