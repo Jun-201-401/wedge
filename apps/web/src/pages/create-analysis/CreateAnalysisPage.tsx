@@ -178,6 +178,26 @@ function defaultDepthForScenario(scenarioType: string): ScenarioDepthId {
   }
   return DEFAULT_SCENARIO_DEPTH_ID;
 }
+
+function depthOptionsForScenario(scenarioType: string): ScenarioDepthOption[] {
+  if (scenarioType === 'SIGNUP_LEAD_FORM' || scenarioType === 'CONTACT' || scenarioType === 'PURCHASE_CHECKOUT') {
+    return SCENARIO_DEPTH_OPTIONS;
+  }
+
+  return SCENARIO_DEPTH_OPTIONS.filter((option) => option.id !== 'form-depth');
+}
+
+function normalizeDepthForScenario(scenarioType: string | undefined, depthId: ScenarioDepthId | null): ScenarioDepthId {
+  if (!scenarioType) {
+    return depthId ?? DEFAULT_SCENARIO_DEPTH_ID;
+  }
+
+  const availableOptions = depthOptionsForScenario(scenarioType);
+  const requestedDepthId = depthId ?? defaultDepthForScenario(scenarioType);
+  return availableOptions.some((option) => option.id === requestedDepthId)
+    ? requestedDepthId
+    : defaultDepthForScenario(scenarioType);
+}
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const CREATE_ANALYSIS_ROUTE_OPTIONS: CreateAnalysisRouteOptions<ScenarioId, ScenarioDepthId> = {
   defaultDepthId: DEFAULT_SCENARIO_DEPTH_ID,
@@ -385,6 +405,7 @@ interface ManualChoiceAgentProps {
 interface ScenarioSetupAgentProps {
   selectedScenario: ScenarioRecommendation;
   selectedDepthId: ScenarioDepthId;
+  depthOptions: ScenarioDepthOption[];
   onDepthChange: (depthId: ScenarioDepthId) => void;
   onStartRun: () => void;
   isStartingRun: boolean;
@@ -657,7 +678,7 @@ function ManualChoiceAgent({
   );
 }
 
-function ScenarioSetupAgent({ selectedScenario, selectedDepthId, onDepthChange, onStartRun, isStartingRun }: ScenarioSetupAgentProps) {
+function ScenarioSetupAgent({ selectedScenario, selectedDepthId, depthOptions, onDepthChange, onStartRun, isStartingRun }: ScenarioSetupAgentProps) {
   return (
     <section className="create-analysis-panel create-analysis-panel--onboarding" aria-labelledby="onboarding-title">
       <div className="scenario-setup-agent">
@@ -691,7 +712,7 @@ function ScenarioSetupAgent({ selectedScenario, selectedDepthId, onDepthChange, 
         <p className="scenario-setup-agent__prompt">어디까지 확인할까요?</p>
 
         <div className="scenario-depth-options" role="radiogroup" aria-label="진단 범위 선택">
-          {SCENARIO_DEPTH_OPTIONS.map((option) => {
+          {depthOptions.map((option) => {
             const isSelected = selectedDepthId === option.id;
 
             return (
@@ -751,7 +772,8 @@ export function CreateAnalysisPage({ isAuthenticated = false, isAuthChecking = f
     () => findScenarioById(routeState.scenarioId, selectableScenarios),
     [routeState.scenarioId, selectableScenarios],
   );
-  const selectedDepthId = routeState.depthId ?? DEFAULT_SCENARIO_DEPTH_ID;
+  const selectedDepthId = normalizeDepthForScenario(selectedScenario?.scenarioType, routeState.depthId);
+  const selectedDepthOptions = selectedScenario ? depthOptionsForScenario(selectedScenario.scenarioType) : SCENARIO_DEPTH_OPTIONS;
   const createRunIds = useMemo(() => getCreateRunIds(routeState), [routeState]);
   const scenarioAuthoringBusy = isScenarioAuthoringBusy(scenarioAuthoringState);
 
@@ -1054,6 +1076,10 @@ export function CreateAnalysisPage({ isAuthenticated = false, isAuthChecking = f
 
   const chooseDepth = (depthId: ScenarioDepthId) => {
     if (!submittedUrl || !selectedScenario) {
+      return;
+    }
+
+    if (!depthOptionsForScenario(selectedScenario.scenarioType).some((option) => option.id === depthId)) {
       return;
     }
 
@@ -1404,6 +1430,7 @@ export function CreateAnalysisPage({ isAuthenticated = false, isAuthChecking = f
           <ScenarioSetupAgent
             selectedScenario={selectedScenario}
             selectedDepthId={selectedDepthId}
+            depthOptions={selectedDepthOptions}
             onDepthChange={chooseDepth}
             onStartRun={startSelectedScenarioRun}
             isStartingRun={isStartingRun}

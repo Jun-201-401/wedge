@@ -80,7 +80,7 @@ function getLiveInsightMessage(status: RunStatus) {
   }
 
   if (status === 'STOPPED') {
-    return '실행이 중지되어 근거 수집이 멈췄습니다. 필요하면 새 분석으로 다시 시작해 주세요.';
+    return '가능한 범위의 근거 수집을 마쳤습니다. 일부 경로는 화면 상태 변화나 안전 기준 때문에 더 진행하지 않았습니다.';
   }
 
   if (status === 'COMPLETED') {

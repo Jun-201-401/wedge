@@ -33,6 +33,80 @@ test("Runner ScenarioAuthoring compiles Discovery recommendation into custom Sce
   );
 });
 
+test("Runner ScenarioAuthoring adds stable URL fallback to exact anchor selector targets", async () => {
+  const message = parseScenarioAuthoringExecuteMessage(JSON.stringify(createScenarioAuthoringExecuteMessage({
+    scenarioType: "PRICING",
+    suggestedTarget: {
+      role: "link",
+      text: "곧 품절 임박 3,500원 특가오직 무신사 뷰티",
+      selector: "a[href=\"https://www.musinsa.com/category/104/goods?minPrice=3000&maxPrice=3500&utm_source=/main/musinsa/recommend\"]"
+    }
+  })));
+  const config = createRunnerTestConfig();
+
+  const result = await executeScenarioAuthoring({ message, config });
+  const target = result.candidates[0]?.scenario_plan.steps[2]?.action.target;
+
+  assert.equal(result.validation.schema_valid, true);
+  assert.equal(typeof target, "object");
+  assert.equal(
+    (target as Record<string, unknown>).url,
+    "https://www.musinsa.com/category/104/goods?minPrice=3000&maxPrice=3500&utm_source=/main/musinsa/recommend"
+  );
+  assert.equal((target as Record<string, unknown>).href_contains, "/category/104/goods");
+});
+
+test("Runner ScenarioAuthoring downgrades unavailable pricing form-depth to next-screen with warning", async () => {
+  const message = parseScenarioAuthoringExecuteMessage(JSON.stringify(createScenarioAuthoringExecuteMessage({
+    requestedGoal: "가격 / 요금제 흐름 점검 · 입력 양식까지 보기",
+    scenarioType: "PRICING",
+    suggestedTarget: {
+      role: "link",
+      text: "유즈드 특가 티셔츠",
+      href_contains: "/category/109001007/goods?minPrice=0&maxPrice=50000"
+    },
+    constraints: { depthId: "form-depth", depthTitle: "입력 양식까지 보기" }
+  })));
+  const config = createRunnerTestConfig();
+
+  const result = await executeScenarioAuthoring({ message, config });
+  const steps = result.candidates[0]?.scenario_plan.steps ?? [];
+
+  assert.equal(result.providerTrace[0]?.status, "SUCCEEDED");
+  assert.equal(result.validation.schema_valid, true);
+  assert.equal(result.validation.safety_valid, true);
+  assert.equal(result.validation.fit_requirements_valid, true);
+  assert.equal(result.validation.errors.length, 0);
+  assert.equal(result.validation.warnings[0]?.code, "FORM_DEPTH_DOWNGRADED");
+  assert.equal(steps.some((step) => step.stage === "INPUT" || step.stage === "COMMIT"), false);
+  assert.deepEqual(steps.map((step) => step.step_id), [
+    "step_001_goto",
+    "step_002_first_view_checkpoint",
+    "step_003_probe_recommended_target",
+    "step_004_destination_checkpoint"
+  ]);
+});
+
+test("Runner ScenarioAuthoring keeps plain href substring targets as substring-only locators", async () => {
+  const message = parseScenarioAuthoringExecuteMessage(JSON.stringify(createScenarioAuthoringExecuteMessage({
+    scenarioType: "PURCHASE_CHECKOUT",
+    suggestedTarget: {
+      role: "link",
+      text: "Checkout",
+      href_contains: "checkout"
+    }
+  })));
+  const config = createRunnerTestConfig();
+
+  const result = await executeScenarioAuthoring({ message, config });
+  const target = result.candidates[0]?.scenario_plan.steps[2]?.action.target;
+
+  assert.equal(result.validation.schema_valid, true);
+  assert.equal(typeof target, "object");
+  assert.equal((target as Record<string, unknown>).href_contains, "checkout");
+  assert.equal((target as Record<string, unknown>).url, undefined);
+});
+
 test("Runner ScenarioAuthoring keeps first-view-only goals checkpoint-only", async () => {
   const message = parseScenarioAuthoringExecuteMessage(JSON.stringify(createScenarioAuthoringExecuteMessage({
     requestedGoal: "랜딩 전환 버튼 점검 · 첫 화면만 보기"

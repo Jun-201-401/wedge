@@ -510,11 +510,11 @@ export function getStatusTone(status: RunStatus): RunStatusTone {
     return 'complete';
   }
 
-  if (status === 'FAILED' || status === 'STOPPED') {
+  if (status === 'FAILED') {
     return 'failed';
   }
 
-  if (status === 'STOP_REQUESTED') {
+  if (status === 'STOP_REQUESTED' || status === 'STOPPED') {
     return 'stopping';
   }
 
@@ -583,7 +583,7 @@ export function getApiCheckpoint(live: RunLive) {
   }
 
   if (live.status === 'STOPPED') {
-    return '분석 실행이 중지되었습니다';
+    return '가능한 범위의 근거 수집을 마쳤습니다';
   }
 
   if (live.status === 'QUEUED' || live.status === 'CREATED') {
@@ -598,8 +598,12 @@ function getApiCheckpointStatus(status: RunStatus): StepStatus {
     return 'complete';
   }
 
-  if (status === 'FAILED' || status === 'STOPPED') {
+  if (status === 'FAILED') {
     return 'failed';
+  }
+
+  if (status === 'STOPPED') {
+    return 'complete';
   }
 
   return 'active';

@@ -138,6 +138,7 @@ function stepsFor(
   suggestedTarget: TargetDescriptorMap | null,
   firstViewOnly: boolean
 ): ScenarioStep[] {
+  const stableSuggestedTarget = stabilizeSuggestedTarget(suggestedTarget, startUrl);
   const steps: ScenarioStep[] = [
     step("step_001_goto", "FIRST_VIEW", "추천된 시작 화면을 열어 첫 화면을 확인한다.", { type: "goto", target: startUrl }, "network_idle", true),
     step("step_002_first_view_checkpoint", "FIRST_VIEW", "첫 화면에서 핵심 맥락과 주요 진입점을 기록한다.", { type: "checkpoint" }, "none", true)
@@ -149,18 +150,18 @@ function stepsFor(
         "step_003_first_view_only_checkpoint",
         "FIRST_VIEW",
         "첫 화면만 보기 요청이므로 추천 진입점을 클릭하지 않고 현재 화면 근거를 기록한다.",
-        { type: "checkpoint", target: suggestedTarget ?? undefined },
+        { type: "checkpoint", target: stableSuggestedTarget ?? undefined },
         "none",
         true
       )
     );
-  } else if (scenarioType === "PURCHASE_CHECKOUT" && suggestedTarget && Object.keys(suggestedTarget).length > 0) {
+  } else if (scenarioType === "PURCHASE_CHECKOUT" && stableSuggestedTarget && Object.keys(stableSuggestedTarget).length > 0) {
     steps.push(
       step(
         "step_003_probe_checkout_target",
         "CTA",
         "추천된 장바구니/결제 진입점까지 이동 가능성을 확인한다.",
-        { type: "click", target: suggestedTarget },
+        { type: "click", target: stableSuggestedTarget },
         "network_idle",
         false
       ),
@@ -174,7 +175,7 @@ function stepsFor(
       )
     );
   } else if (scenarioType === "SIGNUP_LEAD_FORM" || scenarioType === "CONTACT") {
-    if (suggestedTarget && Object.keys(suggestedTarget).length > 0) {
+    if (stableSuggestedTarget && Object.keys(stableSuggestedTarget).length > 0) {
       steps.push(
         step(
           "step_003_probe_form_target",
@@ -182,7 +183,7 @@ function stepsFor(
           scenarioType === "CONTACT"
             ? "추천된 문의/상담 신청 진입점까지 이동 가능성을 확인한다."
             : "추천된 가입/리드 양식 진입점까지 이동 가능성을 확인한다.",
-          { type: "click", target: suggestedTarget },
+          { type: "click", target: stableSuggestedTarget },
           "network_idle",
           false
         ),
@@ -217,14 +218,14 @@ function stepsFor(
         )
       );
     }
-  } else if (suggestedTarget && Object.keys(suggestedTarget).length > 0 && scenarioType !== "CONTENT_ONLY") {
-    if (shouldClickSuggestedTarget(scenarioType, suggestedTarget)) {
+  } else if (stableSuggestedTarget && Object.keys(stableSuggestedTarget).length > 0 && scenarioType !== "CONTENT_ONLY") {
+    if (shouldClickSuggestedTarget(scenarioType, stableSuggestedTarget)) {
       steps.push(
         step(
           "step_003_probe_recommended_target",
           stageFor(scenarioType),
           "추천된 진입점으로 다음 화면 이동 가능성을 확인한다.",
-          { type: "click", target: suggestedTarget },
+          { type: "click", target: stableSuggestedTarget },
           "network_idle",
           false
         ),
@@ -243,7 +244,7 @@ function stepsFor(
           "step_003_recommended_target_checkpoint",
           stageFor(scenarioType),
           "자동 선택하지 않고 추천 진입점의 대상 근거만 기록한다.",
-          { type: "checkpoint", target: suggestedTarget },
+          { type: "checkpoint", target: stableSuggestedTarget },
           "none",
           true
         )
@@ -289,6 +290,73 @@ function stepsFor(
   }
 
   return steps;
+}
+
+function stabilizeSuggestedTarget(target: TargetDescriptorMap | null, startUrl: string): TargetDescriptorMap | null {
+  if (!target || Object.keys(target).length === 0) {
+    return target;
+  }
+
+  const stableTarget: TargetDescriptorMap = { ...target };
+  const targetUrl = resolveTargetUrl(target, startUrl);
+  if (!targetUrl) {
+    return stableTarget;
+  }
+
+  stableTarget.url ??= targetUrl.toString();
+  if (typeof stableTarget.href_contains !== "string" || stableTarget.href_contains.length === 0) {
+    stableTarget.href_contains = targetUrl.pathname.length > 1 ? targetUrl.pathname : targetUrl.toString();
+  }
+
+  return stableTarget;
+}
+
+function resolveTargetUrl(target: TargetDescriptorMap, startUrl: string): URL | null {
+  const explicitUrl = parseUrlLike(target.url, startUrl);
+  if (explicitUrl) {
+    return explicitUrl;
+  }
+
+  const hrefUrl = parseHrefLike(target.href_contains, startUrl);
+  if (hrefUrl) {
+    return hrefUrl;
+  }
+
+  const selectorHref = extractAnchorHref(target.selector);
+  return parseUrlLike(selectorHref, startUrl);
+}
+
+function parseUrlLike(value: unknown, baseUrl: string): URL | null {
+  if (typeof value !== "string" || value.length === 0) {
+    return null;
+  }
+
+  try {
+    return new URL(value, baseUrl);
+  } catch {
+    return null;
+  }
+}
+
+function parseHrefLike(value: unknown, baseUrl: string): URL | null {
+  if (typeof value !== "string" || value.length === 0) {
+    return null;
+  }
+
+  if (!/^(https?:\/\/|\/|#)/i.test(value)) {
+    return null;
+  }
+
+  return parseUrlLike(value, baseUrl);
+}
+
+function extractAnchorHref(selector: unknown): string | null {
+  if (typeof selector !== "string" || selector.length === 0) {
+    return null;
+  }
+
+  const match = selector.match(/a\[href=(["'])(?<href>.*?)\1\]/i);
+  return match?.groups?.href ?? null;
 }
 
 export type ScenarioDepthId = "hero-only" | "next-screen" | "form-depth";
@@ -483,14 +551,14 @@ export function validateScenarioPlanCandidate(
     if (scenarioPlan.safety.allow_payment_commit || scenarioPlan.safety.allow_destructive_action) {
       throw new Error("scenarioPlan safety must block payment commit and destructive action");
     }
-    validateScenarioDepthFit(scenarioPlan, depthId);
+    const warnings = validateScenarioDepthFit(scenarioPlan, depthId);
 
     return {
       schema_valid: true,
       safety_valid: true,
       fit_requirements_valid: true,
       errors: [],
-      warnings: []
+      warnings
     };
   } catch (error) {
     return {
@@ -509,9 +577,9 @@ export function validateScenarioPlanCandidate(
   }
 }
 
-function validateScenarioDepthFit(scenarioPlan: ScenarioPlan, depthId: ScenarioDepthId | null): void {
+function validateScenarioDepthFit(scenarioPlan: ScenarioPlan, depthId: ScenarioDepthId | null): ScenarioAuthoringValidation["warnings"] {
   if (!depthId) {
-    return;
+    return [];
   }
 
   const steps = scenarioPlan.steps;
@@ -525,22 +593,34 @@ function validateScenarioDepthFit(scenarioPlan: ScenarioPlan, depthId: ScenarioD
     if (advancingStep) {
       throw new Error(`scenarioPlan must not advance beyond the first view for depthId=hero-only; found ${advancingStep.action.type}`);
     }
-    return;
+    return [];
   }
 
   if (depthId === "next-screen") {
     if (firstAdvancingActionIndex < 0 || !hasCheckpointAfterAdvancingAction) {
       throw new Error("scenarioPlan must include an advancing action and later checkpoint for depthId=next-screen");
     }
-    return;
+    return [];
   }
 
   if (depthId === "form-depth") {
     const reachesFormStage = steps.some((step) => step.stage === "INPUT" || step.stage === "COMMIT");
-    if (firstAdvancingActionIndex < 0 || !hasCheckpointAfterAdvancingAction || !reachesFormStage) {
-      throw new Error("scenarioPlan must advance to an INPUT/COMMIT stage and checkpoint before submit/payment for depthId=form-depth");
+    if (firstAdvancingActionIndex < 0 || !hasCheckpointAfterAdvancingAction) {
+      throw new Error("scenarioPlan must include an advancing action and later checkpoint for depthId=form-depth");
+    }
+
+    if (!reachesFormStage) {
+      return [
+        {
+          code: "FORM_DEPTH_DOWNGRADED",
+          message: "Requested depthId=form-depth, but no INPUT/COMMIT stage was available; using the deepest safe next-screen checkpoint instead.",
+          path: "$.candidates[0].scenario_plan.steps"
+        }
+      ];
     }
   }
+
+  return [];
 }
 
 function isAdvancingAction(actionType: ScenarioStep["action"]["type"]): boolean {

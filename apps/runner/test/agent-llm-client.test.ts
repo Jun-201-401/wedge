@@ -6,6 +6,11 @@ import { createInitialAgentState } from "../src/agent/state.ts";
 import type { InteractiveComponentObservationItem, ScenarioStage } from "../src/shared/contracts.ts";
 import { createMinimalPlan, createRunnerTestConfig, createSimulatedPageSnapshot } from "./support.ts";
 
+function requireCapturedPayload(payload: Record<string, unknown> | null): Record<string, unknown> {
+  assert.ok(payload);
+  return payload;
+}
+
 test("[Agent LLM Decision] config가 heuristic이면 LLM endpoint가 있어도 heuristic client를 사용한다", () => {
   const client = createAgentDecisionClient(createRunnerTestConfig({
     agentDecisionMode: "heuristic",
@@ -179,12 +184,13 @@ test("[Agent LLM Decision] Responses API endpoint는 responses payload와 output
     }
   });
 
-  assert.equal(capturedPayload?.model, "gpt-5.2-pro");
-  assert.equal("response_format" in (capturedPayload ?? {}), false);
-  assert.equal("messages" in (capturedPayload ?? {}), false);
-  assert.equal("temperature" in (capturedPayload ?? {}), false);
-  assert.deepEqual(capturedPayload?.text, { format: { type: "json_object" } });
-  assert.ok(Array.isArray(capturedPayload?.input));
+  const payload = requireCapturedPayload(capturedPayload);
+  assert.equal(payload.model, "gpt-5.2-pro");
+  assert.equal("response_format" in payload, false);
+  assert.equal("messages" in payload, false);
+  assert.equal("temperature" in payload, false);
+  assert.deepEqual(payload.text, { format: { type: "json_object" } });
+  assert.ok(Array.isArray(payload.input));
   assert.equal(decision.action.type, "click");
   assert.equal(decision.metadata?.decisionSource, "llm");
   assert.equal(decision.metadata?.model, "gpt-5.2-pro");

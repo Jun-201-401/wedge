@@ -268,7 +268,9 @@ test('create analysis scenario setup uses agent card and accessible depth choice
   assert.match(source, /className="scenario-setup-agent"/);
   assert.match(source, /범위 선택 중/);
   assert.match(source, /className="scenario-setup-agent__selected-flow"/);
-  assert.match(source, /SCENARIO_DEPTH_OPTIONS\.map/);
+  assert.match(source, /depthOptions\.map/);
+  assert.match(source, /function depthOptionsForScenario\(scenarioType: string\): ScenarioDepthOption\[\]/);
+  assert.match(source, /return SCENARIO_DEPTH_OPTIONS\.filter\(\(option\) => option\.id !== 'form-depth'\)/);
   assert.match(source, /첫 화면에서 다음 행동이 바로 보이는지 확인해요/);
   assert.match(source, /다음 화면의 맥락까지 이어서 확인해요/);
   assert.match(source, /입력 양식까지 보기/);
@@ -321,6 +323,8 @@ test('create analysis selection opens setup and starts a run without a ready scr
   assert.match(source, /const visibleRunStartError = runStartError \|\| \(scenarioAuthoringState\.kind === 'failed' \? scenarioAuthoringState\.message : ''\)/);
   assert.match(source, /isStartingRun=\{isStartingRun\}/);
   assert.match(source, /selectedDepthId/);
+  assert.match(source, /normalizeDepthForScenario\(selectedScenario\?\.scenarioType, routeState\.depthId\)/);
+  assert.match(source, /selectedDepthOptions/);
   assert.match(source, /function defaultDepthForScenario\(scenarioType: string\): ScenarioDepthId/);
   assert.match(source, /scenarioType === 'PURCHASE_CHECKOUT'[\s\S]*?return 'form-depth'/);
   assert.match(source, /scenarioType === 'SIGNUP_LEAD_FORM' \|\| scenarioType === 'CONTACT'[\s\S]*?return 'form-depth'/);

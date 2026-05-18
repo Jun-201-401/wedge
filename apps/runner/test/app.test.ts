@@ -480,7 +480,7 @@ test("createRunnerApp stops after stop_when step requests stop", async () => {
   assert.doesNotMatch(callbackLog, /step_002_fill_email/);
 });
 
-test("[안전 정책] synthetic input이 금지되면 fill 액션을 실패 처리하고 failed callback을 남긴다", async () => {
+test("[안전 정책] synthetic input이 금지되면 사용자 실패 대신 stopped finished callback을 남긴다", async () => {
   const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-safety-artifacts-"));
   const callbackLogFile = join(artifactsRoot, "callbacks.jsonl");
   const app = createRunnerApp({
@@ -512,26 +512,31 @@ test("[안전 정책] synthetic input이 금지되면 fill 액션을 실패 처�
   ];
   message.payload.scenarioPlan!.safety.use_synthetic_inputs = false;
 
-  await assert.rejects(
-    () => app.processMessage(message),
-    /Scenario safety forbids synthetic fill actions/
-  );
+  const result = await app.processMessage(message);
 
   const callbackLog = await readFile(callbackLogFile, "utf8");
   const callbackRecords = callbackLog.trim().split("\n").map((line) => JSON.parse(line));
-  const failedCallback = callbackRecords.find((record) => record.callbackType === "failed");
-  const hasStepFailedEvent = callbackRecords.some(
+  const finishedCallback = callbackRecords.find((record) => record.callbackType === "finished");
+  const blockedStepEvent = callbackRecords.find(
     (record) =>
       record.callbackType === "step-events" &&
-      record.payload.events.some((event: { eventType: string }) => event.eventType === "STEP_FAILED")
+      record.payload.events.some((event: { eventType: string }) => event.eventType === "STEP_BLOCKED")
+  );
+  const blockedEvent = blockedStepEvent?.payload.events.find(
+    (event: { eventType: string }) => event.eventType === "STEP_BLOCKED"
   );
 
+  assert.equal(result.summary.completedStepCount, 0);
+  assert.equal(result.summary.failedStepCount, 0);
+  assert.equal(result.summary.stopped, true);
   assert.match(callbackLog, /"callbackType":"accepted"/);
-  assert.match(callbackLog, /"callbackType":"failed"/);
-  assert.equal(failedCallback?.payload.summary.completedStepCount, 0);
-  assert.equal(failedCallback?.payload.summary.failedStepCount, 1);
-  assert.equal(failedCallback?.payload.summary.stopped, false);
-  assert.equal(failedCallback?.payload.summary.collectorStatus.screenshot.status, "success");
-  assert.equal(hasStepFailedEvent, true);
-  assert.doesNotMatch(callbackLog, /"callbackType":"finished"/);
+  assert.match(callbackLog, /"callbackType":"finished"/);
+  assert.doesNotMatch(callbackLog, /"callbackType":"failed"/);
+  assert.equal(finishedCallback?.payload.summary.completedStepCount, 0);
+  assert.equal(finishedCallback?.payload.summary.failedStepCount, 0);
+  assert.equal(finishedCallback?.payload.summary.stopped, true);
+  assert.equal(finishedCallback?.payload.summary.collectorStatus.screenshot.status, "success");
+  assert.equal(blockedEvent?.payload.reasonCode, "POLICY_SYNTHETIC_INPUT_BLOCKED");
+  assert.equal(blockedEvent?.payload.safetyCode, "SYNTHETIC_INPUT_BLOCKED");
+  assert.equal(blockedEvent?.payload.riskClass, "SYNTHETIC_INPUT");
 });

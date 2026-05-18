@@ -8,7 +8,7 @@ import {
   type CollectorStatusSummary
 } from "../../observability/collectors.ts";
 import type { ArtifactStore } from "../../storage/index.ts";
-import type { ScenarioPlan } from "../../shared/contracts.ts";
+import type { ScenarioPlan, ScenarioStep } from "../../shared/contracts.ts";
 import {
   classifyRunnerFailureDetails,
   errorMessage,
@@ -236,6 +236,62 @@ export async function executeScenario({
       const failureCode = failureDetails.failureCode;
       const failureMessage = errorMessage(error);
 
+      if (isOptionalProbeTargetResolutionFailure(step, failureMessage)) {
+        const reasonCode = "OPTIONAL_TARGET_UNRESOLVED";
+        logOperationalEvent(
+          "scenario-executor",
+          "optional_probe_target_unresolved",
+          {
+            runId,
+            stepOrder,
+            stepKey: step.step_id,
+            stage: step.stage,
+            actionType: step.action.type,
+            reasonCode,
+            reason: failureMessage
+          },
+          "warn"
+        );
+
+        deliveryIssues.push(
+          ...(
+            await emitStepEventBestEffort(callbackClient, runId, stepOrder, step.step_id, "STEP_BLOCKED", {
+              description: step.description,
+              stage: step.stage,
+              actionType: step.action.type,
+              reasonCode,
+              reason: failureMessage,
+              optional: true
+            })
+          )
+        );
+
+        const blockEvidence = await emitFailureCheckpointArtifactsAndCallbacks({
+          runId,
+          stepOrder,
+          step,
+          plan,
+          failureCode: reasonCode,
+          failureMessage,
+          session,
+          callbackClient,
+          capturePipeline,
+          artifactStore
+        });
+        deliveryIssues.push(...blockEvidence.deliveryIssues);
+        collectorStatus = mergeCollectorStatusSummaries(collectorStatus, blockEvidence.collectorStatus);
+
+        return {
+          summary: {
+            completedStepCount,
+            failedStepCount: 0,
+            stopped: true,
+            collectorStatus
+          },
+          delivery: createDeliverySummary(mergeDeliveryIssues(deliveryIssues))
+        };
+      }
+
       logOperationalEvent(
         "scenario-executor",
         "step_failed",
@@ -324,6 +380,12 @@ export async function executeScenario({
     },
     delivery: createDeliverySummary(mergeDeliveryIssues(deliveryIssues))
   };
+}
+
+function isOptionalProbeTargetResolutionFailure(step: ScenarioStep, failureMessage: string): boolean {
+  return step.step_id === "step_003_probe_recommended_target"
+    && step.action.type === "click"
+    && failureMessage.startsWith("Unable to resolve click target:");
 }
 
 async function shouldStopForControlSignal(

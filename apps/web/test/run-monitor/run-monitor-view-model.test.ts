@@ -151,6 +151,24 @@ test('run monitor view model handles stop requested without falling back to fres
   assert.equal(logs[1].tone, 'warning');
 });
 
+test('run monitor view model presents stopped runs as bounded completion, not failure', () => {
+  const live: RunLive = {
+    ...baseLive,
+    status: 'STOPPED',
+    currentStepOrder: 3,
+  };
+
+  assert.equal(getStatusTone(live.status), 'stopping');
+  assert.equal(getApiProgressPercent(live), 100);
+  assert.equal(getApiCheckpoint(live), '가능한 범위의 근거 수집을 마쳤습니다');
+
+  const steps = buildApiSnapshotSteps({ ...baseRun, status: 'STOPPED' }, live);
+
+  assert.equal(steps[0].status, 'complete');
+  assert.equal(steps[1].status, 'complete');
+  assert.equal(steps[1].detail, '가능한 범위의 근거 수집을 마쳤습니다');
+});
+
 test('run monitor view model maps API run steps into a real timeline with failure details', () => {
   const steps = buildApiStepTimeline({ ...baseRun, status: 'FAILED', failureCode: 'RUNNER_TIMEOUT', failureMessage: 'navigation timed out' }, {
     ...baseLive,

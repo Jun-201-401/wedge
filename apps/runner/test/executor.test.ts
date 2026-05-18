@@ -494,6 +494,114 @@ test("[실패 요약] step 실행 실패 시 STEP_FAILED 이벤트와 부분 요
   assert.ok(emittedEventTypes.includes("STEP_FAILED"));
 });
 
+test("[실패 요약] optional 추천 probe target 미해결은 실패 대신 stopped 결과와 STEP_BLOCKED를 남긴다", async () => {
+  const plan = createMinimalPlan();
+  plan.steps = [
+    {
+      step_id: "step_001_done",
+      stage: "FIRST_VIEW",
+      description: "completed before optional probe",
+      action: {
+        type: "goto",
+        target: {
+          url: plan.start_url
+        }
+      },
+      settle_strategy: {
+        type: "fixed_short",
+        timeout_ms: 1
+      },
+      checkpoint: false
+    },
+    {
+      step_id: "step_003_probe_recommended_target",
+      stage: "VALUE",
+      description: "optional recommended target probe",
+      action: {
+        type: "click",
+        target: {
+          role: "link",
+          text: "곧 품절 임박 3,500원 특가오직 무신사 뷰티"
+        }
+      },
+      settle_strategy: {
+        type: "network_idle",
+        timeout_ms: 1
+      },
+      checkpoint: false
+    }
+  ];
+  const emittedEvents: Array<{ eventType: string; payload: Record<string, unknown> }> = [];
+
+  const result = await executeScenario({
+    runId: "run-optional-probe",
+    plan,
+    session: createSimulatedSession(plan, {
+      execute: async (action, step) => {
+        if (step.step_id === "step_003_probe_recommended_target") {
+          throw new Error("Unable to resolve click target: role=link, text=곧 품절 임박 3,500원 특가오직 무신사 뷰티");
+        }
+
+        return {
+          actionType: action.type,
+          targetSummary: "url=https://example.com",
+          stopRequested: false,
+          details: {}
+        };
+      },
+      settle: async () => createSettledResult({ strategy: "fixed_short", durationMs: 1 })
+    }),
+    callbackClient: createStubCallbackClient({
+      sendStepEvents: async (_runId, payload) => {
+        emittedEvents.push(...payload.events.map((event) => ({
+          eventType: event.eventType,
+          payload: event.payload
+        })));
+      }
+    }),
+    capturePipeline: {
+      collectCheckpoint: async ({ step, stepOrder }) => ({
+        checkpoint: {
+          checkpointId: "optional-probe-checkpoint",
+          stepKey: step.step_id,
+          stage: step.stage,
+          trigger: {},
+          settle: {
+            strategy: step.settle_strategy.type,
+            durationMs: 0,
+            status: "failed"
+          },
+          state: {},
+          observations: [],
+          deltas: []
+        },
+        artifacts: [
+          {
+            artifactId: "optional-probe-screenshot",
+            artifactType: "SCREENSHOT",
+            stepKey: step.step_id,
+            mimeType: "text/plain",
+            fileExtension: "txt",
+            content: `step-${stepOrder}`
+          }
+        ]
+      })
+    },
+    artifactStore: {
+      persistArtifacts: async () => []
+    }
+  });
+
+  const blockedEvent = emittedEvents.find((event) => event.eventType === "STEP_BLOCKED");
+
+  assert.equal(result.summary.completedStepCount, 1);
+  assert.equal(result.summary.failedStepCount, 0);
+  assert.equal(result.summary.stopped, true);
+  assert.equal(emittedEvents.some((event) => event.eventType === "STEP_FAILED"), false);
+  assert.equal(blockedEvent?.payload.reasonCode, "OPTIONAL_TARGET_UNRESOLVED");
+  assert.equal(blockedEvent?.payload.optional, true);
+});
+
 test("[정책 차단] scenario safety block은 실패가 아니라 stopped 실행 결과로 종료한다", async () => {
   const plan = createMinimalPlan();
   plan.steps = [
