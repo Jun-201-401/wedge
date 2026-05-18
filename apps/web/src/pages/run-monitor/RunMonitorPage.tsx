@@ -682,7 +682,7 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
     ? buildRunReportPath(run.id, {
         submittedUrl: run.startUrl,
         scenarioId: readQueryParam('scenario') ?? 'landing-cta',
-        depthId: readQueryParam('depth') ?? 'hero-only',
+        depthId: readQueryParam('depth') ?? 'next-screen',
       })
     : null;
   const visibleSteps = isApiFallback ? mockData.steps : buildApiEventTimeline(run, live, currentRunEvents, currentRunSteps);

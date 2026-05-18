@@ -310,6 +310,7 @@ test('create analysis selection starts a run without a ready screen', () => {
   assert.match(source, /const runStartUrl = scenarioPlan \? requireConfirmedScenarioPlanStartUrl\(scenarioPlan\) : scenario\.suggestedStartUrl \?\? submittedUrl/);
   assert.match(source, /sourceDiscoveryId: scenario\.sourceDiscoveryId/);
   assert.match(source, /suggestedTarget: scenario\.suggestedTarget/);
+  assert.match(source, /const DEFAULT_SCENARIO_DEPTH_ID = 'next-screen' satisfies ScenarioDepthId/);
   assert.match(source, /void runDiscovery\(normalizedUrl, routeState\)/);
   assert.match(source, /isDiscoveryBusy\(discoveryState\.kind\)/);
   assert.match(source, /discoveryRequestSeq\.current \+= 1/);
