@@ -13,6 +13,9 @@ TIGHT_SPACING_PX = 8
 MAX_PROBLEM_TARGETS = 20
 
 INTERACTIVE_ROLES = {"button", "link", "menuitem", "tab", "checkbox", "radio", "switch", "option"}
+TEXT_ENTRY_ROLES = {"textbox", "searchbox", "combobox"}
+TEXT_ENTRY_TAGS = {"textarea"}
+BUTTON_INPUT_TYPES = {"button", "submit", "reset", "image"}
 UTILITY_CONTAINER_ROLES = {"banner", "header", "contentinfo", "footer"}
 LEGAL_OR_HELP_PATTERN = (
     "privacy",
@@ -189,6 +192,8 @@ def _is_countable_target(component: Any, *, viewport: dict[str, float] | None) -
 
     if not _has_interactive_affordance(component):
         return False
+    if _is_text_entry_target(component):
+        return False
     if _is_excluded_target(component):
         return False
     if not _is_goal_relevant_target(component):
@@ -221,6 +226,19 @@ def _has_link_target(component: dict[str, Any]) -> bool:
         _text(component.get(key))
         for key in ("href", "url", "target_url")
     )
+
+
+def _is_text_entry_target(component: dict[str, Any]) -> bool:
+    role = str(component.get("role") or "").strip().lower()
+    tag = str(component.get("tag") or "").strip().lower()
+    input_type = str(component.get("type") or component.get("input_type") or "").strip().lower()
+    if role in TEXT_ENTRY_ROLES:
+        return True
+    if tag in TEXT_ENTRY_TAGS:
+        return True
+    if tag == "input" and input_type not in BUTTON_INPUT_TYPES:
+        return True
+    return False
 
 
 def _is_excluded_target(component: dict[str, Any]) -> bool:

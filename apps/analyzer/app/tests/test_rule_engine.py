@@ -658,7 +658,7 @@ class RuleEngineTest(unittest.TestCase):
                             "clickable": True,
                             "visible": True,
                             "is_primary_like": index == 0,
-                            "bounds": {"x": 20 + (index * 64), "y": 80, "width": 56, "height": 40},
+                            "bounds": {"x": 20 + (index * 58), "y": 80, "width": 56, "height": 40},
                         }
                         for index in range(15)
                     ]
@@ -682,7 +682,7 @@ class RuleEngineTest(unittest.TestCase):
         self.assertEqual(overload[0]["problem_components"][0]["role"], "group")
         self.assertEqual(
             overload[0]["problem_components"][0]["bounding_box"],
-            {"x": 20.0, "y": 80.0, "width": 952.0, "height": 40.0, "unit": "css_px"},
+            {"x": 20.0, "y": 80.0, "width": 868.0, "height": 40.0, "unit": "css_px"},
         )
 
     def test_path_choice_overload_targets_repeated_shortcut_group_without_search_or_ads(self) -> None:
@@ -804,6 +804,132 @@ class RuleEngineTest(unittest.TestCase):
         criteria = [issue["criterion_id"] for issue in result["issues"]]
         self.assertNotIn("PATH-CHOICE-OVERLOAD-001", criteria)
 
+    def test_path_choice_overload_ignores_spacious_sidebar_navigation(self) -> None:
+        packet = load_sample_packet()
+        packet["aggregate_signals"]["primary_cta_count_by_stage"] = {}
+        packet["checkpoints"][0]["observations"] = [
+            observation
+            for observation in packet["checkpoints"][0]["observations"]
+            if observation["type"] not in {"cta_cluster", "interactive_components"}
+        ]
+        sidebar_items = [
+            {
+                "text": label,
+                "selector": f"ytd-guide-entry-renderer:nth-child({index}) a#endpoint",
+                "container_selector": "ytd-guide-section-renderer#sections",
+                "container_role": "list",
+                "container_heading": "Navigation",
+                "role": "link",
+                "tag": "a",
+                "clickable": True,
+                "visible": True,
+                "bounds": {"x": 48, "y": 88 + (index * 40), "width": 156, "height": 32},
+                "container_bounds": {"x": 24, "y": 72, "width": 216, "height": 620},
+                "nearest_target_spacing_px": 4,
+            }
+            for index, label in enumerate(
+                [
+                    "Home",
+                    "Shorts",
+                    "Subscriptions",
+                    "History",
+                    "Shopping",
+                    "Music",
+                    "Movies",
+                    "More",
+                    "Premium",
+                    "Music Premium",
+                    "Studio",
+                    "Settings",
+                ],
+                start=1,
+            )
+        ]
+        packet["checkpoints"][0]["observations"].append(
+            {
+                "observation_id": "obs_sidebar_navigation",
+                "type": "interactive_components",
+                "stage": "CTA",
+                "source": ["dom", "layout"],
+                "confidence": 0.86,
+                "data": {"components": sidebar_items},
+            }
+        )
+
+        result = analyze_evidence_packet(packet)
+
+        criteria = [issue["criterion_id"] for issue in result["issues"]]
+        self.assertNotIn("PATH-CHOICE-OVERLOAD-001", criteria)
+
+    def test_path_choice_overload_dedupes_overlapping_parent_child_navigation_items(self) -> None:
+        packet = load_sample_packet()
+        packet["aggregate_signals"]["primary_cta_count_by_stage"] = {}
+        packet["checkpoints"][0]["observations"] = [
+            observation
+            for observation in packet["checkpoints"][0]["observations"]
+            if observation["type"] not in {"cta_cluster", "interactive_components"}
+        ]
+        labels = ["Home", "Shorts", "Subscriptions", "Library", "History", "Shopping", "Music", "Movies", "More"]
+        components = [
+            {
+                "text": "More",
+                "selector": "#expander-item",
+                "container_role": "navigation",
+                "role": "button",
+                "tag": "button",
+                "clickable": True,
+                "visible": True,
+                "bounds": {"x": 12, "y": 586, "width": 204, "height": 40},
+                "container_bounds": {"x": 0, "y": 56, "width": 240, "height": 964},
+                "nearest_target_spacing_px": 0,
+            }
+        ]
+        for index, label in enumerate(labels):
+            y = 68 + (index * 40)
+            components.extend(
+                [
+                    {
+                        "text": label,
+                        "selector": "#endpoint",
+                        "container_role": "navigation",
+                        "role": "link",
+                        "tag": "a",
+                        "clickable": True,
+                        "visible": True,
+                        "bounds": {"x": 12, "y": y, "width": 204, "height": 40},
+                        "container_bounds": {"x": 0, "y": 56, "width": 240, "height": 964},
+                        "nearest_target_spacing_px": 0,
+                    },
+                    {
+                        "text": label,
+                        "selector": "tp-yt-paper-item.style-scope",
+                        "container_role": "navigation",
+                        "role": "link",
+                        "tag": "tp-yt-paper-item",
+                        "clickable": True,
+                        "visible": True,
+                        "bounds": {"x": 12, "y": y, "width": 204, "height": 40},
+                        "container_bounds": {"x": 0, "y": 56, "width": 240, "height": 964},
+                        "nearest_target_spacing_px": 0,
+                    },
+                ]
+            )
+        packet["checkpoints"][0]["observations"].append(
+            {
+                "observation_id": "obs_duplicated_sidebar_navigation",
+                "type": "interactive_components",
+                "stage": "CTA",
+                "source": ["dom", "layout"],
+                "confidence": 0.86,
+                "data": {"components": components},
+            }
+        )
+
+        result = analyze_evidence_packet(packet)
+
+        criteria = [issue["criterion_id"] for issue in result["issues"]]
+        self.assertNotIn("PATH-CHOICE-OVERLOAD-001", criteria)
+
     def test_path_choice_overload_emits_for_dense_group_even_below_count_threshold(self) -> None:
         packet = load_sample_packet()
         packet["aggregate_signals"]["primary_cta_count_by_stage"] = {}
@@ -829,11 +955,11 @@ class RuleEngineTest(unittest.TestCase):
                             "visible": True,
                             "container_role": "section",
                             "container_heading": "요금제",
-                            "container_bounds": {"x": 100, "y": 320, "width": 760, "height": 180},
-                            "bounds": {"x": 112 + (index * 82), "y": 360, "width": 76, "height": 44},
+                            "container_bounds": {"x": 100, "y": 320, "width": 800, "height": 180},
+                            "bounds": {"x": 112 + (index * 78), "y": 360, "width": 72, "height": 44},
                             "nearest_target_spacing_px": 6,
                         }
-                        for index in range(9)
+                        for index in range(10)
                     ]
                 },
             }
@@ -844,8 +970,9 @@ class RuleEngineTest(unittest.TestCase):
         overload = [issue for issue in result["issues"] if issue["criterion_id"] == "PATH-CHOICE-OVERLOAD-001"]
         self.assertEqual(len(overload), 1)
         self.assertEqual(overload[0]["severity"], 2)
-        self.assertIn("group_interactive_choice_count=9", overload[0]["signals"])
+        self.assertIn("group_interactive_choice_count=10", overload[0]["signals"])
         self.assertIn("group_avg_spacing_px=6.0", overload[0]["signals"])
+        self.assertIn("group_median_gap_px=6.0", overload[0]["signals"])
 
     def test_path_back_link_emits_for_multistep_flow_without_back_affordance(self) -> None:
         packet = load_sample_packet()
@@ -1345,6 +1472,97 @@ class RuleEngineTest(unittest.TestCase):
         target_size = [issue for issue in result["issues"] if issue["criterion_id"] == "TECH-TARGET-SIZE-001"]
         self.assertEqual(len(target_size), 1)
         self.assertEqual(target_size[0]["problem_components"][0]["selector"], "a.search")
+
+    def test_target_size_ignores_text_entry_search_field(self) -> None:
+        packet = load_sample_packet()
+        packet["aggregate_signals"]["primary_cta_count_by_stage"] = {}
+        packet["checkpoints"][0]["observations"] = [
+            observation
+            for observation in packet["checkpoints"][0]["observations"]
+            if observation["type"] not in {"cta_cluster", "interactive_components"}
+        ]
+        packet["checkpoints"][0]["observations"].append(
+            {
+                "observation_id": "obs_search_field",
+                "type": "interactive_components",
+                "stage": "CTA",
+                "source": ["dom", "layout"],
+                "confidence": 0.84,
+                "data": {
+                    "components": [
+                        {
+                            "text": "검색",
+                            "selector": "input.search",
+                            "role": "searchbox",
+                            "tag": "input",
+                            "type": "search",
+                            "clickable": True,
+                            "visible": True,
+                            "is_form_control": True,
+                            "bounds": {"x": 360, "y": 280, "width": 340, "height": 36},
+                            "nearest_target_spacing_px": 4,
+                        }
+                    ]
+                },
+            }
+        )
+
+        result = analyze_evidence_packet(packet)
+
+        criteria = [issue["criterion_id"] for issue in result["issues"]]
+        self.assertNotIn("TECH-TARGET-SIZE-001", criteria)
+
+    def test_target_size_keeps_small_search_icon_button_but_not_search_field(self) -> None:
+        packet = load_sample_packet()
+        packet["aggregate_signals"]["primary_cta_count_by_stage"] = {}
+        packet["checkpoints"][0]["observations"] = [
+            observation
+            for observation in packet["checkpoints"][0]["observations"]
+            if observation["type"] not in {"cta_cluster", "interactive_components"}
+        ]
+        packet["checkpoints"][0]["observations"].append(
+            {
+                "observation_id": "obs_search_icons",
+                "type": "interactive_components",
+                "stage": "CTA",
+                "source": ["dom", "layout"],
+                "confidence": 0.84,
+                "data": {
+                    "components": [
+                        {
+                            "text": "검색",
+                            "selector": "input.search",
+                            "role": "searchbox",
+                            "tag": "input",
+                            "type": "search",
+                            "clickable": True,
+                            "visible": True,
+                            "is_form_control": True,
+                            "bounds": {"x": 360, "y": 280, "width": 340, "height": 36},
+                            "nearest_target_spacing_px": 4,
+                        },
+                        {
+                            "text": "이미지로 검색",
+                            "selector": "button.image-search",
+                            "role": "button",
+                            "tag": "button",
+                            "clickable": True,
+                            "visible": True,
+                            "bounds": {"x": 712, "y": 280, "width": 32, "height": 32},
+                            "nearest_target_spacing_px": 4,
+                        },
+                    ]
+                },
+            }
+        )
+
+        result = analyze_evidence_packet(packet)
+
+        target_size = [issue for issue in result["issues"] if issue["criterion_id"] == "TECH-TARGET-SIZE-001"]
+        self.assertEqual(len(target_size), 1)
+        self.assertIn("target_size_problem_selectors=button.image-search", target_size[0]["signals"])
+        self.assertEqual(len(target_size[0]["problem_components"]), 1)
+        self.assertEqual(target_size[0]["problem_components"][0]["selector"], "button.image-search")
 
     def test_missing_cta_evidence_is_not_user_facing_issue(self) -> None:
         packet = load_sample_packet()
