@@ -11,6 +11,8 @@ import { executeScenario } from "../src/scenario/executor/index.ts";
 import { executeScenarioStep } from "../src/scenario/executor/step-executor.ts";
 import { createArtifactStore } from "../src/storage/index.ts";
 import { registerAgentWorker } from "../src/worker/agent-worker.ts";
+import { decideNextAction } from "../src/agent/planner.ts";
+import { createInitialAgentState } from "../src/agent/state.ts";
 import { exportAgentTraceToScenarioPlan } from "../src/agent/trace/export.ts";
 import type { AgentTrace } from "../src/agent/trace/index.ts";
 import type {
@@ -994,6 +996,176 @@ test("[Playwright iframe] iframe 내부 컴포넌트 bounds는 top-level viewpor
     assert.ok((frameButton?.bounds.y ?? 0) >= 210);
     assert.ok((frameButton?.layout?.center_x ?? 0) >= 320);
     assert.ok((frameButton?.layout?.center_y ?? 0) >= 230);
+  } finally {
+    await session?.close();
+    await rm(fixtureRoot, { recursive: true, force: true });
+    await rm(artifactsRoot, { recursive: true, force: true });
+  }
+});
+
+test("[Playwright consent modal] backdrop 대신 동의 버튼을 primary action으로 선택하고 클릭한다", async () => {
+  const fixtureRoot = await mkdtemp(join(tmpdir(), "wedge-runner-consent-modal-site-"));
+  const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-consent-modal-artifacts-"));
+  let session: Awaited<ReturnType<ReturnType<typeof createPlaywrightSessionFactory>["createSession"]>> | undefined;
+
+  try {
+    const consentFile = join(fixtureRoot, "consent-modal.html");
+    await writeFile(
+      consentFile,
+      `<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <title>Consent modal fixture</title>
+    <style>
+      body { margin: 0; font-family: sans-serif; }
+      .absolute { position: absolute; inset: 0; background: rgba(0, 0, 0, 0.4); cursor: default; border: 0; }
+      .dialog { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; z-index: 10000; }
+      .card { position: relative; width: 360px; padding: 24px; border-radius: 16px; background: white; box-shadow: 0 12px 32px rgba(0, 0, 0, 0.24); }
+      .w-full { width: 100%; height: 40px; border: 0; border-radius: 8px; background: #ff3800; color: white; font-weight: 700; }
+      .flex-1 { width: 49%; height: 38px; margin-top: 8px; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>홍대 굿즈샵 지도</h1>
+      <button class="shop-card" type="button">오모차랜드 홍대2호점 굿즈 129m · 홍대</button>
+    </main>
+    <div role="dialog" aria-modal="true" aria-labelledby="consent-modal-title" aria-describedby="consent-modal-body" class="dialog" id="consent-modal">
+      <button type="button" aria-label="나중에 결정" class="absolute" tabindex="-1"></button>
+      <div class="card">
+        <h2 id="consent-modal-title">익명 사용 통계 수집</h2>
+        <p id="consent-modal-body">서비스 개선을 위해 페이지 방문·기능 사용 기록을 익명으로 수집합니다. 개인 식별 정보는 포함되지 않으며 언제든 철회할 수 있습니다.</p>
+        <button type="button" class="w-full" id="agree">동의</button>
+        <button type="button" class="flex-1">거부</button>
+        <button type="button" class="flex-1">나중에</button>
+      </div>
+    </div>
+    <script>
+      document.getElementById("agree")?.addEventListener("click", () => {
+        document.body.dataset.consentAccepted = "true";
+        document.getElementById("consent-modal")?.remove();
+      });
+    </script>
+  </body>
+</html>`,
+      "utf8"
+    );
+
+    const consentUrl = pathToFileURL(consentFile).toString();
+    session = await createPlaywrightBrowserFactory(artifactsRoot).createSession({
+      runId: "run-consent-modal",
+      plan: {
+        ...createMinimalPlan(),
+        start_url: consentUrl
+      }
+    });
+
+    await executeGotoStep(session, consentUrl, "step_goto_consent_modal");
+    const snapshot = session.snapshot();
+    const backdrop = snapshot.interactiveComponents.find((component) => component.text === "나중에 결정");
+    const agree = snapshot.interactiveComponents.find((component) => component.text === "동의");
+
+    assert.equal(backdrop?.is_primary_like, false);
+    assert.equal(agree?.is_primary_like, true);
+
+    const state = createInitialAgentState();
+    state.started = true;
+    const decision = decideNextAction({
+      runId: "run-consent-modal",
+      goal: "지도 첫 화면을 분석한다",
+      startUrl: consentUrl,
+      state,
+      maxScrolls: 0,
+      observation: {
+        snapshot
+      }
+    });
+
+    assert.equal(decision.action.type, "click");
+    assert.deepEqual(decision.action.target, {
+      selector: "#agree",
+      role: "button",
+      text: "동의"
+    });
+
+    await session.execute(
+      decision.action,
+      createStep({
+        step_id: "step_accept_consent",
+        stage: decision.stage,
+        description: "동의 모달을 해소한다.",
+        action: decision.action
+      })
+    );
+
+    const after = session.snapshot();
+    assert.equal(after.interactiveComponents.some((component) => component.container_role === "dialog"), false);
+  } finally {
+    await session?.close();
+    await rm(fixtureRoot, { recursive: true, force: true });
+    await rm(artifactsRoot, { recursive: true, force: true });
+  }
+});
+
+test("[Playwright notice popup] 정적 실행에서도 layer popup을 자동으로 닫는다", async () => {
+  const fixtureRoot = await mkdtemp(join(tmpdir(), "wedge-runner-notice-popup-site-"));
+  const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-notice-popup-artifacts-"));
+  let session: Awaited<ReturnType<ReturnType<typeof createPlaywrightSessionFactory>["createSession"]>> | undefined;
+
+  try {
+    const popupFile = join(fixtureRoot, "notice-popup.html");
+    await writeFile(
+      popupFile,
+      `<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <title>Notice popup fixture</title>
+    <style>
+      body { margin: 0; font-family: sans-serif; }
+      #popupCode_layer_1 { position: absolute; left: 100px; top: 200px; width: 700px; height: 622px; z-index: 2000; background: white; border: 1px solid #ddd; }
+      .sys_pop { position: absolute; left: 0; top: 0; width: 636px; height: 629px; }
+      .close { position: absolute; left: 601px; top: 28px; width: 18px; height: 18px; border: 0; background: #222; color: white; font-size: 11px; }
+      #hero-cta { position: absolute; left: 420px; top: 430px; width: 320px; height: 80px; border: 0; border-radius: 8px; background: #ff3800; color: white; font-size: 20px; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>명가떡집</h1>
+      <button id="hero-cta" type="button">대표 상품 보기</button>
+    </main>
+    <div id="popupCode_layer_1">
+      <div id="popupCode_layer_1_form" class="sys_pop">
+        <div style="padding: 80px 32px 32px">공지 레이어 팝업</div>
+        <label style="position:absolute;left:24px;bottom:24px"><input type="checkbox" /> 오늘 하루 보이지 않음</label>
+        <button type="button" class="close" id="popup-close">닫기</button>
+      </div>
+    </div>
+    <script>
+      document.getElementById("popup-close")?.addEventListener("click", () => {
+        document.body.dataset.popupClosed = "true";
+        document.getElementById("popupCode_layer_1")?.remove();
+      });
+    </script>
+  </body>
+</html>`,
+      "utf8"
+    );
+
+    const popupUrl = pathToFileURL(popupFile).toString();
+    session = await createPlaywrightBrowserFactory(artifactsRoot).createSession({
+      runId: "run-notice-popup",
+      plan: {
+        ...createMinimalPlan(),
+        start_url: popupUrl
+      }
+    });
+
+    await executeGotoStep(session, popupUrl, "step_goto_notice_popup");
+    const snapshot = session.snapshot();
+    assert.equal(snapshot.interactiveComponents.some((component) => component.container_role === "popup"), false);
+    assert.equal(snapshot.interactiveComponents.some((component) => component.selector === "#popup-close"), false);
   } finally {
     await session?.close();
     await rm(fixtureRoot, { recursive: true, force: true });

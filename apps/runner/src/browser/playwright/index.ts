@@ -693,6 +693,7 @@ class RealPlaywrightSession implements BrowserSession {
       }
     }
 
+    await dismissNoticeLayerPopups(this.page);
     await this.refreshPageState();
     assertVisitedUrlAllowed(this.plan, this.state.finalUrl);
 
@@ -834,6 +835,7 @@ class RealPlaywrightSession implements BrowserSession {
     assertBrowserHealthy(this.state);
     const originalScroll = await readScrollPosition(this.page);
     try {
+      await dismissNoticeLayerPopups(this.page);
       await preparePageForScreenshot(this.page);
 
       const screenshotCapture = await capturePageScreenshot(this.page, options.screenshotMode ?? "auto");
@@ -3636,6 +3638,85 @@ async function readFrameViewportOffset(frame: Frame): Promise<{ x: number; y: nu
   }
 }
 
+async function dismissNoticeLayerPopups(page: Page): Promise<void> {
+  try {
+    const dismissed = await page.evaluate(() => {
+      function normalizeText(value: string | null | undefined): string {
+        return (value ?? "").replace(/\s+/g, " ").trim();
+      }
+
+      function isVisible(element: Element): boolean {
+        const rect = element.getBoundingClientRect();
+        const style = globalThis.getComputedStyle(element);
+        return rect.width > 0 &&
+          rect.height > 0 &&
+          style.display !== "none" &&
+          style.visibility !== "hidden" &&
+          Number(style.opacity || "1") !== 0;
+      }
+
+      function descriptorFor(element: Element): string {
+        return [
+          element.id,
+          typeof (element as HTMLElement).className === "string" ? (element as HTMLElement).className : "",
+          element.getAttribute("role"),
+          element.getAttribute("aria-label"),
+          normalizeText(element.textContent).slice(0, 500)
+        ].filter(Boolean).join(" ");
+      }
+
+      function looksLikeNoticePopup(container: Element): boolean {
+        const descriptor = descriptorFor(container);
+        return /popup|pop|layer|notice|banner|공지|이벤트|팝업|레이어|오늘 하루 보이지 않음|오늘 하루 보지 않기/i.test(descriptor) &&
+          !/consent|privacy|analytics|tracking|telemetry|동의|개인정보|통계|수집|마케팅|광고|프로모션/i.test(descriptor);
+      }
+
+      function buttonText(element: Element): string {
+        return [
+          normalizeText(element.textContent),
+          element.getAttribute("aria-label"),
+          element.getAttribute("title"),
+          element.getAttribute("value"),
+          element.id,
+          typeof (element as HTMLElement).className === "string" ? (element as HTMLElement).className : ""
+        ].filter(Boolean).join(" ");
+      }
+
+      const containers = Array.from(document.querySelectorAll([
+        "[id*='popup' i]",
+        "[class*='popup' i]",
+        "[id*='pop' i]",
+        "[class*='pop' i]",
+        "[id*='layer' i]",
+        "[class*='layer' i]",
+        "[class*='sys_pop' i]",
+        "[role='dialog']",
+        "[aria-modal='true']"
+      ].join(","))).filter((container) => isVisible(container) && looksLikeNoticePopup(container));
+
+      for (const container of containers) {
+        const controls = Array.from(container.querySelectorAll("button, a, input[type='button'], input[type='submit'], [role='button']"))
+          .filter(isVisible);
+        const dismissControl = controls.find((control) => /^(닫기|close|×|x)$/i.test(normalizeText(buttonText(control)))) ??
+          controls.find((control) => /닫기|close|dismiss|×|오늘 하루 보이지 않음|오늘 하루 보지 않기|하루 보이지 않음|하루 보지 않기/i.test(buttonText(control)));
+
+        if (dismissControl instanceof HTMLElement) {
+          dismissControl.click();
+          return true;
+        }
+      }
+
+      return false;
+    });
+
+    if (dismissed) {
+      await page.waitForTimeout(100);
+    }
+  } catch {
+    // Best-effort popup dismissal must not block the requested scenario action.
+  }
+}
+
 function applyFrameViewportOffset(
   component: InteractiveComponentObservationItem,
   offset: { x: number; y: number }
@@ -4319,12 +4400,19 @@ async function extractInteractiveComponentsFromFrame(
         const className = typeof (element as HTMLElement).className === "string"
           ? (element as HTMLElement).className.toLowerCase()
           : "";
+        const id = element.getAttribute("id")?.toLowerCase() ?? "";
         const testId = `${element.getAttribute("data-testid") ?? ""} ${element.getAttribute("data-test") ?? ""}`.toLowerCase();
         if (className.includes("card") || testId.includes("card")) {
           return "card";
         }
-        if (className.includes("modal") || testId.includes("modal")) {
+        if (className.includes("modal") || id.includes("modal") || testId.includes("modal")) {
           return "modal";
+        }
+        if (className.includes("popup") || className.includes("pop") || id.includes("popup") || id.includes("pop") || testId.includes("popup") || testId.includes("pop")) {
+          return "popup";
+        }
+        if (className.includes("layer") || id.includes("layer") || testId.includes("layer")) {
+          return "popup";
         }
         if (className.includes("accordion") || testId.includes("accordion")) {
           return "accordion";
@@ -4375,9 +4463,18 @@ async function extractInteractiveComponentsFromFrame(
           "[role='list']",
           "[class*='card' i]",
           "[class*='modal' i]",
+          "[class*='popup' i]",
+          "[class*='pop' i]",
+          "[class*='layer' i]",
+          "[id*='popup' i]",
+          "[id*='pop' i]",
+          "[id*='layer' i]",
           "[class*='accordion' i]",
           "[data-testid*='card' i]",
           "[data-testid*='modal' i]",
+          "[data-testid*='popup' i]",
+          "[data-testid*='pop' i]",
+          "[data-testid*='layer' i]",
           "[data-testid*='accordion' i]"
         ].join(",");
         const container = element.closest(selector);
@@ -4580,9 +4677,33 @@ async function extractInteractiveComponentsFromFrame(
 }
 
 function componentScore(component: InteractiveComponentObservationItem): number {
+  if (isDialogBackdropLikeComponent(component)) {
+    return -1_000_000;
+  }
+
   return (component.is_cta_candidate ? 1_000_000 : 0) +
     component.bounds.width * component.bounds.height +
     (component.frame_id ? 100 : 0);
+}
+
+function isDialogBackdropLikeComponent(component: InteractiveComponentObservationItem): boolean {
+  const role = component.container_role?.toLowerCase() ?? "";
+  if (role !== "dialog" && role !== "modal" && !role.includes("dialog") && !role.includes("modal")) {
+    return false;
+  }
+
+  const viewportCoverage = component.visibility?.viewport_coverage_ratio ?? 0;
+  const selector = component.selector ?? "";
+  const text = [
+    component.text,
+    component.accessible_name ?? "",
+    component.label_text ?? ""
+  ].join(" ");
+
+  return viewportCoverage >= 0.75 &&
+    !component.visible_text &&
+    (/나중|거부|닫기|취소|later|not now|decline|reject|close|dismiss/i.test(text) ||
+      /backdrop|overlay|inset-0|absolute|fixed/i.test(selector));
 }
 
 function createVisualProminence(
