@@ -659,6 +659,24 @@
   position: relative;
 }
 
+.preflight-agent__step--active {
+  isolation: isolate;
+}
+
+.preflight-agent__step--active::before {
+  content: '';
+  position: absolute;
+  top: -0.38rem;
+  right: 0;
+  bottom: -0.45rem;
+  left: 2.72rem;
+  z-index: 0;
+  border: 1px solid rgba(248, 250, 252, 0.5);
+  border-radius: 1.05rem;
+  background: rgba(248, 250, 252, 0.5);
+  pointer-events: none;
+}
+
 .preflight-agent__step--pending {
   opacity: 0.55;
 }
@@ -698,6 +716,7 @@
 .preflight-agent__node-wrap,
 .preflight-agent__content {
   position: relative;
+  z-index: 1;
 }
 
 .preflight-agent__node-wrap {
@@ -761,15 +780,6 @@
   height: 0.34rem;
   border-radius: 999px;
   background: #cbd5e1;
-}
-
-.preflight-agent__step--active .preflight-agent__content {
-  margin-left: 3rem;
-  margin-right: -0.35rem;
-  padding: 0.95rem 1.25rem 1rem;
-  border: 1px solid rgba(248, 250, 252, 0.5);
-  border-radius: 1.25rem;
-  background: rgba(248, 250, 252, 0.5);
 }
 
 .preflight-agent__content-head {
@@ -1446,10 +1456,11 @@
     margin-left: 3.1rem;
   }
 
-  .preflight-agent__step--active .preflight-agent__content {
-    margin-left: 2.7rem;
-    margin-right: 0;
-    padding: 0.85rem 1rem 0.9rem;
+  .preflight-agent__step--active::before {
+    top: -0.34rem;
+    right: 0;
+    bottom: -0.4rem;
+    left: 2.48rem;
   }
 
   .preflight-agent__detail,

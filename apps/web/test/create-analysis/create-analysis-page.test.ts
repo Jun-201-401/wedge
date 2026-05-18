@@ -2,6 +2,18 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
+function cssRule(css: string, selector: string) {
+  const start = css.indexOf(`${selector} {`);
+
+  assert.notEqual(start, -1, `Missing CSS rule for ${selector}`);
+
+  const end = css.indexOf('\n}', start);
+
+  assert.notEqual(end, -1, `Missing CSS rule close for ${selector}`);
+
+  return css.slice(start, end);
+}
+
 test('create analysis preflight renders an agent-style progress card', () => {
   const source = fs.readFileSync(
     new URL('../../src/pages/create-analysis/CreateAnalysisPage.tsx', import.meta.url),
@@ -92,7 +104,9 @@ test('create analysis preflight css keeps the landing-agent card language', () =
   assert.match(css, /\.preflight-agent,\s*\n\.recommendation-agent,\s*\n\.manual-choice-agent,\s*\n\.scenario-setup-agent\s*\{[\s\S]*?box-shadow: 0 12px 40px -10px/);
   assert.match(css, /\.preflight-agent__header-copy p,\s*\n\.recommendation-agent__header-copy p,\s*\n\.manual-choice-agent__header-copy p\s*\{[\s\S]*?margin-bottom: 0\.48rem/);
   assert.doesNotMatch(css, /\.preflight-agent__scope/);
-  assert.match(css, /\.preflight-agent__step--active \.preflight-agent__content\s*\{[\s\S]*?background: rgba\(248, 250, 252, 0\.5\)/);
+  assert.match(cssRule(css, '.preflight-agent__step--active::before'), /background: rgba\(248, 250, 252, 0\.5\)/);
+  assert.match(cssRule(css, '.preflight-agent__step--active::before'), /left: 2\.72rem/);
+  assert.doesNotMatch(css, /\.preflight-agent__step--active \.preflight-agent__content\s*\{/);
   assert.match(css, /@keyframes createAnalysisPreflightFlowData/);
   assert.match(css, /@keyframes createAnalysisPreflightPing/);
 });
