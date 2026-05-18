@@ -17,6 +17,12 @@ public interface RunMapper {
 
     Optional<RunRecord> findById(@Param("runId") UUID runId);
 
+    Optional<RunRecord> findByIdempotencyKey(
+            @Param("projectId") UUID projectId,
+            @Param("createdBy") UUID createdBy,
+            @Param("idempotencyKey") String idempotencyKey
+    );
+
     List<RunStepRecord> findStepsByRunId(@Param("runId") UUID runId);
 
     Optional<RunStepRecord> findStepByRunIdAndId(@Param("runId") UUID runId, @Param("stepId") UUID stepId);

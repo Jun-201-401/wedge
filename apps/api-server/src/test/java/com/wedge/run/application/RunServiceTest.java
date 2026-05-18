@@ -3,10 +3,14 @@ package com.wedge.run.application;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
 import com.wedge.common.error.BusinessException;
 import com.wedge.common.error.ErrorCode;
 import com.wedge.run.api.dto.RunCreateRequest;
@@ -17,7 +21,9 @@ import com.wedge.run.domain.RunStatus;
 import com.wedge.common.infrastructure.outbox.OutboxMessagePersistenceAdapter;
 import com.wedge.run.infrastructure.RunPersistenceAdapter;
 import java.net.URI;
+import java.security.MessageDigest;
 import java.time.OffsetDateTime;
+import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -33,6 +39,8 @@ import org.springframework.context.ApplicationEventPublisher;
 
 @ExtendWith(MockitoExtension.class)
 class RunServiceTest {
+    private static final UUID USER_ID = UUID.fromString("11111111-1111-4111-8111-111111111111");
+
     @Mock
     private RunPersistenceAdapter runPersistenceAdapter;
 
@@ -58,7 +66,8 @@ class RunServiceTest {
                 agentExecuteRequestMessageFactory,
                 outboxMessagePersistenceAdapter,
                 applicationEventPublisher,
-                new ScenarioPlanValidator()
+                new ScenarioPlanValidator(),
+                new ObjectMapper()
         );
     }
 
@@ -398,6 +407,55 @@ class RunServiceTest {
     }
 
     @Test
+    void createRunPersistsNormalizedIdempotencyKeyAndRequestHash() {
+        RunCreateRequest request = sampleRequest();
+        RunResponse created = sampleRun(RunStatus.CREATED, ResultCompleteness.NONE);
+        ArgumentCaptor<String> requestHashCaptor = ArgumentCaptor.forClass(String.class);
+        when(runPersistenceAdapter.findRunByIdempotencyKey(request.projectId(), USER_ID, "idem-run-1"))
+                .thenReturn(Optional.empty());
+        when(runPersistenceAdapter.createRun(any(RunCreateRequest.class), eq(USER_ID), eq("idem-run-1"), anyString()))
+                .thenReturn(created);
+
+        RunResponse response = runService.createRun(request, USER_ID, "  idem-run-1  ");
+
+        assertThat(response).isEqualTo(created);
+        verify(runPersistenceAdapter).createRun(
+                any(RunCreateRequest.class),
+                eq(USER_ID),
+                eq("idem-run-1"),
+                requestHashCaptor.capture()
+        );
+        assertThat(requestHashCaptor.getValue()).matches("[0-9a-f]{64}");
+    }
+
+    @Test
+    void createRunReplaysSamePayloadForSameIdempotencyKey() throws Exception {
+        RunCreateRequest request = sampleRequest();
+        RunResponse existingRun = sampleRun(RunStatus.CREATED, ResultCompleteness.NONE);
+        String requestHash = requestHash(request);
+        when(runPersistenceAdapter.findRunByIdempotencyKey(request.projectId(), USER_ID, "idem-run-1"))
+                .thenReturn(Optional.of(new RunPersistenceAdapter.IdempotentRun(existingRun, requestHash)));
+
+        RunResponse response = runService.createRun(request, USER_ID, "idem-run-1");
+
+        assertThat(response).isEqualTo(existingRun);
+        verify(runPersistenceAdapter, never()).createRun(any(RunCreateRequest.class), any(), any(), any());
+    }
+
+    @Test
+    void createRunRejectsSameIdempotencyKeyWithDifferentPayload() {
+        RunCreateRequest request = sampleRequest();
+        RunResponse existingRun = sampleRun(RunStatus.CREATED, ResultCompleteness.NONE);
+        when(runPersistenceAdapter.findRunByIdempotencyKey(request.projectId(), USER_ID, "idem-run-1"))
+                .thenReturn(Optional.of(new RunPersistenceAdapter.IdempotentRun(existingRun, "0".repeat(64))));
+
+        assertThatThrownBy(() -> runService.createRun(request, USER_ID, "idem-run-1"))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(exception -> assertThat(((BusinessException) exception).errorCode()).isEqualTo(ErrorCode.STATE_CONFLICT));
+        verify(runPersistenceAdapter, never()).createRun(any(RunCreateRequest.class), any(), any(), any());
+    }
+
+    @Test
     void createRunRejectsScenarioPlanWithMismatchedStartUrl() {
         RunCreateRequest request = new RunCreateRequest(
                 UUID.randomUUID(),
@@ -488,6 +546,14 @@ class RunServiceTest {
                         )
                 )
         );
+    }
+
+    private String requestHash(RunCreateRequest request) throws Exception {
+        byte[] bytes = new ObjectMapper()
+                .copy()
+                .configure(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS, true)
+                .writeValueAsBytes(request);
+        return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes));
     }
 
     private Map<String, Object> validScenarioPlan(String startUrl, String device) {

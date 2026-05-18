@@ -74,8 +74,9 @@ public class RunController {
             @Valid @RequestBody RunCreateRequest request,
             Authentication authentication
     ) {
-        projectAccessService.ensureProjectAccessible(request.projectId(), principal(authentication).userId());
-        return ApiResponse.created(runService.createRun(request));
+        UUID userId = principal(authentication).userId();
+        projectAccessService.ensureProjectAccessible(request.projectId(), userId);
+        return ApiResponse.created(runService.createRun(request, userId, idempotencyKey));
     }
 
     @GetMapping("/{runId}")

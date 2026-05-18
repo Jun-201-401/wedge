@@ -2,6 +2,7 @@ package com.wedge.run.api;
 
 import static org.hamcrest.Matchers.containsString;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -74,11 +75,12 @@ class RunControllerTest {
         UUID projectId = UUID.randomUUID();
         UUID runId = UUID.randomUUID();
         RunResponse created = sampleRun(runId, projectId);
-        when(runService.createRun(any(RunCreateRequest.class))).thenReturn(created);
+        when(runService.createRun(any(RunCreateRequest.class), eq(USER_ID), eq("idem-run-create-1"))).thenReturn(created);
 
         mockMvc.perform(post("/api/runs")
                         .principal(authentication())
                         .header("X-Request-Id", "req_run_create")
+                        .header("Idempotency-Key", "idem-run-create-1")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -95,6 +97,7 @@ class RunControllerTest {
                 .andExpect(jsonPath("$.meta.requestId").value("req_run_create"));
 
         verify(projectAccessService).ensureProjectAccessible(projectId, USER_ID);
+        verify(runService).createRun(any(RunCreateRequest.class), eq(USER_ID), eq("idem-run-create-1"));
     }
 
     @Test

@@ -220,6 +220,8 @@ CREATE TABLE test_run (
     failure_message     TEXT,
 
     created_by          UUID REFERENCES user_account(id),
+    idempotency_key     VARCHAR(160),
+    idempotency_request_hash VARCHAR(64),
     created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     deleted_at          TIMESTAMPTZ,
@@ -592,6 +594,9 @@ CREATE INDEX idx_scenario_authoring_discovery ON scenario_authoring_job(source_d
 CREATE INDEX idx_scenario_authoring_status ON scenario_authoring_job(status, updated_at DESC) WHERE deleted_at IS NULL;
 CREATE UNIQUE INDEX ux_scenario_authoring_project_creator_idempotency
     ON scenario_authoring_job(project_id, created_by, idempotency_key)
+    WHERE idempotency_key IS NOT NULL AND deleted_at IS NULL;
+CREATE UNIQUE INDEX ux_test_run_project_creator_idempotency
+    ON test_run(project_id, created_by, idempotency_key)
     WHERE idempotency_key IS NOT NULL AND deleted_at IS NULL;
 CREATE INDEX idx_test_run_source_discovery ON test_run(source_discovery_id) WHERE source_discovery_id IS NOT NULL;
 CREATE INDEX idx_test_run_scenario_fit ON test_run(scenario_fit_status, updated_at DESC) WHERE deleted_at IS NULL;

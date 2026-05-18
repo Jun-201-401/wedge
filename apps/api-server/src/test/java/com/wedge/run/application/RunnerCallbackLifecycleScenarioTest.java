@@ -35,6 +35,7 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
@@ -78,7 +79,8 @@ class RunnerCallbackLifecycleScenarioTest {
                 new AgentExecuteRequestMessageFactory(new AgentReplayHintsFactory()),
                 outboxMessagePersistenceAdapter,
                 applicationEventPublisher,
-                new ScenarioPlanValidator()
+                new ScenarioPlanValidator(),
+                new ObjectMapper()
         );
         runnerCallbackService = new RunnerCallbackService(
                 runService,
@@ -331,6 +333,16 @@ class RunnerCallbackLifecycleScenarioTest {
         public Optional<RunRecord> findById(UUID runId) {
             return Optional.ofNullable(runs.get(runId))
                     .filter(run -> run.getDeletedAt() == null);
+        }
+
+        @Override
+        public Optional<RunRecord> findByIdempotencyKey(UUID projectId, UUID createdBy, String idempotencyKey) {
+            return runs.values().stream()
+                    .filter(run -> run.getDeletedAt() == null)
+                    .filter(run -> Objects.equals(projectId, run.getProjectId()))
+                    .filter(run -> Objects.equals(createdBy, run.getCreatedBy()))
+                    .filter(run -> Objects.equals(idempotencyKey, run.getIdempotencyKey()))
+                    .findFirst();
         }
 
         @Override

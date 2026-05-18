@@ -37,12 +37,18 @@ public class RunRecord {
     private String failureCode;
     private String failureMessage;
     private UUID createdBy;
+    private String idempotencyKey;
+    private String idempotencyRequestHash;
     private OffsetDateTime createdAt;
     private OffsetDateTime updatedAt;
     private OffsetDateTime deletedAt;
     private long version;
 
     public static RunRecord created(RunCreateRequest request) {
+        return created(request, null, null, null);
+    }
+
+    public static RunRecord created(RunCreateRequest request, UUID createdBy, String idempotencyKey, String idempotencyRequestHash) {
         RunRecord record = new RunRecord();
         record.setId(UUID.randomUUID());
         record.setProjectId(request.projectId());
@@ -58,6 +64,9 @@ public class RunRecord {
         record.setStatus(RunStatus.CREATED);
         record.setResultCompleteness(ResultCompleteness.NONE);
         record.setAnalysisStatus(AnalysisStatus.NOT_STARTED);
+        record.setCreatedBy(createdBy);
+        record.setIdempotencyKey(idempotencyKey);
+        record.setIdempotencyRequestHash(idempotencyRequestHash);
         record.setVersion(0L);
         return record;
     }

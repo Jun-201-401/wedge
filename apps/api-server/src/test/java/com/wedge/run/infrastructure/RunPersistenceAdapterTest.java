@@ -78,6 +78,21 @@ class RunPersistenceAdapterTest {
         assertThat(created.startUrl()).isEqualTo(request.startUrl());
     }
 
+    @Test
+    void createRunPersistsCreatorAndIdempotencyMetadata() {
+        RunPersistenceAdapter runPersistenceAdapter = adapter();
+        RunCreateRequest request = sampleRequest();
+        UUID userId = UUID.randomUUID();
+
+        runPersistenceAdapter.createRun(request, userId, "idem-run-1", "a".repeat(64));
+
+        verify(runMapper).insert(runRecordCaptor.capture());
+        RunRecord persisted = runRecordCaptor.getValue();
+        assertThat(persisted.getCreatedBy()).isEqualTo(userId);
+        assertThat(persisted.getIdempotencyKey()).isEqualTo("idem-run-1");
+        assertThat(persisted.getIdempotencyRequestHash()).isEqualTo("a".repeat(64));
+    }
+
 
     @Test
     void createRunWithoutScenarioPlanStoresAgentReadyRunWithoutSteps() {
