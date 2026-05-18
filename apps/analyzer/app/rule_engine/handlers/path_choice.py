@@ -6,19 +6,26 @@ from app.rule_engine.handler_utils import base_hit, observations_of_type
 from app.rule_engine.models import RuleHit
 from app.stage.stage_context_builder import ObservationRecord, StageContext
 
-WARNING_GROUP_CHOICE_COUNT = 11
-OVERLOAD_GROUP_CHOICE_COUNT = 15
-CRITICAL_GROUP_CHOICE_COUNT = 20
 DENSE_WARNING_CHOICE_COUNT = 7
-DENSE_OVERLOAD_CHOICE_COUNT = 9
-DENSE_WARNING_SPACING_PX = 8
-DENSE_OVERLOAD_SPACING_PX = 16
+DENSE_OVERLOAD_CHOICE_COUNT = 10
+DENSE_CRITICAL_CHOICE_COUNT = 15
+DENSE_MEDIAN_GAP_PX = 8
+DENSE_OVERLOAD_MEDIAN_GAP_PX = 6
+DENSE_CRITICAL_MEDIAN_GAP_PX = 4
+DENSE_TIGHT_GAP_PX = 8
+DENSE_WARNING_OCCUPIED_RATIO = 0.75
+DENSE_OVERLOAD_OCCUPIED_RATIO = 0.8
+DENSE_CRITICAL_OCCUPIED_RATIO = 0.85
+DENSE_OVERLOAD_TIGHT_PAIR_RATIO = 0.5
+DENSE_CRITICAL_TIGHT_PAIR_RATIO = 0.65
 CONTAINER_BUCKET_PX = 24
 LAYOUT_CLUSTER_DISTANCE_PX = 96
 SIMILAR_SIZE_RATIO = 0.45
 REPEATED_ROW_Y_TOLERANCE_PX = 28
 REPEATED_GRID_X_OVERLAP_RATIO = 0.35
 MAX_GROUP_SELECTOR_SIGNAL = 40
+DEDUPED_BOUNDS_TOLERANCE_PX = 2
+DEDUPED_OVERLAP_RATIO = 0.9
 
 UTILITY_CONTAINER_ROLES = {"banner", "header", "contentinfo", "footer"}
 BROAD_CONTAINER_ROLES = {"", "main", "document", "body"}
@@ -82,9 +89,14 @@ def evaluate_path_choice_overload(rule: dict[str, Any], context: StageContext) -
         ),
     )
     count = candidate["choice_count"]
-    spacing = candidate["avg_spacing_px"]
+    raw_count = candidate["raw_choice_count"]
+    avg_spacing = candidate["avg_spacing_px"]
+    median_gap = candidate["median_gap_px"]
+    occupied_ratio = candidate["occupied_axis_ratio"]
+    tight_pair_ratio = candidate["tight_pair_ratio"]
     group_label = candidate["group_label"]
-    density_signal = f"group_avg_spacing_px={spacing}" if spacing is not None else "group_avg_spacing_px=unknown"
+    avg_spacing_signal = f"group_avg_spacing_px={avg_spacing}" if avg_spacing is not None else "group_avg_spacing_px=unknown"
+    median_gap_signal = f"group_median_gap_px={median_gap}" if median_gap is not None else "group_median_gap_px=unknown"
     selector_signal = _choice_group_selectors_signal(candidate["components"])
     return base_hit(
         rule=rule,
@@ -97,11 +109,15 @@ def evaluate_path_choice_overload(rule: dict[str, Any], context: StageContext) -
             f"choice_group_key={candidate['group_key']}",
             f"choice_group_label={group_label}",
             f"group_interactive_choice_count={count}",
-            density_signal,
-            f"warning_threshold={WARNING_GROUP_CHOICE_COUNT}",
-            f"overload_threshold={OVERLOAD_GROUP_CHOICE_COUNT}",
-            f"dense_warning_threshold={DENSE_WARNING_CHOICE_COUNT}@{DENSE_WARNING_SPACING_PX}px",
-            f"dense_overload_threshold={DENSE_OVERLOAD_CHOICE_COUNT}@{DENSE_OVERLOAD_SPACING_PX}px",
+            f"group_raw_interactive_choice_count={raw_count}",
+            f"group_deduped_choice_count={count}",
+            avg_spacing_signal,
+            median_gap_signal,
+            f"group_tight_pair_ratio={tight_pair_ratio}",
+            f"group_occupied_axis_ratio={occupied_ratio}",
+            f"dense_choice_threshold={DENSE_WARNING_CHOICE_COUNT}",
+            f"dense_median_gap_threshold_px={DENSE_MEDIAN_GAP_PX}",
+            f"dense_occupied_axis_ratio_threshold={DENSE_WARNING_OCCUPIED_RATIO}",
             selector_signal,
         ],
         summary="같은 선택 영역 안에 비슷한 행동 선택지가 많이 모여 있어 사용자가 다음 행동을 고르기 어려울 수 있습니다.",
@@ -130,9 +146,21 @@ def _choice_count_candidates(record: ObservationRecord, context: StageContext) -
     groups = _choice_groups(countable_components)
     candidates: list[dict[str, Any]] = []
     for group in groups:
-        choice_count = len(group["components"])
-        avg_spacing = _average_spacing(group["components"])
-        severity = _severity(choice_count=choice_count, avg_spacing_px=avg_spacing, stage=context.stage)
+        raw_components = group["components"]
+        deduped_components = _dedupe_choice_components(raw_components)
+        choice_count = len(deduped_components)
+        density = _choice_density_metrics(deduped_components)
+        avg_spacing = density["avg_gap_px"]
+        median_gap = density["median_gap_px"]
+        occupied_ratio = density["occupied_axis_ratio"]
+        tight_pair_ratio = density["tight_pair_ratio"]
+        severity = _severity(
+            choice_count=choice_count,
+            median_gap_px=median_gap,
+            occupied_axis_ratio=occupied_ratio,
+            tight_pair_ratio=tight_pair_ratio,
+            stage=context.stage,
+        )
         if severity == 0:
             continue
         candidates.append(
@@ -140,28 +168,92 @@ def _choice_count_candidates(record: ObservationRecord, context: StageContext) -
                 "record": record,
                 "group_key": group["key"],
                 "group_label": group["label"],
+                "raw_choice_count": len(raw_components),
                 "choice_count": choice_count,
                 "avg_spacing_px": avg_spacing,
+                "median_gap_px": median_gap,
+                "occupied_axis_ratio": occupied_ratio,
+                "tight_pair_ratio": tight_pair_ratio,
                 "severity": severity,
                 "confidence": _confidence(record, viewport=viewport),
-                "components": group["components"],
+                "components": deduped_components,
             }
         )
     return candidates
 
 
-def _severity(*, choice_count: int, avg_spacing_px: float | None, stage: str) -> int:
-    if choice_count >= CRITICAL_GROUP_CHOICE_COUNT and stage in {"CTA", "INPUT", "COMMIT"}:
+def _dedupe_choice_components(components: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    deduped: list[dict[str, Any]] = []
+    for component in components:
+        if any(_same_visible_choice(component, existing) for existing in deduped):
+            continue
+        deduped.append(component)
+    return deduped
+
+
+def _same_visible_choice(left: dict[str, Any], right: dict[str, Any]) -> bool:
+    if _choice_label_key(left) != _choice_label_key(right):
+        return False
+    left_bounds = _bounds(left.get("bounds"))
+    right_bounds = _bounds(right.get("bounds"))
+    if left_bounds is None or right_bounds is None:
+        return False
+    if _near_same_bounds(left_bounds, right_bounds):
+        return True
+    return _bounds_overlap_ratio(left_bounds, right_bounds) >= DEDUPED_OVERLAP_RATIO
+
+
+def _choice_label_key(component: dict[str, Any]) -> str:
+    text = _text(component.get("text")) or _text(component.get("visible_text")) or _text(component.get("accessible_name"))
+    return " ".join(text.lower().split())
+
+
+def _near_same_bounds(left: dict[str, float], right: dict[str, float]) -> bool:
+    return all(abs(left[key] - right[key]) <= DEDUPED_BOUNDS_TOLERANCE_PX for key in ("x", "y", "width", "height"))
+
+
+def _bounds_overlap_ratio(left: dict[str, float], right: dict[str, float]) -> float:
+    overlap_width = _horizontal_overlap(left, right)
+    overlap_height = _vertical_overlap(left, right)
+    overlap_area = overlap_width * overlap_height
+    if overlap_area <= 0:
+        return 0.0
+    smaller_area = min(left["width"] * left["height"], right["width"] * right["height"])
+    if smaller_area <= 0:
+        return 0.0
+    return overlap_area / smaller_area
+
+
+def _severity(
+    *,
+    choice_count: int,
+    median_gap_px: float | None,
+    occupied_axis_ratio: float,
+    tight_pair_ratio: float,
+    stage: str,
+) -> int:
+    if choice_count < DENSE_WARNING_CHOICE_COUNT:
+        return 0
+    if median_gap_px is None or median_gap_px > DENSE_MEDIAN_GAP_PX:
+        return 0
+    if occupied_axis_ratio < DENSE_WARNING_OCCUPIED_RATIO:
+        return 0
+    if (
+        choice_count >= DENSE_CRITICAL_CHOICE_COUNT
+        and median_gap_px <= DENSE_CRITICAL_MEDIAN_GAP_PX
+        and tight_pair_ratio >= DENSE_CRITICAL_TIGHT_PAIR_RATIO
+        and occupied_axis_ratio >= DENSE_CRITICAL_OCCUPIED_RATIO
+        and stage in {"CTA", "INPUT", "COMMIT"}
+    ):
         return 3
-    if choice_count >= OVERLOAD_GROUP_CHOICE_COUNT:
+    if (
+        choice_count >= DENSE_OVERLOAD_CHOICE_COUNT
+        and median_gap_px <= DENSE_OVERLOAD_MEDIAN_GAP_PX
+        and tight_pair_ratio >= DENSE_OVERLOAD_TIGHT_PAIR_RATIO
+        and occupied_axis_ratio >= DENSE_OVERLOAD_OCCUPIED_RATIO
+    ):
         return 2
-    if choice_count >= WARNING_GROUP_CHOICE_COUNT:
-        return 1
-    if avg_spacing_px is not None and choice_count >= DENSE_OVERLOAD_CHOICE_COUNT and avg_spacing_px < DENSE_OVERLOAD_SPACING_PX:
-        return 2
-    if avg_spacing_px is not None and choice_count >= DENSE_WARNING_CHOICE_COUNT and avg_spacing_px < DENSE_WARNING_SPACING_PX:
-        return 1
-    return 0
+    return 1
 
 
 def _is_countable_choice(component: Any, *, viewport: dict[str, float] | None) -> bool:
@@ -314,16 +406,127 @@ def _group_label(component: dict[str, Any]) -> str:
     return role if role else "layout cluster"
 
 
-def _average_spacing(components: list[dict[str, Any]]) -> float | None:
-    values = [
-        value
+def _choice_density_metrics(components: list[dict[str, Any]]) -> dict[str, float | None]:
+    bounds_values = [
+        bounds
         for component in components
-        for value in [_number(component.get("nearest_target_spacing_px"))]
-        if value is not None and value >= 0
+        for bounds in [_bounds(component.get("bounds"))]
+        if bounds is not None
+    ]
+    if len(bounds_values) < 2:
+        return {
+            "avg_gap_px": None,
+            "median_gap_px": None,
+            "tight_pair_ratio": 0.0,
+            "occupied_axis_ratio": 0.0,
+        }
+
+    group_bounds = _density_group_bounds(components, bounds_values)
+    orientation = _choice_group_orientation(bounds_values)
+    gaps = _adjacent_gaps(bounds_values, orientation)
+    if not gaps:
+        return {
+            "avg_gap_px": None,
+            "median_gap_px": None,
+            "tight_pair_ratio": 0.0,
+            "occupied_axis_ratio": _occupied_axis_ratio(bounds_values, group_bounds, orientation),
+        }
+
+    tight_pairs = sum(1 for gap in gaps if gap <= DENSE_TIGHT_GAP_PX)
+    return {
+        "avg_gap_px": round(sum(gaps) / len(gaps), 1),
+        "median_gap_px": round(_median(gaps), 1),
+        "tight_pair_ratio": round(tight_pairs / len(gaps), 2),
+        "occupied_axis_ratio": round(_occupied_axis_ratio(bounds_values, group_bounds, orientation), 2),
+    }
+
+
+def _density_group_bounds(components: list[dict[str, Any]], bounds_values: list[dict[str, float]]) -> dict[str, float]:
+    container_bounds = _shared_container_bounds(components)
+    if container_bounds is not None:
+        return container_bounds
+    group_bounds = bounds_values[0].copy()
+    for bounds in bounds_values[1:]:
+        group_bounds = _union_bounds(group_bounds, bounds)
+    return group_bounds
+
+
+def _shared_container_bounds(components: list[dict[str, Any]]) -> dict[str, float] | None:
+    values = [
+        bounds
+        for component in components
+        for bounds in [_bounds(component.get("container_bounds"))]
+        if bounds is not None
     ]
     if not values:
         return None
-    return round(sum(values) / len(values), 1)
+    first = values[0]
+    if all(_same_bounds(first, value) for value in values[1:]):
+        return first
+    return None
+
+
+def _same_bounds(left: dict[str, float], right: dict[str, float]) -> bool:
+    return all(abs(left[key] - right[key]) <= 1 for key in ("x", "y", "width", "height"))
+
+
+def _choice_group_orientation(bounds_values: list[dict[str, float]]) -> str:
+    centers_x = [bounds["x"] + bounds["width"] / 2 for bounds in bounds_values]
+    centers_y = [bounds["y"] + bounds["height"] / 2 for bounds in bounds_values]
+    span_x = max(centers_x) - min(centers_x)
+    span_y = max(centers_y) - min(centers_y)
+    if span_y > span_x * 1.25:
+        return "vertical"
+    if span_x > span_y * 1.25:
+        return "horizontal"
+    return "grid"
+
+
+def _adjacent_gaps(bounds_values: list[dict[str, float]], orientation: str) -> list[float]:
+    if orientation == "vertical":
+        ordered = sorted(bounds_values, key=lambda bounds: (bounds["y"], bounds["x"]))
+        return [
+            max(0.0, right["y"] - (left["y"] + left["height"]))
+            for left, right in zip(ordered, ordered[1:])
+        ]
+    if orientation == "horizontal":
+        ordered = sorted(bounds_values, key=lambda bounds: (bounds["x"], bounds["y"]))
+        return [
+            max(0.0, right["x"] - (left["x"] + left["width"]))
+            for left, right in zip(ordered, ordered[1:])
+        ]
+    ordered = sorted(bounds_values, key=lambda bounds: (bounds["y"], bounds["x"]))
+    return [
+        _bounds_distance(left, right)
+        for left, right in zip(ordered, ordered[1:])
+    ]
+
+
+def _occupied_axis_ratio(
+    bounds_values: list[dict[str, float]],
+    group_bounds: dict[str, float],
+    orientation: str,
+) -> float:
+    if orientation == "vertical":
+        denominator = group_bounds["height"]
+        numerator = sum(bounds["height"] for bounds in bounds_values)
+    elif orientation == "horizontal":
+        denominator = group_bounds["width"]
+        numerator = sum(bounds["width"] for bounds in bounds_values)
+    else:
+        denominator = group_bounds["width"] * group_bounds["height"]
+        numerator = sum(bounds["width"] * bounds["height"] for bounds in bounds_values)
+    if denominator <= 0:
+        return 0.0
+    return min(numerator / denominator, 1.0)
+
+
+def _median(values: list[float]) -> float:
+    ordered = sorted(values)
+    midpoint = len(ordered) // 2
+    if len(ordered) % 2:
+        return ordered[midpoint]
+    return (ordered[midpoint - 1] + ordered[midpoint]) / 2
 
 
 def _is_utility_or_legal_choice(component: dict[str, Any]) -> bool:

@@ -648,6 +648,8 @@ def _target_size_selectors_from_issue(issue: dict[str, Any]) -> set[str]:
 
 
 def _component_matches_target_size_issue(component: dict[str, Any], selectors: set[str]) -> bool:
+    if _is_text_entry_target_size_component(component):
+        return False
     selector = component.get("selector")
     if selectors and isinstance(selector, str):
         return selector in selectors
@@ -658,6 +660,19 @@ def _component_matches_target_size_issue(component: dict[str, Any], selectors: s
     spacing = _number(component.get("nearest_target_spacing_px"))
     tight = spacing is not None and spacing < 8
     return min_dim < 24 or (min_dim < 44 and tight)
+
+
+def _is_text_entry_target_size_component(component: dict[str, Any]) -> bool:
+    role = str(component.get("role") or "").strip().lower()
+    tag = str(component.get("tag") or "").strip().lower()
+    input_type = str(component.get("type") or component.get("input_type") or "").strip().lower()
+    if role in {"textbox", "searchbox", "combobox"}:
+        return True
+    if tag == "textarea":
+        return True
+    if tag == "input" and input_type not in {"button", "submit", "reset", "image"}:
+        return True
+    return False
 
 
 def _choice_group_key_from_issue(issue: dict[str, Any]) -> str | None:

@@ -128,15 +128,15 @@
       "axis": "Path",
       "applicableStages": ["FIRST_VIEW", "VALUE", "CTA"],
       "evidence_level": "Operational",
-      "definition": "A viewport should not expose an excessive number of simultaneous interactive choices.",
+      "definition": "A choice area should not pack many clickable choices so tightly that users struggle to distinguish or select them.",
       "required_observations": ["interactive_components"],
       "measurement_sources": ["dom", "layout"],
-      "signal_rule": "Count visible, enabled, clickable interactive components intersecting the viewport.",
+      "signal_rule": "Group visible, enabled, clickable components by choice area and evaluate density using component bounds: issue only when the group has 7 or more choices, median adjacent gap is 8px or less, and occupied axis ratio is at least 0.75.",
       "severity_rules": [
-        {"severity": 0, "condition": "interactive choice count is 10 or fewer"},
-        {"severity": 1, "condition": "interactive choice count is 11 or more"},
-        {"severity": 2, "condition": "interactive choice count is 15 or more"},
-        {"severity": 3, "condition": "interactive choice count is 20 or more in a high-impact action stage"}
+        {"severity": 0, "condition": "choice group has fewer than 7 choices, median adjacent gap is over 8px, or occupied axis ratio is below 0.75"},
+        {"severity": 1, "condition": "choice group has 7 or more choices with median adjacent gap of 8px or less and occupied axis ratio of at least 0.75"},
+        {"severity": 2, "condition": "choice group has 10 or more choices with median adjacent gap of 6px or less, tight pair ratio of at least 0.5, and occupied axis ratio of at least 0.8"},
+        {"severity": 3, "condition": "choice group has 15 or more choices with median adjacent gap of 4px or less, tight pair ratio of at least 0.65, and occupied axis ratio of at least 0.85 in a high-impact action stage"}
       ],
       "confidence_rule": "Use observation confidence and cap confidence when viewport dimensions are missing.",
       "fix_leverage_default": 1.0,
@@ -147,7 +147,7 @@
           "label": "GOV.UK Components",
           "publisher": "GOV.UK",
           "title": "Components",
-          "basisSummary": "같은 선택 영역 안에 클릭 가능한 항목이 너무 많거나 촘촘하게 배치되면, 사용자가 다음 행동을 고르기 어려워질 수 있습니다.",
+          "basisSummary": "같은 결정 영역 안에 클릭 가능한 선택지가 너무 많거나 촘촘하게 배치되면, 사용자가 다음 행동을 고르기 어려워질 수 있습니다.",
           "url": "https://design-system.service.gov.uk/components/"
         }
       ]
@@ -514,14 +514,14 @@
       "definition": "Goal-relevant interactive targets should be large enough and spaced enough for accurate pointer or touch activation.",
       "required_observations": ["interactive_components"],
       "measurement_sources": ["dom", "layout"],
-      "signal_rule": "Visible enabled interactive components are evaluated only when they were used in the scenario, are CTA candidates, are form/required controls, or match core action keywords; goal-relevant targets with bounds smaller than 24 CSS px, or below 44 CSS px with tight neighboring target spacing, are flagged.",
+      "signal_rule": "Visible enabled interactive buttons, links, and icon controls are evaluated only when they were used in the scenario, are CTA candidates, are required choice controls, or match core action keywords; text-entry fields such as input, textarea, textbox, searchbox, and combobox are suppressed; goal-relevant targets with bounds smaller than 24 CSS px, or below 44 CSS px with tight neighboring target spacing, are flagged.",
       "severity_rules": [
         {"severity": 0, "condition": "all countable targets are at least 24 CSS px, or smaller targets have sufficient spacing/exception context"},
         {"severity": 1, "condition": "a target is smaller than 24 CSS px but not tightly spaced, or a 24-44 CSS px target is tightly spaced"},
         {"severity": 2, "condition": "a target is smaller than 24 CSS px and spacing is tight or unknown"},
         {"severity": 3, "condition": "a target is smaller than 16 CSS px and spacing is tight or unknown"}
       ],
-      "exceptions": ["Suppress hidden, disabled, aria-hidden, or off-viewport targets.", "Suppress header/footer utility and legal/help links.", "Suppress targets that are merely clickable but not scenario-used, CTA-like, form/required, or matched to core action keywords.", "Treat 44 CSS px as an enhanced usability target, not a hard failure threshold."],
+      "exceptions": ["Suppress hidden, disabled, aria-hidden, or off-viewport targets.", "Suppress header/footer utility and legal/help links.", "Suppress text-entry fields such as search inputs even when they are clickable or form controls.", "Suppress targets that are merely clickable but not scenario-used, CTA-like, required choice controls, or matched to core action keywords.", "Treat 44 CSS px as an enhanced usability target, not a hard failure threshold."],
       "confidence_rule": "Use interactive_components confidence and cap confidence when viewport dimensions are missing.",
       "fix_leverage_default": 0.9,
       "output_template": "일부 클릭 대상이 너무 작거나 서로 가까워 정확히 누르기 어렵습니다.",
