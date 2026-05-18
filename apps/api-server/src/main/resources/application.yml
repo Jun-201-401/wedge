@@ -35,6 +35,14 @@ wedge:
     presigned-url:
       max-count: ${WEDGE_ARTIFACT_PRESIGNED_URL_MAX_COUNT:20}
       ttl-seconds: ${WEDGE_ARTIFACT_PRESIGNED_URL_TTL_SECONDS:3600}
+    content:
+      max-download-bytes: ${WEDGE_ARTIFACT_CONTENT_MAX_DOWNLOAD_BYTES:10485760}
+  evidence:
+    packet:
+      max-checkpoints: ${WEDGE_EVIDENCE_PACKET_MAX_CHECKPOINTS:500}
+      max-observations: ${WEDGE_EVIDENCE_PACKET_MAX_OBSERVATIONS:5000}
+      max-artifacts: ${WEDGE_EVIDENCE_PACKET_MAX_ARTIFACTS:500}
+      max-bytes: ${WEDGE_EVIDENCE_PACKET_MAX_BYTES:5242880}
   auth:
     refresh-cookie:
       secure: ${WEDGE_REFRESH_COOKIE_SECURE:true}
