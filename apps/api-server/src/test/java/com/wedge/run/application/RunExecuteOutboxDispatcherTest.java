@@ -124,7 +124,10 @@ class RunExecuteOutboxDispatcherTest {
 
         dispatcher.retryDueMessages();
 
-        verify(outboxMessagePersistenceAdapter).markFailed(outboxMessageId);
+        verify(outboxMessagePersistenceAdapter).markFailed(
+                org.mockito.ArgumentMatchers.eq(outboxMessageId),
+                org.mockito.ArgumentMatchers.any(IllegalStateException.class)
+        );
     }
 
     private RunExecuteRequestMessage sampleMessage() {

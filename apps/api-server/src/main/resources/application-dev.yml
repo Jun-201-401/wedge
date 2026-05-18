@@ -31,6 +31,7 @@ wedge:
   internal:
     service-token: ${INTERNAL_SERVICE_TOKEN}
     runner-callback-signature-secret: ${INTERNAL_RUNNER_CALLBACK_SIGNATURE_SECRET:${RUNNER_CALLBACK_SIGNATURE_SECRET:}}
+    analyzer-callback-signature-secret: ${INTERNAL_ANALYZER_CALLBACK_SIGNATURE_SECRET:${ANALYZER_CALLBACK_SIGNATURE_SECRET:${INTERNAL_RUNNER_CALLBACK_SIGNATURE_SECRET:${RUNNER_CALLBACK_SIGNATURE_SECRET:local-secret}}}}
 
   auth:
     refresh-cookie:

@@ -99,5 +99,6 @@
             CAST(#{deltaJsonb} AS jsonb), CAST(#{artifactRefsJsonb} AS jsonb),
             #{capturedAt}, #{durationMs}
         )
+        ON CONFLICT (discovery_id, checkpoint_key) DO NOTHING
     </insert>
 </mapper>

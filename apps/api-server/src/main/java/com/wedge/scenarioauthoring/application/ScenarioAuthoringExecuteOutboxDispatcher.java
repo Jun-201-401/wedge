@@ -53,7 +53,7 @@ public class ScenarioAuthoringExecuteOutboxDispatcher {
                     message.idempotencyKey(),
                     exception
             );
-            outboxMessagePersistenceAdapter.markFailed(outboxMessageId);
+            outboxMessagePersistenceAdapter.markFailed(outboxMessageId, exception);
         }
     }
 }

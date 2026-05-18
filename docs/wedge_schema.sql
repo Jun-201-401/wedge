@@ -220,6 +220,8 @@ CREATE TABLE test_run (
     failure_message     TEXT,
 
     created_by          UUID REFERENCES user_account(id),
+    idempotency_key     VARCHAR(160),
+    idempotency_request_hash VARCHAR(64),
     created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     deleted_at          TIMESTAMPTZ,
@@ -374,9 +376,7 @@ CREATE TABLE evidence_packet (
     CHECK (
         (execution_type = 'RUN' AND run_id IS NOT NULL)
         OR (execution_type = 'DISCOVERY' AND discovery_id IS NOT NULL)
-    ),
-    UNIQUE (run_id, schema_version),
-    UNIQUE (discovery_id, schema_version)
+    )
 );
 
 -- ---------------------------------------------------------------------------
@@ -521,16 +521,19 @@ CREATE TABLE outbox_message (
     aggregate_id        UUID NOT NULL,
     event_type          VARCHAR(120) NOT NULL,
     payload_jsonb       JSONB NOT NULL,
-    status              VARCHAR(32) NOT NULL DEFAULT 'PENDING' CHECK (status IN ('PENDING','PUBLISHED','FAILED')),
+    status              VARCHAR(32) NOT NULL DEFAULT 'PENDING' CHECK (status IN ('PENDING','PUBLISHED','FAILED','EXHAUSTED')),
     attempt_count       INTEGER NOT NULL DEFAULT 0,
     next_attempt_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    published_at        TIMESTAMPTZ
+    published_at        TIMESTAMPTZ,
+    last_error          TEXT,
+    exhausted_at        TIMESTAMPTZ
 );
 
 CREATE TABLE processed_message (
     consumer_name       VARCHAR(120) NOT NULL,
     message_id          VARCHAR(160) NOT NULL,
+    payload_hash        VARCHAR(64),
     processed_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     PRIMARY KEY (consumer_name, message_id)
 );
@@ -592,6 +595,9 @@ CREATE INDEX idx_scenario_authoring_status ON scenario_authoring_job(status, upd
 CREATE UNIQUE INDEX ux_scenario_authoring_project_creator_idempotency
     ON scenario_authoring_job(project_id, created_by, idempotency_key)
     WHERE idempotency_key IS NOT NULL AND deleted_at IS NULL;
+CREATE UNIQUE INDEX ux_test_run_project_creator_idempotency
+    ON test_run(project_id, created_by, idempotency_key)
+    WHERE idempotency_key IS NOT NULL AND deleted_at IS NULL;
 CREATE INDEX idx_test_run_source_discovery ON test_run(source_discovery_id) WHERE source_discovery_id IS NOT NULL;
 CREATE INDEX idx_test_run_scenario_fit ON test_run(scenario_fit_status, updated_at DESC) WHERE deleted_at IS NULL;
 CREATE INDEX idx_checkpoint_discovery_captured ON checkpoint(source_type, discovery_id, captured_at);
@@ -608,6 +614,12 @@ CREATE INDEX idx_observation_run_type ON observation(run_id, observation_type);
 CREATE INDEX idx_artifact_run_created ON artifact(source_type, run_id, created_at);
 
 CREATE INDEX idx_analysis_job_run_created ON analysis_job(run_id, created_at DESC);
+CREATE INDEX idx_evidence_packet_run_schema_created
+    ON evidence_packet(run_id, schema_version, created_at DESC)
+    WHERE run_id IS NOT NULL;
+CREATE INDEX idx_evidence_packet_discovery_schema_created
+    ON evidence_packet(discovery_id, schema_version, created_at DESC)
+    WHERE discovery_id IS NOT NULL;
 CREATE INDEX idx_rule_hit_run_priority ON rule_hit(run_id, priority_score DESC);
 CREATE INDEX idx_finding_run_rank ON analysis_finding(run_id, rank_order);
 CREATE INDEX idx_report_run_created ON report(run_id, created_at DESC) WHERE deleted_at IS NULL;
@@ -615,6 +627,7 @@ CREATE UNIQUE INDEX ux_report_active_analysis_job ON report(analysis_job_id) WHE
 
 CREATE INDEX idx_mcp_invocation_started ON mcp_invocation_log(started_at DESC);
 CREATE INDEX idx_outbox_pending ON outbox_message(status, next_attempt_at);
+CREATE INDEX idx_outbox_exhausted ON outbox_message(status, exhausted_at) WHERE status = 'EXHAUSTED';
 CREATE INDEX idx_runner_message_idempotency_run ON runner_message_idempotency_record(scope, run_id, completed_at DESC);
 CREATE INDEX idx_agent_idempotency_run ON agent_idempotency_record(run_id, completed_at DESC);
 CREATE INDEX idx_agent_idempotency_lease ON agent_idempotency_record(status, lease_expires_at);

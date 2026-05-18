@@ -21,6 +21,7 @@ import com.wedge.evidence.infrastructure.EvidencePacketMapper;
 import com.wedge.evidence.infrastructure.ObservationMapper;
 import com.wedge.run.api.dto.RunResponse;
 import com.wedge.run.application.RunService;
+import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -59,6 +60,14 @@ public class EvidenceService {
     private final Clock clock;
     private final int presignedUrlMaxCount;
     private final Duration presignedUrlTtl;
+    private final int evidencePacketMaxCheckpoints;
+    private final int evidencePacketMaxObservations;
+    private final int evidencePacketMaxArtifacts;
+    private final int evidencePacketMaxBytes;
+    private final long artifactContentMaxDownloadBytes;
+
+    private record RunEvidenceData(List<Artifact> artifacts, List<Checkpoint> checkpoints, List<Observation> observations) {
+    }
 
     @Autowired
     public EvidenceService(
@@ -73,7 +82,12 @@ public class EvidenceService {
             ArtifactPresignedUrlGenerator artifactPresignedUrlGenerator,
             ObjectMapper objectMapper,
             @Value("${wedge.artifacts.presigned-url.max-count:20}") int presignedUrlMaxCount,
-            @Value("${wedge.artifacts.presigned-url.ttl-seconds:3600}") long presignedUrlTtlSeconds
+            @Value("${wedge.artifacts.presigned-url.ttl-seconds:3600}") long presignedUrlTtlSeconds,
+            @Value("${wedge.evidence.packet.max-checkpoints:500}") int evidencePacketMaxCheckpoints,
+            @Value("${wedge.evidence.packet.max-observations:5000}") int evidencePacketMaxObservations,
+            @Value("${wedge.evidence.packet.max-artifacts:500}") int evidencePacketMaxArtifacts,
+            @Value("${wedge.evidence.packet.max-bytes:5242880}") int evidencePacketMaxBytes,
+            @Value("${wedge.artifacts.content.max-download-bytes:10485760}") long artifactContentMaxDownloadBytes
     ) {
         this(
                 runService,
@@ -88,7 +102,12 @@ public class EvidenceService {
                 objectMapper,
                 Clock.systemUTC(),
                 presignedUrlMaxCount,
-                Duration.ofSeconds(presignedUrlTtlSeconds)
+                Duration.ofSeconds(presignedUrlTtlSeconds),
+                evidencePacketMaxCheckpoints,
+                evidencePacketMaxObservations,
+                evidencePacketMaxArtifacts,
+                evidencePacketMaxBytes,
+                artifactContentMaxDownloadBytes
         );
     }
 
@@ -105,7 +124,12 @@ public class EvidenceService {
             ObjectMapper objectMapper,
             Clock clock,
             int presignedUrlMaxCount,
-            Duration presignedUrlTtl
+            Duration presignedUrlTtl,
+            int evidencePacketMaxCheckpoints,
+            int evidencePacketMaxObservations,
+            int evidencePacketMaxArtifacts,
+            int evidencePacketMaxBytes,
+            long artifactContentMaxDownloadBytes
     ) {
         this.runService = runService;
         this.artifactMapper = artifactMapper;
@@ -120,6 +144,11 @@ public class EvidenceService {
         this.clock = clock;
         this.presignedUrlMaxCount = presignedUrlMaxCount;
         this.presignedUrlTtl = presignedUrlTtl;
+        this.evidencePacketMaxCheckpoints = evidencePacketMaxCheckpoints;
+        this.evidencePacketMaxObservations = evidencePacketMaxObservations;
+        this.evidencePacketMaxArtifacts = evidencePacketMaxArtifacts;
+        this.evidencePacketMaxBytes = evidencePacketMaxBytes;
+        this.artifactContentMaxDownloadBytes = artifactContentMaxDownloadBytes;
     }
 
     @Transactional(readOnly = true)
@@ -157,34 +186,36 @@ public class EvidenceService {
     @Transactional(readOnly = true)
     public Map<String, Object> getRunEvidencePacket(UUID runId) {
         RunResponse run = runService.getRun(runId);
-        List<Artifact> artifacts = artifactMapper.findByRunId(runId);
+        RunEvidenceData evidence = loadRunEvidenceForPacket(runId);
         Map<String, Object> packet = evidencePacketAssembler.assemble(
                 run,
-                artifacts,
-                checkpointMapper.findByRunId(runId),
-                observationMapper.findByRunId(runId)
+                evidence.artifacts(),
+                evidence.checkpoints(),
+                evidence.observations()
         );
-        return evidencePacketSignedUrlDecorator.decorateRunPacket(packet, artifacts);
+        Map<String, Object> decoratedPacket = evidencePacketSignedUrlDecorator.decorateRunPacket(packet, evidence.artifacts());
+        validateEvidencePacketByteSize(writeJson(decoratedPacket));
+        return decoratedPacket;
     }
 
     @Transactional
     public EvidencePacketSnapshot materializeRunEvidencePacketSnapshot(UUID runId) {
         RunResponse run = runService.getRun(runId);
-        List<Artifact> artifacts = artifactMapper.findByRunId(runId);
-        List<Checkpoint> checkpoints = checkpointMapper.findByRunId(runId);
-        List<Observation> observations = observationMapper.findByRunId(runId);
-        Map<String, Object> packet = evidencePacketAssembler.assemble(run, artifacts, checkpoints, observations);
+        RunEvidenceData evidence = loadRunEvidenceForPacket(runId);
+        Map<String, Object> packet = evidencePacketAssembler.assemble(run, evidence.artifacts(), evidence.checkpoints(), evidence.observations());
+        String packetJsonb = writeJson(packet);
+        validateEvidencePacketByteSize(packetJsonb);
 
         EvidencePacketSnapshot snapshot = new EvidencePacketSnapshot();
         snapshot.setId(UUID.randomUUID());
         snapshot.setExecutionType("RUN");
         snapshot.setRunId(runId);
         snapshot.setSchemaVersion(String.valueOf(packet.getOrDefault("schema_version", EVIDENCE_SCHEMA_VERSION)));
-        snapshot.setPacketJsonb(writeJson(packet));
-        snapshot.setCheckpointCount(checkpoints.size());
-        snapshot.setObservationCount(observations.size());
-        snapshot.setArtifactCount(artifacts.size());
-        return evidencePacketMapper.upsertRunSnapshot(snapshot);
+        snapshot.setPacketJsonb(packetJsonb);
+        snapshot.setCheckpointCount(evidence.checkpoints().size());
+        snapshot.setObservationCount(evidence.observations().size());
+        snapshot.setArtifactCount(evidence.artifacts().size());
+        return evidencePacketMapper.insertRunSnapshot(snapshot);
     }
 
     @Transactional(readOnly = true)
@@ -195,13 +226,18 @@ public class EvidenceService {
         if (!"RUN".equals(snapshot.getExecutionType()) || snapshot.getRunId() == null) {
             return packet;
         }
-        return evidencePacketSignedUrlDecorator.decorateRunPacket(packet, artifactMapper.findByRunId(snapshot.getRunId()));
+        List<Artifact> artifacts = artifactMapper.findByRunId(snapshot.getRunId());
+        validateEvidencePacketCount("artifact", artifacts.size(), evidencePacketMaxArtifacts);
+        Map<String, Object> decoratedPacket = evidencePacketSignedUrlDecorator.decorateRunPacket(packet, artifacts);
+        validateEvidencePacketByteSize(writeJson(decoratedPacket));
+        return decoratedPacket;
     }
 
     @Transactional(readOnly = true)
     public ArtifactContent getRunArtifactContent(UUID runId, UUID artifactId) {
         runService.getRun(runId);
         Artifact artifact = findRunArtifact(runId, artifactId);
+        rejectOversizedArtifactContent(artifact);
         Resource resource = artifactContentStore.load(artifact);
         return new ArtifactContent(resource, artifact.getMimeType(), artifactFilename(artifact));
     }
@@ -213,6 +249,7 @@ public class EvidenceService {
         if (!isPresignableImage(artifact)) {
             throw new BusinessException(ErrorCode.RUN_NOT_FOUND, "Image artifact was not found for the run.");
         }
+        rejectOversizedArtifactContent(artifact);
         Resource resource = artifactContentStore.load(artifact);
         return new ArtifactContent(resource, artifact.getMimeType(), artifactFilename(artifact));
     }
@@ -279,6 +316,39 @@ public class EvidenceService {
     private Artifact findRunArtifact(UUID runId, UUID artifactId) {
         return artifactMapper.findByRunIdAndId(runId, artifactId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.RUN_NOT_FOUND, "Artifact was not found."));
+    }
+
+    private RunEvidenceData loadRunEvidenceForPacket(UUID runId) {
+        List<Artifact> artifacts = artifactMapper.findByRunId(runId);
+        List<Checkpoint> checkpoints = checkpointMapper.findByRunId(runId);
+        List<Observation> observations = observationMapper.findByRunId(runId);
+        validateEvidencePacketCount("checkpoint", checkpoints.size(), evidencePacketMaxCheckpoints);
+        validateEvidencePacketCount("observation", observations.size(), evidencePacketMaxObservations);
+        validateEvidencePacketCount("artifact", artifacts.size(), evidencePacketMaxArtifacts);
+        return new RunEvidenceData(artifacts, checkpoints, observations);
+    }
+
+    private void validateEvidencePacketCount(String itemName, int count, int maxCount) {
+        if (maxCount > 0 && count > maxCount) {
+            throw new BusinessException(
+                    ErrorCode.INVALID_REQUEST,
+                    "EvidencePacket " + itemName + " count exceeds configured limit."
+            );
+        }
+    }
+
+    private void validateEvidencePacketByteSize(String packetJsonb) {
+        int byteSize = packetJsonb.getBytes(StandardCharsets.UTF_8).length;
+        if (evidencePacketMaxBytes > 0 && byteSize > evidencePacketMaxBytes) {
+            throw new BusinessException(ErrorCode.INVALID_REQUEST, "EvidencePacket JSON exceeds configured byte limit.");
+        }
+    }
+
+    private void rejectOversizedArtifactContent(Artifact artifact) {
+        long sizeBytes = artifact.getSizeBytes();
+        if (artifactContentMaxDownloadBytes > 0 && sizeBytes > artifactContentMaxDownloadBytes) {
+            throw new BusinessException(ErrorCode.INVALID_REQUEST, "Artifact content exceeds configured download limit.");
+        }
     }
 
     private Artifact findLatestFrameArtifact(List<Artifact> artifacts) {

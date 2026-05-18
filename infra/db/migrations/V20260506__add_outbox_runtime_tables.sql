@@ -28,6 +28,7 @@ CREATE TABLE IF NOT EXISTS outbox_message (
 CREATE TABLE IF NOT EXISTS processed_message (
     consumer_name       VARCHAR(120) NOT NULL,
     message_id          VARCHAR(160) NOT NULL,
+    payload_hash        VARCHAR(64),
     processed_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     PRIMARY KEY (consumer_name, message_id)
 );

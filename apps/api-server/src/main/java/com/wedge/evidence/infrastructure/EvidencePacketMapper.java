@@ -10,5 +10,5 @@ import org.apache.ibatis.annotations.Param;
 public interface EvidencePacketMapper {
     Optional<EvidencePacketSnapshot> findById(@Param("id") UUID id);
 
-    EvidencePacketSnapshot upsertRunSnapshot(EvidencePacketSnapshot snapshot);
+    EvidencePacketSnapshot insertRunSnapshot(EvidencePacketSnapshot snapshot);
 }

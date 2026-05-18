@@ -39,6 +39,7 @@ public class InternalServiceTokenFilter extends OncePerRequestFilter {
     private static final List<String> INTERNAL_CALLBACK_PATHS = List.of("/internal/runner/**", "/internal/analysis/**", "/internal/agent/**");
     private static final List<String> MCP_PATHS = List.of("/mcp", "/mcp/**");
     private static final String INTERNAL_RUNNER_CALLBACK_PATH = "/internal/runner/**";
+    private static final String INTERNAL_ANALYSIS_CALLBACK_PATH = "/internal/analysis/jobs/**";
 
     private final JsonAuthenticationEntryPoint authenticationEntryPoint;
     private final AntPathMatcher pathMatcher = new AntPathMatcher();
@@ -51,6 +52,9 @@ public class InternalServiceTokenFilter extends OncePerRequestFilter {
 
     @Value("${wedge.internal.runner-callback-signature-secret:}")
     private String runnerCallbackSignatureSecret;
+
+    @Value("${wedge.internal.analyzer-callback-signature-secret:}")
+    private String analyzerCallbackSignatureSecret;
 
     public InternalServiceTokenFilter(JsonAuthenticationEntryPoint authenticationEntryPoint) {
         this.authenticationEntryPoint = authenticationEntryPoint;
@@ -72,9 +76,15 @@ public class InternalServiceTokenFilter extends OncePerRequestFilter {
         }
 
         HttpServletRequest requestToFilter = request;
-        if (isInternalRunnerCallback(request)) {
+        String callbackSignatureSecret = callbackSignatureSecret(request);
+        if (callbackSignatureSecret != null) {
             byte[] body = request.getInputStream().readAllBytes();
-            if (!matchesRunnerCallbackSignature(request.getHeader(SIGNATURE_HEADER), body)) {
+            if (!matchesCallbackSignature(
+                    request.getHeader(SIGNATURE_HEADER),
+                    body,
+                    callbackSignatureSecret,
+                    isInternalAnalysisCallback(request)
+            )) {
                 SecurityContextHolder.clearContext();
                 authenticationEntryPoint.write(response, ErrorCode.UNAUTHORIZED);
                 return;
@@ -117,6 +127,10 @@ public class InternalServiceTokenFilter extends OncePerRequestFilter {
         return pathMatcher.match(INTERNAL_RUNNER_CALLBACK_PATH, request.getRequestURI());
     }
 
+    private boolean isInternalAnalysisCallback(HttpServletRequest request) {
+        return pathMatcher.match(INTERNAL_ANALYSIS_CALLBACK_PATH, request.getRequestURI());
+    }
+
     private boolean isMcpRequest(HttpServletRequest request) {
         return matchesAny(MCP_PATHS, request.getRequestURI());
     }
@@ -125,15 +139,30 @@ public class InternalServiceTokenFilter extends OncePerRequestFilter {
         return patterns.stream().anyMatch(pattern -> pathMatcher.match(pattern, path));
     }
 
-    private boolean matchesRunnerCallbackSignature(String providedSignature, byte[] body) {
-        if (!StringUtils.hasText(runnerCallbackSignatureSecret)) {
-            return true;
+    private String callbackSignatureSecret(HttpServletRequest request) {
+        if (isInternalRunnerCallback(request)) {
+            return runnerCallbackSignatureSecret;
+        }
+        if (isInternalAnalysisCallback(request)) {
+            return analyzerCallbackSignatureSecret;
+        }
+        return null;
+    }
+
+    private boolean matchesCallbackSignature(
+            String providedSignature,
+            byte[] body,
+            String signatureSecret,
+            boolean signatureRequired
+    ) {
+        if (!StringUtils.hasText(signatureSecret)) {
+            return !signatureRequired;
         }
         if (!StringUtils.hasText(providedSignature)) {
             return false;
         }
 
-        byte[] expected = hmacSha256Hex(body, runnerCallbackSignatureSecret).getBytes(StandardCharsets.UTF_8);
+        byte[] expected = hmacSha256Hex(body, signatureSecret).getBytes(StandardCharsets.UTF_8);
         byte[] actual = normalizeSignature(providedSignature).getBytes(StandardCharsets.UTF_8);
         return MessageDigest.isEqual(actual, expected);
     }
@@ -152,7 +181,7 @@ public class InternalServiceTokenFilter extends OncePerRequestFilter {
             mac.init(new SecretKeySpec(secret.getBytes(StandardCharsets.UTF_8), HMAC_SHA256_ALGORITHM));
             return toHex(mac.doFinal(body));
         } catch (NoSuchAlgorithmException | InvalidKeyException exception) {
-            throw new IllegalStateException("Runner callback signature verifier could not initialize HMAC-SHA256.", exception);
+            throw new IllegalStateException("Internal callback signature verifier could not initialize HMAC-SHA256.", exception);
         }
     }
 

@@ -55,7 +55,7 @@ public class DiscoveryExecuteOutboxDispatcher {
                     message.idempotencyKey(),
                     exception
             );
-            outboxMessagePersistenceAdapter.markFailed(outboxMessageId);
+            outboxMessagePersistenceAdapter.markFailed(outboxMessageId, exception);
         }
     }
 }

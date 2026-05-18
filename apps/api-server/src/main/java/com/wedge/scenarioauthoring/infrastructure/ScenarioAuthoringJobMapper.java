@@ -38,6 +38,14 @@ public interface ScenarioAuthoringJobMapper {
             @Param("failureJsonb") String failureJsonb
     );
 
+    int failBeforeRunner(
+            @Param("id") UUID id,
+            @Param("providerTraceJsonb") String providerTraceJsonb,
+            @Param("validationJsonb") String validationJsonb,
+            @Param("provenanceJsonb") String provenanceJsonb,
+            @Param("failureJsonb") String failureJsonb
+    );
+
     int confirmCandidate(
             @Param("id") UUID id,
             @Param("confirmedCandidateId") String confirmedCandidateId,

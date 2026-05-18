@@ -30,6 +30,7 @@ public class OutboxMessagePersistenceAdapter {
     private static final long PENDING_RETRY_GRACE_SECONDS = 5;
     private static final long RETRY_DELAY_SECONDS = 30;
     private static final int MAX_PUBLISH_ATTEMPTS = 10;
+    private static final int MAX_LAST_ERROR_LENGTH = 1000;
 
     private final OutboxMessageMapper outboxMessageMapper;
     private final ObjectMapper objectMapper;
@@ -203,8 +204,27 @@ public class OutboxMessagePersistenceAdapter {
         outboxMessageMapper.markPublished(outboxMessageId, OffsetDateTime.now());
     }
 
+    public void markFailed(UUID outboxMessageId, Throwable cause) {
+        OffsetDateTime failedAt = OffsetDateTime.now();
+        outboxMessageMapper.markFailed(
+                outboxMessageId,
+                failedAt.plusSeconds(RETRY_DELAY_SECONDS),
+                failedAt,
+                MAX_PUBLISH_ATTEMPTS,
+                lastError(cause)
+        );
+    }
+
     public void markFailed(UUID outboxMessageId) {
-        outboxMessageMapper.markFailed(outboxMessageId, OffsetDateTime.now().plusSeconds(RETRY_DELAY_SECONDS));
+        markFailed(outboxMessageId, null);
+    }
+
+    private String lastError(Throwable cause) {
+        if (cause == null) {
+            return null;
+        }
+        String message = cause.toString();
+        return message.length() <= MAX_LAST_ERROR_LENGTH ? message : message.substring(0, MAX_LAST_ERROR_LENGTH);
     }
 
     private RunExecuteRequestMessage toRunExecuteRequestMessage(OutboxMessageRecord record) {

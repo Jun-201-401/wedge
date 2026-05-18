@@ -22,6 +22,8 @@
         <result property="failureCode" column="failure_code"/>
         <result property="failureMessage" column="failure_message"/>
         <result property="createdBy" column="created_by"/>
+        <result property="idempotencyKey" column="idempotency_key"/>
+        <result property="idempotencyRequestHash" column="idempotency_request_hash"/>
         <result property="createdAt" column="created_at"/>
         <result property="updatedAt" column="updated_at"/>
         <result property="deletedAt" column="deleted_at"/>
@@ -75,6 +77,8 @@
         failure_code,
         failure_message,
         created_by,
+        idempotency_key,
+        idempotency_request_hash,
         created_at,
         updated_at,
         deleted_at,
@@ -98,6 +102,15 @@
         SELECT <include refid="RunColumns"/>
         FROM test_run
         WHERE id = #{runId}
+          AND deleted_at IS NULL
+    </select>
+
+    <select id="findByIdempotencyKey" resultMap="RunRecordResultMap">
+        SELECT <include refid="RunColumns"/>
+        FROM test_run
+        WHERE project_id = #{projectId}
+          AND created_by = #{createdBy}
+          AND idempotency_key = #{idempotencyKey}
           AND deleted_at IS NULL
     </select>
 
@@ -176,7 +189,9 @@
             finished_at,
             failure_code,
             failure_message,
-            created_by
+            created_by,
+            idempotency_key,
+            idempotency_request_hash
         ) VALUES (
             #{id},
             #{projectId},
@@ -197,8 +212,61 @@
             #{finishedAt},
             #{failureCode},
             #{failureMessage},
-            #{createdBy}
+            #{createdBy,jdbcType=OTHER},
+            #{idempotencyKey},
+            #{idempotencyRequestHash}
         )
+    </insert>
+
+    <insert id="insertIgnoreDuplicate" parameterType="com.wedge.run.infrastructure.RunRecord">
+        INSERT INTO test_run (
+            id,
+            project_id,
+            name,
+            trigger_source,
+            start_url,
+            goal,
+            device_preset,
+            environment_jsonb,
+            scenario_template_version_id,
+            scenario_plan_schema_version,
+            scenario_plan_jsonb,
+            status,
+            result_completeness,
+            analysis_status,
+            current_step_order,
+            started_at,
+            finished_at,
+            failure_code,
+            failure_message,
+            created_by,
+            idempotency_key,
+            idempotency_request_hash
+        ) VALUES (
+            #{id},
+            #{projectId},
+            #{name},
+            #{triggerSource},
+            #{startUrl},
+            #{goal},
+            #{devicePreset},
+            CAST(#{environmentJson} AS jsonb),
+            #{scenarioTemplateVersionId,jdbcType=OTHER},
+            #{scenarioPlanSchemaVersion},
+            CAST(#{scenarioPlanJson} AS jsonb),
+            #{status},
+            #{resultCompleteness},
+            #{analysisStatus},
+            #{currentStepOrder},
+            #{startedAt},
+            #{finishedAt},
+            #{failureCode},
+            #{failureMessage},
+            #{createdBy,jdbcType=OTHER},
+            #{idempotencyKey},
+            #{idempotencyRequestHash}
+        )
+        ON CONFLICT DO NOTHING
     </insert>
 
     <insert id="insertStep" parameterType="com.wedge.run.infrastructure.RunStepRecord">

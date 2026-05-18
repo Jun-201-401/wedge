@@ -153,7 +153,7 @@ function stepsFor(
       )
     );
   } else if (suggestedTarget && Object.keys(suggestedTarget).length > 0 && scenarioType !== "CONTENT_ONLY") {
-    if (allowsRuleBasedClick(scenarioType)) {
+    if (shouldClickSuggestedTarget(scenarioType, suggestedTarget)) {
       steps.push(
         step(
           "step_003_probe_recommended_target",
@@ -177,7 +177,7 @@ function stepsFor(
         step(
           "step_003_recommended_target_checkpoint",
           stageFor(scenarioType),
-          "민감한 진입점은 자동 선택하지 않고 대상 근거만 기록한다.",
+          "자동 선택하지 않고 추천 진입점의 대상 근거만 기록한다.",
           { type: "checkpoint", target: suggestedTarget },
           "none",
           true
@@ -247,6 +247,67 @@ function stopStep(stepId: string, description: string, condition: string): Scena
 
 function allowsRuleBasedClick(scenarioType: DiscoveryFlowType): boolean {
   return scenarioType === "LANDING_CTA" || scenarioType === "PRICING";
+}
+
+function shouldClickSuggestedTarget(scenarioType: DiscoveryFlowType, target: TargetDescriptorMap): boolean {
+  if (!allowsRuleBasedClick(scenarioType)) {
+    return false;
+  }
+
+  if (scenarioType !== "LANDING_CTA") {
+    return true;
+  }
+
+  const searchable = normalizeTargetText(target);
+  if (isVolatileContentTarget(searchable)) {
+    return false;
+  }
+
+  return hasAny(searchable, [
+    "get started",
+    "sign up",
+    "signup",
+    "register",
+    "trial",
+    "start",
+    "시작",
+    "회원가입",
+    "가입",
+    "체험"
+  ]);
+}
+
+function isVolatileContentTarget(searchable: string): boolean {
+  return /(^|[^0-9])\d+\s*위/.test(searchable)
+    || hasAny(searchable, [
+      "화 무료",
+      "회 무료",
+      "webtoon",
+      "novel",
+      "series.naver.com",
+      "originalproductid"
+    ]);
+}
+
+function normalizeTargetText(target: TargetDescriptorMap): string {
+  return [
+    target.text,
+    target.selector,
+    target.href_contains,
+    target.name,
+    target.placeholder,
+    target.label,
+    target.aria_label
+  ]
+    .filter((value): value is string => typeof value === "string" && value.length > 0)
+    .join(" ")
+    .replaceAll(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
+function hasAny(value: string, keywords: string[]): boolean {
+  return keywords.some((keyword) => value.includes(keyword));
 }
 
 function stageFor(scenarioType: DiscoveryFlowType): ScenarioStage {

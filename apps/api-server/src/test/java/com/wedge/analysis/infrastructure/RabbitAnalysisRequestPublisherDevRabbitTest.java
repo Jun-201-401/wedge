@@ -7,6 +7,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.rabbitmq.client.AMQP;
 import com.rabbitmq.client.Channel;
+import com.wedge.common.infrastructure.RabbitConfirmedMessagePublisher;
 import com.wedge.analysis.application.AnalysisRequestMessage;
 import java.time.OffsetDateTime;
 import java.util.Map;
@@ -34,8 +35,9 @@ class RabbitAnalysisRequestPublisherDevRabbitTest {
             assumeAnalysisQueueIsSafeToUse(connectionFactory, queueName);
             RabbitTemplate rabbitTemplate = new RabbitTemplate(connectionFactory);
             rabbitTemplate.setReceiveTimeout(5_000L);
+            rabbitTemplate.setMandatory(true);
             RabbitAnalysisRequestPublisher publisher = new RabbitAnalysisRequestPublisher(
-                    rabbitTemplate,
+                    new RabbitConfirmedMessagePublisher(rabbitTemplate, 5_000L),
                     objectMapper,
                     exchangeName,
                     queueName
@@ -73,6 +75,8 @@ class RabbitAnalysisRequestPublisherDevRabbitTest {
         );
         connectionFactory.setUsername(property("wedge.rabbit.username", "ssafy"));
         connectionFactory.setPassword(property("wedge.rabbit.password", "ssafy"));
+        connectionFactory.setPublisherConfirmType(CachingConnectionFactory.ConfirmType.CORRELATED);
+        connectionFactory.setPublisherReturns(true);
         return connectionFactory;
     }
 

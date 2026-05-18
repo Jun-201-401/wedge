@@ -90,7 +90,11 @@ public class RunPersistenceAdapter {
     }
 
     public RunResponse createRun(RunCreateRequest request) {
-        RunRecord record = RunRecord.created(request);
+        return createRun(request, null, null, null);
+    }
+
+    public RunResponse createRun(RunCreateRequest request, UUID createdBy, String idempotencyKey, String idempotencyRequestHash) {
+        RunRecord record = RunRecord.created(request, createdBy, idempotencyKey, idempotencyRequestHash);
         Map<String, Object> scenarioPlan = request.scenarioPlan();
         record.setScenarioPlanSchemaVersion(resolveScenarioPlanSchemaVersion(scenarioPlan));
         record.setScenarioPlanJson(writeJsonOrEmpty(scenarioPlan));
@@ -99,6 +103,31 @@ public class RunPersistenceAdapter {
             insertScenarioSteps(record.getId(), scenarioPlan);
         }
         return toResponse(record);
+    }
+
+    public Optional<RunResponse> createRunIfAbsent(
+            RunCreateRequest request,
+            UUID createdBy,
+            String idempotencyKey,
+            String idempotencyRequestHash
+    ) {
+        RunRecord record = RunRecord.created(request, createdBy, idempotencyKey, idempotencyRequestHash);
+        Map<String, Object> scenarioPlan = request.scenarioPlan();
+        record.setScenarioPlanSchemaVersion(resolveScenarioPlanSchemaVersion(scenarioPlan));
+        record.setScenarioPlanJson(writeJsonOrEmpty(scenarioPlan));
+        int inserted = runMapper.insertIgnoreDuplicate(record);
+        if (inserted == 0) {
+            return Optional.empty();
+        }
+        if (hasScenarioPlan(scenarioPlan)) {
+            insertScenarioSteps(record.getId(), scenarioPlan);
+        }
+        return Optional.of(toResponse(record));
+    }
+
+    public Optional<IdempotentRun> findRunByIdempotencyKey(UUID projectId, UUID createdBy, String idempotencyKey) {
+        return runMapper.findByIdempotencyKey(projectId, createdBy, idempotencyKey)
+                .map(record -> new IdempotentRun(toResponse(record), record.getIdempotencyRequestHash()));
     }
 
     public RunResponse updateExecutionState(
@@ -490,5 +519,8 @@ public class RunPersistenceAdapter {
 
         Object schemaVersion = scenarioPlan.get("schema_version");
         return schemaVersion instanceof String value && !value.isBlank() ? value : null;
+    }
+
+    public record IdempotentRun(RunResponse response, String idempotencyRequestHash) {
     }
 }

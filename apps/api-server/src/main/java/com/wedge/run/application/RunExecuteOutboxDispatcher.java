@@ -56,7 +56,7 @@ public class RunExecuteOutboxDispatcher {
                     message.idempotencyKey(),
                     exception
             );
-            outboxMessagePersistenceAdapter.markFailed(outboxMessageId);
+            outboxMessagePersistenceAdapter.markFailed(outboxMessageId, exception);
         }
     }
 }

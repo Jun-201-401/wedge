@@ -52,6 +52,25 @@ test("Runner ScenarioAuthoring keeps first-view-only goals checkpoint-only", asy
   );
 });
 
+test("Runner ScenarioAuthoring does not auto-click volatile ranked content links", async () => {
+  const message = parseScenarioAuthoringExecuteMessage(JSON.stringify(createScenarioAuthoringExecuteMessage({
+    suggestedTarget: {
+      role: "link",
+      text: "1위퇴사 후 아포칼립스로 출근합니다현판포더엠50화 무료",
+      selector: "a[href=\"http://series.naver.com/novel/detail.nhn?originalProductId=697342\"]"
+    }
+  })));
+  const config = createRunnerTestConfig();
+
+  const result = await executeScenarioAuthoring({ message, config });
+  const steps = result.candidates[0]?.scenario_plan.steps ?? [];
+
+  assert.equal(result.validation.schema_valid, true);
+  assert.equal(result.validation.safety_valid, true);
+  assert.deepEqual(steps.map((step) => step.action.type), ["goto", "checkpoint", "checkpoint"]);
+  assert.equal(steps[2]?.step_id, "step_003_recommended_target_checkpoint");
+});
+
 test("createRunnerApp processes scenario-authoring message files and sends callbacks", async () => {
   const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-authoring-artifacts-"));
   const callbackLogFile = join(artifactsRoot, "callbacks.jsonl");
@@ -79,7 +98,10 @@ test("createRunnerApp processes scenario-authoring message files and sends callb
   }
 });
 
-function createScenarioAuthoringExecuteMessage(overrides: { requestedGoal?: string } = {}) {
+function createScenarioAuthoringExecuteMessage(overrides: {
+  requestedGoal?: string;
+  suggestedTarget?: Record<string, unknown>;
+} = {}) {
   const requestedGoal = overrides.requestedGoal ?? "랜딩 CTA 진입점을 검증한다";
   return {
     messageId: "40000000-0000-4000-8000-000000000010",
@@ -120,7 +142,7 @@ function createScenarioAuthoringExecuteMessage(overrides: { requestedGoal?: stri
           confidence: 0.88,
           evidence_refs: ["cp_001.cta_001"],
           suggested_start_url: "https://example.com",
-          suggested_target: { role: "link", text: "시작하기" }
+          suggested_target: overrides.suggestedTarget ?? { role: "link", text: "시작하기" }
         },
         constraints: {},
         environment: {
