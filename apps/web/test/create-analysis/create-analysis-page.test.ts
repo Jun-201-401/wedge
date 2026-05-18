@@ -2,6 +2,18 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
+function cssRule(css: string, selector: string) {
+  const start = css.indexOf(`${selector} {`);
+
+  assert.notEqual(start, -1, `Missing CSS rule for ${selector}`);
+
+  const end = css.indexOf('\n}', start);
+
+  assert.notEqual(end, -1, `Missing CSS rule close for ${selector}`);
+
+  return css.slice(start, end);
+}
+
 test('create analysis preflight renders an agent-style progress card', () => {
   const source = fs.readFileSync(
     new URL('../../src/pages/create-analysis/CreateAnalysisPage.tsx', import.meta.url),
@@ -92,7 +104,9 @@ test('create analysis preflight css keeps the landing-agent card language', () =
   assert.match(css, /\.preflight-agent,\s*\n\.recommendation-agent,\s*\n\.manual-choice-agent,\s*\n\.scenario-setup-agent\s*\{[\s\S]*?box-shadow: 0 12px 40px -10px/);
   assert.match(css, /\.preflight-agent__header-copy p,\s*\n\.recommendation-agent__header-copy p,\s*\n\.manual-choice-agent__header-copy p\s*\{[\s\S]*?margin-bottom: 0\.48rem/);
   assert.doesNotMatch(css, /\.preflight-agent__scope/);
-  assert.match(css, /\.preflight-agent__step--active \.preflight-agent__content\s*\{[\s\S]*?background: rgba\(248, 250, 252, 0\.5\)/);
+  assert.match(cssRule(css, '.preflight-agent__step--active::before'), /background: rgba\(248, 250, 252, 0\.5\)/);
+  assert.match(cssRule(css, '.preflight-agent__step--active::before'), /left: 2\.72rem/);
+  assert.doesNotMatch(css, /\.preflight-agent__step--active \.preflight-agent__content\s*\{/);
   assert.match(css, /@keyframes createAnalysisPreflightFlowData/);
   assert.match(css, /@keyframes createAnalysisPreflightPing/);
 });
@@ -319,6 +333,14 @@ test('create analysis selection starts a run without a ready screen', () => {
   assert.match(source, /createDiscoveryIdempotencyKey\(targetUrl\)/);
   assert.match(source, /await createDiscovery/);
   assert.match(source, /await getDiscovery\(discoveryId\)/);
+  assert.match(source, /const PREFLIGHT_COMPLETION_STEP_DELAY_MS = 420/);
+  assert.match(source, /function getPreflightStepsForActiveIndex\(activeIndex: number\)/);
+  assert.match(source, /function getDiscoveryDisplaySteps\(status: string\)/);
+  assert.match(source, /getPollingSteps\(status === 'COMPLETED' \? 'RUNNING' : status\)/);
+  assert.match(source, /for \(let activeIndex = 3; activeIndex < PREFLIGHT_DISCOVERY_STEPS\.length; activeIndex \+= 1\)/);
+  assert.match(source, /progressSteps: getPreflightStepsForActiveIndex\(activeIndex\)/);
+  assert.match(source, /progressSteps: getDiscoveryDisplaySteps\(discovery\.status\)/);
+  assert.match(source, /await completeDiscovery\(discoveryId, toScenarioRecommendationViewModels\(discovery\)\)/);
   assert.match(source, /createdRunId = response\.data\.id/);
   assert.match(source, /await startRun\(createdRunId\)/);
   assert.match(source, /분석 준비는 완료됐지만 실행 시작 요청에 실패했습니다/);

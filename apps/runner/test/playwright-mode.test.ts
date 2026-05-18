@@ -123,6 +123,8 @@ test("[Playwright 실제 실행] goto/fill/select를 수행하고 실제 screens
     const screenshotDimensions = readPngDimensions(screenshotBuffer);
     assert.equal(capturedArtifacts.screenshot?.width, screenshotDimensions.width);
     assert.equal(capturedArtifacts.screenshot?.height, screenshotDimensions.height);
+    assert.equal(capturedArtifacts.screenshot?.requestedMode, "auto");
+    assert.match(capturedArtifacts.screenshot?.captureMode ?? "", /^(full_page|viewport_stitched)$/);
     assert.ok((capturedArtifacts.screenshot?.height ?? 0) > plan.environment.viewport.height);
     assert.deepEqual(
       screenshotBuffer.subarray(0, 8),
@@ -938,6 +940,62 @@ test("[Agent Frame Replay] replay_hint frame_id로 iframe 내부 후보를 stati
     assert.equal(result.execution.summary.completedStepCount, 4);
     assert.equal(result.execution.summary.stopped, true);
   } finally {
+    await rm(fixtureRoot, { recursive: true, force: true });
+    await rm(artifactsRoot, { recursive: true, force: true });
+  }
+});
+
+test("[Playwright iframe] iframe 내부 컴포넌트 bounds는 top-level viewport 기준으로 보정된다", async () => {
+  const fixtureRoot = await mkdtemp(join(tmpdir(), "wedge-runner-iframe-bounds-site-"));
+  const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-iframe-bounds-artifacts-"));
+  let session: Awaited<ReturnType<ReturnType<typeof createPlaywrightSessionFactory>["createSession"]>> | undefined;
+
+  try {
+    const frameFile = join(fixtureRoot, "iframe-bounds.html");
+    await writeFile(
+      frameFile,
+      `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Iframe bounds fixture</title>
+    <style>
+      body { margin: 0; }
+      iframe { position: absolute; left: 220px; top: 180px; width: 320px; height: 180px; border: 0; }
+    </style>
+  </head>
+  <body>
+    <iframe
+      id="target-frame"
+      title="Target frame"
+      srcdoc='<!doctype html><html lang="en"><body style="margin:0"><button id="inside-frame" style="position:absolute;left:40px;top:30px;width:120px;height:44px">Inside frame CTA</button></body></html>'>
+    </iframe>
+  </body>
+</html>`,
+      "utf8"
+    );
+
+    const frameUrl = pathToFileURL(frameFile).toString();
+    session = await createPlaywrightBrowserFactory(artifactsRoot).createSession({
+      runId: "run-iframe-bounds",
+      plan: {
+        ...createMinimalPlan(),
+        start_url: frameUrl
+      }
+    });
+
+    await executeGotoStep(session, frameUrl, "step_goto_iframe_bounds");
+    const snapshot = session.snapshot();
+    const frameButton = snapshot.interactiveComponents.find((component) => component.selector === "#inside-frame");
+
+    assert.equal(frameButton?.frame_id, "frame:1");
+    assert.equal(frameButton?.bounds.unit, "css_px");
+    assert.ok((frameButton?.bounds.x ?? 0) >= 260);
+    assert.ok((frameButton?.bounds.y ?? 0) >= 210);
+    assert.ok((frameButton?.layout?.center_x ?? 0) >= 320);
+    assert.ok((frameButton?.layout?.center_y ?? 0) >= 230);
+  } finally {
+    await session?.close();
     await rm(fixtureRoot, { recursive: true, force: true });
     await rm(artifactsRoot, { recursive: true, force: true });
   }

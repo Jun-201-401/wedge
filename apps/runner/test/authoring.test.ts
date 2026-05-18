@@ -33,6 +33,25 @@ test("Runner ScenarioAuthoring compiles Discovery recommendation into custom Sce
   );
 });
 
+test("Runner ScenarioAuthoring keeps first-view-only goals checkpoint-only", async () => {
+  const message = parseScenarioAuthoringExecuteMessage(JSON.stringify(createScenarioAuthoringExecuteMessage({
+    requestedGoal: "랜딩 전환 버튼 점검 · 첫 화면만 보기"
+  })));
+  const config = createRunnerTestConfig();
+
+  const result = await executeScenarioAuthoring({ message, config });
+  const steps = result.candidates[0]?.scenario_plan.steps ?? [];
+
+  assert.equal(result.validation.schema_valid, true);
+  assert.equal(result.validation.safety_valid, true);
+  assert.deepEqual(steps.map((step) => step.action.type), ["goto", "checkpoint", "checkpoint"]);
+  assert.equal(steps[2]?.step_id, "step_003_first_view_only_checkpoint");
+  assert.notEqual(
+    steps.some((step) => step.step_id === "step_003_probe_recommended_target" || step.action.type === "click"),
+    true
+  );
+});
+
 test("createRunnerApp processes scenario-authoring message files and sends callbacks", async () => {
   const artifactsRoot = await mkdtemp(join(tmpdir(), "wedge-runner-authoring-artifacts-"));
   const callbackLogFile = join(artifactsRoot, "callbacks.jsonl");
@@ -60,7 +79,8 @@ test("createRunnerApp processes scenario-authoring message files and sends callb
   }
 });
 
-function createScenarioAuthoringExecuteMessage() {
+function createScenarioAuthoringExecuteMessage(overrides: { requestedGoal?: string } = {}) {
+  const requestedGoal = overrides.requestedGoal ?? "랜딩 CTA 진입점을 검증한다";
   return {
     messageId: "40000000-0000-4000-8000-000000000010",
     messageType: "scenario-authoring.execute.request",
@@ -73,7 +93,7 @@ function createScenarioAuthoringExecuteMessage() {
       authoringJobId: "40000000-0000-4000-8000-000000000001",
       projectId: "40000000-0000-4000-8000-000000000002",
       sourceDiscoveryId: "40000000-0000-4000-8000-000000000003",
-      requestedGoal: "랜딩 CTA 진입점을 검증한다",
+      requestedGoal,
       input: {
         site_discovery_result: {
           schema_version: "0.5",
@@ -91,7 +111,7 @@ function createScenarioAuthoringExecuteMessage() {
           missing_flow_types: [],
           scenario_recommendations: []
         },
-        requested_goal: "랜딩 CTA 진입점을 검증한다",
+        requested_goal: requestedGoal,
         preferred_scenario_type: "LANDING_CTA",
         selected_recommendation: {
           recommendation_id: "rec-1",

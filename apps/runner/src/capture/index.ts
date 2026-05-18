@@ -413,6 +413,14 @@ function createCheckpointState(
     layout_collector_summary: pageSnapshot.layoutSummary,
     performance_summary: pageSnapshot.performanceSummary,
     browser_health: pageSnapshot.browserHealth,
+    ...(capturedArtifacts?.screenshot ? {
+      screenshot_capture: {
+        capture_mode: capturedArtifacts.screenshot.captureMode,
+        requested_mode: capturedArtifacts.screenshot.requestedMode,
+        width: capturedArtifacts.screenshot.width,
+        height: capturedArtifacts.screenshot.height
+      }
+    } : {}),
     ...(capturedArtifacts?.axTree ? { ax_tree_summary: capturedArtifacts.axTree.summary } : {}),
     cdpSession: pageSnapshot.cdpSession
   };

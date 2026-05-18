@@ -38,7 +38,8 @@ export function createRuleBasedScenarioAuthoringResult(
     startUrl,
     candidateId,
     evidenceRefs,
-    suggestedTarget: selectedRecommendation?.suggested_target ?? null
+    suggestedTarget: selectedRecommendation?.suggested_target ?? null,
+    firstViewOnly: isFirstViewOnlyGoal(message.payload.requestedGoal)
   });
   const candidateValidation = validateScenarioPlanCandidate(
     scenarioPlan,
@@ -93,7 +94,8 @@ function createScenarioPlan({
   startUrl,
   candidateId,
   evidenceRefs,
-  suggestedTarget
+  suggestedTarget,
+  firstViewOnly
 }: {
   message: ScenarioAuthoringExecuteMessage;
   scenarioType: DiscoveryFlowType;
@@ -101,6 +103,7 @@ function createScenarioPlan({
   candidateId: string;
   evidenceRefs: string[];
   suggestedTarget: TargetDescriptorMap | null;
+  firstViewOnly: boolean;
 }): ScenarioPlan {
   return {
     schema_version: "0.5",
@@ -123,21 +126,33 @@ function createScenarioPlan({
       minimum_confidence: 0.5,
       required_evidence_refs: evidenceRefs
     },
-    steps: stepsFor(scenarioType, startUrl, suggestedTarget)
+    steps: stepsFor(scenarioType, startUrl, suggestedTarget, firstViewOnly)
   };
 }
 
 function stepsFor(
   scenarioType: DiscoveryFlowType,
   startUrl: string,
-  suggestedTarget: TargetDescriptorMap | null
+  suggestedTarget: TargetDescriptorMap | null,
+  firstViewOnly: boolean
 ): ScenarioStep[] {
   const steps: ScenarioStep[] = [
     step("step_001_goto", "FIRST_VIEW", "추천된 시작 화면을 열어 첫 화면을 확인한다.", { type: "goto", target: startUrl }, "network_idle", true),
     step("step_002_first_view_checkpoint", "FIRST_VIEW", "첫 화면에서 핵심 맥락과 주요 진입점을 기록한다.", { type: "checkpoint" }, "none", true)
   ];
 
-  if (suggestedTarget && Object.keys(suggestedTarget).length > 0 && scenarioType !== "CONTENT_ONLY") {
+  if (firstViewOnly) {
+    steps.push(
+      step(
+        "step_003_first_view_only_checkpoint",
+        "FIRST_VIEW",
+        "첫 화면만 보기 요청이므로 추천 진입점을 클릭하지 않고 현재 화면 근거를 기록한다.",
+        { type: "checkpoint", target: suggestedTarget ?? undefined },
+        "none",
+        true
+      )
+    );
+  } else if (suggestedTarget && Object.keys(suggestedTarget).length > 0 && scenarioType !== "CONTENT_ONLY") {
     if (allowsRuleBasedClick(scenarioType)) {
       steps.push(
         step(
@@ -190,6 +205,16 @@ function stepsFor(
   }
 
   return steps;
+}
+
+function isFirstViewOnlyGoal(goal: string): boolean {
+  const normalized = goal.toLowerCase().replaceAll(/\s+/g, "");
+  return normalized.includes("첫화면만")
+    || normalized.includes("첫화면보기")
+    || normalized.includes("firstviewonly")
+    || normalized.includes("firstscreenonly")
+    || normalized.includes("above-the-foldonly")
+    || normalized.includes("abovethefoldonly");
 }
 
 function step(
