@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import json
+from dataclasses import dataclass
 from typing import Any, Protocol
 
 from app.providers.gms import GMSClient, GMSClientError, GMSConfig
@@ -43,6 +44,37 @@ VALID_DIFFICULTIES = {"LOW", "MEDIUM", "HIGH"}
 GMS_REPORT_EXPLAINER_MAX_ATTEMPTS = 2
 
 
+@dataclass
+class GMSReportExplainerTelemetry:
+    """Safe scalar telemetry for report explainer timing logs.
+
+    Keep these values out of JudgeResult so observability cannot change the
+    report payload. Counts are intentionally scalar-only; raw prompts and
+    responses must never be stored here.
+    """
+
+    enabled: bool = False
+    client_configured: bool = False
+    compact_prompt_enabled: bool = False
+    prompt_char_count: int = 0
+    response_char_count: int = 0
+    attempt_count: int = 0
+    fallback_used: bool = False
+    last_error_type: str | None = None
+
+    def to_phase_extra(self) -> dict[str, Any]:
+        return {
+            "gmsEnabled": self.enabled,
+            "clientConfigured": self.client_configured,
+            "compactPromptEnabled": self.compact_prompt_enabled,
+            "promptCharCount": self.prompt_char_count,
+            "responseCharCount": self.response_char_count,
+            "attemptCount": self.attempt_count,
+            "fallbackUsed": self.fallback_used,
+            "lastErrorType": self.last_error_type,
+        }
+
+
 class GMSReportExplainer:
     """Post-process deterministic JudgeResult text through GMS.
 
@@ -71,18 +103,31 @@ class GMSReportExplainer:
             model=config.model,
         )
 
-    def explain(self, judge_result: dict[str, Any]) -> dict[str, Any]:
+    def explain(
+        self,
+        judge_result: dict[str, Any],
+        *,
+        telemetry: GMSReportExplainerTelemetry | None = None,
+    ) -> dict[str, Any]:
+        telemetry = telemetry or GMSReportExplainerTelemetry()
+        telemetry.enabled = self._enabled
+        telemetry.client_configured = self._client is not None
         fallback_result = copy.deepcopy(judge_result)
         if not self._enabled:
             return fallback_result
         if self._client is None:
+            telemetry.fallback_used = True
             return _append_llm_note(fallback_result, "GMS report explanation was enabled but no client was configured.")
 
         last_error: Exception | None = None
         for attempt in range(1, GMS_REPORT_EXPLAINER_MAX_ATTEMPTS + 1):
             result = copy.deepcopy(judge_result)
             try:
-                response_text = self._client.generate_text(prompt=_build_prompt(result))
+                prompt = _build_prompt(result)
+                telemetry.prompt_char_count = len(prompt)
+                telemetry.attempt_count = attempt
+                response_text = self._client.generate_text(prompt=prompt)
+                telemetry.response_char_count = len(response_text)
                 explanation = _parse_json_object(response_text)
                 _apply_explanation(result, explanation)
                 result["llm_provider"] = "gms"
@@ -93,8 +138,10 @@ class GMSReportExplainer:
                 return _append_llm_note(result, note)
             except (GMSClientError, ValueError, TypeError, KeyError) as exc:
                 last_error = exc
+                telemetry.last_error_type = type(exc).__name__
 
         error_name = type(last_error).__name__ if last_error is not None else "UnknownError"
+        telemetry.fallback_used = True
         return _append_llm_note(
             fallback_result,
             f"GMS explanation fallback used deterministic text after {GMS_REPORT_EXPLAINER_MAX_ATTEMPTS} attempts: {error_name}",

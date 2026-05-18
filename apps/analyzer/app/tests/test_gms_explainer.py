@@ -8,6 +8,7 @@ from typing import Any
 from app.providers.gms import GMSClientError, extract_openai_response_text, extract_openai_response_text_from_body
 from app.services.analysis_service import build_completed_callback_payload
 from app.services.llm_analysis import GMSReportExplainer
+from app.services.llm_analysis.gms_explainer import GMSReportExplainerTelemetry, _build_prompt
 
 
 class FakeGMSClient:
@@ -146,6 +147,30 @@ class GMSReportExplainerTest(unittest.TestCase):
         self.assertEqual(result, original)
         self.assertIsNot(result, original)
 
+    def test_disabled_explainer_records_safe_telemetry_without_changing_result(self) -> None:
+        original = sample_judge_result()
+        telemetry = GMSReportExplainerTelemetry()
+
+        result = GMSReportExplainer(
+            client=FakeGMSClient("{}"),
+            enabled=False,
+        ).explain(original, telemetry=telemetry)
+
+        self.assertEqual(result, original)
+        self.assertEqual(
+            telemetry.to_phase_extra(),
+            {
+                "gmsEnabled": False,
+                "clientConfigured": True,
+                "compactPromptEnabled": False,
+                "promptCharCount": 0,
+                "responseCharCount": 0,
+                "attemptCount": 0,
+                "fallbackUsed": False,
+                "lastErrorType": None,
+            },
+        )
+
     def test_invalid_gms_response_falls_back_to_rule_engine_text(self) -> None:
         original = sample_judge_result()
         result = GMSReportExplainer(
@@ -186,22 +211,54 @@ class GMSReportExplainerTest(unittest.TestCase):
         self.assertEqual(result["llm_provider"], "gms")
         self.assertIn("Succeeded after retry attempt 2", result["llm_notes"][-1])
 
+    def test_gms_explainer_records_retry_success_telemetry(self) -> None:
+        original = sample_judge_result()
+        response = {
+            "overall_summary": "재시도 후 문장 정리에 성공했습니다.",
+            "issue_explanations": [],
+        }
+        client = FakeGMSClient([
+            GMSClientError("temporary failure"),
+            json.dumps(response, ensure_ascii=False),
+        ])
+        telemetry = GMSReportExplainerTelemetry()
+
+        result = GMSReportExplainer(
+            client=client,
+            enabled=True,
+            model="gpt-4.1-nano",
+        ).explain(original, telemetry=telemetry)
+
+        self.assertEqual(result["llm_provider"], "gms")
+        self.assertEqual(telemetry.attempt_count, 2)
+        self.assertFalse(telemetry.fallback_used)
+        self.assertEqual(telemetry.last_error_type, "GMSClientError")
+        self.assertEqual(telemetry.prompt_char_count, len(client.prompts[-1]))
+        self.assertEqual(telemetry.response_char_count, len(json.dumps(response, ensure_ascii=False)))
+        self.assertEqual(client.prompts[0], _build_prompt(original))
+        self.assertEqual(client.prompts[1], _build_prompt(original))
+
     def test_gms_explainer_falls_back_after_retry_is_exhausted(self) -> None:
         original = sample_judge_result()
         client = FakeGMSClient([
             GMSClientError("temporary failure"),
             GMSClientError("still failing"),
         ])
+        telemetry = GMSReportExplainerTelemetry()
 
         result = GMSReportExplainer(
             client=client,
             enabled=True,
-        ).explain(original)
+        ).explain(original, telemetry=telemetry)
 
         self.assertEqual(len(client.prompts), 2)
         self.assertEqual(result["issues"], original["issues"])
         self.assertNotIn("llm_provider", result)
         self.assertIn("after 2 attempts", result["llm_notes"][-1])
+        self.assertEqual(telemetry.attempt_count, 2)
+        self.assertTrue(telemetry.fallback_used)
+        self.assertEqual(telemetry.last_error_type, "GMSClientError")
+        self.assertEqual(telemetry.prompt_char_count, len(client.prompts[-1]))
 
     def test_callback_model_info_reflects_gms_model_when_used(self) -> None:
         result = sample_judge_result()
