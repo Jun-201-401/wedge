@@ -165,7 +165,7 @@ const SCENARIO_DEPTH_OPTIONS: ScenarioDepthOption[] = [
 ];
 const SCENARIO_IDS = CREATE_ANALYSIS_SCENARIO_IDS;
 const SCENARIO_DEPTH_IDS = SCENARIO_DEPTH_OPTIONS.map((option) => option.id);
-const DEFAULT_SCENARIO_DEPTH_ID = 'next-screen' satisfies ScenarioDepthId;
+const DEFAULT_SCENARIO_DEPTH_ID = 'hero-only' satisfies ScenarioDepthId;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const CREATE_ANALYSIS_ROUTE_OPTIONS: CreateAnalysisRouteOptions<ScenarioId, ScenarioDepthId> = {
   defaultDepthId: DEFAULT_SCENARIO_DEPTH_ID,
