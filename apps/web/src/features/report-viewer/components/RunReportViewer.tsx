@@ -201,12 +201,12 @@ function FindingReferenceSummary({
   references,
   summaryId,
   isOpen,
-  onOpen,
+  onToggle,
 }: {
   references: ReferenceBadgeViewModel[];
   summaryId: string;
   isOpen: boolean;
-  onOpen: () => void;
+  onToggle: () => void;
 }) {
   const panelId = `run-report-reference-detail-${summaryId.replace(/[^a-zA-Z0-9_-]/g, '-')}`;
   const visibleReferences = references.slice(0, 2);
@@ -225,7 +225,7 @@ function FindingReferenceSummary({
         aria-controls={panelId}
         onClick={(event) => {
           event.stopPropagation();
-          onOpen();
+          onToggle();
         }}
       >
         <span className="run-report-reference-summary__label">참고 기준</span>
@@ -248,7 +248,7 @@ function FindingReferenceSummary({
                 <span>{reference.publisher}</span>
                 <strong>{reference.title}</strong>
                 <p>{reference.basisSummary}</p>
-                <a href={reference.url} target="_blank" rel="noreferrer"># 원문</a>
+                <a href={reference.url} target="_blank" rel="noreferrer">근거 보기</a>
               </li>
             ))}
           </ul>
@@ -271,8 +271,8 @@ function JudgementBasisCard({
   const references = referenceBadgesForFinding(finding);
   const [isOpen, setIsOpen] = useState(false);
   const hasReferences = references.length > 0;
-  const openReferences = useCallback(() => {
-    setIsOpen(true);
+  const toggleReferenceSummary = useCallback(() => {
+    setIsOpen((current) => !current);
   }, []);
   const toggleReferencesFromJudgement = useCallback(() => {
     setIsOpen((current) => !current);
@@ -306,7 +306,7 @@ function JudgementBasisCard({
         references={references}
         summaryId={recommendation.id}
         isOpen={isOpen}
-        onOpen={openReferences}
+        onToggle={toggleReferenceSummary}
       />
     </article>
   );
@@ -770,7 +770,14 @@ export function RunReportViewer({
             aria-label={`마찰 지점: ${finding.title}`}
             aria-pressed={isActive}
           >
-            {isActive ? <span>{markerLabel(highlight.label)}</span> : null}
+            {isActive ? (
+              <span className="run-report-friction-marker__badge">
+                <span className="run-report-friction-marker__badge-text">{markerLabel(highlight.label)}</span>
+                <span className="run-report-friction-marker__hover-effect" aria-hidden="true">
+                  <span />
+                </span>
+              </span>
+            ) : null}
           </button>
         );
       });
@@ -814,7 +821,7 @@ export function RunReportViewer({
                 <dd title={report.targetUrl}>{targetUrlLabel}</dd>
               </div>
               <div>
-                <dt>점검 시나리오</dt>
+                <dt>점검 흐름</dt>
                 <dd>{report.scenarioLabel}</dd>
               </div>
             </dl>
@@ -922,10 +929,11 @@ export function RunReportViewer({
                             onFocus={() => setHoveredFindingId(relatedFindingId)}
                             onMouseEnter={() => setHoveredFindingId(relatedFindingId)}
                           >
-                            <span className="run-report-recommendation-tab__rank">{index + 1}</span>
+                            <span className="run-report-recommendation-tab__label">
+                              Nudge {String(index + 1).padStart(2, '0')}
+                            </span>
                             <span className="run-report-recommendation-tab__copy">
                               <strong>{recommendation.title}</strong>
-                              <small>{recommendationReason(recommendation, relatedFinding)}</small>
                             </span>
                           </button>
                         </li>

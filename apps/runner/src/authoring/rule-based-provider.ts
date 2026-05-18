@@ -38,7 +38,8 @@ export function createRuleBasedScenarioAuthoringResult(
     startUrl,
     candidateId,
     evidenceRefs,
-    suggestedTarget: selectedRecommendation?.suggested_target ?? null
+    suggestedTarget: selectedRecommendation?.suggested_target ?? null,
+    firstViewOnly: isFirstViewOnlyGoal(message.payload.requestedGoal)
   });
   const candidateValidation = validateScenarioPlanCandidate(
     scenarioPlan,
@@ -93,7 +94,8 @@ function createScenarioPlan({
   startUrl,
   candidateId,
   evidenceRefs,
-  suggestedTarget
+  suggestedTarget,
+  firstViewOnly
 }: {
   message: ScenarioAuthoringExecuteMessage;
   scenarioType: DiscoveryFlowType;
@@ -101,6 +103,7 @@ function createScenarioPlan({
   candidateId: string;
   evidenceRefs: string[];
   suggestedTarget: TargetDescriptorMap | null;
+  firstViewOnly: boolean;
 }): ScenarioPlan {
   return {
     schema_version: "0.5",
@@ -123,27 +126,39 @@ function createScenarioPlan({
       minimum_confidence: 0.5,
       required_evidence_refs: evidenceRefs
     },
-    steps: stepsFor(scenarioType, startUrl, suggestedTarget)
+    steps: stepsFor(scenarioType, startUrl, suggestedTarget, firstViewOnly)
   };
 }
 
 function stepsFor(
   scenarioType: DiscoveryFlowType,
   startUrl: string,
-  suggestedTarget: TargetDescriptorMap | null
+  suggestedTarget: TargetDescriptorMap | null,
+  firstViewOnly: boolean
 ): ScenarioStep[] {
   const steps: ScenarioStep[] = [
-    step("step_001_goto", "FIRST_VIEW", "Discovery 추천 URL에 진입한다.", { type: "goto", target: startUrl }, "network_idle", true),
-    step("step_002_first_view_checkpoint", "FIRST_VIEW", "첫 화면의 핵심 문맥과 진입점을 기록한다.", { type: "checkpoint" }, "none", true)
+    step("step_001_goto", "FIRST_VIEW", "추천된 시작 화면을 열어 첫 화면을 확인한다.", { type: "goto", target: startUrl }, "network_idle", true),
+    step("step_002_first_view_checkpoint", "FIRST_VIEW", "첫 화면에서 핵심 맥락과 주요 진입점을 기록한다.", { type: "checkpoint" }, "none", true)
   ];
 
-  if (suggestedTarget && Object.keys(suggestedTarget).length > 0 && scenarioType !== "CONTENT_ONLY") {
+  if (firstViewOnly) {
+    steps.push(
+      step(
+        "step_003_first_view_only_checkpoint",
+        "FIRST_VIEW",
+        "첫 화면만 보기 요청이므로 추천 진입점을 클릭하지 않고 현재 화면 근거를 기록한다.",
+        { type: "checkpoint", target: suggestedTarget ?? undefined },
+        "none",
+        true
+      )
+    );
+  } else if (suggestedTarget && Object.keys(suggestedTarget).length > 0 && scenarioType !== "CONTENT_ONLY") {
     if (allowsRuleBasedClick(scenarioType)) {
       steps.push(
         step(
           "step_003_probe_recommended_target",
           stageFor(scenarioType),
-          "추천된 진입점을 클릭해 다음 의사결정 지점으로 이동한다.",
+          "추천된 진입점으로 다음 화면 이동 가능성을 확인한다.",
           { type: "click", target: suggestedTarget },
           "network_idle",
           false
@@ -151,7 +166,7 @@ function stepsFor(
         step(
           "step_004_destination_checkpoint",
           stageFor(scenarioType),
-          "이동 후 도착 지점의 문맥을 기록한다.",
+          "이동 후 도착 화면의 맥락과 다음 행동을 기록한다.",
           { type: "checkpoint" },
           "none",
           true
@@ -162,7 +177,7 @@ function stepsFor(
         step(
           "step_003_recommended_target_checkpoint",
           stageFor(scenarioType),
-          "추천된 민감 진입점은 자동 클릭하지 않고 대상 근거만 기록한다.",
+          "민감한 진입점은 자동 선택하지 않고 대상 근거만 기록한다.",
           { type: "checkpoint", target: suggestedTarget },
           "none",
           true
@@ -174,7 +189,7 @@ function stepsFor(
       step(
         "step_003_context_checkpoint",
         stageFor(scenarioType),
-        "추천 흐름을 실행하기 전 현재 문맥을 기록한다.",
+        "추천 흐름 실행 전 현재 화면 맥락을 기록한다.",
         { type: "checkpoint" },
         "none",
         true
@@ -190,6 +205,16 @@ function stepsFor(
   }
 
   return steps;
+}
+
+function isFirstViewOnlyGoal(goal: string): boolean {
+  const normalized = goal.toLowerCase().replaceAll(/\s+/g, "");
+  return normalized.includes("첫화면만")
+    || normalized.includes("첫화면보기")
+    || normalized.includes("firstviewonly")
+    || normalized.includes("firstscreenonly")
+    || normalized.includes("above-the-foldonly")
+    || normalized.includes("abovethefoldonly");
 }
 
 function step(

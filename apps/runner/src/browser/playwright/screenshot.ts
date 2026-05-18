@@ -12,24 +12,37 @@ const VIEWPORT_STITCH_FIXED_ATTR = "data-wedge-viewport-stitch-fixed";
 const AUTO_LONG_PAGE_VIEWPORT_RATIO = 3;
 
 export type ScreenshotMode = "auto" | "viewport" | "full_page" | "viewport_stitched";
+export interface ScreenshotCaptureResult {
+  buffer: Buffer;
+  mode: Exclude<ScreenshotMode, "auto">;
+}
 
-export async function capturePageScreenshot(page: Page, mode: ScreenshotMode): Promise<Buffer> {
+export async function capturePageScreenshot(page: Page, mode: ScreenshotMode): Promise<ScreenshotCaptureResult> {
   if (mode === "auto") {
     return capturePageScreenshot(page, await resolveAutoScreenshotMode(page));
   }
 
   if (mode === "viewport") {
-    return page.screenshot({
-      type: "png",
-      fullPage: false
-    });
+    return {
+      buffer: await page.screenshot({
+        type: "png",
+        fullPage: false
+      }),
+      mode
+    };
   }
 
   if (mode === "viewport_stitched") {
-    return captureViewportStitchedScreenshot(page);
+    return {
+      buffer: await captureViewportStitchedScreenshot(page),
+      mode
+    };
   }
 
-  return captureFullPageScreenshot(page);
+  return {
+    buffer: await captureFullPageScreenshot(page),
+    mode
+  };
 }
 
 async function resolveAutoScreenshotMode(page: Page): Promise<Exclude<ScreenshotMode, "auto">> {

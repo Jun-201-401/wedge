@@ -7,6 +7,7 @@ export {
   buildApiStepTimeline,
   buildApiSnapshotLogs,
   buildApiSnapshotSteps,
+  buildRunCollectionSummaryStats,
   canOpenRunReport,
   canRequestRunDelete,
   canRequestRunStop,
@@ -28,7 +29,7 @@ export {
   shouldRefreshRunReport,
   shouldRefreshRunLive,
 } from './lib/runMonitorViewModel';
-export type { RunMonitorReportCtaKind, RunMonitorReportCtaState, RunStatusTone } from './lib/runMonitorViewModel';
+export type { RunCollectionSummaryStats, RunMonitorReportCtaKind, RunMonitorReportCtaState, RunStatusTone } from './lib/runMonitorViewModel';
 export { useRunMonitorState } from './lib/useRunMonitorState';
 
 export const runMonitorFeature = {

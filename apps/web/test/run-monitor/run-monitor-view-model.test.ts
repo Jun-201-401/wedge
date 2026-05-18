@@ -9,6 +9,7 @@ import {
   buildApiStepTimeline,
   buildApiSnapshotLogs,
   buildApiSnapshotSteps,
+  buildRunCollectionSummaryStats,
   canOpenRunReport,
   canRequestRunDelete,
   canRequestRunStop,
@@ -30,10 +31,10 @@ const baseRun: Run = {
   id: '11111111-1111-4111-8111-111111111111',
   type: 'run',
   projectId: '22222222-2222-4222-8222-222222222222',
-  name: '랜딩 전환 CTA 점검',
+  name: '랜딩 전환 행동 점검',
   triggerSource: 'WEB',
   startUrl: 'https://example.com/',
-  goal: '랜딩 전환 CTA 점검',
+  goal: '랜딩 전환 행동 점검',
   devicePreset: 'desktop',
   scenarioTemplateVersionId: '33333333-3333-4333-8333-333333333333',
   status: 'RUNNING',
@@ -308,6 +309,33 @@ test('run monitor view model turns event payload details into readable path entr
       occurredAt: '2026-04-27T01:00:12.000Z',
     },
     {
+      id: 'event-navigate-root',
+      runId: baseRun.id,
+      stepId: 'step-goto',
+      stepKey: 'step_goto_root',
+      eventType: 'ACTION_EXECUTED',
+      eventSource: 'RUNNER',
+      payload: {
+        actionType: 'goto',
+        details: {
+          finalUrl: 'https://example.com/',
+        },
+      },
+      occurredAt: '2026-04-27T01:00:12.500Z',
+    },
+    {
+      id: 'event-completed-root',
+      runId: baseRun.id,
+      stepId: 'step-goto',
+      stepKey: 'step_goto_root',
+      eventType: 'STEP_COMPLETED',
+      eventSource: 'RUNNER',
+      payload: {
+        finalUrl: 'https://example.com/',
+      },
+      occurredAt: '2026-04-27T01:00:12.600Z',
+    },
+    {
       id: 'event-completed-duration',
       runId: baseRun.id,
       stepId: 'step-wait',
@@ -342,9 +370,82 @@ test('run monitor view model turns event payload details into readable path entr
 
   assert.equal(timeline[0].detail, 'Start free trial 버튼을 클릭했습니다');
   assert.equal(timeline[1].detail, '도착 화면 /signup을 확인했습니다');
-  assert.equal(timeline[2].detail, '응답 대기 850ms 후 화면 변화를 확인했습니다');
-  assert.equal(timeline[3].detail, '버튼 클릭 후 응답이 지연되어 확인이 막혔습니다');
+  assert.equal(timeline[2].detail, '첫 화면으로 이동했습니다');
+  assert.equal(timeline[3].detail, '첫 화면을 확인했습니다');
+  assert.equal(timeline[4].detail, '응답 대기 850ms 후 화면 변화를 확인했습니다');
+  assert.equal(timeline[5].detail, '버튼 클릭 후 응답이 지연되어 확인이 막혔습니다');
   assert.doesNotMatch(timeline.map((step) => step.detail).join('\n'), /selector|locator|RUNNER_TIMEOUT/);
+});
+
+test('run monitor view model keeps generated scenario step logs readable', () => {
+  const events: RunEvent[] = [
+    {
+      id: 'event-start-legacy-discovery',
+      runId: baseRun.id,
+      stepId: 'step-start',
+      stepKey: 'step_001_goto',
+      eventType: 'STEP_STARTED',
+      eventSource: 'RUNNER',
+      payload: {
+        description: 'Discovery 추천 URL에 진입한다.',
+      },
+      occurredAt: '2026-04-27T01:00:00.000Z',
+    },
+    {
+      id: 'event-start-next-screen',
+      runId: baseRun.id,
+      stepId: 'step-click',
+      stepKey: 'step_003_probe_recommended_target',
+      eventType: 'STEP_STARTED',
+      eventSource: 'RUNNER',
+      payload: {
+        description: '추천된 진입점으로 다음 화면 이동 가능성을 확인한다.',
+      },
+      occurredAt: '2026-04-27T01:00:10.000Z',
+    },
+  ];
+  const steps: RunStep[] = [
+    {
+      id: 'step-start',
+      runId: baseRun.id,
+      stepOrder: 1,
+      stepKey: 'step_001_goto',
+      stepName: 'Discovery 추천 URL에 진입한다.',
+      stepType: 'GOTO',
+      status: 'PASSED',
+      startedAt: '2026-04-27T01:00:00.000Z',
+      finishedAt: '2026-04-27T01:00:05.000Z',
+      errorCode: null,
+      errorMessage: null,
+    },
+    {
+      id: 'step-click',
+      runId: baseRun.id,
+      stepOrder: 2,
+      stepKey: 'step_003_probe_recommended_target',
+      stepName: '추천된 진입점으로 다음 화면 이동 가능성을 확인한다.',
+      stepType: 'CLICK',
+      status: 'RUNNING',
+      startedAt: '2026-04-27T01:00:10.000Z',
+      finishedAt: null,
+      errorCode: null,
+      errorMessage: null,
+    },
+  ];
+
+  const logs = buildApiEventLogs(baseRun, baseLive, events);
+  const eventTimeline = buildApiEventTimeline(baseRun, baseLive, events, steps);
+  const stepTimeline = buildApiStepTimeline(baseRun, baseLive, steps);
+
+  assert.equal(logs[0].message, '추천된 시작 화면을 열고 있습니다');
+  assert.equal(logs[1].message, '추천 진입점의 다음 화면 이동을 확인 중입니다');
+  assert.deepEqual(eventTimeline.map((step) => step.label), ['추천 시작 화면', '추천 진입점 이동']);
+  assert.deepEqual(stepTimeline.map((step) => step.label), ['추천 시작 화면', '추천 진입점 이동']);
+  assert.doesNotMatch([
+    ...logs.map((log) => log.message),
+    ...eventTimeline.map((step) => step.label),
+    ...stepTimeline.map((step) => step.label),
+  ].join('\n'), /Discovery|진입한다 확인|의사결정/);
 });
 
 test('run monitor view model keeps selector-like action payloads readable but not raw', () => {
@@ -534,6 +635,118 @@ test('run monitor view model maps evidence packet artifacts and observations', (
   );
 });
 
+test('run monitor view model summarizes URL visits, screenshots, and steps for the report CTA', () => {
+  const stats = buildRunCollectionSummaryStats({
+    evidencePacket: {
+      ...evidencePacket,
+      final_url: 'https://example.com/cart',
+      checkpoints: [
+        {
+          ...evidencePacket.checkpoints[0],
+          checkpoint_id: 'checkpoint-1',
+          state: { url: 'https://example.com/' },
+        },
+        {
+          ...evidencePacket.checkpoints[0],
+          checkpoint_id: 'checkpoint-2',
+          state: { url: 'https://example.com/raw-redirect', page: { url: 'https://example.com/cart' } },
+        },
+        {
+          ...evidencePacket.checkpoints[0],
+          checkpoint_id: 'checkpoint-3',
+          state: { url: 'https://example.com/cart#details' },
+        },
+      ],
+      artifacts: [
+        ...evidencePacket.artifacts,
+        {
+          artifact_id: 'screenshot-2',
+          type: 'screenshot',
+          uri: '/api/runs/111/artifacts/screenshot-2/content',
+          mime_type: 'image/png',
+          size_bytes: 2048,
+          metadata: {},
+        },
+      ],
+    },
+    run: baseRun,
+    live: baseLive,
+    runSteps: [
+      {
+        id: 'step-1',
+        runId: baseRun.id,
+        stepOrder: 1,
+        stepKey: 'step_001_goto',
+        stepName: '첫 화면 로드',
+        stepType: 'GOTO',
+        status: 'PASSED',
+        startedAt: null,
+        finishedAt: null,
+        errorCode: null,
+        errorMessage: null,
+      },
+      {
+        id: 'step-2',
+        runId: baseRun.id,
+        stepOrder: 2,
+        stepKey: 'step_002_capture',
+        stepName: '화면 수집',
+        stepType: 'ASSERT',
+        status: 'PASSED',
+        startedAt: null,
+        finishedAt: null,
+        errorCode: null,
+        errorMessage: null,
+      },
+      {
+        id: 'step-3',
+        runId: baseRun.id,
+        stepOrder: 3,
+        stepKey: 'step_003_click',
+        stepName: '진입점 확인',
+        stepType: 'CLICK',
+        status: 'PASSED',
+        startedAt: null,
+        finishedAt: null,
+        errorCode: null,
+        errorMessage: null,
+      },
+      {
+        id: 'step-4',
+        runId: baseRun.id,
+        stepOrder: 4,
+        stepKey: 'step_004_stop',
+        stepName: '안전 중단',
+        stepType: 'ASSERT',
+        status: 'PASSED',
+        startedAt: null,
+        finishedAt: null,
+        errorCode: null,
+        errorMessage: null,
+      },
+      {
+        id: 'step-5',
+        runId: baseRun.id,
+        stepOrder: 9,
+        stepKey: 'step_009_planned',
+        stepName: '誘몄떎??怨꾪쉷',
+        stepType: 'ASSERT',
+        status: 'PENDING',
+        startedAt: null,
+        finishedAt: null,
+        errorCode: null,
+        errorMessage: null,
+      },
+    ],
+  });
+
+  assert.deepEqual(stats, {
+    visitedPageCount: 2,
+    screenshotCount: 2,
+    stepCount: 4,
+  });
+});
+
 
 test('run report CTA opens for mock runs or completed real runs with evidence checkpoints', () => {
   assert.equal(canOpenRunReport(true), true);
@@ -555,7 +768,7 @@ test('run monitor report CTA state follows backend report readiness', () => {
       canOpenReport: true,
       titleLabel: '리포트 준비 완료',
       eyebrow: '다음 화면',
-      message: '수집된 근거를 바탕으로 발견된 신호와 개선안을 확인합니다.',
+      message: '수집된 근거와 개선안을 한눈에 정리했습니다.',
     },
   );
 

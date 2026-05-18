@@ -21,6 +21,35 @@ test("Runner ScenarioAuthoring compiles Discovery recommendation into custom Sce
   assert.equal(result.candidates[0]?.scenario_plan.scenario_type, "custom_compiled");
   assert.equal(result.candidates[0]?.scenario_plan.source_discovery_id, "40000000-0000-4000-8000-000000000003");
   assert.equal(result.candidates[0]?.scenario_plan.steps[2]?.action.type, "click");
+  assert.deepEqual(result.candidates[0]?.scenario_plan.steps.map((step) => step.description), [
+    "추천된 시작 화면을 열어 첫 화면을 확인한다.",
+    "첫 화면에서 핵심 맥락과 주요 진입점을 기록한다.",
+    "추천된 진입점으로 다음 화면 이동 가능성을 확인한다.",
+    "이동 후 도착 화면의 맥락과 다음 행동을 기록한다."
+  ]);
+  assert.doesNotMatch(
+    result.candidates[0]?.scenario_plan.steps.map((step) => step.description).join("\n") ?? "",
+    /Discovery|의사결정/
+  );
+});
+
+test("Runner ScenarioAuthoring keeps first-view-only goals checkpoint-only", async () => {
+  const message = parseScenarioAuthoringExecuteMessage(JSON.stringify(createScenarioAuthoringExecuteMessage({
+    requestedGoal: "랜딩 전환 버튼 점검 · 첫 화면만 보기"
+  })));
+  const config = createRunnerTestConfig();
+
+  const result = await executeScenarioAuthoring({ message, config });
+  const steps = result.candidates[0]?.scenario_plan.steps ?? [];
+
+  assert.equal(result.validation.schema_valid, true);
+  assert.equal(result.validation.safety_valid, true);
+  assert.deepEqual(steps.map((step) => step.action.type), ["goto", "checkpoint", "checkpoint"]);
+  assert.equal(steps[2]?.step_id, "step_003_first_view_only_checkpoint");
+  assert.notEqual(
+    steps.some((step) => step.step_id === "step_003_probe_recommended_target" || step.action.type === "click"),
+    true
+  );
 });
 
 test("createRunnerApp processes scenario-authoring message files and sends callbacks", async () => {
@@ -50,7 +79,8 @@ test("createRunnerApp processes scenario-authoring message files and sends callb
   }
 });
 
-function createScenarioAuthoringExecuteMessage() {
+function createScenarioAuthoringExecuteMessage(overrides: { requestedGoal?: string } = {}) {
+  const requestedGoal = overrides.requestedGoal ?? "랜딩 CTA 진입점을 검증한다";
   return {
     messageId: "40000000-0000-4000-8000-000000000010",
     messageType: "scenario-authoring.execute.request",
@@ -63,7 +93,7 @@ function createScenarioAuthoringExecuteMessage() {
       authoringJobId: "40000000-0000-4000-8000-000000000001",
       projectId: "40000000-0000-4000-8000-000000000002",
       sourceDiscoveryId: "40000000-0000-4000-8000-000000000003",
-      requestedGoal: "랜딩 CTA 진입점을 검증한다",
+      requestedGoal,
       input: {
         site_discovery_result: {
           schema_version: "0.5",
@@ -81,7 +111,7 @@ function createScenarioAuthoringExecuteMessage() {
           missing_flow_types: [],
           scenario_recommendations: []
         },
-        requested_goal: "랜딩 CTA 진입점을 검증한다",
+        requested_goal: requestedGoal,
         preferred_scenario_type: "LANDING_CTA",
         selected_recommendation: {
           recommendation_id: "rec-1",

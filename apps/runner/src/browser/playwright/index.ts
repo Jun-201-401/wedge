@@ -159,6 +159,8 @@ export interface BrowserCapturedArtifacts {
     fileExtension: "png";
     width: number;
     height: number;
+    captureMode: Exclude<NonNullable<AgentArtifactPolicy["screenshot_mode"]>, "auto">;
+    requestedMode: NonNullable<AgentArtifactPolicy["screenshot_mode"]>;
   };
   domSnapshot?: {
     content: string;
@@ -929,18 +931,20 @@ class RealPlaywrightSession implements BrowserSession {
     try {
       await preparePageForScreenshot(this.page);
 
-      const screenshotBuffer = await capturePageScreenshot(this.page, options.screenshotMode ?? "auto");
-      const screenshotDimensions = readPngDimensions(screenshotBuffer) ?? this.plan.environment.viewport;
+      const screenshotCapture = await capturePageScreenshot(this.page, options.screenshotMode ?? "auto");
+      const screenshotDimensions = readPngDimensions(screenshotCapture.buffer) ?? this.plan.environment.viewport;
       const domSnapshot = await this.page.content();
       const axTree = options.captureAxTree ? await this.captureAxTree() : undefined;
 
       return {
         screenshot: {
-          contentBase64: screenshotBuffer.toString("base64"),
+          contentBase64: screenshotCapture.buffer.toString("base64"),
           mimeType: "image/png",
           fileExtension: "png",
           width: screenshotDimensions.width,
-          height: screenshotDimensions.height
+          height: screenshotDimensions.height,
+          captureMode: screenshotCapture.mode,
+          requestedMode: options.screenshotMode ?? "auto"
         },
         domSnapshot: {
           content: domSnapshot,
@@ -3798,7 +3802,9 @@ async function safeInteractiveComponents(
 
     for (const [index, frame] of page.frames().filter((frame) => frame !== page.mainFrame()).entries()) {
       try {
-        frameComponents.push(...await extractInteractiveComponentsFromFrame(frame, lastAction, `frame:${index + 1}`));
+        const frameOffset = await readFrameViewportOffset(frame);
+        const components = await extractInteractiveComponentsFromFrame(frame, lastAction, `frame:${index + 1}`);
+        frameComponents.push(...components.map((component) => applyFrameViewportOffset(component, frameOffset)));
       } catch {
         continue;
       }
@@ -3818,6 +3824,57 @@ async function safeInteractiveComponents(
   } catch {
     return fallbackValue;
   }
+}
+
+async function readFrameViewportOffset(frame: Frame): Promise<{ x: number; y: number }> {
+  const frameElement = await frame.frameElement();
+  try {
+    const box = await frameElement.boundingBox();
+    if (!box) {
+      return { x: 0, y: 0 };
+    }
+    return {
+      x: Math.round(box.x),
+      y: Math.round(box.y)
+    };
+  } finally {
+    await frameElement.dispose().catch(() => undefined);
+  }
+}
+
+function applyFrameViewportOffset(
+  component: InteractiveComponentObservationItem,
+  offset: { x: number; y: number }
+): InteractiveComponentObservationItem {
+  if (offset.x === 0 && offset.y === 0) {
+    return component;
+  }
+
+  return {
+    ...component,
+    bounds: offsetBounds(component.bounds, offset),
+    container_bounds: component.container_bounds ? offsetBounds(component.container_bounds, offset) : component.container_bounds,
+    layout: component.layout ? offsetLayout(component.layout, offset) : component.layout
+  };
+}
+
+function offsetBounds(bounds: InteractiveComponentBounds, offset: { x: number; y: number }): InteractiveComponentBounds {
+  return {
+    ...bounds,
+    x: bounds.x + offset.x,
+    y: bounds.y + offset.y
+  };
+}
+
+function offsetLayout(
+  layout: InteractiveComponentLayout,
+  offset: { x: number; y: number }
+): InteractiveComponentLayout {
+  return {
+    ...layout,
+    center_x: layout.center_x + offset.x,
+    center_y: layout.center_y + offset.y
+  };
 }
 
 async function safeVisibleTextBlocks(

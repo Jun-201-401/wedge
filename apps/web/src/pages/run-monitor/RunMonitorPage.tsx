@@ -16,11 +16,10 @@ import { formatDisplayUrl } from '../../shared/lib/displayUrl';
 import { useResizableTrailingPanel } from '../../shared/lib/resizableTrailingPanel';
 import { deleteRun, requestRunAnalysis, stopRun } from '../../api/runs';
 import type { RunReportProjection } from '../../entities/report';
-import type { EvidencePacket, RunEvidenceCounts } from '../../entities/run';
-import { RUN_STATUS_LABEL } from '../../entities/run';
+import { RUN_STATUS_LABEL, type RunStatus } from '../../entities/run';
 import {
   buildApiEventTimeline,
-  buildApiStepTimeline,
+  buildRunCollectionSummaryStats,
   buildMockRunMonitorData,
   canRequestRunDelete,
   canRequestRunStop,
@@ -35,6 +34,7 @@ import {
   RUN_MONITOR_REFRESH_INTERVAL_MS,
   resolveRunMonitorReportCtaState,
   shouldRefreshRunReport,
+  type RunCollectionSummaryStats,
   type RunStatusTone,
   type StepStatus,
   useRunMonitorState,
@@ -57,7 +57,6 @@ type MonitorActionState = {
 const IDLE_MONITOR_ACTION_STATE: MonitorActionState = { kind: 'idle', message: '' };
 const REPORT_STATUS_LOAD_ERROR_MESSAGE = '리포트 상태를 불러오지 못했습니다. 잠시 후 다시 시도해주세요.';
 const GENERATE_REPORT_PENDING_MESSAGE = '리포트 준비 중입니다.';
-const GENERATE_REPORT_SUCCESS_MESSAGE = '리포트 준비가 완료됐습니다.';
 const GENERATE_REPORT_ERROR_MESSAGE = '리포트를 준비하지 못했습니다. 잠시 후 다시 시도해주세요.';
 const REQUEST_ANALYSIS_PENDING_MESSAGE = '분석 요청 중입니다.';
 const REQUEST_ANALYSIS_SUCCESS_MESSAGE = '분석 요청이 접수됐습니다. 분석이 완료되면 리포트를 자동으로 준비합니다.';
@@ -70,6 +69,26 @@ const RUN_MONITOR_PANEL_MAX_WIDTH = 560;
 const RUN_MONITOR_CAPTURE_MIN_WIDTH = 560;
 const RUN_MONITOR_RESIZE_STEP = 24;
 const RUN_MONITOR_RESIZER_FALLBACK_WIDTH = 8;
+
+function getLiveInsightMessage(status: RunStatus) {
+  if (status === 'FAILED') {
+    return '실행 중 오류가 발생해 근거 수집이 중단됐습니다. 실패 원인을 확인한 뒤 다시 실행해 주세요.';
+  }
+
+  if (status === 'STOP_REQUESTED') {
+    return '중지 요청을 처리하고 있습니다. 진행 중인 수집을 정리하고 있어요.';
+  }
+
+  if (status === 'STOPPED') {
+    return '실행이 중지되어 근거 수집이 멈췄습니다. 필요하면 새 분석으로 다시 시작해 주세요.';
+  }
+
+  if (status === 'COMPLETED') {
+    return '근거 수집이 완료됐습니다. 리포트 준비 상태를 확인해 주세요.';
+  }
+
+  return '선택한 흐름을 준비하고 있습니다. 곧 근거 수집을 시작합니다.';
+}
 
 function readQueryParam(name: string) {
   if (typeof window === 'undefined') {
@@ -222,6 +241,42 @@ function RunMonitorSkeletonLine({ className = '' }: { className?: string }) {
   return <span className={skeletonClassName} aria-hidden="true" />;
 }
 
+function RunMonitorGooLoader({ label, className = '' }: { label: string; className?: string }) {
+  const loaderClassName = className ? `run-monitor-goo-loader ${className}` : 'run-monitor-goo-loader';
+
+  return (
+    <div className={loaderClassName} role="status" aria-label={label}>
+      <div className="run-monitor-goo-loader__dots" aria-hidden="true">
+        <span className="run-monitor-goo-loader__dot run-monitor-goo-loader__dot--one" />
+        <span className="run-monitor-goo-loader__dot run-monitor-goo-loader__dot--two" />
+        <span className="run-monitor-goo-loader__dot run-monitor-goo-loader__dot--three" />
+      </div>
+      <svg className="run-monitor-goo-loader__filter" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
+        <defs>
+          <filter id="run-monitor-goo-filter">
+            <feGaussianBlur in="SourceGraphic" result="blur" stdDeviation="5" />
+            <feColorMatrix
+              in="blur"
+              mode="matrix"
+              values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 21 -7"
+            />
+          </filter>
+        </defs>
+      </svg>
+    </div>
+  );
+}
+
+function RunMonitorShapeLoader({ label, className = '' }: { label: string; className?: string }) {
+  const loaderClassName = className ? `run-monitor-shape-loader ${className}` : 'run-monitor-shape-loader';
+
+  return (
+    <div className={loaderClassName} role="status" aria-label={label}>
+      <div className="run-monitor-shape-loader__shape" aria-hidden="true" />
+    </div>
+  );
+}
+
 function RunMonitorLoadingShell({ runId, targetUrl }: { runId: string; targetUrl: string }) {
   return (
     <div className="run-monitor-page run-monitor-page--loading" aria-busy="true">
@@ -246,7 +301,13 @@ function RunMonitorLoadingShell({ runId, targetUrl }: { runId: string; targetUrl
                 <span />
                 <span />
               </div>
-              <div className="run-monitor-browser__stage run-monitor-browser__stage--skeleton" />
+              <div className="run-monitor-browser__stage run-monitor-browser__stage--skeleton run-monitor-browser__stage--loading-skeleton">
+                <div className="run-monitor-browser__loading-state">
+                  <RunMonitorGooLoader label="분석 화면을 준비하고 있습니다" />
+                  <strong>분석 화면 준비 중</strong>
+                  <p>실행 데이터를 연결하고 있습니다.</p>
+                </div>
+              </div>
             </div>
           </section>
 
@@ -307,41 +368,12 @@ function RunMonitorLoadingShell({ runId, targetUrl }: { runId: string; targetUrl
   );
 }
 
-interface EvidenceSummaryStats {
-  checkpointCount: number;
-  observationCount: number;
-  artifactCount: number;
-}
-
-function getEvidenceSummaryStats(
-  evidencePacket: EvidencePacket | null,
-  liveCounts: RunEvidenceCounts | null | undefined,
-): EvidenceSummaryStats | null {
-  if (evidencePacket) {
-    return {
-      checkpointCount: evidencePacket.checkpoints.length,
-      observationCount: evidencePacket.checkpoints.reduce((count, checkpoint) => count + checkpoint.observations.length, 0),
-      artifactCount: evidencePacket.artifacts.length,
-    };
-  }
-
-  if (liveCounts) {
-    return {
-      checkpointCount: liveCounts.checkpointCount,
-      observationCount: liveCounts.observationCount,
-      artifactCount: liveCounts.artifactCount,
-    };
-  }
-
-  return null;
-}
-
-function EvidenceCollectionSummary({
+function RunCollectionSummary({
   stats,
   isLoading,
   errorMessage,
 }: {
-  stats: EvidenceSummaryStats | null;
+  stats: RunCollectionSummaryStats | null;
   isLoading: boolean;
   errorMessage: string;
 }) {
@@ -350,25 +382,25 @@ function EvidenceCollectionSummary({
   }
 
   return (
-    <div className="run-monitor-evidence-summary" aria-label="수집 상태 요약">
-      <span>수집</span>
+    <div className="run-monitor-collection-summary" aria-label="수집 요약">
+      <span>수집 요약</span>
       {stats ? (
         <dl>
           <div>
-            <dt>체크</dt>
-            <dd>{stats.checkpointCount}</dd>
+            <dt>URL 기준 방문</dt>
+            <dd>{stats.visitedPageCount}개</dd>
           </div>
           <div>
-            <dt>신호</dt>
-            <dd>{stats.observationCount}</dd>
+            <dt>스크린샷</dt>
+            <dd>{stats.screenshotCount}장</dd>
           </div>
           <div>
-            <dt>자료</dt>
-            <dd>{stats.artifactCount}</dd>
+            <dt>실행 step</dt>
+            <dd>{stats.stepCount}개</dd>
           </div>
         </dl>
       ) : (
-        <p>{isLoading ? '수집 상태 확인 중' : errorMessage}</p>
+        <p>{isLoading ? '수집 요약 확인 중' : errorMessage}</p>
       )}
     </div>
   );
@@ -466,7 +498,7 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
 
         setReportProjection(response.data);
         setReportStatusError('');
-        setReportActionState({ kind: 'success', message: GENERATE_REPORT_SUCCESS_MESSAGE });
+        setReportActionState({ kind: 'success', message: '' });
       })
       .catch(() => {
         if (!canApplyReportResponse(requestedRunId)) {
@@ -634,7 +666,12 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
   const statusLabel = RUN_STATUS_LABEL[live.status];
   const progressPercent = isApiFallback ? mockData.progressPercent : getApiProgressPercent(live);
   const currentCheckpoint = isApiFallback ? (live.currentAction ?? mockData.currentCheckpoint) : getApiCheckpoint(live);
+  const liveInsightMessage = getLiveInsightMessage(live.status);
   const traceModeLabel = isApiFallback ? '모의 실행' : '실제 실행 상태';
+  const isCurrentRunSnapshot = run.id === runId && live.runId === runId;
+  const currentRunEvidencePacket = isCurrentRunSnapshot && evidencePacket?.run_id === runId ? evidencePacket : null;
+  const currentRunSteps = isCurrentRunSnapshot ? runSteps.filter((step) => step.runId === runId) : [];
+  const currentRunEvents = isCurrentRunSnapshot ? runEvents.filter((event) => event.runId === runId) : [];
   const reportCtaState = resolveRunMonitorReportCtaState({
     isMockRun,
     report: currentReportProjection,
@@ -648,16 +685,21 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
         depthId: readQueryParam('depth') ?? 'hero-only',
       })
     : null;
-  const visibleSteps = isApiFallback ? mockData.steps : buildApiEventTimeline(run, live, runEvents, runSteps);
+  const visibleSteps = isApiFallback ? mockData.steps : buildApiEventTimeline(run, live, currentRunEvents, currentRunSteps);
   const deviceLabel = getDevicePresetLabel(run.devicePreset);
-  const evidenceStats = getEvidenceSummaryStats(evidencePacket, live.evidenceCounts);
+  const collectionSummaryStats = buildRunCollectionSummaryStats({
+    evidencePacket: currentRunEvidencePacket,
+    run,
+    live,
+    runSteps: currentRunSteps,
+  });
   const timelineNote = isApiFallback
     ? '예시 실행 경로입니다. 실제 실행이 시작되면 수집한 단계로 교체됩니다.'
-    : eventLoadError || (isEventLoading && runEvents.length === 0)
+    : eventLoadError || (isEventLoading && currentRunEvents.length === 0)
       ? (eventLoadError || '확인 경로를 불러오는 중입니다.')
-      : runEvents.length > 0
+      : currentRunEvents.length > 0
         ? '실제 실행 이벤트를 바탕으로 확인한 경로입니다.'
-        : stepLoadError || (isStepLoading && runSteps.length === 0)
+        : stepLoadError || (isStepLoading && currentRunSteps.length === 0)
           ? (stepLoadError || '확인 단계를 불러오는 중입니다.')
           : '실제 실행 단계 상태를 바탕으로 확인한 경로입니다.';
   const isRunActionPending = runActionState.kind === 'pending';
@@ -732,7 +774,7 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
       {reportActionState.message}
     </p>
   ) : null;
-  let reportCtaActionLabel = '대기 중';
+  let reportCtaActionLabel = '';
   if (reportPath) {
     reportCtaActionLabel = '리포트 열기';
   } else if (canGenerateReport) {
@@ -740,9 +782,34 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
   } else if (canRequestAnalysis) {
     reportCtaActionLabel = reportActionState.kind === 'error' ? '다시 시도' : PREPARE_REPORT_PENDING_LABEL;
   }
+  const shouldShowReportLoader = !reportPath && reportActionState.kind !== 'error' && (
+    isReportActionPending ||
+    reportCtaState.kind === 'loading' ||
+    reportCtaState.kind === 'generate' ||
+    reportCtaState.kind === 'request-analysis' ||
+    reportCtaState.kind === 'waiting'
+  );
+  let reportLoaderLabel = PREPARE_REPORT_PENDING_LABEL;
+  let reportLoaderMessage = '분석 결과를 확인 중입니다';
+  if (reportCtaState.kind === 'loading') {
+    reportLoaderLabel = '리포트 상태를 확인하고 있습니다';
+    reportLoaderMessage = '상태를 확인 중입니다';
+  } else if (reportCtaState.kind === 'generate') {
+    reportLoaderMessage = '리포트를 준비 중입니다';
+  } else if (reportCtaState.kind === 'waiting') {
+    reportLoaderLabel = '분석 결과를 기다리고 있습니다';
+  }
 
   const reportCtaAction = reportPath ? (
-    <span className="run-monitor-report-cta__open-label">{reportCtaActionLabel}</span>
+    <span className="run-monitor-report-cta__open-label">
+      <span className="run-monitor-report-cta__open-icon" aria-hidden="true">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width={18} height={18}>
+          <path fill="none" d="M0 0h24v24H0z" />
+          <path fill="currentColor" d="M1.946 9.315c-.522-.174-.527-.455.01-.634l19.087-6.362c.529-.176.832.12.684.638l-5.454 19.086c-.15.529-.455.547-.679.045L12 14l6-8-8 6-8.054-2.685z" />
+        </svg>
+      </span>
+      <span className="run-monitor-report-cta__open-text">{reportCtaActionLabel}</span>
+    </span>
   ) : canGenerateReport && reportActionState.kind === 'error' ? (
     <button type="button" onClick={retryGenerateReport} disabled={isReportActionPending}>
       {reportCtaActionLabel}
@@ -751,28 +818,46 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
     <button type="button" onClick={retryRequestAnalysisForReport} disabled={isReportActionPending}>
       {reportCtaActionLabel}
     </button>
-  ) : (
-    <span className="run-monitor-report-cta__passive-label">{reportCtaActionLabel}</span>
-  );
-  const reportCtaCardClassName = 'run-monitor-live-insight__card run-monitor-live-insight__card--report run-monitor-report-cta';
-  const reportCtaContent = (
-    <>
-      <div className="run-monitor-report-cta__state">
-        <span>{reportCtaState.eyebrow}</span>
-      </div>
-      <strong>분석 결과 리포트</strong>
-      <p>{reportCtaState.message}</p>
-      <div className="run-monitor-report-cta__footer">
-        <EvidenceCollectionSummary
-          stats={evidenceStats}
-          isLoading={isEvidenceLoading}
-          errorMessage={evidenceLoadError}
-        />
-        {reportActionMessage}
+  ) : null;
+  const shouldShowReportActionMessageInFooter = Boolean(reportActionMessage) && (!shouldShowReportLoader || reportActionState.kind === 'error');
+  const reportCtaFooter = shouldShowReportActionMessageInFooter || reportCtaAction ? (
+    <div className="run-monitor-report-cta__footer">
+      {shouldShowReportActionMessageInFooter ? reportActionMessage : null}
+      {reportCtaAction ? (
         <div className="run-monitor-report-cta__actions">
           {reportCtaAction}
         </div>
+      ) : null}
+    </div>
+  ) : null;
+  const reportCtaCardClassName = [
+    'run-monitor-live-insight__card run-monitor-live-insight__card--report run-monitor-report-cta',
+    `run-monitor-report-cta--${reportCtaState.kind}`,
+    isReportActionPending ? 'run-monitor-report-cta--pending' : '',
+  ].filter(Boolean).join(' ');
+  const shouldShowReportCollectionSummary = reportCtaState.kind === 'open';
+  const reportCtaContent = (
+    <>
+      <div className="run-monitor-report-cta__heading">
+        <strong>분석 결과 리포트</strong>
       </div>
+      <p>{reportCtaState.message}</p>
+      {shouldShowReportLoader ? (
+        <div className="run-monitor-report-cta__activity">
+          <RunMonitorShapeLoader label={reportLoaderLabel} />
+          <div className="run-monitor-report-cta__activity-copy">
+            <span>{reportLoaderMessage}</span>
+          </div>
+        </div>
+      ) : null}
+      {shouldShowReportCollectionSummary ? (
+        <RunCollectionSummary
+          stats={collectionSummaryStats}
+          isLoading={isEvidenceLoading}
+          errorMessage={evidenceLoadError}
+        />
+      ) : null}
+      {reportCtaFooter}
     </>
   );
 
@@ -873,7 +958,7 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
                   </div>
                 ) : (
                   <div className="run-monitor-browser__empty-state">
-                    <span aria-hidden="true" />
+                    <RunMonitorGooLoader label="화면 캡처를 기다리고 있습니다" />
                     <strong>화면 캡처 대기 중</strong>
                     <p>분석 화면이 준비되면 이 영역에서 바로 확인할 수 있습니다.</p>
                   </div>
@@ -933,9 +1018,9 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
             ) : (
               <div className="run-monitor-live-insight__card">
                 <strong>{currentCheckpoint}</strong>
-                <p>선택한 흐름을 준비하고 있습니다. 곧 근거 수집을 시작합니다.</p>
-                <EvidenceCollectionSummary
-                  stats={evidenceStats}
+                <p>{liveInsightMessage}</p>
+                <RunCollectionSummary
+                  stats={collectionSummaryStats}
                   isLoading={isEvidenceLoading}
                   errorMessage={evidenceLoadError}
                 />

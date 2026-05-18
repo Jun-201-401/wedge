@@ -32,6 +32,42 @@ LEGAL_OR_HELP_PATTERN = (
     "설정",
     "도움말",
 )
+CORE_ACTION_KEYWORDS = (
+    "login",
+    "signin",
+    "sign-in",
+    "signup",
+    "sign-up",
+    "search",
+    "submit",
+    "save",
+    "next",
+    "continue",
+    "cart",
+    "checkout",
+    "payment",
+    "pay",
+    "order",
+    "buy",
+    "purchase",
+    "verify",
+    "address",
+    "postcode",
+    "로그인",
+    "회원가입",
+    "검색",
+    "제출",
+    "저장",
+    "다음",
+    "계속",
+    "장바구니",
+    "담기",
+    "구매",
+    "결제",
+    "주문",
+    "인증",
+    "주소",
+)
 
 
 def evaluate_target_size(rule: dict[str, Any], context: StageContext) -> RuleHit | None:
@@ -155,6 +191,8 @@ def _is_countable_target(component: Any, *, viewport: dict[str, float] | None) -
         return False
     if _is_excluded_target(component):
         return False
+    if not _is_goal_relevant_target(component):
+        return False
 
     bounds = _bounds(component.get("bounds"))
     if bounds is None:
@@ -202,6 +240,56 @@ def _is_excluded_target(component: dict[str, Any]) -> bool:
         if value
     ).lower()
     return any(pattern in text for pattern in LEGAL_OR_HELP_PATTERN)
+
+
+def _is_goal_relevant_target(component: dict[str, Any]) -> bool:
+    return (
+        _was_used_in_scenario(component)
+        or _is_cta_target(component)
+        or _is_form_or_required_target(component)
+        or _has_core_action_keyword(component)
+    )
+
+
+def _was_used_in_scenario(component: dict[str, Any]) -> bool:
+    if any(
+        _truthy(component.get(key))
+        for key in ("clicked_in_scenario", "typed_in_scenario", "filled_in_scenario", "selected_in_scenario")
+    ):
+        return True
+    return _number(component.get("interaction_order")) is not None
+
+
+def _is_cta_target(component: dict[str, Any]) -> bool:
+    return _truthy(component.get("is_cta_candidate")) or _truthy(component.get("is_primary_like"))
+
+
+def _is_form_or_required_target(component: dict[str, Any]) -> bool:
+    role = str(component.get("role") or "").lower()
+    tag = str(component.get("tag") or "").lower()
+    return (
+        _truthy(component.get("is_form_control"))
+        or _truthy(component.get("required"))
+        or tag in {"input", "select", "textarea"}
+        or role in {"checkbox", "radio", "switch", "option", "textbox", "combobox", "listbox"}
+    )
+
+
+def _has_core_action_keyword(component: dict[str, Any]) -> bool:
+    text = " ".join(
+        value
+        for value in (
+            _text(component.get("text")),
+            _text(component.get("visible_text")),
+            _text(component.get("accessible_name")),
+            _text(component.get("href")),
+            _text(component.get("selector")),
+            _text(component.get("container_heading")),
+            _text(component.get("nearby_text")),
+        )
+        if value
+    ).lower()
+    return any(keyword in text for keyword in CORE_ACTION_KEYWORDS)
 
 
 def _is_tightly_spaced(component: dict[str, Any]) -> bool:

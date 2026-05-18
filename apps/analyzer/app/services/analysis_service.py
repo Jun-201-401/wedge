@@ -1,9 +1,16 @@
 from __future__ import annotations
 
+import time
 from datetime import UTC, datetime
 from typing import Any
 
 from app.clients import SpringCallbackClient, SpringCallbackError, SpringCallbackResponse
+from app.observability.phase_timing import (
+    PhaseTimingContext,
+    packet_timing_summary,
+    phase_timer,
+    safe_emit_phase_timing,
+)
 from app.providers import GMSSemanticProvider
 from app.providers.label_integrity import GMSLabelIntegrityProvider
 from app.providers.label_role import GMSLabelRoleProvider
@@ -22,14 +29,30 @@ def analyzer_health() -> dict[str, str]:
     }
 
 
-def analyze_packet(evidence_packet: dict[str, Any]) -> dict[str, Any]:
-    judge_result = analyze_evidence_packet(
-        evidence_packet,
-        semantic_provider=GMSSemanticProvider.from_env(),
-        label_integrity_provider=GMSLabelIntegrityProvider.from_env(),
-        label_role_provider=GMSLabelRoleProvider.from_env(),
-    )
-    return GMSReportExplainer.from_env().explain(judge_result)
+def analyze_packet(
+    evidence_packet: dict[str, Any],
+    *,
+    timing_context: PhaseTimingContext | None = None,
+) -> dict[str, Any]:
+    timing_context = timing_context or _packet_timing_context(evidence_packet)
+    with phase_timer(
+        context=timing_context,
+        phase="analysis_core_total",
+        extra=lambda: packet_timing_summary(evidence_packet),
+    ):
+        judge_result = analyze_evidence_packet(
+            evidence_packet,
+            semantic_provider=GMSSemanticProvider.from_env(),
+            label_integrity_provider=GMSLabelIntegrityProvider.from_env(),
+            label_role_provider=GMSLabelRoleProvider.from_env(),
+            timing_context=timing_context,
+        )
+        with phase_timer(
+            context=timing_context,
+            phase="report_explainer",
+            extra=lambda: {"issueCount": len(judge_result.get("issues") or [])},
+        ):
+            return GMSReportExplainer.from_env().explain(judge_result)
 
 
 def analyze_packet_and_callback(
@@ -39,28 +62,43 @@ def analyze_packet_and_callback(
     evidence_packet: dict[str, Any],
     callback_client: SpringCallbackClient,
     event_id: str,
+    timing_context: PhaseTimingContext | None = None,
 ) -> dict[str, Any]:
+    timing_context = timing_context or PhaseTimingContext(
+        run_id=run_id,
+        analysis_job_id=analysis_job_id,
+    )
     started_payload = build_started_callback_payload(
         analysis_job_id=analysis_job_id,
         run_id=run_id,
     )
+    started_at = time.perf_counter()
     started_response, started_error = _try_send_started_callback(
         callback_client=callback_client,
         analysis_job_id=analysis_job_id,
         payload=started_payload,
         event_id=f"{event_id}.started",
     )
-    judge_result = analyze_packet(evidence_packet)
+    safe_emit_phase_timing(
+        context=timing_context,
+        phase="started_callback",
+        duration_ms=(time.perf_counter() - started_at) * 1000,
+        status="error" if started_error else "success",
+        error_type="SpringCallbackError" if started_error else None,
+        extra={"callbackStatusCode": started_response.status_code if started_response else None},
+    )
+    judge_result = analyze_packet(evidence_packet, timing_context=timing_context)
     payload = build_completed_callback_payload(
         analysis_job_id=analysis_job_id,
         run_id=run_id,
         judge_result=judge_result,
     )
-    response = callback_client.send_completed(
-        analysis_job_id=analysis_job_id,
-        payload=payload,
-        event_id=event_id,
-    )
+    with phase_timer(context=timing_context, phase="completed_callback"):
+        response = callback_client.send_completed(
+            analysis_job_id=analysis_job_id,
+            payload=payload,
+            event_id=event_id,
+        )
     return {
         "analysisJobId": analysis_job_id,
         "runId": run_id,
@@ -240,3 +278,10 @@ def _format_instant(value: datetime) -> str:
     if value.tzinfo is None:
         value = value.replace(tzinfo=UTC)
     return value.astimezone(UTC).isoformat().replace("+00:00", "Z")
+
+
+def _packet_timing_context(evidence_packet: dict[str, Any]) -> PhaseTimingContext:
+    return PhaseTimingContext(
+        run_id=str(evidence_packet.get("run_id") or evidence_packet.get("runId") or ""),
+        evidence_packet_id=str(evidence_packet.get("evidence_packet_id") or evidence_packet.get("evidencePacketId") or ""),
+    )

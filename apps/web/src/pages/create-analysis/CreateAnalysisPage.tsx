@@ -113,6 +113,8 @@ interface ScenarioDepthOption {
 const HEADLINE_PHRASES = ['Find', 'Friction'] as const;
 const DISCOVERY_POLL_INTERVAL_MS = 1800;
 const DISCOVERY_TIMEOUT_MS = 90000;
+const PREFLIGHT_COMPLETION_STEP_DELAY_MS = 420;
+const PREFLIGHT_COMPLETED_STEP_DELAY_MS = 260;
 const SCENARIO_AUTHORING_POLL_INTERVAL_MS = 1200;
 const SCENARIO_AUTHORING_TIMEOUT_MS = 45000;
 const DISCOVERY_VIEWPORT = { width: 1440, height: 900 } as const;
@@ -307,16 +309,24 @@ function isDiscoveryTerminalFailure(status: string) {
   return status === 'FAILED' || status === 'CANCELED' || status === 'EXPIRED';
 }
 
+function getPreflightStepsForActiveIndex(activeIndex: number): DiscoveryStep[] {
+  return PREFLIGHT_DISCOVERY_STEPS.map((step, index) => ({
+    ...step,
+    status: index < activeIndex ? 'complete' : index === activeIndex ? 'active' : 'pending',
+  }));
+}
+
 function getPollingSteps(status: string): DiscoveryStep[] {
   if (status === 'COMPLETED') {
     return PREFLIGHT_DISCOVERY_STEPS.map((step) => ({ ...step, status: 'complete' }));
   }
 
   const activeIndex = status === 'RUNNING' ? 2 : 1;
-  return PREFLIGHT_DISCOVERY_STEPS.map((step, index) => ({
-    ...step,
-    status: index < activeIndex ? 'complete' : index === activeIndex ? 'active' : 'pending',
-  }));
+  return getPreflightStepsForActiveIndex(activeIndex);
+}
+
+function getDiscoveryDisplaySteps(status: string): DiscoveryStep[] {
+  return getPollingSteps(status === 'COMPLETED' ? 'RUNNING' : status);
 }
 
 interface PreflightAgentProps {
@@ -798,8 +808,38 @@ export function CreateAnalysisPage({ isAuthenticated = false, isAuthChecking = f
     let resolvedDiscoveryRouteState = discoveryRouteState;
     navigateToRouteState(discoveryRouteState);
 
-    const completeDiscovery = (discoveryId: string, scenarios: ScenarioRecommendation[]) => {
+    const playCompletionProgress = async (discoveryId: string) => {
       if (discoveryRequestSeq.current !== requestSeq) {
+        return false;
+      }
+
+      for (let activeIndex = 3; activeIndex < PREFLIGHT_DISCOVERY_STEPS.length; activeIndex += 1) {
+        setDiscoveryState({
+          kind: 'polling',
+          discoveryId,
+          status: 'RUNNING',
+          progressSteps: getPreflightStepsForActiveIndex(activeIndex),
+        });
+        await wait(PREFLIGHT_COMPLETION_STEP_DELAY_MS);
+
+        if (discoveryRequestSeq.current !== requestSeq) {
+          return false;
+        }
+      }
+
+      setDiscoveryState({
+        kind: 'polling',
+        discoveryId,
+        status: 'COMPLETED',
+        progressSteps: getPollingSteps('COMPLETED'),
+      });
+      await wait(PREFLIGHT_COMPLETED_STEP_DELAY_MS);
+
+      return discoveryRequestSeq.current === requestSeq;
+    };
+
+    const completeDiscovery = async (discoveryId: string, scenarios: ScenarioRecommendation[]) => {
+      if (!(await playCompletionProgress(discoveryId))) {
         return;
       }
 
@@ -847,13 +887,13 @@ export function CreateAnalysisPage({ isAuthenticated = false, isAuthChecking = f
         kind: 'polling',
         discoveryId,
         status: discovery.status,
-        progressSteps: getPollingSteps(discovery.status),
+        progressSteps: getDiscoveryDisplaySteps(discovery.status),
       });
 
       const startedAt = Date.now();
       while (Date.now() - startedAt <= DISCOVERY_TIMEOUT_MS) {
         if (discovery.status === 'COMPLETED') {
-          completeDiscovery(discoveryId, toScenarioRecommendationViewModels(discovery));
+          await completeDiscovery(discoveryId, toScenarioRecommendationViewModels(discovery));
           return;
         }
 
@@ -880,7 +920,7 @@ export function CreateAnalysisPage({ isAuthenticated = false, isAuthChecking = f
           kind: 'polling',
           discoveryId,
           status: discovery.status,
-          progressSteps: getPollingSteps(discovery.status),
+          progressSteps: getDiscoveryDisplaySteps(discovery.status),
         });
       }
 

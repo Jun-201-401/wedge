@@ -1,0 +1,611 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Report Complete Animation Samples</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #020617;
+      --muted: #64748b;
+      --blue: #0284c7;
+      --sky: #7dd3fc;
+      --sky-soft: #e0f2fe;
+      --panel: #f8fafc;
+      --line: #e5e7eb;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      min-height: 100vh;
+      margin: 0;
+      background:
+        radial-gradient(#f1f5f9 1px, transparent 1px) 0 0 / 32px 32px,
+        #fff;
+      color: var(--ink);
+      font-family: "Pretendard Variable", Pretendard, Inter, system-ui, sans-serif;
+    }
+
+    main {
+      width: min(1180px, calc(100vw - 40px));
+      margin: 0 auto;
+      padding: 34px 0 46px;
+    }
+
+    .page-head {
+      display: flex;
+      align-items: end;
+      justify-content: space-between;
+      gap: 18px;
+      margin-bottom: 22px;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 1.05rem;
+      font-weight: 900;
+      letter-spacing: -0.025em;
+    }
+
+    .note {
+      margin: 0;
+      color: #94a3b8;
+      font-size: 0.72rem;
+      font-weight: 800;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 16px;
+    }
+
+    .sample {
+      display: grid;
+      gap: 8px;
+    }
+
+    .sample-label {
+      color: #64748b;
+      font-size: 0.68rem;
+      font-weight: 900;
+      letter-spacing: 0.02em;
+    }
+
+    .report-card {
+      position: relative;
+      display: grid;
+      min-height: 188px;
+      overflow: hidden;
+      gap: 0.52rem;
+      border: 0;
+      border-radius: 0.88rem;
+      background: #fff;
+      color: inherit;
+      padding: 0.86rem;
+      text-decoration: none;
+      box-shadow: 0 12px 26px rgba(148, 163, 184, 0.09);
+      isolation: isolate;
+    }
+
+    .report-card > * {
+      position: relative;
+      z-index: 2;
+    }
+
+    .report-heading {
+      display: flex;
+      min-width: 0;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.75rem;
+    }
+
+    .report-heading strong {
+      display: block;
+      min-width: 0;
+      color: var(--ink);
+      font-size: 0.8rem;
+      font-weight: 900;
+      letter-spacing: -0.025em;
+    }
+
+    .check {
+      display: inline-flex;
+      flex: 0 0 auto;
+      width: 1.08rem;
+      height: 1.08rem;
+      align-items: center;
+      justify-content: center;
+      border-radius: 999px;
+      background: var(--sky-soft);
+      color: var(--blue);
+    }
+
+    .check svg {
+      width: 0.66rem;
+      height: 0.66rem;
+    }
+
+    .copy {
+      min-height: 0;
+      margin: 0.08rem 0 0.2rem;
+      color: var(--muted);
+      font-size: 0.66rem;
+      font-weight: 600;
+      line-height: 1.48;
+    }
+
+    .summary {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+      margin-top: 2px;
+    }
+
+    .summary span {
+      border-radius: 999px;
+      background: var(--panel);
+      padding: 0.32rem 0.5rem;
+      color: #475569;
+      font-size: 0.6rem;
+      font-weight: 900;
+      line-height: 1;
+    }
+
+    .action {
+      align-self: end;
+      justify-self: end;
+      color: #075985;
+      font-size: 0.76rem;
+      font-weight: 900;
+    }
+
+    .action::after {
+      content: "→";
+      margin-left: 0.35rem;
+    }
+
+    .sample-1::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      z-index: 1;
+      border-radius: inherit;
+      padding: 1px;
+      background: conic-gradient(from var(--angle), transparent 0deg, transparent 248deg, rgba(14, 165, 233, 0) 260deg, rgba(125, 211, 252, 0.9) 276deg, rgba(14, 165, 233, 0.2) 292deg, transparent 314deg, transparent 360deg);
+      mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+      mask-composite: exclude;
+      pointer-events: none;
+      animation: borderTrace 4.8s linear infinite;
+    }
+
+    .sample-2 .corner {
+      position: absolute;
+      z-index: 1;
+      width: 18px;
+      height: 18px;
+      border-color: rgba(14, 165, 233, 0.5);
+      opacity: 0;
+      animation: cornerTick 4.8s ease-in-out infinite;
+    }
+
+    .sample-2 .corner:nth-of-type(1) {
+      top: 8px;
+      left: 8px;
+      border-top: 2px solid;
+      border-left: 2px solid;
+    }
+
+    .sample-2 .corner:nth-of-type(2) {
+      top: 8px;
+      right: 8px;
+      border-top: 2px solid;
+      border-right: 2px solid;
+      animation-delay: 0.3s;
+    }
+
+    .sample-2 .corner:nth-of-type(3) {
+      right: 8px;
+      bottom: 8px;
+      border-right: 2px solid;
+      border-bottom: 2px solid;
+      animation-delay: 0.6s;
+    }
+
+    .sample-2 .corner:nth-of-type(4) {
+      bottom: 8px;
+      left: 8px;
+      border-bottom: 2px solid;
+      border-left: 2px solid;
+      animation-delay: 0.9s;
+    }
+
+    .sample-3 {
+      background:
+        linear-gradient(#fff, #fff) padding-box,
+        linear-gradient(var(--angle), rgba(186, 230, 253, 0.25), rgba(14, 165, 233, 0.42), rgba(226, 232, 240, 0.5)) border-box;
+      border: 1px solid transparent;
+      animation: gradientFrame 5.6s linear infinite;
+    }
+
+    .sample-4::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      z-index: 1;
+      border-radius: inherit;
+      background:
+        linear-gradient(90deg, rgba(14, 165, 233, 0), rgba(14, 165, 233, 0.72), rgba(14, 165, 233, 0)) left bottom / 42% 2px no-repeat,
+        linear-gradient(90deg, rgba(224, 242, 254, 0.36), rgba(255, 255, 255, 0)) left bottom / 100% 100% no-repeat;
+      opacity: 0;
+      pointer-events: none;
+      animation: bottomRail 4.4s ease-in-out infinite;
+    }
+
+    .sample-5::before {
+      content: "";
+      position: absolute;
+      top: 0;
+      left: 0;
+      z-index: 1;
+      width: 100%;
+      height: 2px;
+      background: linear-gradient(90deg, transparent, rgba(14, 165, 233, 0.8), rgba(125, 211, 252, 0.22), transparent);
+      transform: translateX(-100%);
+      animation: topScan 5.2s ease-in-out infinite;
+    }
+
+    .sample-6::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      z-index: 1;
+      border-radius: inherit;
+      background:
+        radial-gradient(circle at 100% 0%, rgba(125, 211, 252, 0.28) 0%, rgba(125, 211, 252, 0.13) 21%, transparent 42%),
+        radial-gradient(circle at 0% 100%, rgba(186, 230, 253, 0.2) 0%, transparent 36%);
+      opacity: 0.2;
+      animation: cornerWash 5.8s ease-in-out infinite;
+    }
+
+    .sample-7 {
+      background:
+        linear-gradient(#fff, #fff) padding-box,
+        repeating-linear-gradient(90deg, rgba(14, 165, 233, 0.48) 0 6px, transparent 6px 13px) border-box;
+      border: 1px solid transparent;
+      animation: dottedFrame 5.4s linear infinite;
+    }
+
+    .sample-8::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      z-index: 1;
+      border-radius: inherit;
+      pointer-events: none;
+      box-shadow:
+        inset 0 0 0 1px rgba(186, 230, 253, 0.5),
+        inset 0 0 24px rgba(125, 211, 252, 0.14);
+      opacity: 0.18;
+      animation: innerGlow 5s ease-in-out infinite;
+    }
+
+    .sample-9::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      z-index: 1;
+      border-radius: inherit;
+      pointer-events: none;
+      background:
+        linear-gradient(120deg, transparent 0%, transparent 28%, rgba(255, 255, 255, 0.78) 38%, rgba(224, 242, 254, 0.5) 43%, transparent 54%, transparent 100%),
+        linear-gradient(120deg, rgba(248, 250, 252, 0) 0%, rgba(224, 242, 254, 0.22) 48%, rgba(248, 250, 252, 0) 100%);
+      background-size: 220% 100%, 100% 100%;
+      background-position: 110% 0, 0 0;
+      opacity: 0;
+      animation: diagonalGlassSheen 3.2s ease-in-out infinite;
+    }
+
+    @property --angle {
+      syntax: "<angle>";
+      inherits: false;
+      initial-value: 0deg;
+    }
+
+    @keyframes borderTrace {
+      to {
+        --angle: 360deg;
+      }
+    }
+
+    @keyframes cornerTick {
+      0%, 58%, 100% {
+        opacity: 0;
+        transform: scale(0.92);
+      }
+
+      68%, 78% {
+        opacity: 1;
+        transform: scale(1);
+      }
+    }
+
+    @keyframes gradientFrame {
+      to {
+        --angle: 360deg;
+      }
+    }
+
+    @keyframes bottomRail {
+      0%, 56%, 100% {
+        opacity: 0;
+        background-position: -46% bottom, left bottom;
+      }
+
+      70% {
+        opacity: 1;
+      }
+
+      86% {
+        opacity: 0.28;
+        background-position: 146% bottom, left bottom;
+      }
+    }
+
+    @keyframes topScan {
+      0%, 62%, 100% {
+        opacity: 0;
+        transform: translateX(-100%);
+      }
+
+      70% {
+        opacity: 1;
+      }
+
+      84% {
+        opacity: 0.42;
+        transform: translateX(100%);
+      }
+    }
+
+    @keyframes cornerWash {
+      0%, 62%, 100% {
+        opacity: 0.16;
+      }
+
+      76% {
+        opacity: 0.76;
+      }
+
+      88% {
+        opacity: 0.3;
+      }
+    }
+
+    @keyframes dottedFrame {
+      0%, 58%, 100% {
+        border-color: transparent;
+        background-position: 0 0, 0 0;
+      }
+
+      72% {
+        border-color: transparent;
+      }
+
+      86% {
+        background-position: 0 0, 18px 0;
+      }
+    }
+
+    @keyframes innerGlow {
+      0%, 58%, 100% {
+        opacity: 0.18;
+      }
+
+      74% {
+        opacity: 0.72;
+      }
+
+      88% {
+        opacity: 0.32;
+      }
+    }
+
+    @keyframes diagonalGlassSheen {
+      0%, 34%, 100% {
+        opacity: 0;
+        background-position: 110% 0, 0 0;
+      }
+
+      48% {
+        opacity: 0.95;
+      }
+
+      76% {
+        opacity: 0.32;
+        background-position: -110% 0, 0 0;
+      }
+    }
+
+    @media (max-width: 980px) {
+      .grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+
+    @media (max-width: 560px) {
+      main {
+        width: min(100vw - 28px, 480px);
+      }
+
+      .page-head {
+        display: grid;
+        align-items: start;
+      }
+
+      .grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *,
+      *::before,
+      *::after {
+        animation: none !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="page-head">
+      <h1>완료 카드 애니메이션 시안</h1>
+      <p class="note">현재 리포트 완료 카드 톤 기준 9개 비교</p>
+    </div>
+
+    <section class="grid" aria-label="완료 카드 애니메이션 시안 목록">
+      <article class="sample">
+        <span class="sample-label">01 Border trace</span>
+        <a class="report-card sample-1" href="#">
+          <div class="report-heading">
+            <strong>분석 결과 리포트</strong>
+            <span class="check" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none"><path d="M19.5 6.5 9 17 4.5 12.5" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </span>
+          </div>
+          <p class="copy">수집된 근거와 개선안을 한눈에 정리했습니다.</p>
+          <div class="summary"><span>URL 1개</span><span>스크린샷 1장</span><span>실행 step 1개</span></div>
+          <span class="action">리포트 열기</span>
+        </a>
+      </article>
+
+      <article class="sample">
+        <span class="sample-label">02 Corner ticks</span>
+        <a class="report-card sample-2" href="#">
+          <span class="corner"></span><span class="corner"></span><span class="corner"></span><span class="corner"></span>
+          <div class="report-heading">
+            <strong>분석 결과 리포트</strong>
+            <span class="check" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none"><path d="M19.5 6.5 9 17 4.5 12.5" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </span>
+          </div>
+          <p class="copy">수집된 근거와 개선안을 한눈에 정리했습니다.</p>
+          <div class="summary"><span>URL 1개</span><span>스크린샷 1장</span><span>실행 step 1개</span></div>
+          <span class="action">리포트 열기</span>
+        </a>
+      </article>
+
+      <article class="sample">
+        <span class="sample-label">03 Gradient frame</span>
+        <a class="report-card sample-3" href="#">
+          <div class="report-heading">
+            <strong>분석 결과 리포트</strong>
+            <span class="check" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none"><path d="M19.5 6.5 9 17 4.5 12.5" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </span>
+          </div>
+          <p class="copy">수집된 근거와 개선안을 한눈에 정리했습니다.</p>
+          <div class="summary"><span>URL 1개</span><span>스크린샷 1장</span><span>실행 step 1개</span></div>
+          <span class="action">리포트 열기</span>
+        </a>
+      </article>
+
+      <article class="sample">
+        <span class="sample-label">04 Bottom rail</span>
+        <a class="report-card sample-4" href="#">
+          <div class="report-heading">
+            <strong>분석 결과 리포트</strong>
+            <span class="check" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none"><path d="M19.5 6.5 9 17 4.5 12.5" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </span>
+          </div>
+          <p class="copy">수집된 근거와 개선안을 한눈에 정리했습니다.</p>
+          <div class="summary"><span>URL 1개</span><span>스크린샷 1장</span><span>실행 step 1개</span></div>
+          <span class="action">리포트 열기</span>
+        </a>
+      </article>
+
+      <article class="sample">
+        <span class="sample-label">05 Top scan</span>
+        <a class="report-card sample-5" href="#">
+          <div class="report-heading">
+            <strong>분석 결과 리포트</strong>
+            <span class="check" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none"><path d="M19.5 6.5 9 17 4.5 12.5" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </span>
+          </div>
+          <p class="copy">수집된 근거와 개선안을 한눈에 정리했습니다.</p>
+          <div class="summary"><span>URL 1개</span><span>스크린샷 1장</span><span>실행 step 1개</span></div>
+          <span class="action">리포트 열기</span>
+        </a>
+      </article>
+
+      <article class="sample">
+        <span class="sample-label">06 Corner wash</span>
+        <a class="report-card sample-6" href="#">
+          <div class="report-heading">
+            <strong>분석 결과 리포트</strong>
+            <span class="check" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none"><path d="M19.5 6.5 9 17 4.5 12.5" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </span>
+          </div>
+          <p class="copy">수집된 근거와 개선안을 한눈에 정리했습니다.</p>
+          <div class="summary"><span>URL 1개</span><span>스크린샷 1장</span><span>실행 step 1개</span></div>
+          <span class="action">리포트 열기</span>
+        </a>
+      </article>
+
+      <article class="sample">
+        <span class="sample-label">07 Dotted frame</span>
+        <a class="report-card sample-7" href="#">
+          <div class="report-heading">
+            <strong>분석 결과 리포트</strong>
+            <span class="check" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none"><path d="M19.5 6.5 9 17 4.5 12.5" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </span>
+          </div>
+          <p class="copy">수집된 근거와 개선안을 한눈에 정리했습니다.</p>
+          <div class="summary"><span>URL 1개</span><span>스크린샷 1장</span><span>실행 step 1개</span></div>
+          <span class="action">리포트 열기</span>
+        </a>
+      </article>
+
+      <article class="sample">
+        <span class="sample-label">08 Inner glow</span>
+        <a class="report-card sample-8" href="#">
+          <div class="report-heading">
+            <strong>분석 결과 리포트</strong>
+            <span class="check" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none"><path d="M19.5 6.5 9 17 4.5 12.5" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </span>
+          </div>
+          <p class="copy">수집된 근거와 개선안을 한눈에 정리했습니다.</p>
+          <div class="summary"><span>URL 1개</span><span>스크린샷 1장</span><span>실행 step 1개</span></div>
+          <span class="action">리포트 열기</span>
+        </a>
+      </article>
+
+      <article class="sample">
+        <span class="sample-label">09 Diagonal glass sheen</span>
+        <a class="report-card sample-9" href="#">
+          <div class="report-heading">
+            <strong>분석 결과 리포트</strong>
+            <span class="check" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none"><path d="M19.5 6.5 9 17 4.5 12.5" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </span>
+          </div>
+          <p class="copy">수집된 근거와 개선안을 한눈에 정리했습니다.</p>
+          <div class="summary"><span>URL 1개</span><span>스크린샷 1장</span><span>실행 step 1개</span></div>
+          <span class="action">리포트 열기</span>
+        </a>
+      </article>
+    </section>
+  </main>
+</body>
+</html>
