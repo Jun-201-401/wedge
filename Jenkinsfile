@@ -210,6 +210,28 @@ compose_prod() {
     bash infra/scripts/prod-compose.sh --release-env "$CANDIDATE_RELEASE_ENV" "$@"
 }
 
+read_prod_env_value() {
+    local name="$1"
+    local default_value="$2"
+    local value
+
+    value="$(grep -E "^${name}=" .env.prod | tail -n 1 | cut -d '=' -f 2- || true)"
+    if [ -n "$value" ]; then
+        printf '%s\n' "$value"
+        return 0
+    fi
+
+    printf '%s\n' "$default_value"
+}
+
+RUNNER_REPLICAS="$(read_prod_env_value RUNNER_REPLICAS 1)"
+case "$RUNNER_REPLICAS" in
+    ''|*[!0-9]*|0)
+        echo "RUNNER_REPLICAS must be a positive integer. actual=${RUNNER_REPLICAS}"
+        exit 1
+        ;;
+esac
+
 if [ "${MIGRATION_FILES_CHANGED:-false}" = "true" ] && [ "${RUN_DB_MIGRATION:-false}" != "true" ]; then
     echo "Migration files changed but RUN_DB_MIGRATION=false. Enable migration or review the deployment."
     exit 1
@@ -351,18 +373,37 @@ PY
 verify_service_image() {
     local service="$1"
     local expected_image="$2"
+    local container_ids
     local container_id
     local actual_image
 
-    container_id="$(compose_prod ps -q "$service")"
-    if [ -z "$container_id" ]; then
+    container_ids="$(compose_prod ps -q "$service")"
+    if [ -z "$container_ids" ]; then
         echo "Container not found for service: ${service}"
         return 1
     fi
 
-    actual_image="$(docker inspect "$container_id" --format '{{.Config.Image}}')"
-    if [ "$actual_image" != "$expected_image" ]; then
-        echo "Unexpected image for ${service}: expected=${expected_image}, actual=${actual_image}"
+    while IFS= read -r container_id; do
+        if [ -z "$container_id" ]; then
+            continue
+        fi
+
+        actual_image="$(docker inspect "$container_id" --format '{{.Config.Image}}')"
+        if [ "$actual_image" != "$expected_image" ]; then
+            echo "Unexpected image for ${service}: expected=${expected_image}, actual=${actual_image}"
+            return 1
+        fi
+    done <<< "$container_ids"
+}
+
+verify_running_service_count() {
+    local service="$1"
+    local expected_count="$2"
+    local actual_count
+
+    actual_count="$(compose_prod ps --status running -q "$service" | wc -l | tr -d '[:space:]')"
+    if [ "$actual_count" != "$expected_count" ]; then
+        echo "Unexpected running replica count for ${service}: expected=${expected_count}, actual=${actual_count}"
         return 1
     fi
 }
@@ -380,7 +421,7 @@ if [ "${MIGRATION_FILES_CHANGED:-false}" = "true" ]; then
     compose_prod --profile migration run --rm flyway migrate
 fi
 
-compose_prod up -d --no-deps --force-recreate api-server web runner analyzer-worker
+compose_prod up -d --no-deps --force-recreate --scale "runner=${RUNNER_REPLICAS}" api-server web runner analyzer-worker
 compose_prod up -d --force-recreate nginx
 verify_service_image api-server "$API_SERVER_IMAGE"
 verify_service_image web "$WEB_IMAGE"
@@ -390,7 +431,7 @@ verify_service_image analyzer-worker "$ANALYZER_IMAGE"
 for i in 1 2 3 4 5 6 7 8 9 10; do
     if curl -kfsS https://localhost/actuator/health > /dev/null 2>&1 \
         && curl -kfsS https://localhost/ > /dev/null 2>&1 \
-        && compose_prod ps --status running --services runner | grep -qx runner \
+        && verify_running_service_count runner "$RUNNER_REPLICAS" \
         && compose_prod ps --status running --services analyzer-worker | grep -qx analyzer-worker; then
         mv "$CANDIDATE_RELEASE_ENV" "$CURRENT_RELEASE_ENV"
         printf '%s\n' "$CURRENT_HEAD" > .deploy/current.sha
