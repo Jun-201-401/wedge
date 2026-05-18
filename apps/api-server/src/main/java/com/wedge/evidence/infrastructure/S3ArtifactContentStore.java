@@ -7,10 +7,10 @@ import com.wedge.evidence.domain.Artifact;
 import java.util.Map;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.core.io.ByteArrayResource;
+import org.springframework.core.io.InputStreamResource;
 import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Component;
-import software.amazon.awssdk.core.ResponseBytes;
+import software.amazon.awssdk.core.ResponseInputStream;
 import software.amazon.awssdk.core.exception.SdkClientException;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.GetObjectRequest;
@@ -41,17 +41,22 @@ public class S3ArtifactContentStore implements ArtifactContentStore {
         }
 
         try {
-            ResponseBytes<GetObjectResponse> objectBytes = s3Client.getObjectAsBytes(
+            ResponseInputStream<GetObjectResponse> objectStream = s3Client.getObject(
                     GetObjectRequest.builder()
                             .bucket(bucket)
                             .key(key)
                             .build()
             );
-            byte[] content = objectBytes.asByteArray();
-            return new ByteArrayResource(content) {
+            return new InputStreamResource(objectStream) {
                 @Override
                 public String getFilename() {
                     return key;
+                }
+
+                @Override
+                public long contentLength() {
+                    long sizeBytes = artifact.getSizeBytes();
+                    return sizeBytes <= 0 ? -1L : sizeBytes;
                 }
             };
         } catch (NoSuchKeyException exception) {

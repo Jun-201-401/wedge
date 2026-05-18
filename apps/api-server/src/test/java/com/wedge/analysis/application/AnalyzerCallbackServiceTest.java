@@ -2,6 +2,8 @@ package com.wedge.analysis.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -41,7 +43,7 @@ class AnalyzerCallbackServiceTest {
     void startedCallbackDelegatesPersistenceOnce() {
         UUID analysisJobId = UUID.randomUUID();
         AnalyzerStartedRequest request = startedRequest(analysisJobId);
-        when(processedMessagePersistenceAdapter.tryMarkProcessed("analyzer.started", "evt_analyzer_started_001")).thenReturn(true);
+        when(processedMessagePersistenceAdapter.tryMarkProcessed(eq("analyzer.started"), eq("evt_analyzer_started_001"), any())).thenReturn(true);
         when(judgeResultPersistenceService.saveStarted(request)).thenReturn(Map.of("status", "RUNNING"));
 
         Map<String, Object> result = analyzerCallbackService.handleStarted(analysisJobId, request, headers("evt_analyzer_started_001"));
@@ -54,7 +56,7 @@ class AnalyzerCallbackServiceTest {
     void duplicateStartedCallbackDoesNotPersistAgain() {
         UUID analysisJobId = UUID.randomUUID();
         AnalyzerStartedRequest request = startedRequest(analysisJobId);
-        when(processedMessagePersistenceAdapter.tryMarkProcessed("analyzer.started", "evt_analyzer_started_001")).thenReturn(false);
+        when(processedMessagePersistenceAdapter.tryMarkProcessed(eq("analyzer.started"), eq("evt_analyzer_started_001"), any())).thenReturn(false);
 
         Map<String, Object> result = analyzerCallbackService.handleStarted(analysisJobId, request, headers("evt_analyzer_started_001"));
 
@@ -76,7 +78,7 @@ class AnalyzerCallbackServiceTest {
     void completedCallbackDelegatesPersistenceOnce() {
         UUID analysisJobId = UUID.randomUUID();
         AnalyzerCompletedRequest request = completedRequest(analysisJobId);
-        when(processedMessagePersistenceAdapter.tryMarkProcessed("analyzer.completed", "evt_analyzer_001")).thenReturn(true);
+        when(processedMessagePersistenceAdapter.tryMarkProcessed(eq("analyzer.completed"), eq("evt_analyzer_001"), any())).thenReturn(true);
         when(judgeResultPersistenceService.saveCompleted(request)).thenReturn(Map.of("status", "COMPLETED"));
 
         Map<String, Object> result = analyzerCallbackService.handleCompleted(analysisJobId, request, headers("evt_analyzer_001"));
@@ -89,7 +91,7 @@ class AnalyzerCallbackServiceTest {
     void duplicateCompletedCallbackDoesNotPersistAgain() {
         UUID analysisJobId = UUID.randomUUID();
         AnalyzerCompletedRequest request = completedRequest(analysisJobId);
-        when(processedMessagePersistenceAdapter.tryMarkProcessed("analyzer.completed", "evt_analyzer_001")).thenReturn(false);
+        when(processedMessagePersistenceAdapter.tryMarkProcessed(eq("analyzer.completed"), eq("evt_analyzer_001"), any())).thenReturn(false);
 
         Map<String, Object> result = analyzerCallbackService.handleCompleted(analysisJobId, request, headers("evt_analyzer_001"));
 
@@ -110,7 +112,7 @@ class AnalyzerCallbackServiceTest {
     void failedCallbackDelegatesPersistenceOnce() {
         UUID analysisJobId = UUID.randomUUID();
         AnalyzerFailedRequest request = failedRequest(analysisJobId);
-        when(processedMessagePersistenceAdapter.tryMarkProcessed("analyzer.failed", "evt_analyzer_failed_001")).thenReturn(true);
+        when(processedMessagePersistenceAdapter.tryMarkProcessed(eq("analyzer.failed"), eq("evt_analyzer_failed_001"), any())).thenReturn(true);
         when(judgeResultPersistenceService.saveFailed(request)).thenReturn(Map.of("status", "FAILED"));
 
         Map<String, Object> result = analyzerCallbackService.handleFailed(analysisJobId, request, headers("evt_analyzer_failed_001"));
@@ -123,7 +125,7 @@ class AnalyzerCallbackServiceTest {
     void duplicateFailedCallbackDoesNotPersistAgain() {
         UUID analysisJobId = UUID.randomUUID();
         AnalyzerFailedRequest request = failedRequest(analysisJobId);
-        when(processedMessagePersistenceAdapter.tryMarkProcessed("analyzer.failed", "evt_analyzer_failed_001")).thenReturn(false);
+        when(processedMessagePersistenceAdapter.tryMarkProcessed(eq("analyzer.failed"), eq("evt_analyzer_failed_001"), any())).thenReturn(false);
 
         Map<String, Object> result = analyzerCallbackService.handleFailed(analysisJobId, request, headers("evt_analyzer_failed_001"));
 

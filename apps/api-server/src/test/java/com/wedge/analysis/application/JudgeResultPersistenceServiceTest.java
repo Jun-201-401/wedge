@@ -80,7 +80,8 @@ class JudgeResultPersistenceServiceTest {
                 analysisFindingMapper,
                 nudgeMapper,
                 runMapper,
-                objectMapper
+                objectMapper,
+                new JudgeResultContractValidator()
         );
     }
 
@@ -90,12 +91,26 @@ class JudgeResultPersistenceServiceTest {
         UUID runId = UUID.randomUUID();
         AnalyzerStartedRequest request = startedRequest(analysisJobId, runId);
         when(analysisJobMapper.markRunning(analysisJobId, runId, request.startedAt())).thenReturn(1);
+        when(runMapper.updateCurrentAnalysisState(runId, AnalysisStatus.RUNNING, analysisJobId, null, null)).thenReturn(1);
 
         Map<String, Object> response = judgeResultPersistenceService.saveStarted(request);
 
         assertThat(response.get("status")).isEqualTo(AnalysisJobStatus.RUNNING);
         verify(analysisJobMapper).markRunning(analysisJobId, runId, request.startedAt());
         verify(runMapper).updateCurrentAnalysisState(runId, AnalysisStatus.RUNNING, analysisJobId, null, null);
+    }
+
+    @Test
+    void saveStartedRejectsCurrentRunUpdateConflict() {
+        UUID analysisJobId = UUID.randomUUID();
+        UUID runId = UUID.randomUUID();
+        AnalyzerStartedRequest request = startedRequest(analysisJobId, runId);
+        when(analysisJobMapper.markRunning(analysisJobId, runId, request.startedAt())).thenReturn(1);
+
+        assertThatThrownBy(() -> judgeResultPersistenceService.saveStarted(request))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.STATE_CONFLICT);
     }
 
     @Test
@@ -115,10 +130,46 @@ class JudgeResultPersistenceServiceTest {
     }
 
     @Test
+    void saveStartedRejectsWrongRun() {
+        UUID analysisJobId = UUID.randomUUID();
+        UUID callbackRunId = UUID.randomUUID();
+        UUID storedRunId = UUID.randomUUID();
+        AnalyzerStartedRequest request = startedRequest(analysisJobId, callbackRunId);
+        when(analysisJobMapper.markRunning(analysisJobId, callbackRunId, request.startedAt())).thenReturn(0);
+        when(analysisJobMapper.findById(analysisJobId)).thenReturn(Optional.of(analysisJob(analysisJobId, storedRunId, AnalysisJobStatus.QUEUED)));
+
+        assertThatThrownBy(() -> judgeResultPersistenceService.saveStarted(request))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.INVALID_REQUEST);
+
+        verify(runMapper, never()).updateCurrentAnalysisState(callbackRunId, AnalysisStatus.RUNNING, analysisJobId, null, null);
+    }
+
+    @Test
+    void saveStartedRejectsNonexistentAnalysisJob() {
+        UUID analysisJobId = UUID.randomUUID();
+        UUID runId = UUID.randomUUID();
+        AnalyzerStartedRequest request = startedRequest(analysisJobId, runId);
+        when(analysisJobMapper.markRunning(analysisJobId, runId, request.startedAt())).thenReturn(0);
+        when(analysisJobMapper.findById(analysisJobId)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> judgeResultPersistenceService.saveStarted(request))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.RUN_NOT_FOUND);
+
+        verify(runMapper, never()).updateCurrentAnalysisState(runId, AnalysisStatus.RUNNING, analysisJobId, null, null);
+    }
+
+    @Test
     void saveCompletedPersistsJudgeResultProjections() throws Exception {
         UUID analysisJobId = UUID.randomUUID();
         UUID runId = UUID.randomUUID();
         AnalyzerCompletedRequest request = completedRequest(analysisJobId, runId);
+        when(analysisJobMapper.findById(analysisJobId)).thenReturn(Optional.of(analysisJob(analysisJobId, runId, AnalysisJobStatus.RUNNING)));
+        when(analysisJobMapper.markCompleted(org.mockito.ArgumentMatchers.any())).thenReturn(1);
+        when(runMapper.updateCurrentAnalysisState(runId, AnalysisStatus.COMPLETED, analysisJobId, new BigDecimal("61.0"), null)).thenReturn(1);
 
         Map<String, Object> response = judgeResultPersistenceService.saveCompleted(request);
 
@@ -148,6 +199,9 @@ class JudgeResultPersistenceServiceTest {
                 "screenshot_artifact_id", "screenshot-1"
         )));
         AnalyzerCompletedRequest request = completedRequest(analysisJobId, runId, List.of(issue));
+        when(analysisJobMapper.findById(analysisJobId)).thenReturn(Optional.of(analysisJob(analysisJobId, runId, AnalysisJobStatus.RUNNING)));
+        when(analysisJobMapper.markCompleted(org.mockito.ArgumentMatchers.any())).thenReturn(1);
+        when(runMapper.updateCurrentAnalysisState(runId, AnalysisStatus.COMPLETED, analysisJobId, new BigDecimal("61.0"), null)).thenReturn(1);
 
         judgeResultPersistenceService.saveCompleted(request);
 
@@ -178,16 +232,126 @@ class JudgeResultPersistenceServiceTest {
                 "ANALYZER_TIMEOUT",
                 "Analyzer timed out"
         );
+        when(analysisJobMapper.findById(analysisJobId)).thenReturn(Optional.of(analysisJob(analysisJobId, runId, AnalysisJobStatus.RUNNING)));
+        when(analysisJobMapper.markFailed(org.mockito.ArgumentMatchers.any())).thenReturn(1);
+        when(runMapper.updateCurrentAnalysisState(runId, AnalysisStatus.FAILED, analysisJobId, null, null)).thenReturn(1);
 
         Map<String, Object> response = judgeResultPersistenceService.saveFailed(request);
 
         assertThat(response.get("status")).isEqualTo(AnalysisJobStatus.FAILED);
-        verify(analysisJobMapper).upsertFailed(analysisJobCaptor.capture());
+        verify(analysisJobMapper).markFailed(analysisJobCaptor.capture());
         AnalysisJob analysisJob = analysisJobCaptor.getValue();
         assertThat(analysisJob.getId()).isEqualTo(analysisJobId);
         assertThat(analysisJob.getRunId()).isEqualTo(runId);
         assertThat(analysisJob.getErrorCode()).isEqualTo("ANALYZER_TIMEOUT");
         verify(runMapper).updateCurrentAnalysisState(runId, AnalysisStatus.FAILED, analysisJobId, null, null);
+    }
+
+    @Test
+    void saveCompletedRejectsWrongRun() {
+        UUID analysisJobId = UUID.randomUUID();
+        UUID callbackRunId = UUID.randomUUID();
+        UUID storedRunId = UUID.randomUUID();
+        AnalyzerCompletedRequest request = completedRequest(analysisJobId, callbackRunId);
+        when(analysisJobMapper.findById(analysisJobId)).thenReturn(Optional.of(analysisJob(analysisJobId, storedRunId, AnalysisJobStatus.RUNNING)));
+
+        assertThatThrownBy(() -> judgeResultPersistenceService.saveCompleted(request))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.INVALID_REQUEST);
+
+        verify(analysisJobMapper, never()).markCompleted(org.mockito.ArgumentMatchers.any());
+        verify(ruleHitMapper, never()).insert(org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    void saveCompletedRejectsNonexistentAnalysisJob() {
+        UUID analysisJobId = UUID.randomUUID();
+        UUID runId = UUID.randomUUID();
+        AnalyzerCompletedRequest request = completedRequest(analysisJobId, runId);
+        when(analysisJobMapper.findById(analysisJobId)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> judgeResultPersistenceService.saveCompleted(request))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.RUN_NOT_FOUND);
+
+        verify(analysisJobMapper, never()).markCompleted(org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    void saveFailedDoesNotRegressCompletedJob() {
+        UUID analysisJobId = UUID.randomUUID();
+        UUID runId = UUID.randomUUID();
+        AnalyzerFailedRequest request = new AnalyzerFailedRequest(
+                analysisJobId,
+                runId,
+                OffsetDateTime.parse("2026-04-28T11:10:00+09:00"),
+                "ANALYZER_TIMEOUT",
+                "Analyzer timed out"
+        );
+        when(analysisJobMapper.findById(analysisJobId)).thenReturn(Optional.of(analysisJob(analysisJobId, runId, AnalysisJobStatus.COMPLETED)));
+
+        assertThatThrownBy(() -> judgeResultPersistenceService.saveFailed(request))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.STATE_CONFLICT);
+
+        verify(analysisJobMapper, never()).markFailed(org.mockito.ArgumentMatchers.any());
+        verify(runMapper, never()).updateCurrentAnalysisState(runId, AnalysisStatus.FAILED, analysisJobId, null, null);
+    }
+
+    @Test
+    void saveCompletedDoesNotRegressFailedJob() {
+        UUID analysisJobId = UUID.randomUUID();
+        UUID runId = UUID.randomUUID();
+        AnalyzerCompletedRequest request = completedRequest(analysisJobId, runId);
+        when(analysisJobMapper.findById(analysisJobId)).thenReturn(Optional.of(analysisJob(analysisJobId, runId, AnalysisJobStatus.FAILED)));
+
+        assertThatThrownBy(() -> judgeResultPersistenceService.saveCompleted(request))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.STATE_CONFLICT);
+
+        verify(analysisJobMapper, never()).markCompleted(org.mockito.ArgumentMatchers.any());
+        verify(ruleHitMapper, never()).insert(org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    void saveCompletedRejectsCurrentRunUpdateConflict() {
+        UUID analysisJobId = UUID.randomUUID();
+        UUID runId = UUID.randomUUID();
+        AnalyzerCompletedRequest request = completedRequest(analysisJobId, runId);
+        when(analysisJobMapper.findById(analysisJobId)).thenReturn(Optional.of(analysisJob(analysisJobId, runId, AnalysisJobStatus.RUNNING)));
+        when(analysisJobMapper.markCompleted(org.mockito.ArgumentMatchers.any())).thenReturn(1);
+
+        assertThatThrownBy(() -> judgeResultPersistenceService.saveCompleted(request))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.STATE_CONFLICT);
+
+        verify(ruleHitMapper, never()).insert(org.mockito.ArgumentMatchers.any());
+        verify(analysisFindingMapper, never()).insert(org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    void saveFailedRejectsCurrentRunUpdateConflict() {
+        UUID analysisJobId = UUID.randomUUID();
+        UUID runId = UUID.randomUUID();
+        AnalyzerFailedRequest request = new AnalyzerFailedRequest(
+                analysisJobId,
+                runId,
+                OffsetDateTime.parse("2026-04-28T11:10:00+09:00"),
+                "ANALYZER_TIMEOUT",
+                "Analyzer timed out"
+        );
+        when(analysisJobMapper.findById(analysisJobId)).thenReturn(Optional.of(analysisJob(analysisJobId, runId, AnalysisJobStatus.RUNNING)));
+        when(analysisJobMapper.markFailed(org.mockito.ArgumentMatchers.any())).thenReturn(1);
+
+        assertThatThrownBy(() -> judgeResultPersistenceService.saveFailed(request))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.STATE_CONFLICT);
     }
 
     @Test
@@ -203,7 +367,7 @@ class JudgeResultPersistenceServiceTest {
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.INVALID_REQUEST);
 
-        verify(analysisJobMapper, never()).upsertCompleted(org.mockito.ArgumentMatchers.any());
+        verify(analysisJobMapper, never()).markCompleted(org.mockito.ArgumentMatchers.any());
         verify(ruleHitMapper, never()).insert(org.mockito.ArgumentMatchers.any());
         verify(analysisFindingMapper, never()).insert(org.mockito.ArgumentMatchers.any());
     }
@@ -221,9 +385,77 @@ class JudgeResultPersistenceServiceTest {
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.INVALID_REQUEST);
 
-        verify(analysisJobMapper, never()).upsertCompleted(org.mockito.ArgumentMatchers.any());
+        verify(analysisJobMapper, never()).markCompleted(org.mockito.ArgumentMatchers.any());
         verify(ruleHitMapper, never()).insert(org.mockito.ArgumentMatchers.any());
         verify(analysisFindingMapper, never()).insert(org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    void saveCompletedRejectsJudgeResultMissingRequiredTopLevelField() {
+        UUID analysisJobId = UUID.randomUUID();
+        UUID runId = UUID.randomUUID();
+        Map<String, Object> judgeResult = new LinkedHashMap<>(judgeResult(runId, List.of(issue())));
+        judgeResult.remove("rule_registry_id");
+        AnalyzerCompletedRequest request = completedRequest(analysisJobId, runId, judgeResult);
+
+        assertThatThrownBy(() -> judgeResultPersistenceService.saveCompleted(request))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.INVALID_REQUEST);
+
+        verify(analysisJobMapper, never()).markCompleted(org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    void saveCompletedRejectsJudgeResultMissingRequiredSummaryField() {
+        UUID analysisJobId = UUID.randomUUID();
+        UUID runId = UUID.randomUUID();
+        Map<String, Object> judgeResult = new LinkedHashMap<>(judgeResult(runId, List.of(issue())));
+        Map<String, Object> summary = new LinkedHashMap<>(readMap(judgeResult.get("summary")));
+        summary.remove("task_success");
+        judgeResult.put("summary", summary);
+        AnalyzerCompletedRequest request = completedRequest(analysisJobId, runId, judgeResult);
+
+        assertThatThrownBy(() -> judgeResultPersistenceService.saveCompleted(request))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.INVALID_REQUEST);
+
+        verify(analysisJobMapper, never()).markCompleted(org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    void saveCompletedRejectsIssueMissingRequiredField() {
+        UUID analysisJobId = UUID.randomUUID();
+        UUID runId = UUID.randomUUID();
+        Map<String, Object> issue = issue();
+        issue.remove("recommendations");
+        AnalyzerCompletedRequest request = completedRequest(analysisJobId, runId, List.of(issue));
+
+        assertThatThrownBy(() -> judgeResultPersistenceService.saveCompleted(request))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.INVALID_REQUEST);
+
+        verify(analysisJobMapper, never()).markCompleted(org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    void saveCompletedRejectsDecisionMapMissingRequiredField() {
+        UUID analysisJobId = UUID.randomUUID();
+        UUID runId = UUID.randomUUID();
+        Map<String, Object> judgeResult = new LinkedHashMap<>(judgeResult(runId, List.of(issue())));
+        Map<String, Object> decision = new LinkedHashMap<>(decisionMapItem("INPUT", "WARNING", List.of("issue_002")));
+        decision.remove("displayName");
+        judgeResult.put("decision_map", List.of(decision));
+        AnalyzerCompletedRequest request = completedRequest(analysisJobId, runId, judgeResult);
+
+        assertThatThrownBy(() -> judgeResultPersistenceService.saveCompleted(request))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.INVALID_REQUEST);
+
+        verify(analysisJobMapper, never()).markCompleted(org.mockito.ArgumentMatchers.any());
     }
 
     private AnalyzerStartedRequest startedRequest(UUID analysisJobId, UUID runId) {
@@ -243,7 +475,7 @@ class JudgeResultPersistenceServiceTest {
     }
 
     private void verifyCompletedJob(UUID analysisJobId, UUID runId) throws Exception {
-        verify(analysisJobMapper).upsertCompleted(analysisJobCaptor.capture());
+        verify(analysisJobMapper).markCompleted(analysisJobCaptor.capture());
         AnalysisJob analysisJob = analysisJobCaptor.getValue();
         assertThat(analysisJob.getId()).isEqualTo(analysisJobId);
         assertThat(analysisJob.getRunId()).isEqualTo(runId);
@@ -304,14 +536,46 @@ class JudgeResultPersistenceServiceTest {
         );
     }
 
+    private AnalyzerCompletedRequest completedRequest(UUID analysisJobId, UUID runId, Map<String, Object> judgeResult) {
+        return new AnalyzerCompletedRequest(
+                analysisJobId,
+                runId,
+                "analyzer-0.5.0",
+                "judge-prompts-2026-04-21",
+                Map.of("llm", "gpt-5.4-mini"),
+                List.of(Map.of("rank", 1, "title", "입력 검증 지연")),
+                List.of(Map.of("title", "top-level nudge")),
+                judgeResult,
+                OffsetDateTime.parse("2026-04-28T11:00:00+09:00")
+        );
+    }
+
     private Map<String, Object> judgeResult(UUID runId, List<Map<String, Object>> issues) {
         return Map.of(
                 "schema_version", "0.5",
                 "run_id", runId.toString(),
-                "summary", Map.of("friction_score", 61.0, "top_issues_count", 1),
+                "evidence_schema_version", "0.5",
+                "rule_registry_id", "registry_p0_001",
+                "summary", Map.of(
+                        "overall_risk", "medium",
+                        "friction_score", 61.0,
+                        "top_issues_count", 1,
+                        "task_success", "partial"
+                ),
                 "issues", issues,
-                "decision_map", List.of(Map.of("stage", "INPUT", "status", "WARNING")),
+                "decision_map", List.of(decisionMapItem("INPUT", "WARNING", List.of("issue_002"))),
                 "nudges", List.of(nudge())
+        );
+    }
+
+    private Map<String, Object> decisionMapItem(String stage, String status, List<String> issueIds) {
+        return Map.of(
+                "stage", stage,
+                "displayName", "입력 진행",
+                "status", status,
+                "issueIds", issueIds,
+                "summary", "이메일 입력 검증이 비동기 response와 timeout에 의존합니다.",
+                "evidenceRefs", List.of("cp_002.obs_004")
         );
     }
 
@@ -346,7 +610,13 @@ class JudgeResultPersistenceServiceTest {
         issue.put("signals", List.of("server round-trip"));
         issue.put("summary", "이메일 검증 상태가 지연됩니다.");
         issue.put("impact_hypothesis", "사용자가 입력 반영 여부를 확신하기 어렵습니다.");
+        issue.put("recommendations", List.of("검증 진행 상태를 입력 필드 근처에 표시합니다."));
         return issue;
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> readMap(Object value) {
+        return (Map<String, Object>) value;
     }
 
     private Map<String, Object> nudge() {

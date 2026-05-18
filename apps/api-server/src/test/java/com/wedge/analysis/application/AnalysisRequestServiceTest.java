@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -24,6 +25,7 @@ import com.wedge.run.domain.RunStatus;
 import com.wedge.common.infrastructure.outbox.OutboxMessagePersistenceAdapter;
 import com.wedge.run.infrastructure.RunMapper;
 import java.net.URI;
+import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -123,6 +125,41 @@ class AnalysisRequestServiceTest {
     }
 
     @Test
+    void requestPrimaryAnalysisUsesExactMaterializedEvidencePacketIdForEachRequest() {
+        UUID runId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        UUID firstEvidencePacketId = UUID.randomUUID();
+        UUID secondEvidencePacketId = UUID.randomUUID();
+        RunResponse run = sampleRun(runId, RunStatus.COMPLETED);
+        when(runService.getRun(runId)).thenReturn(run);
+        when(evidenceService.materializeRunEvidencePacketSnapshot(runId)).thenReturn(
+                snapshot(firstEvidencePacketId, runId, 1, 1),
+                snapshot(secondEvidencePacketId, runId, 2, 2)
+        );
+        when(outboxMessagePersistenceAdapter.appendAnalysisRequestMessage(any(AnalysisRequestMessage.class), any(UUID.class)))
+                .thenReturn(UUID.randomUUID(), UUID.randomUUID());
+
+        AnalysisRequestResponse first = analysisRequestService.requestPrimaryAnalysis(runId, userId);
+        AnalysisRequestResponse second = analysisRequestService.requestPrimaryAnalysis(runId, userId);
+
+        assertThat(first.evidencePacketId()).isEqualTo(firstEvidencePacketId);
+        assertThat(second.evidencePacketId()).isEqualTo(secondEvidencePacketId);
+        assertThat(second.checkpointCount()).isEqualTo(2);
+        assertThat(second.artifactCount()).isEqualTo(2);
+
+        verify(analysisJobMapper, times(2)).insertQueued(analysisJobCaptor.capture());
+        assertThat(analysisJobCaptor.getAllValues())
+                .extracting(AnalysisJob::getEvidencePacketId)
+                .containsExactly(firstEvidencePacketId, secondEvidencePacketId);
+
+        verify(outboxMessagePersistenceAdapter, times(2))
+                .appendAnalysisRequestMessage(messageCaptor.capture(), any(UUID.class));
+        assertThat(messageCaptor.getAllValues())
+                .extracting(message -> message.payload().get("evidencePacketId"))
+                .containsExactly(firstEvidencePacketId.toString(), secondEvidencePacketId.toString());
+    }
+
+    @Test
     void requestPrimaryAnalysisCanSkipProjectAccessForMvpMode() {
         UUID runId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
@@ -206,6 +243,52 @@ class AnalysisRequestServiceTest {
         verify(applicationEventPublisher, never()).publishEvent(any());
     }
 
+    @Test
+    void markRequestFailedIfAwaitingAnalyzerFailsQueuedAnalysisJobAndRunState() {
+        UUID analysisJobId = UUID.randomUUID();
+        UUID runId = UUID.randomUUID();
+        AnalysisJob queued = analysisJob(analysisJobId, runId, AnalysisJobStatus.QUEUED);
+        AnalysisJob failed = analysisJob(analysisJobId, runId, AnalysisJobStatus.FAILED);
+        when(analysisJobMapper.findById(analysisJobId)).thenReturn(Optional.of(queued), Optional.of(failed));
+        when(analysisJobMapper.markQueuedFailed(any(AnalysisJob.class))).thenReturn(1);
+
+        Optional<AnalysisJob> result = analysisRequestService.markRequestFailedIfAwaitingAnalyzer(
+                analysisJobId,
+                runId,
+                "ANALYSIS_REQUEST_DEAD_LETTERED",
+                "Analysis request could not be delivered to Analyzer."
+        );
+
+        assertThat(result).contains(failed);
+        verify(analysisJobMapper).markQueuedFailed(analysisJobCaptor.capture());
+        AnalysisJob captured = analysisJobCaptor.getValue();
+        assertThat(captured.getId()).isEqualTo(analysisJobId);
+        assertThat(captured.getRunId()).isEqualTo(runId);
+        assertThat(captured.getStatus()).isEqualTo(AnalysisJobStatus.FAILED);
+        assertThat(captured.getErrorCode()).isEqualTo("ANALYSIS_REQUEST_DEAD_LETTERED");
+        assertThat(captured.getErrorMessage()).isEqualTo("Analysis request could not be delivered to Analyzer.");
+        verify(runMapper).updateCurrentAnalysisState(runId, AnalysisStatus.FAILED, analysisJobId, null, null);
+    }
+
+    @Test
+    void markRequestFailedIfAwaitingAnalyzerDoesNotOverrideRunningAnalysisJob() {
+        UUID analysisJobId = UUID.randomUUID();
+        UUID runId = UUID.randomUUID();
+        when(analysisJobMapper.findById(analysisJobId))
+                .thenReturn(Optional.of(analysisJob(analysisJobId, runId, AnalysisJobStatus.RUNNING)));
+
+        Optional<AnalysisJob> result = analysisRequestService.markRequestFailedIfAwaitingAnalyzer(
+                analysisJobId,
+                runId,
+                "ANALYSIS_REQUEST_DEAD_LETTERED",
+                "Analysis request could not be delivered to Analyzer."
+        );
+
+        assertThat(result).isEmpty();
+        verify(analysisJobMapper, never()).markQueuedFailed(any());
+        verify(runMapper, never()).updateCurrentAnalysisState(any(), any(), any(), any(), any());
+    }
+
     private EvidencePacketSnapshot snapshot(UUID evidencePacketId, UUID runId, int checkpointCount, int artifactCount) {
         EvidencePacketSnapshot snapshot = new EvidencePacketSnapshot();
         snapshot.setId(evidencePacketId);
@@ -235,6 +318,15 @@ class AnalysisRequestServiceTest {
         MockEnvironment environment = new MockEnvironment();
         environment.setActiveProfiles(activeProfiles);
         return environment;
+    }
+
+    private AnalysisJob analysisJob(UUID analysisJobId, UUID runId, AnalysisJobStatus status) {
+        AnalysisJob analysisJob = new AnalysisJob();
+        analysisJob.setId(analysisJobId);
+        analysisJob.setRunId(runId);
+        analysisJob.setJobType("PRIMARY");
+        analysisJob.setStatus(status);
+        return analysisJob;
     }
 
     private RunResponse sampleRun(UUID runId, RunStatus status) {

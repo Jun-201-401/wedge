@@ -1,17 +1,24 @@
 package com.wedge.run.application;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
 import com.wedge.common.error.BusinessException;
 import com.wedge.common.error.ErrorCode;
+import com.wedge.common.infrastructure.outbox.OutboxMessagePersistenceAdapter;
 import com.wedge.run.api.dto.RunCreateRequest;
 import com.wedge.run.api.dto.RunEventResponse;
 import com.wedge.run.api.dto.RunResponse;
 import com.wedge.run.api.dto.RunStepResponse;
 import com.wedge.run.domain.ResultCompleteness;
 import com.wedge.run.domain.RunStatus;
-import com.wedge.common.infrastructure.outbox.OutboxMessagePersistenceAdapter;
 import com.wedge.run.infrastructure.RunPersistenceAdapter;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.EnumSet;
+import java.util.HexFormat;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -25,6 +32,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class RunService {
     private static final int DEFAULT_EVENT_LIMIT = 20;
     private static final int MAX_EVENT_LIMIT = 100;
+    private static final int MAX_IDEMPOTENCY_KEY_LENGTH = 160;
     private static final Set<RunStatus> START_FAILURE_STATUSES = EnumSet.of(
             RunStatus.CREATED,
             RunStatus.QUEUED
@@ -36,6 +44,7 @@ public class RunService {
     private final OutboxMessagePersistenceAdapter outboxMessagePersistenceAdapter;
     private final ApplicationEventPublisher applicationEventPublisher;
     private final ScenarioPlanValidator scenarioPlanValidator;
+    private final ObjectMapper objectMapper;
 
     @Transactional(readOnly = true)
     public List<RunResponse> listRuns(UUID projectId, RunStatus status) {
@@ -47,6 +56,69 @@ public class RunService {
         RunCreateRequest normalizedRequest = normalizeScenarioPlanGoal(request);
         scenarioPlanValidator.validateCreateRequest(normalizedRequest);
         return runPersistenceAdapter.createRun(normalizedRequest);
+    }
+
+    @Transactional
+    public RunResponse createRun(RunCreateRequest request, UUID userId, String idempotencyKey) {
+        RunCreateRequest normalizedRequest = normalizeScenarioPlanGoal(request);
+        scenarioPlanValidator.validateCreateRequest(normalizedRequest);
+        String normalizedIdempotencyKey = normalizeIdempotencyKey(idempotencyKey);
+        if (normalizedIdempotencyKey == null) {
+            return runPersistenceAdapter.createRun(normalizedRequest, userId, null, null);
+        }
+        String requestHash = requestHash(normalizedRequest);
+        RunPersistenceAdapter.IdempotentRun existing = runPersistenceAdapter
+                .findRunByIdempotencyKey(normalizedRequest.projectId(), userId, normalizedIdempotencyKey)
+                .orElse(null);
+        if (existing != null) {
+            requireSameIdempotentRequest(existing, requestHash);
+            return existing.response();
+        }
+
+        Optional<RunResponse> created = runPersistenceAdapter.createRunIfAbsent(
+                normalizedRequest,
+                userId,
+                normalizedIdempotencyKey,
+                requestHash
+        );
+        if (created.isPresent()) {
+            return created.get();
+        }
+        RunPersistenceAdapter.IdempotentRun racedExisting = runPersistenceAdapter
+                .findRunByIdempotencyKey(normalizedRequest.projectId(), userId, normalizedIdempotencyKey)
+                .orElseThrow(() -> new BusinessException(ErrorCode.STATE_CONFLICT, "Run create idempotency conflict could not be resolved."));
+        requireSameIdempotentRequest(racedExisting, requestHash);
+        return racedExisting.response();
+    }
+
+    private String normalizeIdempotencyKey(String idempotencyKey) {
+        if (idempotencyKey == null || idempotencyKey.isBlank()) {
+            return null;
+        }
+        String normalized = idempotencyKey.trim();
+        if (normalized.length() > MAX_IDEMPOTENCY_KEY_LENGTH) {
+            throw new BusinessException(ErrorCode.INVALID_REQUEST, "Idempotency-Key is too long.");
+        }
+        return normalized;
+    }
+
+    private void requireSameIdempotentRequest(RunPersistenceAdapter.IdempotentRun existing, String requestHash) {
+        if (!Objects.equals(requestHash, existing.idempotencyRequestHash())) {
+            throw new BusinessException(ErrorCode.STATE_CONFLICT, "Idempotency-Key was reused with a different run request.");
+        }
+    }
+
+    private String requestHash(RunCreateRequest request) {
+        try {
+            byte[] bytes = objectMapper.copy()
+                    .configure(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS, true)
+                    .writeValueAsBytes(request);
+            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes));
+        } catch (JsonProcessingException exception) {
+            throw new BusinessException(ErrorCode.INVALID_REQUEST, "Run request is not JSON serializable.", null, exception);
+        } catch (NoSuchAlgorithmException exception) {
+            throw new BusinessException(ErrorCode.INTERNAL_ERROR, "SHA-256 digest is not available.", null, exception);
+        }
     }
 
     private RunCreateRequest normalizeScenarioPlanGoal(RunCreateRequest request) {

@@ -74,8 +74,9 @@ public class RunController {
             @Valid @RequestBody RunCreateRequest request,
             Authentication authentication
     ) {
-        projectAccessService.ensureProjectAccessible(request.projectId(), principal(authentication).userId());
-        return ApiResponse.created(runService.createRun(request));
+        UUID userId = principal(authentication).userId();
+        projectAccessService.ensureProjectAccessible(request.projectId(), userId);
+        return ApiResponse.created(runService.createRun(request, userId, idempotencyKey));
     }
 
     @GetMapping("/{runId}")
@@ -104,8 +105,10 @@ public class RunController {
     @PostMapping("/{runId}/agent/start")
     public ResponseEntity<ApiResponse<RunActionResponse>> startAgentRun(
             @PathVariable UUID runId,
-            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey
+            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
+            Authentication authentication
     ) {
+        ensureRunAccessible(runId, authentication);
         RunResponse run = runService.startAgentRun(runId);
         return ApiResponse.accepted(RunActionResponse.from(run));
     }

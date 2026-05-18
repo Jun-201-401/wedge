@@ -2,6 +2,9 @@ package com.wedge.run.api;
 
 import static org.hamcrest.Matchers.containsString;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -12,6 +15,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
+import com.wedge.common.error.BusinessException;
+import com.wedge.common.error.ErrorCode;
 import com.wedge.common.error.GlobalExceptionHandler;
 import com.wedge.common.security.WedgePrincipal;
 import com.wedge.common.web.RequestIdFilter;
@@ -70,11 +75,12 @@ class RunControllerTest {
         UUID projectId = UUID.randomUUID();
         UUID runId = UUID.randomUUID();
         RunResponse created = sampleRun(runId, projectId);
-        when(runService.createRun(any(RunCreateRequest.class))).thenReturn(created);
+        when(runService.createRun(any(RunCreateRequest.class), eq(USER_ID), eq("idem-run-create-1"))).thenReturn(created);
 
         mockMvc.perform(post("/api/runs")
                         .principal(authentication())
                         .header("X-Request-Id", "req_run_create")
+                        .header("Idempotency-Key", "idem-run-create-1")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -91,6 +97,7 @@ class RunControllerTest {
                 .andExpect(jsonPath("$.meta.requestId").value("req_run_create"));
 
         verify(projectAccessService).ensureProjectAccessible(projectId, USER_ID);
+        verify(runService).createRun(any(RunCreateRequest.class), eq(USER_ID), eq("idem-run-create-1"));
     }
 
     @Test
@@ -294,17 +301,38 @@ class RunControllerTest {
     @Test
     void agentStartQueuesAgentRun() throws Exception {
         UUID runId = UUID.randomUUID();
+        UUID projectId = UUID.randomUUID();
+        when(runService.getRun(runId)).thenReturn(sampleRun(runId, projectId, RunStatus.CREATED));
         RunResponse queued = sampleRun(runId, RunStatus.QUEUED);
         when(runService.startAgentRun(runId)).thenReturn(queued);
 
         mockMvc.perform(post("/api/runs/{runId}/agent/start", runId)
+                        .principal(authentication())
                         .header("X-Request-Id", "req_agent_start"))
                 .andExpect(status().isAccepted())
                 .andExpect(jsonPath("$.data.runId").value(runId.toString()))
                 .andExpect(jsonPath("$.data.status").value("QUEUED"))
                 .andExpect(jsonPath("$.meta.requestId").value("req_agent_start"));
 
+        verify(projectAccessService).ensureProjectAccessible(projectId, USER_ID);
         verify(runService).startAgentRun(runId);
+    }
+
+    @Test
+    void agentStartRejectsRunsFromInaccessibleProject() throws Exception {
+        UUID runId = UUID.randomUUID();
+        UUID projectId = UUID.randomUUID();
+        when(runService.getRun(runId)).thenReturn(sampleRun(runId, projectId, RunStatus.CREATED));
+        doThrow(new BusinessException(ErrorCode.FORBIDDEN))
+                .when(projectAccessService).ensureProjectAccessible(projectId, USER_ID);
+
+        mockMvc.perform(post("/api/runs/{runId}/agent/start", runId)
+                        .principal(authentication())
+                        .header("X-Request-Id", "req_agent_start_forbidden"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.meta.requestId").value("req_agent_start_forbidden"));
+
+        verify(runService, never()).startAgentRun(runId);
     }
 
     @Test

@@ -22,15 +22,13 @@
         WHERE id = #{id}
     </select>
 
-    <select id="upsertRunSnapshot" parameterType="com.wedge.evidence.domain.EvidencePacketSnapshot" resultMap="EvidencePacketSnapshotResultMap">
+    <select id="insertRunSnapshot" parameterType="com.wedge.evidence.domain.EvidencePacketSnapshot" resultMap="EvidencePacketSnapshotResultMap">
         INSERT INTO evidence_packet (
             id, execution_type, run_id, schema_version, packet_jsonb, checkpoint_count, observation_count, artifact_count
         )
         VALUES (
             #{id}, 'RUN', #{runId}, #{schemaVersion}, CAST(#{packetJsonb} AS jsonb), #{checkpointCount}, #{observationCount}, #{artifactCount}
         )
-        ON CONFLICT (run_id, schema_version) DO UPDATE SET
-            id = evidence_packet.id
         RETURNING id, execution_type, run_id, discovery_id, schema_version,
                   CAST(packet_jsonb AS TEXT) AS packet_jsonb,
                   checkpoint_count, observation_count, artifact_count, created_at

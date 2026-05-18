@@ -88,7 +88,7 @@ class RunnerCallbackServiceTest {
     void acceptedCallbackTransitionsRunToStarting() {
         UUID runId = UUID.randomUUID();
         RunResponse starting = sampleRun(runId, RunStatus.STARTING, ResultCompleteness.NONE);
-        when(processedMessagePersistenceAdapter.tryMarkProcessed("runner.accepted", "evt_accepted_001")).thenReturn(true);
+        when(processedMessagePersistenceAdapter.tryMarkProcessed(eq("runner.accepted"), eq("evt_accepted_001"), any())).thenReturn(true);
         when(runService.markAccepted(runId)).thenReturn(starting);
 
         RunnerCallbackAckResponse result = runnerCallbackService.handleAccepted(
@@ -108,7 +108,7 @@ class RunnerCallbackServiceTest {
         UUID stepId = UUID.randomUUID();
         OffsetDateTime occurredAt = OffsetDateTime.parse("2026-04-21T10:01:00+09:00");
         RunResponse running = sampleRun(runId, RunStatus.RUNNING, ResultCompleteness.NONE);
-        when(processedMessagePersistenceAdapter.tryMarkProcessed("runner.step-events", "evt_step_batch_001")).thenReturn(true);
+        when(processedMessagePersistenceAdapter.tryMarkProcessed(eq("runner.step-events"), eq("evt_step_batch_001"), any())).thenReturn(true);
         when(runService.markRunningIfStarting(runId)).thenReturn(running);
         when(runPersistenceAdapter.resolveStep(runId, "step_001_goto"))
                 .thenReturn(new RunPersistenceAdapter.ResolvedStep(stepId, 1, "step_001_goto", StepStatus.PENDING));
@@ -143,7 +143,7 @@ class RunnerCallbackServiceTest {
         UUID stepId = UUID.randomUUID();
         OffsetDateTime occurredAt = OffsetDateTime.parse("2026-04-21T10:02:00+09:00");
         RunResponse running = sampleRun(runId, RunStatus.RUNNING, ResultCompleteness.NONE);
-        when(processedMessagePersistenceAdapter.tryMarkProcessed("runner.step-events", "evt_step_failed_001")).thenReturn(true);
+        when(processedMessagePersistenceAdapter.tryMarkProcessed(eq("runner.step-events"), eq("evt_step_failed_001"), any())).thenReturn(true);
         when(runService.markRunningIfStarting(runId)).thenReturn(running);
         when(runPersistenceAdapter.resolveStep(runId, "step_002_submit"))
                 .thenReturn(new RunPersistenceAdapter.ResolvedStep(stepId, 2, "step_002_submit", StepStatus.RUNNING));
@@ -186,7 +186,7 @@ class RunnerCallbackServiceTest {
     void stepEventsCallbackDoesNotMutateStepsAfterRunIsTerminal() {
         UUID runId = UUID.randomUUID();
         RunResponse completed = sampleRun(runId, RunStatus.COMPLETED, ResultCompleteness.FINAL);
-        when(processedMessagePersistenceAdapter.tryMarkProcessed("runner.step-events", "evt_late_step_001")).thenReturn(true);
+        when(processedMessagePersistenceAdapter.tryMarkProcessed(eq("runner.step-events"), eq("evt_late_step_001"), any())).thenReturn(true);
         when(runService.markRunningIfStarting(runId)).thenReturn(completed);
 
         RunnerStepEventsCommand command = new RunnerStepEventsCommand(List.of(
@@ -248,7 +248,7 @@ class RunnerCallbackServiceTest {
                         Map.of("final_outcome", "SUCCESS_CHECKOUT_ENTRY_REACHED")
                 )
         ));
-        when(processedMessagePersistenceAdapter.tryMarkProcessed("runner.agent-events", "evt_agent_events_001")).thenReturn(true);
+        when(processedMessagePersistenceAdapter.tryMarkProcessed(eq("runner.agent-events"), eq("evt_agent_events_001"), any())).thenReturn(true);
         when(runService.markRunningIfStarting(runId)).thenReturn(running);
 
         RunnerCallbackAckResponse result = runnerCallbackService.handleAgentEvents(
@@ -285,7 +285,7 @@ class RunnerCallbackServiceTest {
                         "final_outcome", "SUCCESS_CHECKOUT_ENTRY_REACHED"
                 )
         );
-        when(processedMessagePersistenceAdapter.tryMarkProcessed("runner.agent-traces", "evt_agent_trace_001")).thenReturn(true);
+        when(processedMessagePersistenceAdapter.tryMarkProcessed(eq("runner.agent-traces"), eq("evt_agent_trace_001"), any())).thenReturn(true);
         when(runService.markRunningIfStarting(runId)).thenReturn(running);
 
         RunnerCallbackAckResponse result = runnerCallbackService.handleAgentTrace(
@@ -305,7 +305,7 @@ class RunnerCallbackServiceTest {
         UUID runId = UUID.randomUUID();
         RunResponse running = sampleRun(runId, RunStatus.RUNNING, ResultCompleteness.NONE);
         RunResponse completed = sampleRun(runId, RunStatus.COMPLETED, ResultCompleteness.FINAL);
-        when(processedMessagePersistenceAdapter.tryMarkProcessed("runner.finished", "evt_finished_001")).thenReturn(true);
+        when(processedMessagePersistenceAdapter.tryMarkProcessed(eq("runner.finished"), eq("evt_finished_001"), any())).thenReturn(true);
         when(runService.markRunningIfStarting(runId)).thenReturn(running);
         when(runService.finishRun(running, false)).thenReturn(completed);
 
@@ -330,7 +330,7 @@ class RunnerCallbackServiceTest {
         UUID runId = UUID.randomUUID();
         RunResponse running = sampleRun(runId, RunStatus.RUNNING, ResultCompleteness.NONE);
         RunResponse completed = sampleRun(runId, RunStatus.COMPLETED, ResultCompleteness.FINAL);
-        when(processedMessagePersistenceAdapter.tryMarkProcessed("runner.finished", "evt_finished_002")).thenReturn(true);
+        when(processedMessagePersistenceAdapter.tryMarkProcessed(eq("runner.finished"), eq("evt_finished_002"), any())).thenReturn(true);
         when(runService.markRunningIfStarting(runId)).thenReturn(running);
         when(runService.finishRun(running, false)).thenReturn(completed);
 
@@ -371,8 +371,8 @@ class RunnerCallbackServiceTest {
         UUID stepId = UUID.randomUUID();
         UUID artifactId = UUID.randomUUID();
         UUID latestCheckpointId = UUID.randomUUID();
-        when(processedMessagePersistenceAdapter.tryMarkProcessed("runner.checkpoints", "evt_checkpoint_001")).thenReturn(true);
-        when(processedMessagePersistenceAdapter.tryMarkProcessed("runner.artifacts", "evt_artifact_001")).thenReturn(true);
+        when(processedMessagePersistenceAdapter.tryMarkProcessed(eq("runner.checkpoints"), eq("evt_checkpoint_001"), any())).thenReturn(true);
+        when(processedMessagePersistenceAdapter.tryMarkProcessed(eq("runner.artifacts"), eq("evt_artifact_001"), any())).thenReturn(true);
         when(runPersistenceAdapter.resolveOrCreateAgentStep(runId, "step_002_click_signup", "CTA"))
                 .thenReturn(new RunPersistenceAdapter.ResolvedStep(stepId, 2, "step_002_click_signup", StepStatus.RUNNING));
         when(runPersistenceAdapter.resolveOrCreateAgentStep(runId, "step_002_click_signup", "VALUE"))
@@ -446,7 +446,7 @@ class RunnerCallbackServiceTest {
     void checkpointCallbackDoesNotMoveLatestPointerWhenOnlyDuplicatesWereSeen() {
         UUID runId = UUID.randomUUID();
         UUID stepId = UUID.randomUUID();
-        when(processedMessagePersistenceAdapter.tryMarkProcessed("runner.checkpoints", "evt_checkpoint_001")).thenReturn(true);
+        when(processedMessagePersistenceAdapter.tryMarkProcessed(eq("runner.checkpoints"), eq("evt_checkpoint_001"), any())).thenReturn(true);
         when(runPersistenceAdapter.resolveOrCreateAgentStep(runId, "step_003_fill_email", "INPUT"))
                 .thenReturn(new RunPersistenceAdapter.ResolvedStep(stepId, 3, "step_003_fill_email", StepStatus.RUNNING));
         when(runService.markRunningIfStarting(runId))
@@ -468,10 +468,46 @@ class RunnerCallbackServiceTest {
     }
 
     @Test
+    void checkpointCallbackRejectsLateEvidenceAfterRunIsTerminal() {
+        UUID runId = UUID.randomUUID();
+        when(processedMessagePersistenceAdapter.tryMarkProcessed(eq("runner.checkpoints"), eq("evt_late_checkpoint_001"), any())).thenReturn(true);
+        when(runService.markRunningIfStarting(runId))
+                .thenReturn(sampleRun(runId, RunStatus.COMPLETED, ResultCompleteness.FINAL));
+
+        assertThatThrownBy(() -> runnerCallbackService.handleCheckpoints(
+                runId,
+                sampleCheckpointCommand(),
+                headers("evt_late_checkpoint_001")
+        ))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Run evidence cannot be accepted after the run is terminal.");
+
+        verifyNoInteractions(runPersistenceAdapter, checkpointPersistenceService);
+    }
+
+    @Test
+    void artifactCallbackRejectsLateEvidenceAfterRunIsTerminal() {
+        UUID runId = UUID.randomUUID();
+        when(processedMessagePersistenceAdapter.tryMarkProcessed(eq("runner.artifacts"), eq("evt_late_artifact_001"), any())).thenReturn(true);
+        when(runService.markRunningIfStarting(runId))
+                .thenReturn(sampleRun(runId, RunStatus.FAILED, ResultCompleteness.PARTIAL));
+
+        assertThatThrownBy(() -> runnerCallbackService.handleArtifacts(
+                runId,
+                sampleArtifactCommand(),
+                headers("evt_late_artifact_001")
+        ))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Run evidence cannot be accepted after the run is terminal.");
+
+        verifyNoInteractions(runPersistenceAdapter, artifactPersistenceService);
+    }
+
+    @Test
     void duplicateAcceptedCallbackDoesNotTransitionRunAgain() {
         UUID runId = UUID.randomUUID();
         RunResponse current = sampleRun(runId, RunStatus.STARTING, ResultCompleteness.NONE);
-        when(processedMessagePersistenceAdapter.tryMarkProcessed("runner.accepted", "evt_accepted_001")).thenReturn(false);
+        when(processedMessagePersistenceAdapter.tryMarkProcessed(eq("runner.accepted"), eq("evt_accepted_001"), any())).thenReturn(false);
         when(runService.getRun(runId)).thenReturn(current);
 
         RunnerCallbackAckResponse result = runnerCallbackService.handleAccepted(
@@ -498,7 +534,7 @@ class RunnerCallbackServiceTest {
                         Map.of("message", "started")
                 )
         ));
-        when(processedMessagePersistenceAdapter.tryMarkProcessed("runner.step-events", "evt_step_batch_001")).thenReturn(false);
+        when(processedMessagePersistenceAdapter.tryMarkProcessed(eq("runner.step-events"), eq("evt_step_batch_001"), any())).thenReturn(false);
         when(runService.getRun(runId)).thenReturn(sampleRun(runId, RunStatus.RUNNING, ResultCompleteness.NONE));
 
         RunnerCallbackAckResponse result = runnerCallbackService.handleStepEvents(
@@ -517,7 +553,7 @@ class RunnerCallbackServiceTest {
     void duplicateCheckpointCallbackDoesNotPersistAgain() {
         UUID runId = UUID.randomUUID();
         RunnerCheckpointsCommand command = sampleCheckpointCommand();
-        when(processedMessagePersistenceAdapter.tryMarkProcessed("runner.checkpoints", "evt_checkpoint_001")).thenReturn(false);
+        when(processedMessagePersistenceAdapter.tryMarkProcessed(eq("runner.checkpoints"), eq("evt_checkpoint_001"), any())).thenReturn(false);
         when(runService.getRun(runId)).thenReturn(sampleRun(runId, RunStatus.RUNNING, ResultCompleteness.NONE));
 
         RunnerCallbackAckResponse result = runnerCallbackService.handleCheckpoints(
@@ -535,7 +571,7 @@ class RunnerCallbackServiceTest {
     void duplicateArtifactCallbackDoesNotPersistAgain() {
         UUID runId = UUID.randomUUID();
         RunnerArtifactsCommand command = sampleArtifactCommand();
-        when(processedMessagePersistenceAdapter.tryMarkProcessed("runner.artifacts", "evt_artifact_001")).thenReturn(false);
+        when(processedMessagePersistenceAdapter.tryMarkProcessed(eq("runner.artifacts"), eq("evt_artifact_001"), any())).thenReturn(false);
         when(runService.getRun(runId)).thenReturn(sampleRun(runId, RunStatus.RUNNING, ResultCompleteness.NONE));
 
         RunnerCallbackAckResponse result = runnerCallbackService.handleArtifacts(
@@ -553,7 +589,7 @@ class RunnerCallbackServiceTest {
     void duplicateFinishedCallbackDoesNotFinishRunAgain() {
         UUID runId = UUID.randomUUID();
         RunResponse completed = sampleRun(runId, RunStatus.COMPLETED, ResultCompleteness.FINAL);
-        when(processedMessagePersistenceAdapter.tryMarkProcessed("runner.finished", "evt_finished_001")).thenReturn(false);
+        when(processedMessagePersistenceAdapter.tryMarkProcessed(eq("runner.finished"), eq("evt_finished_001"), any())).thenReturn(false);
         when(runService.getRun(runId)).thenReturn(completed);
 
         RunnerCallbackAckResponse result = runnerCallbackService.handleFinished(
@@ -577,7 +613,7 @@ class RunnerCallbackServiceTest {
     void duplicateFailedCallbackDoesNotFailRunAgain() {
         UUID runId = UUID.randomUUID();
         RunResponse failed = sampleRun(runId, RunStatus.FAILED, ResultCompleteness.PARTIAL);
-        when(processedMessagePersistenceAdapter.tryMarkProcessed("runner.failed", "evt_failed_001")).thenReturn(false);
+        when(processedMessagePersistenceAdapter.tryMarkProcessed(eq("runner.failed"), eq("evt_failed_001"), any())).thenReturn(false);
         when(runService.getRun(runId)).thenReturn(failed);
 
         RunnerCallbackAckResponse result = runnerCallbackService.handleFailed(

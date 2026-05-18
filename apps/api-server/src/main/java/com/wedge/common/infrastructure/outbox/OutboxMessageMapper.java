@@ -27,5 +27,11 @@ public interface OutboxMessageMapper {
 
     int markPublished(@Param("outboxMessageId") UUID outboxMessageId, @Param("publishedAt") OffsetDateTime publishedAt);
 
-    int markFailed(@Param("outboxMessageId") UUID outboxMessageId, @Param("nextAttemptAt") OffsetDateTime nextAttemptAt);
+    int markFailed(
+            @Param("outboxMessageId") UUID outboxMessageId,
+            @Param("nextAttemptAt") OffsetDateTime nextAttemptAt,
+            @Param("failedAt") OffsetDateTime failedAt,
+            @Param("maxAttempts") int maxAttempts,
+            @Param("lastError") String lastError
+    );
 }

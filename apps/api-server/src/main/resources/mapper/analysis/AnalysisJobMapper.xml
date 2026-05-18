@@ -61,45 +61,43 @@
           AND status = 'QUEUED'
     </update>
 
-    <insert id="upsertCompleted" parameterType="com.wedge.analysis.domain.AnalysisJob">
-        INSERT INTO analysis_job (
-            id, run_id, job_type, status, rule_registry_id, judge_schema_version, analyzer_version,
-            prompt_version, model_info_jsonb, output_jsonb, friction_score, finished_at
-        )
-        VALUES (
-            #{id}, #{runId}, COALESCE(#{jobType,jdbcType=VARCHAR}, 'PRIMARY'), #{status}, #{ruleRegistryId,jdbcType=OTHER}, #{judgeSchemaVersion}, #{analyzerVersion},
-            #{promptVersion}, CAST(#{modelInfoJsonb} AS jsonb), CAST(#{outputJsonb} AS jsonb),
-            #{frictionScore}, #{finishedAt}
-        )
-        ON CONFLICT (id) DO UPDATE SET
-            run_id = EXCLUDED.run_id,
-            job_type = EXCLUDED.job_type,
-            status = EXCLUDED.status,
-            rule_registry_id = COALESCE(EXCLUDED.rule_registry_id, analysis_job.rule_registry_id),
-            judge_schema_version = EXCLUDED.judge_schema_version,
-            analyzer_version = EXCLUDED.analyzer_version,
-            prompt_version = EXCLUDED.prompt_version,
-            model_info_jsonb = EXCLUDED.model_info_jsonb,
-            output_jsonb = EXCLUDED.output_jsonb,
-            friction_score = EXCLUDED.friction_score,
-            finished_at = EXCLUDED.finished_at,
+    <update id="markCompleted" parameterType="com.wedge.analysis.domain.AnalysisJob">
+        UPDATE analysis_job
+        SET status = #{status},
+            rule_registry_id = COALESCE(#{ruleRegistryId,jdbcType=OTHER}, rule_registry_id),
+            judge_schema_version = #{judgeSchemaVersion},
+            analyzer_version = #{analyzerVersion},
+            prompt_version = #{promptVersion},
+            model_info_jsonb = CAST(#{modelInfoJsonb} AS jsonb),
+            output_jsonb = CAST(#{outputJsonb} AS jsonb),
+            friction_score = #{frictionScore},
+            finished_at = #{finishedAt},
             error_code = NULL,
             error_message = NULL
-    </insert>
+        WHERE id = #{id}
+          AND run_id = #{runId}
+          AND status IN ('QUEUED', 'RUNNING')
+    </update>
 
-    <insert id="upsertFailed" parameterType="com.wedge.analysis.domain.AnalysisJob">
-        INSERT INTO analysis_job (
-            id, run_id, job_type, status, finished_at, error_code, error_message
-        )
-        VALUES (
-            #{id}, #{runId}, COALESCE(#{jobType,jdbcType=VARCHAR}, 'PRIMARY'), #{status}, #{finishedAt}, #{errorCode}, #{errorMessage}
-        )
-        ON CONFLICT (id) DO UPDATE SET
-            run_id = EXCLUDED.run_id,
-            job_type = EXCLUDED.job_type,
-            status = EXCLUDED.status,
-            finished_at = EXCLUDED.finished_at,
-            error_code = EXCLUDED.error_code,
-            error_message = EXCLUDED.error_message
-    </insert>
+    <update id="markFailed" parameterType="com.wedge.analysis.domain.AnalysisJob">
+        UPDATE analysis_job
+        SET status = #{status},
+            finished_at = #{finishedAt},
+            error_code = #{errorCode},
+            error_message = #{errorMessage}
+        WHERE id = #{id}
+          AND run_id = #{runId}
+          AND status IN ('QUEUED', 'RUNNING')
+    </update>
+
+    <update id="markQueuedFailed" parameterType="com.wedge.analysis.domain.AnalysisJob">
+        UPDATE analysis_job
+        SET status = #{status},
+            finished_at = #{finishedAt},
+            error_code = #{errorCode},
+            error_message = #{errorMessage}
+        WHERE id = #{id}
+          AND run_id = #{runId}
+          AND status = 'QUEUED'
+    </update>
 </mapper>

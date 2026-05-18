@@ -108,6 +108,20 @@
           AND deleted_at IS NULL
     </update>
 
+    <update id="failBeforeRunner">
+        UPDATE scenario_authoring_job
+        SET status = 'FAILED',
+            provider_trace_jsonb = CAST(#{providerTraceJsonb} AS jsonb),
+            validation_jsonb = CAST(#{validationJsonb} AS jsonb),
+            provenance_jsonb = CAST(#{provenanceJsonb} AS jsonb),
+            failure_jsonb = CAST(#{failureJsonb} AS jsonb),
+            updated_at = NOW(),
+            version = version + 1
+        WHERE id = #{id}
+          AND status IN ('CREATED', 'QUEUED')
+          AND deleted_at IS NULL
+    </update>
+
     <update id="confirmCandidate">
         UPDATE scenario_authoring_job
         SET confirmed_candidate_id = #{confirmedCandidateId},

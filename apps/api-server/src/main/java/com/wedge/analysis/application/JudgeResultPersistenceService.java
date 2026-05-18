@@ -43,6 +43,7 @@ public class JudgeResultPersistenceService {
     private final NudgeMapper nudgeMapper;
     private final RunMapper runMapper;
     private final ObjectMapper objectMapper;
+    private final JudgeResultContractValidator judgeResultContractValidator;
 
     public JudgeResultPersistenceService(
             AnalysisJobMapper analysisJobMapper,
@@ -50,7 +51,8 @@ public class JudgeResultPersistenceService {
             AnalysisFindingMapper analysisFindingMapper,
             NudgeMapper nudgeMapper,
             RunMapper runMapper,
-            ObjectMapper objectMapper
+            ObjectMapper objectMapper,
+            JudgeResultContractValidator judgeResultContractValidator
     ) {
         this.analysisJobMapper = analysisJobMapper;
         this.ruleHitMapper = ruleHitMapper;
@@ -58,13 +60,14 @@ public class JudgeResultPersistenceService {
         this.nudgeMapper = nudgeMapper;
         this.runMapper = runMapper;
         this.objectMapper = objectMapper;
+        this.judgeResultContractValidator = judgeResultContractValidator;
     }
 
     @Transactional
     public Map<String, Object> saveStarted(AnalyzerStartedRequest request) {
         int updated = analysisJobMapper.markRunning(request.analysisJobId(), request.runId(), request.startedAt());
         if (updated > 0) {
-            runMapper.updateCurrentAnalysisState(request.runId(), AnalysisStatus.RUNNING, request.analysisJobId(), null, null);
+            updateCurrentAnalysisState(request.runId(), AnalysisStatus.RUNNING, request.analysisJobId(), null, null);
             return startedResponse(request);
         }
 
@@ -92,20 +95,26 @@ public class JudgeResultPersistenceService {
 
     @Transactional
     public Map<String, Object> saveCompleted(AnalyzerCompletedRequest request) {
+        judgeResultContractValidator.validate(request.judgeResult());
         List<Map<String, Object>> issues = readList(request.judgeResult(), "issues");
         validateIssueStages(issues);
-        analysisJobMapper.upsertCompleted(toCompletedAnalysisJob(request));
+        AnalysisJob existing = requireAnalysisJob(request.analysisJobId());
+        validateTerminalTransition(request.runId(), existing);
+        AnalysisJob completedJob = toCompletedAnalysisJob(request, existing);
+        markTerminalUpdated(analysisJobMapper.markCompleted(completedJob));
+        updateCurrentAnalysisState(request.runId(), AnalysisStatus.COMPLETED, request.analysisJobId(), readFrictionScore(request.judgeResult()), null);
         clearProjectionRows(request.analysisJobId());
         Map<String, UUID> findingIdsByIssueId = persistIssues(request.analysisJobId(), request.runId(), issues);
         int nudgeCount = persistNudges(request, findingIdsByIssueId);
-        runMapper.updateCurrentAnalysisState(request.runId(), AnalysisStatus.COMPLETED, request.analysisJobId(), readFrictionScore(request.judgeResult()), null);
         return completedResponse(request, issues.size(), nudgeCount);
     }
 
     @Transactional
     public Map<String, Object> saveFailed(AnalyzerFailedRequest request) {
-        analysisJobMapper.upsertFailed(toFailedAnalysisJob(request));
-        runMapper.updateCurrentAnalysisState(request.runId(), AnalysisStatus.FAILED, request.analysisJobId(), null, null);
+        AnalysisJob existing = requireAnalysisJob(request.analysisJobId());
+        validateTerminalTransition(request.runId(), existing);
+        markTerminalUpdated(analysisJobMapper.markFailed(toFailedAnalysisJob(request, existing)));
+        updateCurrentAnalysisState(request.runId(), AnalysisStatus.FAILED, request.analysisJobId(), null, null);
         return Map.of(
                 "analysisJobId", request.analysisJobId(),
                 "runId", request.runId(),
@@ -113,10 +122,12 @@ public class JudgeResultPersistenceService {
         );
     }
 
-    private AnalysisJob toCompletedAnalysisJob(AnalyzerCompletedRequest request) {
+    private AnalysisJob toCompletedAnalysisJob(AnalyzerCompletedRequest request, AnalysisJob existing) {
         AnalysisJob analysisJob = new AnalysisJob();
         analysisJob.setId(request.analysisJobId());
         analysisJob.setRunId(request.runId());
+        analysisJob.setJobType(existing.getJobType());
+        analysisJob.setRuleRegistryId(existing.getRuleRegistryId());
         analysisJob.setStatus(AnalysisJobStatus.COMPLETED);
         analysisJob.setJudgeSchemaVersion(readString(request.judgeResult(), "schema_version", null));
         analysisJob.setAnalyzerVersion(request.analyzerVersion());
@@ -128,10 +139,11 @@ public class JudgeResultPersistenceService {
         return analysisJob;
     }
 
-    private AnalysisJob toFailedAnalysisJob(AnalyzerFailedRequest request) {
+    private AnalysisJob toFailedAnalysisJob(AnalyzerFailedRequest request, AnalysisJob existing) {
         AnalysisJob analysisJob = new AnalysisJob();
         analysisJob.setId(request.analysisJobId());
         analysisJob.setRunId(request.runId());
+        analysisJob.setJobType(existing.getJobType());
         analysisJob.setStatus(AnalysisJobStatus.FAILED);
         analysisJob.setFinishedAt(request.failedAt());
         analysisJob.setErrorCode(request.errorCode());
@@ -153,8 +165,44 @@ public class JudgeResultPersistenceService {
         }
     }
 
+    private AnalysisJob requireAnalysisJob(UUID analysisJobId) {
+        return analysisJobMapper.findById(analysisJobId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.RUN_NOT_FOUND, "AnalysisJob was not found."));
+    }
+
+    private void validateTerminalTransition(UUID runId, AnalysisJob existing) {
+        if (!runId.equals(existing.getRunId())) {
+            throw new BusinessException(ErrorCode.INVALID_REQUEST, "Analyzer callback runId does not match analysis job.");
+        }
+        if (isTerminalStatus(existing.getStatus())) {
+            throw new BusinessException(ErrorCode.STATE_CONFLICT, "AnalysisJob is already terminal.");
+        }
+        if (existing.getStatus() != AnalysisJobStatus.QUEUED && existing.getStatus() != AnalysisJobStatus.RUNNING) {
+            throw new BusinessException(ErrorCode.STATE_CONFLICT, "AnalysisJob cannot be marked terminal from current state.");
+        }
+    }
+
     private boolean isTerminalStatus(AnalysisJobStatus status) {
         return status == AnalysisJobStatus.COMPLETED || status == AnalysisJobStatus.FAILED;
+    }
+
+    private void markTerminalUpdated(int updated) {
+        if (updated <= 0) {
+            throw new BusinessException(ErrorCode.STATE_CONFLICT, "AnalysisJob terminal transition conflicted.");
+        }
+    }
+
+    private void updateCurrentAnalysisState(
+            UUID runId,
+            AnalysisStatus analysisStatus,
+            UUID analysisJobId,
+            BigDecimal frictionScore,
+            UUID reportId
+    ) {
+        int updated = runMapper.updateCurrentAnalysisState(runId, analysisStatus, analysisJobId, frictionScore, reportId);
+        if (updated <= 0) {
+            throw new BusinessException(ErrorCode.STATE_CONFLICT, "Run current analysis job does not match callback.");
+        }
     }
 
     private Map<String, Object> completedOutput(AnalyzerCompletedRequest request) {

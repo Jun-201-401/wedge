@@ -55,7 +55,7 @@ public class AgentExecuteOutboxDispatcher {
                     message.idempotencyKey(),
                     exception
             );
-            outboxMessagePersistenceAdapter.markFailed(outboxMessageId);
+            outboxMessagePersistenceAdapter.markFailed(outboxMessageId, exception);
         }
     }
 }

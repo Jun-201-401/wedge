@@ -32,6 +32,16 @@ public class EvidencePacketSignedUrlDecorator {
     private final Duration signedUrlTtl;
     private final int maxSignedUrlCount;
 
+    private record SignedUrlAttempt(boolean added, String failureReason) {
+        static SignedUrlAttempt success() {
+            return new SignedUrlAttempt(true, null);
+        }
+
+        static SignedUrlAttempt failed(String failureReason) {
+            return new SignedUrlAttempt(false, failureReason);
+        }
+    }
+
     @Autowired
     public EvidencePacketSignedUrlDecorator(
             ArtifactPresignedUrlGenerator artifactPresignedUrlGenerator,
@@ -84,11 +94,16 @@ public class EvidencePacketSignedUrlDecorator {
                     artifact != null
                             && referencedArtifactIds.contains(artifactId)
                             && isSignableImageArtifact(artifact)
-                            && maxSignedUrlCount > 0
-                            && signedUrlAttemptCount < maxSignedUrlCount
             ) {
-                signedUrlAttemptCount++;
-                addSignedUrl(decoratedArtifact, artifact);
+                if (maxSignedUrlCount > 0 && signedUrlAttemptCount < maxSignedUrlCount) {
+                    signedUrlAttemptCount++;
+                    SignedUrlAttempt attempt = addSignedUrl(decoratedArtifact, artifact);
+                    if (!attempt.added()) {
+                        putSignedUrlDiagnostic(decoratedArtifact, "failed", attempt.failureReason());
+                    }
+                } else {
+                    putSignedUrlDiagnostic(decoratedArtifact, "skipped", "max_signed_url_count_reached");
+                }
             }
             decoratedArtifacts.add(decoratedArtifact);
         }
@@ -98,13 +113,14 @@ public class EvidencePacketSignedUrlDecorator {
         return decoratedPacket;
     }
 
-    private boolean addSignedUrl(Map<String, Object> evidenceArtifact, Artifact artifact) {
+    private SignedUrlAttempt addSignedUrl(Map<String, Object> evidenceArtifact, Artifact artifact) {
         try {
             URL signedUrl = artifactPresignedUrlGenerator.generateGetUrl(artifact, signedUrlTtl);
             if (signedUrl != null && isHttpUrl(signedUrl)) {
                 evidenceArtifact.put("signed_url", signedUrl.toString());
-                return true;
+                return SignedUrlAttempt.success();
             }
+            return SignedUrlAttempt.failed(signedUrl == null ? "presign_url_missing" : "presign_url_not_http");
         } catch (RuntimeException exception) {
             log.warn(
                     "Failed to add signed_url to evidence artifact. runId={}, artifactId={}, reason={}",
@@ -112,8 +128,8 @@ public class EvidencePacketSignedUrlDecorator {
                     artifact.getId(),
                     exception.toString()
             );
+            return SignedUrlAttempt.failed("presign_failed");
         }
-        return false;
     }
 
     private Set<String> referencedArtifactIds(Map<String, Object> packet) {
@@ -149,6 +165,26 @@ public class EvidencePacketSignedUrlDecorator {
     private Map<String, Object> copyArtifact(Map<?, ?> artifact) {
         Map<String, Object> copied = new LinkedHashMap<>();
         artifact.forEach((key, value) -> {
+            if (key instanceof String stringKey) {
+                copied.put(stringKey, value);
+            }
+        });
+        return copied;
+    }
+
+    private void putSignedUrlDiagnostic(Map<String, Object> evidenceArtifact, String status, String reason) {
+        Map<String, Object> metadata = copyMetadata(evidenceArtifact.get("metadata"));
+        metadata.put("signed_url_status", status);
+        metadata.put("signed_url_reason", reason);
+        evidenceArtifact.put("metadata", metadata);
+    }
+
+    private Map<String, Object> copyMetadata(Object metadata) {
+        Map<String, Object> copied = new LinkedHashMap<>();
+        if (!(metadata instanceof Map<?, ?> rawMetadata)) {
+            return copied;
+        }
+        rawMetadata.forEach((key, value) -> {
             if (key instanceof String stringKey) {
                 copied.put(stringKey, value);
             }

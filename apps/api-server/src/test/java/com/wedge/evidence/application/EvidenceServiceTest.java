@@ -127,7 +127,7 @@ class EvidenceServiceTest {
         when(artifactMapper.findByRunId(runId)).thenReturn(List.of(sampleArtifact(runId, artifactId)));
         when(checkpointMapper.findByRunId(runId)).thenReturn(List.of(sampleCheckpoint(runId, checkpointId, artifactId)));
         when(observationMapper.findByRunId(runId)).thenReturn(List.of(sampleObservation(runId, checkpointId)));
-        when(evidencePacketMapper.upsertRunSnapshot(any(EvidencePacketSnapshot.class)))
+        when(evidencePacketMapper.insertRunSnapshot(any(EvidencePacketSnapshot.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
         EvidenceService evidenceService = newService();
 
@@ -141,6 +141,91 @@ class EvidenceServiceTest {
         assertThat(snapshot.getArtifactCount()).isEqualTo(1);
         assertThat(snapshot.getPacketJsonb()).contains("\"run_id\":\"" + runId + "\"");
         assertThat(snapshot.getPacketJsonb()).doesNotContain("signed_url");
+    }
+
+    @Test
+    void materializeRunEvidencePacketSnapshotCreatesIndependentSnapshotsForChangedEvidence() {
+        UUID runId = UUID.randomUUID();
+        UUID firstCheckpointId = UUID.randomUUID();
+        UUID secondCheckpointId = UUID.randomUUID();
+        UUID firstArtifactId = UUID.randomUUID();
+        UUID secondArtifactId = UUID.randomUUID();
+        when(runService.getRun(runId)).thenReturn(sampleRun(runId));
+        when(artifactMapper.findByRunId(runId)).thenReturn(
+                List.of(sampleArtifact(runId, firstArtifactId)),
+                List.of(sampleArtifact(runId, firstArtifactId), sampleArtifact(runId, secondArtifactId))
+        );
+        when(checkpointMapper.findByRunId(runId)).thenReturn(
+                List.of(sampleCheckpoint(runId, firstCheckpointId, firstArtifactId, "cp_001")),
+                List.of(
+                        sampleCheckpoint(runId, firstCheckpointId, firstArtifactId, "cp_001"),
+                        sampleCheckpoint(runId, secondCheckpointId, secondArtifactId, "cp_002")
+                )
+        );
+        when(observationMapper.findByRunId(runId)).thenReturn(
+                List.of(sampleObservation(runId, firstCheckpointId, "cp_001.obs_001")),
+                List.of(
+                        sampleObservation(runId, firstCheckpointId, "cp_001.obs_001"),
+                        sampleObservation(runId, secondCheckpointId, "cp_002.obs_001")
+                )
+        );
+        when(evidencePacketMapper.insertRunSnapshot(any(EvidencePacketSnapshot.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        EvidenceService evidenceService = newService();
+
+        EvidencePacketSnapshot first = evidenceService.materializeRunEvidencePacketSnapshot(runId);
+        EvidencePacketSnapshot second = evidenceService.materializeRunEvidencePacketSnapshot(runId);
+
+        assertThat(first.getId()).isNotEqualTo(second.getId());
+        assertThat(first.getCheckpointCount()).isEqualTo(1);
+        assertThat(second.getCheckpointCount()).isEqualTo(2);
+        assertThat(first.getPacketJsonb()).doesNotContain(secondArtifactId.toString());
+        assertThat(second.getPacketJsonb()).contains(secondArtifactId.toString());
+        assertThat(second.getPacketJsonb()).contains("cp_002");
+        assertThat(second.getPacketJsonb()).doesNotContain("signed_url");
+    }
+
+    @Test
+    void materializeRunEvidencePacketSnapshotRejectsTooManyObservationsBeforePersisting() {
+        UUID runId = UUID.randomUUID();
+        UUID checkpointId = UUID.randomUUID();
+        UUID artifactId = UUID.randomUUID();
+        when(runService.getRun(runId)).thenReturn(sampleRun(runId));
+        when(artifactMapper.findByRunId(runId)).thenReturn(List.of(sampleArtifact(runId, artifactId)));
+        when(checkpointMapper.findByRunId(runId)).thenReturn(List.of(sampleCheckpoint(runId, checkpointId, artifactId)));
+        when(observationMapper.findByRunId(runId)).thenReturn(List.of(
+                sampleObservation(runId, checkpointId, "cp_001.obs_001"),
+                sampleObservation(runId, checkpointId, "cp_001.obs_002")
+        ));
+        EvidenceService evidenceService = newService(500, 1, 500, 5_242_880, 10_485_760L);
+
+        assertThatThrownBy(() -> evidenceService.materializeRunEvidencePacketSnapshot(runId))
+                .isInstanceOfSatisfying(BusinessException.class, exception -> {
+                    assertThat(exception.errorCode()).isEqualTo(ErrorCode.INVALID_REQUEST);
+                    assertThat(exception.getMessage()).isEqualTo("EvidencePacket observation count exceeds configured limit.");
+                });
+
+        verify(evidencePacketMapper, never()).insertRunSnapshot(any());
+    }
+
+    @Test
+    void materializeRunEvidencePacketSnapshotRejectsOversizedPacketJsonBeforePersisting() {
+        UUID runId = UUID.randomUUID();
+        UUID checkpointId = UUID.randomUUID();
+        UUID artifactId = UUID.randomUUID();
+        when(runService.getRun(runId)).thenReturn(sampleRun(runId));
+        when(artifactMapper.findByRunId(runId)).thenReturn(List.of(sampleArtifact(runId, artifactId)));
+        when(checkpointMapper.findByRunId(runId)).thenReturn(List.of(sampleCheckpoint(runId, checkpointId, artifactId)));
+        when(observationMapper.findByRunId(runId)).thenReturn(List.of(sampleObservation(runId, checkpointId)));
+        EvidenceService evidenceService = newService(500, 5000, 500, 64, 10_485_760L);
+
+        assertThatThrownBy(() -> evidenceService.materializeRunEvidencePacketSnapshot(runId))
+                .isInstanceOfSatisfying(BusinessException.class, exception -> {
+                    assertThat(exception.errorCode()).isEqualTo(ErrorCode.INVALID_REQUEST);
+                    assertThat(exception.getMessage()).isEqualTo("EvidencePacket JSON exceeds configured byte limit.");
+                });
+
+        verify(evidencePacketMapper, never()).insertRunSnapshot(any());
     }
 
     @Test
@@ -191,6 +276,25 @@ class EvidenceServiceTest {
         assertThat(content.resource()).isSameAs(resource);
         assertThat(content.mimeType()).isEqualTo("image/png");
         verify(artifactContentStore).load(artifact);
+    }
+
+    @Test
+    void getRunArtifactContentRejectsOversizedArtifactBeforeLoadingStore() {
+        UUID runId = UUID.randomUUID();
+        UUID artifactId = UUID.randomUUID();
+        Artifact artifact = sampleArtifact(runId, artifactId);
+        artifact.setSizeBytes(10_485_761L);
+        when(runService.getRun(runId)).thenReturn(sampleRun(runId));
+        when(artifactMapper.findByRunIdAndId(runId, artifactId)).thenReturn(Optional.of(artifact));
+        EvidenceService evidenceService = newService();
+
+        assertThatThrownBy(() -> evidenceService.getRunArtifactContent(runId, artifactId))
+                .isInstanceOfSatisfying(BusinessException.class, exception -> {
+                    assertThat(exception.errorCode()).isEqualTo(ErrorCode.INVALID_REQUEST);
+                    assertThat(exception.getMessage()).isEqualTo("Artifact content exceeds configured download limit.");
+                });
+
+        verify(artifactContentStore, never()).load(any());
     }
 
     @Test
@@ -293,6 +397,16 @@ class EvidenceServiceTest {
     }
 
     private EvidenceService newService() {
+        return newService(500, 5000, 500, 5_242_880, 10_485_760L);
+    }
+
+    private EvidenceService newService(
+            int evidencePacketMaxCheckpoints,
+            int evidencePacketMaxObservations,
+            int evidencePacketMaxArtifacts,
+            int evidencePacketMaxBytes,
+            long artifactContentMaxDownloadBytes
+    ) {
         return new EvidenceService(
                 runService,
                 artifactMapper,
@@ -310,7 +424,12 @@ class EvidenceServiceTest {
                 new ObjectMapper(),
                 Clock.fixed(Instant.parse("2026-05-08T07:00:00Z"), ZoneOffset.UTC),
                 20,
-                Duration.ofSeconds(3600)
+                Duration.ofSeconds(3600),
+                evidencePacketMaxCheckpoints,
+                evidencePacketMaxObservations,
+                evidencePacketMaxArtifacts,
+                evidencePacketMaxBytes,
+                artifactContentMaxDownloadBytes
         );
     }
 
@@ -376,11 +495,15 @@ class EvidenceServiceTest {
     }
 
     private Checkpoint sampleCheckpoint(UUID runId, UUID checkpointId, UUID artifactId) {
+        return sampleCheckpoint(runId, checkpointId, artifactId, "cp_001");
+    }
+
+    private Checkpoint sampleCheckpoint(UUID runId, UUID checkpointId, UUID artifactId, String checkpointKey) {
         Checkpoint checkpoint = new Checkpoint();
         checkpoint.setId(checkpointId);
         checkpoint.setRunId(runId);
         checkpoint.setStepKey("step_001_goto");
-        checkpoint.setCheckpointKey("cp_001");
+        checkpoint.setCheckpointKey(checkpointKey);
         checkpoint.setStage("FIRST_VIEW");
         checkpoint.setTriggerJsonb("{\"actionType\":\"goto\"}");
         checkpoint.setSettleJsonb("{\"strategy\":\"network_idle\",\"durationMs\":1200,\"status\":\"settled\"}");
@@ -392,11 +515,15 @@ class EvidenceServiceTest {
     }
 
     private Observation sampleObservation(UUID runId, UUID checkpointId) {
+        return sampleObservation(runId, checkpointId, "cp_001.obs_001");
+    }
+
+    private Observation sampleObservation(UUID runId, UUID checkpointId, String observationKey) {
         Observation observation = new Observation();
         observation.setId(UUID.randomUUID());
         observation.setRunId(runId);
         observation.setCheckpointId(checkpointId);
-        observation.setObservationKey("cp_001.obs_001");
+        observation.setObservationKey(observationKey);
         observation.setObservationType("cta_candidate");
         observation.setStage("CTA");
         observation.setSourcesJsonb("[\"dom\"]");

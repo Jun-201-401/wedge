@@ -35,6 +35,7 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
@@ -78,7 +79,8 @@ class RunnerCallbackLifecycleScenarioTest {
                 new AgentExecuteRequestMessageFactory(new AgentReplayHintsFactory()),
                 outboxMessagePersistenceAdapter,
                 applicationEventPublisher,
-                new ScenarioPlanValidator()
+                new ScenarioPlanValidator(),
+                new ObjectMapper()
         );
         runnerCallbackService = new RunnerCallbackService(
                 runService,
@@ -88,7 +90,7 @@ class RunnerCallbackLifecycleScenarioTest {
                 checkpointPersistenceService
         );
 
-        when(processedMessagePersistenceAdapter.tryMarkProcessed(anyString(), anyString())).thenReturn(true);
+        when(processedMessagePersistenceAdapter.tryMarkProcessed(anyString(), anyString(), any())).thenReturn(true);
         when(outboxMessagePersistenceAdapter.appendRunExecuteMessage(any(RunExecuteRequestMessage.class)))
                 .thenReturn(UUID.randomUUID());
     }
@@ -334,6 +336,16 @@ class RunnerCallbackLifecycleScenarioTest {
         }
 
         @Override
+        public Optional<RunRecord> findByIdempotencyKey(UUID projectId, UUID createdBy, String idempotencyKey) {
+            return runs.values().stream()
+                    .filter(run -> run.getDeletedAt() == null)
+                    .filter(run -> Objects.equals(projectId, run.getProjectId()))
+                    .filter(run -> Objects.equals(createdBy, run.getCreatedBy()))
+                    .filter(run -> Objects.equals(idempotencyKey, run.getIdempotencyKey()))
+                    .findFirst();
+        }
+
+        @Override
         public List<RunStepRecord> findStepsByRunId(UUID runId) {
             return stepsForRun(runId);
         }
@@ -384,6 +396,23 @@ class RunnerCallbackLifecycleScenarioTest {
 
         @Override
         public int insert(RunRecord run) {
+            runs.put(run.getId(), run);
+            return 1;
+        }
+
+        @Override
+        public int insertIgnoreDuplicate(RunRecord run) {
+            boolean duplicate = runs.values().stream()
+                    .filter(existing -> existing.getDeletedAt() == null)
+                    .anyMatch(existing ->
+                            Objects.equals(existing.getProjectId(), run.getProjectId())
+                                    && Objects.equals(existing.getCreatedBy(), run.getCreatedBy())
+                                    && Objects.equals(existing.getIdempotencyKey(), run.getIdempotencyKey())
+                                    && run.getIdempotencyKey() != null
+                    );
+            if (duplicate) {
+                return 0;
+            }
             runs.put(run.getId(), run);
             return 1;
         }

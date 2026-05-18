@@ -29,6 +29,7 @@ class InternalServiceTokenFilterTest {
         ReflectionTestUtils.setField(filter, "serviceToken", "internal-token");
         ReflectionTestUtils.setField(filter, "mcpServiceToken", "mcp-token");
         ReflectionTestUtils.setField(filter, "runnerCallbackSignatureSecret", "signature-secret");
+        ReflectionTestUtils.setField(filter, "analyzerCallbackSignatureSecret", "analyzer-secret");
     }
 
     @Test
@@ -91,10 +92,53 @@ class InternalServiceTokenFilterTest {
     }
 
     @Test
-    void analyzerCallbacksDoNotUseRunnerSignatureSecret() throws Exception {
-        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/internal/analysis/jobs/analysis-id/completed");
+    void analyzerCallbackAcceptsValidAnalyzerHmacSignatureAndKeepsBodyReadable() throws Exception {
+        String body = "{\"analysisJobId\":\"analysis-id\"}";
+        MockHttpServletRequest request = analyzerRequest(body, "hmac-sha256=" + hmacSha256Hex(body, "analyzer-secret"));
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        AtomicReference<String> forwardedBody = new AtomicReference<>();
+
+        filter.doFilter(request, response, (ServletRequest servletRequest, ServletResponse servletResponse) ->
+                forwardedBody.set(servletRequest.getReader().readLine())
+        );
+
+        assertThat(response.getStatus()).isEqualTo(200);
+        assertThat(forwardedBody.get()).isEqualTo(body);
+    }
+
+    @Test
+    void analyzerCallbackRejectsRunnerSecretSignature() throws Exception {
+        String body = "{\"analysisJobId\":\"analysis-id\"}";
+        MockHttpServletRequest request = analyzerRequest(body, "hmac-sha256=" + hmacSha256Hex(body, "signature-secret"));
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        AtomicBoolean chainCalled = new AtomicBoolean(false);
+
+        filter.doFilter(request, response, (servletRequest, servletResponse) -> chainCalled.set(true));
+
+        assertThat(response.getStatus()).isEqualTo(401);
+        assertThat(chainCalled.get()).isFalse();
+    }
+
+    @Test
+    void analyzerCallbackRejectsMissingAnalyzerSignatureSecret() throws Exception {
+        ReflectionTestUtils.setField(filter, "analyzerCallbackSignatureSecret", "");
+        MockHttpServletRequest request = analyzerRequest("{\"analysisJobId\":\"analysis-id\"}", "hmac-sha256=anything");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        AtomicBoolean chainCalled = new AtomicBoolean(false);
+
+        filter.doFilter(request, response, (servletRequest, servletResponse) -> chainCalled.set(true));
+
+        assertThat(response.getStatus()).isEqualTo(401);
+        assertThat(chainCalled.get()).isFalse();
+    }
+
+    @Test
+    void evidencePacketFetchAcceptsInternalTokenWithoutAnalyzerSignature() throws Exception {
+        MockHttpServletRequest request = new MockHttpServletRequest(
+                "GET",
+                "/internal/analysis/evidence-packets/packet-id"
+        );
         request.addHeader("Authorization", "Bearer internal-token");
-        request.addHeader("X-Signature", "hmac-sha256=analyzer-owned-signature");
         MockHttpServletResponse response = new MockHttpServletResponse();
         AtomicBoolean chainCalled = new AtomicBoolean(false);
 
@@ -102,6 +146,9 @@ class InternalServiceTokenFilterTest {
 
         assertThat(response.getStatus()).isEqualTo(200);
         assertThat(chainCalled.get()).isTrue();
+        assertThat(SecurityContextHolder.getContext().getAuthentication().getAuthorities())
+                .extracting("authority")
+                .containsExactly("ROLE_INTERNAL_RUNNER");
     }
 
     @Test
@@ -152,6 +199,15 @@ class InternalServiceTokenFilterTest {
 
     private MockHttpServletRequest runnerRequest(String body, String signature) {
         MockHttpServletRequest request = new MockHttpServletRequest("POST", "/internal/runner/runs/run-id/accepted");
+        request.addHeader("Authorization", "Bearer internal-token");
+        request.addHeader("X-Signature", signature);
+        request.setContentType("application/json");
+        request.setContent(body.getBytes(StandardCharsets.UTF_8));
+        return request;
+    }
+
+    private MockHttpServletRequest analyzerRequest(String body, String signature) {
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/internal/analysis/jobs/analysis-id/completed");
         request.addHeader("Authorization", "Bearer internal-token");
         request.addHeader("X-Signature", signature);
         request.setContentType("application/json");

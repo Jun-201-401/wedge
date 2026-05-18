@@ -70,6 +70,9 @@ class EvidencePacketSignedUrlDecoratorTest {
         List<Map<String, Object>> artifacts = artifacts(decorated);
         assertThat(artifacts.get(0)).containsKey("signed_url");
         assertThat(artifacts.get(1)).doesNotContainKey("signed_url");
+        assertThat(metadata(artifacts.get(1)))
+                .containsEntry("signed_url_status", "skipped")
+                .containsEntry("signed_url_reason", "max_signed_url_count_reached");
         verify(artifactPresignedUrlGenerator, never()).generateGetUrl(secondScreenshot, Duration.ofSeconds(3600));
     }
 
@@ -106,6 +109,9 @@ class EvidencePacketSignedUrlDecoratorTest {
         assertThat(firstArtifact(decorated))
                 .containsEntry("uri", "/api/runs/run-id/artifacts/" + artifactId + "/content")
                 .doesNotContainKey("signed_url");
+        assertThat(metadata(firstArtifact(decorated)))
+                .containsEntry("signed_url_status", "failed")
+                .containsEntry("signed_url_reason", "presign_failed");
     }
 
     @Test
@@ -163,6 +169,11 @@ class EvidencePacketSignedUrlDecoratorTest {
 
     private Map<String, Object> firstArtifact(Map<String, Object> packet) {
         return artifacts(packet).get(0);
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> metadata(Map<String, Object> artifact) {
+        return (Map<String, Object>) artifact.get("metadata");
     }
 
     private Artifact artifact(UUID artifactId, ArtifactType artifactType, String mimeType) {

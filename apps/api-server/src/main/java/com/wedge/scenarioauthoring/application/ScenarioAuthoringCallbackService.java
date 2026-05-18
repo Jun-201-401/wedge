@@ -11,6 +11,7 @@ import com.wedge.scenarioauthoring.domain.ScenarioAuthoringStatus;
 import com.wedge.scenarioauthoring.infrastructure.ScenarioAuthoringJobMapper;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -31,7 +32,12 @@ public class ScenarioAuthoringCallbackService {
     public ScenarioAuthoringCallbackAckResponse handleAccepted(UUID authoringJobId, String workerId, InternalCallbackContext context) {
         context.validateRequired();
         context.validateWorkerMatches(workerId);
-        ScenarioAuthoringCallbackAckResponse duplicate = duplicateStatusResponse(ACCEPTED_CONSUMER, context.eventId(), authoringJobId);
+        ScenarioAuthoringCallbackAckResponse duplicate = duplicateStatusResponse(
+                ACCEPTED_CONSUMER,
+                context.eventId(),
+                authoringJobId,
+                Map.of("workerId", workerId)
+        );
         if (duplicate != null) {
             return duplicate;
         }
@@ -53,7 +59,7 @@ public class ScenarioAuthoringCallbackService {
     public ScenarioAuthoringCallbackAckResponse handleFinished(UUID authoringJobId, Map<String, Object> payload, InternalCallbackContext context) {
         context.validateRequired();
         context.validateWorkerMatches(String.valueOf(payload.get("workerId")));
-        ScenarioAuthoringCallbackAckResponse duplicate = duplicateStatusResponse(FINISHED_CONSUMER, context.eventId(), authoringJobId);
+        ScenarioAuthoringCallbackAckResponse duplicate = duplicateStatusResponse(FINISHED_CONSUMER, context.eventId(), authoringJobId, payload);
         if (duplicate != null) {
             return duplicate;
         }
@@ -82,7 +88,7 @@ public class ScenarioAuthoringCallbackService {
     public ScenarioAuthoringCallbackAckResponse handleFailed(UUID authoringJobId, Map<String, Object> payload, InternalCallbackContext context) {
         context.validateRequired();
         context.validateWorkerMatches(String.valueOf(payload.get("workerId")));
-        ScenarioAuthoringCallbackAckResponse duplicate = duplicateStatusResponse(FAILED_CONSUMER, context.eventId(), authoringJobId);
+        ScenarioAuthoringCallbackAckResponse duplicate = duplicateStatusResponse(FAILED_CONSUMER, context.eventId(), authoringJobId, payload);
         if (duplicate != null) {
             return duplicate;
         }
@@ -100,11 +106,51 @@ public class ScenarioAuthoringCallbackService {
         return ScenarioAuthoringCallbackAckResponse.status(authoringJobId, ScenarioAuthoringStatus.FAILED);
     }
 
-    private ScenarioAuthoringCallbackAckResponse duplicateStatusResponse(String consumerName, String eventId, UUID authoringJobId) {
-        if (processedMessagePersistenceAdapter.tryMarkProcessed(consumerName, eventId)) {
+    @Transactional
+    public Optional<ScenarioAuthoringJob> markStartFailedIfAwaitingRunner(UUID authoringJobId, String failureCode, String failureMessage) {
+        Optional<ScenarioAuthoringJob> current = scenarioAuthoringJobMapper.findById(authoringJobId);
+        if (current.isEmpty() || !isAwaitingRunnerStatus(current.get().getStatus())) {
+            return Optional.empty();
+        }
+        Map<String, Object> failure = Map.of(
+                "failure_code", failureCode,
+                "failure_message", failureMessage
+        );
+        int updated = scenarioAuthoringJobMapper.failBeforeRunner(
+                authoringJobId,
+                "[]",
+                toJson(failedValidation(failure)),
+                toJson(Map.of("source", "dlq")),
+                toJson(failure)
+        );
+        if (updated == 0) {
+            return Optional.empty();
+        }
+        return scenarioAuthoringJobMapper.findById(authoringJobId);
+    }
+
+    private boolean isAwaitingRunnerStatus(ScenarioAuthoringStatus status) {
+        return status == ScenarioAuthoringStatus.CREATED
+                || status == ScenarioAuthoringStatus.QUEUED;
+    }
+
+    private ScenarioAuthoringCallbackAckResponse duplicateStatusResponse(
+            String consumerName,
+            String eventId,
+            UUID authoringJobId,
+            Object payload
+    ) {
+        if (processedMessagePersistenceAdapter.tryMarkProcessed(consumerName, eventId, idempotencyPayload(authoringJobId, payload))) {
             return null;
         }
         return ScenarioAuthoringCallbackAckResponse.duplicate(authoringJobId, findJob(authoringJobId).getStatus());
+    }
+
+    private Map<String, Object> idempotencyPayload(UUID authoringJobId, Object payload) {
+        return Map.of(
+                "authoringJobId", authoringJobId.toString(),
+                "payload", payload
+        );
     }
 
     private ScenarioAuthoringJob findJob(UUID authoringJobId) {
