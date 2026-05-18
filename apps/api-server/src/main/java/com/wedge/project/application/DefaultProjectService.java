@@ -5,6 +5,7 @@ import com.wedge.common.error.ErrorCode;
 import com.wedge.project.infrastructure.ProjectAccessMapper;
 import java.net.URI;
 import java.util.Locale;
+import java.util.Optional;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -22,14 +23,8 @@ public class DefaultProjectService {
 
     @Transactional
     public UUID resolveDefaultProject(UUID userId, URI inputUrl) {
-        return projectAccessMapper.findDefaultProjectId(userId)
-                .map(projectId -> ensureDefaultProjectMembership(projectId, userId))
-                .orElseGet(() -> createAndFindDefaultProject(userId, inputUrl));
-    }
-
-    private UUID ensureDefaultProjectMembership(UUID projectId, UUID userId) {
-        projectAccessMapper.insertProjectMember(projectId, userId, DEFAULT_OWNER_ROLE);
-        return projectId;
+        Optional<UUID> existingProjectId = projectAccessMapper.findDefaultProjectId(userId);
+        return existingProjectId.orElseGet(() -> createAndFindDefaultProject(userId, inputUrl));
     }
 
     private UUID createAndFindDefaultProject(UUID userId, URI inputUrl) {

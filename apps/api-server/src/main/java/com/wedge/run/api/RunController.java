@@ -104,8 +104,10 @@ public class RunController {
     @PostMapping("/{runId}/agent/start")
     public ResponseEntity<ApiResponse<RunActionResponse>> startAgentRun(
             @PathVariable UUID runId,
-            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey
+            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
+            Authentication authentication
     ) {
+        ensureRunAccessible(runId, authentication);
         RunResponse run = runService.startAgentRun(runId);
         return ApiResponse.accepted(RunActionResponse.from(run));
     }

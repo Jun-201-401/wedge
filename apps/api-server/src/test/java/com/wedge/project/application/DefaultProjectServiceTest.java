@@ -26,7 +26,7 @@ class DefaultProjectServiceTest {
     private ProjectAccessMapper projectAccessMapper;
 
     @Test
-    void resolveDefaultProjectReusesExistingProject() {
+    void resolveDefaultProjectReusesExistingProjectWithoutRegrantingMembership() {
         when(projectAccessMapper.findDefaultProjectId(USER_ID)).thenReturn(Optional.of(PROJECT_ID));
         DefaultProjectService service = new DefaultProjectService(projectAccessMapper);
 
@@ -35,7 +35,7 @@ class DefaultProjectServiceTest {
         assertThat(resolved).isEqualTo(PROJECT_ID);
         verify(projectAccessMapper, never()).insertDefaultWorkspace(any(), any(), any(), any());
         verify(projectAccessMapper, never()).insertDefaultProject(any(), any(), any(), any(), any(), any());
-        verify(projectAccessMapper).insertProjectMember(PROJECT_ID, USER_ID, "OWNER");
+        verify(projectAccessMapper, never()).insertProjectMember(any(), any(), any());
     }
 
     @Test
