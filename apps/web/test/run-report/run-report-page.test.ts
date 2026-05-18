@@ -242,7 +242,7 @@ test('run report css keeps result-first content in the live simulation cockpit t
   assert.match(css, /\.run-report-hero-context\s*\{[\s\S]*?display: flex/);
   assert.match(css, /\.run-report-hero-context\s*\{[\s\S]*?gap: 0\.78rem/);
   assert.match(css, /\.run-report-hero-context div\s*\{[\s\S]*?gap: 0\.34rem/);
-  assert.match(css, /\.run-report-hero-context div \+ div::before\s*\{[\s\S]*?height: 0\.9rem/);
+  assert.doesNotMatch(css, /\.run-report-hero-context div \+ div::before/);
   assert.match(css, /\.run-report-tag\s*\{[\s\S]*?font-size: 0\.56rem/);
   assert.match(css, /\.run-report-tag\s*\{[\s\S]*?line-height: 1\.1/);
   assert.match(css, /\.run-report-hero h1\s*\{[\s\S]*?font-size: 0\.82rem/);
@@ -591,9 +591,10 @@ test('run monitor exposes a report CTA into /runs/:runId/report', () => {
   assert.match(css, /\.run-monitor-report-cta\s*\{[\s\S]*?text-decoration: none/);
   assert.match(css, /\.run-monitor-report-cta--clickable\s*\{[\s\S]*?cursor: pointer/);
   assert.match(source, /run-monitor-report-cta__open-icon/);
-  assert.match(css, /\.run-monitor-report-cta--clickable:hover \.run-monitor-report-cta__open-icon svg,\s*\n\.run-monitor-report-cta--clickable:focus-visible \.run-monitor-report-cta__open-icon svg\s*\{[\s\S]*?transform: translateX\(2\.8em\) rotate\(45deg\) scale\(1\.1\)/);
-  assert.match(css, /\.run-monitor-report-cta--clickable:hover \.run-monitor-report-cta__open-text,\s*\n\.run-monitor-report-cta--clickable:focus-visible \.run-monitor-report-cta__open-text\s*\{[\s\S]*?opacity: 0/);
-  assert.match(css, /\.run-monitor-report-cta--clickable:hover \.run-monitor-report-cta__open-text,\s*\n\.run-monitor-report-cta--clickable:focus-visible \.run-monitor-report-cta__open-text\s*\{[\s\S]*?transform: translateX\(6\.4em\)/);
+  assert.match(css, /\.run-monitor-report-cta--clickable:is\(:active, :focus-visible\) \.run-monitor-report-cta__open-icon svg\s*\{[\s\S]*?transform: translateX\(2\.8em\) rotate\(45deg\) scale\(1\.1\)/);
+  assert.match(css, /@media \(hover: hover\) \{[\s\S]*?\.run-monitor-report-cta--clickable:hover \.run-monitor-report-cta__open-icon svg\s*\{[\s\S]*?transform: translateX\(2\.8em\) rotate\(45deg\) scale\(1\.1\)/);
+  assert.match(css, /\.run-monitor-report-cta--clickable:is\(:active, :focus-visible\) \.run-monitor-report-cta__open-text\s*\{[\s\S]*?opacity: 0/);
+  assert.match(css, /\.run-monitor-report-cta--clickable:is\(:active, :focus-visible\) \.run-monitor-report-cta__open-text\s*\{[\s\S]*?transform: translateX\(6\.4em\)/);
   assert.doesNotMatch(css, /\.run-monitor-report-cta__passive-label/);
   assert.doesNotMatch(css, /\.run-monitor-report-cta__actions a:hover/);
   assert.match(css, /\.run-monitor-report-cta__actions button\s*\{[\s\S]*?background: #475569/);

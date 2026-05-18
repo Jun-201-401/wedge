@@ -319,6 +319,14 @@ test('create analysis selection starts a run without a ready screen', () => {
   assert.match(source, /createDiscoveryIdempotencyKey\(targetUrl\)/);
   assert.match(source, /await createDiscovery/);
   assert.match(source, /await getDiscovery\(discoveryId\)/);
+  assert.match(source, /const PREFLIGHT_COMPLETION_STEP_DELAY_MS = 420/);
+  assert.match(source, /function getPreflightStepsForActiveIndex\(activeIndex: number\)/);
+  assert.match(source, /function getDiscoveryDisplaySteps\(status: string\)/);
+  assert.match(source, /getPollingSteps\(status === 'COMPLETED' \? 'RUNNING' : status\)/);
+  assert.match(source, /for \(let activeIndex = 3; activeIndex < PREFLIGHT_DISCOVERY_STEPS\.length; activeIndex \+= 1\)/);
+  assert.match(source, /progressSteps: getPreflightStepsForActiveIndex\(activeIndex\)/);
+  assert.match(source, /progressSteps: getDiscoveryDisplaySteps\(discovery\.status\)/);
+  assert.match(source, /await completeDiscovery\(discoveryId, toScenarioRecommendationViewModels\(discovery\)\)/);
   assert.match(source, /createdRunId = response\.data\.id/);
   assert.match(source, /await startRun\(createdRunId\)/);
   assert.match(source, /분석 준비는 완료됐지만 실행 시작 요청에 실패했습니다/);

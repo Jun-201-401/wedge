@@ -297,15 +297,6 @@
   gap: 0.34rem;
 }
 
-.run-report-hero-context div + div::before {
-  content: '';
-  flex: 0 0 auto;
-  width: 1px;
-  height: 0.9rem;
-  margin: 0 0.04rem 0 -0.42rem;
-  background: #e5e7eb;
-}
-
 .run-report-hero-context dt,
 .run-report-hero-context dd {
   margin: 0;
