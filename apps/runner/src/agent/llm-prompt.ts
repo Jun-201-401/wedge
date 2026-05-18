@@ -22,7 +22,8 @@ export function createLlmCandidateReferences(components: InteractiveComponentObs
 export function createLlmRequestPayload(
   input: AgentDecisionInput,
   model: string,
-  candidateReferences: LlmCandidateReference[]
+  candidateReferences: LlmCandidateReference[],
+  endpoint: string
 ): Record<string, unknown> {
   const userPayload = redactSensitiveValue({
     goal: input.goal,
@@ -48,6 +49,36 @@ export function createLlmRequestPayload(
     }
   });
 
+  const instructions = [
+    "Return only JSON for a constrained browser AgentDecision.",
+    "Allowed actions are goto start_url before start, click an observed target_key, scroll, checkpoint without browser action, or finish.",
+    "Never invent selectors, credentials, payment data, shell commands, JavaScript, or final purchase actions.",
+    "For signup, lead, contact, or pricing goals, click only observed candidates whose text, href, label, placeholder, or role clearly matches that goal; otherwise scroll or finish.",
+    "Do not click unrelated product, category, menu, or shopping links for signup, lead, contact, or pricing goals.",
+    "Policy and verifier run after this decision and may reject unsafe actions."
+  ].join(" ");
+
+  if (isResponsesEndpoint(endpoint)) {
+    return {
+      model,
+      text: {
+        format: {
+          type: "json_object"
+        }
+      },
+      input: [
+        {
+          role: "system",
+          content: instructions
+        },
+        {
+          role: "user",
+          content: JSON.stringify(userPayload)
+        }
+      ]
+    };
+  }
+
   return {
     model,
     temperature: 0,
@@ -57,12 +88,7 @@ export function createLlmRequestPayload(
     messages: [
       {
         role: "system",
-        content: [
-          "Return only JSON for a constrained browser AgentDecision.",
-          "Allowed actions are goto start_url before start, click an observed target_key, scroll, checkpoint without browser action, or finish.",
-          "Never invent selectors, credentials, payment data, shell commands, JavaScript, or final purchase actions.",
-          "Policy and verifier run after this decision and may reject unsafe actions."
-        ].join(" ")
+        content: instructions
       },
       {
         role: "user",
@@ -177,4 +203,12 @@ function checkoutSemanticHint(value: string): string | null {
     return "product";
   }
   return null;
+}
+
+function isResponsesEndpoint(endpoint: string): boolean {
+  try {
+    return new URL(endpoint).pathname.endsWith("/responses");
+  } catch {
+    return endpoint.endsWith("/responses");
+  }
 }

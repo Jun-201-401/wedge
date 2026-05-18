@@ -76,6 +76,45 @@ export function registerAgentWorker({
   };
 }
 
+
+function agentTerminalFailure(trace: AgentTrace): Error | null {
+  if (trace.outcome.status !== "EXHAUSTED" && trace.outcome.status !== "FAILED") {
+    return null;
+  }
+  return new Error(`Agent goal was not satisfied: ${trace.outcome.reason_code} - ${trace.outcome.reason}`);
+}
+
+async function emitAgentTerminalFailedCallback({
+  callbackClient,
+  runId,
+  workerId,
+  error,
+  accepted,
+  summary,
+  traceArtifact
+}: {
+  callbackClient: CallbackClient;
+  runId: string;
+  workerId: string;
+  error: Error;
+  accepted: boolean;
+  summary: ScenarioExecutionSummary;
+  traceArtifact?: Artifact;
+}): Promise<[]> {
+  await emitFailedCallback({
+    callbackClient,
+    runId,
+    workerId,
+    error,
+    accepted,
+    hasSession: true,
+    summary,
+    failureCode: "RUNNER_EXECUTION_FAILED",
+    failureArtifactRefs: traceArtifact ? [traceArtifact.artifactId] : undefined
+  });
+  return [];
+}
+
 async function executeAgentMessage({
   message,
   config,
@@ -119,26 +158,37 @@ async function executeAgentMessage({
       decisionClient: createAgentDecisionClient(config)
     });
 
-    const finishedDeliveryIssues = await emitFinishedCallback({
-      callbackClient,
-      runId: task.run_id,
-      workerId: config.workerId,
-      summary: executionResult.summary
-    });
+    const agentTerminalError = agentTerminalFailure(executionResult.trace);
+    const terminalDeliveryIssues = agentTerminalError
+      ? await emitAgentTerminalFailedCallback({
+          callbackClient,
+          runId: task.run_id,
+          workerId: config.workerId,
+          error: agentTerminalError,
+          accepted,
+          summary: executionResult.summary,
+          traceArtifact: executionResult.traceArtifact
+        })
+      : await emitFinishedCallback({
+          callbackClient,
+          runId: task.run_id,
+          workerId: config.workerId,
+          summary: executionResult.summary
+        });
     const delivery = createDeliverySummary(
-      mergeDeliveryIssues(executionResult.delivery.issues, finishedDeliveryIssues)
+      mergeDeliveryIssues(executionResult.delivery.issues, terminalDeliveryIssues)
     );
 
     logOperationalEvent(
       "agent-worker",
-      "run_finished",
+      agentTerminalError ? "run_failed" : "run_finished",
       {
         runId: task.run_id,
         taskId: task.task_id,
         workerId: config.workerId,
         browserSessionId: session.id,
-        terminalOutcome: executionResult.summary.stopped ? "STOPPED" : "COMPLETED",
-        resultCompleteness: "FINAL",
+        terminalOutcome: agentTerminalError ? "FAILED_ERROR" : executionResult.summary.stopped ? "STOPPED" : "COMPLETED",
+        resultCompleteness: agentTerminalError ? "PARTIAL" : "FINAL",
         agentOutcome: executionResult.trace.outcome.status,
         agentOutcomeReason: executionResult.trace.outcome.reason,
         summary: executionResult.summary,
@@ -146,7 +196,7 @@ async function executeAgentMessage({
         deliveryIssueCount: delivery.issues.length,
         deliveryIssueScopes: delivery.issues.map((issue) => issue.scope)
       },
-      delivery.status === "DELIVERY_COMPLETE" ? "info" : "warn"
+      agentTerminalError || delivery.status !== "DELIVERY_COMPLETE" ? "warn" : "info"
     );
 
     return {

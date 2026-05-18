@@ -237,6 +237,110 @@ test("[Agent Planner] notice layer popup에서는 일반 CTA보다 닫기 버튼
   assert.match(decision.reason, /popup/i);
 });
 
+test("[Agent Planner] 가입/리드 목표에서는 상품 카테고리보다 가입/폼 진입점을 우선 클릭한다", () => {
+  const state = createInitialAgentState();
+  state.started = true;
+
+  const decision = decideNextAction({
+    runId: "00000000-0000-4000-8000-000000000506",
+    goal: "SIGNUP_LEAD_FORM_VERIFICATION",
+    startUrl: "https://example.com",
+    state,
+    maxScrolls: 0,
+    observation: {
+      snapshot: createSimulatedPageSnapshot(createMinimalPlan(), {
+        interactiveComponents: [
+          component({
+            text: "답례떡",
+            selector: 'a[href="/goods/goods_list.php?cateCd=001"]',
+            href: "/goods/goods_list.php?cateCd=001",
+            is_primary_like: true
+          }),
+          component({
+            text: "회원가입",
+            selector: 'a[href="/member/join"]',
+            href: "/member/join"
+          })
+        ]
+      })
+    }
+  });
+
+  assert.equal(decision.action.type, "click");
+  assert.deepEqual(decision.action.target, {
+    selector: 'a[href="/member/join"]',
+    role: "button",
+    text: "회원가입",
+    url: "/member/join"
+  });
+  assert.match(decision.reason, /Signup|lead-form/i);
+});
+
+test("[Agent Planner] 가입/리드 목표에서는 의미 없는 상품 링크를 CTA fallback으로 클릭하지 않는다", () => {
+  const state = createInitialAgentState();
+  state.started = true;
+
+  const decision = decideNextAction({
+    runId: "00000000-0000-4000-8000-000000000507",
+    goal: "가입 또는 리드 입력 양식까지 이동하며 입력 부담을 확인합니다.",
+    startUrl: "https://example.com",
+    state,
+    maxScrolls: 0,
+    observation: {
+      snapshot: createSimulatedPageSnapshot(createMinimalPlan(), {
+        interactiveComponents: [
+          component({
+            text: "답례떡",
+            selector: 'a[href="/goods/goods_list.php?cateCd=001"]',
+            href: "/goods/goods_list.php?cateCd=001",
+            is_primary_like: true
+          })
+        ]
+      })
+    }
+  });
+
+  assert.equal(decision.kind, "finish");
+  assert.equal(decision.action.type, "checkpoint");
+  assert.equal(decision.targetKey, null);
+});
+
+test("[Agent Planner] 문의 목표에서는 상품 CTA보다 문의 진입점을 우선 클릭한다", () => {
+  const state = createInitialAgentState();
+  state.started = true;
+
+  const decision = decideNextAction({
+    runId: "00000000-0000-4000-8000-000000000508",
+    goal: "CONTACT_FLOW_VERIFICATION",
+    startUrl: "https://example.com",
+    state,
+    maxScrolls: 0,
+    observation: {
+      snapshot: createSimulatedPageSnapshot(createMinimalPlan(), {
+        interactiveComponents: [
+          component({
+            text: "상품 보기",
+            selector: "#products",
+            is_primary_like: true
+          }),
+          component({
+            text: "문의하기",
+            selector: "#contact"
+          })
+        ]
+      })
+    }
+  });
+
+  assert.equal(decision.action.type, "click");
+  assert.deepEqual(decision.action.target, {
+    selector: "#contact",
+    role: "button",
+    text: "문의하기"
+  });
+  assert.match(decision.reason, /Contact-flow/i);
+});
+
 function component(overrides: Partial<InteractiveComponentObservationItem>): InteractiveComponentObservationItem {
   return {
     text: "Button",

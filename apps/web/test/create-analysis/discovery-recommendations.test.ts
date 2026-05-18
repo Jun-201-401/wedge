@@ -251,3 +251,11 @@ test('manual scenario mapper exposes non-detected flows as direct choices', () =
   assert.equal(cards.every((card) => card.isRunnable), true);
   assert.equal(cards.every((card) => card.sourceDiscoveryId === undefined), true);
 });
+
+test('manual scenario mapper preserves discovery context when a site discovery exists', () => {
+  const cards = toManualScenarioRecommendationViewModels(['landing-cta'], '20000000-0000-4000-8000-000000000011');
+
+  assert.equal(cards.length > 0, true);
+  assert.equal(cards.every((card) => card.sourceDiscoveryId === '20000000-0000-4000-8000-000000000011'), true);
+  assert.equal(cards.find((card) => card.id === 'signup-form')?.scenarioType, 'SIGNUP_LEAD_FORM');
+});

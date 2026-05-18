@@ -110,7 +110,7 @@ export function assertScenarioActionAllowed(
   const targetSummary = describeTarget(action.target)?.toLowerCase() ?? "";
 
   if (action.type === "click") {
-    if (looksLikePaymentTarget(targetSummary) && (plan.safety.stop_before_real_payment || !plan.safety.allow_payment_commit)) {
+    if (looksLikePaymentCommitTarget(targetSummary) && (plan.safety.stop_before_real_payment || !plan.safety.allow_payment_commit)) {
       throw new RunnerExecutionPolicyError({
         safetyCode: "PAYMENT_COMMIT_BLOCKED",
         riskClass: "PAYMENT_COMMIT",
@@ -352,8 +352,42 @@ function resolveOrigin(candidateUrl: string, baseUrl: string): string | null {
   }
 }
 
-function looksLikePaymentTarget(targetSummary: string): boolean {
-  return containsAny(targetSummary, ["pay", "purchase", "buy", "order", "결제", "구매", "주문"]);
+function looksLikePaymentCommitTarget(targetSummary: string): boolean {
+  if (looksLikeCartOrCheckoutEntryTarget(targetSummary)) {
+    return false;
+  }
+
+  return containsAny(targetSummary, [
+    "pay now",
+    "payment submit",
+    "place order",
+    "complete order",
+    "confirm order",
+    "submit order",
+    "finalize purchase",
+    "purchase now",
+    "buy now",
+    "결제하기",
+    "결제 진행",
+    "결제 완료",
+    "주문하기",
+    "주문 확정",
+    "구매 확정",
+    "구매하기"
+  ]);
+}
+
+function looksLikeCartOrCheckoutEntryTarget(targetSummary: string): boolean {
+  return containsAny(targetSummary, [
+    "cart",
+    "basket",
+    "bag",
+    "장바구니",
+    "카트",
+    "바구니",
+    "checkout",
+    "주문서"
+  ]);
 }
 
 function looksLikeDestructiveTarget(targetSummary: string): boolean {

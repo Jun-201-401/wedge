@@ -19,9 +19,9 @@ function authoringJob(candidates: ScenarioAuthoringJob['candidates']): ScenarioA
     projectId: '8f06dca8-9c4d-4f20-b1a8-1d5ee40a9923',
     sourceDiscoveryId: '20000000-0000-4000-8000-000000000011',
     candidateCount: candidates.length,
-    providerOrder: ['RULE_BASED'],
+    providerOrder: ['INTERNAL_LLM', 'RULE_BASED'],
     input: {},
-    providerPolicy: { provider_order: ['RULE_BASED'] },
+    providerPolicy: { provider_order: ['INTERNAL_LLM', 'RULE_BASED'] },
     providerTrace: [],
     candidates,
     validation: {

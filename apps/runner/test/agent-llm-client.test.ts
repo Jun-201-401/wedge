@@ -105,6 +105,91 @@ test("[Agent LLM Decision] LLM 응답 targetKey를 관찰된 click target으로�
   });
 });
 
+test("[Agent LLM Decision] Responses API endpoint는 responses payload와 output_text를 사용한다", async () => {
+  let capturedPayload: Record<string, unknown> | null = null;
+  const transport: AgentLlmDecisionTransport = {
+    complete: async (request) => {
+      capturedPayload = request.payload;
+
+      return {
+        output: [
+          {
+            type: "message",
+            role: "assistant",
+            content: [
+              {
+                type: "output_text",
+                text: JSON.stringify({
+                  decision: {
+                    kind: "act",
+                    actionType: "click",
+                    targetKey: "candidate_001",
+                    stage: "CTA",
+                    reason: "Responses API selected the visible CTA.",
+                    confidence: 0.87
+                  }
+                })
+              }
+            ]
+          }
+        ]
+      };
+    }
+  };
+  const client = new AgentLlmDecisionClient({
+    endpoint: "https://gms.example/v1/responses",
+    model: "gpt-5.2-pro",
+    timeoutMs: 1_000,
+    transport
+  });
+
+  const decision = await client.decide({
+    runId: "00000000-0000-4000-8000-000000000499",
+    goal: "Find checkout",
+    startUrl: "https://example.com/product",
+    state: {
+      ...createInitialAgentState(),
+      started: true
+    },
+    maxScrolls: 1,
+    observation: {
+      snapshot: createSimulatedPageSnapshot(createMinimalPlan(), {
+        finalUrl: "https://example.com/product",
+        interactiveComponents: [
+          {
+            text: "Buy now",
+            selector: "#buy",
+            role: "button",
+            href: null,
+            tag: "button",
+            clickable: true,
+            clicked_in_scenario: false,
+            is_cta_candidate: true,
+            is_primary_like: true,
+            bounds: {
+              x: 0,
+              y: 0,
+              width: 100,
+              height: 40,
+              unit: "css_px"
+            }
+          }
+        ]
+      })
+    }
+  });
+
+  assert.equal(capturedPayload?.model, "gpt-5.2-pro");
+  assert.equal("response_format" in (capturedPayload ?? {}), false);
+  assert.equal("messages" in (capturedPayload ?? {}), false);
+  assert.equal("temperature" in (capturedPayload ?? {}), false);
+  assert.deepEqual(capturedPayload?.text, { format: { type: "json_object" } });
+  assert.ok(Array.isArray(capturedPayload?.input));
+  assert.equal(decision.action.type, "click");
+  assert.equal(decision.metadata?.decisionSource, "llm");
+  assert.equal(decision.metadata?.model, "gpt-5.2-pro");
+});
+
 test("[Agent LLM Decision] selector 없는 민감 텍스트 후보는 opaque candidate id로 선택한다", async () => {
   let capturedPayload: Record<string, unknown> | null = null;
   const transport: AgentLlmDecisionTransport = {
@@ -360,6 +445,55 @@ test("[Agent LLM Decision] invalid JSON 응답만 재시도한다", async () => 
   assert.equal(callCount, 2);
   assert.equal(decision.kind, "checkpoint");
   assert.equal(decision.action.type, "checkpoint");
+});
+
+
+test("[Agent LLM Decision] 가입/리드 목표에서 의미가 맞지 않는 LLM click은 heuristic으로 검증 fallback한다", async () => {
+  let callCount = 0;
+  const transport: AgentLlmDecisionTransport = {
+    complete: async () => {
+      callCount += 1;
+      return {
+        decision: {
+          kind: "act",
+          actionType: "click",
+          targetKey: "#products",
+          stage: "CTA",
+          reason: "The product category looks prominent.",
+          confidence: 0.9
+        }
+      };
+    }
+  };
+  const client = new AgentLlmDecisionClient({
+    endpoint: "https://llm.example/decision",
+    model: "agent-model",
+    timeoutMs: 1_000,
+    transport
+  });
+
+  const decision = await client.decide({
+    runId: "00000000-0000-4000-8000-000000000409",
+    goal: "SIGNUP_LEAD_FORM_VERIFICATION",
+    startUrl: "https://example.com",
+    state: {
+      ...createInitialAgentState(),
+      started: true
+    },
+    maxScrolls: 0,
+    observation: {
+      snapshot: createSimulatedPageSnapshot(createMinimalPlan(), {
+        interactiveComponents: [
+          component({ text: "상품 보기", selector: "#products", role: "link", href: "https://example.com/products", tag: "a", primary: true }),
+          component({ text: "회원가입", selector: "#signup", role: "link", href: "https://example.com/signup", tag: "a" })
+        ]
+      })
+    }
+  });
+
+  assert.equal(callCount, 1);
+  assert.equal(decision.metadata?.decisionSource, "heuristic");
+  assert.equal(decision.targetKey, "#signup");
 });
 
 test("[Agent LLM Decision] unsafe decision은 재시도하지 않고 heuristic으로 fallback한다", async () => {

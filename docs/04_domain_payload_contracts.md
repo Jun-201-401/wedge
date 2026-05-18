@@ -117,8 +117,7 @@ Agent event consistency rule:
 
 ScenarioPlan은 확정된 템플릿 선택, 자연어 요청, 또는 ScenarioAuthoring candidate를 실행 가능한 step plan으로 materialize한 결과다.
 
-V1에서는 완전한 natural-language planner를 구현하지 않는다.
-템플릿 기반 ScenarioPlan을 우선 사용하고, ScenarioAuthoring provider/runtime 구현은 후속 작업으로 둔다.
+MVP 이후 ScenarioAuthoring provider/runtime은 `INTERNAL_LLM`(GMS) 우선, `RULE_BASED` fallback 순서로 확장한다. LLM provider가 만든 candidate도 기존 `ScenarioPlan` schema와 safety/fit 검증을 통과해야 하며, 검증 실패 시 fallback candidate만 확정 후보로 사용할 수 있다.
 
 Runner Agent Runtime은 `ScenarioPlan`에 agent 상태를 추가하지 않는다. Agent exploration은 `AgentTask` / `AgentObservation` / `AgentDecision` / `AgentTrace` 계약으로 분리하고, 안정화된 경로만 별도 export 단계를 거쳐 `custom_compiled` ScenarioPlan 후보가 될 수 있다.
 

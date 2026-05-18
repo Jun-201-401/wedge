@@ -1,8 +1,9 @@
 import type { ScenarioAction, ScenarioStage } from "../shared/contracts.ts";
-import { replayHintFromComponent, targetFromComponent } from "./component-target.ts";
+import { candidateText, replayHintFromComponent, targetFromComponent } from "./component-target.ts";
 import type { LlmCandidateReference } from "./llm-prompt.ts";
 import { withAgentDecisionMetadata, type AgentDecision, type AgentDecisionInput, type AgentDecisionPromptMetadata } from "./planner.ts";
 import { redactSensitiveString } from "./redaction.ts";
+import { plannerSemantics } from "./semantics.ts";
 
 const SCENARIO_STAGES = new Set<ScenarioStage>(["FIRST_VIEW", "VALUE", "CTA", "INPUT", "COMMIT"]);
 
@@ -122,6 +123,8 @@ export function parseLlmDecision(
       throw new LlmDecisionUnsafeError("LLM click targetKey must match an observed component");
     }
 
+    assertGoalCompatibleLlmClick(input.goal, selectedCandidate);
+
     return llmDecision({
       kind: "act",
       description: `LLM selected click target: ${redactSensitiveString(selectedTargetKey)}`,
@@ -167,6 +170,22 @@ export function parseLlmDecision(
   throw new Error("LLM actionType is missing");
 }
 
+
+function assertGoalCompatibleLlmClick(goal: string, selectedCandidate: LlmCandidateReference): void {
+  const text = candidateText(selectedCandidate.component);
+  const incompatibleMessage = "LLM click target does not match the requested goal semantics";
+
+  if (plannerSemantics.signupLeadGoal.test(goal) && !plannerSemantics.signupLeadEntrypoint.test(text)) {
+    throw new LlmDecisionUnsafeError(incompatibleMessage);
+  }
+  if (plannerSemantics.contactGoal.test(goal) && !plannerSemantics.contactEntrypoint.test(text)) {
+    throw new LlmDecisionUnsafeError(incompatibleMessage);
+  }
+  if (plannerSemantics.pricingGoal.test(goal) && !plannerSemantics.pricingEntrypoint.test(text)) {
+    throw new LlmDecisionUnsafeError(incompatibleMessage);
+  }
+}
+
 function llmDecision(
   decision: AgentDecision,
   metadata: {
@@ -193,19 +212,60 @@ function extractDecisionCandidate(rawResponse: unknown): unknown {
     const firstChoice = choices[0] as { message?: { content?: unknown } } | undefined;
     const content = firstChoice?.message?.content;
     if (typeof content === "string") {
-      let parsed: unknown;
-      try {
-        parsed = JSON.parse(content) as unknown;
-      } catch {
-        throw new LlmDecisionInvalidJsonError("LLM decision content must be valid JSON");
-      }
-      return (parsed && typeof parsed === "object" && "decision" in parsed)
-        ? (parsed as { decision: unknown }).decision
-        : parsed;
+      return parseDecisionJsonText(content, "LLM decision content");
     }
   }
 
+  const outputText = responseRecord?.output_text;
+  if (typeof outputText === "string") {
+    return parseDecisionJsonText(outputText, "LLM decision output_text");
+  }
+
+  const responseOutputText = extractResponsesOutputText(responseRecord?.output);
+  if (responseOutputText) {
+    return parseDecisionJsonText(responseOutputText, "LLM decision output content");
+  }
+
   return rawResponse;
+}
+
+function extractResponsesOutputText(output: unknown): string | null {
+  if (!Array.isArray(output)) {
+    return null;
+  }
+
+  for (const item of output) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) {
+      continue;
+    }
+    const content = (item as Record<string, unknown>).content;
+    if (!Array.isArray(content)) {
+      continue;
+    }
+    for (const part of content) {
+      if (!part || typeof part !== "object" || Array.isArray(part)) {
+        continue;
+      }
+      const record = part as Record<string, unknown>;
+      if (record.type === "output_text" && typeof record.text === "string") {
+        return record.text;
+      }
+    }
+  }
+
+  return null;
+}
+
+function parseDecisionJsonText(text: string, label: string): unknown {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text) as unknown;
+  } catch {
+    throw new LlmDecisionInvalidJsonError(`${label} must be valid JSON`);
+  }
+  return (parsed && typeof parsed === "object" && "decision" in parsed)
+    ? (parsed as { decision: unknown }).decision
+    : parsed;
 }
 
 function asRecord(value: unknown, label: string): Record<string, unknown> {

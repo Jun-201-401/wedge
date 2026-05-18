@@ -17,7 +17,7 @@ export type AiRequestErrorType =
 
 export interface AiRequestMetricsInput {
   service: string;
-  feature: "agent_decision";
+  feature: "agent_decision" | "scenario_authoring";
   model: string;
   status: AiRequestStatus;
   errorType: AiRequestErrorType;

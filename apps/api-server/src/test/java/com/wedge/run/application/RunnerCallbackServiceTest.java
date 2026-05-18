@@ -236,6 +236,8 @@ class RunnerCallbackServiceTest {
     @Test
     void agentEventsCallbackPersistsEvents() {
         UUID runId = UUID.randomUUID();
+        UUID stepId = UUID.randomUUID();
+        OffsetDateTime occurredAt = OffsetDateTime.parse("2026-05-06T10:00:00+09:00");
         RunResponse running = sampleRun(runId, RunStatus.RUNNING, ResultCompleteness.PARTIAL);
         RunnerAgentEventsCommand command = new RunnerAgentEventsCommand(List.of(
                 new RunnerAgentEventCommand(
@@ -244,12 +246,14 @@ class RunnerCallbackServiceTest {
                         UUID.randomUUID(),
                         1,
                         "POLICY_CHECKED",
-                        OffsetDateTime.parse("2026-05-06T10:00:00+09:00"),
+                        occurredAt,
                         Map.of("final_outcome", "SUCCESS_CHECKOUT_ENTRY_REACHED")
                 )
         ));
         when(processedMessagePersistenceAdapter.tryMarkProcessed(eq("runner.agent-events"), eq("evt_agent_events_001"), any())).thenReturn(true);
         when(runService.markRunningIfStarting(runId)).thenReturn(running);
+        when(runPersistenceAdapter.resolveOrCreateAgentStep(runId, "agent_turn_001", null))
+                .thenReturn(new RunPersistenceAdapter.ResolvedStep(stepId, 1, "agent_turn_001", StepStatus.PENDING));
 
         RunnerCallbackAckResponse result = runnerCallbackService.handleAgentEvents(
                 runId,
@@ -266,7 +270,66 @@ class RunnerCallbackServiceTest {
                 eq(null),
                 eq("AGENT_POLICY_CHECKED"),
                 any(Map.class),
-                eq(OffsetDateTime.parse("2026-05-06T10:00:00+09:00"))
+                eq(occurredAt)
+        );
+        verify(runPersistenceAdapter).updateCurrentStepOrder(runId, 1);
+        verify(runPersistenceAdapter).updateStepState(stepId, StepStatus.RUNNING, occurredAt, null, null);
+    }
+
+    @Test
+    void agentEventsCallbackMarksLatestTurnFailedWhenTraceIsExhausted() {
+        UUID runId = UUID.randomUUID();
+        UUID stepId = UUID.randomUUID();
+        UUID taskId = UUID.randomUUID();
+        UUID attemptId = UUID.randomUUID();
+        OffsetDateTime firstAt = OffsetDateTime.parse("2026-05-06T10:00:00+09:00");
+        OffsetDateTime traceAt = OffsetDateTime.parse("2026-05-06T10:00:03+09:00");
+        RunResponse running = sampleRun(runId, RunStatus.RUNNING, ResultCompleteness.PARTIAL);
+        RunnerAgentEventsCommand command = new RunnerAgentEventsCommand(List.of(
+                new RunnerAgentEventCommand(
+                        "agent-event-1",
+                        taskId,
+                        attemptId,
+                        2,
+                        "PRE_DECISION_VERIFIED",
+                        firstAt,
+                        Map.of("stage", "CTA")
+                ),
+                new RunnerAgentEventCommand(
+                        "agent-event-2",
+                        taskId,
+                        attemptId,
+                        0,
+                        "TRACE_PERSISTED",
+                        traceAt,
+                        Map.of(
+                                "outcome", "EXHAUSTED",
+                                "outcomeReasonCode", "DURATION_BUDGET_EXHAUSTED",
+                                "reason", "max_duration_ms was exceeded"
+                        )
+                )
+        ));
+        when(processedMessagePersistenceAdapter.tryMarkProcessed("runner.agent-events", "evt_agent_events_exhausted_001")).thenReturn(true);
+        when(runService.markRunningIfStarting(runId)).thenReturn(running);
+        when(runPersistenceAdapter.resolveOrCreateAgentStep(runId, "agent_turn_002", "CTA"))
+                .thenReturn(new RunPersistenceAdapter.ResolvedStep(stepId, 2, "agent_turn_002", StepStatus.PENDING));
+        when(runPersistenceAdapter.resolveOrCreateAgentStep(runId, "agent_turn_002", null))
+                .thenReturn(new RunPersistenceAdapter.ResolvedStep(stepId, 2, "agent_turn_002", StepStatus.RUNNING));
+
+        RunnerCallbackAckResponse result = runnerCallbackService.handleAgentEvents(
+                runId,
+                command,
+                headers("evt_agent_events_exhausted_001")
+        );
+
+        assertThat(result.eventCount()).isEqualTo(2);
+        verify(runPersistenceAdapter).updateStepState(stepId, StepStatus.RUNNING, firstAt, null, null);
+        verify(runPersistenceAdapter).updateStepState(
+                stepId,
+                StepStatus.FAILED,
+                traceAt,
+                "DURATION_BUDGET_EXHAUSTED",
+                "max_duration_ms was exceeded"
         );
     }
 

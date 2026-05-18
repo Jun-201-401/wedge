@@ -20,6 +20,7 @@ const DEFAULT_BROWSER_TIMEOUT_MS = 30_000;
 const DEFAULT_SIMULATED_DELAY_CAP_MS = 25;
 const DEFAULT_MQ_MAX_DELIVERY_ATTEMPTS = 3;
 const DEFAULT_AGENT_LLM_TIMEOUT_MS = 10_000;
+const DEFAULT_SCENARIO_AUTHORING_LLM_TIMEOUT_MS = 45_000;
 const DEFAULT_AGENT_MCP_GATEWAY_TIMEOUT_MS = 10_000;
 const DEFAULT_AGENT_IDEMPOTENCY_LEASE_TTL_MS = 300_000;
 const DEFAULT_AGENT_IDEMPOTENCY_RENEW_INTERVAL_MS = 60_000;
@@ -91,6 +92,10 @@ export interface RunnerConfig {
   agentLlmApiKey?: string;
   agentLlmModel: string;
   agentLlmTimeoutMs: number;
+  scenarioAuthoringLlmEndpoint?: string;
+  scenarioAuthoringLlmApiKey?: string;
+  scenarioAuthoringLlmModel: string;
+  scenarioAuthoringLlmTimeoutMs: number;
   agentMcpGatewayUrl?: string;
   agentMcpServiceToken?: string;
   agentMcpGatewayTimeoutMs: number;
@@ -255,6 +260,15 @@ export function loadRunnerConfig(overrides: Partial<RunnerConfig> = {}): RunnerC
     process.env.RUNNER_AGENT_LLM_TIMEOUT_MS,
     DEFAULT_AGENT_LLM_TIMEOUT_MS
   );
+  const scenarioAuthoringLlmTimeoutMs = parsePositiveInteger(
+    overrides.scenarioAuthoringLlmTimeoutMs,
+    firstNonBlank(
+      process.env.RUNNER_SCENARIO_AUTHORING_LLM_TIMEOUT_MS,
+      process.env.GMS_DEFAULT_TIMEOUT_MS,
+      process.env.RUNNER_AGENT_LLM_TIMEOUT_MS
+    ),
+    DEFAULT_SCENARIO_AUTHORING_LLM_TIMEOUT_MS
+  );
   const agentMcpGatewayTimeoutMs = parsePositiveInteger(
     overrides.agentMcpGatewayTimeoutMs,
     process.env.RUNNER_AGENT_MCP_GATEWAY_TIMEOUT_MS,
@@ -352,6 +366,22 @@ export function loadRunnerConfig(overrides: Partial<RunnerConfig> = {}): RunnerC
     agentLlmApiKey: overrides.agentLlmApiKey ?? process.env.RUNNER_AGENT_LLM_API_KEY ?? undefined,
     agentLlmModel: overrides.agentLlmModel ?? process.env.RUNNER_AGENT_LLM_MODEL ?? "agent-decision",
     agentLlmTimeoutMs,
+    scenarioAuthoringLlmEndpoint: overrides.scenarioAuthoringLlmEndpoint ?? firstNonBlank(
+      process.env.RUNNER_SCENARIO_AUTHORING_LLM_ENDPOINT,
+      process.env.GMS_OPENAI_CHAT_COMPLETIONS_ENDPOINT,
+      process.env.RUNNER_AGENT_LLM_ENDPOINT
+    ),
+    scenarioAuthoringLlmApiKey: overrides.scenarioAuthoringLlmApiKey ?? firstNonBlank(
+      process.env.RUNNER_SCENARIO_AUTHORING_LLM_API_KEY,
+      process.env.GMS_API_KEY,
+      process.env.RUNNER_AGENT_LLM_API_KEY
+    ),
+    scenarioAuthoringLlmModel: overrides.scenarioAuthoringLlmModel ?? firstNonBlank(
+      process.env.RUNNER_SCENARIO_AUTHORING_LLM_MODEL,
+      process.env.GMS_DEFAULT_MODEL,
+      process.env.RUNNER_AGENT_LLM_MODEL
+    ) ?? "gpt-5.2-pro",
+    scenarioAuthoringLlmTimeoutMs,
     agentMcpGatewayUrl: overrides.agentMcpGatewayUrl ?? process.env.RUNNER_AGENT_MCP_GATEWAY_URL ?? undefined,
     agentMcpServiceToken: overrides.agentMcpServiceToken ?? process.env.RUNNER_AGENT_MCP_SERVICE_TOKEN ?? undefined,
     agentMcpGatewayTimeoutMs,
@@ -359,6 +389,10 @@ export function loadRunnerConfig(overrides: Partial<RunnerConfig> = {}): RunnerC
     metricsHost: overrides.metricsHost ?? process.env.RUNNER_METRICS_HOST ?? "0.0.0.0",
     metricsPort
   };
+}
+
+function firstNonBlank(...values: Array<string | undefined>): string | undefined {
+  return values.find((value) => value !== undefined && value.trim().length > 0);
 }
 
 function resolveCallbackMode(

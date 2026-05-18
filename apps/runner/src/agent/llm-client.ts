@@ -51,7 +51,7 @@ export class AgentLlmDecisionClient implements AgentDecisionClient {
           apiKey: this.options.apiKey,
           model: this.options.model,
           timeoutMs: resolveLlmTimeoutMs(this.options.timeoutMs, input.remainingTimeMs),
-          payload: createLlmRequestPayload(input, this.options.model, candidateReferences)
+          payload: createLlmRequestPayload(input, this.options.model, candidateReferences, this.options.endpoint)
         });
 
         return parseLlmDecision(rawResponse, input, candidateReferences, {

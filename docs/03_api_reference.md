@@ -224,7 +224,7 @@ GET    /api/scenario-authoring-jobs/{authoringJobId}
 POST   /api/scenario-authoring-jobs/{authoringJobId}/confirm
 ```
 
-ScenarioAuthoring은 Discovery recommendation과 Run 생성 사이의 계약 단계다. API shape는 V1 계약 방향을 고정하기 위한 문서 기준이며, OpenAPI/앱 구현은 후속 작업에서 `packages/contracts`를 먼저 갱신한 뒤 진행한다.
+ScenarioAuthoring은 Discovery recommendation과 Run 생성 사이의 계약 단계다. API shape는 V1 계약 방향을 고정하기 위한 문서 기준이며, MVP 이후 provider 순서는 `INTERNAL_LLM`(GMS) 우선, `RULE_BASED` fallback을 기본으로 한다.
 
 Authoring job/result는 별도 실행 DSL이 아니다. Provider는 기존 `ScenarioPlan` schema를 만족하는 candidate만 제출하며, Spring은 confirmed candidate를 입력으로 `POST /api/runs` 또는 내부 materializer에서 ScenarioPlan + fit requirements를 고정한다. ScenarioAuthoring 기반 run path에서 Runner는 authoring job/result를 받지 않고, 고정된 ScenarioPlan만 실행한다. Runner Agent Runtime은 별도 `agent.execute.request` / agent callback stream(`agent-events`, `agent-traces`) 경로이며, 상세 contract-first 기준은 `docs/runner_agent_runtime_implementation_plan.md`를 따른다.
 
@@ -439,8 +439,8 @@ Idempotency-Key: idem_create_authoring_job_001
     "evidenceRefs": ["cp_001.obs_002"]
   },
   "providerPolicy": {
-    "providerOrder": ["CODEX", "CLAUDE_CODE", "INTERNAL_LLM", "RULE_BASED"],
-    "timeoutMs": 60000,
+    "providerOrder": ["INTERNAL_LLM", "RULE_BASED"],
+    "timeoutMs": 20000,
     "fallbackAllowed": true,
     "approvalRequired": true
   }
@@ -456,7 +456,7 @@ Response:
     "status": "QUEUED",
     "sourceDiscoveryId": "uuid",
     "candidateCount": 0,
-    "providerOrder": ["CODEX", "CLAUDE_CODE", "INTERNAL_LLM", "RULE_BASED"]
+    "providerOrder": ["INTERNAL_LLM", "RULE_BASED"]
   },
   "meta": {
     "requestId": "req_..."

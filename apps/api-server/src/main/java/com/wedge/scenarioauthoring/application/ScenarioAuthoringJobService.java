@@ -21,6 +21,7 @@ import com.wedge.scenarioauthoring.domain.ScenarioAuthoringStatus;
 import com.wedge.scenarioauthoring.infrastructure.ScenarioAuthoringJobMapper;
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -34,11 +35,13 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 @RequiredArgsConstructor
 public class ScenarioAuthoringJobService {
-    private static final List<String> DEFAULT_PROVIDER_ORDER = List.of("RULE_BASED");
+    private static final List<String> DEFAULT_PROVIDER_ORDER = List.of("INTERNAL_LLM", "RULE_BASED");
+    private static final List<String> SUPPORTED_PROVIDER_ORDER = List.of("INTERNAL_LLM", "RULE_BASED");
+    private static final Set<String> SUPPORTED_PROVIDER_TYPES = Set.of("INTERNAL_LLM", "RULE_BASED");
     private static final Set<String> AUTHORABLE_SCENARIO_TYPES = Set.of("LANDING_CTA", "SIGNUP_LEAD_FORM", "PRICING", "PURCHASE_CHECKOUT", "CONTACT", "CONTENT_ONLY");
     private static final Set<String> AUTHORABLE_RECOMMENDATION_LEVELS = Set.of("HIGH", "MEDIUM");
     private static final BigDecimal MIN_AUTHORING_RECOMMENDATION_CONFIDENCE = new BigDecimal("0.55");
-    private static final int DEFAULT_TIMEOUT_MS = 10_000;
+    private static final int DEFAULT_TIMEOUT_MS = 45_000;
     private static final int MAX_IDEMPOTENCY_KEY_LENGTH = 160;
 
     private final ScenarioAuthoringJobMapper scenarioAuthoringJobMapper;
@@ -213,25 +216,63 @@ public class ScenarioAuthoringJobService {
             recommendation = recommendations.stream()
                     .filter(item -> scenarioType.equals(item.getScenarioType()))
                     .findFirst()
-                    .orElseThrow(() -> new BusinessException(ErrorCode.VALIDATION_FAILED, "Selected Discovery recommendation was not found."));
+                    .orElse(null);
+            if (recommendation == null) {
+                return manualSelectedRecommendation(request, discovery, scenarioType);
+            }
         }
         String suggestedStartUrl = recommendation.getSuggestedStartUrl();
         if (suggestedStartUrl == null || suggestedStartUrl.isBlank()) {
             suggestedStartUrl = discovery.getInputUrl();
         }
         List<String> evidenceRefs = readStringList(recommendation.getEvidenceRefsJsonb());
-        requireAuthorableRecommendation(recommendation, evidenceRefs);
-        return Map.of(
-                "recommendation_id", recommendation.getId().toString(),
-                "scenario_type", recommendation.getScenarioType(),
-                "recommendation_level", recommendation.getRecommendationLevel(),
-                "confidence", recommendation.getConfidence(),
-                "reason", recommendation.getReason(),
-                "evidence_refs", evidenceRefs,
-                "evidence_summary", readMap(recommendation.getEvidenceSummaryJsonb()),
-                "suggested_start_url", suggestedStartUrl,
-                "suggested_target", readMap(recommendation.getSuggestedTargetJsonb())
-        );
+        if (request.selectedRecommendation() == null || selectedRecommendationId != null) {
+            requireAuthorableRecommendation(recommendation, evidenceRefs);
+        }
+        return persistedRecommendationMap(recommendation, suggestedStartUrl, evidenceRefs);
+    }
+
+    private Map<String, Object> persistedRecommendationMap(ScenarioRecommendation recommendation, String suggestedStartUrl, List<String> evidenceRefs) {
+        Map<String, Object> value = new LinkedHashMap<>();
+        value.put("recommendation_id", recommendation.getId().toString());
+        value.put("scenario_type", recommendation.getScenarioType());
+        value.put("recommendation_level", recommendation.getRecommendationLevel());
+        value.put("confidence", recommendation.getConfidence());
+        value.put("reason", recommendation.getReason());
+        value.put("evidence_refs", evidenceRefs);
+        value.put("evidence_summary", readMap(recommendation.getEvidenceSummaryJsonb()));
+        value.put("suggested_start_url", suggestedStartUrl);
+        value.put("suggested_target", readMap(recommendation.getSuggestedTargetJsonb()));
+        return value;
+    }
+
+    private Map<String, Object> manualSelectedRecommendation(ScenarioAuthoringJobCreateRequest request, SiteDiscovery discovery, String scenarioType) {
+        Map<String, Object> selected = request.selectedRecommendation() == null ? Map.of() : request.selectedRecommendation();
+        Map<String, Object> value = new LinkedHashMap<>();
+        value.put("recommendation_id", discovery.getId() + ".manual." + scenarioType);
+        value.put("scenario_type", scenarioType);
+        value.put("recommendation_level", stringValue(selected.get("recommendationLevel"), "LOW"));
+        value.put("confidence", selected.getOrDefault("confidence", BigDecimal.ZERO));
+        value.put("reason", stringValue(selected.get("evidence"), "Manual scenario selection from create-analysis."));
+        value.put("evidence_refs", readStringList(selected.get("evidenceRefs")));
+        value.put("evidence_summary", mapValue(selected.get("evidenceSummary")));
+        value.put("suggested_start_url", stringValue(selected.get("suggestedStartUrl"), discovery.getInputUrl()));
+        value.put("suggested_target", mapValue(selected.get("suggestedTarget")));
+        return value;
+    }
+
+
+    private String stringValue(Object value, String fallback) {
+        return value instanceof String text && !text.isBlank() ? text : fallback;
+    }
+
+    private Map<String, Object> mapValue(Object value) {
+        if (value instanceof Map<?, ?> rawMap) {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> map = (Map<String, Object>) rawMap;
+            return map;
+        }
+        return Map.of();
     }
 
     private void requireAuthorableRecommendation(ScenarioRecommendation recommendation, List<String> evidenceRefs) {
@@ -282,16 +323,19 @@ public class ScenarioAuthoringJobService {
         List<String> providerOrder = requestPolicy == null || requestPolicy.providerOrder() == null || requestPolicy.providerOrder().isEmpty()
                 ? DEFAULT_PROVIDER_ORDER
                 : requestPolicy.providerOrder();
-        if (!providerOrder.equals(DEFAULT_PROVIDER_ORDER)) {
-            throw new BusinessException(ErrorCode.INVALID_REQUEST, "Only RULE_BASED provider policy is supported in the current ScenarioAuthoring skeleton.");
+        if (providerOrder.stream().anyMatch(provider -> !SUPPORTED_PROVIDER_TYPES.contains(provider))) {
+            throw new BusinessException(ErrorCode.INVALID_REQUEST, "ScenarioAuthoring providerPolicy supports only INTERNAL_LLM and RULE_BASED providers.");
+        }
+        if (providerOrder.stream().distinct().count() != providerOrder.size()) {
+            throw new BusinessException(ErrorCode.INVALID_REQUEST, "ScenarioAuthoring providerPolicy.providerOrder must not contain duplicates.");
         }
         int timeoutMs = requestPolicy == null || requestPolicy.timeoutMs() == null ? DEFAULT_TIMEOUT_MS : requestPolicy.timeoutMs();
         if (timeoutMs < 1000) {
             throw new BusinessException(ErrorCode.INVALID_REQUEST, "providerPolicy.timeoutMs must be at least 1000.");
         }
         return Map.of(
-                "allowed_provider_types", DEFAULT_PROVIDER_ORDER,
-                "provider_order", DEFAULT_PROVIDER_ORDER,
+                "allowed_provider_types", SUPPORTED_PROVIDER_ORDER,
+                "provider_order", providerOrder,
                 "timeout_ms", timeoutMs,
                 "fallback_allowed", requestPolicy == null || requestPolicy.fallbackAllowed() == null || requestPolicy.fallbackAllowed(),
                 "approval_required", requestPolicy == null || requestPolicy.approvalRequired() == null || requestPolicy.approvalRequired(),

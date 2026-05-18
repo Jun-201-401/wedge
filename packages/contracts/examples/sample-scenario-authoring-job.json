@@ -135,18 +135,14 @@
   },
   "provider_policy": {
     "allowed_provider_types": [
-      "CODEX",
-      "CLAUDE_CODE",
       "INTERNAL_LLM",
       "RULE_BASED"
     ],
     "provider_order": [
-      "CODEX",
-      "CLAUDE_CODE",
       "INTERNAL_LLM",
       "RULE_BASED"
     ],
-    "timeout_ms": 60000,
+    "timeout_ms": 20000,
     "fallback_allowed": true,
     "approval_required": true,
     "max_attempts": 2

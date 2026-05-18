@@ -55,7 +55,7 @@ public class AgentExecuteRequestMessageFactory {
         task.put("idempotency_key", idempotencyKey);
         task.put("run_id", run.id().toString());
         task.put("project_id", run.projectId().toString());
-        task.put("goal_type", "CHECKOUT_ENTRY_VERIFICATION");
+        task.put("goal_type", AgentGoalTypeResolver.resolve(run));
         if (run.goal() != null && !run.goal().isBlank()) {
             task.put("goal", run.goal());
         }

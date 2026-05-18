@@ -222,11 +222,13 @@ function selectActionCandidate(input: AgentDecisionInput): ActionCandidate | und
     return cookieAction;
   }
 
-  if (plannerSemantics.checkoutGoal.test(input.goal)) {
-    const checkoutAction = selectCheckoutAction(untriedComponents);
-    if (checkoutAction) {
-      return checkoutAction;
-    }
+  const goalSpecificAction = selectGoalSpecificAction(input.goal, untriedComponents);
+  if (goalSpecificAction) {
+    return goalSpecificAction;
+  }
+
+  if (requiresGoalSpecificEntrypoint(input.goal)) {
+    return undefined;
   }
 
   return selectPrimaryAction(untriedComponents);
@@ -306,6 +308,53 @@ function selectCheckoutAction(components: InteractiveComponentObservationItem[])
   }
 
   return undefined;
+}
+
+function selectGoalSpecificAction(goal: string, components: InteractiveComponentObservationItem[]): ActionCandidate | undefined {
+  if (plannerSemantics.checkoutGoal.test(goal)) {
+    return selectCheckoutAction(components);
+  }
+
+  if (plannerSemantics.signupLeadGoal.test(goal)) {
+    return selectSemanticEntrypoint(components, plannerSemantics.signupLeadEntrypoint, {
+      reason: "Signup or lead-form verification should only follow a visible signup, application, or form entrypoint.",
+      confidence: 0.8,
+      stage: "CTA"
+    });
+  }
+
+  if (plannerSemantics.contactGoal.test(goal)) {
+    return selectSemanticEntrypoint(components, plannerSemantics.contactEntrypoint, {
+      reason: "Contact-flow verification should only follow a visible inquiry, consultation, demo, or support entrypoint.",
+      confidence: 0.8,
+      stage: "CTA"
+    });
+  }
+
+  if (plannerSemantics.pricingGoal.test(goal)) {
+    return selectSemanticEntrypoint(components, plannerSemantics.pricingEntrypoint, {
+      reason: "Pricing-flow verification should only follow a visible pricing, plan, quote, or estimate entrypoint.",
+      confidence: 0.8,
+      stage: "CTA"
+    });
+  }
+
+  return undefined;
+}
+
+function selectSemanticEntrypoint(
+  components: InteractiveComponentObservationItem[],
+  pattern: RegExp,
+  decision: Omit<ActionCandidate, "component">
+): ActionCandidate | undefined {
+  const component = components.find((candidate) => pattern.test(candidateText(candidate)));
+  return component ? { component, ...decision } : undefined;
+}
+
+function requiresGoalSpecificEntrypoint(goal: string): boolean {
+  return plannerSemantics.signupLeadGoal.test(goal) ||
+    plannerSemantics.contactGoal.test(goal) ||
+    plannerSemantics.pricingGoal.test(goal);
 }
 
 function selectPrimaryAction(components: InteractiveComponentObservationItem[]): ActionCandidate | undefined {

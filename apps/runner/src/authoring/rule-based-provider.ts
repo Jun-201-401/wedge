@@ -32,6 +32,7 @@ export function createRuleBasedScenarioAuthoringResult(
   const startUrl = resolveStartUrl(message, selectedRecommendation?.suggested_start_url ?? null);
   const evidenceRefs = selectedRecommendation?.evidence_refs ?? [];
   const candidateId = `rule_based_${scenarioType.toLowerCase()}_001`;
+  const depthId = resolveScenarioDepthId(message);
   const scenarioPlan = createScenarioPlan({
     message,
     scenarioType,
@@ -39,12 +40,13 @@ export function createRuleBasedScenarioAuthoringResult(
     candidateId,
     evidenceRefs,
     suggestedTarget: selectedRecommendation?.suggested_target ?? null,
-    firstViewOnly: isFirstViewOnlyGoal(message.payload.requestedGoal)
+    firstViewOnly: isFirstViewOnlyDepth(depthId, message.payload.requestedGoal)
   });
   const candidateValidation = validateScenarioPlanCandidate(
     scenarioPlan,
     startUrl,
-    message.payload.input.environment.device
+    message.payload.input.environment.device,
+    depthId
   );
   const candidates: ScenarioAuthoringCandidate[] = [
     {
@@ -152,6 +154,69 @@ function stepsFor(
         true
       )
     );
+  } else if (scenarioType === "PURCHASE_CHECKOUT" && suggestedTarget && Object.keys(suggestedTarget).length > 0) {
+    steps.push(
+      step(
+        "step_003_probe_checkout_target",
+        "CTA",
+        "추천된 장바구니/결제 진입점까지 이동 가능성을 확인한다.",
+        { type: "click", target: suggestedTarget },
+        "network_idle",
+        false
+      ),
+      step(
+        "step_004_checkout_destination_checkpoint",
+        "INPUT",
+        "결제/구매 commit 전 도착 화면의 맥락과 위험 신호를 기록한다.",
+        { type: "checkpoint" },
+        "none",
+        true
+      )
+    );
+  } else if (scenarioType === "SIGNUP_LEAD_FORM" || scenarioType === "CONTACT") {
+    if (suggestedTarget && Object.keys(suggestedTarget).length > 0) {
+      steps.push(
+        step(
+          "step_003_probe_form_target",
+          "INPUT",
+          scenarioType === "CONTACT"
+            ? "추천된 문의/상담 신청 진입점까지 이동 가능성을 확인한다."
+            : "추천된 가입/리드 양식 진입점까지 이동 가능성을 확인한다.",
+          { type: "click", target: suggestedTarget },
+          "network_idle",
+          false
+        ),
+        step(
+          "step_004_form_destination_checkpoint",
+          "INPUT",
+          "실제 제출 전 도착 화면의 입력 부담과 신뢰 요소를 기록한다.",
+          { type: "checkpoint" },
+          "none",
+          true
+        )
+      );
+    } else {
+      steps.push(
+        step(
+          "step_003_scan_for_form_entrypoint",
+          "CTA",
+          scenarioType === "CONTACT"
+            ? "추천 target이 없으므로 문의/상담 신청 진입점을 찾기 위해 다음 화면 영역을 탐색한다."
+            : "추천 target이 없으므로 가입/리드 양식 진입점을 찾기 위해 다음 화면 영역을 탐색한다.",
+          { type: "scroll", value: 700 },
+          "fixed_short",
+          false
+        ),
+        step(
+          "step_004_form_scan_checkpoint",
+          "INPUT",
+          "탐색 후 화면에서 입력 양식 후보와 제출 전 신뢰 요소를 기록한다.",
+          { type: "checkpoint" },
+          "none",
+          true
+        )
+      );
+    }
   } else if (suggestedTarget && Object.keys(suggestedTarget).length > 0 && scenarioType !== "CONTENT_ONLY") {
     if (shouldClickSuggestedTarget(scenarioType, suggestedTarget)) {
       steps.push(
@@ -184,6 +249,25 @@ function stepsFor(
         )
       );
     }
+  } else if (scenarioType === "LANDING_CTA" || scenarioType === "PRICING" || scenarioType === "PURCHASE_CHECKOUT") {
+    steps.push(
+      step(
+        "step_003_scan_for_goal_entrypoint",
+        stageFor(scenarioType),
+        "추천 target이 없으므로 목표와 맞는 진입점을 찾기 위해 다음 화면 영역을 탐색한다.",
+        { type: "scroll", value: 700 },
+        "fixed_short",
+        false
+      ),
+      step(
+        "step_004_goal_scan_checkpoint",
+        stageFor(scenarioType),
+        "탐색 후 화면에서 목표 관련 진입점과 다음 행동 후보를 기록한다.",
+        { type: "checkpoint" },
+        "none",
+        true
+      )
+    );
   } else {
     steps.push(
       step(
@@ -205,6 +289,17 @@ function stepsFor(
   }
 
   return steps;
+}
+
+export type ScenarioDepthId = "hero-only" | "next-screen" | "form-depth";
+
+export function resolveScenarioDepthId(message: ScenarioAuthoringExecuteMessage): ScenarioDepthId | null {
+  const depthId = message.payload.input.constraints?.depthId;
+  return depthId === "hero-only" || depthId === "next-screen" || depthId === "form-depth" ? depthId : null;
+}
+
+function isFirstViewOnlyDepth(depthId: ScenarioDepthId | null, goal: string): boolean {
+  return depthId === "hero-only" || (depthId === null && isFirstViewOnlyGoal(goal));
 }
 
 function isFirstViewOnlyGoal(goal: string): boolean {
@@ -370,10 +465,11 @@ function resolveStartUrl(message: ScenarioAuthoringExecuteMessage, suggestedStar
   return siteDiscoveryResult.final_url || siteDiscoveryResult.input_url;
 }
 
-function validateScenarioPlanCandidate(
+export function validateScenarioPlanCandidate(
   scenarioPlan: ScenarioPlan,
   expectedStartUrl: string,
-  expectedDevice: string
+  expectedDevice: string,
+  depthId: ScenarioDepthId | null = null
 ): ScenarioAuthoringValidation {
   try {
     assertScenarioPlan(scenarioPlan);
@@ -387,6 +483,7 @@ function validateScenarioPlanCandidate(
     if (scenarioPlan.safety.allow_payment_commit || scenarioPlan.safety.allow_destructive_action) {
       throw new Error("scenarioPlan safety must block payment commit and destructive action");
     }
+    validateScenarioDepthFit(scenarioPlan, depthId);
 
     return {
       schema_valid: true,
@@ -412,7 +509,49 @@ function validateScenarioPlanCandidate(
   }
 }
 
-function aggregateValidation(candidates: ScenarioAuthoringCandidate[]): ScenarioAuthoringValidation {
+function validateScenarioDepthFit(scenarioPlan: ScenarioPlan, depthId: ScenarioDepthId | null): void {
+  if (!depthId) {
+    return;
+  }
+
+  const steps = scenarioPlan.steps;
+  const firstAdvancingActionIndex = steps.findIndex((step) => isAdvancingAction(step.action.type));
+  const hasCheckpointAfterAdvancingAction = firstAdvancingActionIndex >= 0 && steps
+    .slice(firstAdvancingActionIndex + 1)
+    .some((step) => step.checkpoint === true || step.action.type === "checkpoint");
+
+  if (depthId === "hero-only") {
+    const advancingStep = steps.find((step) => isAdvancingAction(step.action.type));
+    if (advancingStep) {
+      throw new Error(`scenarioPlan must not advance beyond the first view for depthId=hero-only; found ${advancingStep.action.type}`);
+    }
+    return;
+  }
+
+  if (depthId === "next-screen") {
+    if (firstAdvancingActionIndex < 0 || !hasCheckpointAfterAdvancingAction) {
+      throw new Error("scenarioPlan must include an advancing action and later checkpoint for depthId=next-screen");
+    }
+    return;
+  }
+
+  if (depthId === "form-depth") {
+    const reachesFormStage = steps.some((step) => step.stage === "INPUT" || step.stage === "COMMIT");
+    if (firstAdvancingActionIndex < 0 || !hasCheckpointAfterAdvancingAction || !reachesFormStage) {
+      throw new Error("scenarioPlan must advance to an INPUT/COMMIT stage and checkpoint before submit/payment for depthId=form-depth");
+    }
+  }
+}
+
+function isAdvancingAction(actionType: ScenarioStep["action"]["type"]): boolean {
+  return actionType === "click"
+    || actionType === "scroll"
+    || actionType === "fill"
+    || actionType === "select"
+    || actionType === "wait_for";
+}
+
+export function aggregateValidation(candidates: ScenarioAuthoringCandidate[]): ScenarioAuthoringValidation {
   const errors = candidates.flatMap((candidate) => candidate.validation.errors);
   const warnings = candidates.flatMap((candidate) => candidate.validation.warnings);
   return {

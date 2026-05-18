@@ -288,7 +288,7 @@ test('create analysis scenario setup uses agent card and accessible depth choice
   assert.match(css, /@media \(prefers-reduced-motion: reduce\)\s*\{[\s\S]*?\.scenario-setup-agent__header-status-dot::after[\s\S]*?animation: none/);
 });
 
-test('create analysis selection starts a run without a ready screen', () => {
+test('create analysis selection opens setup and starts a run without a ready screen', () => {
   const source = fs.readFileSync(
     new URL('../../src/pages/create-analysis/CreateAnalysisPage.tsx', import.meta.url),
     'utf8',
@@ -316,11 +316,20 @@ test('create analysis selection starts a run without a ready screen', () => {
   assert.match(source, /sourceAuthoringJobId/);
   assert.match(source, /createAndConfirmScenarioPlan/);
   assert.match(source, /createScenarioAuthoringJob/);
+  assert.match(source, /providerOrder: \['INTERNAL_LLM', 'RULE_BASED'\]/);
   assert.match(source, /const isStartingRun = isCreatingRun \|\| scenarioAuthoringBusy/);
   assert.match(source, /const visibleRunStartError = runStartError \|\| \(scenarioAuthoringState\.kind === 'failed' \? scenarioAuthoringState\.message : ''\)/);
   assert.match(source, /isStartingRun=\{isStartingRun\}/);
   assert.match(source, /selectedDepthId/);
-  assert.match(source, /source: 'create-analysis-agent-selection'/);
+  assert.match(source, /function defaultDepthForScenario\(scenarioType: string\): ScenarioDepthId/);
+  assert.match(source, /scenarioType === 'PURCHASE_CHECKOUT'[\s\S]*?return 'form-depth'/);
+  assert.match(source, /scenarioType === 'SIGNUP_LEAD_FORM' \|\| scenarioType === 'CONTACT'[\s\S]*?return 'form-depth'/);
+  assert.match(source, /scenarioType === 'LANDING_CTA' \|\| scenarioType === 'PRICING'[\s\S]*?return 'next-screen'/);
+  assert.match(source, /source: scenarioPlan \? 'create-analysis-scenario-plan-selection' : 'create-analysis-agent-selection'/);
+  assert.match(source, /executionMode:/);
+  assert.match(source, /RULE_BASED_PLAN/);
+  assert.match(source, /GMS_PLAN/);
+  assert.match(source, /AGENT_FALLBACK/);
   assert.match(source, /const runStartUrl = scenarioPlan \? requireConfirmedScenarioPlanStartUrl\(scenarioPlan\) : scenario\.suggestedStartUrl \?\? submittedUrl/);
   assert.match(source, /sourceDiscoveryId: scenario\.sourceDiscoveryId/);
   assert.match(source, /suggestedTarget: scenario\.suggestedTarget/);
@@ -346,7 +355,9 @@ test('create analysis selection starts a run without a ready screen', () => {
   assert.match(source, /분석 준비는 완료됐지만 실행 시작 요청에 실패했습니다/);
   assert.match(source, /pushAppPath\(buildRunMonitorPath\(createdRunId/);
   assert.doesNotMatch(source, /window\.location\.assign/);
-  assert.match(source, /void startAnalysisRun\(scenario, DEFAULT_SCENARIO_DEPTH_ID\)/);
+  assert.match(source, /scenarioId: scenario\.id/);
+  assert.match(source, /depthId: defaultDepthForScenario\(scenario\.scenarioType\)/);
+  assert.match(source, /void startAnalysisRun\(selectedScenario, selectedDepthId\)/);
   assert.match(source, /onStartRun=\{startSelectedScenarioRun\}/);
   assert.match(source, /className="create-analysis-run-warning"/);
   assert.doesNotMatch(source, /function ReadyAgent/);

@@ -62,6 +62,20 @@ RUNNER_AGENT_LLM_TIMEOUT_MS=10000
 
 If the LLM endpoint is missing or times out, the runner falls back to the heuristic decision client. Invalid JSON responses are retried once before fallback. Unsafe structured decisions, such as unobserved click targets or unsupported action types, are rejected without retry or heuristic fallback so they cannot be hidden by a safer local decision.
 
+ScenarioAuthoring uses `INTERNAL_LLM` when the queued provider policy includes it, then falls back to `RULE_BASED` when `fallback_allowed=true`. The authoring LLM config can be feature-specific or inherited from shared GMS / Agent LLM settings:
+
+```bash
+GMS_OPENAI_CHAT_COMPLETIONS_ENDPOINT=https://gms.ssafy.io/gmsapi/api.openai.com/v1/chat/completions
+GMS_API_KEY=...
+GMS_DEFAULT_MODEL=gpt-5.2-pro
+GMS_DEFAULT_TIMEOUT_MS=20000
+
+RUNNER_SCENARIO_AUTHORING_LLM_ENDPOINT=
+RUNNER_SCENARIO_AUTHORING_LLM_API_KEY=
+RUNNER_SCENARIO_AUTHORING_LLM_MODEL=gpt-5.2-pro
+RUNNER_SCENARIO_AUTHORING_LLM_TIMEOUT_MS=20000
+```
+
 For a reproducible discovery smoke against a real URL, run from the repo root:
 
 ```bash

@@ -623,7 +623,12 @@
         "goal_type": {
           "type": "string",
           "enum": [
-            "CHECKOUT_ENTRY_VERIFICATION"
+            "LANDING_CTA_VERIFICATION",
+            "SIGNUP_LEAD_FORM_VERIFICATION",
+            "PRICING_FLOW_VERIFICATION",
+            "CHECKOUT_ENTRY_VERIFICATION",
+            "CONTACT_FLOW_VERIFICATION",
+            "CONTENT_ONLY_REVIEW"
           ]
         },
         "goal": {

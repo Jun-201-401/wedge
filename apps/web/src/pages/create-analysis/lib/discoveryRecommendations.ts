@@ -365,7 +365,10 @@ export function toScenarioRecommendationViewModel(recommendation: ApiScenarioRec
   };
 }
 
-export function toManualScenarioRecommendationViewModels(excludedScenarioIds: readonly CreateAnalysisScenarioId[] = []): ScenarioRecommendationViewModel[] {
+export function toManualScenarioRecommendationViewModels(
+  excludedScenarioIds: readonly CreateAnalysisScenarioId[] = [],
+  sourceDiscoveryId?: string,
+): ScenarioRecommendationViewModel[] {
   const excludedIds = new Set<CreateAnalysisScenarioId>(excludedScenarioIds);
 
   return MANUAL_SCENARIO_TYPES
@@ -384,6 +387,7 @@ export function toManualScenarioRecommendationViewModels(excludedScenarioIds: re
         confidenceLabel: '수동',
         confidence: 0,
         isRunnable: true,
+        sourceDiscoveryId,
         recommendationId: null,
         evidenceRefs: [],
         evidenceSummary: null,

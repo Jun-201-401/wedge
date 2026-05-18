@@ -39,6 +39,14 @@ const AGENT_LLM_ENV_KEYS = [
   "RUNNER_AGENT_LLM_API_KEY",
   "RUNNER_AGENT_LLM_MODEL",
   "RUNNER_AGENT_LLM_TIMEOUT_MS",
+  "GMS_OPENAI_CHAT_COMPLETIONS_ENDPOINT",
+  "GMS_API_KEY",
+  "GMS_DEFAULT_MODEL",
+  "GMS_DEFAULT_TIMEOUT_MS",
+  "RUNNER_SCENARIO_AUTHORING_LLM_ENDPOINT",
+  "RUNNER_SCENARIO_AUTHORING_LLM_API_KEY",
+  "RUNNER_SCENARIO_AUTHORING_LLM_MODEL",
+  "RUNNER_SCENARIO_AUTHORING_LLM_TIMEOUT_MS",
   "RUNNER_AGENT_MCP_GATEWAY_URL",
   "RUNNER_AGENT_MCP_SERVICE_TOKEN",
   "RUNNER_AGENT_MCP_GATEWAY_TIMEOUT_MS",
@@ -314,9 +322,12 @@ test("[설정] Agent decision client는 기본 heuristic이고 env로만 LLM mod
     const config = loadRunnerConfig({ serviceName: "runner-test" });
 
     assert.equal(config.agentDecisionMode, "heuristic");
-    assert.equal(config.agentLlmEndpoint, undefined);
-    assert.equal(config.agentLlmModel, "agent-decision");
-    assert.equal(config.agentLlmTimeoutMs, 10_000);
+      assert.equal(config.agentLlmEndpoint, undefined);
+      assert.equal(config.agentLlmModel, "agent-decision");
+      assert.equal(config.agentLlmTimeoutMs, 10_000);
+      assert.equal(config.scenarioAuthoringLlmEndpoint, undefined);
+      assert.equal(config.scenarioAuthoringLlmModel, "gpt-5.2-pro");
+      assert.equal(config.scenarioAuthoringLlmTimeoutMs, 45_000);
   });
 
   withAgentLlmEnv(
@@ -335,6 +346,46 @@ test("[설정] Agent decision client는 기본 heuristic이고 env로만 LLM mod
       assert.equal(config.agentLlmApiKey, "secret");
       assert.equal(config.agentLlmModel, "agent-model");
       assert.equal(config.agentLlmTimeoutMs, 5_000);
+    }
+  );
+});
+
+test("[설정] ScenarioAuthoring LLM은 공통 GMS 기본값을 쓰고 기능별 env로 override할 수 있다", () => {
+  withAgentLlmEnv(
+    {
+      GMS_OPENAI_CHAT_COMPLETIONS_ENDPOINT: "https://gms.example/openai/chat",
+      GMS_API_KEY: "gms-secret",
+      GMS_DEFAULT_MODEL: "gpt-5.2-pro",
+      GMS_DEFAULT_TIMEOUT_MS: "20000"
+    },
+    () => {
+      const config = loadRunnerConfig({ serviceName: "runner-test" });
+
+      assert.equal(config.scenarioAuthoringLlmEndpoint, "https://gms.example/openai/chat");
+      assert.equal(config.scenarioAuthoringLlmApiKey, "gms-secret");
+      assert.equal(config.scenarioAuthoringLlmModel, "gpt-5.2-pro");
+      assert.equal(config.scenarioAuthoringLlmTimeoutMs, 20_000);
+    }
+  );
+
+  withAgentLlmEnv(
+    {
+      GMS_OPENAI_CHAT_COMPLETIONS_ENDPOINT: "https://gms.example/openai/chat",
+      GMS_API_KEY: "gms-secret",
+      GMS_DEFAULT_MODEL: "gpt-5.2-pro",
+      GMS_DEFAULT_TIMEOUT_MS: "20000",
+      RUNNER_SCENARIO_AUTHORING_LLM_ENDPOINT: "https://authoring.example/chat",
+      RUNNER_SCENARIO_AUTHORING_LLM_API_KEY: "authoring-secret",
+      RUNNER_SCENARIO_AUTHORING_LLM_MODEL: "authoring-model",
+      RUNNER_SCENARIO_AUTHORING_LLM_TIMEOUT_MS: "30000"
+    },
+    () => {
+      const config = loadRunnerConfig({ serviceName: "runner-test" });
+
+      assert.equal(config.scenarioAuthoringLlmEndpoint, "https://authoring.example/chat");
+      assert.equal(config.scenarioAuthoringLlmApiKey, "authoring-secret");
+      assert.equal(config.scenarioAuthoringLlmModel, "authoring-model");
+      assert.equal(config.scenarioAuthoringLlmTimeoutMs, 30_000);
     }
   );
 });

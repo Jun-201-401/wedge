@@ -28,9 +28,9 @@ const authoringJob = {
   projectId,
   sourceDiscoveryId,
   candidateCount: 1,
-  providerOrder: ['RULE_BASED'],
+  providerOrder: ['INTERNAL_LLM', 'RULE_BASED'],
   input: {},
-  providerPolicy: { provider_order: ['RULE_BASED'] },
+  providerPolicy: { provider_order: ['INTERNAL_LLM', 'RULE_BASED'] },
   providerTrace: [],
   candidates: [{
     candidate_id: candidateId,
@@ -87,7 +87,7 @@ test('scenario authoring api client creates, reads, and confirms candidates', as
       sourceDiscoveryId,
       requestedGoal: '문의 흐름 점검',
       preferredScenarioType: 'CONTACT',
-      providerPolicy: { providerOrder: ['RULE_BASED'], timeoutMs: 10000 },
+      providerPolicy: { providerOrder: ['INTERNAL_LLM', 'RULE_BASED'], timeoutMs: 20000 },
     }, { idempotencyKey: 'idem_authoring_test' });
     const loaded = await getScenarioAuthoringJob(authoringJobId);
     const confirmed = await confirmScenarioAuthoringCandidate(authoringJobId, { candidateId });

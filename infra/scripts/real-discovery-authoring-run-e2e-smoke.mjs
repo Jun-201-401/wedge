@@ -171,8 +171,8 @@ export function buildAuthoringRequest(config, discovery, recommendation) {
       stopBeforeRealPayment: true,
     },
     providerPolicy: {
-      providerOrder: ['RULE_BASED'],
-      timeoutMs: 10000,
+      providerOrder: ['INTERNAL_LLM', 'RULE_BASED'],
+      timeoutMs: 20000,
       fallbackAllowed: true,
       approvalRequired: true,
     },

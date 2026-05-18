@@ -144,6 +144,26 @@ class RunExecuteRequestMessageFactoryTest {
         assertThat(agentTask).doesNotContainKey("scenarioPlan");
     }
 
+    @Test
+    void createMapsAgentGoalTypeFromSelectedFlowGoalWhenScenarioPlanIsMissing() {
+        UUID runId = UUID.randomUUID();
+
+        RunExecuteRequestMessage message = factory.create(new RunExecutionRequestSource(
+                runId,
+                UUID.randomUUID(),
+                "WEB",
+                URI.create("https://example.com/contact"),
+                "문의 / 상담 신청 흐름 점검",
+                "desktop",
+                null,
+                Map.of()
+        ));
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> agentTask = (Map<String, Object>) message.payload().get("agentTask");
+        assertThat(agentTask).containsEntry("goal_type", "CONTACT_FLOW_VERIFICATION");
+    }
+
     private Map<String, Object> sampleScenarioPlan(UUID runId, String goal) {
         return Map.of(
                 "schema_version", "0.5",

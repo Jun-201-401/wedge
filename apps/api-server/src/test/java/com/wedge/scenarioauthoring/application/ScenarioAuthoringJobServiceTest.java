@@ -106,6 +106,29 @@ class ScenarioAuthoringJobServiceTest {
     }
 
     @Test
+    void createJobDefaultsProviderOrderToInternalLlmThenRuleBased() {
+        when(discoveryService.findDiscovery(DISCOVERY_ID)).thenReturn(discovery());
+        when(scenarioRecommendationMapper.findByDiscoveryId(DISCOVERY_ID)).thenReturn(List.of(recommendation()));
+        ScenarioAuthoringJobCreateRequest request = new ScenarioAuthoringJobCreateRequest(
+                PROJECT_ID,
+                DISCOVERY_ID,
+                null,
+                "무료 체험 CTA까지의 흐름 점검",
+                "LANDING_CTA",
+                Map.of("scenarioType", "LANDING_CTA"),
+                Map.of(),
+                null
+        );
+
+        ScenarioAuthoringJobResponse response = service.createJob(request, USER_ID, null);
+
+        assertThat(response.providerOrder()).containsExactly("INTERNAL_LLM", "RULE_BASED");
+        @SuppressWarnings("unchecked")
+        List<String> allowedProviders = (List<String>) response.providerPolicy().get("allowed_provider_types");
+        assertThat(allowedProviders).containsExactly("INTERNAL_LLM", "RULE_BASED");
+    }
+
+    @Test
     void createJobIgnoresForgedRecommendationUrlAndUsesPersistedRecommendation() {
         when(discoveryService.findDiscovery(DISCOVERY_ID)).thenReturn(discovery());
         when(scenarioRecommendationMapper.findByDiscoveryId(DISCOVERY_ID)).thenReturn(List.of(recommendation()));
@@ -132,6 +155,45 @@ class ScenarioAuthoringJobServiceTest {
         assertThat(response.provenance().get("source_evidence_refs")).asList().containsExactly("cp_001.obs_002");
     }
 
+
+    @Test
+    void createJobAllowsManualScenarioSelectionWithoutDetectedTarget() {
+        when(discoveryService.findDiscovery(DISCOVERY_ID)).thenReturn(discovery());
+        ScenarioRecommendation unavailable = recommendation();
+        unavailable.setScenarioType("SIGNUP_LEAD_FORM");
+        unavailable.setRecommendationLevel("NOT_AVAILABLE");
+        unavailable.setConfidence(BigDecimal.ZERO);
+        unavailable.setEvidenceRefsJsonb("[]");
+        unavailable.setSuggestedTargetJsonb("{}");
+        when(scenarioRecommendationMapper.findByDiscoveryId(DISCOVERY_ID)).thenReturn(List.of(unavailable));
+        ScenarioAuthoringJobCreateRequest request = new ScenarioAuthoringJobCreateRequest(
+                PROJECT_ID,
+                DISCOVERY_ID,
+                null,
+                "가입 / 리드 양식 점검 · 입력 양식까지 보기",
+                "SIGNUP_LEAD_FORM",
+                Map.of(
+                        "scenarioType", "SIGNUP_LEAD_FORM",
+                        "recommendationLevel", "LOW",
+                        "confidence", BigDecimal.ZERO,
+                        "evidenceRefs", List.of(),
+                        "suggestedStartUrl", "https://example.com",
+                        "suggestedTarget", Map.of()
+                ),
+                Map.of("depthId", "form-depth"),
+                new ScenarioAuthoringProviderPolicyRequest(List.of("RULE_BASED"), 10_000, true, true)
+        );
+
+        ScenarioAuthoringJobResponse response = service.createJob(request, USER_ID, null);
+
+        assertThat(response.status()).isEqualTo(ScenarioAuthoringStatus.QUEUED);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> selectedRecommendation = (Map<String, Object>) response.input().get("selected_recommendation");
+        assertThat(selectedRecommendation.get("scenario_type")).isEqualTo("SIGNUP_LEAD_FORM");
+        assertThat(selectedRecommendation.get("recommendation_level")).isEqualTo("NOT_AVAILABLE");
+        assertThat(selectedRecommendation.get("suggested_target")).isEqualTo(Map.of());
+    }
+
     @Test
     void createJobRejectsUnsupportedProviderPolicy() {
         when(discoveryService.findDiscovery(DISCOVERY_ID)).thenReturn(discovery());
@@ -149,7 +211,7 @@ class ScenarioAuthoringJobServiceTest {
 
         assertThatThrownBy(() -> service.createJob(request, USER_ID, null))
                 .isInstanceOf(BusinessException.class)
-                .hasMessageContaining("Only RULE_BASED");
+                .hasMessageContaining("INTERNAL_LLM and RULE_BASED");
     }
 
     @Test
@@ -260,7 +322,7 @@ class ScenarioAuthoringJobServiceTest {
         unavailable.setEvidenceRefsJsonb("[]");
         when(scenarioRecommendationMapper.findByDiscoveryId(DISCOVERY_ID)).thenReturn(List.of(unavailable));
 
-        assertThatThrownBy(() -> service.createJob(createRequest(), USER_ID, null))
+        assertThatThrownBy(() -> service.createJob(createRequestWithoutSelectedRecommendation(), USER_ID, null))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("HIGH or MEDIUM");
     }
@@ -272,7 +334,7 @@ class ScenarioAuthoringJobServiceTest {
         recommendation.setEvidenceRefsJsonb("[]");
         when(scenarioRecommendationMapper.findByDiscoveryId(DISCOVERY_ID)).thenReturn(List.of(recommendation));
 
-        assertThatThrownBy(() -> service.createJob(createRequest(), USER_ID, null))
+        assertThatThrownBy(() -> service.createJob(createRequestWithoutSelectedRecommendation(), USER_ID, null))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("evidence");
     }
@@ -361,6 +423,20 @@ class ScenarioAuthoringJobServiceTest {
         assertThatThrownBy(() -> service.confirmCandidate(jobId, new ScenarioAuthoringConfirmRequest("rule_based_landing_cta_001"), USER_ID))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("already confirmed");
+    }
+
+
+    private ScenarioAuthoringJobCreateRequest createRequestWithoutSelectedRecommendation() {
+        return new ScenarioAuthoringJobCreateRequest(
+                PROJECT_ID,
+                DISCOVERY_ID,
+                null,
+                "무료 체험 CTA까지의 흐름 점검",
+                "LANDING_CTA",
+                null,
+                Map.of(),
+                new ScenarioAuthoringProviderPolicyRequest(List.of("RULE_BASED"), 10_000, true, true)
+        );
     }
 
     private ScenarioAuthoringJobCreateRequest createRequest() {

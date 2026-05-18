@@ -126,6 +126,56 @@ class AgentExecuteRequestMessageFactoryTest {
         assertThat(agentTask).doesNotContainKey("replay_hints");
     }
 
+    @Test
+    void createMapsGoalTypeFromScenarioPlanFitRequirements() {
+        UUID runId = UUID.randomUUID();
+        RunExecutionRequestSource source = new RunExecutionRequestSource(
+                runId,
+                UUID.randomUUID(),
+                "WEB",
+                URI.create("https://example.com/pricing"),
+                "가격 / 요금제 흐름 점검",
+                "desktop",
+                UUID.randomUUID(),
+                Map.of(
+                        "fit_requirements", Map.of("required_flow_type", "PRICING"),
+                        "environment", Map.of(
+                                "device", "desktop",
+                                "viewport", Map.of("width", 1440, "height", 900),
+                                "locale", "ko-KR",
+                                "timezone", "Asia/Seoul",
+                                "auth_state", "anonymous"
+                        )
+                )
+        );
+
+        AgentExecuteRequestMessage message = factory.create(source, Optional.empty(), 1);
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> agentTask = (Map<String, Object>) message.payload().get("agentTask");
+        assertThat(agentTask).containsEntry("goal_type", "PRICING_FLOW_VERIFICATION");
+    }
+
+    @Test
+    void createMapsGoalTypeFromFallbackGoalText() {
+        RunExecutionRequestSource source = new RunExecutionRequestSource(
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                "WEB",
+                URI.create("https://example.com/signup"),
+                "가입 / 리드 양식 점검",
+                "desktop",
+                null,
+                Map.of()
+        );
+
+        AgentExecuteRequestMessage message = factory.create(source, Optional.empty(), 1);
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> agentTask = (Map<String, Object>) message.payload().get("agentTask");
+        assertThat(agentTask).containsEntry("goal_type", "SIGNUP_LEAD_FORM_VERIFICATION");
+    }
+
     private RunExecutionRequestSource sampleSource(UUID runId) {
         return new RunExecutionRequestSource(
                 runId,

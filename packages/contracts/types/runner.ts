@@ -111,7 +111,13 @@ export interface ScenarioPlan {
   steps: ScenarioStep[];
 }
 
-export type AgentGoalType = "CHECKOUT_ENTRY_VERIFICATION";
+export type AgentGoalType =
+  | "LANDING_CTA_VERIFICATION"
+  | "SIGNUP_LEAD_FORM_VERIFICATION"
+  | "PRICING_FLOW_VERIFICATION"
+  | "CHECKOUT_ENTRY_VERIFICATION"
+  | "CONTACT_FLOW_VERIFICATION"
+  | "CONTENT_ONLY_REVIEW";
 
 export interface AgentBudget {
   max_steps: number;

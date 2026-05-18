@@ -116,7 +116,7 @@ const DISCOVERY_TIMEOUT_MS = 90000;
 const PREFLIGHT_COMPLETION_STEP_DELAY_MS = 420;
 const PREFLIGHT_COMPLETED_STEP_DELAY_MS = 260;
 const SCENARIO_AUTHORING_POLL_INTERVAL_MS = 1200;
-const SCENARIO_AUTHORING_TIMEOUT_MS = 45000;
+const SCENARIO_AUTHORING_TIMEOUT_MS = 60000;
 const DISCOVERY_VIEWPORT = { width: 1440, height: 900 } as const;
 const PREFLIGHT_DISCOVERY_STEPS: DiscoveryStep[] = [
   {
@@ -166,6 +166,18 @@ const SCENARIO_DEPTH_OPTIONS: ScenarioDepthOption[] = [
 const SCENARIO_IDS = CREATE_ANALYSIS_SCENARIO_IDS;
 const SCENARIO_DEPTH_IDS = SCENARIO_DEPTH_OPTIONS.map((option) => option.id);
 const DEFAULT_SCENARIO_DEPTH_ID = 'hero-only' satisfies ScenarioDepthId;
+function defaultDepthForScenario(scenarioType: string): ScenarioDepthId {
+  if (scenarioType === 'PURCHASE_CHECKOUT') {
+    return 'form-depth';
+  }
+  if (scenarioType === 'SIGNUP_LEAD_FORM' || scenarioType === 'CONTACT') {
+    return 'form-depth';
+  }
+  if (scenarioType === 'LANDING_CTA' || scenarioType === 'PRICING') {
+    return 'next-screen';
+  }
+  return DEFAULT_SCENARIO_DEPTH_ID;
+}
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const CREATE_ANALYSIS_ROUTE_OPTIONS: CreateAnalysisRouteOptions<ScenarioId, ScenarioDepthId> = {
   defaultDepthId: DEFAULT_SCENARIO_DEPTH_ID,
@@ -204,6 +216,21 @@ function getCreateRunContextFallback(): Partial<CreateRunContext> {
     ...ENV_CREATE_RUN_CONTEXT,
     ...readUserCreateRunContext(),
   };
+}
+
+
+function scenarioAuthoringFailureMessage(job: { providerTrace?: Array<{ provider_type: string; status: string; fallback_reason?: string | null; model_or_agent?: string | null }> }) {
+  const failedProviders = (job.providerTrace ?? [])
+    .filter((entry) => entry.status === 'FAILED' || entry.status === 'TIMED_OUT')
+    .map((entry) => {
+      const model = entry.model_or_agent ? `/${entry.model_or_agent}` : '';
+      const reason = entry.fallback_reason ? `: ${entry.fallback_reason}` : '';
+      return `${entry.provider_type}${model} ${entry.status}${reason}`;
+    });
+
+  return failedProviders.length > 0
+    ? `사이트 맞춤 시나리오 생성이 완료되지 못했습니다. ${failedProviders.join(' → ')}`
+    : '사이트 맞춤 시나리오 생성이 완료되지 못했습니다.';
 }
 
 function getStepStatusLabel(status: DiscoveryStepStatus) {
@@ -710,8 +737,11 @@ export function CreateAnalysisPage({ isAuthenticated = false, isAuthChecking = f
     [discoveryState],
   );
   const manualChoiceScenarios = useMemo(
-    () => toManualScenarioRecommendationViewModels(recommendationScenarios.map((scenario) => scenario.id)),
-    [recommendationScenarios],
+    () => toManualScenarioRecommendationViewModels(
+      recommendationScenarios.map((scenario) => scenario.id),
+      discoveryState.kind === 'completed' ? discoveryState.discoveryId : undefined,
+    ),
+    [discoveryState, recommendationScenarios],
   );
   const selectableScenarios = useMemo(
     () => [...recommendationScenarios, ...manualChoiceScenarios],
@@ -1005,7 +1035,13 @@ export function CreateAnalysisPage({ isAuthenticated = false, isAuthChecking = f
       return;
     }
 
-    void startAnalysisRun(scenario, DEFAULT_SCENARIO_DEPTH_ID);
+    navigateToRouteState({
+      ...routeState,
+      stage: 'onboarding',
+      submittedUrl,
+      scenarioId: scenario.id,
+      depthId: defaultDepthForScenario(scenario.scenarioType),
+    });
   };
 
   const openManualChoice = () => {
@@ -1076,7 +1112,7 @@ export function CreateAnalysisPage({ isAuthenticated = false, isAuthChecking = f
         depthTitle: depth.title,
       },
       providerPolicy: {
-        providerOrder: ['RULE_BASED'],
+        providerOrder: ['INTERNAL_LLM', 'RULE_BASED'],
         timeoutMs: SCENARIO_AUTHORING_TIMEOUT_MS,
         fallbackAllowed: true,
         approvalRequired: true,
@@ -1134,7 +1170,7 @@ export function CreateAnalysisPage({ isAuthenticated = false, isAuthChecking = f
       }
 
       if (job.status === 'FAILED' || job.status === 'CANCELED' || job.status === 'EXPIRED') {
-        throw new Error('사이트 맞춤 시나리오 생성이 완료되지 못했습니다.');
+        throw new Error(scenarioAuthoringFailureMessage(job));
       }
 
       await wait(SCENARIO_AUTHORING_POLL_INTERVAL_MS);
@@ -1171,12 +1207,24 @@ export function CreateAnalysisPage({ isAuthenticated = false, isAuthChecking = f
       try {
         authoredScenario = await createAndConfirmScenarioPlan(scenario, depthId);
       } catch (error) {
+        const message = error instanceof Error
+          ? `${error.message} 시나리오 없이 즉석 탐색으로 자동 전환하지 않았습니다.`
+          : '사이트 맞춤 시나리오 생성에 실패해 즉석 탐색으로 자동 전환하지 않았습니다.';
         setScenarioAuthoringState({
           kind: 'failed',
-          message: error instanceof Error
-            ? `${error.message} 기본 추천 흐름으로 분석을 시작합니다.`
-            : '사이트 맞춤 시나리오 생성에 실패해 기본 추천 흐름으로 분석을 시작합니다.',
+          message,
         });
+        setRunStartError(message);
+        setIsCreatingRun(false);
+        return;
+      }
+
+      if (isScenarioAuthoringSupportedType(scenario.scenarioType) && !authoredScenario) {
+        const message = '사이트 맞춤 시나리오를 만들 수 없어 분석을 시작하지 않았습니다. URL 확인을 다시 진행한 뒤 추천 흐름을 선택해주세요.';
+        setScenarioAuthoringState({ kind: 'failed', message });
+        setRunStartError(message);
+        setIsCreatingRun(false);
+        return;
       }
 
       const scenarioPlan = authoredScenario?.candidate.scenario_plan ?? null;
@@ -1184,7 +1232,7 @@ export function CreateAnalysisPage({ isAuthenticated = false, isAuthChecking = f
       const runGoal = scenarioPlan ? scenario.title : scenario.summary;
       const scenarioOverrides: Record<string, unknown> = {
         depthId,
-        source: 'create-analysis-agent-selection',
+        source: scenarioPlan ? 'create-analysis-scenario-plan-selection' : 'create-analysis-agent-selection',
         sourceDiscoveryId: scenario.sourceDiscoveryId ?? null,
         recommendationId: scenario.recommendationId ?? null,
         scenarioType: scenario.scenarioType,
@@ -1194,6 +1242,9 @@ export function CreateAnalysisPage({ isAuthenticated = false, isAuthChecking = f
         suggestedTarget: scenario.suggestedTarget ?? null,
         sourceAuthoringJobId: authoredScenario?.authoringJobId ?? null,
         sourceAuthoringCandidateId: authoredScenario?.candidate.candidate_id ?? null,
+        executionMode: scenarioPlan
+          ? authoredScenario?.candidate.candidate_id?.startsWith('rule_based') ? 'RULE_BASED_PLAN' : 'GMS_PLAN'
+          : 'AGENT_FALLBACK',
       };
 
       const response = await createRun({

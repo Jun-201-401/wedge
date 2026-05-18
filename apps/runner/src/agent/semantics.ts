@@ -1,7 +1,13 @@
-const CHECKOUT_GOAL_PATTERN = /checkout|payment|cart|order|결제|주문|장바구니|카트/i;
+const CHECKOUT_GOAL_PATTERN = /checkout|payment|cart|order|purchase|buy|CHECKOUT_ENTRY_VERIFICATION|결제|주문|장바구니|카트|구매/i;
+const SIGNUP_LEAD_GOAL_PATTERN = /SIGNUP_LEAD_FORM_VERIFICATION|signup|sign up|register|join|lead|apply|가입|회원가입|리드|신청|등록/i;
+const CONTACT_GOAL_PATTERN = /CONTACT_FLOW_VERIFICATION|contact|inquiry|consult|consultation|demo|quote|문의|상담|데모|견적/i;
+const PRICING_GOAL_PATTERN = /PRICING_FLOW_VERIFICATION|pricing|price|plan|plans|요금|가격|요금제|플랜/i;
 
 export const plannerSemantics = {
   checkoutGoal: CHECKOUT_GOAL_PATTERN,
+  signupLeadGoal: SIGNUP_LEAD_GOAL_PATTERN,
+  contactGoal: CONTACT_GOAL_PATTERN,
+  pricingGoal: PRICING_GOAL_PATTERN,
   cookieAccept: /accept|agree|allow all|confirm|동의|허용|확인/i,
   cookieContext: /cookie|cookies|쿠키|개인정보|privacy/i,
   consentAccept: /accept|agree|allow|confirm|ok|동의|허용|확인/i,
@@ -12,7 +18,10 @@ export const plannerSemantics = {
   popupContext: /popup|pop|layer|notice|modal|dialog|banner|공지|이벤트|팝업|레이어/i,
   addToCart: /add to cart|add to basket|장바구니 담기|카트 담기|담기/i,
   cartNavigation: /view cart|go to cart|cart|basket|장바구니|카트/i,
-  checkoutNavigation: /checkout|proceed to checkout|payment|billing|shipping|order|결제|배송|주문서|주문하기/i
+  checkoutNavigation: /checkout|proceed to checkout|payment|billing|shipping|order|결제|배송|주문서|주문하기/i,
+  signupLeadEntrypoint: /signup|sign up|register|registration|join|member|create account|get started|apply|lead|form|회원가입|가입|회원|시작하기|무료 시작|무료체험|신청|등록|접수|예약|문의|상담|견적|양식|폼/i,
+  contactEntrypoint: /contact|inquiry|consult|consultation|demo|quote|estimate|support|문의|상담|데모|견적|고객센터|고객 지원|제휴|예약/i,
+  pricingEntrypoint: /pricing|price|plans?|quote|estimate|요금|가격|요금제|플랜|견적|비용/i
 } as const;
 
 export const policySemantics = {

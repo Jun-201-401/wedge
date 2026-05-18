@@ -560,7 +560,7 @@ paths:
       - ScenarioAuthoring
       operationId: createScenarioAuthoringJob
       summary: 추천 기반 ScenarioAuthoring job 생성
-      description: Discovery recommendation을 즉시 Run으로 바꾸지 않고, 검증 가능한 ScenarioPlan candidate authoring job으로 고정한다. MVP provider는 RULE_BASED stub으로 시작한다.
+      description: Discovery recommendation을 즉시 Run으로 바꾸지 않고, 검증 가능한 ScenarioPlan candidate authoring job으로 고정한다. 기본 provider 순서는 INTERNAL_LLM(GMS) 후 RULE_BASED fallback이다.
       security:
       - HumanBearer: []
       parameters:
@@ -589,8 +589,9 @@ paths:
                 suggestedStartUrl: https://example.com
               providerPolicy:
                 providerOrder:
+                - INTERNAL_LLM
                 - RULE_BASED
-                timeoutMs: 10000
+                timeoutMs: 20000
                 fallbackAllowed: true
                 approvalRequired: true
       responses:
@@ -3604,11 +3605,11 @@ components:
       - meta
     ScenarioAuthoringProviderPolicyRequest:
       type: object
-      description: 현재 API skeleton은 providerOrder가 비어 있거나 [RULE_BASED]인 경우만 허용한다. 다른 provider enum 값은 향후 확장을 위해 예약되어 있다.
+      description: 현재 지원 provider는 INTERNAL_LLM(GMS)과 RULE_BASED다. providerOrder를 생략하면 [INTERNAL_LLM, RULE_BASED]를 사용한다.
       properties:
         providerOrder:
           type: array
-          description: 현재 지원값은 정확히 [RULE_BASED]뿐이다.
+          description: 실행할 provider 순서. INTERNAL_LLM 실패 또는 검증 실패 시 fallbackAllowed=true이면 RULE_BASED로 fallback한다.
           items:
             $ref: '#/components/schemas/ScenarioAuthoringProviderType'
         timeoutMs:

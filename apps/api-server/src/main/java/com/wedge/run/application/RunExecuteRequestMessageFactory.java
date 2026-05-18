@@ -77,7 +77,7 @@ public class RunExecuteRequestMessageFactory {
         agentTask.put("idempotency_key", idempotencyKey);
         agentTask.put("run_id", runId);
         agentTask.put("project_id", run.projectId().toString());
-        agentTask.put("goal_type", "CHECKOUT_ENTRY_VERIFICATION");
+        agentTask.put("goal_type", AgentGoalTypeResolver.resolve(run));
         agentTask.put("goal", resolveGoal(run));
         agentTask.put("start_url", run.startUrl().toString());
         agentTask.put("environment", createAgentEnvironment(run.devicePreset()));

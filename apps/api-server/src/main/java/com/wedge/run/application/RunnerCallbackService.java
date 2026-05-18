@@ -170,7 +170,14 @@ public class RunnerCallbackService {
 
         RunResponse run = runService.markRunningIfStarting(runId);
         runPersistenceAdapter.saveAgentEvents(runId, command.events());
-        command.events().forEach(event -> appendAgentRunEvent(runId, event));
+        int maxStepIndex = command.events().stream()
+                .mapToInt(RunnerAgentEventCommand::stepIndex)
+                .max()
+                .orElse(0);
+        command.events().forEach(event -> {
+            appendAgentRunEvent(runId, event);
+            applyAgentStepEvent(runId, event, maxStepIndex);
+        });
         return RunnerCallbackAckResponse.stepEvents(run, command.events().size());
     }
 
@@ -213,6 +220,71 @@ public class RunnerCallbackService {
                     hasStepIssue(nextStatus) ? stepIssueMessage(event.payload()) : null
             );
         }
+    }
+
+
+    private void applyAgentStepEvent(UUID runId, RunnerAgentEventCommand event, int maxStepIndex) {
+        StepStatus nextStatus = mapAgentStepStatus(event);
+        if (nextStatus == null) {
+            return;
+        }
+
+        int stepIndex = event.stepIndex() > 0 ? event.stepIndex() : maxStepIndex;
+        if (stepIndex <= 0) {
+            return;
+        }
+
+        RunPersistenceAdapter.ResolvedStep step = runPersistenceAdapter.resolveOrCreateAgentStep(
+                runId,
+                "agent_turn_" + String.format("%03d", stepIndex),
+                stringPayloadValue(event.payload(), "stage")
+        );
+        runPersistenceAdapter.updateCurrentStepOrder(runId, step.stepOrder());
+        runPersistenceAdapter.updateStepState(
+                step.id(),
+                nextStatus,
+                event.occurredAt(),
+                hasStepIssue(nextStatus) ? agentIssueCode(event) : null,
+                hasStepIssue(nextStatus) ? agentIssueMessage(event) : null
+        );
+    }
+
+    private StepStatus mapAgentStepStatus(RunnerAgentEventCommand event) {
+        return switch (event.eventType()) {
+            case "PRE_DECISION_VERIFIED", "DECISION_MADE", "POLICY_CHECKED" -> StepStatus.RUNNING;
+            case "ACTION_COMPLETED", "GOAL_VERIFIED" -> StepStatus.PASSED;
+            case "ACTION_FAILED" -> StepStatus.FAILED;
+            case "TRACE_PERSISTED" -> agentTracePersistedStepStatus(event.payload());
+            default -> null;
+        };
+    }
+
+    private StepStatus agentTracePersistedStepStatus(Map<String, Object> payload) {
+        String outcome = stringPayloadValue(payload, "outcome");
+        if ("EXHAUSTED".equals(outcome) || "FAILED".equals(outcome)) {
+            return StepStatus.FAILED;
+        }
+        if ("SUCCESS".equals(outcome)) {
+            return StepStatus.PASSED;
+        }
+        return null;
+    }
+
+    private String agentIssueCode(RunnerAgentEventCommand event) {
+        String reasonCode = stringPayloadValue(event.payload(), "outcomeReasonCode");
+        if (reasonCode != null) {
+            return reasonCode;
+        }
+        return stringPayloadValue(event.payload(), "reasonCode");
+    }
+
+    private String agentIssueMessage(RunnerAgentEventCommand event) {
+        String reason = stringPayloadValue(event.payload(), "reason");
+        if (reason != null) {
+            return reason;
+        }
+        String outcome = stringPayloadValue(event.payload(), "outcome");
+        return outcome == null ? null : "Agent trace ended with outcome " + outcome;
     }
 
     private void appendAgentRunEvent(UUID runId, RunnerAgentEventCommand event) {
