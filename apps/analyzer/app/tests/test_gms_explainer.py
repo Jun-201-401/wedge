@@ -187,6 +187,28 @@ class GMSReportExplainerTest(unittest.TestCase):
         self.assertIn('"hasBounds": true', compact_prompt)
         self.assertNotIn('"bounds"', compact_prompt)
 
+    def test_compact_prompt_keeps_textless_evidence_refs_without_coordinates(self) -> None:
+        original = sample_judge_result()
+        original["issues"][0]["evidence_refs"] = ["cp_001.obs_selector_only"]
+        original["issues"][0]["evidence_locations"] = [
+            {
+                "evidence_ref": "cp_001.obs_selector_only",
+                "type": "selector_only",
+                "selector": ".checkout-primary",
+                "bounds": {"x": 64, "y": 128, "width": 240, "height": 48},
+            }
+        ]
+
+        compact_prompt = _build_prompt(original, compact_prompt_enabled=True)
+
+        self.assertIn('"evidence_refs": ["cp_001.obs_selector_only"]', compact_prompt)
+        self.assertIn('"types": ["selector_only"]', compact_prompt)
+        self.assertIn('"componentCount": 1', compact_prompt)
+        self.assertIn('"hasBounds": true', compact_prompt)
+        self.assertNotIn(".checkout-primary", compact_prompt)
+        self.assertNotIn('"selector"', compact_prompt)
+        self.assertNotIn('"bounds"', compact_prompt)
+
     def test_compact_prompt_records_compact_and_full_prompt_sizes(self) -> None:
         original = sample_judge_result()
         original["issues"][0]["evidence_locations"][0]["components"][0]["text"] = "무료 체험 시작"
