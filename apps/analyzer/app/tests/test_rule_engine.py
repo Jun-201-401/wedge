@@ -1260,6 +1260,35 @@ class RuleEngineTest(unittest.TestCase):
         safety = [issue for issue in result["issues"] if issue["criterion_id"] == "PATH-SAFETY-BOUNDARY-001"]
         self.assertEqual(safety, [])
 
+    def test_safety_block_payment_commit_emits_high_severity_boundary_issue(self) -> None:
+        packet = load_sample_packet()
+        packet["aggregate_signals"]["primary_cta_count_by_stage"] = {"CTA": 1}
+        packet["checkpoints"][1]["primaryStage"] = "COMMIT"
+        packet["checkpoints"][1]["observations"] = [
+            {
+                "observation_id": "obs_payment_commit_block",
+                "type": "runner_failure",
+                "stage": "COMMIT",
+                "source": ["scenario_log", "browser"],
+                "data": {
+                    "failure_code": "POLICY_PAYMENT_COMMIT_BLOCKED",
+                    "failure_message": "Scenario safety forbids payment commit.",
+                    "failed_step_key": "step_002_final_payment",
+                },
+                "confidence": 0.95,
+            }
+        ]
+
+        result = analyze_evidence_packet(packet)
+
+        safety = [issue for issue in result["issues"] if issue["criterion_id"] == "PATH-SAFETY-BOUNDARY-001"]
+        self.assertEqual(len(safety), 1)
+        self.assertEqual(safety[0]["stage"], "COMMIT")
+        self.assertEqual(safety[0]["severity"], 3)
+        self.assertEqual(safety[0]["evidence_refs"], ["cp_002.obs_payment_commit_block"])
+        self.assertIn("safety_block_reason=POLICY_PAYMENT_COMMIT_BLOCKED", safety[0]["signals"])
+        self.assertIn("실제 확정", safety[0]["summary"])
+
     def test_checkpoint_reliability_failure_emits_stage_issue(self) -> None:
         packet = load_sample_packet()
         packet["aggregate_signals"]["primary_cta_count_by_stage"] = {"CTA": 1}
