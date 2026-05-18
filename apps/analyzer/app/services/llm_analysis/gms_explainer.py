@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import json
+import os
 from dataclasses import dataclass
 from typing import Any, Protocol
 
@@ -42,6 +43,7 @@ NUDGE_TEXT_FIELDS = {
 
 VALID_DIFFICULTIES = {"LOW", "MEDIUM", "HIGH"}
 GMS_REPORT_EXPLAINER_MAX_ATTEMPTS = 2
+GMS_REPORT_COMPACT_PROMPT_ENV = "ANALYZER_GMS_REPORT_COMPACT_PROMPT_ENABLED"
 
 
 @dataclass
@@ -57,6 +59,7 @@ class GMSReportExplainerTelemetry:
     client_configured: bool = False
     compact_prompt_enabled: bool = False
     prompt_char_count: int = 0
+    full_prompt_char_count: int = 0
     response_char_count: int = 0
     attempt_count: int = 0
     fallback_used: bool = False
@@ -68,6 +71,7 @@ class GMSReportExplainerTelemetry:
             "clientConfigured": self.client_configured,
             "compactPromptEnabled": self.compact_prompt_enabled,
             "promptCharCount": self.prompt_char_count,
+            "fullPromptCharCount": self.full_prompt_char_count,
             "responseCharCount": self.response_char_count,
             "attemptCount": self.attempt_count,
             "fallbackUsed": self.fallback_used,
@@ -89,10 +93,12 @@ class GMSReportExplainer:
         client: GMSExplanationClient | None = None,
         enabled: bool = False,
         model: str = "gpt-4.1-nano",
+        compact_prompt_enabled: bool = False,
     ) -> None:
         self._client = client
         self._enabled = enabled
         self._model = model
+        self._compact_prompt_enabled = compact_prompt_enabled
 
     @classmethod
     def from_env(cls) -> "GMSReportExplainer":
@@ -101,6 +107,7 @@ class GMSReportExplainer:
             client=GMSClient(config, feature="report_explainer"),
             enabled=config.enabled,
             model=config.model,
+            compact_prompt_enabled=_report_compact_prompt_enabled_from_env(),
         )
 
     def explain(
@@ -112,6 +119,7 @@ class GMSReportExplainer:
         telemetry = telemetry or GMSReportExplainerTelemetry()
         telemetry.enabled = self._enabled
         telemetry.client_configured = self._client is not None
+        telemetry.compact_prompt_enabled = self._compact_prompt_enabled
         fallback_result = copy.deepcopy(judge_result)
         if not self._enabled:
             return fallback_result
@@ -123,7 +131,13 @@ class GMSReportExplainer:
         for attempt in range(1, GMS_REPORT_EXPLAINER_MAX_ATTEMPTS + 1):
             result = copy.deepcopy(judge_result)
             try:
-                prompt = _build_prompt(result)
+                full_prompt = _build_prompt(result)
+                prompt = (
+                    _build_prompt(result, compact_prompt_enabled=True)
+                    if self._compact_prompt_enabled
+                    else full_prompt
+                )
+                telemetry.full_prompt_char_count = len(full_prompt)
                 telemetry.prompt_char_count = len(prompt)
                 telemetry.attempt_count = attempt
                 response_text = self._client.generate_text(prompt=prompt)
@@ -148,7 +162,19 @@ class GMSReportExplainer:
         )
 
 
-def _build_prompt(judge_result: dict[str, Any]) -> str:
+def _report_compact_prompt_enabled_from_env() -> bool:
+    value = os.environ.get(GMS_REPORT_COMPACT_PROMPT_ENV)
+    if value is None:
+        return False
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _build_prompt(judge_result: dict[str, Any], *, compact_prompt_enabled: bool = False) -> str:
+    grounding_fields = (
+        "evidence_refs and evidence_location_summary"
+        if compact_prompt_enabled
+        else "evidence_refs and evidence_locations"
+    )
     compact = {
         "summary": judge_result.get("summary") or {},
         "issues": [
@@ -161,7 +187,7 @@ def _build_prompt(judge_result: dict[str, Any]) -> str:
                 "confidence": issue.get("confidence"),
                 "priority_score": issue.get("priority_score"),
                 "evidence_refs": issue.get("evidence_refs") or [],
-                "evidence_locations": issue.get("evidence_locations") or [],
+                **_evidence_location_prompt_payload(issue, compact_prompt_enabled=compact_prompt_enabled),
                 "title": issue.get("title"),
                 "summary": issue.get("summary"),
                 "impact_hypothesis": issue.get("impact_hypothesis"),
@@ -183,7 +209,7 @@ def _build_prompt(judge_result: dict[str, Any]) -> str:
         "priority_score, evidence_refs.\n"
         "Rewrite only report copy fields: title, summary, impact_hypothesis, recommendations, validation_questions, "
         "and nudge text fields.\n"
-        "Ground every claim in evidence_refs and evidence_locations. Do not invent unsupported facts or expose internal "
+        f"Ground every claim in {grounding_fields}. Do not invent unsupported facts or expose internal "
         "ids such as evidence_ref, checkpoint_id, observation_id, selector, raw rule id, or criterion.\n"
         "Write concise natural Korean for non-technical readers such as small business owners, service operators, "
         "or teammates who do not know UX jargon. Explain the problem as if answering someone who asks, "
@@ -239,6 +265,55 @@ def _build_prompt(judge_result: dict[str, Any]) -> str:
         "}\n"
         f"JudgeResult JSON:\n{json.dumps(compact, ensure_ascii=False)}"
     )
+
+
+def _evidence_location_prompt_payload(issue: dict[str, Any], *, compact_prompt_enabled: bool) -> dict[str, Any]:
+    evidence_locations = issue.get("evidence_locations") or []
+    if not compact_prompt_enabled:
+        return {"evidence_locations": evidence_locations}
+    return {"evidence_location_summary": _summarize_evidence_locations(evidence_locations)}
+
+
+def _summarize_evidence_locations(evidence_locations: Any) -> dict[str, Any]:
+    if not isinstance(evidence_locations, list):
+        return {
+            "count": 0,
+            "types": [],
+            "componentCount": 0,
+            "visibleTexts": [],
+            "roles": [],
+            "hasBounds": False,
+        }
+
+    types: list[str] = []
+    visible_texts: list[str] = []
+    roles: list[str] = []
+    component_count = 0
+    has_bounds = False
+    for location in evidence_locations:
+        if not isinstance(location, dict):
+            continue
+        _append_unique(types, _non_empty_string(location.get("type")), limit=8)
+        components = location.get("components")
+        if not isinstance(components, list):
+            continue
+        for component in components:
+            if not isinstance(component, dict):
+                continue
+            component_count += 1
+            has_bounds = has_bounds or isinstance(component.get("bounds"), dict)
+            _append_unique(roles, _non_empty_string(component.get("role")), limit=8)
+            for key in ("text", "label", "name", "accessible_name", "aria_label", "title"):
+                _append_unique(visible_texts, _non_empty_string(component.get(key)), limit=12)
+
+    return {
+        "count": len([location for location in evidence_locations if isinstance(location, dict)]),
+        "types": types,
+        "componentCount": component_count,
+        "visibleTexts": visible_texts,
+        "roles": roles,
+        "hasBounds": has_bounds,
+    }
 
 
 def _parse_json_object(text: str) -> dict[str, Any]:
@@ -380,3 +455,9 @@ def _string_list(value: Any) -> list[str]:
     if not isinstance(value, list):
         return []
     return [item.strip() for item in value if isinstance(item, str) and item.strip()][:5]
+
+
+def _append_unique(values: list[str], value: str | None, *, limit: int) -> None:
+    if value is None or value in values or len(values) >= limit:
+        return
+    values.append(value)

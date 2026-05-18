@@ -36,6 +36,7 @@ _ALLOWED_EXTRA_KEYS = {
     "clientConfigured",
     "compactPromptEnabled",
     "promptCharCount",
+    "fullPromptCharCount",
     "responseCharCount",
     "attemptCount",
     "fallbackUsed",
@@ -44,6 +45,7 @@ _ALLOWED_EXTRA_KEYS = {
 _SAFE_SENSITIVE_SUMMARY_KEYS = {
     "compactPromptEnabled",
     "promptCharCount",
+    "fullPromptCharCount",
 }
 
 

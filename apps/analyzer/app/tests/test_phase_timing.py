@@ -86,6 +86,7 @@ class PhaseTimingTest(unittest.TestCase):
             duration_ms=1,
             extra={
                 "promptCharCount": 1234,
+                "fullPromptCharCount": 4321,
                 "responseCharCount": 234,
                 "attemptCount": 2,
                 "fallbackUsed": False,
@@ -102,6 +103,7 @@ class PhaseTimingTest(unittest.TestCase):
         self.assertNotIn("raw prompt must still be redacted", raw_line)
         event = json.loads(raw_line)
         self.assertEqual(event["promptCharCount"], 1234)
+        self.assertEqual(event["fullPromptCharCount"], 4321)
         self.assertEqual(event["responseCharCount"], 234)
         self.assertEqual(event["attemptCount"], 2)
         self.assertFalse(event["fallbackUsed"])

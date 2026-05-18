@@ -18,6 +18,7 @@ class FakeReportExplainer:
             telemetry.client_configured = True
             telemetry.compact_prompt_enabled = False
             telemetry.prompt_char_count = 1234
+            telemetry.full_prompt_char_count = 4321
             telemetry.response_char_count = 234
             telemetry.attempt_count = 1
             telemetry.fallback_used = False
@@ -55,6 +56,7 @@ class AnalysisServiceReportExplainerTimingTest(unittest.TestCase):
         report_event = next(event for event in events if event["phase"] == "report_explainer")
         self.assertEqual(report_event["issueCount"], 1)
         self.assertEqual(report_event["promptCharCount"], 1234)
+        self.assertEqual(report_event["fullPromptCharCount"], 4321)
         self.assertEqual(report_event["responseCharCount"], 234)
         self.assertEqual(report_event["attemptCount"], 1)
         self.assertFalse(report_event["fallbackUsed"])
