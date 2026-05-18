@@ -2,8 +2,11 @@ from __future__ import annotations
 
 import copy
 import re
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
 from typing import Any
 
+from app.normalization.gms_checkpoint_parallel import GMSCheckpointParallelConfig
 from app.providers import LabelIntegrityIssueResult, LabelIntegrityProviderPort
 from app.stage.stage_resolver import StageResolver
 
@@ -25,6 +28,21 @@ HIGH_IMPACT_STAGES = {"CTA", "INPUT", "COMMIT"}
 MOJIBAKE_PATTERN = re.compile(r"(?:Ã.|Â.|ì.|ë.|í.|ê.)")
 
 
+@dataclass(frozen=True)
+class _LabelIntegrityGMSJob:
+    checkpoint_id: str
+    stage: str
+    screenshot_url: str
+    candidates: list[dict[str, Any]]
+    target_index: dict[str, dict[str, Any]]
+
+
+@dataclass(frozen=True)
+class _LabelIntegrityGMSJobResult:
+    target_index: dict[str, dict[str, Any]]
+    results: list[LabelIntegrityIssueResult]
+
+
 class LabelIntegrityResolver:
     """Add deterministic and optional GMS image text-integrity signals."""
 
@@ -32,14 +50,18 @@ class LabelIntegrityResolver:
         self,
         provider: LabelIntegrityProviderPort | None = None,
         resolver: StageResolver | None = None,
+        *,
+        parallel_config: GMSCheckpointParallelConfig | None = None,
     ) -> None:
         self._provider = provider
         self._resolver = resolver or StageResolver()
+        self._parallel_config = parallel_config or GMSCheckpointParallelConfig()
 
     def enrich_packet(self, packet: dict[str, Any]) -> dict[str, Any]:
         enriched = copy.deepcopy(packet)
         artifacts_by_id = _artifacts_by_id(enriched.get("artifacts"))
         scenario_goal = _scenario_goal(enriched)
+        gms_jobs: list[_LabelIntegrityGMSJob] = []
 
         for checkpoint in enriched.get("checkpoints") or []:
             if not isinstance(checkpoint, dict):
@@ -64,15 +86,52 @@ class LabelIntegrityResolver:
             ]
             if not gms_candidates:
                 continue
-            results = self._provider.classify_label_integrity(
-                scenario_goal=scenario_goal,
-                stage=stage,
-                checkpoint_id=checkpoint_id,
-                screenshot_url=screenshot_url,
-                candidates=gms_candidates,
+            gms_jobs.append(
+                _LabelIntegrityGMSJob(
+                    checkpoint_id=checkpoint_id,
+                    stage=stage,
+                    screenshot_url=screenshot_url,
+                    candidates=gms_candidates,
+                    target_index=target_index,
+                )
             )
-            self._apply_results(results, target_index)
+
+        for job_result in self._run_gms_jobs(scenario_goal=scenario_goal, jobs=gms_jobs):
+            self._apply_results(job_result.results, job_result.target_index)
         return enriched
+
+    def _run_gms_jobs(
+        self,
+        *,
+        scenario_goal: str,
+        jobs: list[_LabelIntegrityGMSJob],
+    ) -> list[_LabelIntegrityGMSJobResult]:
+        if self._provider is None or not jobs:
+            return []
+        if not self._parallel_config.should_parallelize(len(jobs)):
+            return [self._run_gms_job(scenario_goal=scenario_goal, job=job) for job in jobs]
+
+        max_workers = min(self._parallel_config.max_concurrency, len(jobs))
+        with ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="label-integrity-gms") as executor:
+            futures = [executor.submit(self._run_gms_job, scenario_goal=scenario_goal, job=job) for job in jobs]
+            return [future.result() for future in futures]
+
+    def _run_gms_job(
+        self,
+        *,
+        scenario_goal: str,
+        job: _LabelIntegrityGMSJob,
+    ) -> _LabelIntegrityGMSJobResult:
+        if self._provider is None:
+            return _LabelIntegrityGMSJobResult(target_index=job.target_index, results=[])
+        results = self._provider.classify_label_integrity(
+            scenario_goal=scenario_goal,
+            stage=job.stage,
+            checkpoint_id=job.checkpoint_id,
+            screenshot_url=job.screenshot_url,
+            candidates=job.candidates,
+        )
+        return _LabelIntegrityGMSJobResult(target_index=job.target_index, results=results)
 
     def _candidates_for_checkpoint(
         self,
