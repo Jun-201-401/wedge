@@ -1,5 +1,6 @@
 package com.wedge.common.infrastructure;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -17,11 +18,23 @@ import org.springframework.amqp.core.MessageProperties;
 import org.springframework.amqp.core.ReturnedMessage;
 import org.springframework.amqp.rabbit.connection.CorrelationData;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
+import org.springframework.context.annotation.AnnotationConfigApplicationContext;
 
 @ExtendWith(MockitoExtension.class)
 class RabbitConfirmedMessagePublisherTest {
     @Mock
     private RabbitTemplate rabbitTemplate;
+
+    @Test
+    void springCanInstantiatePublisherWithConfiguredConfirmTimeout() {
+        try (AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext()) {
+            context.registerBean(RabbitTemplate.class, () -> rabbitTemplate);
+            context.registerBean(RabbitConfirmedMessagePublisher.class);
+            context.refresh();
+
+            assertThat(context.getBean(RabbitConfirmedMessagePublisher.class)).isNotNull();
+        }
+    }
 
     @Test
     void convertAndSendReturnsOnlyAfterPositiveConfirm() {
