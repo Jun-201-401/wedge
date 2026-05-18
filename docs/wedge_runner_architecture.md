@@ -305,12 +305,14 @@ RUNNER_MQ_ARTIFACT_OUTBOX_WORKER_ENABLED=false
 운영 기본값:
 
 ```text
-RUNNER_MQ_PREFETCH=4
+RUNNER_MQ_PREFETCH=1
 RUNNER_AGENT_CONCURRENCY=1
 RUNNER_MESSAGE_IDEMPOTENCY_STORE_MODE=api
 RUNNER_MQ_REQUEUE_ON_FAILURE=false
 RUNNER_MQ_MAX_DELIVERY_ATTEMPTS=3
 ```
+
+Playwright browser job은 장시간 실행될 수 있으므로 운영 병렬 처리량은 단일 process의 prefetch를 크게 키우기보다 Runner replica 수를 늘리는 방식으로 확장한다.
 
 남은 hardening:
 
