@@ -21,7 +21,7 @@ public interface AnalysisJobMapper {
             @Param("startedAt") OffsetDateTime startedAt
     );
 
-    int upsertCompleted(AnalysisJob analysisJob);
+    int markCompleted(AnalysisJob analysisJob);
 
-    int upsertFailed(AnalysisJob analysisJob);
+    int markFailed(AnalysisJob analysisJob);
 }
