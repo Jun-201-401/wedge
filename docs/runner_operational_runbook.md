@@ -23,7 +23,8 @@ cd apps/api-server && ./gradlew test --tests com.wedge.run.application.RunnerAge
 
 ```text
 RUNNER_MQ_CONSUMER_ENABLED=true
-RUNNER_MQ_PREFETCH=4
+RUNNER_REPLICAS=3
+RUNNER_MQ_PREFETCH=1
 RUNNER_AGENT_CONCURRENCY=1
 RUNNER_MESSAGE_IDEMPOTENCY_STORE_MODE=api
 RUNNER_AGENT_IDEMPOTENCY_STORE_MODE=api
@@ -39,7 +40,23 @@ RUNNER_MQ_ARTIFACT_OUTBOX_WORKER_ENABLED=true
 
 동일 Runner process 재전달은 in-memory promise로, process 재시작 후 재전달은 local artifact record로, 여러 Runner replica 재전달은 API/DB idempotency record로 방어한다.
 
+Playwright 기반 browser job은 실행 시간이 길고 메모리 사용량이 크므로 운영 기본값은 replica당 `RUNNER_MQ_PREFETCH=1`로 둔다. 동시 처리량은 한 Runner process의 prefetch를 먼저 키우기보다 Runner replica 수를 늘려 확보한다.
+
 Agent API idempotency lease는 운영 기본값으로 5분 TTL, 60초 renewal을 사용한다. Renewal interval은 lease TTL의 1/3 이하로 유지해야 하며 Runner는 더 큰 값을 자동으로 clamp한다. Agent 실행 시간이 더 긴 환경에서는 TTL을 먼저 늘리고, renewal 실패 로그(`idempotency_lease_renew_failed`)가 반복되면 API callback 경로/서명/네트워크를 확인한다. Runner crash 이후 중복 재실행 허용 대기시간은 최대 lease TTL에 비례하므로 TTL을 무작정 늘리지 않는다.
+
+Runner replica 수는 운영 `.env.prod`의 `RUNNER_REPLICAS`로 관리한다. Jenkins 배포는 이 값을 읽어 `docker compose up --scale runner=<RUNNER_REPLICAS>`를 적용하고, 실행 중인 runner replica 수와 image tag를 검증한다.
+
+로컬 dev의 기본 `compose.dev.yaml`은 단일 runner metrics 확인을 위해 `127.0.0.1:9101:9101`을 publish한다. 같은 service를 여러 replica로 scale하면 host port가 충돌하므로, 로컬 병렬 검증은 scale 전용 override를 함께 사용한다. 이 override는 runner metrics host port publish를 제거하고 API-backed idempotency mode를 켠다.
+
+```bash
+docker compose --env-file .env -f compose.dev.yaml -f infra/compose/compose.dev.runner-scale.yaml up -d --scale runner=3 runner
+```
+
+scale 검증 후 단일 runner 개발 모드로 되돌릴 때는 override 없이 runner를 다시 생성한다.
+
+```bash
+docker compose --env-file .env -f compose.dev.yaml up -d --force-recreate runner
+```
 
 ## 3. Real smoke / E2E 절차
 

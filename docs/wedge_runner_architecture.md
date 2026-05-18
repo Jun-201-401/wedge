@@ -305,12 +305,17 @@ RUNNER_MQ_ARTIFACT_OUTBOX_WORKER_ENABLED=false
 운영 기본값:
 
 ```text
-RUNNER_MQ_PREFETCH=4
+RUNNER_REPLICAS=3
+RUNNER_MQ_PREFETCH=1
 RUNNER_AGENT_CONCURRENCY=1
 RUNNER_MESSAGE_IDEMPOTENCY_STORE_MODE=api
 RUNNER_MQ_REQUEUE_ON_FAILURE=false
 RUNNER_MQ_MAX_DELIVERY_ATTEMPTS=3
 ```
+
+Playwright browser job은 장시간 실행될 수 있으므로 운영 병렬 처리량은 단일 process의 prefetch를 크게 키우기보다 Runner replica 수를 늘리는 방식으로 확장한다.
+
+로컬 dev 기본 compose는 runner metrics를 `127.0.0.1:9101`로 publish하므로 같은 runner service를 여러 replica로 늘리면 host port 충돌이 발생한다. 로컬에서 runner scale을 검증할 때는 `infra/compose/compose.dev.runner-scale.yaml` override를 추가해 metrics host port publish를 제거하고, API-backed idempotency mode로 여러 replica의 중복 delivery 방어를 맞춘다.
 
 남은 hardening:
 
