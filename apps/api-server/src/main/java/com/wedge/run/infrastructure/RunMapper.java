@@ -39,6 +39,8 @@ public interface RunMapper {
 
     int insert(RunRecord run);
 
+    int insertIgnoreDuplicate(RunRecord run);
+
     int insertStep(RunStepRecord step);
 
     int updateExecutionState(

@@ -189,7 +189,7 @@ class DiscoveryServiceTest {
         failed.setFailureCode("DISCOVERY_REQUEST_DEAD_LETTERED");
         failed.setFailureMessage("Discovery request could not be delivered to Runner.");
         when(siteDiscoveryMapper.findById(discoveryId)).thenReturn(Optional.of(queued), Optional.of(failed));
-        when(siteDiscoveryMapper.markFailed(
+        when(siteDiscoveryMapper.markQueuedFailed(
                 eq(discoveryId),
                 eq("DISCOVERY_REQUEST_DEAD_LETTERED"),
                 eq("Discovery request could not be delivered to Runner."),
@@ -203,7 +203,7 @@ class DiscoveryServiceTest {
         );
 
         assertThat(result).contains(failed);
-        verify(siteDiscoveryMapper).markFailed(
+        verify(siteDiscoveryMapper).markQueuedFailed(
                 eq(discoveryId),
                 eq("DISCOVERY_REQUEST_DEAD_LETTERED"),
                 eq("Discovery request could not be delivered to Runner."),
@@ -225,7 +225,7 @@ class DiscoveryServiceTest {
         );
 
         assertThat(result).isEmpty();
-        verify(siteDiscoveryMapper, never()).markFailed(any(), anyString(), anyString(), any());
+        verify(siteDiscoveryMapper, never()).markQueuedFailed(any(), anyString(), anyString(), any());
     }
 
     private CreateDiscoveryRequest request(String url) {

@@ -116,7 +116,7 @@ public class ScenarioAuthoringCallbackService {
                 "failure_code", failureCode,
                 "failure_message", failureMessage
         );
-        int updated = scenarioAuthoringJobMapper.failFromRunner(
+        int updated = scenarioAuthoringJobMapper.failBeforeRunner(
                 authoringJobId,
                 "[]",
                 toJson(failedValidation(failure)),

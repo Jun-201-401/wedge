@@ -105,6 +105,26 @@ public class RunPersistenceAdapter {
         return toResponse(record);
     }
 
+    public Optional<RunResponse> createRunIfAbsent(
+            RunCreateRequest request,
+            UUID createdBy,
+            String idempotencyKey,
+            String idempotencyRequestHash
+    ) {
+        RunRecord record = RunRecord.created(request, createdBy, idempotencyKey, idempotencyRequestHash);
+        Map<String, Object> scenarioPlan = request.scenarioPlan();
+        record.setScenarioPlanSchemaVersion(resolveScenarioPlanSchemaVersion(scenarioPlan));
+        record.setScenarioPlanJson(writeJsonOrEmpty(scenarioPlan));
+        int inserted = runMapper.insertIgnoreDuplicate(record);
+        if (inserted == 0) {
+            return Optional.empty();
+        }
+        if (hasScenarioPlan(scenarioPlan)) {
+            insertScenarioSteps(record.getId(), scenarioPlan);
+        }
+        return Optional.of(toResponse(record));
+    }
+
     public Optional<IdempotentRun> findRunByIdempotencyKey(UUID projectId, UUID createdBy, String idempotencyKey) {
         return runMapper.findByIdempotencyKey(projectId, createdBy, idempotencyKey)
                 .map(record -> new IdempotentRun(toResponse(record), record.getIdempotencyRequestHash()));

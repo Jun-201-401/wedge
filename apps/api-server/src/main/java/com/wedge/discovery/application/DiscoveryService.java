@@ -95,7 +95,7 @@ public class DiscoveryService {
         if (current.isEmpty() || current.get().getStatus() != DiscoveryStatus.QUEUED) {
             return Optional.empty();
         }
-        int updated = siteDiscoveryMapper.markFailed(discoveryId, failureCode, failureMessage, OffsetDateTime.now());
+        int updated = siteDiscoveryMapper.markQueuedFailed(discoveryId, failureCode, failureMessage, OffsetDateTime.now());
         if (updated == 0) {
             return Optional.empty();
         }

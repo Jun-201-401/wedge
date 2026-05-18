@@ -20,6 +20,16 @@ class RunMapperSqlTest {
     }
 
     @Test
+    void insertIgnoreDuplicateUsesConflictFreeInsertForCreateIdempotencyRace() throws IOException {
+        String statement = statement("insertIgnoreDuplicate", "insert");
+
+        assertThat(statement)
+                .contains("idempotency_key")
+                .contains("idempotency_request_hash")
+                .contains("ON CONFLICT DO NOTHING");
+    }
+
+    @Test
     void findByIdempotencyKeyScopesToProjectCreatorAndLiveRows() throws IOException {
         String statement = statement("findByIdempotencyKey", "select");
 

@@ -51,7 +51,7 @@ class ScenarioAuthoringCallbackServiceTest {
         ScenarioAuthoringJob failed = job(authoringJobId, ScenarioAuthoringStatus.FAILED);
         when(scenarioAuthoringJobMapper.findById(authoringJobId))
                 .thenReturn(Optional.of(queued), Optional.of(failed));
-        when(scenarioAuthoringJobMapper.failFromRunner(
+        when(scenarioAuthoringJobMapper.failBeforeRunner(
                 eq(authoringJobId),
                 eq("[]"),
                 anyString(),
@@ -69,7 +69,7 @@ class ScenarioAuthoringCallbackServiceTest {
         );
 
         assertThat(result).contains(failed);
-        verify(scenarioAuthoringJobMapper).failFromRunner(
+        verify(scenarioAuthoringJobMapper).failBeforeRunner(
                 eq(authoringJobId),
                 eq("[]"),
                 validationCaptor.capture(),
@@ -99,7 +99,7 @@ class ScenarioAuthoringCallbackServiceTest {
         );
 
         assertThat(result).isEmpty();
-        verify(scenarioAuthoringJobMapper, never()).failFromRunner(any(), anyString(), anyString(), anyString(), anyString());
+        verify(scenarioAuthoringJobMapper, never()).failBeforeRunner(any(), anyString(), anyString(), anyString(), anyString());
     }
 
     private Map<String, Object> readMap(String json) throws Exception {

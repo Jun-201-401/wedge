@@ -24,4 +24,6 @@ public interface AnalysisJobMapper {
     int markCompleted(AnalysisJob analysisJob);
 
     int markFailed(AnalysisJob analysisJob);
+
+    int markQueuedFailed(AnalysisJob analysisJob);
 }

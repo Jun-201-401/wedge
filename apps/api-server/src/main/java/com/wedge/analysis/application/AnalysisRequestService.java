@@ -111,7 +111,7 @@ public class AnalysisRequestService {
         failed.setFinishedAt(OffsetDateTime.now());
         failed.setErrorCode(errorCode);
         failed.setErrorMessage(errorMessage);
-        int updated = analysisJobMapper.markFailed(failed);
+        int updated = analysisJobMapper.markQueuedFailed(failed);
         if (updated == 0) {
             return Optional.empty();
         }

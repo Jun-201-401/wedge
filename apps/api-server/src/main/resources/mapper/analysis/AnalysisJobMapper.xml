@@ -89,4 +89,15 @@
           AND run_id = #{runId}
           AND status IN ('QUEUED', 'RUNNING')
     </update>
+
+    <update id="markQueuedFailed" parameterType="com.wedge.analysis.domain.AnalysisJob">
+        UPDATE analysis_job
+        SET status = #{status},
+            finished_at = #{finishedAt},
+            error_code = #{errorCode},
+            error_message = #{errorMessage}
+        WHERE id = #{id}
+          AND run_id = #{runId}
+          AND status = 'QUEUED'
+    </update>
 </mapper>

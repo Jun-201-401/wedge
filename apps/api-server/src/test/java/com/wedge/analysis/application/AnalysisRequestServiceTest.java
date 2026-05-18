@@ -250,7 +250,7 @@ class AnalysisRequestServiceTest {
         AnalysisJob queued = analysisJob(analysisJobId, runId, AnalysisJobStatus.QUEUED);
         AnalysisJob failed = analysisJob(analysisJobId, runId, AnalysisJobStatus.FAILED);
         when(analysisJobMapper.findById(analysisJobId)).thenReturn(Optional.of(queued), Optional.of(failed));
-        when(analysisJobMapper.markFailed(any(AnalysisJob.class))).thenReturn(1);
+        when(analysisJobMapper.markQueuedFailed(any(AnalysisJob.class))).thenReturn(1);
 
         Optional<AnalysisJob> result = analysisRequestService.markRequestFailedIfAwaitingAnalyzer(
                 analysisJobId,
@@ -260,7 +260,7 @@ class AnalysisRequestServiceTest {
         );
 
         assertThat(result).contains(failed);
-        verify(analysisJobMapper).markFailed(analysisJobCaptor.capture());
+        verify(analysisJobMapper).markQueuedFailed(analysisJobCaptor.capture());
         AnalysisJob captured = analysisJobCaptor.getValue();
         assertThat(captured.getId()).isEqualTo(analysisJobId);
         assertThat(captured.getRunId()).isEqualTo(runId);
@@ -285,7 +285,7 @@ class AnalysisRequestServiceTest {
         );
 
         assertThat(result).isEmpty();
-        verify(analysisJobMapper, never()).markFailed(any());
+        verify(analysisJobMapper, never()).markQueuedFailed(any());
         verify(runMapper, never()).updateCurrentAnalysisState(any(), any(), any(), any(), any());
     }
 

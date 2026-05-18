@@ -37,4 +37,11 @@ public interface SiteDiscoveryMapper {
             @Param("failureMessage") String failureMessage,
             @Param("finishedAt") OffsetDateTime finishedAt
     );
+
+    int markQueuedFailed(
+            @Param("id") UUID id,
+            @Param("failureCode") String failureCode,
+            @Param("failureMessage") String failureMessage,
+            @Param("finishedAt") OffsetDateTime finishedAt
+    );
 }

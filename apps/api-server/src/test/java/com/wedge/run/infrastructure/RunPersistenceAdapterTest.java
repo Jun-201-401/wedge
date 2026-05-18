@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -91,6 +92,40 @@ class RunPersistenceAdapterTest {
         assertThat(persisted.getCreatedBy()).isEqualTo(userId);
         assertThat(persisted.getIdempotencyKey()).isEqualTo("idem-run-1");
         assertThat(persisted.getIdempotencyRequestHash()).isEqualTo("a".repeat(64));
+    }
+
+    @Test
+    void createRunIfAbsentReturnsEmptyWithoutInsertingStepsWhenDuplicateExists() {
+        RunPersistenceAdapter runPersistenceAdapter = adapter();
+        RunCreateRequest request = sampleRequest();
+        when(runMapper.insertIgnoreDuplicate(any(RunRecord.class))).thenReturn(0);
+
+        Optional<RunResponse> created = runPersistenceAdapter.createRunIfAbsent(
+                request,
+                UUID.randomUUID(),
+                "idem-run-1",
+                "a".repeat(64)
+        );
+
+        assertThat(created).isEmpty();
+        verify(runMapper, never()).insertStep(any());
+    }
+
+    @Test
+    void createRunIfAbsentInsertsStepsOnlyForWinningInsert() {
+        RunPersistenceAdapter runPersistenceAdapter = adapter();
+        RunCreateRequest request = sampleRequest();
+        when(runMapper.insertIgnoreDuplicate(any(RunRecord.class))).thenReturn(1);
+
+        Optional<RunResponse> created = runPersistenceAdapter.createRunIfAbsent(
+                request,
+                UUID.randomUUID(),
+                "idem-run-1",
+                "a".repeat(64)
+        );
+
+        assertThat(created).isPresent();
+        verify(runMapper, times(2)).insertStep(runStepRecordCaptor.capture());
     }
 
 

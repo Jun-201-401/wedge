@@ -413,13 +413,13 @@ class RunServiceTest {
         ArgumentCaptor<String> requestHashCaptor = ArgumentCaptor.forClass(String.class);
         when(runPersistenceAdapter.findRunByIdempotencyKey(request.projectId(), USER_ID, "idem-run-1"))
                 .thenReturn(Optional.empty());
-        when(runPersistenceAdapter.createRun(any(RunCreateRequest.class), eq(USER_ID), eq("idem-run-1"), anyString()))
-                .thenReturn(created);
+        when(runPersistenceAdapter.createRunIfAbsent(any(RunCreateRequest.class), eq(USER_ID), eq("idem-run-1"), anyString()))
+                .thenReturn(Optional.of(created));
 
         RunResponse response = runService.createRun(request, USER_ID, "  idem-run-1  ");
 
         assertThat(response).isEqualTo(created);
-        verify(runPersistenceAdapter).createRun(
+        verify(runPersistenceAdapter).createRunIfAbsent(
                 any(RunCreateRequest.class),
                 eq(USER_ID),
                 eq("idem-run-1"),
@@ -439,7 +439,7 @@ class RunServiceTest {
         RunResponse response = runService.createRun(request, USER_ID, "idem-run-1");
 
         assertThat(response).isEqualTo(existingRun);
-        verify(runPersistenceAdapter, never()).createRun(any(RunCreateRequest.class), any(), any(), any());
+        verify(runPersistenceAdapter, never()).createRunIfAbsent(any(RunCreateRequest.class), any(), any(), any());
     }
 
     @Test
@@ -452,7 +452,26 @@ class RunServiceTest {
         assertThatThrownBy(() -> runService.createRun(request, USER_ID, "idem-run-1"))
                 .isInstanceOf(BusinessException.class)
                 .satisfies(exception -> assertThat(((BusinessException) exception).errorCode()).isEqualTo(ErrorCode.STATE_CONFLICT));
-        verify(runPersistenceAdapter, never()).createRun(any(RunCreateRequest.class), any(), any(), any());
+        verify(runPersistenceAdapter, never()).createRunIfAbsent(any(RunCreateRequest.class), any(), any(), any());
+    }
+
+    @Test
+    void createRunReplaysAfterConcurrentIdempotencyInsertWinsRace() throws Exception {
+        RunCreateRequest request = sampleRequest();
+        RunResponse existingRun = sampleRun(RunStatus.CREATED, ResultCompleteness.NONE);
+        String requestHash = requestHash(request);
+        when(runPersistenceAdapter.findRunByIdempotencyKey(request.projectId(), USER_ID, "idem-run-1"))
+                .thenReturn(
+                        Optional.empty(),
+                        Optional.of(new RunPersistenceAdapter.IdempotentRun(existingRun, requestHash))
+                );
+        when(runPersistenceAdapter.createRunIfAbsent(any(RunCreateRequest.class), eq(USER_ID), eq("idem-run-1"), eq(requestHash)))
+                .thenReturn(Optional.empty());
+
+        RunResponse response = runService.createRun(request, USER_ID, "idem-run-1");
+
+        assertThat(response).isEqualTo(existingRun);
+        verify(runPersistenceAdapter).createRunIfAbsent(any(RunCreateRequest.class), eq(USER_ID), eq("idem-run-1"), eq(requestHash));
     }
 
     @Test

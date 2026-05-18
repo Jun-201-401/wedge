@@ -24,7 +24,6 @@ import java.util.Set;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
-import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -76,15 +75,20 @@ public class RunService {
             return existing.response();
         }
 
-        try {
-            return runPersistenceAdapter.createRun(normalizedRequest, userId, normalizedIdempotencyKey, requestHash);
-        } catch (DuplicateKeyException exception) {
-            RunPersistenceAdapter.IdempotentRun racedExisting = runPersistenceAdapter
-                    .findRunByIdempotencyKey(normalizedRequest.projectId(), userId, normalizedIdempotencyKey)
-                    .orElseThrow(() -> exception);
-            requireSameIdempotentRequest(racedExisting, requestHash);
-            return racedExisting.response();
+        Optional<RunResponse> created = runPersistenceAdapter.createRunIfAbsent(
+                normalizedRequest,
+                userId,
+                normalizedIdempotencyKey,
+                requestHash
+        );
+        if (created.isPresent()) {
+            return created.get();
         }
+        RunPersistenceAdapter.IdempotentRun racedExisting = runPersistenceAdapter
+                .findRunByIdempotencyKey(normalizedRequest.projectId(), userId, normalizedIdempotencyKey)
+                .orElseThrow(() -> new BusinessException(ErrorCode.STATE_CONFLICT, "Run create idempotency conflict could not be resolved."));
+        requireSameIdempotentRequest(racedExisting, requestHash);
+        return racedExisting.response();
     }
 
     private String normalizeIdempotencyKey(String idempotencyKey) {

@@ -401,6 +401,23 @@ class RunnerCallbackLifecycleScenarioTest {
         }
 
         @Override
+        public int insertIgnoreDuplicate(RunRecord run) {
+            boolean duplicate = runs.values().stream()
+                    .filter(existing -> existing.getDeletedAt() == null)
+                    .anyMatch(existing ->
+                            Objects.equals(existing.getProjectId(), run.getProjectId())
+                                    && Objects.equals(existing.getCreatedBy(), run.getCreatedBy())
+                                    && Objects.equals(existing.getIdempotencyKey(), run.getIdempotencyKey())
+                                    && run.getIdempotencyKey() != null
+                    );
+            if (duplicate) {
+                return 0;
+            }
+            runs.put(run.getId(), run);
+            return 1;
+        }
+
+        @Override
         public int insertStep(RunStepRecord step) {
             steps.put(step.getId(), step);
             return 1;
