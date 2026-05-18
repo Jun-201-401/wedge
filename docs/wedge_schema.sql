@@ -374,9 +374,7 @@ CREATE TABLE evidence_packet (
     CHECK (
         (execution_type = 'RUN' AND run_id IS NOT NULL)
         OR (execution_type = 'DISCOVERY' AND discovery_id IS NOT NULL)
-    ),
-    UNIQUE (run_id, schema_version),
-    UNIQUE (discovery_id, schema_version)
+    )
 );
 
 -- ---------------------------------------------------------------------------
@@ -608,6 +606,12 @@ CREATE INDEX idx_observation_run_type ON observation(run_id, observation_type);
 CREATE INDEX idx_artifact_run_created ON artifact(source_type, run_id, created_at);
 
 CREATE INDEX idx_analysis_job_run_created ON analysis_job(run_id, created_at DESC);
+CREATE INDEX idx_evidence_packet_run_schema_created
+    ON evidence_packet(run_id, schema_version, created_at DESC)
+    WHERE run_id IS NOT NULL;
+CREATE INDEX idx_evidence_packet_discovery_schema_created
+    ON evidence_packet(discovery_id, schema_version, created_at DESC)
+    WHERE discovery_id IS NOT NULL;
 CREATE INDEX idx_rule_hit_run_priority ON rule_hit(run_id, priority_score DESC);
 CREATE INDEX idx_finding_run_rank ON analysis_finding(run_id, rank_order);
 CREATE INDEX idx_report_run_created ON report(run_id, created_at DESC) WHERE deleted_at IS NULL;

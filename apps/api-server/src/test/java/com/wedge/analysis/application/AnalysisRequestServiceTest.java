@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -120,6 +121,41 @@ class AnalysisRequestServiceTest {
         assertThat(message.payload()).doesNotContainKey("evidencePacket");
         verify(applicationEventPublisher).publishEvent(eventCaptor.capture());
         assertThat(eventCaptor.getValue().outboxMessageId()).isEqualTo(outboxMessageId);
+    }
+
+    @Test
+    void requestPrimaryAnalysisUsesExactMaterializedEvidencePacketIdForEachRequest() {
+        UUID runId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        UUID firstEvidencePacketId = UUID.randomUUID();
+        UUID secondEvidencePacketId = UUID.randomUUID();
+        RunResponse run = sampleRun(runId, RunStatus.COMPLETED);
+        when(runService.getRun(runId)).thenReturn(run);
+        when(evidenceService.materializeRunEvidencePacketSnapshot(runId)).thenReturn(
+                snapshot(firstEvidencePacketId, runId, 1, 1),
+                snapshot(secondEvidencePacketId, runId, 2, 2)
+        );
+        when(outboxMessagePersistenceAdapter.appendAnalysisRequestMessage(any(AnalysisRequestMessage.class), any(UUID.class)))
+                .thenReturn(UUID.randomUUID(), UUID.randomUUID());
+
+        AnalysisRequestResponse first = analysisRequestService.requestPrimaryAnalysis(runId, userId);
+        AnalysisRequestResponse second = analysisRequestService.requestPrimaryAnalysis(runId, userId);
+
+        assertThat(first.evidencePacketId()).isEqualTo(firstEvidencePacketId);
+        assertThat(second.evidencePacketId()).isEqualTo(secondEvidencePacketId);
+        assertThat(second.checkpointCount()).isEqualTo(2);
+        assertThat(second.artifactCount()).isEqualTo(2);
+
+        verify(analysisJobMapper, times(2)).insertQueued(analysisJobCaptor.capture());
+        assertThat(analysisJobCaptor.getAllValues())
+                .extracting(AnalysisJob::getEvidencePacketId)
+                .containsExactly(firstEvidencePacketId, secondEvidencePacketId);
+
+        verify(outboxMessagePersistenceAdapter, times(2))
+                .appendAnalysisRequestMessage(messageCaptor.capture(), any(UUID.class));
+        assertThat(messageCaptor.getAllValues())
+                .extracting(message -> message.payload().get("evidencePacketId"))
+                .containsExactly(firstEvidencePacketId.toString(), secondEvidencePacketId.toString());
     }
 
     @Test

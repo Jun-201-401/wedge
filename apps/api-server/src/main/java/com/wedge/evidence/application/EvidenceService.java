@@ -184,7 +184,7 @@ public class EvidenceService {
         snapshot.setCheckpointCount(checkpoints.size());
         snapshot.setObservationCount(observations.size());
         snapshot.setArtifactCount(artifacts.size());
-        return evidencePacketMapper.upsertRunSnapshot(snapshot);
+        return evidencePacketMapper.insertRunSnapshot(snapshot);
     }
 
     @Transactional(readOnly = true)
