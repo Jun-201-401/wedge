@@ -24,6 +24,7 @@ import com.wedge.discovery.infrastructure.SiteDiscoveryMapper;
 import com.wedge.project.application.DefaultProjectService;
 import com.wedge.project.application.ProjectAccessService;
 import java.net.URI;
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -176,6 +177,55 @@ class DiscoveryServiceTest {
         assertThat(response.projectId()).isEqualTo(PROJECT_ID);
         verify(projectAccessService).ensureProjectAccessible(PROJECT_ID, USER_ID);
         verify(defaultProjectService, never()).resolveDefaultProject(any(), any());
+    }
+
+    @Test
+    void markStartFailedIfAwaitingRunnerFailsQueuedDiscovery() {
+        UUID discoveryId = UUID.randomUUID();
+        SiteDiscovery queued = discovery(discoveryId, "https://example.com", "desktop", "{\"width\":1440,\"height\":900}");
+        queued.setStatus(DiscoveryStatus.QUEUED);
+        SiteDiscovery failed = discovery(discoveryId, "https://example.com", "desktop", "{\"width\":1440,\"height\":900}");
+        failed.setStatus(DiscoveryStatus.FAILED);
+        failed.setFailureCode("DISCOVERY_REQUEST_DEAD_LETTERED");
+        failed.setFailureMessage("Discovery request could not be delivered to Runner.");
+        when(siteDiscoveryMapper.findById(discoveryId)).thenReturn(Optional.of(queued), Optional.of(failed));
+        when(siteDiscoveryMapper.markFailed(
+                eq(discoveryId),
+                eq("DISCOVERY_REQUEST_DEAD_LETTERED"),
+                eq("Discovery request could not be delivered to Runner."),
+                any(OffsetDateTime.class)
+        )).thenReturn(1);
+
+        Optional<SiteDiscovery> result = discoveryService.markStartFailedIfAwaitingRunner(
+                discoveryId,
+                "DISCOVERY_REQUEST_DEAD_LETTERED",
+                "Discovery request could not be delivered to Runner."
+        );
+
+        assertThat(result).contains(failed);
+        verify(siteDiscoveryMapper).markFailed(
+                eq(discoveryId),
+                eq("DISCOVERY_REQUEST_DEAD_LETTERED"),
+                eq("Discovery request could not be delivered to Runner."),
+                any(OffsetDateTime.class)
+        );
+    }
+
+    @Test
+    void markStartFailedIfAwaitingRunnerDoesNotOverrideRunningDiscovery() {
+        UUID discoveryId = UUID.randomUUID();
+        SiteDiscovery running = discovery(discoveryId, "https://example.com", "desktop", "{\"width\":1440,\"height\":900}");
+        running.setStatus(DiscoveryStatus.RUNNING);
+        when(siteDiscoveryMapper.findById(discoveryId)).thenReturn(Optional.of(running));
+
+        Optional<SiteDiscovery> result = discoveryService.markStartFailedIfAwaitingRunner(
+                discoveryId,
+                "DISCOVERY_REQUEST_DEAD_LETTERED",
+                "Discovery request could not be delivered to Runner."
+        );
+
+        assertThat(result).isEmpty();
+        verify(siteDiscoveryMapper, never()).markFailed(any(), anyString(), anyString(), any());
     }
 
     private CreateDiscoveryRequest request(String url) {

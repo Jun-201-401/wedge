@@ -18,9 +18,11 @@ import com.wedge.discovery.infrastructure.SiteDiscoveryMapper;
 import com.wedge.project.application.DefaultProjectService;
 import com.wedge.project.application.ProjectAccessService;
 import java.net.URI;
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
@@ -85,6 +87,19 @@ public class DiscoveryService {
     public SiteDiscovery findDiscovery(UUID discoveryId) {
         return siteDiscoveryMapper.findById(discoveryId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_REQUEST, "Discovery was not found."));
+    }
+
+    @Transactional
+    public Optional<SiteDiscovery> markStartFailedIfAwaitingRunner(UUID discoveryId, String failureCode, String failureMessage) {
+        Optional<SiteDiscovery> current = siteDiscoveryMapper.findById(discoveryId);
+        if (current.isEmpty() || current.get().getStatus() != DiscoveryStatus.QUEUED) {
+            return Optional.empty();
+        }
+        int updated = siteDiscoveryMapper.markFailed(discoveryId, failureCode, failureMessage, OffsetDateTime.now());
+        if (updated == 0) {
+            return Optional.empty();
+        }
+        return siteDiscoveryMapper.findById(discoveryId);
     }
 
     private UUID resolveProjectId(CreateDiscoveryRequest request, UUID userId) {

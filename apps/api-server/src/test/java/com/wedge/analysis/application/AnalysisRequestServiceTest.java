@@ -25,6 +25,7 @@ import com.wedge.run.domain.RunStatus;
 import com.wedge.common.infrastructure.outbox.OutboxMessagePersistenceAdapter;
 import com.wedge.run.infrastructure.RunMapper;
 import java.net.URI;
+import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -242,6 +243,52 @@ class AnalysisRequestServiceTest {
         verify(applicationEventPublisher, never()).publishEvent(any());
     }
 
+    @Test
+    void markRequestFailedIfAwaitingAnalyzerFailsQueuedAnalysisJobAndRunState() {
+        UUID analysisJobId = UUID.randomUUID();
+        UUID runId = UUID.randomUUID();
+        AnalysisJob queued = analysisJob(analysisJobId, runId, AnalysisJobStatus.QUEUED);
+        AnalysisJob failed = analysisJob(analysisJobId, runId, AnalysisJobStatus.FAILED);
+        when(analysisJobMapper.findById(analysisJobId)).thenReturn(Optional.of(queued), Optional.of(failed));
+        when(analysisJobMapper.markFailed(any(AnalysisJob.class))).thenReturn(1);
+
+        Optional<AnalysisJob> result = analysisRequestService.markRequestFailedIfAwaitingAnalyzer(
+                analysisJobId,
+                runId,
+                "ANALYSIS_REQUEST_DEAD_LETTERED",
+                "Analysis request could not be delivered to Analyzer."
+        );
+
+        assertThat(result).contains(failed);
+        verify(analysisJobMapper).markFailed(analysisJobCaptor.capture());
+        AnalysisJob captured = analysisJobCaptor.getValue();
+        assertThat(captured.getId()).isEqualTo(analysisJobId);
+        assertThat(captured.getRunId()).isEqualTo(runId);
+        assertThat(captured.getStatus()).isEqualTo(AnalysisJobStatus.FAILED);
+        assertThat(captured.getErrorCode()).isEqualTo("ANALYSIS_REQUEST_DEAD_LETTERED");
+        assertThat(captured.getErrorMessage()).isEqualTo("Analysis request could not be delivered to Analyzer.");
+        verify(runMapper).updateCurrentAnalysisState(runId, AnalysisStatus.FAILED, analysisJobId, null, null);
+    }
+
+    @Test
+    void markRequestFailedIfAwaitingAnalyzerDoesNotOverrideRunningAnalysisJob() {
+        UUID analysisJobId = UUID.randomUUID();
+        UUID runId = UUID.randomUUID();
+        when(analysisJobMapper.findById(analysisJobId))
+                .thenReturn(Optional.of(analysisJob(analysisJobId, runId, AnalysisJobStatus.RUNNING)));
+
+        Optional<AnalysisJob> result = analysisRequestService.markRequestFailedIfAwaitingAnalyzer(
+                analysisJobId,
+                runId,
+                "ANALYSIS_REQUEST_DEAD_LETTERED",
+                "Analysis request could not be delivered to Analyzer."
+        );
+
+        assertThat(result).isEmpty();
+        verify(analysisJobMapper, never()).markFailed(any());
+        verify(runMapper, never()).updateCurrentAnalysisState(any(), any(), any(), any(), any());
+    }
+
     private EvidencePacketSnapshot snapshot(UUID evidencePacketId, UUID runId, int checkpointCount, int artifactCount) {
         EvidencePacketSnapshot snapshot = new EvidencePacketSnapshot();
         snapshot.setId(evidencePacketId);
@@ -271,6 +318,15 @@ class AnalysisRequestServiceTest {
         MockEnvironment environment = new MockEnvironment();
         environment.setActiveProfiles(activeProfiles);
         return environment;
+    }
+
+    private AnalysisJob analysisJob(UUID analysisJobId, UUID runId, AnalysisJobStatus status) {
+        AnalysisJob analysisJob = new AnalysisJob();
+        analysisJob.setId(analysisJobId);
+        analysisJob.setRunId(runId);
+        analysisJob.setJobType("PRIMARY");
+        analysisJob.setStatus(status);
+        return analysisJob;
     }
 
     private RunResponse sampleRun(UUID runId, RunStatus status) {

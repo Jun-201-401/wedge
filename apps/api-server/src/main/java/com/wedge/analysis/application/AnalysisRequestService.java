@@ -9,12 +9,14 @@ import com.wedge.evidence.application.EvidenceService;
 import com.wedge.evidence.domain.EvidencePacketSnapshot;
 import com.wedge.run.api.dto.RunResponse;
 import com.wedge.run.application.RunService;
+import com.wedge.run.domain.AnalysisStatus;
 import com.wedge.run.domain.AnalysisJobStatus;
 import com.wedge.run.domain.RunStatus;
 import com.wedge.common.infrastructure.outbox.OutboxMessagePersistenceAdapter;
 import com.wedge.run.infrastructure.RunMapper;
 import java.time.OffsetDateTime;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
@@ -81,6 +83,40 @@ public class AnalysisRequestService {
                 evidencePacket.getCheckpointCount(),
                 evidencePacket.getArtifactCount()
         );
+    }
+
+    @Transactional
+    public Optional<AnalysisJob> markRequestFailedIfAwaitingAnalyzer(
+            UUID analysisJobId,
+            UUID expectedRunId,
+            String errorCode,
+            String errorMessage
+    ) {
+        Optional<AnalysisJob> current = analysisJobMapper.findById(analysisJobId);
+        if (current.isEmpty()) {
+            return Optional.empty();
+        }
+        AnalysisJob existing = current.get();
+        if (expectedRunId != null && !expectedRunId.equals(existing.getRunId())) {
+            return Optional.empty();
+        }
+        if (existing.getStatus() != AnalysisJobStatus.QUEUED) {
+            return Optional.empty();
+        }
+
+        AnalysisJob failed = new AnalysisJob();
+        failed.setId(existing.getId());
+        failed.setRunId(existing.getRunId());
+        failed.setStatus(AnalysisJobStatus.FAILED);
+        failed.setFinishedAt(OffsetDateTime.now());
+        failed.setErrorCode(errorCode);
+        failed.setErrorMessage(errorMessage);
+        int updated = analysisJobMapper.markFailed(failed);
+        if (updated == 0) {
+            return Optional.empty();
+        }
+        runMapper.updateCurrentAnalysisState(existing.getRunId(), AnalysisStatus.FAILED, existing.getId(), null, null);
+        return analysisJobMapper.findById(existing.getId());
     }
 
     private AnalysisJob queuedAnalysisJob(UUID analysisJobId, UUID runId, UUID evidencePacketId) {

@@ -11,6 +11,7 @@ import com.wedge.scenarioauthoring.domain.ScenarioAuthoringStatus;
 import com.wedge.scenarioauthoring.infrastructure.ScenarioAuthoringJobMapper;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -98,6 +99,34 @@ public class ScenarioAuthoringCallbackService {
             throw new BusinessException(ErrorCode.STATE_CONFLICT, "ScenarioAuthoring job cannot be failed from its current state.");
         }
         return ScenarioAuthoringCallbackAckResponse.status(authoringJobId, ScenarioAuthoringStatus.FAILED);
+    }
+
+    @Transactional
+    public Optional<ScenarioAuthoringJob> markStartFailedIfAwaitingRunner(UUID authoringJobId, String failureCode, String failureMessage) {
+        Optional<ScenarioAuthoringJob> current = scenarioAuthoringJobMapper.findById(authoringJobId);
+        if (current.isEmpty() || !isAwaitingRunnerStatus(current.get().getStatus())) {
+            return Optional.empty();
+        }
+        Map<String, Object> failure = Map.of(
+                "failure_code", failureCode,
+                "failure_message", failureMessage
+        );
+        int updated = scenarioAuthoringJobMapper.failFromRunner(
+                authoringJobId,
+                "[]",
+                toJson(failedValidation(failure)),
+                toJson(Map.of("source", "dlq")),
+                toJson(failure)
+        );
+        if (updated == 0) {
+            return Optional.empty();
+        }
+        return scenarioAuthoringJobMapper.findById(authoringJobId);
+    }
+
+    private boolean isAwaitingRunnerStatus(ScenarioAuthoringStatus status) {
+        return status == ScenarioAuthoringStatus.CREATED
+                || status == ScenarioAuthoringStatus.QUEUED;
     }
 
     private ScenarioAuthoringCallbackAckResponse duplicateStatusResponse(String consumerName, String eventId, UUID authoringJobId) {
