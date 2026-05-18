@@ -74,7 +74,8 @@ public class DiscoveryCallbackService {
             return DiscoveryCallbackAckResponse.duplicateCheckpoints(discoveryId, command.checkpoints().size());
         }
 
-        discoveryService.findDiscovery(discoveryId);
+        SiteDiscovery discovery = discoveryService.findDiscovery(discoveryId);
+        rejectTerminalEvidence(discovery);
         int checkpointCount = checkpointPersistenceService.saveDiscoveryCheckpoints(discoveryId, command);
         return DiscoveryCallbackAckResponse.checkpoints(discoveryId, checkpointCount);
     }
@@ -131,6 +132,21 @@ public class DiscoveryCallbackService {
 
     private boolean isDuplicate(String consumerName, String eventId) {
         return !processedMessagePersistenceAdapter.tryMarkProcessed(consumerName, eventId);
+    }
+
+    private void rejectTerminalEvidence(SiteDiscovery discovery) {
+        if (isTerminalStatus(discovery.getStatus())) {
+            throw new BusinessException(
+                    ErrorCode.STATE_CONFLICT,
+                    "Discovery evidence cannot be accepted after the discovery is terminal."
+            );
+        }
+    }
+
+    private boolean isTerminalStatus(DiscoveryStatus status) {
+        return status == DiscoveryStatus.COMPLETED
+                || status == DiscoveryStatus.FAILED
+                || status == DiscoveryStatus.CANCELED;
     }
 
     private ScenarioRecommendation toScenarioRecommendation(UUID discoveryId, DiscoveryRecommendationCommand command) {

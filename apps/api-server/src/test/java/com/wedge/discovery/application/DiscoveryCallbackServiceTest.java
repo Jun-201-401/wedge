@@ -135,6 +135,36 @@ class DiscoveryCallbackServiceTest {
     }
 
     @Test
+    void checkpointCallbackRejectsLateEvidenceAfterDiscoveryIsTerminal() {
+        UUID discoveryId = UUID.randomUUID();
+        SaveRunCheckpointsCommand command = new SaveRunCheckpointsCommand(List.of(new SaveRunCheckpointCommand(
+                "cp_001",
+                "discovery",
+                "FIRST_VIEW",
+                Map.of("source", "discovery"),
+                Map.of("durationMs", 10, "status", "settled"),
+                10,
+                Map.of("url", "https://example.com"),
+                List.of(Map.of("type", "cta_candidate")),
+                List.of(),
+                List.of()
+        )));
+        when(processedMessagePersistenceAdapter.tryMarkProcessed("runner.discovery.checkpoints", "evt_late_checkpoint_001")).thenReturn(true);
+        when(discoveryService.findDiscovery(discoveryId)).thenReturn(discovery(discoveryId, DiscoveryStatus.COMPLETED));
+
+        assertThatThrownBy(() -> discoveryCallbackService.handleCheckpoints(
+                discoveryId,
+                WORKER_ID,
+                command,
+                headers("evt_late_checkpoint_001")
+        ))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Discovery evidence cannot be accepted after the discovery is terminal.");
+
+        verify(checkpointPersistenceService, never()).saveDiscoveryCheckpoints(discoveryId, command);
+    }
+
+    @Test
     void finishedCallbackPersistsRecommendationEvidenceSummary() {
         UUID discoveryId = UUID.randomUUID();
         Map<String, Object> evidenceSummary = Map.of(

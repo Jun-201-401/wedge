@@ -6277,6 +6277,16 @@ components:
           minimum: 0
         metadata:
           type: object
+          properties:
+            signed_url_status:
+              type: string
+              enum:
+              - failed
+              - skipped
+              description: Optional diagnostic when Spring could not attach a signed_url.
+            signed_url_reason:
+              type: string
+              description: Machine-readable reason for signed_url_status.
           additionalProperties: true
       required:
       - artifact_id

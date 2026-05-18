@@ -468,6 +468,42 @@ class RunnerCallbackServiceTest {
     }
 
     @Test
+    void checkpointCallbackRejectsLateEvidenceAfterRunIsTerminal() {
+        UUID runId = UUID.randomUUID();
+        when(processedMessagePersistenceAdapter.tryMarkProcessed("runner.checkpoints", "evt_late_checkpoint_001")).thenReturn(true);
+        when(runService.markRunningIfStarting(runId))
+                .thenReturn(sampleRun(runId, RunStatus.COMPLETED, ResultCompleteness.FINAL));
+
+        assertThatThrownBy(() -> runnerCallbackService.handleCheckpoints(
+                runId,
+                sampleCheckpointCommand(),
+                headers("evt_late_checkpoint_001")
+        ))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Run evidence cannot be accepted after the run is terminal.");
+
+        verifyNoInteractions(runPersistenceAdapter, checkpointPersistenceService);
+    }
+
+    @Test
+    void artifactCallbackRejectsLateEvidenceAfterRunIsTerminal() {
+        UUID runId = UUID.randomUUID();
+        when(processedMessagePersistenceAdapter.tryMarkProcessed("runner.artifacts", "evt_late_artifact_001")).thenReturn(true);
+        when(runService.markRunningIfStarting(runId))
+                .thenReturn(sampleRun(runId, RunStatus.FAILED, ResultCompleteness.PARTIAL));
+
+        assertThatThrownBy(() -> runnerCallbackService.handleArtifacts(
+                runId,
+                sampleArtifactCommand(),
+                headers("evt_late_artifact_001")
+        ))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Run evidence cannot be accepted after the run is terminal.");
+
+        verifyNoInteractions(runPersistenceAdapter, artifactPersistenceService);
+    }
+
+    @Test
     void duplicateAcceptedCallbackDoesNotTransitionRunAgain() {
         UUID runId = UUID.randomUUID();
         RunResponse current = sampleRun(runId, RunStatus.STARTING, ResultCompleteness.NONE);

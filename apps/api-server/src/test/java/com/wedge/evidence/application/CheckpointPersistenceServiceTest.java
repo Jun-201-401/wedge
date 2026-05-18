@@ -219,6 +219,23 @@ class CheckpointPersistenceServiceTest {
     }
 
     @Test
+    void saveDiscoveryCheckpointsSkipsAlreadyStoredCheckpointKey() {
+        UUID discoveryId = UUID.randomUUID();
+        UUID existingCheckpointId = UUID.randomUUID();
+        Checkpoint existingCheckpoint = new Checkpoint();
+        existingCheckpoint.setId(existingCheckpointId);
+        SaveRunCheckpointsCommand command = sampleCheckpointCommand();
+        when(checkpointMapper.insertDiscovery(any(Checkpoint.class))).thenReturn(0);
+        when(checkpointMapper.findByDiscoveryIdAndCheckpointKey(discoveryId, "checkpoint-response-1"))
+                .thenReturn(Optional.of(existingCheckpoint));
+
+        int savedCount = checkpointPersistenceService.saveDiscoveryCheckpoints(discoveryId, command);
+
+        assertThat(savedCount).isEqualTo(1);
+        verify(observationMapper, never()).insert(any());
+    }
+
+    @Test
     void saveRunCheckpointsRejectsConfidenceBelowZero() {
         SaveRunCheckpointsCommand command = new SaveRunCheckpointsCommand(List.of(
                 checkpointCommand("cp_invalid", "step_001", "CTA", List.of(Map.of(

@@ -1,5 +1,7 @@
 package com.wedge.run.application;
 
+import com.wedge.common.error.BusinessException;
+import com.wedge.common.error.ErrorCode;
 import com.wedge.common.infrastructure.ProcessedMessagePersistenceAdapter;
 import com.wedge.evidence.application.ArtifactPersistenceService;
 import com.wedge.evidence.application.CheckpointPersistenceService;
@@ -97,7 +99,8 @@ public class RunnerCallbackService {
             return RunnerCallbackAckResponse.duplicateCheckpoints(runId, command.checkpoints().size());
         }
 
-        runService.markRunningIfStarting(runId);
+        RunResponse run = runService.markRunningIfStarting(runId);
+        rejectTerminalEvidence(run);
         SaveRunCheckpointsCommand saveCommand = toSaveRunCheckpointsCommand(command);
         Map<String, UUID> stepIdsByKey = resolveCheckpointSteps(runId, saveCommand);
         SaveRunCheckpointsResult result = checkpointPersistenceService.saveRunCheckpoints(runId, saveCommand, stepIdsByKey);
@@ -115,7 +118,8 @@ public class RunnerCallbackService {
             return RunnerCallbackAckResponse.duplicateArtifacts(runId, command.artifacts().size());
         }
 
-        runService.markRunningIfStarting(runId);
+        RunResponse run = runService.markRunningIfStarting(runId);
+        rejectTerminalEvidence(run);
         SaveRunArtifactsCommand saveCommand = toSaveRunArtifactsCommand(command);
         Map<String, UUID> stepIdsByKey = resolveArtifactSteps(runId, saveCommand);
         int artifactCount = artifactPersistenceService.saveRunArtifacts(runId, saveCommand, stepIdsByKey);
@@ -330,6 +334,12 @@ public class RunnerCallbackService {
 
     private boolean isTerminalStatus(RunStatus status) {
         return status == RunStatus.COMPLETED || status == RunStatus.FAILED || status == RunStatus.STOPPED;
+    }
+
+    private void rejectTerminalEvidence(RunResponse run) {
+        if (isTerminalStatus(run.status())) {
+            throw new BusinessException(ErrorCode.STATE_CONFLICT, "Run evidence cannot be accepted after the run is terminal.");
+        }
     }
 
     private boolean isDuplicate(String consumerName, String eventId) {
