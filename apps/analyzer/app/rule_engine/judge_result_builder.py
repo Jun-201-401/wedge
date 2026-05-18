@@ -76,7 +76,7 @@ def analyze_evidence_packet(
                 "candidateCount": counting_provider.candidate_count,
                 "parallelEnabled": gms_parallel_config.enabled,
                 "maxConcurrency": gms_parallel_config.max_concurrency,
-                "failedCallCount": counting_provider.failed_call_count,
+                "unexpectedExceptionCount": counting_provider.unexpected_exception_count,
             },
         ):
             packet = LabelIntegrityResolver(counting_provider, parallel_config=gms_parallel_config).enrich_packet(packet)
@@ -95,7 +95,7 @@ def analyze_evidence_packet(
                 "candidateCount": counting_provider.candidate_count,
                 "parallelEnabled": gms_parallel_config.enabled,
                 "maxConcurrency": gms_parallel_config.max_concurrency,
-                "failedCallCount": counting_provider.failed_call_count,
+                "unexpectedExceptionCount": counting_provider.unexpected_exception_count,
             },
         ):
             packet = LabelRoleResolver(counting_provider, parallel_config=gms_parallel_config).enrich_packet(packet)
@@ -172,7 +172,7 @@ class _CountingLabelIntegrityProvider:
         self._lock = Lock()
         self.call_count = 0
         self.candidate_count = 0
-        self.failed_call_count = 0
+        self.unexpected_exception_count = 0
 
     def classify_label_integrity(
         self,
@@ -197,7 +197,7 @@ class _CountingLabelIntegrityProvider:
             )
         except Exception as exc:
             with self._lock:
-                self.failed_call_count += 1
+                self.unexpected_exception_count += 1
             self._emit_checkpoint_timing(
                 checkpoint_id=checkpoint_id,
                 candidate_count=len(candidates),
@@ -233,7 +233,7 @@ class _CountingLabelIntegrityProvider:
             status=status,
             error_type=error_type,
             extra={
-                "checkpointId": checkpoint_id,
+                "checkpointId": _safe_checkpoint_id(checkpoint_id),
                 "candidateCount": candidate_count,
                 "resultCount": result_count,
                 "parallelEnabled": self._parallel_config.enabled,
@@ -256,7 +256,7 @@ class _CountingLabelRoleProvider:
         self._lock = Lock()
         self.call_count = 0
         self.candidate_count = 0
-        self.failed_call_count = 0
+        self.unexpected_exception_count = 0
 
     def classify_label_roles(
         self,
@@ -281,7 +281,7 @@ class _CountingLabelRoleProvider:
             )
         except Exception as exc:
             with self._lock:
-                self.failed_call_count += 1
+                self.unexpected_exception_count += 1
             self._emit_checkpoint_timing(
                 checkpoint_id=checkpoint_id,
                 candidate_count=len(candidates),
@@ -317,7 +317,7 @@ class _CountingLabelRoleProvider:
             status=status,
             error_type=error_type,
             extra={
-                "checkpointId": checkpoint_id,
+                "checkpointId": _safe_checkpoint_id(checkpoint_id),
                 "candidateCount": candidate_count,
                 "resultCount": result_count,
                 "parallelEnabled": self._parallel_config.enabled,
@@ -346,6 +346,16 @@ def _phase_timer(
         return nullcontext()
     return phase_timer(context=timing_context, phase=phase, extra=extra)
 
+
+
+
+def _safe_checkpoint_id(value: str) -> str:
+    if not value or len(value) > 80:
+        return "unsafe_checkpoint_id"
+    for char in value:
+        if not (char.isalnum() or char in {"_", "-", ".", ":"}):
+            return "unsafe_checkpoint_id"
+    return value
 
 def _issues_from_hits(hits: list[RuleHit]) -> list[dict[str, Any]]:
     return [hit.to_issue(f"issue_{index:03d}") for index, hit in enumerate(hits, start=1)]

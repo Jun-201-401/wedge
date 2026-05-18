@@ -6,7 +6,7 @@ from dataclasses import dataclass
 GMS_LABEL_PARALLEL_ENABLED_ENV = "ANALYZER_GMS_LABEL_PARALLEL_ENABLED"
 GMS_LABEL_MAX_CONCURRENCY_ENV = "ANALYZER_GMS_LABEL_MAX_CONCURRENCY"
 DEFAULT_GMS_LABEL_MAX_CONCURRENCY = 2
-MAX_GMS_LABEL_MAX_CONCURRENCY = 8
+MAX_GMS_LABEL_MAX_CONCURRENCY = 2
 
 _TRUE_VALUES = {"1", "true", "yes", "y", "on"}
 _FALSE_VALUES = {"0", "false", "no", "n", "off", ""}
@@ -14,7 +14,12 @@ _FALSE_VALUES = {"0", "false", "no", "n", "off", ""}
 
 @dataclass(frozen=True)
 class GMSCheckpointParallelConfig:
-    """Controls opt-in checkpoint-level parallel GMS calls for label resolvers."""
+    """Controls opt-in checkpoint-level parallel GMS calls for label resolvers.
+
+    The concurrency cap is intentionally per analyzer process/phase and hard-limited
+    to 2 so deployment-level concurrency still remains bounded by replicas and MQ
+    prefetch rather than an accidentally large per-packet fanout.
+    """
 
     enabled: bool = False
     max_concurrency: int = DEFAULT_GMS_LABEL_MAX_CONCURRENCY

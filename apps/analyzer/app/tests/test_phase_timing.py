@@ -23,7 +23,7 @@ class PhaseTimingTest(unittest.TestCase):
                 "candidateCount": 9,
                 "parallelEnabled": True,
                 "maxConcurrency": 2,
-                "failedCallCount": 0,
+                "unexpectedExceptionCount": 0,
             },
             sink=lines.append,
         )
@@ -40,7 +40,7 @@ class PhaseTimingTest(unittest.TestCase):
         self.assertEqual(event["candidateCount"], 9)
         self.assertTrue(event["parallelEnabled"])
         self.assertEqual(event["maxConcurrency"], 2)
-        self.assertEqual(event["failedCallCount"], 0)
+        self.assertEqual(event["unexpectedExceptionCount"], 0)
 
     def test_emit_phase_timing_redacts_sensitive_extra_values(self) -> None:
         lines: list[str] = []
