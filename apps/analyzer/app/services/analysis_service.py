@@ -16,6 +16,7 @@ from app.providers.label_integrity import GMSLabelIntegrityProvider
 from app.providers.label_role import GMSLabelRoleProvider
 from app.rule_engine import analyze_evidence_packet, load_default_registry
 from app.services.llm_analysis import GMSReportExplainer
+from app.services.llm_analysis.gms_explainer import GMSReportExplainerTelemetry
 
 REFERENCE_FIELDS = ("label", "publisher", "title", "basisSummary", "url")
 
@@ -47,12 +48,16 @@ def analyze_packet(
             label_role_provider=GMSLabelRoleProvider.from_env(),
             timing_context=timing_context,
         )
+        report_explainer_telemetry = GMSReportExplainerTelemetry()
         with phase_timer(
             context=timing_context,
             phase="report_explainer",
-            extra=lambda: {"issueCount": len(judge_result.get("issues") or [])},
+            extra=lambda: {
+                "issueCount": len(judge_result.get("issues") or []),
+                **report_explainer_telemetry.to_phase_extra(),
+            },
         ):
-            return GMSReportExplainer.from_env().explain(judge_result)
+            return GMSReportExplainer.from_env().explain(judge_result, telemetry=report_explainer_telemetry)
 
 
 def analyze_packet_and_callback(
