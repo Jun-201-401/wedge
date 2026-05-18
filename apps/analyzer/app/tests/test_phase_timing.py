@@ -18,7 +18,13 @@ class PhaseTimingTest(unittest.TestCase):
             ),
             phase="fetch_evidence_packet",
             duration_ms=12.7,
-            extra={"checkpointCount": 3, "candidateCount": 9},
+            extra={
+                "checkpointCount": 3,
+                "candidateCount": 9,
+                "parallelEnabled": True,
+                "maxConcurrency": 2,
+                "failedCallCount": 0,
+            },
             sink=lines.append,
         )
 
@@ -32,6 +38,9 @@ class PhaseTimingTest(unittest.TestCase):
         self.assertEqual(event["evidencePacketId"], "packet-1")
         self.assertEqual(event["checkpointCount"], 3)
         self.assertEqual(event["candidateCount"], 9)
+        self.assertTrue(event["parallelEnabled"])
+        self.assertEqual(event["maxConcurrency"], 2)
+        self.assertEqual(event["failedCallCount"], 0)
 
     def test_emit_phase_timing_redacts_sensitive_extra_values(self) -> None:
         lines: list[str] = []
