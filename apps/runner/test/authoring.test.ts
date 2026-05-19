@@ -145,6 +145,34 @@ test("Runner ScenarioAuthoring does not auto-click volatile ranked content links
   assert.equal(steps[2]?.step_id, "step_003_recommended_target_checkpoint");
 });
 
+test("Runner ScenarioAuthoring clicks generic navigable landing targets for next-screen depth", async () => {
+  const message = parseScenarioAuthoringExecuteMessage(JSON.stringify(createScenarioAuthoringExecuteMessage({
+    requestedGoal: "랜딩 전환 버튼 점검 · 다음 화면까지 보기",
+    suggestedTarget: {
+      role: "link",
+      text: "https://www.daehanpack.co.kr/board/free/list.html?board_no=2",
+      selector: "a[href=\"/board/free/list.html?board_no=2\"]",
+      href_contains: "/board/free/list.html?board_no=2"
+    },
+    constraints: { depthId: "next-screen", depthTitle: "다음 화면까지 보기" }
+  })));
+  const config = createRunnerTestConfig();
+
+  const result = await executeScenarioAuthoring({ message, config });
+  const steps = result.candidates[0]?.scenario_plan.steps ?? [];
+
+  assert.equal(result.providerTrace[0]?.status, "SUCCEEDED");
+  assert.equal(result.validation.schema_valid, true);
+  assert.equal(result.validation.fit_requirements_valid, true);
+  assert.deepEqual(steps.map((step) => step.step_id), [
+    "step_001_goto",
+    "step_002_first_view_checkpoint",
+    "step_003_probe_recommended_target",
+    "step_004_destination_checkpoint"
+  ]);
+  assert.equal(steps[2]?.action.type, "click");
+});
+
 test("Runner ScenarioAuthoring probes checkout entrypoints before payment stop", async () => {
   const message = parseScenarioAuthoringExecuteMessage(JSON.stringify(createScenarioAuthoringExecuteMessage({
     requestedGoal: "구매/결제 흐름 점검 · 입력 양식까지 보기",
@@ -390,6 +418,86 @@ test("Runner ScenarioAuthoring sends Responses API payloads for responses endpoi
   assert.equal(result.candidates[0]?.candidate_id, "internal_llm_responses_landing_cta_001");
   assert.equal(result.providerTrace[0]?.provider_type, "INTERNAL_LLM");
   assert.equal(result.providerTrace[0]?.status, "SUCCEEDED");
+});
+
+test("Runner ScenarioAuthoring repairs unsupported LLM settle strategy aliases", async () => {
+  const message = parseScenarioAuthoringExecuteMessage(JSON.stringify(createScenarioAuthoringExecuteMessage({
+    requestedGoal: "랜딩 전환 버튼 점검 · 다음 화면까지 보기",
+    providerOrder: ["INTERNAL_LLM", "RULE_BASED"],
+    constraints: { depthId: "next-screen", depthTitle: "다음 화면까지 보기" }
+  })));
+  const config = createRunnerTestConfig({
+    scenarioAuthoringLlmEndpoint: "https://gms.example/v1/responses",
+    scenarioAuthoringLlmModel: "gpt-5.2"
+  });
+
+  const result = await executeScenarioAuthoring({
+    message,
+    config,
+    llmTransport: {
+      async complete(request) {
+        assert.equal(request.model, "gpt-5.2");
+        assert.match(JSON.stringify(request.payload), /settle_strategy_allowed_types/);
+        assert.match(JSON.stringify(request.payload), /network_idle/);
+        assert.match(JSON.stringify(request.payload), /locator_visible/);
+        return {
+          output_text: JSON.stringify({
+            candidate: {
+              candidate_id: "internal_llm_repaired_landing_cta_001",
+              confidence: 0.86,
+              rationale: "Smaller model emitted a legacy wait alias.",
+              evidence_refs: ["cp_001.cta_001"],
+              scenario_plan: {
+                schema_version: "0.5",
+                plan_id: "repaired-plan",
+                scenario_type: "custom_compiled",
+                source_discovery_id: "ignored",
+                goal: "ignored",
+                start_url: "https://attacker.example",
+                environment: {},
+                safety: {},
+                fit_requirements: {},
+                steps: [
+                  {
+                    step_id: "step_001_goto",
+                    stage: "FIRST_VIEW",
+                    description: "추천 시작 화면을 연다.",
+                    action: { type: "goto", target: "https://example.com" },
+                    settle_strategy: { type: "network_idle", timeout_ms: 3000 },
+                    checkpoint: true
+                  },
+                  {
+                    step_id: "step_002_wait_for_cta",
+                    stage: "CTA",
+                    description: "CTA가 보일 때까지 기다린다.",
+                    action: { type: "wait_for", target: { text: "문의하기" } },
+                    settle_strategy: { type: "wait_for_cta", timeout_ms: 3000, target: { text: "문의하기" } },
+                    checkpoint: false
+                  },
+                  {
+                    step_id: "step_003_cta_checkpoint",
+                    stage: "CTA",
+                    description: "CTA 근거를 기록한다.",
+                    action: { type: "checkpoint" },
+                    settle_strategy: { type: "none", timeout_ms: 0 },
+                    checkpoint: true
+                  }
+                ]
+              }
+            }
+          })
+        };
+      }
+    }
+  });
+
+  const steps = result.candidates[0]?.scenario_plan.steps ?? [];
+
+  assert.equal(result.candidates[0]?.candidate_id, "internal_llm_repaired_landing_cta_001");
+  assert.equal(result.providerTrace[0]?.provider_type, "INTERNAL_LLM");
+  assert.equal(result.providerTrace[0]?.model_or_agent, "gpt-5.2");
+  assert.equal(result.providerTrace[0]?.status, "SUCCEEDED");
+  assert.equal(steps[1]?.settle_strategy.type, "locator_visible");
 });
 
 test("Runner ScenarioAuthoring rejects shallow INTERNAL_LLM form-depth plans and falls back to RULE_BASED", async () => {

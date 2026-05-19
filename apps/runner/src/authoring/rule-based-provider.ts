@@ -40,7 +40,8 @@ export function createRuleBasedScenarioAuthoringResult(
     candidateId,
     evidenceRefs,
     suggestedTarget: selectedRecommendation?.suggested_target ?? null,
-    firstViewOnly: isFirstViewOnlyDepth(depthId, message.payload.requestedGoal)
+    firstViewOnly: isFirstViewOnlyDepth(depthId, message.payload.requestedGoal),
+    depthId
   });
   const candidateValidation = validateScenarioPlanCandidate(
     scenarioPlan,
@@ -97,7 +98,8 @@ function createScenarioPlan({
   candidateId,
   evidenceRefs,
   suggestedTarget,
-  firstViewOnly
+  firstViewOnly,
+  depthId
 }: {
   message: ScenarioAuthoringExecuteMessage;
   scenarioType: DiscoveryFlowType;
@@ -106,6 +108,7 @@ function createScenarioPlan({
   evidenceRefs: string[];
   suggestedTarget: TargetDescriptorMap | null;
   firstViewOnly: boolean;
+  depthId: ScenarioDepthId | null;
 }): ScenarioPlan {
   return {
     schema_version: "0.5",
@@ -128,7 +131,7 @@ function createScenarioPlan({
       minimum_confidence: 0.5,
       required_evidence_refs: evidenceRefs
     },
-    steps: stepsFor(scenarioType, startUrl, suggestedTarget, firstViewOnly)
+    steps: stepsFor(scenarioType, startUrl, suggestedTarget, firstViewOnly, depthId)
   };
 }
 
@@ -136,9 +139,11 @@ function stepsFor(
   scenarioType: DiscoveryFlowType,
   startUrl: string,
   suggestedTarget: TargetDescriptorMap | null,
-  firstViewOnly: boolean
+  firstViewOnly: boolean,
+  depthId: ScenarioDepthId | null
 ): ScenarioStep[] {
   const stableSuggestedTarget = stabilizeSuggestedTarget(suggestedTarget, startUrl);
+  const requiresNextScreenAdvance = depthId === "next-screen" || depthId === "form-depth";
   const steps: ScenarioStep[] = [
     step("step_001_goto", "FIRST_VIEW", "추천된 시작 화면을 열어 첫 화면을 확인한다.", { type: "goto", target: startUrl }, "network_idle", true),
     step("step_002_first_view_checkpoint", "FIRST_VIEW", "첫 화면에서 핵심 맥락과 주요 진입점을 기록한다.", { type: "checkpoint" }, "none", true)
@@ -219,7 +224,7 @@ function stepsFor(
       );
     }
   } else if (stableSuggestedTarget && Object.keys(stableSuggestedTarget).length > 0 && scenarioType !== "CONTENT_ONLY") {
-    if (shouldClickSuggestedTarget(scenarioType, stableSuggestedTarget)) {
+    if (shouldClickSuggestedTarget(scenarioType, stableSuggestedTarget, depthId)) {
       steps.push(
         step(
           "step_003_probe_recommended_target",
@@ -234,6 +239,25 @@ function stepsFor(
           stageFor(scenarioType),
           "이동 후 도착 화면의 맥락과 다음 행동을 기록한다.",
           { type: "checkpoint" },
+          "none",
+          true
+        )
+      );
+    } else if (requiresNextScreenAdvance) {
+      steps.push(
+        step(
+          "step_003_scan_for_safe_entrypoint",
+          stageFor(scenarioType),
+          "추천 진입점을 자동 클릭하지 않고 다음 화면 후보를 찾기 위해 안전하게 화면을 탐색한다.",
+          { type: "scroll", value: 700 },
+          "fixed_short",
+          false
+        ),
+        step(
+          "step_004_safe_entrypoint_scan_checkpoint",
+          stageFor(scenarioType),
+          "탐색 후 화면에서 목표 관련 진입점과 다음 행동 후보를 기록한다.",
+          { type: "checkpoint", target: stableSuggestedTarget },
           "none",
           true
         )
@@ -412,7 +436,11 @@ function allowsRuleBasedClick(scenarioType: DiscoveryFlowType): boolean {
   return scenarioType === "LANDING_CTA" || scenarioType === "PRICING";
 }
 
-function shouldClickSuggestedTarget(scenarioType: DiscoveryFlowType, target: TargetDescriptorMap): boolean {
+function shouldClickSuggestedTarget(
+  scenarioType: DiscoveryFlowType,
+  target: TargetDescriptorMap,
+  depthId: ScenarioDepthId | null = null
+): boolean {
   if (!allowsRuleBasedClick(scenarioType)) {
     return false;
   }
@@ -426,7 +454,7 @@ function shouldClickSuggestedTarget(scenarioType: DiscoveryFlowType, target: Tar
     return false;
   }
 
-  return hasAny(searchable, [
+  if (hasAny(searchable, [
     "get started",
     "sign up",
     "signup",
@@ -437,7 +465,17 @@ function shouldClickSuggestedTarget(scenarioType: DiscoveryFlowType, target: Tar
     "회원가입",
     "가입",
     "체험"
-  ]);
+  ])) {
+    return true;
+  }
+
+  return depthId === "next-screen" && hasNavigableTarget(target);
+}
+
+function hasNavigableTarget(target: TargetDescriptorMap): boolean {
+  return typeof target.url === "string"
+    || typeof target.href_contains === "string"
+    || (typeof target.selector === "string" && /\ba\s*\[href=/i.test(target.selector));
 }
 
 function isVolatileContentTarget(searchable: string): boolean {

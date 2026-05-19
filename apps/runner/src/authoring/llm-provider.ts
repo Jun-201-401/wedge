@@ -20,6 +20,20 @@ import {
 } from "./rule-based-provider.ts";
 
 export const SCENARIO_AUTHORING_LLM_PROMPT_VERSION = "scenario-authoring-llm-v1";
+const SUPPORTED_SETTLE_STRATEGY_TYPES = [
+  "network_idle",
+  "locator_visible",
+  "response",
+  "url_change",
+  "spinner_hidden",
+  "item_count_change",
+  "fixed_short",
+  "none"
+] as const satisfies readonly ScenarioPlan["steps"][number]["settle_strategy"]["type"][];
+
+type ScenarioPlanStep = ScenarioPlan["steps"][number];
+type ScenarioSettleStrategy = ScenarioPlanStep["settle_strategy"];
+type ScenarioSettleStrategyType = ScenarioSettleStrategy["type"];
 
 export interface ScenarioAuthoringLlmRequest {
   endpoint: string;
@@ -256,6 +270,12 @@ function createScenarioAuthoringLlmRequestPayload(
               settle_strategy: { type: "network_idle", timeout_ms: 3000 },
               checkpoint: true
             }
+          ],
+          settle_strategy_allowed_types: SUPPORTED_SETTLE_STRATEGY_TYPES,
+          settle_strategy_rules: [
+            "Use only settle_strategy.type values from settle_strategy_allowed_types.",
+            "Do not invent wait_for_cta, wait_for_selector, page_load, dom_stable, load, or similar custom settle types.",
+            "Use network_idle after goto or ordinary click navigation, locator_visible only when a concrete target locator is supplied, fixed_short for scroll or generic wait, and none for checkpoint/stop_when."
           ]
         },
         confidence: "0..1",
@@ -269,6 +289,8 @@ function createScenarioAuthoringLlmRequestPayload(
     "Return only JSON for a Wedge ScenarioAuthoring candidate.",
     "Create one safe, deterministic ScenarioPlan candidate from Discovery evidence and user goal.",
     "Use only ScenarioPlan actions: goto, click, scroll, fill, select, wait_for, checkpoint, stop_when.",
+    `Use only ScenarioPlan settle_strategy.type values: ${SUPPORTED_SETTLE_STRATEGY_TYPES.join(", ")}.`,
+    "Never emit custom settle_strategy.type values such as wait_for_cta, wait_for_selector, page_load, dom_stable, load, or settled.",
     "Never include credentials, real payment commit, destructive actions, arbitrary JavaScript, shell commands, or invented external URLs.",
     "Prefer evidence-backed targets from selectedRecommendation.suggested_target.",
     "For purchase or form flows, stop before real payment or real submit.",
@@ -347,10 +369,11 @@ function normalizeScenarioPlan(
   message: ScenarioAuthoringExecuteMessage,
   context: AuthoringContext
 ): ScenarioPlan {
-  const steps = rawPlan.steps;
-  if (!Array.isArray(steps) || steps.length === 0) {
+  const rawSteps = rawPlan.steps;
+  if (!Array.isArray(rawSteps) || rawSteps.length === 0) {
     throw new ScenarioAuthoringLlmValidationError("ScenarioAuthoring LLM scenario_plan.steps must be a non-empty array");
   }
+  const steps = normalizeScenarioSteps(rawSteps);
 
   const plan = {
     ...rawPlan,
@@ -372,6 +395,93 @@ function normalizeScenarioPlan(
   };
 
   return plan as ScenarioPlan;
+}
+
+function normalizeScenarioSteps(rawSteps: unknown[]): ScenarioPlanStep[] {
+  return rawSteps.map((rawStep) => {
+    if (!isRecord(rawStep)) {
+      return rawStep as ScenarioPlanStep;
+    }
+
+    const action = isRecord(rawStep.action) ? rawStep.action : {};
+    const actionType = typeof action.type === "string" ? action.type : null;
+    const settleStrategy = normalizeSettleStrategy(rawStep.settle_strategy, actionType);
+
+    return {
+      ...rawStep,
+      settle_strategy: settleStrategy
+    } as ScenarioPlanStep;
+  });
+}
+
+function normalizeSettleStrategy(value: unknown, actionType: string | null): ScenarioSettleStrategy {
+  const raw = isRecord(value) ? value : {};
+  const rawType = typeof raw.type === "string" ? raw.type : null;
+  const type = resolveSettleStrategyType(rawType, raw, actionType);
+  const timeoutMs = typeof raw.timeout_ms === "number" && raw.timeout_ms >= 0
+    ? raw.timeout_ms
+    : defaultSettleTimeoutMs(type);
+
+  return {
+    ...raw,
+    type,
+    timeout_ms: timeoutMs
+  } as ScenarioSettleStrategy;
+}
+
+function resolveSettleStrategyType(
+  rawType: string | null,
+  rawSettleStrategy: Record<string, unknown>,
+  actionType: string | null
+): ScenarioSettleStrategyType {
+  if (rawType && isSupportedSettleStrategyType(rawType)) {
+    return rawType;
+  }
+
+  const normalized = (rawType ?? "").trim().toLowerCase().replaceAll(/[\s-]+/g, "_");
+  if (normalized === "wait_for_cta"
+    || normalized === "wait_for_selector"
+    || normalized === "selector_visible"
+    || normalized === "element_visible"
+    || normalized === "visible"
+    || normalized === "wait_until_visible") {
+    return isRecord(rawSettleStrategy.target) || typeof rawSettleStrategy.target === "string"
+      ? "locator_visible"
+      : fallbackSettleStrategyType(actionType);
+  }
+  if (normalized === "wait_for_url" || normalized === "url_changed" || normalized === "url") {
+    return "url_change";
+  }
+  if (normalized === "page_load" || normalized === "load" || normalized === "loaded") {
+    return "network_idle";
+  }
+  if (normalized === "dom_stable"
+    || normalized === "settled"
+    || normalized === "sleep"
+    || normalized === "delay"
+    || normalized === "wait") {
+    return "fixed_short";
+  }
+
+  return fallbackSettleStrategyType(actionType);
+}
+
+function isSupportedSettleStrategyType(value: string): value is ScenarioSettleStrategyType {
+  return SUPPORTED_SETTLE_STRATEGY_TYPES.includes(value as ScenarioSettleStrategyType);
+}
+
+function fallbackSettleStrategyType(actionType: string | null): ScenarioSettleStrategyType {
+  if (actionType === "checkpoint" || actionType === "stop_when") {
+    return "none";
+  }
+  if (actionType === "scroll" || actionType === "wait_for") {
+    return "fixed_short";
+  }
+  return "network_idle";
+}
+
+function defaultSettleTimeoutMs(type: ScenarioSettleStrategyType): number {
+  return type === "none" ? 0 : 3_000;
 }
 
 function normalizeFitRequirements(value: unknown, context: AuthoringContext): NonNullable<ScenarioPlan["fit_requirements"]> {
