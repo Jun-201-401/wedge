@@ -26,6 +26,7 @@ const DEFAULT_AGENT_IDEMPOTENCY_LEASE_TTL_MS = 300_000;
 const DEFAULT_AGENT_IDEMPOTENCY_RENEW_INTERVAL_MS = 60_000;
 const MIN_AGENT_IDEMPOTENCY_RENEW_INTERVAL_MS = 1_000;
 const DEFAULT_METRICS_PORT = 9101;
+const DEFAULT_REPORT_PDF_RENDERER_PORT = 9102;
 export const RUNNER_MQ_CALLBACK_OUTBOX_WORKER_ENABLED_ENV = "RUNNER_MQ_CALLBACK_OUTBOX_WORKER_ENABLED";
 export const RUNNER_MQ_ARTIFACT_OUTBOX_WORKER_ENABLED_ENV = "RUNNER_MQ_ARTIFACT_OUTBOX_WORKER_ENABLED";
 
@@ -102,6 +103,10 @@ export interface RunnerConfig {
   metricsEnabled: boolean;
   metricsHost: string;
   metricsPort: number;
+  reportPdfRendererEnabled: boolean;
+  reportPdfRendererHost: string;
+  reportPdfRendererPort: number;
+  reportPdfRendererAuthToken?: string;
 }
 
 export function loadRunnerConfig(overrides: Partial<RunnerConfig> = {}): RunnerConfig {
@@ -284,6 +289,16 @@ export function loadRunnerConfig(overrides: Partial<RunnerConfig> = {}): RunnerC
     process.env.RUNNER_METRICS_PORT,
     DEFAULT_METRICS_PORT
   );
+  const reportPdfRendererEnabled = parseBoolean(
+    overrides.reportPdfRendererEnabled,
+    process.env.RUNNER_REPORT_PDF_RENDERER_ENABLED,
+    false
+  );
+  const reportPdfRendererPort = parsePositiveInteger(
+    overrides.reportPdfRendererPort,
+    process.env.RUNNER_REPORT_PDF_RENDERER_PORT,
+    DEFAULT_REPORT_PDF_RENDERER_PORT
+  );
 
   return {
     serviceName,
@@ -387,7 +402,11 @@ export function loadRunnerConfig(overrides: Partial<RunnerConfig> = {}): RunnerC
     agentMcpGatewayTimeoutMs,
     metricsEnabled,
     metricsHost: overrides.metricsHost ?? process.env.RUNNER_METRICS_HOST ?? "0.0.0.0",
-    metricsPort
+    metricsPort,
+    reportPdfRendererEnabled,
+    reportPdfRendererHost: overrides.reportPdfRendererHost ?? process.env.RUNNER_REPORT_PDF_RENDERER_HOST ?? "0.0.0.0",
+    reportPdfRendererPort,
+    reportPdfRendererAuthToken: overrides.reportPdfRendererAuthToken ?? process.env.RUNNER_REPORT_PDF_RENDERER_AUTH_TOKEN ?? undefined
   };
 }
 

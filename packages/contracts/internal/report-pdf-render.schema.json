@@ -1,0 +1,252 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wedge.example.com/contracts/internal/report-pdf-render.schema.json",
+  "title": "Report PDF Render Payload",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "document": {
+      "$ref": "#/$defs/ReportDownloadDocument"
+    },
+    "candidateImages": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/CandidateImage"
+      }
+    }
+  },
+  "required": [
+    "document",
+    "candidateImages"
+  ],
+  "$defs": {
+    "ReportDownloadDocument": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "reportId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "runId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "targetUrl": {
+          "type": "string",
+          "minLength": 1
+        },
+        "goal": {
+          "type": "string"
+        },
+        "createdAt": {
+          "type": "string"
+        },
+        "totalSteps": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "findingCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "durationLabel": {
+          "type": "string"
+        },
+        "candidates": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Candidate"
+          }
+        },
+        "flowGuides": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/FlowGuide"
+          }
+        }
+      },
+      "required": [
+        "reportId",
+        "runId",
+        "targetUrl",
+        "goal",
+        "createdAt",
+        "totalSteps",
+        "findingCount",
+        "durationLabel",
+        "candidates",
+        "flowGuides"
+      ]
+    },
+    "Candidate": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "order": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "title": {
+          "type": "string"
+        },
+        "stage": {
+          "type": "string"
+        },
+        "problemSummary": {
+          "type": "string"
+        },
+        "improvementDirection": {
+          "type": "string"
+        },
+        "judgementBasis": {
+          "type": "string"
+        },
+        "references": {
+          "type": "array"
+        }
+      },
+      "required": [
+        "order",
+        "title",
+        "stage",
+        "problemSummary",
+        "improvementDirection",
+        "judgementBasis",
+        "references"
+      ]
+    },
+    "FlowGuide": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "label": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "reference": {
+          "type": "object"
+        }
+      },
+      "required": [
+        "label",
+        "description",
+        "reference"
+      ]
+    },
+    "CandidateImage": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "candidateOrder": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "image": {
+          "$ref": "#/$defs/ProblemImage"
+        }
+      },
+      "required": [
+        "candidateOrder",
+        "image"
+      ]
+    },
+    "ProblemImage": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "mimeType": {
+          "type": "string",
+          "minLength": 1
+        },
+        "dataUri": {
+          "type": "string",
+          "minLength": 1
+        },
+        "width": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "height": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "crop": {
+          "$ref": "#/$defs/Crop"
+        },
+        "marker": {
+          "$ref": "#/$defs/Marker"
+        }
+      },
+      "required": [
+        "title",
+        "mimeType",
+        "dataUri",
+        "width",
+        "height",
+        "crop",
+        "marker"
+      ]
+    },
+    "Crop": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "x": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "y": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "width": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "height": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "required": [
+        "x",
+        "y",
+        "width",
+        "height"
+      ]
+    },
+    "Marker": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "x": {
+          "type": "number"
+        },
+        "y": {
+          "type": "number"
+        },
+        "width": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "height": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        }
+      },
+      "required": [
+        "x",
+        "y",
+        "width",
+        "height"
+      ]
+    }
+  }
+}

@@ -58,6 +58,11 @@ wedge:
     share-default-expiration-minutes: ${WEDGE_REPORT_SHARE_DEFAULT_EXPIRATION_MINUTES:10}
     public-base-url: ${WEDGE_PUBLIC_BASE_URL:http://localhost:8080}
     project-access-check-enabled: ${WEDGE_REPORT_PROJECT_ACCESS_CHECK_ENABLED:true}
+    pdf:
+      renderer:
+        base-url: ${WEDGE_REPORT_PDF_RENDERER_BASE_URL:http://localhost:19102}
+        timeout-ms: ${WEDGE_REPORT_PDF_RENDERER_TIMEOUT_MS:30000}
+        auth-token: ${WEDGE_REPORT_PDF_RENDERER_AUTH_TOKEN:${INTERNAL_SERVICE_TOKEN:}}
   analysis:
     project-access-check-enabled: ${WEDGE_ANALYSIS_PROJECT_ACCESS_CHECK_ENABLED:true}
   rabbitmq:

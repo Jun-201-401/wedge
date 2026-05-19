@@ -6,6 +6,7 @@ import {
   RUNNER_MQ_CALLBACK_OUTBOX_WORKER_ENABLED_ENV
 } from "./config/index.ts";
 import { startRunnerMetricsServer, type RunnerMetricsServer } from "./observability/metrics.ts";
+import { startReportPdfRendererServer, type ReportPdfRendererServer } from "./report-pdf/server.ts";
 
 interface CliOptions {
   messageFile?: string;
@@ -28,8 +29,9 @@ try {
 
     if (cliOptions.watchArtifactOutbox) {
       const metricsServer = startMetricsServerForLongRunningMode(app.config);
+      const reportPdfServer = startReportPdfServerForLongRunningMode(app.config);
       const worker = await app.startArtifactOutboxReplayWorker();
-      registerShutdownHooks(() => closeLongRunningResources(worker.close, metricsServer));
+      registerShutdownHooks(() => closeLongRunningResources(worker.close, metricsServer, reportPdfServer));
 
       console.log(
         JSON.stringify(
@@ -64,8 +66,9 @@ try {
       );
     } else if (cliOptions.watchOutbox) {
       const metricsServer = startMetricsServerForLongRunningMode(app.config);
+      const reportPdfServer = startReportPdfServerForLongRunningMode(app.config);
       const worker = await app.startCallbackOutboxReplayWorker();
-      registerShutdownHooks(() => closeLongRunningResources(worker.close, metricsServer));
+      registerShutdownHooks(() => closeLongRunningResources(worker.close, metricsServer, reportPdfServer));
 
       console.log(
         JSON.stringify(
@@ -100,8 +103,9 @@ try {
       );
     } else if (cliOptions.consumeMq || app.config.mqConsumerEnabled) {
       const metricsServer = startMetricsServerForLongRunningMode(app.config);
+      const reportPdfServer = startReportPdfServerForLongRunningMode(app.config);
       const runtime = await app.startMqRuntime();
-      registerShutdownHooks(() => closeLongRunningResources(runtime.close, metricsServer));
+      registerShutdownHooks(() => closeLongRunningResources(runtime.close, metricsServer, reportPdfServer));
 
       console.log(
         JSON.stringify(
@@ -327,10 +331,16 @@ function startMetricsServerForLongRunningMode(config: ReturnType<typeof createRu
   return startRunnerMetricsServer(config);
 }
 
+function startReportPdfServerForLongRunningMode(config: ReturnType<typeof createRunnerApp>["config"]): ReportPdfRendererServer | null {
+  return startReportPdfRendererServer(config);
+}
+
 async function closeLongRunningResources(
   closePrimary: () => Promise<void>,
-  metricsServer: RunnerMetricsServer | null
+  metricsServer: RunnerMetricsServer | null,
+  reportPdfServer: ReportPdfRendererServer | null
 ): Promise<void> {
   await closePrimary();
+  await reportPdfServer?.close();
   await metricsServer?.close();
 }

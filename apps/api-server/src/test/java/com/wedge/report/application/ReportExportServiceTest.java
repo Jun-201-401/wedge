@@ -21,6 +21,7 @@ import com.wedge.report.api.dto.ReportDetailFindingResponse;
 import com.wedge.report.api.dto.ReportDetailNudgeResponse;
 import com.wedge.report.api.dto.ReportDetailResponse;
 import com.wedge.report.api.dto.ReportExportResponse;
+import com.wedge.report.api.dto.ReportFindingHighlightResponse;
 import com.wedge.report.domain.Report;
 import com.wedge.report.domain.ReportFormat;
 import com.wedge.report.infrastructure.ReportMapper;
@@ -32,11 +33,11 @@ import com.wedge.run.domain.ResultCompleteness;
 import com.wedge.run.domain.RunStatus;
 import java.math.BigDecimal;
 import java.net.URI;
+import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
-import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -48,6 +49,10 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Captor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.support.AbstractPlatformTransactionManager;
+import org.springframework.transaction.support.DefaultTransactionStatus;
+import org.springframework.transaction.support.TransactionTemplate;
 
 @ExtendWith(MockitoExtension.class)
 class ReportExportServiceTest {
@@ -95,8 +100,10 @@ class ReportExportServiceTest {
                 artifactPersistenceService,
                 artifactContentWriter,
                 reportDetailQueryService,
-                new ReportMarkdownRenderer(),
-                Clock.fixed(FIXED_INSTANT, ZoneOffset.UTC)
+                new ReportMarkdownRenderer(new ReportDownloadDocumentBuilder()),
+                new TestReportPdfRenderer(),
+                Clock.fixed(FIXED_INSTANT, ZoneOffset.UTC),
+                transactionTemplate()
         );
     }
 
@@ -123,7 +130,7 @@ class ReportExportServiceTest {
         verify(artifactContentWriter).save(artifactCaptor.capture(), contentCaptor.capture());
         verify(artifactPersistenceService).saveRunArtifacts(org.mockito.Mockito.eq(runId), artifactsCommandCaptor.capture());
         UUID expectedArtifactId = UUID.nameUUIDFromBytes(
-                ("report-export:" + reportId + ":MARKDOWN").getBytes(StandardCharsets.UTF_8)
+                ("report-export:screen-v8:" + reportId + ":MARKDOWN").getBytes(StandardCharsets.UTF_8)
         );
         Artifact artifact = artifactCaptor.getValue();
         assertThat(response.artifactId()).isEqualTo(expectedArtifactId);
@@ -131,9 +138,9 @@ class ReportExportServiceTest {
         assertThat(artifact.getArtifactType()).isEqualTo(ArtifactType.REPORT_MARKDOWN);
         assertThat(artifact.getS3Bucket()).isEqualTo("local-runner");
         assertThat(artifact.getMimeType()).isEqualTo("text/markdown; charset=utf-8");
-        assertThat(artifact.getS3Key()).isEqualTo(runId + "/reports/" + reportId + ".md");
+        assertThat(artifact.getS3Key()).isEqualTo(runId + "/reports/" + reportId + "-" + expectedArtifactId + ".md");
         String markdown = new String(contentCaptor.getValue(), StandardCharsets.UTF_8);
-        assertThat(markdown).contains("# 전환 마찰 리포트", "첫 화면 CTA 흐름 점검", "CTA 문구가 모호합니다", "버튼 문구를 구체화하세요");
+        assertThat(markdown).contains("# 전환 흐름 리포트", "첫 화면 CTA 흐름 점검", "Nudge 01. CTA 카피 수정", "버튼 문구를 구체화하세요");
         assertThat(artifactsCommandCaptor.getValue().artifacts()).singleElement().satisfies(command -> {
             assertThat(command.artifactType()).isEqualTo(ArtifactType.REPORT_MARKDOWN);
             assertThat(command.sizeBytes()).isEqualTo(contentCaptor.getValue().length);
@@ -152,7 +159,7 @@ class ReportExportServiceTest {
         UUID reportId = UUID.randomUUID();
         UUID analysisJobId = UUID.randomUUID();
         UUID artifactId = UUID.nameUUIDFromBytes(
-                ("report-export:" + reportId + ":MARKDOWN").getBytes(StandardCharsets.UTF_8)
+                ("report-export:screen-v8:" + reportId + ":MARKDOWN").getBytes(StandardCharsets.UTF_8)
         );
         RunResponse run = sampleRun(runId);
         Report report = report(runId, reportId, analysisJobId, artifactId);
@@ -176,6 +183,39 @@ class ReportExportServiceTest {
         assertThat(response.artifactId()).isEqualTo(artifactId);
         verify(artifactContentWriter, never()).save(any(), any());
         verify(artifactPersistenceService, never()).saveRunArtifacts(any(), any());
+    }
+
+    @Test
+    void createRunReportExportRendersPdfArtifact() {
+        UUID runId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        UUID reportId = UUID.randomUUID();
+        UUID analysisJobId = UUID.randomUUID();
+        RunResponse run = sampleRun(runId);
+        Report report = report(runId, reportId, analysisJobId, null);
+        ReportDetailResponse detail = detailWithHighlight(report, UUID.randomUUID());
+        when(runService.getRun(runId)).thenReturn(run);
+        when(reportMapper.findByRunId(runId)).thenReturn(List.of(report));
+        when(reportDetailQueryService.getReportDetail(reportId, userId)).thenReturn(detail);
+
+        ReportExportResponse response = reportExportService.createRunReportExport(
+                runId,
+                userId,
+                new ReportCreateRequest(ReportFormat.PDF, analysisJobId)
+        );
+
+        verify(artifactContentWriter).save(artifactCaptor.capture(), contentCaptor.capture());
+        UUID expectedArtifactId = UUID.nameUUIDFromBytes(
+                ("report-export:screen-v8:" + reportId + ":PDF").getBytes(StandardCharsets.UTF_8)
+        );
+        Artifact artifact = artifactCaptor.getValue();
+        byte[] content = contentCaptor.getValue();
+        assertThat(response.artifactId()).isEqualTo(expectedArtifactId);
+        assertThat(response.format()).isEqualTo(ReportFormat.PDF);
+        assertThat(artifact.getArtifactType()).isEqualTo(ArtifactType.REPORT_PDF);
+        assertThat(artifact.getMimeType()).isEqualTo("application/pdf");
+        assertThat(artifact.getS3Key()).isEqualTo(runId + "/reports/" + reportId + "-" + expectedArtifactId + ".pdf");
+        assertThat(new String(content, 0, Math.min(content.length, 5), StandardCharsets.US_ASCII)).isEqualTo("%PDF-");
     }
 
     @Test
@@ -228,6 +268,14 @@ class ReportExportServiceTest {
     }
 
     private ReportDetailResponse detail(Report report) {
+        return detail(report, null);
+    }
+
+    private ReportDetailResponse detailWithHighlight(Report report, UUID screenshotArtifactId) {
+        return detail(report, screenshotArtifactId);
+    }
+
+    private ReportDetailResponse detail(Report report, UUID screenshotArtifactId) {
         ReportDetailNudgeResponse nudge = new ReportDetailNudgeResponse(
                 UUID.randomUUID(),
                 1,
@@ -237,6 +285,22 @@ class ReportExportServiceTest {
                 "낮음",
                 "클릭 전환율 개선",
                 "사용자가 첫 화면에서 다음 행동을 설명할 수 있나요?"
+        );
+        ReportFindingHighlightResponse highlight = screenshotArtifactId == null ? null : new ReportFindingHighlightResponse(
+                "checkpoint-1.component_001",
+                "Start free",
+                "artifact-coordinate",
+                "viewport",
+                new ReportFindingHighlightResponse.Bounds(
+                        BigDecimal.valueOf(180),
+                        BigDecimal.valueOf(150),
+                        BigDecimal.valueOf(120),
+                        BigDecimal.valueOf(48),
+                        "css_px"
+                ),
+                new ReportFindingHighlightResponse.Viewport(BigDecimal.valueOf(640), BigDecimal.valueOf(480)),
+                BigDecimal.ZERO,
+                screenshotArtifactId.toString()
         );
         ReportDetailFindingResponse finding = new ReportDetailFindingResponse(
                 UUID.randomUUID(),
@@ -253,7 +317,7 @@ class ReportExportServiceTest {
                 List.of(),
                 List.of(),
                 null,
-                null,
+                highlight,
                 List.of(nudge)
         );
         return new ReportDetailResponse(
@@ -270,5 +334,33 @@ class ReportExportServiceTest {
                 List.of(finding),
                 OffsetDateTime.now(Clock.fixed(FIXED_INSTANT, ZoneOffset.UTC))
         );
+    }
+
+    private static final class TestReportPdfRenderer implements ReportPdfRenderer {
+        @Override
+        public byte[] render(ReportDetailResponse report, RunResponse run) {
+            return "%PDF-FAKE\n".getBytes(StandardCharsets.US_ASCII);
+        }
+    }
+
+    private TransactionTemplate transactionTemplate() {
+        return new TransactionTemplate(new AbstractPlatformTransactionManager() {
+            @Override
+            protected Object doGetTransaction() {
+                return new Object();
+            }
+
+            @Override
+            protected void doBegin(Object transaction, TransactionDefinition definition) {
+            }
+
+            @Override
+            protected void doCommit(DefaultTransactionStatus status) {
+            }
+
+            @Override
+            protected void doRollback(DefaultTransactionStatus status) {
+            }
+        });
     }
 }

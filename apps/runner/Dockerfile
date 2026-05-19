@@ -14,6 +14,9 @@ COPY apps/runner/package.json apps/runner/package-lock.json ./apps/runner/
 WORKDIR /app/apps/runner
 RUN npm ci
 RUN npx playwright install --with-deps chromium
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends fonts-noto-cjk fonts-nanum \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 COPY packages ./packages

@@ -30,12 +30,14 @@ import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 @Service
 @RequiredArgsConstructor
 public class ReportExportService {
+    private static final String EXPORT_CONTENT_VERSION = "screen-v8";
     private static final String MARKDOWN_MIME_TYPE = "text/markdown; charset=utf-8";
+    private static final String PDF_MIME_TYPE = "application/pdf";
 
     private final RunService runService;
     private final ReportAccessGuard reportAccessGuard;
@@ -45,15 +47,16 @@ public class ReportExportService {
     private final ArtifactContentWriter artifactContentWriter;
     private final ReportDetailQueryService reportDetailQueryService;
     private final ReportMarkdownRenderer reportMarkdownRenderer;
+    private final ReportPdfRenderer reportPdfRenderer;
     private final Clock clock;
+    private final TransactionTemplate transactionTemplate;
 
     @Value("${wedge.artifacts.bucket:}")
     private String defaultBucket;
 
-    @Transactional
     public ReportExportResponse createRunReportExport(UUID runId, UUID userId, ReportCreateRequest request) {
-        if (request.format() != ReportFormat.MARKDOWN) {
-            throw new BusinessException(ErrorCode.INVALID_REQUEST, "Only Markdown report export is currently supported.");
+        if (request.format() != ReportFormat.MARKDOWN && request.format() != ReportFormat.PDF) {
+            throw new BusinessException(ErrorCode.INVALID_REQUEST, "Only Markdown and PDF report export are currently supported.");
         }
 
         RunResponse run = runService.getRun(runId);
@@ -62,7 +65,7 @@ public class ReportExportService {
         UUID exportArtifactId = exportArtifactId(report.getId(), request.format());
         return artifactMapper.findByRunIdAndId(runId, exportArtifactId)
                 .map(artifact -> response(report, artifact, request.format()))
-                .orElseGet(() -> createMarkdownArtifact(run, report, userId, exportArtifactId));
+                .orElseGet(() -> renderAndCreateArtifact(run, report, userId, exportArtifactId, request.format()));
     }
 
     private Report findReadyReport(UUID runId, UUID analysisJobId) {
@@ -70,37 +73,67 @@ public class ReportExportService {
         Report report = reports.stream()
                 .filter(candidate -> analysisJobId == null || analysisJobId.equals(candidate.getAnalysisJobId()))
                 .findFirst()
-                .orElseThrow(() -> new BusinessException(ErrorCode.STATE_CONFLICT, "Ready report is required before Markdown export."));
+                .orElseThrow(() -> new BusinessException(ErrorCode.STATE_CONFLICT, "Ready report is required before report export."));
         if (report.getStatus() != ReportStatus.READY) {
             throw new BusinessException(ErrorCode.STATE_CONFLICT, "Only ready reports can be exported.");
         }
         if (report.getAnalysisJobId() == null) {
-            throw new BusinessException(ErrorCode.STATE_CONFLICT, "Report analysis job is required before Markdown export.");
+            throw new BusinessException(ErrorCode.STATE_CONFLICT, "Report analysis job is required before report export.");
         }
         return report;
     }
 
-    private ReportExportResponse createMarkdownArtifact(RunResponse run, Report report, UUID userId, UUID artifactId) {
+    private ReportExportResponse renderAndCreateArtifact(RunResponse run, Report report, UUID userId, UUID artifactId, ReportFormat format) {
         ReportDetailResponse detail = reportDetailQueryService.getReportDetail(report.getId(), userId);
-        byte[] markdownContent = reportMarkdownRenderer.render(detail, run);
+        byte[] content = render(detail, run, format);
+        return transactionTemplate.execute(status -> artifactMapper.findByRunIdAndId(run.id(), artifactId)
+                .map(artifact -> response(report, artifact, format))
+                .orElseGet(() -> createArtifact(run, report, artifactId, format, content)));
+    }
+
+    private ReportExportResponse createArtifact(RunResponse run, Report report, UUID artifactId, ReportFormat format, byte[] content) {
         OffsetDateTime createdAt = OffsetDateTime.now(clock);
         SaveRunArtifactCommand artifactCommand = new SaveRunArtifactCommand(
                 artifactId,
                 "reports",
-                ArtifactType.REPORT_MARKDOWN,
+                artifactType(format),
                 artifactBucket(),
-                artifactKey(run.id(), report.getId()),
-                MARKDOWN_MIME_TYPE,
+                artifactKey(run.id(), report.getId(), artifactId, format),
+                mimeType(format),
                 null,
                 null,
-                markdownContent.length,
-                sha256(markdownContent),
+                content.length,
+                sha256(content),
                 createdAt
         );
         Artifact artifact = toArtifact(run.id(), artifactCommand);
-        artifactContentWriter.save(artifact, markdownContent);
+        artifactContentWriter.save(artifact, content);
         artifactPersistenceService.saveRunArtifacts(run.id(), new SaveRunArtifactsCommand(List.of(artifactCommand)));
-        return response(report, artifact, ReportFormat.MARKDOWN);
+        return response(report, artifact, format);
+    }
+
+    private byte[] render(ReportDetailResponse detail, RunResponse run, ReportFormat format) {
+        return switch (format) {
+            case MARKDOWN -> reportMarkdownRenderer.render(detail, run);
+            case PDF -> reportPdfRenderer.render(detail, run);
+            default -> throw new BusinessException(ErrorCode.INVALID_REQUEST, "Unsupported report export format.");
+        };
+    }
+
+    private ArtifactType artifactType(ReportFormat format) {
+        return switch (format) {
+            case MARKDOWN -> ArtifactType.REPORT_MARKDOWN;
+            case PDF -> ArtifactType.REPORT_PDF;
+            default -> throw new BusinessException(ErrorCode.INVALID_REQUEST, "Unsupported report export format.");
+        };
+    }
+
+    private String mimeType(ReportFormat format) {
+        return switch (format) {
+            case MARKDOWN -> MARKDOWN_MIME_TYPE;
+            case PDF -> PDF_MIME_TYPE;
+            default -> throw new BusinessException(ErrorCode.INVALID_REQUEST, "Unsupported report export format.");
+        };
     }
 
     private Artifact toArtifact(UUID runId, SaveRunArtifactCommand command) {
@@ -133,8 +166,16 @@ public class ReportExportService {
         );
     }
 
-    private String artifactKey(UUID runId, UUID reportId) {
-        return runId + "/reports/" + reportId + ".md";
+    private String artifactKey(UUID runId, UUID reportId, UUID artifactId, ReportFormat format) {
+        return runId + "/reports/" + reportId + "-" + artifactId + extension(format);
+    }
+
+    private String extension(ReportFormat format) {
+        return switch (format) {
+            case MARKDOWN -> ".md";
+            case PDF -> ".pdf";
+            default -> throw new BusinessException(ErrorCode.INVALID_REQUEST, "Unsupported report export format.");
+        };
     }
 
     private String artifactBucket() {
@@ -142,7 +183,7 @@ public class ReportExportService {
     }
 
     private UUID exportArtifactId(UUID reportId, ReportFormat format) {
-        return UUID.nameUUIDFromBytes(("report-export:" + reportId + ":" + format).getBytes(StandardCharsets.UTF_8));
+        return UUID.nameUUIDFromBytes(("report-export:" + EXPORT_CONTENT_VERSION + ":" + reportId + ":" + format).getBytes(StandardCharsets.UTF_8));
     }
 
     private String sha256(byte[] content) {

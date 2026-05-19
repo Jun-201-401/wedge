@@ -1,99 +1,115 @@
 package com.wedge.report.application;
 
-import com.wedge.report.api.dto.DecisionMapItemResponse;
-import com.wedge.report.api.dto.ReportDetailFindingResponse;
-import com.wedge.report.api.dto.ReportDetailNudgeResponse;
 import com.wedge.report.api.dto.ReportDetailResponse;
 import com.wedge.run.api.dto.RunResponse;
 import java.nio.charset.StandardCharsets;
-import java.util.List;
-import java.util.Map;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 @Component
+@RequiredArgsConstructor
 public class ReportMarkdownRenderer {
+    private final ReportDownloadDocumentBuilder documentBuilder;
+
     public byte[] render(ReportDetailResponse report, RunResponse run) {
+        ReportDownloadDocument document = documentBuilder.build(report, run);
         StringBuilder markdown = new StringBuilder();
-        appendHeading(markdown, 1, firstText(report.title(), "Wedge Report"));
+        appendHeading(markdown, 1, "전환 흐름 리포트");
         appendLine(markdown, "");
-        appendMetadata(markdown, report, run);
-        appendSummary(markdown, report);
-        appendDecisionMap(markdown, report.decisionMap());
-        appendFindings(markdown, report.findings());
+        appendMetadata(markdown, document);
+        appendCandidates(markdown, document);
+        appendFlowGuide(markdown, document);
+        appendFlowGuideReferences(markdown, document);
         return markdown.toString().getBytes(StandardCharsets.UTF_8);
     }
 
-    private void appendMetadata(StringBuilder markdown, ReportDetailResponse report, RunResponse run) {
-        appendHeading(markdown, 2, "Report");
-        appendBullet(markdown, "Run", String.valueOf(report.runId()));
-        appendBullet(markdown, "Target URL", run.startUrl() == null ? "-" : run.startUrl().toString());
-        appendBullet(markdown, "Goal", textOrDash(run.goal()));
-        appendBullet(markdown, "Source format", String.valueOf(report.format()));
-        appendBullet(markdown, "Created at", report.createdAt() == null ? "-" : report.createdAt().toString());
+    private void appendMetadata(StringBuilder markdown, ReportDownloadDocument document) {
+        appendHeading(markdown, 2, "리포트 대상 정보");
+        appendBullet(markdown, "분석 대상", document.targetUrl());
+        appendBullet(markdown, "점검 흐름", document.goal());
+        appendBullet(markdown, "총 단계", String.valueOf(document.totalSteps()));
+        appendBullet(markdown, "마찰 지점", String.valueOf(document.findingCount()));
+        appendBullet(markdown, "소요 시간", document.durationLabel());
+        appendBullet(markdown, "리포트 ID", String.valueOf(document.reportId()));
+        appendBullet(markdown, "실행 ID", String.valueOf(document.runId()));
+        appendBullet(markdown, "생성 시각", document.createdAt());
         appendLine(markdown, "");
     }
 
-    private void appendSummary(StringBuilder markdown, ReportDetailResponse report) {
-        appendHeading(markdown, 2, "Summary");
-        appendBullet(markdown, "Friction score", report.frictionScore() == null ? "-" : report.frictionScore().toPlainString());
-        appendBullet(markdown, "Finding count", String.valueOf(report.findings().size()));
-        appendBullet(markdown, "Initial display count", String.valueOf(report.initialDisplayCount()));
-        if (report.summary() != null && !report.summary().isEmpty()) {
-            for (Map.Entry<String, Object> entry : report.summary().entrySet()) {
-                appendBullet(markdown, entry.getKey(), String.valueOf(entry.getValue()));
-            }
-        }
-        appendLine(markdown, "");
-    }
-
-    private void appendDecisionMap(StringBuilder markdown, List<DecisionMapItemResponse> decisionMap) {
-        appendHeading(markdown, 2, "Decision Map");
-        if (decisionMap == null || decisionMap.isEmpty()) {
-            appendLine(markdown, "- No decision map items.");
+    private void appendCandidates(StringBuilder markdown, ReportDownloadDocument document) {
+        appendHeading(markdown, 2, "개선 후보");
+        if (document.candidates().isEmpty()) {
+            appendLine(markdown, "현재 우선 수정할 항목은 없습니다.");
             appendLine(markdown, "");
             return;
         }
 
-        for (DecisionMapItemResponse item : decisionMap) {
-            appendLine(markdown, "- **" + inlineText(item.displayName()) + "** [" + inlineText(item.status()) + "] " + inlineText(item.summary()));
-            if (item.stage() != null && !item.stage().isBlank()) {
-                appendLine(markdown, "  - Stage: " + inlineText(item.stage()));
-            }
-        }
-        appendLine(markdown, "");
-    }
-
-    private void appendFindings(StringBuilder markdown, List<ReportDetailFindingResponse> findings) {
-        appendHeading(markdown, 2, "Findings and Recommendations");
-        if (findings == null || findings.isEmpty()) {
-            appendLine(markdown, "- No findings.");
-            return;
-        }
-
-        for (ReportDetailFindingResponse finding : findings) {
-            appendHeading(markdown, 3, finding.rank() + ". " + firstText(finding.title(), "Untitled finding"));
-            appendBullet(markdown, "Stage", textOrDash(finding.stage()));
-            appendBullet(markdown, "Severity", finding.severity() == null ? "-" : String.valueOf(finding.severity()));
-            appendBullet(markdown, "Confidence", finding.confidence() == null ? "-" : finding.confidence().toPlainString());
-            appendParagraph(markdown, "Summary", finding.summary());
-            appendParagraph(markdown, "Impact", finding.impactHypothesis());
-            appendNudges(markdown, finding.nudges());
+        for (ReportDownloadCandidate candidate : document.candidates()) {
+            appendHeading(markdown, 3, "Nudge " + twoDigit(candidate.order()) + ". " + candidate.title());
+            appendBullet(markdown, "전환 단계", candidate.stage());
+            appendProblemLocation(markdown, candidate.location());
+            appendParagraph(markdown, "문제 요약", candidate.problemSummary());
+            appendParagraph(markdown, "개선 방향", candidate.improvementDirection());
+            appendParagraph(markdown, "판단 근거", candidate.judgementBasis());
+            appendOptionalBullet(markdown, "기대 효과", candidate.expectedEffect());
+            appendOptionalBullet(markdown, "난이도", candidate.difficulty());
+            appendOptionalBullet(markdown, "검증 질문", candidate.validationQuestion());
+            appendCandidateReferences(markdown, candidate);
             appendLine(markdown, "");
         }
     }
 
-    private void appendNudges(StringBuilder markdown, List<ReportDetailNudgeResponse> nudges) {
-        if (nudges == null || nudges.isEmpty()) {
+    private void appendProblemLocation(StringBuilder markdown, ReportDownloadProblemLocation location) {
+        if (location == null) {
             return;
         }
 
-        appendLine(markdown, "**Recommendations**");
-        for (ReportDetailNudgeResponse nudge : nudges) {
-            appendLine(markdown, "- **" + inlineText(firstText(nudge.title(), "Recommendation")) + "**: "
-                    + inlineText(firstText(nudge.recommendation(), nudge.rationale(), nudge.expectedEffect(), "Review this improvement candidate.")));
-            if (nudge.validationQuestion() != null && !nudge.validationQuestion().isBlank()) {
-                appendLine(markdown, "  - Validation: " + inlineText(nudge.validationQuestion()));
+        appendHeading(markdown, 4, "문제 컴포넌트 위치");
+        appendOptionalBullet(markdown, "레이블", location.label());
+        appendOptionalBullet(markdown, "CSS selector", location.selector());
+        appendOptionalBullet(markdown, "역할", location.role());
+        appendOptionalBullet(markdown, "좌표", location.bounds());
+        appendOptionalBullet(markdown, "Viewport", location.viewport());
+        appendOptionalBullet(markdown, "Scroll Y", location.scrollY());
+        appendOptionalBullet(markdown, "좌표 기준", location.coordinateSpace());
+    }
+
+    private void appendCandidateReferences(StringBuilder markdown, ReportDownloadCandidate candidate) {
+        if (candidate.references().isEmpty()) {
+            return;
+        }
+
+        appendHeading(markdown, 4, "참고 기준");
+        for (ReportDownloadReference reference : candidate.references()) {
+            appendLine(markdown, "- **" + inlineText(reference.publisher()) + " / " + inlineText(reference.title()) + "**");
+            appendLine(markdown, "  - " + inlineText(reference.basisSummary()));
+            appendLine(markdown, "  - " + inlineText(reference.url()));
+        }
+    }
+
+    private void appendFlowGuide(StringBuilder markdown, ReportDownloadDocument document) {
+        appendHeading(markdown, 2, "단계별 판단 기준");
+        appendLine(markdown, "Wedge는 사용자가 페이지를 보고 행동을 결정하는 과정을 세 단계로 나누어 확인합니다.");
+        appendLine(markdown, "");
+        appendLine(markdown, "| 단계 | 판단 기준 |");
+        appendLine(markdown, "| --- | --- |");
+        for (ReportDownloadFlowGuide guide : document.flowGuides()) {
+            if ("전환 흐름".equals(guide.label())) {
+                continue;
             }
+            appendLine(markdown, "| " + inlineText(guide.label()) + " | " + inlineText(guide.description()) + " |");
+        }
+        appendLine(markdown, "");
+    }
+
+    private void appendFlowGuideReferences(StringBuilder markdown, ReportDownloadDocument document) {
+        appendHeading(markdown, 2, "기준 근거");
+        for (ReportDownloadFlowGuide guide : document.flowGuides()) {
+            ReportDownloadReference reference = guide.reference();
+            appendLine(markdown, "- **" + inlineText(guide.label()) + "**: "
+                    + inlineText(reference.publisher()) + " / " + inlineText(reference.title()));
+            appendLine(markdown, "  - " + inlineText(reference.basisSummary()));
+            appendLine(markdown, "  - " + inlineText(reference.url()));
         }
     }
 
@@ -103,6 +119,13 @@ public class ReportMarkdownRenderer {
 
     private void appendBullet(StringBuilder markdown, String label, String value) {
         appendLine(markdown, "- **" + inlineText(label) + "**: " + inlineText(value));
+    }
+
+    private void appendOptionalBullet(StringBuilder markdown, String label, String value) {
+        if (value == null || value.isBlank()) {
+            return;
+        }
+        appendBullet(markdown, label, value);
     }
 
     private void appendParagraph(StringBuilder markdown, String label, String value) {
@@ -116,17 +139,8 @@ public class ReportMarkdownRenderer {
         markdown.append(line).append('\n');
     }
 
-    private static String firstText(String... candidates) {
-        for (String candidate : candidates) {
-            if (candidate != null && !candidate.isBlank()) {
-                return candidate;
-            }
-        }
-        return "-";
-    }
-
-    private static String textOrDash(String value) {
-        return value == null || value.isBlank() ? "-" : value;
+    private static String twoDigit(int value) {
+        return String.format("%02d", value);
     }
 
     private static String inlineText(String value) {
@@ -135,11 +149,15 @@ public class ReportMarkdownRenderer {
             return "-";
         }
         return normalized
+                .replace("&", "&amp;")
+                .replace("<", "&lt;")
+                .replace(">", "&gt;")
                 .replace("\\", "\\\\")
                 .replace("`", "\\`")
                 .replace("*", "\\*")
                 .replace("_", "\\_")
                 .replace("[", "\\[")
-                .replace("]", "\\]");
+                .replace("]", "\\]")
+                .replace("|", "\\|");
     }
 }

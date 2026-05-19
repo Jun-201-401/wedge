@@ -1498,8 +1498,8 @@ paths:
       tags:
       - Reports
       operationId: createRunReportExport
-      summary: 리포트 Markdown export 생성 또는 재사용
-      description: 완료된 리포트를 즉시 Markdown artifact로 생성하거나 기존 Markdown artifact를 재사용한다. MVP에서는 format=MARKDOWN만 지원하며, 생성된 downloadUrl은 같은 origin의 artifact content URL이다.
+      summary: 리포트 Markdown/PDF export 생성 또는 재사용
+      description: 완료된 리포트를 즉시 Markdown 또는 PDF artifact로 생성하거나 기존 export artifact를 재사용한다. 생성된 downloadUrl은 같은 origin의 artifact content URL이다.
       security:
       - HumanBearer: []
       parameters:
@@ -1512,7 +1512,7 @@ paths:
               $ref: '#/components/schemas/ReportCreateRequest'
       responses:
         '200':
-          description: Report Markdown export ready
+          description: Report Markdown/PDF export ready
           content:
             application/json:
               schema:
@@ -4615,8 +4615,6 @@ components:
           enum:
           - PDF
           - MARKDOWN
-          - HTML
-          - JSON
           nullable: true
         status:
           type: string
@@ -5171,6 +5169,7 @@ components:
         format:
           type: string
           enum:
+          - PDF
           - MARKDOWN
         status:
           type: string

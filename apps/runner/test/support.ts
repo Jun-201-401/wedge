@@ -152,7 +152,11 @@ export function createRunnerTestConfig(overrides: Partial<RunnerConfig> = {}): R
     metricsEnabled: overrides.metricsEnabled ?? false,
     metricsHost: overrides.metricsHost ?? "127.0.0.1",
     metricsPort: overrides.metricsPort ?? 9101,
-    mqMaxDeliveryAttempts: overrides.mqMaxDeliveryAttempts ?? 3
+    mqMaxDeliveryAttempts: overrides.mqMaxDeliveryAttempts ?? 3,
+    reportPdfRendererEnabled: overrides.reportPdfRendererEnabled ?? false,
+    reportPdfRendererHost: overrides.reportPdfRendererHost ?? "127.0.0.1",
+    reportPdfRendererPort: overrides.reportPdfRendererPort ?? 9102,
+    reportPdfRendererAuthToken: overrides.reportPdfRendererAuthToken
   };
 }
 
