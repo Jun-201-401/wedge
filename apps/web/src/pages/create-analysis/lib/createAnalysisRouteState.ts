@@ -30,15 +30,15 @@ const STEP_TO_STAGE = {
   preflight: 'discovering',
   recommendations: 'recommendations',
   manual: 'manual-choice',
-  setup: 'onboarding',
-  ready: 'onboarding',
+  setup: 'recommendations',
+  ready: 'recommendations',
 } as const satisfies Record<string, Exclude<CreateAnalysisRouteStage, 'input'>>;
 
 const STAGE_TO_STEP = {
   discovering: 'preflight',
   recommendations: 'recommendations',
   'manual-choice': 'manual',
-  onboarding: 'setup',
+  onboarding: 'recommendations',
 } as const satisfies Record<Exclude<CreateAnalysisRouteStage, 'input'>, string>;
 
 function isOneOf<T extends string>(value: string | null, validValues: readonly T[]): value is T {
@@ -238,7 +238,7 @@ export function buildCreateAnalysisPath<TScenarioId extends string, TDepthId ext
     return basePath;
   }
 
-  if (state.stage === 'onboarding' && !state.scenarioId) {
+  if (state.stage === 'onboarding') {
     return buildCreateAnalysisPath(
       {
         stage: 'recommendations',
@@ -256,11 +256,6 @@ export function buildCreateAnalysisPath<TScenarioId extends string, TDepthId ext
   params.set('step', STAGE_TO_STEP[state.stage]);
 
   params.set('url', state.submittedUrl);
-
-  if (state.stage === 'onboarding' && state.scenarioId) {
-    params.set('scenario', state.scenarioId);
-    params.set('depth', state.depthId ?? options.defaultDepthId);
-  }
 
   if (hasCreateRunContext(state)) {
     params.set('projectId', state.projectId);

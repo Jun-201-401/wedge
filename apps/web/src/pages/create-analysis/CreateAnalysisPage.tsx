@@ -104,12 +104,6 @@ interface DiscoveryStep {
   status: DiscoveryStepStatus;
 }
 
-interface ScenarioDepthOption {
-  id: ScenarioDepthId;
-  title: string;
-  detail: string;
-}
-
 const HEADLINE_PHRASES = ['Find', 'Friction'] as const;
 const DISCOVERY_POLL_INTERVAL_MS = 1800;
 const DISCOVERY_TIMEOUT_MS = 90000;
@@ -146,6 +140,12 @@ const PREFLIGHT_DISCOVERY_STEPS: DiscoveryStep[] = [
   },
 ];
 
+interface ScenarioDepthOption {
+  id: ScenarioDepthId;
+  title: string;
+  detail: string;
+}
+
 const SCENARIO_DEPTH_OPTIONS: ScenarioDepthOption[] = [
   {
     id: 'hero-only',
@@ -163,8 +163,8 @@ const SCENARIO_DEPTH_OPTIONS: ScenarioDepthOption[] = [
     detail: '입력 부담과 제출 전 신뢰 요소를 확인해요',
   },
 ];
-const SCENARIO_IDS = CREATE_ANALYSIS_SCENARIO_IDS;
 const SCENARIO_DEPTH_IDS = SCENARIO_DEPTH_OPTIONS.map((option) => option.id);
+const SCENARIO_IDS = CREATE_ANALYSIS_SCENARIO_IDS;
 const DEFAULT_SCENARIO_DEPTH_ID = 'hero-only' satisfies ScenarioDepthId;
 function defaultDepthForScenario(scenarioType: string): ScenarioDepthId {
   if (scenarioType === 'PURCHASE_CHECKOUT') {
@@ -179,25 +179,6 @@ function defaultDepthForScenario(scenarioType: string): ScenarioDepthId {
   return DEFAULT_SCENARIO_DEPTH_ID;
 }
 
-function depthOptionsForScenario(scenarioType: string): ScenarioDepthOption[] {
-  if (scenarioType === 'SIGNUP_LEAD_FORM' || scenarioType === 'CONTACT' || scenarioType === 'PURCHASE_CHECKOUT') {
-    return SCENARIO_DEPTH_OPTIONS;
-  }
-
-  return SCENARIO_DEPTH_OPTIONS.filter((option) => option.id !== 'form-depth');
-}
-
-function normalizeDepthForScenario(scenarioType: string | undefined, depthId: ScenarioDepthId | null): ScenarioDepthId {
-  if (!scenarioType) {
-    return depthId ?? DEFAULT_SCENARIO_DEPTH_ID;
-  }
-
-  const availableOptions = depthOptionsForScenario(scenarioType);
-  const requestedDepthId = depthId ?? defaultDepthForScenario(scenarioType);
-  return availableOptions.some((option) => option.id === requestedDepthId)
-    ? requestedDepthId
-    : defaultDepthForScenario(scenarioType);
-}
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const CREATE_ANALYSIS_ROUTE_OPTIONS: CreateAnalysisRouteOptions<ScenarioId, ScenarioDepthId> = {
   defaultDepthId: DEFAULT_SCENARIO_DEPTH_ID,
@@ -308,10 +289,6 @@ function getLoginPathForCreateAnalysisRouteState(routeState: CreateAnalysisPageR
   return getLoginPathForNextPath(buildCreateAnalysisPath(routeState, CREATE_ANALYSIS_ROUTE_OPTIONS));
 }
 
-function findScenarioById(scenarioId: ScenarioId | null, scenarios: ScenarioRecommendation[]) {
-  return scenarios.find((scenario) => scenario.id === scenarioId) ?? null;
-}
-
 function findDepthById(depthId: ScenarioDepthId | null) {
   return SCENARIO_DEPTH_OPTIONS.find((option) => option.id === depthId) ?? SCENARIO_DEPTH_OPTIONS[0];
 }
@@ -400,15 +377,6 @@ interface ManualChoiceAgentProps {
   runStartError: string;
   onChooseScenario: (scenario: ScenarioRecommendation) => void;
   onBackToRecommendations: () => void;
-}
-
-interface ScenarioSetupAgentProps {
-  selectedScenario: ScenarioRecommendation;
-  selectedDepthId: ScenarioDepthId;
-  depthOptions: ScenarioDepthOption[];
-  onDepthChange: (depthId: ScenarioDepthId) => void;
-  onStartRun: () => void;
-  isStartingRun: boolean;
 }
 
 function PreflightNode({ status }: { status: DiscoveryStepStatus }) {
@@ -680,64 +648,6 @@ function ManualChoiceAgent({
   );
 }
 
-function ScenarioSetupAgent({ selectedScenario, selectedDepthId, depthOptions, onDepthChange, onStartRun, isStartingRun }: ScenarioSetupAgentProps) {
-  return (
-    <section className="create-analysis-panel create-analysis-panel--onboarding" aria-labelledby="onboarding-title">
-      <div className="scenario-setup-agent">
-        <div className="scenario-setup-agent__header">
-          <div className="scenario-setup-agent__header-main">
-            <div className="scenario-setup-agent__header-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24" fill="none">
-                <path d="M4 6h16M4 12h10M4 18h7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                <path d="m17 14 3 3-3 3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </div>
-
-            <div className="scenario-setup-agent__header-copy">
-              <p>흐름 설정</p>
-              <h2 id="onboarding-title">확인할 범위를 정해주세요</h2>
-              <div className="scenario-setup-agent__header-status">
-                <span className="scenario-setup-agent__header-status-dot" aria-hidden="true" />
-                <span>범위 선택 중</span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="scenario-setup-agent__selected-flow">
-          <span>선택한 흐름</span>
-          <strong>{selectedScenario.title}</strong>
-        </div>
-
-        <div className="scenario-setup-agent__divider" aria-hidden="true" />
-
-        <p className="scenario-setup-agent__prompt">어디까지 확인할까요?</p>
-
-        <div className="scenario-depth-options" role="radiogroup" aria-label="진단 범위 선택">
-          {depthOptions.map((option) => {
-            const isSelected = selectedDepthId === option.id;
-
-            return (
-              <label key={option.id} className={`scenario-depth-option ${isSelected ? 'scenario-depth-option--selected' : ''}`}>
-                <input type="radio" name="scenario-depth" value={option.id} checked={isSelected} onChange={() => onDepthChange(option.id)} />
-                <span className="scenario-depth-option__marker" aria-hidden="true" />
-                <span className="scenario-depth-option__copy">
-                  <strong>{option.title}</strong>
-                  <span>{option.detail}</span>
-                </span>
-              </label>
-            );
-          })}
-        </div>
-
-        <button className="create-analysis-panel__action scenario-setup-agent__action" type="button" onClick={onStartRun} disabled={isStartingRun}>
-          {isStartingRun ? '분석 시작 중…' : '분석 시작하기'}
-        </button>
-      </div>
-    </section>
-  );
-}
-
 function isScenarioAuthoringBusy(state: ScenarioAuthoringUiState) {
   return state.kind === 'creating' || state.kind === 'polling';
 }
@@ -770,12 +680,6 @@ export function CreateAnalysisPage({ isAuthenticated = false, isAuthChecking = f
     () => [...recommendationScenarios.filter((scenario) => scenario.isRunnable), ...manualChoiceScenarios],
     [recommendationScenarios, manualChoiceScenarios],
   );
-  const selectedScenario = useMemo(
-    () => findScenarioById(routeState.scenarioId, selectableScenarios),
-    [routeState.scenarioId, selectableScenarios],
-  );
-  const selectedDepthId = normalizeDepthForScenario(selectedScenario?.scenarioType, routeState.depthId);
-  const selectedDepthOptions = selectedScenario ? depthOptionsForScenario(selectedScenario.scenarioType) : SCENARIO_DEPTH_OPTIONS;
   const createRunIds = useMemo(() => getCreateRunIds(routeState), [routeState]);
   const scenarioAuthoringBusy = isScenarioAuthoringBusy(scenarioAuthoringState);
 
@@ -1059,13 +963,7 @@ export function CreateAnalysisPage({ isAuthenticated = false, isAuthChecking = f
       return;
     }
 
-    navigateToRouteState({
-      ...routeState,
-      stage: 'onboarding',
-      submittedUrl,
-      scenarioId: scenario.id,
-      depthId: defaultDepthForScenario(scenario.scenarioType),
-    });
+    void startAnalysisRun(scenario, defaultDepthForScenario(scenario.scenarioType));
   };
 
   const openManualChoice = () => {
@@ -1074,35 +972,6 @@ export function CreateAnalysisPage({ isAuthenticated = false, isAuthChecking = f
     }
 
     navigateToRouteState(createManualChoiceRouteState(routeState, submittedUrl));
-  };
-
-  const chooseDepth = (depthId: ScenarioDepthId) => {
-    if (!submittedUrl || !selectedScenario) {
-      return;
-    }
-
-    if (!depthOptionsForScenario(selectedScenario.scenarioType).some((option) => option.id === depthId)) {
-      return;
-    }
-
-    navigateToRouteState(
-      {
-        ...routeState,
-        stage: 'onboarding',
-        submittedUrl,
-        scenarioId: selectedScenario.id,
-        depthId,
-      },
-      'replace',
-    );
-  };
-
-  const startSelectedScenarioRun = () => {
-    if (!submittedUrl || !selectedScenario || isCreatingRun || scenarioAuthoringBusy) {
-      return;
-    }
-
-    void startAnalysisRun(selectedScenario, selectedDepthId);
   };
 
   const createAndConfirmScenarioPlan = useCallback(async (scenario: ScenarioRecommendation, depthId: ScenarioDepthId) => {
@@ -1428,16 +1297,6 @@ export function CreateAnalysisPage({ isAuthenticated = false, isAuthChecking = f
           />
         )}
 
-        {stage === 'onboarding' && selectedScenario && (
-          <ScenarioSetupAgent
-            selectedScenario={selectedScenario}
-            selectedDepthId={selectedDepthId}
-            depthOptions={selectedDepthOptions}
-            onDepthChange={chooseDepth}
-            onStartRun={startSelectedScenarioRun}
-            isStartingRun={isStartingRun}
-          />
-        )}
       </main>
     </div>
   );

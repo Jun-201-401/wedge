@@ -100,8 +100,8 @@ test('create analysis preflight css keeps the landing-agent card language', () =
   );
 
   assert.match(css, /\.create-analysis-panel--preflight\s*\{[\s\S]*?background: transparent/);
-  assert.match(css, /\.preflight-agent,\s*\n\.recommendation-agent,\s*\n\.manual-choice-agent,\s*\n\.scenario-setup-agent\s*\{[\s\S]*?font-family: 'Pretendard Variable', Pretendard, 'Inter', sans-serif/);
-  assert.match(css, /\.preflight-agent,\s*\n\.recommendation-agent,\s*\n\.manual-choice-agent,\s*\n\.scenario-setup-agent\s*\{[\s\S]*?box-shadow: 0 12px 40px -10px/);
+  assert.match(css, /\.preflight-agent,\s*\n\.recommendation-agent,\s*\n\.manual-choice-agent\s*\{[\s\S]*?font-family: 'Pretendard Variable', Pretendard, 'Inter', sans-serif/);
+  assert.match(css, /\.preflight-agent,\s*\n\.recommendation-agent,\s*\n\.manual-choice-agent\s*\{[\s\S]*?box-shadow: 0 12px 40px -10px/);
   assert.match(css, /\.preflight-agent__header-copy p,\s*\n\.recommendation-agent__header-copy p,\s*\n\.manual-choice-agent__header-copy p\s*\{[\s\S]*?margin-bottom: 0\.48rem/);
   assert.doesNotMatch(css, /\.preflight-agent__scope/);
   assert.match(cssRule(css, '.preflight-agent__step--active::before'), /background: rgba\(248, 250, 252, 0\.5\)/);
@@ -166,9 +166,9 @@ test('create analysis recommendations use a wider agent-style results card', () 
 
   assert.match(css, /\.create-analysis-panel--recommendations\s*\{[\s\S]*?width: min\(100%, 66rem\)/);
   assert.match(css, /\.create-analysis-panel\s*\{[\s\S]*?box-sizing: border-box/);
-  assert.match(css, /\.preflight-agent,\s*\n\.recommendation-agent,\s*\n\.manual-choice-agent,\s*\n\.scenario-setup-agent\s*\{[\s\S]*?font-family: 'Pretendard Variable', Pretendard, 'Inter', sans-serif/);
-  assert.match(css, /\.preflight-agent,\s*\n\.recommendation-agent,\s*\n\.manual-choice-agent,\s*\n\.scenario-setup-agent\s*\{[\s\S]*?box-sizing: border-box/);
-  assert.match(css, /\.preflight-agent,\s*\n\.recommendation-agent,\s*\n\.manual-choice-agent,\s*\n\.scenario-setup-agent\s*\{[\s\S]*?min-width: 0/);
+  assert.match(css, /\.preflight-agent,\s*\n\.recommendation-agent,\s*\n\.manual-choice-agent\s*\{[\s\S]*?font-family: 'Pretendard Variable', Pretendard, 'Inter', sans-serif/);
+  assert.match(css, /\.preflight-agent,\s*\n\.recommendation-agent,\s*\n\.manual-choice-agent\s*\{[\s\S]*?box-sizing: border-box/);
+  assert.match(css, /\.preflight-agent,\s*\n\.recommendation-agent,\s*\n\.manual-choice-agent\s*\{[\s\S]*?min-width: 0/);
   assert.match(css, /\.recommendation-agent__limitation\s*\{[\s\S]*?margin: 0\.9rem 0 0/);
   assert.match(css, /\.scenario-grid\s*\{[\s\S]*?width: 100%/);
   assert.match(css, /\.scenario-grid\s*\{[\s\S]*?min-width: 0/);
@@ -257,7 +257,7 @@ test('create analysis manual choice uses a separate low-noise selection screen',
   assert.match(css, /\.create-analysis-secondary-action\s*\{[\s\S]*?box-shadow: 0 10px 22px rgba\(51, 65, 85, 0\.12\)/);
 });
 
-test('create analysis scenario setup uses agent card and accessible depth choices', () => {
+test('create analysis skips setup page and starts selected scenarios with internal depth defaults', () => {
   const source = fs.readFileSync(
     new URL('../../src/pages/create-analysis/CreateAnalysisPage.tsx', import.meta.url),
     'utf8',
@@ -267,34 +267,30 @@ test('create analysis scenario setup uses agent card and accessible depth choice
     'utf8',
   );
 
-  assert.match(source, /function ScenarioSetupAgent/);
-  assert.match(source, /className="create-analysis-panel create-analysis-panel--onboarding"/);
-  assert.match(source, /className="scenario-setup-agent"/);
-  assert.match(source, /범위 선택 중/);
-  assert.match(source, /className="scenario-setup-agent__selected-flow"/);
-  assert.match(source, /depthOptions\.map/);
-  assert.match(source, /function depthOptionsForScenario\(scenarioType: string\): ScenarioDepthOption\[\]/);
-  assert.match(source, /return SCENARIO_DEPTH_OPTIONS\.filter\(\(option\) => option\.id !== 'form-depth'\)/);
-  assert.match(source, /첫 화면에서 다음 행동이 바로 보이는지 확인해요/);
-  assert.match(source, /다음 화면의 맥락까지 이어서 확인해요/);
-  assert.match(source, /입력 양식까지 보기/);
-  assert.doesNotMatch(source, /CTA가 명확한지, 첫 행동이 바로 보이는지 빠르게 확인합니다/);
-  assert.doesNotMatch(source, /Form까지 보기/);
-  assert.match(source, /role="radiogroup"/);
-  assert.match(source, /checked=\{isSelected\}/);
-  assert.match(source, /onChange=\{\(\) => onDepthChange\(option\.id\)\}/);
-  assert.match(source, /onStartRun=\{startSelectedScenarioRun\}/);
-  assert.doesNotMatch(source, /진단 시작 준비/);
+  assert.doesNotMatch(source, /function ScenarioSetupAgent/);
+  assert.doesNotMatch(source, /ScenarioSetupAgentProps/);
+  assert.doesNotMatch(source, /className="create-analysis-panel create-analysis-panel--onboarding"/);
+  assert.doesNotMatch(source, /확인할 범위를 정해주세요/);
+  assert.doesNotMatch(source, /범위 선택 중/);
+  assert.doesNotMatch(source, /function depthOptionsForScenario/);
+  assert.doesNotMatch(source, /normalizeDepthForScenario/);
+  assert.doesNotMatch(source, /selectedDepthId/);
+  assert.doesNotMatch(source, /selectedDepthOptions/);
+  assert.doesNotMatch(source, /role="radiogroup"/);
+  assert.doesNotMatch(source, /onStartRun=\{startSelectedScenarioRun\}/);
+  assert.match(source, /function defaultDepthForScenario\(scenarioType: string\): ScenarioDepthId/);
+  assert.match(source, /scenarioType === 'PURCHASE_CHECKOUT'[\s\S]*?return 'form-depth'/);
+  assert.match(source, /scenarioType === 'SIGNUP_LEAD_FORM' \|\| scenarioType === 'CONTACT'[\s\S]*?return 'form-depth'/);
+  assert.match(source, /scenarioType === 'LANDING_CTA' \|\| scenarioType === 'PRICING'[\s\S]*?return 'next-screen'/);
+  assert.match(source, /void startAnalysisRun\(scenario, defaultDepthForScenario\(scenario\.scenarioType\)\)/);
+  assert.match(source, /depthId,\n\s*source:/);
 
-  assert.match(css, /\.create-analysis-panel--onboarding\s*\{[\s\S]*?background: transparent/);
-  assert.match(css, /\.scenario-depth-option:has\(input:focus-visible\)\s*\{[\s\S]*?box-shadow: 0 0 0 3px/);
-  assert.match(css, /\.scenario-depth-option input:focus-visible \+ \.scenario-depth-option__marker\s*\{[\s\S]*?box-shadow: 0 0 0 3px/);
-  assert.match(css, /\.scenario-depth-option--selected\s*\{[\s\S]*?background: rgba\(240, 249, 255, 0\.48\)/);
-  assert.match(css, /\.scenario-setup-agent__action\s*\{[\s\S]*?background: #334155/);
-  assert.match(css, /@media \(prefers-reduced-motion: reduce\)\s*\{[\s\S]*?\.scenario-setup-agent__header-status-dot::after[\s\S]*?animation: none/);
+  assert.doesNotMatch(css, /scenario-setup-agent/);
+  assert.doesNotMatch(css, /scenario-depth-option/);
+  assert.doesNotMatch(css, /create-analysis-panel--onboarding/);
 });
 
-test('create analysis selection opens setup and starts a run without a ready screen', () => {
+test('create analysis selection starts a run directly without setup or ready screens', () => {
   const source = fs.readFileSync(
     new URL('../../src/pages/create-analysis/CreateAnalysisPage.tsx', import.meta.url),
     'utf8',
@@ -326,9 +322,9 @@ test('create analysis selection opens setup and starts a run without a ready scr
   assert.match(source, /const isStartingRun = isCreatingRun \|\| scenarioAuthoringBusy/);
   assert.match(source, /const visibleRunStartError = runStartError \|\| \(scenarioAuthoringState\.kind === 'failed' \? scenarioAuthoringState\.message : ''\)/);
   assert.match(source, /isStartingRun=\{isStartingRun\}/);
-  assert.match(source, /selectedDepthId/);
-  assert.match(source, /normalizeDepthForScenario\(selectedScenario\?\.scenarioType, routeState\.depthId\)/);
-  assert.match(source, /selectedDepthOptions/);
+  assert.doesNotMatch(source, /selectedDepthId/);
+  assert.doesNotMatch(source, /normalizeDepthForScenario/);
+  assert.doesNotMatch(source, /selectedDepthOptions/);
   assert.match(source, /function defaultDepthForScenario\(scenarioType: string\): ScenarioDepthId/);
   assert.match(source, /scenarioType === 'PURCHASE_CHECKOUT'[\s\S]*?return 'form-depth'/);
   assert.match(source, /scenarioType === 'SIGNUP_LEAD_FORM' \|\| scenarioType === 'CONTACT'[\s\S]*?return 'form-depth'/);
@@ -363,9 +359,9 @@ test('create analysis selection opens setup and starts a run without a ready scr
   assert.match(source, /pushAppPath\(buildRunMonitorPath\(createdRunId/);
   assert.doesNotMatch(source, /window\.location\.assign/);
   assert.match(source, /scenarioId: scenario\.id/);
-  assert.match(source, /depthId: defaultDepthForScenario\(scenario\.scenarioType\)/);
-  assert.match(source, /void startAnalysisRun\(selectedScenario, selectedDepthId\)/);
-  assert.match(source, /onStartRun=\{startSelectedScenarioRun\}/);
+  assert.match(source, /void startAnalysisRun\(scenario, defaultDepthForScenario\(scenario\.scenarioType\)\)/);
+  assert.doesNotMatch(source, /void startAnalysisRun\(selectedScenario, selectedDepthId\)/);
+  assert.doesNotMatch(source, /onStartRun=\{startSelectedScenarioRun\}/);
   assert.match(source, /className="create-analysis-run-warning"/);
   assert.doesNotMatch(source, /function ReadyAgent/);
   assert.doesNotMatch(source, /className="ready-agent"/);
@@ -395,7 +391,7 @@ test('create analysis page wires stages to browser history query state', () => {
   assert.match(source, /stage: 'discovering'/);
   assert.match(source, /stage: 'recommendations'/);
   assert.match(source, /discoveryState/);
-  assert.match(source, /stage: 'onboarding'/);
+  assert.doesNotMatch(source, /stage: 'onboarding'/);
   assert.doesNotMatch(source, /stage: 'ready'/);
   assert.doesNotMatch(source, /createScenarioReadyRouteState/);
   assert.match(source, /createRecommendationChoiceRouteState\(routeState, submittedUrl\)/);
