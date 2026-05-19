@@ -13,6 +13,8 @@ import com.wedge.analysis.domain.AnalysisJob;
 import com.wedge.analysis.infrastructure.AnalysisJobMapper;
 import com.wedge.common.error.BusinessException;
 import com.wedge.common.error.ErrorCode;
+import com.wedge.evidence.api.dto.EvidenceCountsResponse;
+import com.wedge.evidence.api.dto.RunEvidenceSummaryResponse;
 import com.wedge.evidence.application.EvidenceService;
 import com.wedge.evidence.domain.EvidencePacketSnapshot;
 import com.wedge.project.application.ProjectAccessService;
@@ -184,6 +186,53 @@ class AnalysisRequestServiceTest {
     }
 
     @Test
+    void requestPrimaryAnalysisAllowsFailedPartialRunWithCollectedEvidence() {
+        UUID runId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        UUID evidencePacketId = UUID.randomUUID();
+        RunResponse run = sampleRun(runId, RunStatus.FAILED, ResultCompleteness.PARTIAL);
+        EvidencePacketSnapshot evidencePacket = snapshot(evidencePacketId, runId, 8, 41);
+        when(runService.getRun(runId)).thenReturn(run);
+        when(evidenceService.getRunEvidenceSummary(run)).thenReturn(evidenceSummary(8, 0, 41));
+        when(evidenceService.materializeRunEvidencePacketSnapshot(runId)).thenReturn(evidencePacket);
+        UUID outboxMessageId = UUID.randomUUID();
+        when(outboxMessagePersistenceAdapter.appendAnalysisRequestMessage(any(AnalysisRequestMessage.class), any(UUID.class)))
+                .thenReturn(outboxMessageId);
+
+        AnalysisRequestResponse response = analysisRequestService.requestPrimaryAnalysis(runId, userId);
+
+        assertThat(response.runId()).isEqualTo(runId);
+        assertThat(response.evidencePacketId()).isEqualTo(evidencePacketId);
+        assertThat(response.checkpointCount()).isEqualTo(8);
+        assertThat(response.artifactCount()).isEqualTo(41);
+        verify(evidenceService).getRunEvidenceSummary(run);
+        verify(evidenceService).materializeRunEvidencePacketSnapshot(runId);
+        verify(runMapper).markAnalysisQueued(runId, response.analysisJobId());
+        verify(applicationEventPublisher).publishEvent(eventCaptor.capture());
+        assertThat(eventCaptor.getValue().outboxMessageId()).isEqualTo(outboxMessageId);
+    }
+
+    @Test
+    void requestPrimaryAnalysisRejectsFailedPartialRunWithoutCollectedEvidence() {
+        UUID runId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        RunResponse run = sampleRun(runId, RunStatus.FAILED, ResultCompleteness.PARTIAL);
+        when(runService.getRun(runId)).thenReturn(run);
+        when(evidenceService.getRunEvidenceSummary(run)).thenReturn(evidenceSummary(0, 0, 0));
+
+        assertThatThrownBy(() -> analysisRequestService.requestPrimaryAnalysis(runId, userId))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.STATE_CONFLICT);
+
+        verify(evidenceService).getRunEvidenceSummary(run);
+        verify(evidenceService, never()).materializeRunEvidencePacketSnapshot(runId);
+        verify(analysisJobMapper, never()).insertQueued(any());
+        verify(outboxMessagePersistenceAdapter, never()).appendAnalysisRequestMessage(any(), any());
+        verify(applicationEventPublisher, never()).publishEvent(any());
+    }
+
+    @Test
     void requestPrimaryAnalysisDoesNotSkipProjectAccessOutsideDevProfile() {
         UUID runId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
@@ -300,6 +349,15 @@ class AnalysisRequestServiceTest {
         return snapshot;
     }
 
+    private RunEvidenceSummaryResponse evidenceSummary(int checkpointCount, int observationCount, int artifactCount) {
+        return new RunEvidenceSummaryResponse(
+                null,
+                null,
+                null,
+                new EvidenceCountsResponse(checkpointCount, observationCount, artifactCount)
+        );
+    }
+
     private AnalysisRequestService analysisRequestService(boolean accessCheckEnabled, String... activeProfiles) {
         AnalysisProperties properties = new AnalysisProperties();
         properties.setProjectAccessCheckEnabled(accessCheckEnabled);
@@ -330,6 +388,14 @@ class AnalysisRequestServiceTest {
     }
 
     private RunResponse sampleRun(UUID runId, RunStatus status) {
+        return sampleRun(
+                runId,
+                status,
+                status == RunStatus.COMPLETED ? ResultCompleteness.FINAL : ResultCompleteness.NONE
+        );
+    }
+
+    private RunResponse sampleRun(UUID runId, RunStatus status, ResultCompleteness resultCompleteness) {
         return new RunResponse(
                 runId,
                 "run",
@@ -341,7 +407,7 @@ class AnalysisRequestServiceTest {
                 "desktop",
                 UUID.randomUUID(),
                 status,
-                status == RunStatus.COMPLETED ? ResultCompleteness.FINAL : ResultCompleteness.NONE,
+                resultCompleteness,
                 AnalysisStatus.NOT_STARTED,
                 null,
                 null,

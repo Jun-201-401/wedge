@@ -575,7 +575,7 @@ export function getApiCheckpoint(live: RunLive) {
   }
 
   if (live.status === 'FAILED') {
-    return '분석 실행이 실패했습니다';
+    return '실행이 완료되지 않았습니다';
   }
 
   if (live.status === 'STOP_REQUESTED') {
@@ -623,7 +623,7 @@ export function getFailureCodeLabel(failureCode?: string | null) {
   }
 
   if (failureCode === 'RUNNER_EXECUTION_FAILED') {
-    return '진행 실패';
+    return '목표 확인 실패';
   }
 
   return failureCode ?? '실패';
@@ -800,7 +800,12 @@ export function canOpenRunReport(isMockRun: boolean, run?: Run, evidencePacket?:
     return true;
   }
 
-  return run?.status === 'COMPLETED' && (evidencePacket?.checkpoints.length ?? 0) > 0;
+  return canAnalyzeRun(run) && (evidencePacket?.checkpoints.length ?? 0) > 0;
+}
+
+export function canAnalyzeRun(run?: Run) {
+  return run?.status === 'COMPLETED'
+    || (run?.status === 'FAILED' && run.resultCompleteness === 'PARTIAL');
 }
 
 export function getCurrentRunReportProjection(report: RunReportProjection | null, runId: string) {
@@ -865,7 +870,7 @@ export function resolveRunMonitorReportCtaState({
       titleLabel: '현재 체크포인트',
       eyebrow: '리포트 상태',
       message: report.analysisStatus === 'NOT_STARTED'
-        ? '분석을 요청하고 있습니다. 완료되면 리포트를 자동으로 준비합니다.'
+        ? '수집된 근거로 분석을 요청하고 있습니다. 완료되면 리포트를 자동으로 준비합니다.'
         : '분석 결과를 기다리는 중입니다. 완료되면 리포트를 자동으로 준비합니다.',
     };
   }

@@ -27,6 +27,10 @@ type ReportActionState = {
   message: string;
 };
 
+function canLoadRunReportSurfaces(run: Run) {
+  return run.status === 'COMPLETED' || (run.status === 'FAILED' && run.resultCompleteness === 'PARTIAL');
+}
+
 const IDLE_REPORT_ACTION_STATE: ReportActionState = { kind: 'idle', message: '' };
 const REPORT_LOAD_FALLBACK_NOTICE = '서버 리포트를 불러오지 못해 수집된 근거로 임시 리포트를 구성합니다.';
 const EVIDENCE_LOAD_ERROR_MESSAGE = '수집 근거를 불러오지 못했습니다. 실행 결과 저장이 완료됐는지 확인해주세요.';
@@ -223,7 +227,7 @@ export function RunReportPage({ runId }: RunReportPageProps) {
         setRun(nextRun);
         setIsRunLoading(false);
 
-        if (nextRun.status !== 'COMPLETED') {
+        if (!canLoadRunReportSurfaces(nextRun)) {
           return;
         }
 

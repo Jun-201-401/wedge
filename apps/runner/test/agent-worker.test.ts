@@ -523,6 +523,189 @@ test("[Agent Worker] 빈 초기 탭에서는 LLM checkpoint보다 start_url boot
   assert.equal(result.trace.turns[0].actionResult?.finalUrl, task.start_url);
 });
 
+test("[Agent Worker] LLM이 반복 스크롤을 지시해도 max_same_page_attempts 이후 조기 종료한다", async () => {
+  const message = await loadAgentExampleMessage();
+  const task = message.payload.agentTask;
+  task.goal = "문의 CTA를 찾는다";
+  task.budget.max_steps = 5;
+  task.budget.max_same_page_attempts = 1;
+  task.artifact_policy = {
+    capture_screenshots: false,
+    capture_dom_snapshots: false,
+    capture_ax_tree: false,
+    capture_trace: false
+  };
+
+  const runtimePlan = createAgentRuntimePlan(task);
+  const executedActions: string[] = [];
+  let currentUrl = "about:blank";
+  const decisionClient: AgentDecisionClient = {
+    decide: () => ({
+      kind: "act",
+      description: "Scroll to continue looking for the target CTA.",
+      reason: "No target CTA is visible yet.",
+      confidence: 0.74,
+      action: {
+        type: "scroll",
+        value: 700
+      },
+      settleStrategy: {
+        type: "fixed_short",
+        timeout_ms: 250
+      },
+      stage: "VALUE",
+      targetKey: "scroll:700"
+    })
+  };
+
+  const result = await executeAgentRunWithScenarioRuntime({
+    runId: task.run_id,
+    task,
+    runtimePlan,
+    session: createSimulatedSession(runtimePlan, {
+      execute: async (action) => {
+        executedActions.push(action.type);
+        if (action.type === "goto") {
+          currentUrl = task.start_url;
+        }
+        return {
+          actionType: action.type,
+          targetSummary: null,
+          stopRequested: false,
+          details: {}
+        };
+      },
+      settle: async () => createSettledResult(),
+      snapshot: () => createSimulatedPageSnapshot(runtimePlan, {
+        currentUrl,
+        finalUrl: currentUrl,
+        interactiveComponents: []
+      })
+    }),
+    callbackClient: createStubCallbackClient(),
+    capturePipeline: {
+      collectCheckpoint: async () => {
+        throw new Error("capture-disabled repeated scroll test should not collect checkpoint artifacts");
+      }
+    },
+    artifactStore: {
+      persistArtifacts: async () => []
+    },
+    decisionClient
+  });
+
+  assert.deepEqual(executedActions, ["goto", "scroll"]);
+  assert.equal(result.summary.completedStepCount, 2);
+  assert.equal(result.trace.turns.length, 3);
+  assert.equal(result.trace.turns[2].decision?.kind, "finish");
+  assert.equal(result.trace.turns[2].decision?.action.type, "checkpoint");
+  assert.equal(result.trace.turns[2].decision?.reason.includes("1 scroll attempt"), true);
+  assert.equal(result.trace.outcome.status, "EXHAUSTED");
+  assert.equal(result.trace.outcome.reason_code, "FINISH_DECISION");
+});
+
+test("[Agent Worker] LLM이 스크롤을 지시해도 보이는 목표 CTA가 있으면 클릭으로 보정한다", async () => {
+  const message = await loadAgentExampleMessage();
+  const task = message.payload.agentTask;
+  task.goal = "CONTACT_FLOW_VERIFICATION";
+  task.budget.max_steps = 3;
+  task.budget.max_same_page_attempts = 2;
+  task.artifact_policy = {
+    capture_screenshots: false,
+    capture_dom_snapshots: false,
+    capture_ax_tree: false,
+    capture_trace: false
+  };
+
+  const runtimePlan = createAgentRuntimePlan(task);
+  const executedActions: string[] = [];
+  let currentUrl = "about:blank";
+  const decisionClient: AgentDecisionClient = {
+    decide: () => ({
+      kind: "act",
+      description: "Scroll to keep searching.",
+      reason: "The model did not pick the visible CTA.",
+      confidence: 0.74,
+      action: {
+        type: "scroll",
+        value: 700
+      },
+      settleStrategy: {
+        type: "fixed_short",
+        timeout_ms: 250
+      },
+      stage: "VALUE",
+      targetKey: "scroll:700"
+    })
+  };
+
+  const result = await executeAgentRunWithScenarioRuntime({
+    runId: task.run_id,
+    task,
+    runtimePlan,
+    session: createSimulatedSession(runtimePlan, {
+      execute: async (action) => {
+        executedActions.push(action.type);
+        if (action.type === "goto") {
+          currentUrl = task.start_url;
+        }
+        if (action.type === "click") {
+          currentUrl = "https://example.com/contact";
+        }
+        return {
+          actionType: action.type,
+          targetSummary: null,
+          stopRequested: false,
+          details: {}
+        };
+      },
+      settle: async () => createSettledResult(),
+      snapshot: () => createSimulatedPageSnapshot(runtimePlan, {
+        currentUrl,
+        finalUrl: currentUrl,
+        interactiveComponents: currentUrl === task.start_url
+          ? [
+            {
+              text: "문의하기",
+              selector: "#contact",
+              role: "link",
+              tag: "a",
+              clickable: true,
+              clicked_in_scenario: false,
+              is_cta_candidate: true,
+              is_primary_like: true,
+              bounds: {
+                x: 20,
+                y: 20,
+                width: 140,
+                height: 44,
+                unit: "css_px"
+              }
+            }
+          ]
+          : []
+      })
+    }),
+    callbackClient: createStubCallbackClient(),
+    capturePipeline: {
+      collectCheckpoint: async () => {
+        throw new Error("capture-disabled visible CTA override test should not collect checkpoint artifacts");
+      }
+    },
+    artifactStore: {
+      persistArtifacts: async () => []
+    },
+    decisionClient
+  });
+
+  assert.deepEqual(executedActions, ["goto", "click"]);
+  assert.equal(result.trace.turns[1].decision?.action.type, "click");
+  assert.equal(result.trace.turns[1].decision?.metadata?.decisionSource, "heuristic");
+  assert.match(result.trace.turns[1].decision?.reason ?? "", /visible goal-matching entrypoint/i);
+  assert.equal(result.trace.outcome.status, "SUCCESS");
+  assert.equal(result.trace.outcome.reason_code, "GOAL_REACHED");
+});
+
 test("[Agent Worker] checkpoint decision도 캡처 정책이 켜져 있으면 checkpoint artifact를 저장한다", async () => {
   const message = await loadAgentExampleMessage();
   const task = message.payload.agentTask;

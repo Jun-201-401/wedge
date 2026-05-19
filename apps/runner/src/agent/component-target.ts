@@ -75,14 +75,24 @@ export function targetKey(component: InteractiveComponentObservationItem): strin
 export function candidateText(component: InteractiveComponentObservationItem): string {
   return [
     component.text,
+    component.visible_text ?? "",
+    component.accessible_name ?? "",
     component.role ?? "",
     component.label_text ?? "",
     component.placeholder ?? "",
     component.name ?? "",
+    component.describedby_text ?? "",
+    component.help_text ?? "",
     component.input_type ?? "",
     component.href ?? "",
     component.selector ?? "",
-    component.tag
+    component.tag,
+    component.container_role ?? "",
+    component.container_heading ?? "",
+    component.layout?.css_position ?? "",
+    component.layout?.is_fixed ? "fixed" : "",
+    component.layout?.is_sticky ? "sticky" : "",
+    ...(component.nearby_text ?? [])
   ].join(" ");
 }
 

@@ -14,7 +14,14 @@ import { RunnerExecutionPolicyError } from "../scenario/policy.ts";
 import { persistAgentScenarioPlanExportArtifact, persistAgentTraceArtifact } from "./trace/artifacts.ts";
 import { emitAgentEventBestEffort, emitAgentTraceBestEffort } from "./callbacks.ts";
 import { AgentBudgetExceededError, assertAgentDeadline, createAgentDeadline, remainingAgentBudgetMs, runSideEffectWithDeadlineCleanup, runWithinAgentDeadline } from "./deadline.ts";
-import { decideNextAction, ensureAgentDecisionMetadata, HeuristicDecisionClient, type AgentDecision, type AgentDecisionClient } from "./planner.ts";
+import {
+  decideNextAction,
+  ensureAgentDecisionMetadata,
+  HeuristicDecisionClient,
+  type AgentDecision,
+  type AgentDecisionClient,
+  type AgentDecisionInput
+} from "./planner.ts";
 import { observePage } from "./observation.ts";
 import { evaluateAgentPolicy } from "./policy.ts";
 import { decideFromReplayHints } from "./replay-hint-planner.ts";
@@ -186,6 +193,8 @@ export async function executeAgentRun(input: AgentExecutorInput): Promise<AgentE
           ...decisionInput,
           replayHints: input.task.replay_hints
         }) ?? ensureAgentDecisionMetadata(await runWithinAgentDeadline(deadline, "decision", () => decisionClient.decide(decisionInput)));
+      decision = preferVisibleHeuristicClickOverScroll(decision, decisionInput);
+      decision = capRepeatedScrollDecision(decision, state.scrollCount, config.maxScrolls);
     } catch (error) {
       if (markBudgetExceeded(trace, error)) {
         break;
@@ -486,6 +495,46 @@ export async function executeAgentRun(input: AgentExecutorInput): Promise<AgentE
 
 function isReplayHintDecision(decision: AgentDecision): boolean {
   return decision.metadata?.decisionSource === "replay_hint";
+}
+
+function preferVisibleHeuristicClickOverScroll(decision: AgentDecision, input: AgentDecisionInput): AgentDecision {
+  if (decision.kind !== "act" || decision.action.type !== "scroll") {
+    return decision;
+  }
+
+  const visibleDecision = decideNextAction(input);
+  if (visibleDecision.kind !== "act" || visibleDecision.action.type !== "click") {
+    return decision;
+  }
+
+  return {
+    ...visibleDecision,
+    reason: `${visibleDecision.reason} The model requested another scroll, but a visible goal-matching entrypoint is already actionable.`,
+    confidence: Math.max(visibleDecision.confidence, Math.min(decision.confidence, 0.8))
+  };
+}
+
+function capRepeatedScrollDecision(decision: AgentDecision, completedScrollCount: number, maxScrolls: number): AgentDecision {
+  if (decision.kind !== "act" || decision.action.type !== "scroll" || completedScrollCount < maxScrolls) {
+    return decision;
+  }
+
+  return {
+    kind: "finish",
+    description: "Stop after repeated scroll attempts did not reveal a goal-matching entrypoint.",
+    reason: `The agent could not find a goal-matching CTA after ${completedScrollCount} scroll attempt(s).`,
+    confidence: Math.max(0.4, Math.min(decision.confidence, 0.7)),
+    action: {
+      type: "checkpoint"
+    },
+    settleStrategy: {
+      type: "none",
+      timeout_ms: 0
+    },
+    stage: decision.stage,
+    targetKey: null,
+    metadata: decision.metadata
+  };
 }
 
 function resolveAgentBudget(task: AgentTask): {

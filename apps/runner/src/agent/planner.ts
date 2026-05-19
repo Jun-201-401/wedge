@@ -331,6 +331,14 @@ function selectGoalSpecificAction(goal: string, components: InteractiveComponent
     });
   }
 
+  if (plannerSemantics.landingConversionGoal.test(goal)) {
+    return selectSemanticEntrypoint(components, plannerSemantics.landingConversionEntrypoint, {
+      reason: "Landing conversion verification should follow a visible high-intent CTA before continuing to scroll.",
+      confidence: 0.78,
+      stage: "CTA"
+    });
+  }
+
   if (plannerSemantics.pricingGoal.test(goal)) {
     return selectSemanticEntrypoint(components, plannerSemantics.pricingEntrypoint, {
       reason: "Pricing-flow verification should only follow a visible pricing, plan, quote, or estimate entrypoint.",
@@ -347,7 +355,9 @@ function selectSemanticEntrypoint(
   pattern: RegExp,
   decision: Omit<ActionCandidate, "component">
 ): ActionCandidate | undefined {
-  const component = components.find((candidate) => pattern.test(candidateText(candidate)));
+  const component = components
+    .filter((candidate) => pattern.test(candidateText(candidate)))
+    .sort((left, right) => entrypointPriority(right) - entrypointPriority(left))[0];
   return component ? { component, ...decision } : undefined;
 }
 
@@ -360,9 +370,9 @@ function requiresGoalSpecificEntrypoint(goal: string): boolean {
 function selectPrimaryAction(components: InteractiveComponentObservationItem[]): ActionCandidate | undefined {
   const actionableComponents = components.filter((component) => !isDialogBackdropLike(component));
   const candidates = actionableComponents.length > 0 ? actionableComponents : components;
-  const component = candidates.find((candidate) =>
-    candidate.is_primary_like || candidate.is_cta_candidate
-  ) ?? candidates[0];
+  const component = candidates
+    .filter((candidate) => candidate.is_primary_like || candidate.is_cta_candidate)
+    .sort((left, right) => entrypointPriority(right) - entrypointPriority(left))[0] ?? candidates[0];
 
   if (!component) {
     return undefined;
@@ -376,6 +386,23 @@ function selectPrimaryAction(components: InteractiveComponentObservationItem[]):
     confidence: component.is_primary_like ? 0.82 : 0.68,
     stage: "CTA"
   };
+}
+
+function entrypointPriority(component: InteractiveComponentObservationItem): number {
+  const text = candidateText(component);
+  const selector = component.selector ?? "";
+  const href = component.href ?? "";
+
+  return (component.layout?.is_fixed ? 45 : 0) +
+    (component.layout?.is_sticky ? 35 : 0) +
+    (/fixed|sticky|floating|float|quick|channel|talk|kakao|chat|consult|contact|tel|call|상담|문의|카카오|카톡|톡|전화/i.test(`${selector} ${href}`) ? 30 : 0) +
+    (/^tel:|^mailto:/i.test(href) ? 30 : 0) +
+    (component.is_primary_like ? 18 : 0) +
+    (component.is_cta_candidate ? 14 : 0) +
+    (component.role === "button" || component.tag === "button" ? 8 : 0) +
+    (component.visibility?.above_fold ? 7 : 0) +
+    (component.visibility?.in_viewport ? 5 : 0) +
+    (plannerSemantics.contactEntrypoint.test(text) ? 4 : 0);
 }
 
 function componentToDecision(candidate: ActionCandidate): AgentDecision {

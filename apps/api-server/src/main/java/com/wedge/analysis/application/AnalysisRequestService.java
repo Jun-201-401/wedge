@@ -5,14 +5,16 @@ import com.wedge.analysis.domain.AnalysisJob;
 import com.wedge.analysis.infrastructure.AnalysisJobMapper;
 import com.wedge.common.error.BusinessException;
 import com.wedge.common.error.ErrorCode;
+import com.wedge.common.infrastructure.outbox.OutboxMessagePersistenceAdapter;
+import com.wedge.evidence.api.dto.RunEvidenceSummaryResponse;
 import com.wedge.evidence.application.EvidenceService;
 import com.wedge.evidence.domain.EvidencePacketSnapshot;
 import com.wedge.run.api.dto.RunResponse;
 import com.wedge.run.application.RunService;
-import com.wedge.run.domain.AnalysisStatus;
 import com.wedge.run.domain.AnalysisJobStatus;
+import com.wedge.run.domain.AnalysisStatus;
+import com.wedge.run.domain.ResultCompleteness;
 import com.wedge.run.domain.RunStatus;
-import com.wedge.common.infrastructure.outbox.OutboxMessagePersistenceAdapter;
 import com.wedge.run.infrastructure.RunMapper;
 import java.time.OffsetDateTime;
 import java.util.Map;
@@ -59,8 +61,20 @@ public class AnalysisRequestService {
     public AnalysisRequestResponse requestPrimaryAnalysis(UUID runId, UUID userId) {
         RunResponse run = runService.getRun(runId);
         analysisAccessGuard.ensureProjectAccessible(run.projectId(), userId);
+        if (!canRequestPrimaryAnalysis(run)) {
+            throw new BusinessException(
+                    ErrorCode.STATE_CONFLICT,
+                    "Run must be COMPLETED or have PARTIAL evidence before analysis can be requested."
+            );
+        }
         if (run.status() != RunStatus.COMPLETED) {
-            throw new BusinessException(ErrorCode.STATE_CONFLICT, "Run must be COMPLETED before analysis can be requested.");
+            RunEvidenceSummaryResponse evidenceSummary = evidenceService.getRunEvidenceSummary(run);
+            if (!hasPartialEvidence(evidenceSummary)) {
+                throw new BusinessException(
+                        ErrorCode.STATE_CONFLICT,
+                        "Partial run has no collected evidence to analyze."
+                );
+            }
         }
 
         EvidencePacketSnapshot evidencePacket = evidenceService.materializeRunEvidencePacketSnapshot(runId);
@@ -149,6 +163,16 @@ public class AnalysisRequestService {
                 "analysis:" + analysisJobId,
                 payload
         );
+    }
+
+    private boolean canRequestPrimaryAnalysis(RunResponse run) {
+        return run.status() == RunStatus.COMPLETED
+                || (run.status() == RunStatus.FAILED && run.resultCompleteness() == ResultCompleteness.PARTIAL);
+    }
+
+    private boolean hasPartialEvidence(RunEvidenceSummaryResponse evidenceSummary) {
+        return evidenceSummary.evidenceCounts().checkpointCount() > 0
+                || evidenceSummary.evidenceCounts().artifactCount() > 0;
     }
 
 }

@@ -26,6 +26,10 @@ function hasReportEvidence(evidencePacket: EvidencePacket | null | undefined) {
   return Array.isArray(evidencePacket?.checkpoints) && evidencePacket.checkpoints.length > 0;
 }
 
+function canShowReportForRun(run: Run) {
+  return run.status === 'COMPLETED' || (run.status === 'FAILED' && run.resultCompleteness === 'PARTIAL');
+}
+
 export function resolveRunReportState({
   isMockRun,
   isRunLoading,
@@ -66,7 +70,7 @@ export function resolveRunReportState({
     };
   }
 
-  if (run.status !== 'COMPLETED') {
+  if (!canShowReportForRun(run)) {
     return {
       kind: 'not-ready',
       title: '리포트 준비 중입니다',
@@ -107,7 +111,7 @@ export function resolveRunReportState({
       kind: 'api-pending',
       title: '리포트 준비 중',
       message: report.analysisStatus === 'NOT_STARTED'
-        ? '실행은 완료됐지만 아직 분석이 시작되지 않았습니다. 분석을 시작하면 수집된 근거를 바탕으로 리포트를 생성합니다.'
+        ? '아직 분석이 시작되지 않았습니다. 분석을 시작하면 수집된 근거를 바탕으로 리포트를 생성합니다.'
         : '분석이 진행 중입니다. 분석 완료 후 리포트를 생성할 수 있습니다.',
     };
   }

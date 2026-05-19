@@ -72,6 +72,17 @@ export function verifyGoal(input: {
     };
   }
 
+  if (phase === "post_action" && input.decision?.action.type === "click" && isStrongInPageConversion(input.decision, pageText, goalText)) {
+    return {
+      satisfied: true,
+      terminal: true,
+      outcome: "SUCCESS",
+      reason: "A strong conversion CTA click reached an in-page purchase, option, cart, inquiry, or conversion state.",
+      confidence: 0.7,
+      phase
+    };
+  }
+
   if (input.decision?.kind === "finish") {
     return {
       satisfied: false,
@@ -181,20 +192,70 @@ function isGoalLikeDestination(input: {
   );
 }
 
+function isStrongInPageConversion(decision: AgentDecision, pageText: string, goalText: string): boolean {
+  if (verifierSemantics.checkoutGoal.test(goalText)) {
+    return false;
+  }
+
+  return verifierSemantics.strongConversionClick.test(describeDecisionTarget(decision)) &&
+    verifierSemantics.inPageConversionState.test(pageText);
+}
+
 function createPageSignalText(snapshot: BrowserPageSnapshot): string {
   return [
     snapshot.finalUrl,
     snapshot.title,
+    ...snapshot.visibleTextBlocks.map((block) => block.text),
+    ...snapshot.toastTexts,
+    ...snapshot.breadcrumb,
+    ...snapshot.visiblePrices,
+    snapshot.checkoutContext.order_summary_text.join(" "),
+    snapshot.checkoutContext.final_submit_text ?? "",
+    ...snapshot.checkoutContext.checkout_keywords,
     ...snapshot.interactiveComponents.flatMap((component) => [
       component.text,
+      component.visible_text ?? "",
+      component.accessible_name ?? "",
+      component.label_text ?? "",
+      component.href ?? "",
       component.role ?? "",
       component.selector ?? "",
       component.frame_id ?? "",
-      component.tag
+      component.tag,
+      component.container_heading ?? "",
+      ...(component.nearby_text ?? [])
     ]),
     ...snapshot.consoleErrors,
     ...snapshot.networkErrors
   ].join(" ");
+}
+
+function describeDecisionTarget(decision: AgentDecision): string {
+  const target = decision.action.target;
+
+  if (typeof target === "string") {
+    return target;
+  }
+
+  if (!target || typeof target !== "object") {
+    return [decision.description, decision.reason, decision.targetKey ?? ""].join(" ");
+  }
+
+  return [
+    "text" in target ? target.text : null,
+    "role" in target ? target.role : null,
+    "label" in target ? target.label : null,
+    "placeholder" in target ? target.placeholder : null,
+    "name" in target ? target.name : null,
+    "href_contains" in target ? target.href_contains : null,
+    "url" in target ? target.url : null,
+    "selector" in target ? target.selector : null,
+    decision.description,
+    decision.reason,
+    decision.targetKey
+  ]
+    .filter((value): value is string => typeof value === "string")
+    .join(" ");
 }
 
 function goalKeywords(goal: string): string[] {

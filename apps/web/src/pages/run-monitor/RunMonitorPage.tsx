@@ -21,6 +21,7 @@ import {
   buildApiEventTimeline,
   buildRunCollectionSummaryStats,
   buildMockRunMonitorData,
+  canAnalyzeRun,
   canRequestRunDelete,
   canRequestRunStop,
   getEvidenceScreenshotPreviewUrl,
@@ -72,7 +73,7 @@ const RUN_MONITOR_RESIZER_FALLBACK_WIDTH = 8;
 
 function getLiveInsightMessage(status: RunStatus) {
   if (status === 'FAILED') {
-    return '실행 중 오류가 발생해 근거 수집이 중단됐습니다. 실패 원인을 확인한 뒤 다시 실행해 주세요.';
+    return '실행이 완료되지 않았습니다. 목표 버튼이나 흐름을 찾지 못했을 수 있으며, 수집된 부분 근거로 분석을 시도할 수 있습니다.';
   }
 
   if (status === 'STOP_REQUESTED') {
@@ -532,7 +533,7 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
   }, [canApplyReportResponse]);
 
   useEffect(() => {
-    if (isMockRun || run.status !== 'COMPLETED' || run.id !== runId) {
+    if (isMockRun || !canAnalyzeRun(run) || run.id !== runId) {
       setReportProjection(null);
       setIsReportStatusLoading(false);
       setReportStatusError('');
@@ -575,10 +576,10 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
     return () => {
       isActive = false;
     };
-  }, [canApplyReportResponse, isMockRun, run.id, run.status, runId]);
+  }, [canApplyReportResponse, isMockRun, run, run.id, runId]);
 
   useEffect(() => {
-    if (isMockRun || run.status !== 'COMPLETED' || run.id !== runId || !shouldRefreshCurrentReport) {
+    if (isMockRun || !canAnalyzeRun(run) || run.id !== runId || !shouldRefreshCurrentReport) {
       return;
     }
 
@@ -606,12 +607,12 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
       isActive = false;
       window.clearTimeout(refreshTimerId);
     };
-  }, [canApplyReportResponse, currentReportProjection, isMockRun, run.id, run.status, runId, shouldRefreshCurrentReport]);
+  }, [canApplyReportResponse, currentReportProjection, isMockRun, run, run.id, runId, shouldRefreshCurrentReport]);
 
   useEffect(() => {
     if (
       isMockRun
-      || run.status !== 'COMPLETED'
+      || !canAnalyzeRun(run)
       || run.id !== runId
       || currentReportProjection?.reportStatus !== 'NOT_READY'
       || currentReportProjection.analysisStatus !== 'NOT_STARTED'
@@ -629,15 +630,15 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
     isMockRun,
     reportActionState.kind,
     requestAnalysisForRun,
+    run,
     run.id,
-    run.status,
     runId,
   ]);
 
   useEffect(() => {
     if (
       isMockRun
-      || run.status !== 'COMPLETED'
+      || !canAnalyzeRun(run)
       || run.id !== runId
       || currentReportProjection?.reportStatus !== 'GENERATABLE'
       || reportActionState.kind === 'pending'
@@ -648,7 +649,7 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
 
     autoReportGenerationRunIdRef.current = run.id;
     generateReportForRun(run.id);
-  }, [currentReportProjection?.reportStatus, generateReportForRun, isMockRun, reportActionState.kind, run.id, run.status, runId]);
+  }, [currentReportProjection?.reportStatus, generateReportForRun, isMockRun, reportActionState.kind, run, run.id, runId]);
 
   const evidenceScreenshotUrl = getEvidenceScreenshotPreviewUrl(evidencePacket);
   const snapshotUrl = evidenceScreenshotUrl ?? live.latestFrame?.url ?? run.latestSnapshot?.url;

@@ -8,6 +8,7 @@ export {
   buildApiSnapshotLogs,
   buildApiSnapshotSteps,
   buildRunCollectionSummaryStats,
+  canAnalyzeRun,
   canOpenRunReport,
   canRequestRunDelete,
   canRequestRunStop,
