@@ -43,6 +43,7 @@ test('run monitor page exposes Sprint 2 live cockpit essentials with Korean-faci
   assert.match(source, /currentCheckpoint/);
   assert.match(source, /getLiveInsightMessage/);
   assert.match(source, /실행 중 오류가 발생해 근거 수집이 중단됐습니다/);
+  assert.match(stateHook, /EVIDENCE_LOAD_RUN_STATUSES = new Set\(\[\'COMPLETED\', \'FAILED\', \'STOPPED\'\]\)/);
   assert.doesNotMatch(source, /<p>선택한 흐름을 준비하고 있습니다\. 곧 근거 수집을 시작합니다\.<\/p>/);
   assert.doesNotMatch(source, /shouldShowSimulationCheckpoint/);
   assert.doesNotMatch(source, /run-monitor-simulation__header/);
@@ -84,10 +85,11 @@ test('run monitor page exposes Sprint 2 live cockpit essentials with Korean-faci
   assert.doesNotMatch(source, /<dt>신호<\/dt>/);
   assert.doesNotMatch(source, /<dt>자료<\/dt>/);
   assert.match(viewModel, /checkpoint\.artifact_refs/);
-  assert.match(source, /findEvidenceScreenshotArtifact/);
+  assert.match(source, /getEvidenceScreenshotPreviewUrl/);
   assert.match(source, /formatDisplayUrl/);
   assert.match(source, /const targetUrlLabel = formatDisplayUrl\(targetUrl\)/);
   assert.match(source, /<strong title=\{targetUrl\}>\{targetUrlLabel\}<\/strong>/);
+  assert.match(source, /const snapshotUrl = evidenceScreenshotUrl \?\? live\.latestFrame\?\.url \?\? run\.latestSnapshot\?\.url/);
   assert.match(source, /useAuthenticatedResourceUrl\(snapshotUrl\)/);
   assert.match(source, /const authenticatedSnapshotUrl = useAuthenticatedResourceUrl\(snapshotUrl\);[\s\S]*?if \(isRealRunLoading\)/);
   assert.match(source, /src=\{authenticatedSnapshotUrl\}/);

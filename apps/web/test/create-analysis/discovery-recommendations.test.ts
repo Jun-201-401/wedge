@@ -172,12 +172,12 @@ test('discovery recommendation mapper keeps NOT_AVAILABLE non-runnable without a
   assert.equal(card.level, 'NOT_AVAILABLE');
   assert.equal(card.levelLabel, '탐지 안 됨');
   assert.equal(card.tone, 'unavailable');
-  assert.equal(card.actionLabel, '직접 설정 필요');
+  assert.equal(card.actionLabel, '실행 가능 신호 부족');
   assert.equal(card.confidenceLabel, '없음');
   assert.equal(card.isRunnable, false);
 });
 
-test('discovery recommendation mapper keeps LOW as a selectable weak signal', () => {
+test('discovery recommendation mapper keeps LOW as a non-runnable weak signal', () => {
   const card = toScenarioRecommendationViewModel({
     ...contactRecommendation,
     recommendationLevel: 'LOW',
@@ -188,8 +188,9 @@ test('discovery recommendation mapper keeps LOW as a selectable weak signal', ()
   assert.equal(card.levelLabel, '약한 신호');
   assert.equal(card.tone, 'low');
   assert.equal(card.confidenceLabel, '낮음');
-  assert.equal(card.isRunnable, true);
-  assert.equal(card.actionLabel, '확인하며 시작하기');
+  assert.equal(card.isRunnable, false);
+  assert.equal(card.actionLabel, '실행 가능 신호 부족');
+  assert.match(card.summary, /진입점을 찾지 못했어요/);
 });
 
 test('discovery recommendation mapper converts completed discovery payloads', () => {
@@ -206,7 +207,7 @@ test('discovery recommendation mapper converts completed discovery payloads', ()
   assert.equal(cards[0].sourceDiscoveryId, discovery.discoveryId);
 });
 
-test('discovery recommendation mapper hides unavailable flows and sorts detected recommendations', () => {
+test('discovery recommendation mapper keeps weak and unavailable flows non-runnable for gating', () => {
   const discovery = {
     discoveryId: '20000000-0000-4000-8000-000000000012',
     projectId: '8f06dca8-9c4d-4f20-b1a8-1d5ee40a9923',
@@ -235,12 +236,13 @@ test('discovery recommendation mapper hides unavailable flows and sorts detected
 
   const cards = toScenarioRecommendationViewModels(discovery);
 
-  assert.deepEqual(cards.map((card) => card.level), ['HIGH', 'LOW']);
-  assert.deepEqual(cards.map((card) => card.id), ['landing-cta', 'pricing']);
+  assert.deepEqual(cards.map((card) => card.level), ['HIGH', 'LOW', 'NOT_AVAILABLE']);
+  assert.deepEqual(cards.map((card) => card.id), ['landing-cta', 'pricing', 'checkout']);
   assert.equal(cards[0].title, '랜딩 전환 버튼 점검');
   assert.equal(cards[0].summary, '첫 화면의 가입, 체험, 문의 버튼 흐름을 확인해요.');
   assert.doesNotMatch(cards[0].summary, /CTA/);
-  assert.equal(cards.every((card) => card.isRunnable), true);
+  assert.deepEqual(cards.map((card) => card.isRunnable), [true, false, false]);
+  assert.equal(cards[1].actionLabel, '실행 가능 신호 부족');
 });
 
 test('manual scenario mapper exposes non-detected flows as direct choices', () => {

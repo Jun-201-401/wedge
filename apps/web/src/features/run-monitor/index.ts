@@ -20,6 +20,7 @@ export {
   getDepthLabel,
   getDevicePresetLabel,
   getEvidenceArtifactLabel,
+  getEvidenceScreenshotPreviewUrl,
   getEvidenceCheckpointTitle,
   getEvidenceObservationSummary,
   getFailureCodeLabel,

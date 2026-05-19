@@ -69,19 +69,19 @@ test('parseCreateAnalysisRouteState restores preflight, recommendations, and man
   });
 });
 
-test('parseCreateAnalysisRouteState restores setup and maps legacy ready links to setup', () => {
+test('parseCreateAnalysisRouteState maps legacy setup and ready links to recommendations', () => {
   assert.deepEqual(parseCreateAnalysisRouteState('?step=setup&url=example.com&scenario=landing-cta&depth=next-screen', options), {
-    stage: 'onboarding',
+    stage: 'recommendations',
     submittedUrl: 'https://example.com/',
-    scenarioId: 'landing-cta',
-    depthId: 'next-screen',
+    scenarioId: null,
+    depthId: null,
   });
 
   assert.deepEqual(parseCreateAnalysisRouteState('?step=ready&url=example.com&scenario=signup-form&depth=nope', options), {
-    stage: 'onboarding',
+    stage: 'recommendations',
     submittedUrl: 'https://example.com/',
-    scenarioId: 'signup-form',
-    depthId: 'hero-only',
+    scenarioId: null,
+    depthId: null,
   });
 });
 
@@ -113,7 +113,7 @@ test('create-analysis route state preserves valid run creation context', () => {
       },
       options,
     ),
-    `/create-analysis?step=setup&url=https%3A%2F%2Fexample.com%2F&scenario=landing-cta&depth=next-screen&projectId=${projectId}&scenarioTemplateVersionId=${scenarioTemplateVersionId}`,
+    `/create-analysis?step=recommendations&url=https%3A%2F%2Fexample.com%2F&projectId=${projectId}&scenarioTemplateVersionId=${scenarioTemplateVersionId}`,
   );
 });
 
@@ -248,7 +248,7 @@ test('buildCreateAnalysisPath encodes create-analysis route state', () => {
       },
       options,
     ),
-    '/create-analysis?step=setup&url=https%3A%2F%2Fexample.com%2F&scenario=landing-cta&depth=next-screen',
+    '/create-analysis?step=recommendations&url=https%3A%2F%2Fexample.com%2F',
   );
 });
 
@@ -273,7 +273,7 @@ test('buildCreateAnalysisPath avoids impossible non-input route states', () => {
 });
 
 
-test('create-analysis recommendation route helpers preserve run context when returning from setup', () => {
+test('create-analysis recommendation route helpers preserve run context when returning from legacy setup', () => {
   const currentState = {
     stage: 'recommendations',
     submittedUrl: 'https://example.com/',
@@ -300,7 +300,7 @@ test('create-analysis recommendation route helpers preserve run context when ret
   });
   assert.equal(
     buildCreateAnalysisPath(setupState, options),
-    `/create-analysis?step=setup&url=https%3A%2F%2Fexample.com%2F&scenario=landing-cta&depth=hero-only&projectId=${projectId}&scenarioTemplateVersionId=${scenarioTemplateVersionId}`,
+    `/create-analysis?step=recommendations&url=https%3A%2F%2Fexample.com%2F&projectId=${projectId}&scenarioTemplateVersionId=${scenarioTemplateVersionId}`,
   );
 
   assert.deepEqual(createRecommendationChoiceRouteState(setupState, 'https://example.com/'), {

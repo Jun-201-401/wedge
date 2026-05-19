@@ -177,8 +177,8 @@ function recommendationLevelRank(level: ScenarioRecommendationLevel) {
   }
 }
 
-function isDetectedRecommendation(recommendation: ApiScenarioRecommendation) {
-  return recommendation.recommendationLevel !== 'NOT_AVAILABLE';
+function isRunnableRecommendation(recommendation: ApiScenarioRecommendation) {
+  return recommendation.recommendationLevel === 'HIGH' || recommendation.recommendationLevel === 'MEDIUM';
 }
 
 function detectionSignalLabel(confidence: number) {
@@ -336,7 +336,7 @@ function manualSummaryFor(scenarioType: DiscoveryScenarioType) {
 
 export function toScenarioRecommendationViewModel(recommendation: ApiScenarioRecommendation, sourceDiscoveryId?: string): ScenarioRecommendationViewModel {
   const copy = SCENARIO_COPY[recommendation.scenarioType] ?? SCENARIO_COPY.CUSTOM_GUIDED;
-  const isRunnable = recommendation.recommendationLevel !== 'NOT_AVAILABLE';
+  const isRunnable = isRunnableRecommendation(recommendation);
   const summaryPrefix = isRunnable ? copy.availableSummary : copy.unavailableSummary;
   const targetLabel = targetLabelFor(recommendation);
 
@@ -348,7 +348,7 @@ export function toScenarioRecommendationViewModel(recommendation: ApiScenarioRec
     title: copy.title,
     summary: summaryPrefix,
     evidence: evidenceLabel(recommendation),
-    actionLabel: recommendation.recommendationLevel === 'LOW' ? '확인하며 시작하기' : isRunnable ? '이 흐름으로 시작하기' : '직접 설정 필요',
+    actionLabel: isRunnable ? '이 흐름으로 시작하기' : '실행 가능 신호 부족',
     levelLabel: recommendationLevelLabel(recommendation.recommendationLevel),
     confidenceLabel: detectionSignalLabel(recommendation.confidence),
     confidence: recommendation.confidence,
@@ -407,7 +407,6 @@ export function toManualScenarioRecommendationViewModels(
 
 export function toScenarioRecommendationViewModels(discovery: Discovery): ScenarioRecommendationViewModel[] {
   return (discovery.scenarioRecommendations ?? [])
-    .filter(isDetectedRecommendation)
     .sort((left, right) => {
       const levelDelta = recommendationLevelRank(left.recommendationLevel) - recommendationLevelRank(right.recommendationLevel);
       if (levelDelta !== 0) {
