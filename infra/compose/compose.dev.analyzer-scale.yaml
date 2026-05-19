@@ -1,0 +1,12 @@
+services:
+  analyzer-worker:
+    command:
+      - sh
+      - -lc
+      - |
+        export ANALYZER_WORKER_ID="analyzer-worker-$$(hostname)"
+        exec python scripts/consume_analysis_requests.py
+    environment:
+      ANALYZER_METRICS_ENABLED: "false"
+      ANALYZER_MQ_PREFETCH: ${ANALYZER_MQ_PREFETCH:-1}
+    ports: !reset []
