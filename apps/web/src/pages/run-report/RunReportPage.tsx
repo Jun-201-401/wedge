@@ -12,6 +12,7 @@ import {
   RunReportBrand,
   RunReportViewer,
   selectLatestScreenshotPreviewUrl,
+  type ReportDownloadFormat,
 } from '../../features/report-viewer';
 import { CREATE_ANALYSIS_PATH } from '../../shared/lib/appPaths';
 import { isMockRunId } from '../run-monitor/lib/runMonitorRoute';
@@ -36,9 +37,17 @@ const GENERATE_REPORT_ERROR_MESSAGE = '리포트 생성 요청에 실패했습�
 const REQUEST_ANALYSIS_PENDING_MESSAGE = '분석 요청 중입니다.';
 const REQUEST_ANALYSIS_SUCCESS_MESSAGE = '분석 요청이 접수됐습니다. 분석이 완료되면 리포트를 생성할 수 있습니다.';
 const REQUEST_ANALYSIS_ERROR_MESSAGE = '분석 요청에 실패했습니다. 실행 상태 또는 접근 권한을 확인해주세요.';
-const REPORT_EXPORT_PENDING_MESSAGE = 'Markdown 리포트 파일을 준비하고 있습니다.';
-const REPORT_EXPORT_SUCCESS_MESSAGE = '리포트 다운로드가 시작됐습니다.';
-const REPORT_EXPORT_ERROR_MESSAGE = '리포트 다운로드에 실패했습니다. 잠시 후 다시 시도해주세요.';
+const REPORT_EXPORT_PENDING_MESSAGE_BY_FORMAT: Record<ReportDownloadFormat, string> = {
+  MARKDOWN: 'Markdown 파일을 준비하고 있습니다.',
+  PDF: 'PDF 파일을 준비하고 있습니다.',
+};
+const REPORT_EXPORT_SUCCESS_MESSAGE_BY_FORMAT: Record<ReportDownloadFormat, string> = {
+  MARKDOWN: 'Markdown 파일 다운로드를 시작했습니다.',
+  PDF: 'PDF 파일 다운로드를 시작했습니다.',
+};
+const REPORT_EXPORT_ERROR_MESSAGE = '파일을 만들지 못했습니다. 다시 시도해주세요.';
+const REPORT_EXPORT_SUCCESS_VISIBLE_MS = 2600;
+const REPORT_EXPORT_DISMISS_ANIMATION_MS = 180;
 
 async function fetchRunReportPreviewUrl(runId: string) {
   const artifactsResponse = await listRunArtifacts(runId);
@@ -57,8 +66,9 @@ function getFallbackUrl() {
   return readQueryParam('url') ?? 'https://example.com/';
 }
 
-function safeMarkdownReportFilename(runId: string) {
-  return `wedge-report-${runId.replace(/[^a-zA-Z0-9_-]/g, '-')}.md`;
+function safeReportFilename(runId: string, format: ReportDownloadFormat) {
+  const extension = format === 'PDF' ? 'pdf' : 'md';
+  return `wedge-report-${runId.replace(/[^a-zA-Z0-9_-]/g, '-')}.${extension}`;
 }
 
 function triggerBrowserDownload(blob: Blob, filename: string) {
@@ -148,6 +158,7 @@ export function RunReportPage({ runId }: RunReportPageProps) {
   const [reportLoadError, setReportLoadError] = useState('');
   const [reportActionState, setReportActionState] = useState<ReportActionState>(IDLE_REPORT_ACTION_STATE);
   const [reportExportActionState, setReportExportActionState] = useState<ReportActionState>(IDLE_REPORT_ACTION_STATE);
+  const [isReportExportToastDismissing, setIsReportExportToastDismissing] = useState(false);
   const report = useMemo(() => {
     if (isMockRun) {
       return buildMockRunReportData(runId, targetUrl, scenarioId);
@@ -180,6 +191,7 @@ export function RunReportPage({ runId }: RunReportPageProps) {
       setReportLoadError('');
       setReportActionState(IDLE_REPORT_ACTION_STATE);
       setReportExportActionState(IDLE_REPORT_ACTION_STATE);
+      setIsReportExportToastDismissing(false);
       return;
     }
 
@@ -198,6 +210,7 @@ export function RunReportPage({ runId }: RunReportPageProps) {
       setReportLoadError('');
       setReportActionState(IDLE_REPORT_ACTION_STATE);
       setReportExportActionState(IDLE_REPORT_ACTION_STATE);
+      setIsReportExportToastDismissing(false);
 
       try {
         const response = await getRun(runId);
@@ -339,6 +352,26 @@ export function RunReportPage({ runId }: RunReportPageProps) {
     };
   }, [isMockRun, reportProjection?.reportId, reportProjection?.reportStatus]);
 
+  useEffect(() => {
+    if (reportExportActionState.kind !== 'success') {
+      setIsReportExportToastDismissing(false);
+      return undefined;
+    }
+
+    const visibleTimeoutId = window.setTimeout(() => {
+      setIsReportExportToastDismissing(true);
+    }, REPORT_EXPORT_SUCCESS_VISIBLE_MS);
+    const clearTimeoutId = window.setTimeout(() => {
+      setReportExportActionState(IDLE_REPORT_ACTION_STATE);
+      setIsReportExportToastDismissing(false);
+    }, REPORT_EXPORT_SUCCESS_VISIBLE_MS + REPORT_EXPORT_DISMISS_ANIMATION_MS);
+
+    return () => {
+      window.clearTimeout(visibleTimeoutId);
+      window.clearTimeout(clearTimeoutId);
+    };
+  }, [reportExportActionState.kind, reportExportActionState.message]);
+
   const reportState = resolveRunReportState({
     isMockRun,
     isRunLoading,
@@ -395,22 +428,24 @@ export function RunReportPage({ runId }: RunReportPageProps) {
     && Boolean(reportProjection.reportId)
     && Boolean(reportProjection.analysisJobId);
 
-  const handleDownloadReport = async () => {
+  const handleDownloadReport = async (format: ReportDownloadFormat) => {
     if (!canDownloadReport || reportExportActionState.kind === 'pending') {
       return;
     }
 
-    setReportExportActionState({ kind: 'pending', message: REPORT_EXPORT_PENDING_MESSAGE });
+    setIsReportExportToastDismissing(false);
+    setReportExportActionState({ kind: 'pending', message: REPORT_EXPORT_PENDING_MESSAGE_BY_FORMAT[format] });
 
     try {
       const exportResponse = await createRunReportExport(runId, {
-        format: 'MARKDOWN',
+        format,
         analysisJobId: reportProjection?.analysisJobId ?? null,
       });
       const reportBlob = await downloadReportExport(exportResponse.data.downloadUrl);
-      triggerBrowserDownload(reportBlob, safeMarkdownReportFilename(runId));
-      setReportExportActionState({ kind: 'success', message: REPORT_EXPORT_SUCCESS_MESSAGE });
+      triggerBrowserDownload(reportBlob, safeReportFilename(runId, format));
+      setReportExportActionState({ kind: 'success', message: REPORT_EXPORT_SUCCESS_MESSAGE_BY_FORMAT[format] });
     } catch {
+      setIsReportExportToastDismissing(false);
       setReportExportActionState({ kind: 'error', message: REPORT_EXPORT_ERROR_MESSAGE });
     }
   };
@@ -468,6 +503,8 @@ export function RunReportPage({ runId }: RunReportPageProps) {
       report={report}
       canDownloadReport={canDownloadReport}
       isReportDownloading={reportExportActionState.kind === 'pending'}
+      reportDownloadKind={reportExportActionState.kind === 'idle' ? 'pending' : reportExportActionState.kind}
+      isReportDownloadDismissing={isReportExportToastDismissing}
       reportDownloadMessage={reportExportActionState.message}
       onDownloadReport={handleDownloadReport}
     />

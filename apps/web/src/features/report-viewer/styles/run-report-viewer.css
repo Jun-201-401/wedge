@@ -179,22 +179,186 @@
   white-space: nowrap;
 }
 
-.run-report-export-status {
-  position: fixed;
-  top: 4.4rem;
-  right: 1.75rem;
-  z-index: 6;
-  max-width: min(24rem, calc(100vw - 3.5rem));
-  border: 1px solid #bae6fd;
-  border-radius: 999px;
-  background: rgba(240, 249, 255, 0.96);
-  margin: 0;
-  padding: 0.58rem 0.86rem;
-  color: #0369a1;
+.run-report-download-menu {
+  position: relative;
+  display: inline-flex;
+}
+
+.run-report-download-menu__panel {
+  position: absolute;
+  top: calc(100% + 0.45rem);
+  right: 0;
+  z-index: 8;
+  display: grid;
+  min-width: 9.75rem;
+  overflow: hidden;
+  border: 0;
+  border-radius: 0.55rem;
+  background: #fff;
+  box-shadow: 0 18px 36px rgba(15, 23, 42, 0.14);
+}
+
+.run-report-download-menu__item {
+  display: flex;
+  width: 100%;
+  min-height: 2.45rem;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.85rem;
+  border: 0;
+  background: #fff;
+  padding: 0.62rem 0.78rem;
+  color: #0f172a;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.run-report-download-menu__item:hover,
+.run-report-download-menu__item:focus-visible {
+  background: #f8fafc;
+  outline: none;
+}
+
+.run-report-download-menu__item span {
   font-size: 0.78rem;
   font-weight: 850;
-  line-height: 1.35;
-  box-shadow: 0 12px 28px rgba(14, 165, 233, 0.12);
+  line-height: 1.15;
+}
+
+.run-report-download-menu__item small {
+  color: #64748b;
+  font-size: 0.68rem;
+  font-weight: 800;
+  line-height: 1.15;
+}
+
+.run-report-export-toast {
+  position: fixed;
+  top: 9.5rem;
+  right: 2rem;
+  z-index: 8;
+  display: grid;
+  box-sizing: border-box;
+  width: min(21rem, calc(100vw - 3.25rem));
+  min-height: 4.35rem;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 0.82rem;
+  overflow: hidden;
+  border: 0;
+  border-radius: 1rem;
+  background: #fff;
+  margin: 0;
+  padding: 0.92rem 1.05rem 0.92rem 1.22rem;
+  color: #111827;
+  animation: run-report-export-toast-enter 220ms cubic-bezier(0.2, 0, 0, 1) both;
+  box-shadow: 0 20px 52px rgba(148, 163, 184, 0.18);
+  transform-origin: top right;
+}
+
+.run-report-export-toast::before {
+  content: '';
+  position: absolute;
+  top: 0.72rem;
+  bottom: 0.72rem;
+  left: 0;
+  width: 0.42rem;
+  border-radius: 0 999px 999px 0;
+  background: #e0f2fe;
+}
+
+.run-report-export-toast__mark {
+  display: inline-flex;
+  width: 1.9rem;
+  height: 1.9rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: #e0f2fe;
+  color: #3b82c4;
+  font-size: 0.86rem;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.run-report-export-toast__copy {
+  display: grid;
+  min-width: 0;
+  gap: 0.28rem;
+}
+
+.run-report-export-toast__copy strong,
+.run-report-export-toast__copy p {
+  overflow: hidden;
+  margin: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.run-report-export-toast__copy strong {
+  color: #3b82c4;
+  font-size: 0.72rem;
+  font-weight: 900;
+  line-height: 1.1;
+  letter-spacing: 0;
+}
+
+.run-report-export-toast__copy p {
+  color: #0f172a;
+  font-size: 0.92rem;
+  font-weight: 900;
+  line-height: 1.32;
+  letter-spacing: 0;
+}
+
+.run-report-export-toast--error {
+  background: #fff;
+}
+
+.run-report-export-toast--error::before,
+.run-report-export-toast--error .run-report-export-toast__mark {
+  background: #fff7ed;
+}
+
+.run-report-export-toast--error .run-report-export-toast__copy strong {
+  color: #c2410c;
+}
+
+.run-report-export-toast--error .run-report-export-toast__mark {
+  color: #c2410c;
+}
+
+.run-report-export-toast--error .run-report-export-toast__copy p {
+  color: #7c2d12;
+}
+
+.run-report-export-toast--dismissing {
+  animation: run-report-export-toast-exit 180ms cubic-bezier(0.4, 0, 1, 1) both;
+}
+
+@keyframes run-report-export-toast-enter {
+  from {
+    opacity: 0;
+    transform: translateX(0.8rem);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes run-report-export-toast-exit {
+  from {
+    opacity: 1;
+    transform: translateX(0);
+  }
+
+  to {
+    opacity: 0;
+    transform: translateX(0.8rem);
+  }
 }
 
 .run-report-shell {
@@ -2142,6 +2306,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .run-report-export-toast,
   .run-report-friction-marker span,
   .run-report-selected-action__body > * {
     animation: none;

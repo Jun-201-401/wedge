@@ -25,9 +25,25 @@ interface RunReportViewerProps {
   report: RunReportViewModel;
   canDownloadReport?: boolean;
   isReportDownloading?: boolean;
+  reportDownloadKind?: ReportDownloadStatusKind;
+  isReportDownloadDismissing?: boolean;
   reportDownloadMessage?: string;
-  onDownloadReport?: () => void;
+  onDownloadReport?: (format: ReportDownloadFormat) => void;
 }
+
+export type ReportDownloadFormat = 'MARKDOWN' | 'PDF';
+type ReportDownloadStatusKind = 'pending' | 'success' | 'error';
+
+const REPORT_DOWNLOAD_OPTIONS: Array<{ format: ReportDownloadFormat; label: string; description: string }> = [
+  { format: 'MARKDOWN', label: 'Markdown', description: '.md' },
+  { format: 'PDF', label: 'PDF', description: '.pdf' },
+];
+
+const REPORT_DOWNLOAD_TOAST_TITLE: Record<ReportDownloadStatusKind, string> = {
+  pending: '다운로드 준비 중',
+  success: '다운로드 시작',
+  error: '다운로드 실패',
+};
 
 function formatIssueCount(issueCount: number) {
   return String(issueCount).padStart(2, '0');
@@ -546,11 +562,15 @@ export function RunReportViewer({
   report,
   canDownloadReport = false,
   isReportDownloading = false,
+  reportDownloadKind = 'pending',
+  isReportDownloadDismissing = false,
   reportDownloadMessage = '',
   onDownloadReport,
 }: RunReportViewerProps) {
   const reportLayoutRef = useRef<HTMLDivElement | null>(null);
   const evidencePreviewRef = useRef<HTMLDivElement | null>(null);
+  const reportDownloadMenuRef = useRef<HTMLDivElement | null>(null);
+  const reportDownloadMenuId = useId().replace(/[^a-zA-Z0-9_-]/g, '-');
   const targetUrlLabel = formatDisplayUrl(report.targetUrl);
   const {
     panelWidth: insightPanelWidth,
@@ -572,6 +592,7 @@ export function RunReportViewer({
   const [selectedFindingId, setSelectedFindingId] = useState<string | null>(report.findings[0]?.id ?? null);
   const [selectedRecommendationId, setSelectedRecommendationId] = useState<string | null>(report.recommendations[0]?.id ?? null);
   const [isAllRecommendationsOpen, setIsAllRecommendationsOpen] = useState(false);
+  const [isReportDownloadMenuOpen, setIsReportDownloadMenuOpen] = useState(false);
   const [loadedEvidencePreviewUrl, setLoadedEvidencePreviewUrl] = useState<string | null>(null);
   const reportPreviewImageCache = useMemo(() => createAuthenticatedResourceCache({
     maxEntries: RUN_REPORT_PREVIEW_CACHE_MAX_ENTRIES,
@@ -678,6 +699,39 @@ export function RunReportViewer({
     setLoadedEvidencePreviewUrl(null);
   }, [evidencePreviewUrl, selectedEvidencePreviewUrl]);
 
+  useEffect(() => {
+    if (!canDownloadReport || isReportDownloading) {
+      setIsReportDownloadMenuOpen(false);
+    }
+  }, [canDownloadReport, isReportDownloading]);
+
+  useEffect(() => {
+    if (!isReportDownloadMenuOpen) {
+      return undefined;
+    }
+
+    function handlePointerDown(event: PointerEvent) {
+      const target = event.target;
+      if (target instanceof Node && reportDownloadMenuRef.current?.contains(target)) {
+        return;
+      }
+      setIsReportDownloadMenuOpen(false);
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        setIsReportDownloadMenuOpen(false);
+      }
+    }
+
+    document.addEventListener('pointerdown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isReportDownloadMenuOpen]);
+
   const handleEvidencePreviewImageLoad = useCallback(() => {
     setLoadedEvidencePreviewUrl(evidencePreviewUrl);
   }, [evidencePreviewUrl]);
@@ -739,6 +793,11 @@ export function RunReportViewer({
     }
   }
 
+  function selectReportDownloadFormat(format: ReportDownloadFormat) {
+    setIsReportDownloadMenuOpen(false);
+    onDownloadReport?.(format);
+  }
+
   const frictionMarkers = isEvidencePreviewResolving
     ? null
     : markerCandidates.map((finding) => {
@@ -793,18 +852,51 @@ export function RunReportViewer({
 
         <div className="run-report-topbar__right">
           <a href={RUNS_PATH} className="run-report-topbar__link run-report-topbar__link--secondary">실행 목록</a>
-          <button
-            type="button"
-            className="run-report-topbar__export"
-            disabled={!canDownloadReport || isReportDownloading}
-            onClick={onDownloadReport}
-            title={canDownloadReport ? '리포트를 Markdown 파일로 다운로드합니다' : '실제 생성된 서버 리포트에서 다운로드를 사용할 수 있습니다'}
-          >
-            {isReportDownloading ? '리포트 준비 중' : '리포트 다운로드'}
-          </button>
+          <div className="run-report-download-menu" ref={reportDownloadMenuRef}>
+            <button
+              type="button"
+              className="run-report-topbar__export"
+              disabled={!canDownloadReport || isReportDownloading}
+              onClick={() => setIsReportDownloadMenuOpen((current) => !current)}
+              aria-haspopup="menu"
+              aria-expanded={isReportDownloadMenuOpen}
+              aria-controls={reportDownloadMenuId}
+              title={canDownloadReport ? '다운로드할 리포트 파일 형식을 선택합니다' : '실제 생성된 서버 리포트에서 다운로드를 사용할 수 있습니다'}
+            >
+              {isReportDownloading ? '리포트 준비 중' : '리포트 다운로드'}
+            </button>
+            {isReportDownloadMenuOpen ? (
+              <div id={reportDownloadMenuId} className="run-report-download-menu__panel" role="menu" aria-label="리포트 다운로드 형식">
+                {REPORT_DOWNLOAD_OPTIONS.map((option) => (
+                  <button
+                    key={option.format}
+                    type="button"
+                    className="run-report-download-menu__item"
+                    role="menuitem"
+                    onClick={() => selectReportDownloadFormat(option.format)}
+                  >
+                    <span>{option.label}</span>
+                    <small>{option.description}</small>
+                  </button>
+                ))}
+              </div>
+            ) : null}
+          </div>
         </div>
       </header>
-      {reportDownloadMessage ? <p className="run-report-export-status" role="status">{reportDownloadMessage}</p> : null}
+      {reportDownloadMessage ? (
+        <div
+          className={`run-report-export-toast run-report-export-toast--${reportDownloadKind}${isReportDownloadDismissing ? ' run-report-export-toast--dismissing' : ''}`}
+          role={reportDownloadKind === 'error' ? 'alert' : 'status'}
+          aria-live={reportDownloadKind === 'error' ? 'assertive' : 'polite'}
+        >
+          <span className="run-report-export-toast__mark" aria-hidden="true">i</span>
+          <div className="run-report-export-toast__copy">
+            <strong>{REPORT_DOWNLOAD_TOAST_TITLE[reportDownloadKind]}</strong>
+            <p>{reportDownloadMessage}</p>
+          </div>
+        </div>
+      ) : null}
 
       <main className="run-report-shell" aria-labelledby="run-report-title">
         <header className="run-report-hero">

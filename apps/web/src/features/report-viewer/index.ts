@@ -1,4 +1,4 @@
-export { RunReportBrand, RunReportViewer } from './components/RunReportViewer';
+export { RunReportBrand, RunReportViewer, type ReportDownloadFormat } from './components/RunReportViewer';
 export { hydrateEvidenceArtifacts, normalizeRunArtifactType } from './lib/evidenceArtifactHydration';
 export { buildMockRunReportData } from './lib/runReportMock';
 export { buildRunReportFromApi, selectLatestScreenshotPreviewUrl } from './lib/runReportFromApi';
