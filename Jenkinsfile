@@ -232,6 +232,14 @@ case "$RUNNER_REPLICAS" in
         ;;
 esac
 
+ANALYZER_WORKER_REPLICAS="$(read_prod_env_value ANALYZER_WORKER_REPLICAS 1)"
+case "$ANALYZER_WORKER_REPLICAS" in
+    ''|*[!0-9]*|0)
+        echo "ANALYZER_WORKER_REPLICAS must be a positive integer. actual=${ANALYZER_WORKER_REPLICAS}"
+        exit 1
+        ;;
+esac
+
 if [ "${MIGRATION_FILES_CHANGED:-false}" = "true" ] && [ "${RUN_DB_MIGRATION:-false}" != "true" ]; then
     echo "Migration files changed but RUN_DB_MIGRATION=false. Enable migration or review the deployment."
     exit 1
@@ -421,7 +429,7 @@ if [ "${MIGRATION_FILES_CHANGED:-false}" = "true" ]; then
     compose_prod --profile migration run --rm flyway migrate
 fi
 
-compose_prod up -d --no-deps --force-recreate --scale "runner=${RUNNER_REPLICAS}" api-server web runner analyzer-worker
+compose_prod up -d --no-deps --force-recreate --scale "runner=${RUNNER_REPLICAS}" --scale "analyzer-worker=${ANALYZER_WORKER_REPLICAS}" api-server web runner analyzer-worker
 compose_prod up -d --force-recreate nginx
 verify_service_image api-server "$API_SERVER_IMAGE"
 verify_service_image web "$WEB_IMAGE"
@@ -432,7 +440,7 @@ for i in 1 2 3 4 5 6 7 8 9 10; do
     if curl -kfsS https://localhost/actuator/health > /dev/null 2>&1 \
         && curl -kfsS https://localhost/ > /dev/null 2>&1 \
         && verify_running_service_count runner "$RUNNER_REPLICAS" \
-        && compose_prod ps --status running --services analyzer-worker | grep -qx analyzer-worker; then
+        && verify_running_service_count analyzer-worker "$ANALYZER_WORKER_REPLICAS"; then
         mv "$CANDIDATE_RELEASE_ENV" "$CURRENT_RELEASE_ENV"
         printf '%s\n' "$CURRENT_HEAD" > .deploy/current.sha
         echo "Health check passed"
