@@ -8,6 +8,7 @@ import { RUN_MONITOR_REFRESH_INTERVAL_MS, shouldRefreshRunLive } from './runMoni
 const EVIDENCE_LOAD_ERROR_MESSAGE = '수집 근거를 아직 불러오지 못했습니다. 실행 결과 저장이 완료되면 표시됩니다.';
 const STEP_LOAD_ERROR_MESSAGE = '확인 단계 목록을 아직 불러오지 못했습니다. 현재 실행 상태로 대신 표시합니다.';
 const EVENT_LOAD_ERROR_MESSAGE = '확인 경로를 아직 불러오지 못했습니다. 저장된 단계 상태로 대신 표시합니다.';
+const EVIDENCE_LOAD_RUN_STATUSES = new Set(['COMPLETED', 'FAILED', 'STOPPED']);
 
 export interface RunMonitorState {
   run: Run;
@@ -161,7 +162,7 @@ export function useRunMonitorState(runId: string, mockData: MockRunMonitorData, 
           refreshTimerId = window.setTimeout(() => void loadRunState(false), RUN_MONITOR_REFRESH_INTERVAL_MS);
         }
 
-        if (liveResponse.data.status === 'COMPLETED') {
+        if (EVIDENCE_LOAD_RUN_STATUSES.has(liveResponse.data.status)) {
           await loadEvidencePacket();
         } else {
           clearEvidenceState();

@@ -20,6 +20,7 @@ import {
   getCurrentRunReportProjection,
   getEvidenceArtifactLabel,
   getEvidenceObservationSummary,
+  getEvidenceScreenshotPreviewUrl,
   getFailureCodeLabel,
   getStatusTone,
   resolveRunMonitorReportCtaState,
@@ -601,6 +602,7 @@ const evidencePacket: EvidencePacket = {
       artifact_id: 'screenshot-1',
       type: 'screenshot',
       uri: '/api/runs/111/artifacts/screenshot-1/content',
+      signed_url: 'http://minio.local/signed-screenshot-1.png?X-Amz-Signature=abc',
       mime_type: 'image/png',
       size_bytes: 1024,
       metadata: {},
@@ -620,6 +622,14 @@ const evidencePacket: EvidencePacket = {
 test('run monitor view model maps evidence packet artifacts and observations', () => {
   const screenshot = findEvidenceScreenshotArtifact(evidencePacket);
   assert.equal(screenshot?.artifact_id, 'screenshot-1');
+  assert.equal(getEvidenceScreenshotPreviewUrl(evidencePacket), 'http://minio.local/signed-screenshot-1.png?X-Amz-Signature=abc');
+  assert.equal(
+    getEvidenceScreenshotPreviewUrl({
+      ...evidencePacket,
+      artifacts: [{ ...evidencePacket.artifacts[0], signed_url: null }],
+    }),
+    '/api/runs/111/artifacts/screenshot-1/content',
+  );
   assert.equal(getEvidenceArtifactLabel(evidencePacket.artifacts[0]), '스크린샷');
   assert.equal(getEvidenceArtifactLabel(evidencePacket.artifacts[1]), 'DOM 스냅샷');
   assert.equal(getEvidenceArtifactLabel({ ...evidencePacket.artifacts[1], type: 'unknown_type' }), 'unknown_type');

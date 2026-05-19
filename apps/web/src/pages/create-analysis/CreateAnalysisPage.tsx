@@ -525,7 +525,8 @@ function RecommendationAgent({
   const visibleScenarios = scenarios.filter((scenario) => scenario.isRunnable);
   const detectedScenarioCount = visibleScenarios.length;
   const hasDetectedScenarios = detectedScenarioCount > 0;
-  const hasManualScenarios = toManualScenarioRecommendationViewModels(visibleScenarios.map((scenario) => scenario.id)).length > 0;
+  const unavailableScenarioCount = scenarios.length - visibleScenarios.length;
+  const hasManualScenarios = toManualScenarioRecommendationViewModels(scenarios.map((scenario) => scenario.id)).length > 0;
   const submittedUrlLabel = formatDisplayUrl(submittedUrl);
 
   return (
@@ -550,6 +551,7 @@ function RecommendationAgent({
           {hasDetectedScenarios
             ? '사이트 화면에서 확인한 버튼, 링크, 폼 신호를 기준으로 추천했어요. 이미지 텍스트, 숨겨진 메뉴, 로그인 뒤 화면은 제외될 수 있어요.'
             : '현재 화면에서 확인한 버튼, 링크, 폼 신호만으로는 바로 실행할 흐름을 고르기 어려워요.'}
+          {unavailableScenarioCount > 0 ? ` 실행 가능성이 낮은 ${unavailableScenarioCount}개 흐름은 시작하지 않도록 제외했어요.` : ''}
         </p>
         <div className="recommendation-agent__divider" aria-hidden="true" />
 
@@ -765,7 +767,7 @@ export function CreateAnalysisPage({ isAuthenticated = false, isAuthChecking = f
     [discoveryState, recommendationScenarios],
   );
   const selectableScenarios = useMemo(
-    () => [...recommendationScenarios, ...manualChoiceScenarios],
+    () => [...recommendationScenarios.filter((scenario) => scenario.isRunnable), ...manualChoiceScenarios],
     [recommendationScenarios, manualChoiceScenarios],
   );
   const selectedScenario = useMemo(

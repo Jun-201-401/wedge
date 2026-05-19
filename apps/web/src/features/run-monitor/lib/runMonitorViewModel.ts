@@ -913,6 +913,16 @@ export function findEvidenceScreenshotArtifact(evidencePacket: EvidencePacket | 
   return evidencePacket.artifacts.find((artifact) => artifact.type === 'screenshot') ?? null;
 }
 
+export function getEvidenceScreenshotPreviewUrl(evidencePacket: EvidencePacket | null): string | null {
+  const screenshot = findEvidenceScreenshotArtifact(evidencePacket);
+  const signedUrl = screenshot?.signed_url?.trim();
+  if (signedUrl) {
+    return signedUrl;
+  }
+
+  return screenshot?.uri?.trim() || null;
+}
+
 export function getEvidenceArtifactLabel(artifact: EvidenceArtifact) {
   return EVIDENCE_ARTIFACT_LABELS[artifact.type] ?? artifact.type;
 }

@@ -23,7 +23,7 @@ import {
   buildMockRunMonitorData,
   canRequestRunDelete,
   canRequestRunStop,
-  findEvidenceScreenshotArtifact,
+  getEvidenceScreenshotPreviewUrl,
   getApiCheckpoint,
   getApiProgressPercent,
   getCurrentRunReportProjection,
@@ -650,8 +650,8 @@ export function RunMonitorPage({ runId }: RunMonitorPageProps) {
     generateReportForRun(run.id);
   }, [currentReportProjection?.reportStatus, generateReportForRun, isMockRun, reportActionState.kind, run.id, run.status, runId]);
 
-  const evidenceScreenshotUrl = findEvidenceScreenshotArtifact(evidencePacket)?.uri ?? null;
-  const snapshotUrl = live.latestFrame?.url ?? run.latestSnapshot?.url ?? evidenceScreenshotUrl;
+  const evidenceScreenshotUrl = getEvidenceScreenshotPreviewUrl(evidencePacket);
+  const snapshotUrl = evidenceScreenshotUrl ?? live.latestFrame?.url ?? run.latestSnapshot?.url;
   const authenticatedSnapshotUrl = useAuthenticatedResourceUrl(snapshotUrl);
 
   if (isRealRunLoading) {

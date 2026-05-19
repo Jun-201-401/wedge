@@ -150,10 +150,14 @@ test('create analysis recommendations use a wider agent-style results card', () 
   assert.doesNotMatch(source, /Discovery 응답 시간이 초과됐습니다/);
   assert.match(source, /className="recommendation-agent__count"/);
   assert.match(source, /visibleScenarios = scenarios\.filter\(\(scenario\) => scenario\.isRunnable\)/);
+  assert.match(source, /toManualScenarioRecommendationViewModels\(scenarios\.map\(\(scenario\) => scenario\.id\)\)/);
   assert.match(source, /className="recommendation-agent__url" title=\{submittedUrl\}>\{submittedUrlLabel\}<\/p>/);
   assert.match(source, /className="manual-choice-agent__url" title=\{submittedUrl\}>\{submittedUrlLabel\}<\/p>/);
   assert.match(source, /onOpenManualChoice/);
   assert.match(source, /hasDetectedScenarios && hasManualScenarios/);
+  assert.match(source, /unavailableScenarioCount = scenarios\.length - visibleScenarios\.length/);
+  assert.match(source, /실행 가능성이 낮은/);
+  assert.match(source, /recommendationScenarios\.filter\(\(scenario\) => scenario\.isRunnable\)/);
   assert.match(source, /다른 흐름 선택/);
   assert.match(source, /탐지됨/);
   assert.match(source, /onChooseScenario=\{chooseScenario\}/);

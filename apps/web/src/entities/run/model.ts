@@ -155,6 +155,7 @@ export interface EvidenceArtifact {
   artifact_id: string;
   type: string;
   uri: string;
+  signed_url?: string | null;
   mime_type?: string | null;
   size_bytes?: number | null;
   metadata?: Record<string, unknown>;
