@@ -33,6 +33,7 @@ export function createLlmRequestPayload(
       scrollCount: input.state.scrollCount,
       clickedTargetKeys: [...input.state.clickedTargetKeys]
     },
+    targetGuidance: input.targetGuidance ?? null,
     page: {
       finalUrl: input.observation.snapshot.finalUrl,
       title: input.observation.snapshot.title,
@@ -53,6 +54,7 @@ export function createLlmRequestPayload(
     "Return only JSON for a constrained browser AgentDecision.",
     "Allowed actions are goto start_url before start, click an observed target_key, scroll, checkpoint without browser action, or finish.",
     "Never invent selectors, credentials, payment data, shell commands, JavaScript, or final purchase actions.",
+    "If targetGuidance.preferred_target is present, choose only a matching observed candidate; if none is visible, scroll or finish instead of clicking another CTA.",
     "For signup, lead, contact, or pricing goals, click only observed candidates whose text, href, label, placeholder, or role clearly matches that goal; otherwise scroll or finish.",
     "Do not click unrelated product, category, menu, or shopping links for signup, lead, contact, or pricing goals.",
     "Policy and verifier run after this decision and may reject unsafe actions."

@@ -36,6 +36,8 @@ const AGENT_GOAL_TYPES = [
 ] as const;
 const PRODUCT_SELECTION_MODES = ["PROVIDED_OR_OBVIOUS_ONLY"] as const;
 const REQUIRED_OPTION_STRATEGIES = ["FIRST_AVAILABLE"] as const;
+const TARGET_GUIDANCE_MODES = ["PREFER_THEN_FAIL", "PREFER_THEN_FALLBACK"] as const;
+const DISCOVERY_FLOW_TYPES = ["LANDING_CTA", "SIGNUP_LEAD_FORM", "PRICING", "PURCHASE_CHECKOUT", "CONTACT", "CONTENT_ONLY"] as const;
 
 export function assertAgentExecuteMessage(value: unknown): asserts value is AgentExecuteMessage {
   if (!isRecord(value)) {
@@ -77,6 +79,7 @@ function assertAgentTask(value: unknown): asserts value is AgentTask {
   assertAgentRiskPolicy(value.risk_policy);
   assertAgentTestData(value.test_data);
   assertAgentArtifactPolicy(value.artifact_policy);
+  assertAgentTargetGuidance(value.target_guidance);
   assertAgentReplayHints(value.replay_hints);
 }
 
@@ -210,6 +213,27 @@ function assertAgentArtifactPolicy(value: unknown): void {
   assertOptionalBoolean(value.capture_trace, "agentTask.artifact_policy.capture_trace");
   assertOptionalBoolean(value.capture_har, "agentTask.artifact_policy.capture_har");
   assertOptionalBoolean(value.capture_performance, "agentTask.artifact_policy.capture_performance");
+}
+
+function assertAgentTargetGuidance(value: unknown): void {
+  if (value === undefined) {
+    return;
+  }
+  if (!isRecord(value)) {
+    throw new RunnerMessageValidationError("agentTask.target_guidance must be an object");
+  }
+  assertAllowedObjectKeys(value, "agentTask.target_guidance", [
+    "mode",
+    "preferred_target",
+    "preferred_scenario_type",
+    "source"
+  ]);
+  assertOneOf(value.mode, TARGET_GUIDANCE_MODES, "agentTask.target_guidance.mode");
+  assertOptionalNullableRecord(value.preferred_target, "agentTask.target_guidance.preferred_target");
+  if (value.preferred_scenario_type !== undefined && value.preferred_scenario_type !== null) {
+    assertOptionalOneOf(value.preferred_scenario_type, DISCOVERY_FLOW_TYPES, "agentTask.target_guidance.preferred_scenario_type");
+  }
+  assertOptionalNonEmptyString(value.source, "agentTask.target_guidance.source");
 }
 
 function assertAgentReplayHints(value: unknown): void {

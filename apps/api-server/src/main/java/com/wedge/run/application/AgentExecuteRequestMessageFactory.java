@@ -105,7 +105,42 @@ public class AgentExecuteRequestMessageFactory {
                 "capture_ax_tree", true,
                 "capture_trace", true
         ));
+        createTargetGuidance(run.scenarioOverrides()).ifPresent(targetGuidance -> task.put("target_guidance", targetGuidance));
         return task;
+    }
+
+    private Optional<Map<String, Object>> createTargetGuidance(Map<String, Object> scenarioOverrides) {
+        if (scenarioOverrides == null || scenarioOverrides.isEmpty()) {
+            return Optional.empty();
+        }
+
+        Object suggestedTarget = scenarioOverrides.get("suggestedTarget");
+        if (!(suggestedTarget instanceof Map<?, ?> rawSuggestedTarget) || rawSuggestedTarget.isEmpty()) {
+            return Optional.empty();
+        }
+
+        Map<String, Object> preferredTarget = new LinkedHashMap<>();
+        for (Map.Entry<?, ?> entry : rawSuggestedTarget.entrySet()) {
+            if (entry.getKey() instanceof String key && entry.getValue() != null) {
+                preferredTarget.put(key, entry.getValue());
+            }
+        }
+        if (preferredTarget.isEmpty()) {
+            return Optional.empty();
+        }
+
+        Map<String, Object> guidance = new LinkedHashMap<>();
+        guidance.put("mode", "PREFER_THEN_FAIL");
+        guidance.put("preferred_target", preferredTarget);
+        Object scenarioType = scenarioOverrides.get("scenarioType");
+        if (scenarioType instanceof String text && !text.isBlank()) {
+            guidance.put("preferred_scenario_type", text);
+        }
+        Object source = scenarioOverrides.get("source");
+        if (source instanceof String text && !text.isBlank()) {
+            guidance.put("source", text);
+        }
+        return Optional.of(guidance);
     }
 
     private Map<String, Object> resolveEnvironment(RunExecutionRequestSource run) {

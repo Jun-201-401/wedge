@@ -28,6 +28,7 @@ public class RunRecord {
     private UUID scenarioTemplateVersionId;
     private String scenarioPlanSchemaVersion;
     private String scenarioPlanJson;
+    private String scenarioOverridesJson;
     private RunStatus status;
     private ResultCompleteness resultCompleteness;
     private AnalysisStatus analysisStatus;
@@ -61,6 +62,7 @@ public class RunRecord {
         record.setScenarioTemplateVersionId(request.scenarioTemplateVersionId());
         record.setScenarioPlanSchemaVersion(null);
         record.setScenarioPlanJson(EMPTY_JSON);
+        record.setScenarioOverridesJson(EMPTY_JSON);
         record.setStatus(RunStatus.CREATED);
         record.setResultCompleteness(ResultCompleteness.NONE);
         record.setAnalysisStatus(AnalysisStatus.NOT_STARTED);

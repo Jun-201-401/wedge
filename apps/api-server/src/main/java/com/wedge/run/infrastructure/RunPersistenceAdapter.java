@@ -98,6 +98,7 @@ public class RunPersistenceAdapter {
         Map<String, Object> scenarioPlan = request.scenarioPlan();
         record.setScenarioPlanSchemaVersion(resolveScenarioPlanSchemaVersion(scenarioPlan));
         record.setScenarioPlanJson(writeJsonOrEmpty(scenarioPlan));
+        record.setScenarioOverridesJson(writeJsonOrEmpty(request.scenarioOverrides()));
         runMapper.insert(record);
         if (hasScenarioPlan(scenarioPlan)) {
             insertScenarioSteps(record.getId(), scenarioPlan);
@@ -115,6 +116,7 @@ public class RunPersistenceAdapter {
         Map<String, Object> scenarioPlan = request.scenarioPlan();
         record.setScenarioPlanSchemaVersion(resolveScenarioPlanSchemaVersion(scenarioPlan));
         record.setScenarioPlanJson(writeJsonOrEmpty(scenarioPlan));
+        record.setScenarioOverridesJson(writeJsonOrEmpty(request.scenarioOverrides()));
         int inserted = runMapper.insertIgnoreDuplicate(record);
         if (inserted == 0) {
             return Optional.empty();
@@ -484,7 +486,8 @@ public class RunPersistenceAdapter {
                 record.getGoal(),
                 record.getDevicePreset(),
                 record.getScenarioTemplateVersionId(),
-                readJsonMap(record.getScenarioPlanJson(), "Stored scenarioPlanJson is invalid")
+                readJsonMap(record.getScenarioPlanJson(), "Stored scenarioPlanJson is invalid"),
+                readJsonMapOrEmpty(record.getScenarioOverridesJson(), "Stored scenarioOverridesJson is invalid")
         );
     }
 
@@ -510,6 +513,13 @@ public class RunPersistenceAdapter {
         } catch (JsonProcessingException exception) {
             throw new IllegalStateException(invalidMessage, exception);
         }
+    }
+
+    private Map<String, Object> readJsonMapOrEmpty(String rawJson, String invalidMessage) {
+        if (rawJson == null || rawJson.isBlank()) {
+            return Map.of();
+        }
+        return readJsonMap(rawJson, invalidMessage);
     }
 
     private String resolveScenarioPlanSchemaVersion(Map<String, Object> scenarioPlan) {

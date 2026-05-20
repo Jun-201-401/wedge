@@ -12,6 +12,19 @@ public record RunExecutionRequestSource(
         String goal,
         String devicePreset,
         UUID scenarioTemplateVersionId,
-        Map<String, Object> scenarioPlan
+        Map<String, Object> scenarioPlan,
+        Map<String, Object> scenarioOverrides
 ) {
+    public RunExecutionRequestSource(
+            UUID id,
+            UUID projectId,
+            String triggerSource,
+            URI startUrl,
+            String goal,
+            String devicePreset,
+            UUID scenarioTemplateVersionId,
+            Map<String, Object> scenarioPlan
+    ) {
+        this(id, projectId, triggerSource, startUrl, goal, devicePreset, scenarioTemplateVersionId, scenarioPlan, Map.of());
+    }
 }

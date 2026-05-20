@@ -44,6 +44,17 @@ export function verifyGoal(input: {
       return blocker;
     }
 
+    const purchaseBoundary = verifyPreDecisionCheckoutPurchaseBoundary({
+      goalText,
+      snapshot: input.snapshot,
+      finalUrl,
+      startUrl: input.startUrl,
+      pageText
+    });
+    if (purchaseBoundary) {
+      return purchaseBoundary;
+    }
+
     const riskyCommit = verifyPreDecisionFinalCommit(input.snapshot, pageText);
     if (riskyCommit) {
       return riskyCommit;
@@ -128,6 +139,47 @@ function verifyPreDecisionBlocker(pageText: string): AgentVerificationResult | n
   }
 
   return null;
+}
+
+function verifyPreDecisionCheckoutPurchaseBoundary(input: {
+  goalText: string;
+  snapshot: BrowserPageSnapshot;
+  finalUrl: string;
+  startUrl: string;
+  pageText: string;
+}): AgentVerificationResult | null {
+  if (!verifierSemantics.checkoutGoal.test(input.goalText) || input.finalUrl === input.startUrl) {
+    return null;
+  }
+
+  const actionText = input.snapshot.interactiveComponents.map((component) => [
+    component.text,
+    component.visible_text ?? "",
+    component.accessible_name ?? "",
+    component.label_text ?? "",
+    component.href ?? "",
+    component.selector ?? "",
+    component.role ?? "",
+    component.tag
+  ].join(" ")).join(" ");
+  const hasPurchaseAction = verifierSemantics.checkoutBoundaryAction.test(actionText);
+  const hasProductDetailUrl = verifierSemantics.productDetailUrl.test(input.finalUrl);
+  const hasProductPurchaseContext = input.snapshot.visiblePrices.length > 0 ||
+    verifierSemantics.purchaseBoundaryContext.test(input.pageText) ||
+    input.snapshot.checkoutContext.order_summary_text.length > 0;
+
+  if (!hasPurchaseAction || (!hasProductDetailUrl && !hasProductPurchaseContext)) {
+    return null;
+  }
+
+  return {
+    satisfied: true,
+    terminal: true,
+    outcome: "SUCCESS",
+    reason: "A product detail purchase boundary is visible, so the agent stops before clicking purchase, cart, or final order actions.",
+    confidence: hasProductDetailUrl && hasProductPurchaseContext ? 0.86 : 0.78,
+    phase: "pre_decision"
+  };
 }
 
 function verifyPreDecisionFinalCommit(snapshot: BrowserPageSnapshot, pageText: string): AgentVerificationResult | null {

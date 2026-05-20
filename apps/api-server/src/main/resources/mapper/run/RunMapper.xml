@@ -13,6 +13,7 @@
         <result property="scenarioTemplateVersionId" column="scenario_template_version_id"/>
         <result property="scenarioPlanSchemaVersion" column="scenario_plan_schema_version"/>
         <result property="scenarioPlanJson" column="scenario_plan_jsonb"/>
+        <result property="scenarioOverridesJson" column="scenario_overrides_jsonb"/>
         <result property="status" column="status"/>
         <result property="resultCompleteness" column="result_completeness"/>
         <result property="analysisStatus" column="analysis_status"/>
@@ -68,6 +69,7 @@
         scenario_template_version_id,
         scenario_plan_schema_version,
         CAST(scenario_plan_jsonb AS TEXT) AS scenario_plan_jsonb,
+        CAST(scenario_overrides_jsonb AS TEXT) AS scenario_overrides_jsonb,
         status,
         result_completeness,
         analysis_status,
@@ -181,6 +183,7 @@
             scenario_template_version_id,
             scenario_plan_schema_version,
             scenario_plan_jsonb,
+            scenario_overrides_jsonb,
             status,
             result_completeness,
             analysis_status,
@@ -204,6 +207,7 @@
             #{scenarioTemplateVersionId,jdbcType=OTHER},
             #{scenarioPlanSchemaVersion},
             CAST(#{scenarioPlanJson} AS jsonb),
+            CAST(#{scenarioOverridesJson} AS jsonb),
             #{status},
             #{resultCompleteness},
             #{analysisStatus},
@@ -231,6 +235,7 @@
             scenario_template_version_id,
             scenario_plan_schema_version,
             scenario_plan_jsonb,
+            scenario_overrides_jsonb,
             status,
             result_completeness,
             analysis_status,
@@ -254,6 +259,7 @@
             #{scenarioTemplateVersionId,jdbcType=OTHER},
             #{scenarioPlanSchemaVersion},
             CAST(#{scenarioPlanJson} AS jsonb),
+            CAST(#{scenarioOverridesJson} AS jsonb),
             #{status},
             #{resultCompleteness},
             #{analysisStatus},

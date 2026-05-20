@@ -165,7 +165,7 @@ function stepsFor(
       step(
         "step_003_probe_checkout_target",
         "CTA",
-        "추천된 장바구니/결제 진입점까지 이동 가능성을 확인한다.",
+        "추천된 상품 목록/상품 상세 진입점부터 따라가 결제 직전 흐름까지 이동 가능성을 확인한다.",
         { type: "click", target: stableSuggestedTarget },
         "network_idle",
         false
@@ -532,7 +532,7 @@ function requiredEntrypoints(scenarioType: DiscoveryFlowType): DiscoveryEntrypoi
     return ["pricing"];
   }
   if (scenarioType === "PURCHASE_CHECKOUT") {
-    return ["pricing", "cart", "checkout"];
+    return ["cta", "pricing", "cart", "checkout"];
   }
   if (scenarioType === "CONTACT") {
     return ["contact", "form"];

@@ -952,6 +952,12 @@ async function verifyCandidatesWithShallowNavigation(
         continue;
       }
 
+      if (isLoginRequiredUrl(finalUrl)) {
+        markCandidateShallowLoginRequired(candidate, finalUrl, await page.title().catch(() => ""));
+        notes.push(`Shallow navigation found login-required destination for ${candidate.flowType} candidate "${candidate.label}".`);
+        continue;
+      }
+
       const destinationCandidates = await collectCandidatesFromStablePage(page, deadlineMs);
       const verified = isFlowVerifiedByDestination(candidate.flowType, destinationCandidates, finalUrl);
       if (verified) {
@@ -1063,6 +1069,10 @@ function isFlowVerifiedByDestination(
   destinationCandidates: DiscoveryCandidate[],
   destinationUrl: string
 ): boolean {
+  if (isLoginRequiredUrl(destinationUrl)) {
+    return false;
+  }
+
   const searchableUrl = normalizeSearchText(destinationUrl);
   if (flowType === "LANDING_CTA") {
     return destinationCandidates.length > 0 || hasAny(searchableUrl, ["signup", "start", "trial", "demo", "contact"]);
@@ -1102,6 +1112,43 @@ function markCandidateShallowVerified(candidate: DiscoveryCandidate, verifiedUrl
       title
     }
   };
+}
+
+function markCandidateShallowLoginRequired(candidate: DiscoveryCandidate, destinationUrl: string, title: string): void {
+  candidate.confidence = Math.min(candidate.confidence, 0.42);
+  candidate.reason = `${candidate.reason} Shallow navigation reached a login-required destination.`;
+  candidate.signals = [
+    ...candidate.signals,
+    signal("shallow_navigation", `${candidate.flowType.toLowerCase()}_login_required`, destinationUrl, -0.3)
+  ];
+  candidate.observationData = {
+    ...candidate.observationData,
+    shallow_navigation: {
+      status: "login_required",
+      destination_url: destinationUrl,
+      title
+    }
+  };
+}
+
+function isLoginRequiredUrl(url: string): boolean {
+  try {
+    const parsedUrl = new URL(url);
+    const searchable = normalizeSearchText(`${parsedUrl.pathname} ${parsedUrl.search}`);
+    return hasAny(searchable, [
+      "login",
+      "signin",
+      "sign_in",
+      "member/login",
+      "member login",
+      "returnurl",
+      "return url",
+      "redirect",
+      "로그인"
+    ]);
+  } catch {
+    return /login|signin|sign_in|returnUrl|return_url|로그인/i.test(url);
+  }
 }
 
 function matchedSignalsFor(flowType: DiscoveryFlowType, raw: RawDiscoveryElement, searchable: string): DiscoveryCandidateSignal[] {
@@ -1304,15 +1351,25 @@ function toDiscoveryCandidates(raw: RawDiscoveryElement): DiscoveryCandidate[] {
     }));
   }
 
-  if (isCheckoutCandidate(raw, searchable)) {
+  if (isProductBrowseCandidate(raw, searchable)) {
     candidates.push(createCandidate(raw, {
-      entrypointType: "checkout",
+      entrypointType: "cta",
+      flowType: "PURCHASE_CHECKOUT",
+      label,
+      confidence: productBrowseConfidence(raw, searchable),
+      reason: "Product listing or product detail entrypoint candidate was found for the purchase flow.",
+      observationType: "checkout_candidate",
+      signals: matchedPurchaseSignalsFor(raw, searchable)
+    }));
+  } else if (isCheckoutCandidate(raw, searchable)) {
+    candidates.push(createCandidate(raw, {
+      entrypointType: checkoutEntrypointType(raw, searchable),
       flowType: "PURCHASE_CHECKOUT",
       label,
       confidence: checkoutConfidence(raw, searchable),
       reason: "Checkout or payment entrypoint candidate was found.",
       observationType: "checkout_candidate",
-      signals: matchedSignalsFor("PURCHASE_CHECKOUT", raw, searchable)
+      signals: matchedPurchaseSignalsFor(raw, searchable)
     }));
   }
 
@@ -1691,12 +1748,20 @@ function isCheckoutCandidate(raw: RawDiscoveryElement, searchable: string): bool
 }
 
 function checkoutConfidence(raw: RawDiscoveryElement, searchable: string): number {
-  if (hasAny(searchable, ["checkout", "payment", "cart", "결제", "장바구니"])) {
+  if (isDirectCartEntrypoint(raw, searchable)) {
+    return 0.54;
+  }
+
+  if (hasAny(searchable, ["checkout", "payment", "결제"])) {
     return 0.82;
   }
 
-  if (hasAny(searchable, ["buy now", "purchase", "바로구매", "구매하기", "주문하기"])) {
+  if (hasAny(searchable, ["buy now", "purchase", "바로구매", "바로 구매", "구매하기", "주문하기"])) {
     return 0.8;
+  }
+
+  if (hasAny(searchable, ["cart", "장바구니"])) {
+    return 0.54;
   }
 
   if (raw.href && hasStrongCheckoutAction(searchable)) {
@@ -1704,6 +1769,180 @@ function checkoutConfidence(raw: RawDiscoveryElement, searchable: string): numbe
   }
 
   return 0.62;
+}
+
+function productBrowseConfidence(raw: RawDiscoveryElement, searchable: string): number {
+  if (isProductListEntrypoint(raw, searchable) && hasProductIdentitySignal(raw, searchable)) {
+    return 0.86;
+  }
+
+  if (isProductListEntrypoint(raw, searchable)) {
+    return 0.83;
+  }
+
+  if (isProductDetailEntrypoint(raw, searchable) && hasProductIdentitySignal(raw, searchable)) {
+    return 0.81;
+  }
+
+  return 0.74;
+}
+
+function checkoutEntrypointType(raw: RawDiscoveryElement, searchable: string): DiscoveryEntrypointType {
+  return isDirectCartEntrypoint(raw, searchable) ? "cart" : "checkout";
+}
+
+function isProductBrowseCandidate(raw: RawDiscoveryElement, searchable: string): boolean {
+  if (!isInteractive(raw) || isDirectCartEntrypoint(raw, searchable)) {
+    return false;
+  }
+
+  return isProductListEntrypoint(raw, searchable) ||
+    isProductDetailEntrypoint(raw, searchable) ||
+    isProductCardEntrypoint(raw, searchable);
+}
+
+function isProductListEntrypoint(raw: RawDiscoveryElement, searchable: string): boolean {
+  const urlText = normalizeSearchText([raw.href, raw.selector].filter(isString).join(" "));
+  if (hasAny(urlText, [
+    "goods_list",
+    "/products",
+    "/product-list",
+    "/collections",
+    "/category",
+    "/categories",
+    "/catalog",
+    "/shop"
+  ])) {
+    return true;
+  }
+
+  return hasAny(searchable, [
+    "product list",
+    "shop products",
+    "all products",
+    "상품 목록",
+    "상품리스트",
+    "전체상품",
+    "전체 상품",
+    "상품보기",
+    "상품 보기"
+  ]);
+}
+
+function isProductDetailEntrypoint(raw: RawDiscoveryElement, searchable: string): boolean {
+  const urlText = normalizeSearchText([raw.href, raw.selector].filter(isString).join(" "));
+  if (hasAny(urlText, [
+    "goods_view",
+    "/product/",
+    "/products/",
+    "/goods/"
+  ])) {
+    return true;
+  }
+
+  return hasAny(searchable, [
+    "product detail",
+    "view product",
+    "상품 상세",
+    "상품상세",
+    "자세히 보기"
+  ]);
+}
+
+function isProductCardEntrypoint(raw: RawDiscoveryElement, searchable: string): boolean {
+  const selectorText = normalizeSearchText([raw.selector, raw.href].filter(isString).join(" "));
+  if (!hasAny(selectorText, [
+    "product",
+    "goods",
+    "item",
+    "sku",
+    "prd",
+    "catalog",
+    "shop"
+  ])) {
+    return false;
+  }
+
+  return hasProductCommerceContext(raw, searchable);
+}
+
+function hasProductIdentitySignal(raw: RawDiscoveryElement, searchable: string): boolean {
+  return Boolean(raw.text || raw.alt || raw.ariaLabel || raw.title || raw.labelText) ||
+    hasProductCommerceContext(raw, searchable) ||
+    hasAny(searchable, ["상품", "product", "item", "sku", "goods", "catalog"]);
+}
+
+function hasProductCommerceContext(raw: RawDiscoveryElement, searchable: string): boolean {
+  const context = normalizeSearchText([
+    raw.nearbyText,
+    raw.formText,
+    raw.formFieldText,
+    raw.submitText,
+    raw.selector,
+    raw.href
+  ].filter(isString).join(" "));
+
+  return hasPriceSignal(context) ||
+    hasAny(context, [
+      "price",
+      "sale price",
+      "regular price",
+      "option",
+      "variant",
+      "quantity",
+      "qty",
+      "stock",
+      "sku",
+      "add to cart",
+      "buy now",
+      "옵션",
+      "수량",
+      "재고",
+      "판매가",
+      "상품금액",
+      "총 상품금액",
+      "장바구니 담기",
+      "바로구매",
+      "바로 구매",
+      "구매하기"
+    ]) ||
+    hasPriceSignal(searchable);
+}
+
+function hasPriceSignal(text: string): boolean {
+  return /(?:₩|￦|\$|€|¥|krw|usd|eur|jpy)\s*\d|(?:^|[^a-z0-9])\d[\d,]*(?:\s?원|\s?won|\s?krw)(?:[^a-z0-9]|$)|\d[\d,]*\s*(?:price|sale)/i.test(text);
+}
+
+function isDirectCartEntrypoint(raw: RawDiscoveryElement, searchable: string): boolean {
+  const urlText = normalizeSearchText([raw.href, raw.selector].filter(isString).join(" "));
+  return hasAny(urlText, ["/cart", "cart.php", "/basket", "basket.php", "/order/cart"]) ||
+    hasAny(searchable, ["장바구니", "카트", "view cart", "go to cart"]);
+}
+
+function matchedPurchaseSignalsFor(raw: RawDiscoveryElement, searchable: string): DiscoveryCandidateSignal[] {
+  return dedupeSignals([
+    ...matchedSignalsFor("PURCHASE_CHECKOUT", raw, searchable),
+    ...matchedProductBrowseSignals(raw, searchable)
+  ]);
+}
+
+function matchedProductBrowseSignals(raw: RawDiscoveryElement, searchable: string): DiscoveryCandidateSignal[] {
+  if (!isProductBrowseCandidate(raw, searchable)) {
+    return [];
+  }
+
+  const signals: DiscoveryCandidateSignal[] = [];
+  if (raw.href) {
+    signals.push(signal("href", "purchase_checkout_product_browse_url", toHrefContains(raw.href) ?? raw.href, 0.25));
+  }
+  const label = raw.text || raw.alt || raw.ariaLabel || raw.title || raw.labelText;
+  if (label) {
+    signals.push(signal("text", "purchase_checkout_product_browse_label", label, 0.2));
+  }
+  if (raw.selector) {
+    signals.push(signal("selector", "purchase_checkout_product_browse_selector", raw.selector, 0.1));
+  }
+  return signals;
 }
 
 function hasStrongCheckoutAction(searchable: string): boolean {
@@ -1718,6 +1957,7 @@ function hasStrongCheckoutAction(searchable: string): boolean {
     "결제",
     "구매하기",
     "바로구매",
+    "바로 구매",
     "장바구니",
     "장바구니 담기",
     "담기",

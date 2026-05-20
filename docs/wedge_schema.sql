@@ -192,6 +192,7 @@ CREATE TABLE test_run (
     source_discovery_id UUID REFERENCES site_discovery(id) ON DELETE SET NULL,
     scenario_plan_schema_version VARCHAR(32),
     scenario_plan_jsonb JSONB NOT NULL,
+    scenario_overrides_jsonb JSONB NOT NULL DEFAULT '{}'::jsonb,
     scenario_fit_status VARCHAR(32) NOT NULL DEFAULT 'UNKNOWN'
                             CHECK (scenario_fit_status IN ('UNKNOWN','APPLICABLE','LOW_CONFIDENCE','NOT_APPLICABLE','BLOCKED_BY_SITE','UNSAFE_OR_RESTRICTED')),
     scenario_fit_reason TEXT,

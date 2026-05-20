@@ -421,6 +421,13 @@ export interface AgentTraceRequest {
   trace: AgentTrace;
 }
 
+export interface AgentTargetGuidance {
+  mode: "PREFER_THEN_FAIL" | "PREFER_THEN_FALLBACK";
+  preferred_target?: TargetDescriptorMap | null;
+  preferred_scenario_type?: DiscoveryFlowType | null;
+  source?: string;
+}
+
 export interface AgentTask {
   schema_version: "0.1";
   task_id: string;
@@ -440,6 +447,7 @@ export interface AgentTask {
   risk_policy: AgentRiskPolicy;
   test_data?: AgentTestData;
   artifact_policy?: AgentArtifactPolicy;
+  target_guidance?: AgentTargetGuidance;
   replay_hints?: AgentReplayHints;
 }
 

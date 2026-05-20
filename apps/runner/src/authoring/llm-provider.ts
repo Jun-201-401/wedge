@@ -609,7 +609,7 @@ function requiredEntrypoints(scenarioType: DiscoveryFlowType): DiscoveryEntrypoi
     return ["pricing"];
   }
   if (scenarioType === "PURCHASE_CHECKOUT") {
-    return ["pricing", "cart", "checkout"];
+    return ["cta", "pricing", "cart", "checkout"];
   }
   if (scenarioType === "CONTACT") {
     return ["contact", "form"];

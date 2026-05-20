@@ -15,6 +15,8 @@ import { persistAgentScenarioPlanExportArtifact, persistAgentTraceArtifact } fro
 import { emitAgentEventBestEffort, emitAgentTraceBestEffort } from "./callbacks.ts";
 import { AgentBudgetExceededError, assertAgentDeadline, createAgentDeadline, remainingAgentBudgetMs, runSideEffectWithDeadlineCleanup, runWithinAgentDeadline } from "./deadline.ts";
 import {
+  applyTargetGuidanceToDecision,
+  decisionSatisfiesTargetGuidance,
   decideNextAction,
   ensureAgentDecisionMetadata,
   HeuristicDecisionClient,
@@ -185,7 +187,8 @@ export async function executeAgentRun(input: AgentExecutorInput): Promise<AgentE
         state,
         observation,
         maxScrolls: config.maxScrolls,
-        remainingTimeMs: remainingAgentBudgetMs(deadline)
+        remainingTimeMs: remainingAgentBudgetMs(deadline),
+        targetGuidance: input.task.target_guidance
       };
       decision = shouldBootstrapStartUrl(state.started, observation.snapshot.finalUrl, input.task.start_url)
         ? decideNextAction(decisionInput)
@@ -194,6 +197,7 @@ export async function executeAgentRun(input: AgentExecutorInput): Promise<AgentE
           replayHints: input.task.replay_hints
         }) ?? ensureAgentDecisionMetadata(await runWithinAgentDeadline(deadline, "decision", () => decisionClient.decide(decisionInput)));
       decision = preferVisibleHeuristicClickOverScroll(decision, decisionInput);
+      decision = applyTargetGuidanceToDecision(decision, decisionInput);
       decision = capRepeatedScrollDecision(decision, state.scrollCount, config.maxScrolls);
     } catch (error) {
       if (markBudgetExceeded(trace, error)) {
@@ -395,6 +399,9 @@ export async function executeAgentRun(input: AgentExecutorInput): Promise<AgentE
       }
       if (decision.action.type === "click" && decision.targetKey) {
         state.clickedTargetKeys.add(decision.targetKey);
+      }
+      if (decisionSatisfiesTargetGuidance(decision, input.task.target_guidance)) {
+        state.targetGuidanceSatisfied = true;
       }
 
       if (stopRequested) {

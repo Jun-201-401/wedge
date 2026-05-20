@@ -39,6 +39,7 @@ export type {
   AgentSafetyBlockSource,
   AgentSafetyRiskClass,
   AgentTask,
+  AgentTargetGuidance,
   AgentTestData,
   AgentTrace,
   AgentTraceCallbackPayload,

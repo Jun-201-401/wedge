@@ -148,6 +148,7 @@ Discovery 결과에서 생성한 추천 시나리오 카드다.
 
 - `source_discovery_id` nullable
 - `source_authoring_job_id` nullable; V1 DDL 구현은 후속 작업
+- `scenario_overrides_jsonb` non-null default `{}`; Agent 실행에서 추천 카드의 `suggestedTarget` 같은 선택 메타데이터를 `target_guidance`로 변환하기 위한 원본
 - `scenario_fit_status`
 - `scenario_fit_reason` nullable
 - `scenario_fit_summary_jsonb` nullable

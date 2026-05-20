@@ -972,6 +972,48 @@
         },
         "replay_hints": {
           "$ref": "#/$defs/AgentReplayHints"
+        },
+        "target_guidance": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "mode": {
+              "type": "string",
+              "enum": [
+                "PREFER_THEN_FAIL",
+                "PREFER_THEN_FALLBACK"
+              ]
+            },
+            "preferred_target": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "additionalProperties": true
+            },
+            "preferred_scenario_type": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "enum": [
+                "LANDING_CTA",
+                "SIGNUP_LEAD_FORM",
+                "PRICING",
+                "PURCHASE_CHECKOUT",
+                "CONTACT",
+                "CONTENT_ONLY",
+                null
+              ]
+            },
+            "source": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "mode"
+          ]
         }
       },
       "required": [

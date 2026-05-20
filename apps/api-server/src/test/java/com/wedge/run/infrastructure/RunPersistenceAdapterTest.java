@@ -60,6 +60,7 @@ class RunPersistenceAdapterTest {
         assertThat(persisted.getEnvironmentJson()).isEqualTo("{}");
         assertThat(persisted.getScenarioPlanSchemaVersion()).isEqualTo("0.5");
         assertThat(persisted.getScenarioPlanJson()).contains("\"plan_id\":\"plan_001\"");
+        assertThat(persisted.getScenarioOverridesJson()).contains("\"suggestedTarget\"");
         assertThat(persisted.getStatus()).isEqualTo(RunStatus.CREATED);
         assertThat(persisted.getResultCompleteness()).isEqualTo(ResultCompleteness.NONE);
         assertThat(persisted.getAnalysisStatus()).isEqualTo(AnalysisStatus.NOT_STARTED);
@@ -446,7 +447,10 @@ class RunPersistenceAdapterTest {
                 "무료 체험 CTA까지의 흐름 점검",
                 "desktop",
                 UUID.randomUUID(),
-                null,
+                Map.of(
+                        "scenarioType", "LANDING_CTA",
+                        "suggestedTarget", Map.of("text", "회원가입", "href_contains", "/signup")
+                ),
                 Map.of(
                         "schema_version", "0.5",
                         "plan_id", "plan_001",
@@ -488,6 +492,7 @@ class RunPersistenceAdapterTest {
         record.setFailureCode("RUNNER_TIMEOUT");
         record.setFailureMessage("Runner callback timed out");
         record.setScenarioPlanJson("{}");
+        record.setScenarioOverridesJson("{}");
         return record;
     }
 

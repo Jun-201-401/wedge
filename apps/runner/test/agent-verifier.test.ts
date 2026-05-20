@@ -84,6 +84,68 @@ test("[Agent Verifier] 일반 상품/카테고리 링크 클릭은 구매 상태
   assert.equal(result.outcome, "CONTINUE");
 });
 
+test("[Agent Verifier] 구매 목표에서는 상품 상세의 구매 직전 경계가 보이면 클릭하지 않고 성공으로 멈춘다", () => {
+  const plan = createMinimalPlan();
+
+  const result = verifyGoal({
+    goal: "CHECKOUT_ENTRY_VERIFICATION",
+    startUrl: "https://www.mgdj.co.kr/",
+    previousUrl: "https://www.mgdj.co.kr/goods/goods_view.php?goodsNo=1070",
+    phase: "pre_decision",
+    snapshot: createSimulatedPageSnapshot(plan, {
+      finalUrl: "https://www.mgdj.co.kr/goods/goods_view.php?goodsNo=1070",
+      title: "상품 상세",
+      visiblePrices: ["5,200원"],
+      visibleTextBlocks: [
+        textBlock("판매가 5,200원"),
+        textBlock("배송비 선택 필수"),
+        textBlock("총 상품금액 5,200원 총 합계금액 5,200원")
+      ],
+      interactiveComponents: [
+        {
+          text: "바로 구매",
+          selector: "button.btn_add_order",
+          role: "button",
+          tag: "button",
+          clickable: true,
+          clicked_in_scenario: false,
+          is_cta_candidate: true,
+          is_primary_like: true,
+          bounds: {
+            x: 900,
+            y: 700,
+            width: 160,
+            height: 44,
+            unit: "css_px"
+          }
+        },
+        {
+          text: "장바구니",
+          selector: "button.btn_add_cart",
+          role: "button",
+          tag: "button",
+          clickable: true,
+          clicked_in_scenario: false,
+          is_cta_candidate: true,
+          is_primary_like: false,
+          bounds: {
+            x: 720,
+            y: 700,
+            width: 160,
+            height: 44,
+            unit: "css_px"
+          }
+        }
+      ]
+    })
+  });
+
+  assert.equal(result.satisfied, true);
+  assert.equal(result.terminal, true);
+  assert.equal(result.outcome, "SUCCESS");
+  assert.match(result.reason, /purchase boundary|before clicking/i);
+});
+
 test("[Agent Verifier] 강한 CTA 클릭이라도 전환 상태 신호가 없으면 계속 탐색한다", () => {
   const plan = createMinimalPlan();
   const decision = clickDecision({

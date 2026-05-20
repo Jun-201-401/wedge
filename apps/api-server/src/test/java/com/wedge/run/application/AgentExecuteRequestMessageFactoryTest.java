@@ -176,6 +176,42 @@ class AgentExecuteRequestMessageFactoryTest {
         assertThat(agentTask).containsEntry("goal_type", "SIGNUP_LEAD_FORM_VERIFICATION");
     }
 
+    @Test
+    void createCarriesRecommendationTargetGuidanceFromScenarioOverrides() {
+        UUID runId = UUID.randomUUID();
+        RunExecutionRequestSource source = new RunExecutionRequestSource(
+                runId,
+                UUID.randomUUID(),
+                "WEB",
+                URI.create("https://example.com"),
+                "랜딩 전환 버튼 점검",
+                "desktop",
+                null,
+                Map.of(),
+                Map.of(
+                        "source", "create-analysis-agent-selection",
+                        "scenarioType", "LANDING_CTA",
+                        "suggestedTarget", Map.of(
+                                "text", "회원가입",
+                                "href_contains", "/signup"
+                        )
+                )
+        );
+
+        AgentExecuteRequestMessage message = factory.create(source, Optional.empty(), 1);
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> agentTask = (Map<String, Object>) message.payload().get("agentTask");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> targetGuidance = (Map<String, Object>) agentTask.get("target_guidance");
+        assertThat(targetGuidance).containsEntry("mode", "PREFER_THEN_FAIL");
+        assertThat(targetGuidance).containsEntry("preferred_scenario_type", "LANDING_CTA");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> preferredTarget = (Map<String, Object>) targetGuidance.get("preferred_target");
+        assertThat(preferredTarget).containsEntry("text", "회원가입");
+        assertThat(preferredTarget).containsEntry("href_contains", "/signup");
+    }
+
     private RunExecutionRequestSource sampleSource(UUID runId) {
         return new RunExecutionRequestSource(
                 runId,
