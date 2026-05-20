@@ -130,7 +130,7 @@ class ReportExportServiceTest {
         verify(artifactContentWriter).save(artifactCaptor.capture(), contentCaptor.capture());
         verify(artifactPersistenceService).saveRunArtifacts(org.mockito.Mockito.eq(runId), artifactsCommandCaptor.capture());
         UUID expectedArtifactId = UUID.nameUUIDFromBytes(
-                ("report-export:screen-v8:" + reportId + ":MARKDOWN").getBytes(StandardCharsets.UTF_8)
+                ("report-export:screen-v9:" + reportId + ":MARKDOWN").getBytes(StandardCharsets.UTF_8)
         );
         Artifact artifact = artifactCaptor.getValue();
         assertThat(response.artifactId()).isEqualTo(expectedArtifactId);
@@ -159,7 +159,7 @@ class ReportExportServiceTest {
         UUID reportId = UUID.randomUUID();
         UUID analysisJobId = UUID.randomUUID();
         UUID artifactId = UUID.nameUUIDFromBytes(
-                ("report-export:screen-v8:" + reportId + ":MARKDOWN").getBytes(StandardCharsets.UTF_8)
+                ("report-export:screen-v9:" + reportId + ":MARKDOWN").getBytes(StandardCharsets.UTF_8)
         );
         RunResponse run = sampleRun(runId);
         Report report = report(runId, reportId, analysisJobId, artifactId);
@@ -206,7 +206,7 @@ class ReportExportServiceTest {
 
         verify(artifactContentWriter).save(artifactCaptor.capture(), contentCaptor.capture());
         UUID expectedArtifactId = UUID.nameUUIDFromBytes(
-                ("report-export:screen-v8:" + reportId + ":PDF").getBytes(StandardCharsets.UTF_8)
+                ("report-export:screen-v9:" + reportId + ":PDF").getBytes(StandardCharsets.UTF_8)
         );
         Artifact artifact = artifactCaptor.getValue();
         byte[] content = contentCaptor.getValue();

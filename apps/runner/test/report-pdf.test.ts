@@ -15,6 +15,16 @@ test("buildReportPdfHtml creates a presentation report with screenshot overlay m
   assert.doesNotMatch(html, /Screenshot artifact/);
 });
 
+test("buildReportPdfHtml keeps small PDF text readable for presentation", () => {
+  const html = buildReportPdfHtml(samplePayload());
+
+  assert.match(html, /body\s*\{[\s\S]*?font-size: 12px/);
+  assert.match(html, /\.eyebrow\s*\{[\s\S]*?font-size: 11px/);
+  assert.match(html, /dt,[\s\S]*?\.location-panel h4\s*\{[\s\S]*?font-size: 11px/);
+  assert.match(html, /\.reference-item small\s*\{[\s\S]*?font-size: 11px/);
+  assert.match(html, /\.location-panel dd,[\s\S]*?\.meta-row dd\s*\{[\s\S]*?font-size: 12px/);
+});
+
 test("renderReportPdf returns PDF bytes", async () => {
   const pdf = await renderReportPdf(samplePayload());
 

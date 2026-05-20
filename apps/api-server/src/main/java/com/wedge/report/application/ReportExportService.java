@@ -35,7 +35,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 @Service
 @RequiredArgsConstructor
 public class ReportExportService {
-    private static final String EXPORT_CONTENT_VERSION = "screen-v8";
+    private static final String EXPORT_CONTENT_VERSION = "screen-v9";
     private static final String MARKDOWN_MIME_TYPE = "text/markdown; charset=utf-8";
     private static final String PDF_MIME_TYPE = "application/pdf";
 

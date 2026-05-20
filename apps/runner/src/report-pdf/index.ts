@@ -331,7 +331,7 @@ html {
 body {
   margin: 0;
   background: #ffffff;
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.55;
 }
 
@@ -350,7 +350,7 @@ body {
 .eyebrow {
   margin: 0 0 7px;
   color: #2563eb;
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 800;
   letter-spacing: .06em;
   text-transform: uppercase;
@@ -404,7 +404,7 @@ dt,
 .insight-card h4,
 .location-panel h4 {
   color: #64748b;
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 800;
 }
 
@@ -500,6 +500,7 @@ dd {
 .location-panel dd,
 .meta-row dd {
   overflow-wrap: anywhere;
+  font-size: 12px;
   font-weight: 600;
 }
 
@@ -516,7 +517,7 @@ dd {
 
 .insight-card p {
   margin-top: 6px;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 700;
 }
 
@@ -544,18 +545,21 @@ dd {
 
 .reference-item h3 {
   margin-top: 4px;
-  font-size: 12px;
+  font-size: 14px;
 }
 
 .reference-item p:not(.reference-label) {
   margin-top: 5px;
   color: #334155;
+  font-size: 12px;
 }
 
 .reference-item small {
   display: block;
   margin-top: 5px;
   color: #64748b;
+  font-size: 11px;
+  line-height: 1.45;
   overflow-wrap: anywhere;
 }
 
@@ -571,12 +575,13 @@ dd {
 }
 
 .guide-card h3 {
-  font-size: 13px;
+  font-size: 14px;
 }
 
 .guide-card p {
   margin-top: 6px;
   color: #334155;
+  font-size: 12px;
 }
 
 .empty-state {
