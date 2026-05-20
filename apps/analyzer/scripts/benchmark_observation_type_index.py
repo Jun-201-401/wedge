@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-from collections import defaultdict
+from dataclasses import replace
 from pathlib import Path
 import sys
 from time import perf_counter
-from typing import Iterable
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from app.rule_engine.handler_utils import observations_of_type
 from app.stage.stage_context_builder import ObservationRecord, StageContext
 
 
@@ -100,45 +100,18 @@ def run_scan(context: StageContext, queries: list[tuple[str, ...]]) -> int:
 
 
 def run_indexed(context: StageContext, queries: list[tuple[str, ...]]) -> int:
-    index = build_observation_type_index(context.observations)
+    indexed_context = replace(context, observations=context.observations)
     checksum = 0
 
     for types in queries:
-        checksum += len(indexed_observations_of_type(index, *types))
+        checksum += len(observations_of_type(indexed_context, *types))
 
     return checksum
 
 
-def scan_observations_of_type(
-    observations: Iterable[ObservationRecord],
-    *types: str,
-) -> list[ObservationRecord]:
-    return [record for record in observations if record.observation.get("type") in types]
-
-
-def build_observation_type_index(
-    observations: Iterable[ObservationRecord],
-) -> dict[str, tuple[tuple[int, ObservationRecord], ...]]:
-    buckets: dict[str, list[tuple[int, ObservationRecord]]] = defaultdict(list)
-
-    for index, record in enumerate(observations):
-        observation_type = record.observation.get("type")
-        if isinstance(observation_type, str):
-            buckets[observation_type].append((index, record))
-
-    return {key: tuple(value) for key, value in buckets.items()}
-
-
-def indexed_observations_of_type(
-    index: dict[str, tuple[tuple[int, ObservationRecord], ...]],
-    *types: str,
-) -> list[ObservationRecord]:
-    indexed_records: list[tuple[int, ObservationRecord]] = []
-
-    for observation_type in types:
-        indexed_records.extend(index.get(observation_type, ()))
-
-    return [record for _, record in sorted(indexed_records, key=lambda item: item[0])]
+def scan_observations_of_type(observations: tuple[ObservationRecord, ...], *types: str) -> list[ObservationRecord]:
+    requested_types = set(types)
+    return [record for record in observations if record.observation.get("type") in requested_types]
 
 
 def build_context(observation_count: int) -> StageContext:

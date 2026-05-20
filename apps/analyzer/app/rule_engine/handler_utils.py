@@ -54,7 +54,23 @@ def base_hit(
 
 
 def observations_of_type(context: StageContext, *types: str) -> list[ObservationRecord]:
-    return [record for record in context.observations if record.observation.get("type") in types]
+    if not types:
+        return []
+
+    requested_types = set(types)
+    if context.observation_type_index:
+        if len(requested_types) == 1:
+            observation_type = next(iter(requested_types))
+            return [record for _, record in context.observation_type_index.get(observation_type, ())]
+
+        indexed_records = [
+            indexed_record
+            for observation_type in requested_types
+            for indexed_record in context.observation_type_index.get(observation_type, ())
+        ]
+        return [record for _, record in sorted(indexed_records, key=lambda item: item[0])]
+
+    return [record for record in context.observations if record.observation.get("type") in requested_types]
 
 
 def checkpoint_primary_stage(checkpoint: dict[str, Any]) -> DecisionStage:

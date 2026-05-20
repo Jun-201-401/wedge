@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -23,16 +24,25 @@ class ObservationRecord:
         return f"{self.checkpoint_id}.{self.observation_id}"
 
 
+IndexedObservationRecord = tuple[int, ObservationRecord]
+ObservationTypeIndex = dict[str, tuple[IndexedObservationRecord, ...]]
+
+
 @dataclass(frozen=True)
 class StageContext:
     stage: DecisionStage
     checkpoints: tuple[dict[str, Any], ...] = field(default_factory=tuple)
     observations: tuple[ObservationRecord, ...] = field(default_factory=tuple)
+    # Derived from observations so dataclasses.replace keeps the cache fresh.
+    observation_type_index: ObservationTypeIndex = field(init=False)
     aggregate_signals: dict[str, Any] = field(default_factory=dict)
     scenario: dict[str, Any] = field(default_factory=dict)
     scenario_fit: dict[str, Any] | None = None
     decision_stage_summary: dict[str, Any] = field(default_factory=dict)
     semantic_annotations: dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "observation_type_index", build_observation_type_index(self.observations))
 
     @property
     def observed(self) -> bool:
@@ -92,3 +102,16 @@ class StageContextBuilder:
             )
             for stage in DECISION_STAGES
         }
+
+
+def build_observation_type_index(
+    observations: Iterable[ObservationRecord],
+) -> ObservationTypeIndex:
+    buckets: dict[str, list[IndexedObservationRecord]] = {}
+
+    for index, record in enumerate(observations):
+        observation_type = record.observation.get("type")
+        if isinstance(observation_type, str):
+            buckets.setdefault(observation_type, []).append((index, record))
+
+    return {observation_type: tuple(records) for observation_type, records in buckets.items()}
