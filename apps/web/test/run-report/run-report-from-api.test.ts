@@ -237,6 +237,7 @@ test('buildRunReportFromApi projects backend report data into report view model'
   assert.equal(report.runId, completedRun.id);
   assert.equal(report.reportId, readyReport.reportId);
   assert.equal(report.targetUrl, 'https://example.com/pricing');
+  assert.equal(report.scenarioLabel, '랜딩 전환 버튼 점검');
   assert.equal(report.score, 81);
   assert.equal(report.heroTitle, '백엔드 리포트');
   assert.equal(report.heroCallToAction, 'Start now');
@@ -246,6 +247,20 @@ test('buildRunReportFromApi projects backend report data into report view model'
   assert.equal(report.findings[0].references?.[0]?.label, 'WCAG 3.3.2');
   assert.equal(report.findings[0].highlight, null);
   assert.equal(report.recommendations[0].detail, 'CTA 아래에 기대 결과를 한 문장으로 설명하세요.');
+});
+
+test('buildRunReportFromApi falls back to run name when scenario query is absent', () => {
+  const report = buildRunReportFromApi({
+    run: {
+      ...completedRun,
+      name: '문의 / 상담 신청 흐름 점검',
+      goal: '문의 후보를 따라 상담 신청 직전까지 확인',
+    },
+    report: readyReport,
+    scenarioId: null,
+  });
+
+  assert.equal(report.scenarioLabel, '문의 / 상담 신청 흐름 점검');
 });
 
 test('buildRunReportFromApi prefers report detail finding preview image when available', () => {

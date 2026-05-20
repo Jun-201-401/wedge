@@ -1,4 +1,4 @@
-export { getScenarioLabel } from './lib/scenarioLabels';
+export { SCENARIO_LABELS, getScenarioLabel } from './lib/scenarioLabels';
 
 export const shared = {
   name: 'shared',

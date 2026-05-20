@@ -92,7 +92,7 @@ test('buildRunReportFromEvidence projects persisted evidence into report view mo
   assert.equal(report.runId, completedRun.id);
   assert.equal(report.reportId, 'WDG-11111111');
   assert.equal(report.targetUrl, completedRun.startUrl);
-  assert.equal(report.scenarioLabel, '랜딩 전환 행동 점검');
+  assert.equal(report.scenarioLabel, '랜딩 전환 버튼 점검');
   assert.equal(report.totalSteps, 2);
   assert.equal(report.durationLabel, '1분 24초');
   assert.equal(report.evidencePreviewUrl, '/api/runs/111/artifacts/screenshot-1/content');
@@ -103,4 +103,20 @@ test('buildRunReportFromEvidence projects persisted evidence into report view mo
   assert.equal(report.findings[0].highlight, null);
   assert.equal(report.recommendations.length, 1);
   assert.equal(report.decisionNodes.some((node) => node.id === 'evidence-depth'), true);
+});
+
+test('buildRunReportFromEvidence derives scenario label from persisted scenario type when route query is absent', () => {
+  const report = buildRunReportFromEvidence({
+    run: completedRun,
+    evidencePacket: {
+      ...evidencePacket,
+      scenario: {
+        scenario_type: 'PRICING',
+        goal: '가격표에서 플랜 선택까지 확인',
+      },
+    },
+    scenarioId: null,
+  });
+
+  assert.equal(report.scenarioLabel, '가격 / 요금제 흐름 점검');
 });

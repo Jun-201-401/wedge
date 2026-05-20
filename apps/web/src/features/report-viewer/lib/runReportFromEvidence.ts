@@ -79,6 +79,24 @@ function getPrimaryCallToAction(evidencePacket: EvidencePacket) {
   return ctaObservation ? getObservationText(ctaObservation) : '주요 행동 버튼';
 }
 
+function getEvidenceScenarioKey(evidencePacket: EvidencePacket) {
+  const scenario = readNestedRecord(evidencePacket.scenario);
+  return readString(scenario?.id)
+    ?? readString(scenario?.scenario_id)
+    ?? readString(scenario?.scenarioId)
+    ?? readString(scenario?.scenario_type)
+    ?? readString(scenario?.scenarioType);
+}
+
+function getEvidenceScenarioFallbackLabel(evidencePacket: EvidencePacket, run: Run) {
+  const scenario = readNestedRecord(evidencePacket.scenario);
+  return readString(scenario?.title)
+    ?? readString(scenario?.label)
+    ?? readString(scenario?.goal)
+    ?? run.name
+    ?? run.goal;
+}
+
 function getDurationLabel(run: Run, evidencePacket: EvidencePacket) {
   if (run.startedAt && run.finishedAt) {
     const durationMs = new Date(run.finishedAt).getTime() - new Date(run.startedAt).getTime();
@@ -300,7 +318,7 @@ export function buildRunReportFromEvidence({ run, evidencePacket, scenarioId }: 
     runId: run.id,
     reportId: buildReadableReportId(run.id),
     targetUrl,
-    scenarioLabel: getScenarioLabel(scenarioId),
+    scenarioLabel: getScenarioLabel(scenarioId ?? getEvidenceScenarioKey(evidencePacket), getEvidenceScenarioFallbackLabel(evidencePacket, run)),
     score: calculateScore(evidencePacket, findings),
     issueCount: findings.length,
     evidenceCount: evidencePacket.checkpoints.length + evidencePacket.artifacts.length,

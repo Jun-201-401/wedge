@@ -1,5 +1,6 @@
 import type { Discovery, DiscoveryScenarioType, ScenarioRecommendation as ApiScenarioRecommendation, ScenarioRecommendationLevel } from '../../../entities/discovery';
 import { formatDisplayUrl } from '../../../shared/lib/displayUrl';
+import { SCENARIO_LABELS } from '../../../shared/lib/scenarioLabels';
 
 export type CreateAnalysisScenarioId = 'landing-cta' | 'signup-form' | 'contact' | 'pricing' | 'checkout';
 export type ScenarioTone = 'recommended' | 'available' | 'low' | 'unavailable';
@@ -34,31 +35,31 @@ const MANUAL_SCENARIO_TYPES = ['LANDING_CTA', 'SIGNUP_LEAD_FORM', 'CONTACT', 'PR
 const SCENARIO_COPY = {
   LANDING_CTA: {
     id: 'landing-cta',
-    title: '랜딩 전환 버튼 점검',
+    title: SCENARIO_LABELS['landing-cta'],
     availableSummary: '첫 화면의 가입, 체험, 문의 버튼 흐름을 확인해요.',
     unavailableSummary: '랜딩 페이지에서 명확한 전환 버튼 진입점을 찾지 못했어요.',
   },
   SIGNUP_LEAD_FORM: {
     id: 'signup-form',
-    title: '가입 / 리드 양식 점검',
+    title: SCENARIO_LABELS['signup-form'],
     availableSummary: '가입 또는 리드 입력 양식 후보를 발견했어요. 입력 부담과 제출 전 신뢰 요소를 확인할 수 있습니다.',
     unavailableSummary: '가입 또는 리드 입력 양식 진입점을 찾지 못했어요.',
   },
   CONTACT: {
     id: 'contact',
-    title: '문의 / 상담 신청 흐름 점검',
+    title: SCENARIO_LABELS.contact,
     availableSummary: '문의, 상담, 데모 신청 후보를 발견했어요. B2B 전환 흐름을 점검하기 좋습니다.',
     unavailableSummary: '문의 또는 상담 신청 진입점을 찾지 못했어요.',
   },
   PRICING: {
     id: 'pricing',
-    title: '가격 / 요금제 흐름 점검',
+    title: SCENARIO_LABELS.pricing,
     availableSummary: '가격 또는 요금제 진입점을 발견했어요. 사용자가 플랜을 이해하고 다음 행동으로 이동하는지 확인할 수 있습니다.',
     unavailableSummary: '가격, 요금제, 플랜 비교 진입점을 찾지 못했어요.',
   },
   PURCHASE_CHECKOUT: {
     id: 'checkout',
-    title: '구매 / 결제 흐름 점검',
+    title: SCENARIO_LABELS.checkout,
     availableSummary: '구매 또는 결제 진입점을 발견했어요. 결제 전 단계까지의 마찰을 안전하게 점검할 수 있습니다.',
     unavailableSummary: '구매, 장바구니, 결제 진입점을 찾지 못했어요.',
   },
