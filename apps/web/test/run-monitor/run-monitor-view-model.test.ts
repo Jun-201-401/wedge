@@ -204,15 +204,17 @@ test('run monitor view model maps API run steps into a real timeline with failur
     },
   ]);
 
-  assert.deepEqual(steps.map((step) => step.id), ['step-1', 'step-2']);
+  assert.deepEqual(steps.map((step) => step.id), ['step-1', 'step-2', 'api-run-failure']);
   assert.equal(steps[0].status, 'complete');
   assert.equal(steps[1].status, 'failed');
   assert.equal(steps[1].label, 'CTA 제출');
   assert.equal(steps[1].detail, '응답이 지연되어 확인이 막혔습니다.');
+  assert.equal(steps[2].label, '실패 원인');
+  assert.equal(steps[2].detail, '화면 응답이 지연되어 확인이 중단됐습니다.');
   assert.equal(getFailureCodeLabel('RUNNER_TIMEOUT'), '시간 초과');
   assert.equal(getFailureCodeLabel('RUN_START_FAILED'), '시작 실패');
   assert.equal(getFailureCodeLabel('RUN_REQUEST_FAILED'), '요청 실패');
-  assert.equal(getFailureCodeLabel('RUNNER_EXECUTION_FAILED'), '진행 실패');
+  assert.equal(getFailureCodeLabel('RUNNER_EXECUTION_FAILED'), '목표 확인 실패');
 });
 
 
@@ -293,6 +295,45 @@ test('run monitor view model prefers API run events for timeline and logs', () =
   assert.equal(logs[2].message, '응답이 지연되어 확인이 막혔습니다');
   assert.equal(logs[2].tone, 'warning');
   assert.doesNotMatch(logs[2].message, /step_002_submit|STEP_FAILED|locator/);
+});
+
+test('run monitor view model keeps terminal failure visible as product copy when event copy is rewritten', () => {
+  const run = {
+    ...baseRun,
+    status: 'FAILED',
+    finishedAt: '2026-04-27T01:02:00.000Z',
+    failureCode: 'RUNNER_EXECUTION_FAILED',
+    failureMessage: 'Unable to resolve click target: selector=#primary-cta?token=secret-token',
+  } satisfies Run;
+  const live = {
+    ...baseLive,
+    status: 'FAILED',
+  } satisfies RunLive;
+  const events: RunEvent[] = [
+    {
+      id: 'event-failed',
+      runId: baseRun.id,
+      stepId: 'step-2',
+      stepKey: 'step_002_submit',
+      eventType: 'STEP_FAILED',
+      eventSource: 'RUNNER',
+      payload: {
+        failureCode: 'RUNNER_EXECUTION_FAILED',
+        failureMessage: 'Unable to resolve click target: selector=#primary-cta?token=secret-token',
+      },
+      occurredAt: '2026-04-27T01:01:03.000Z',
+    },
+  ];
+
+  const timeline = buildApiEventTimeline(run, live, events, []);
+
+  assert.equal(timeline[0].detail, '확인이 막혔습니다');
+  assert.equal(timeline[1].label, '실패 원인');
+  assert.equal(
+    timeline[1].detail,
+    '선택한 목표 버튼을 화면에서 찾지 못해 확인이 중단됐습니다.',
+  );
+  assert.doesNotMatch(timeline[1].detail, /RUNNER_EXECUTION_FAILED|selector|token|redacted|Unable to resolve/);
 });
 
 test('run monitor view model turns event payload details into readable path entries', () => {

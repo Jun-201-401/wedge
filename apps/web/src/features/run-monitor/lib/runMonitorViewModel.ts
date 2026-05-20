@@ -426,6 +426,56 @@ function describeStepFailedEvent(event: RunEvent) {
   return RUN_EVENT_USER_SUMMARIES.STEP_FAILED;
 }
 
+function formatFailureDetail(failureCode?: string | null, failureMessage?: string | null) {
+  if (failureCode === 'RUNNER_TIMEOUT') {
+    return '화면 응답이 지연되어 확인이 중단됐습니다.';
+  }
+
+  if (failureCode === 'RUNNER_BROWSER_CRASH') {
+    return '브라우저 세션이 종료되어 확인이 중단됐습니다.';
+  }
+
+  if (failureCode === 'RUN_START_FAILED') {
+    return '실행을 시작하지 못했습니다. 잠시 후 다시 시도해주세요.';
+  }
+
+  if (failureCode === 'RUN_REQUEST_FAILED') {
+    return '실행 요청을 처리하지 못했습니다. 잠시 후 다시 시도해주세요.';
+  }
+
+  if (failureCode === 'RUNNER_EXECUTION_FAILED' && failureMessage?.toLowerCase().includes('unable to resolve click target')) {
+    return '선택한 목표 버튼을 화면에서 찾지 못해 확인이 중단됐습니다.';
+  }
+
+  return '선택한 목표 흐름을 끝까지 확인하지 못했습니다.';
+}
+
+function createRunFailureTimelineStep(run: Run): RunStepItem | null {
+  if (run.status !== 'FAILED') {
+    return null;
+  }
+
+  return {
+    id: 'api-run-failure',
+    label: '실패 원인',
+    detail: formatFailureDetail(run.failureCode, run.failureMessage),
+    status: 'failed',
+    timestamp: run.finishedAt ? formatRunStartedAt(run.finishedAt) : '현재',
+  };
+}
+
+function appendRunFailureTimelineStep(run: Run, steps: RunStepItem[]) {
+  const failureStep = createRunFailureTimelineStep(run);
+  if (!failureStep) {
+    return steps;
+  }
+
+  return [
+    ...steps.filter((step) => step.id !== failureStep.id),
+    failureStep,
+  ];
+}
+
 function getRunEventUserSummary(event: RunEvent, step?: RunStep) {
   if (event.eventType === 'STEP_BLOCKED') {
     return '위험하거나 범위를 벗어난 이동이라 안전하게 멈췄습니다';
@@ -717,10 +767,10 @@ export function buildApiSnapshotSteps(run: Run, live: RunLive): RunStepItem[] {
 
 export function buildApiStepTimeline(run: Run, live: RunLive, steps: RunStep[]): RunStepItem[] {
   if (steps.length === 0) {
-    return buildApiSnapshotSteps(run, live);
+    return appendRunFailureTimelineStep(run, buildApiSnapshotSteps(run, live));
   }
 
-  return steps
+  const timelineSteps = steps
     .slice()
     .sort((left, right) => left.stepOrder - right.stepOrder)
     .map((step) => ({
@@ -730,6 +780,8 @@ export function buildApiStepTimeline(run: Run, live: RunLive, steps: RunStep[]):
       status: getRunStepStatus(step.status),
       timestamp: getRunStepTimestamp(step),
     }));
+
+  return appendRunFailureTimelineStep(run, timelineSteps);
 }
 
 export function buildApiEventTimeline(run: Run, live: RunLive, events: RunEvent[], steps: RunStep[]): RunStepItem[] {
@@ -739,7 +791,7 @@ export function buildApiEventTimeline(run: Run, live: RunLive, events: RunEvent[
 
   const stepByKey = buildStepByKey(steps);
 
-  return sortRunEvents(events).map((event) => {
+  const timelineSteps = sortRunEvents(events).map((event) => {
     const timelineText = getRunEventTimelineText(event, event.stepKey ? stepByKey.get(event.stepKey) : undefined);
 
     return {
@@ -750,6 +802,8 @@ export function buildApiEventTimeline(run: Run, live: RunLive, events: RunEvent[
       timestamp: getRunEventTimestamp(event),
     };
   });
+
+  return appendRunFailureTimelineStep(run, timelineSteps);
 }
 
 export function buildApiEventLogs(run: Run, live: RunLive, events: RunEvent[]): RunActionLog[] {
@@ -785,9 +839,7 @@ export function buildApiSnapshotLogs(run: Run, live: RunLive): RunActionLog[] {
     logs.push({
       id: 'api-log-run-failure',
       time: run.finishedAt ? formatRunStartedAt(run.finishedAt) : '현재',
-      message: run.failureMessage
-        ? `${getFailureCodeLabel(run.failureCode)}: ${run.failureMessage}`
-        : `${getFailureCodeLabel(run.failureCode)}로 실행이 실패했습니다.`,
+      message: formatFailureDetail(run.failureCode, run.failureMessage),
       tone: 'warning',
     });
   }

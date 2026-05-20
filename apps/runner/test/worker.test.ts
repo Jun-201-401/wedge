@@ -584,46 +584,58 @@ test("[Worker recovery] browser crash는 전용 failure code로 실패하고 증
   ];
 
   let failedPayload: RunnerFailedPayload | null = null;
-
-  const worker = registerWorker({
-    config: createRunnerTestConfig(),
-    browserFactory: {
-      kind: "simulated-playwright",
-      createSession: async () =>
-        createSimulatedSession(message.payload.scenarioPlan!, {
-          execute: async () => {
-            const error = new Error("Target page, context or browser has been closed");
-            error.name = "BrowserCrashError";
-            throw error;
-          },
-          snapshot: () => createSimulatedPageSnapshot(message.payload.scenarioPlan!, {
-            browserHealth: {
-              status: "crashed",
-              reason: "page_crash",
-              observedAt: "2026-05-11T00:00:00.000Z"
-            }
-          }),
-          captureArtifacts: async () => {
-            throw new Error("Target page, context or browser has been closed");
-          }
-        })
-    },
-    callbackClient: createStubCallbackClient({
-      sendFailed: async (_runId, payload) => {
-        failedPayload = payload;
-      }
-    }),
-    capturePipeline: {
-      collectCheckpoint: async () => {
-        throw new Error("failure capture should degrade before checkpoint collection");
-      }
-    },
-    artifactStore: {
-      persistArtifacts: async () => []
+  const capturedLogs: string[] = [];
+  const originalError = console.error;
+  console.error = (message?: unknown, ...optional: unknown[]) => {
+    capturedLogs.push(String(message));
+    if (optional.length > 0) {
+      capturedLogs.push(optional.map(String).join(" "));
     }
-  });
+  };
 
-  await assert.rejects(() => worker.handleMessage(message), /Target page, context or browser has been closed/);
+  try {
+    const worker = registerWorker({
+      config: createRunnerTestConfig(),
+      browserFactory: {
+        kind: "simulated-playwright",
+        createSession: async () =>
+          createSimulatedSession(message.payload.scenarioPlan!, {
+            execute: async () => {
+              const error = new Error("Target page, context or browser has been closed");
+              error.name = "BrowserCrashError";
+              throw error;
+            },
+            snapshot: () => createSimulatedPageSnapshot(message.payload.scenarioPlan!, {
+              browserHealth: {
+                status: "crashed",
+                reason: "page_crash",
+                observedAt: "2026-05-11T00:00:00.000Z"
+              }
+            }),
+            captureArtifacts: async () => {
+              throw new Error("Target page, context or browser has been closed");
+            }
+          })
+      },
+      callbackClient: createStubCallbackClient({
+        sendFailed: async (_runId, payload) => {
+          failedPayload = payload;
+        }
+      }),
+      capturePipeline: {
+        collectCheckpoint: async () => {
+          throw new Error("failure capture should degrade before checkpoint collection");
+        }
+      },
+      artifactStore: {
+        persistArtifacts: async () => []
+      }
+    });
+
+    await assert.rejects(() => worker.handleMessage(message), /Target page, context or browser has been closed/);
+  } finally {
+    console.error = originalError;
+  }
 
   if (failedPayload === null) {
     throw new Error("failed payload was not captured");
@@ -631,6 +643,16 @@ test("[Worker recovery] browser crash는 전용 failure code로 실패하고 증
 
   assert.equal((failedPayload as RunnerFailedPayload).failureCode, "RUNNER_BROWSER_CRASH");
   assert.equal((failedPayload as RunnerFailedPayload).failureMessage, "Target page, context or browser has been closed");
+  assert.ok(
+    capturedLogs.some(
+      (line) =>
+        line.includes("\"event\":\"run_failed\"") &&
+        line.includes("\"failureCode\":\"RUNNER_BROWSER_CRASH\"") &&
+        line.includes("\"deliveryStatus\":\"DELIVERY_PARTIAL\"") &&
+        line.includes("\"deliveryIssueScopes\":[\"failure-capture\"]") &&
+        line.includes("failure evidence capture failed: Target page, context or browser has been closed")
+    )
+  );
 });
 
 test("[Worker lifecycle] checkpoint callback 실패는 partial delivery로 기록하고 finished는 계속 보낸다", async () => {

@@ -8,6 +8,7 @@ import type { ArtifactStore } from "../storage/index.ts";
 import type { RunExecuteMessage } from "../shared/contracts.ts";
 import { classifyRunnerFailure, errorMessage, logOperationalEvent, runnerFailureOutcome } from "../shared/utils.ts";
 import { emitAcceptedCallback, emitFailedCallback, emitFinishedCallback, resolveFailureResultCompleteness } from "./callback-policy.ts";
+import { scenarioFailureLogDetails } from "./failure-log.ts";
 import { applyRunArtifactPolicy } from "./run-artifact-policy.ts";
 import { executeRunMessageWithIdempotency } from "./run-idempotent-execution.ts";
 
@@ -159,10 +160,7 @@ async function executeRunMessage({
         failureMessage: errorMessage(error),
         failedStepKey: error instanceof ScenarioExecutionError ? error.failedStepKey : null,
         failedStepOrder: error instanceof ScenarioExecutionError ? error.failedStepOrder : null,
-        timeoutPhase: error instanceof ScenarioExecutionError ? error.timeoutPhase : undefined,
-        timeoutMs: error instanceof ScenarioExecutionError ? error.timeoutMs : undefined,
-        timeoutPolicy: error instanceof ScenarioExecutionError ? error.timeoutPolicy : undefined,
-        summary: error instanceof ScenarioExecutionError ? error.summary : undefined
+        ...scenarioFailureLogDetails(error)
       },
       "error"
     );

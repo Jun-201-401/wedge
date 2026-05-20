@@ -42,7 +42,7 @@ test('run monitor page exposes Sprint 2 live cockpit essentials with Korean-faci
   assert.match(viewModel, /리포트 준비 완료/);
   assert.match(source, /currentCheckpoint/);
   assert.match(source, /getLiveInsightMessage/);
-  assert.match(source, /실행 중 오류가 발생해 근거 수집이 중단됐습니다/);
+  assert.match(source, /실행이 완료되지 않았습니다/);
   assert.match(stateHook, /EVIDENCE_LOAD_RUN_STATUSES = new Set\(\[\'COMPLETED\', \'FAILED\', \'STOPPED\'\]\)/);
   assert.doesNotMatch(source, /<p>선택한 흐름을 준비하고 있습니다\. 곧 근거 수집을 시작합니다\.<\/p>/);
   assert.doesNotMatch(source, /shouldShowSimulationCheckpoint/);
