@@ -8,6 +8,11 @@
 |---|---|
 | `porting-manual.md` | GitLab clone 이후 빌드/배포할 수 있도록 정리한 포팅 매뉴얼 |
 | `external-services-onboarding.md` | 프로젝트에서 사용하는 외부 서비스 가입/키 발급/주입 위치 정리 |
+| `demo-scenario-script.md` | 발표용 시연 시나리오 대본 |
+| `demo-scenario-compact.md` | 이미지 크기를 줄여 빠르게 확인할 수 있는 시연 시나리오 문서 |
+| `demo-scenario.pdf` | 시연 시나리오 PDF 산출물 |
+| `demo-scenario-compact.pdf` | 시연 시나리오 경량 PDF 산출물 |
+| `Image/` | 시연 문서에서 참조하는 화면 캡처 이미지 |
 | `db-dumps/` | PostgreSQL DB 덤프 최신본 및 복구 안내 |
 
 ## 작성 기준
@@ -22,4 +27,5 @@
 - 포팅 매뉴얼: `porting-manual.md`
 - 외부 서비스 문서: `external-services-onboarding.md`
 - DB 덤프 최신본: `db-dumps/wedge_dev_sanitized_20260521_114009.sql`
-
+- 시연 시나리오: `demo-scenario-script.md`, `demo-scenario-compact.md`, `demo-scenario.pdf`, `demo-scenario-compact.pdf`
+- 시연 이미지: `Image/`
